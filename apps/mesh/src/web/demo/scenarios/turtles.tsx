@@ -219,7 +219,164 @@ ${row("Gui", "gui@vela.shop", "Owner", true)}
 ${row("Rafa", "rafa@vela.shop", rafaAdmin ? "Admin ✓" : "Member", rafaAdmin)}
 ${row("Cami", "cami@vela.shop", "Member")}
 ${row("Dex", "dex@vela.shop", "Member")}
+<div style="margin-top:16px;border:1px dashed #d0d5dd;border-radius:10px;padding:12px;display:flex;gap:8px;align-items:center">
+<span style="flex:1;font-size:13px;color:#98a2b3">Invite your team — emails, comma separated…</span>
+<span style="background:#101828;color:#fff;font-size:12px;font-weight:600;padding:7px 14px;border-radius:8px">Invite</span>
+</div>
 </main></body></html>`;
+}
+
+/** Tiny inline SVG sparkline for the dashboard HTML apps. */
+function sparkSvg(points: number[], color: string): string {
+  const min = Math.min(...points);
+  const span = Math.max(...points) - min || 1;
+  const pts = points
+    .map(
+      (v, i) =>
+        `${((i / (points.length - 1)) * 60).toFixed(1)},${(18 - 2 - ((v - min) / span) * 14).toFixed(1)}`,
+    )
+    .join(" ");
+  return `<svg viewBox="0 0 60 18" width="60" height="18" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"/></svg>`;
+}
+
+const DASH_STYLE = `*{box-sizing:border-box;margin:0;font-family:Inter,system-ui,sans-serif}
+body{background:#fafafa;color:#101828;padding:16px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.kpi{background:#fff;border:1px solid #f0f1f3;border-radius:12px;padding:10px 12px}
+.kpi .l{font-size:11px;color:#667085;display:flex;gap:6px;align-items:center}
+.kpi .an{font-size:9px;font-weight:700;color:#dc2626;letter-spacing:.03em}
+.kpi .v{font-size:20px;font-weight:700;margin:2px 0}
+.kpi .d{font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px}
+.kpi .d.bad{color:#dc2626}.kpi .d.good{color:#16a34a}
+.card{background:#fff;border:1px solid #f0f1f3;border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.card h2{font-size:13px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.card h2 a{font-size:11px;color:#667085;font-weight:500;text-decoration:none}
+.it{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:7px 0;border-top:1px solid #f6f7f9;font-size:12px}
+.it .t{font-weight:600;display:flex;align-items:center;gap:6px}
+.it .s{font-size:11px;color:#98a2b3;margin-top:1px}
+.it .when{font-size:11px;color:#98a2b3;white-space:nowrap}
+.chip{font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px}
+.chip.crit{background:#fee4e2;color:#b42318}.chip.high{background:#fef0c7;color:#b54708}.chip.med{background:#f2f4f7;color:#475467}
+.chip.rev{background:#fef0c7;color:#b54708}.chip.rdy{background:#dcfce7;color:#166534}
+.assign{font-size:11px;font-weight:600;color:#101828;white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:99px;display:inline-block}
+.dot.crit{background:#dc2626}.dot.high{background:#f59e0b}.dot.med{background:#98a2b3}`;
+
+/** The org pilot's home: an OPERATIONS dashboard, not a site preview —
+ *  KPIs with anomalies flagged, diagnosed anomalies, agent-proposed
+ *  opportunities, and the review queue. */
+function orgDashboard(): string {
+  const kpi = (
+    l: string,
+    v: string,
+    d: string,
+    bad: boolean,
+    pts: number[],
+    anomaly = false,
+  ) =>
+    `<div class="kpi"><div class="l">${l}${anomaly ? '<span class="an">⚡ ANOMALY</span>' : ""}</div><div class="v">${v}</div><div class="d ${bad ? "bad" : "good"}">${bad ? "↘" : "↗"} ${d} ${sparkSvg(pts, bad ? "#dc2626" : "#16a34a")}</div></div>`;
+  return `<!doctype html><html><head><meta charset="utf8"><style>${DASH_STYLE}</style></head><body>
+<div class="kpis">
+${kpi("Conversion rate", "2.41%", "8.4%", true, [8, 7, 7, 6, 5, 4, 3], true)}
+${kpi("Revenue (today)", "R$118k", "6.2%", true, [7, 6, 6, 5, 5, 4, 4])}
+${kpi("LCP (PDP p75)", "1.9s", "12%", true, [2, 3, 3, 4, 5, 6, 7])}
+${kpi("Organic sessions", "412k", "4.1%", false, [3, 4, 4, 5, 5, 6, 7])}
+${kpi("Error rate", "0.6%", "0.2%", false, [6, 5, 5, 4, 4, 3, 3])}
+${kpi("Open opportunities", "3", "1", false, [2, 3, 3, 4, 4, 5, 5])}
+</div>
+<div class="card"><h2>⚡ Anomalies detected · last 24h <a>View all →</a></h2>
+<div class="it"><div><div class="t"><span class="dot crit"></span>Conversion on /knits PLP dropped 23% <span class="chip crit">critical</span></div><div class="s">conv 3.1% → 2.4% · ≈ R$48k/day at risk · ~6% of paid-traffic sessions</div></div><span class="when">2h ago</span></div>
+<div class="it"><div><div class="t"><span class="dot high"></span>PDP crash spike after CMS publish <span class="chip high">high</span></div><div class="s">273 errors/min at peak · long tail over ~48h from CDN/browser cache</div></div><span class="when">6h ago</span></div>
+<div class="it"><div><div class="t"><span class="dot med"></span>GA4 purchase event double-firing <span class="chip med">medium</span></div><div class="s">~6% of orders report 2 purchase events · revenue overstated ≈ 5.8%</div></div><span class="when">yesterday</span></div>
+</div>
+<div class="card"><h2>✦ Opportunities proposed by agents <a>Open board →</a></h2>
+<div class="it"><div><div class="t">Serve product images as AVIF/WebP</div><div class="s">Performance · −0.9s LCP (est.)</div></div><span class="assign">Assign →</span></div>
+<div class="it"><div><div class="t">De-dupe GA4 purchase event by transaction_id</div><div class="s">Tracking · fix 5.8% revenue overstatement</div></div><span class="assign">Assign →</span></div>
+<div class="it"><div><div class="t">Index search synonyms (singular/plural)</div><div class="s">SEO · recover 0-result searches</div></div><span class="assign">Assign →</span></div>
+</div>
+<div class="card"><h2>⎇ Awaiting your review</h2>
+<div class="it"><div><div class="t">#482 fix(vtex): strip GA tracking params <span class="chip rev">review</span></div><div class="s">In review · Developer Agent</div></div></div>
+<div class="it"><div><div class="t">#479 perf(pdp): preload hero image <span class="chip rdy">ready</span></div><div class="s">Ready to deploy · Camila Souza</div></div></div>
+</div>
+</body></html>`;
+}
+
+/** Store Ops' own app: yesterday's sales, revenue trend, top products. */
+function storeOpsApp(): string {
+  const bar = (h: number, hot = false) =>
+    `<div style="flex:1;background:${hot ? "#4d7c0f" : "#e4e7ec"};border-radius:4px 4px 0 0;height:${h}%"></div>`;
+  const prod = (name: string, rev: string, share: string) =>
+    `<div class="it"><div><div class="t">${name}</div><div class="s">${share} of revenue</div></div><span class="assign">${rev}</span></div>`;
+  return `<!doctype html><html><head><meta charset="utf8"><style>${DASH_STYLE}
+.chart{display:flex;align-items:flex-end;gap:6px;height:90px;padding-top:6px}
+.lbl{display:flex;gap:6px;font-size:10px;color:#98a2b3;margin-top:4px}
+.lbl span{flex:1;text-align:center}</style></head><body>
+<div class="kpis">
+${`<div class="kpi"><div class="l">Orders · yesterday</div><div class="v">412</div><div class="d good">↗ 38%</div></div>`}
+${`<div class="kpi"><div class="l">Revenue · yesterday</div><div class="v">R$96k</div><div class="d good">↗ 44%</div></div>`}
+${`<div class="kpi"><div class="l">Avg. order</div><div class="v">R$233</div><div class="d good">↗ 5%</div></div>`}
+</div>
+<div class="card"><h2>Revenue · last 7 days</h2>
+<div class="chart">${bar(38)}${bar(42)}${bar(35)}${bar(48)}${bar(52)}${bar(61)}${bar(96, true)}</div>
+<div class="lbl"><span>Sat</span><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span></div>
+</div>
+<div class="card"><h2>Top products · yesterday</h2>
+${prod("Winter Parka — the drop", "R$28k", "29%")}
+${prod("Heavyweight Knit", "R$14k", "15%")}
+${prod("Wool Scarf", "R$9k", "9%")}
+</div>
+<div class="card"><h2>Channels</h2>
+${prod("Organic search", "R$44k", "46%")}
+${prod("Paid social", "R$30k", "31%")}
+${prod("Direct", "R$22k", "23%")}
+</div>
+</body></html>`;
+}
+
+/** The tasks board: every proposed action is a card — kanban, like Jira
+ *  without the ceremony. Assign to an agent or a person. */
+function tasksKanban(): string {
+  const card = (
+    id: string,
+    chip: string,
+    chipCls: string,
+    title: string,
+    impact: string,
+    who: string,
+  ) =>
+    `<div class="tk"><div class="th"><span class="tid">${id}</span><span class="chip ${chipCls}">${chip}</span></div><div class="tt">${title}</div><div class="ti">${impact}</div><div class="tw">${who}</div></div>`;
+  return `<!doctype html><html><head><meta charset="utf8"><style>${DASH_STYLE}
+body{padding:14px}
+h1{font-size:16px;margin-bottom:2px}
+.sub{font-size:11px;color:#667085;margin-bottom:12px}
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.col h3{font-size:11px;color:#667085;font-weight:600;margin-bottom:6px;display:flex;justify-content:space-between}
+.col h3 b{background:#f2f4f7;border-radius:99px;padding:0 6px;font-weight:600}
+.tk{background:#fff;border:1px solid #f0f1f3;border-radius:10px;padding:8px 9px;margin-bottom:6px}
+.th{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+.tid{font-size:10px;color:#98a2b3;font-family:ui-monospace,monospace}
+.tt{font-size:12px;font-weight:600;line-height:1.25}
+.ti{font-size:10px;color:#15803d;font-weight:600;margin-top:3px}
+.tw{font-size:10px;color:#667085;margin-top:5px;border-top:1px solid #f6f7f9;padding-top:4px}
+.chip.anom{background:#fee4e2;color:#b42318}.chip.diag{background:#ede9fe;color:#5b21b6}.chip.jira{background:#f2f4f7;color:#475467}</style></head><body>
+<h1>Tasks</h1><div class="sub">Every proposed action lands here as a card — from diagnostics, anomalies, or your backlog. Assign to an agent or a person.</div>
+<div class="board">
+<div class="col"><h3>Proposed <b>2</b></h3>
+${card("T-488", "anomaly", "anom", "De-dupe GA4 purchase event by transaction_id", "Fix 5.8% revenue overstatement", "Unassigned")}
+${card("T-489", "diagnostic", "diag", "Index search synonyms (singular/plural)", "Recover 0-result searches", "Unassigned")}
+</div>
+<div class="col"><h3>In progress <b>2</b></h3>
+${card("T-475", "diagnostic", "diag", "Add canonical tag to PLP template", "+18k organic sessions/mo", "🤖 SEO Agent")}
+${card("T-486", "jira", "jira", "Show shipping cost earlier in cart", "−4pp cart abandonment (est.)", "Guilherme R.")}
+</div>
+<div class="col"><h3>In review <b>1</b></h3>
+${card("T-482", "anomaly", "anom", "Strip GA tracking params before VTEX IS lookup", "+R$48k/day recovered", "🤖 Developer Agent")}
+</div>
+<div class="col"><h3>Ready to deploy <b>1</b></h3>
+${card("T-479", "diagnostic", "diag", "Preload PDP hero image + fetchpriority", "+1.8% conversion (est.)", "Camila Souza")}
+</div>
+</div>
+</body></html>`;
 }
 
 // ============================================================================
@@ -230,6 +387,33 @@ ${row("Dex", "dex@vela.shop", "Member")}
  *  shared by the Director's script AND real clicks after the demo ends. */
 function setInputs(stores: DemoStores, patch: Record<string, string>) {
   stores.ui.update((s) => ({ ...s, inputs: { ...s.inputs, ...patch } }));
+}
+
+/** The right preview app for a scope — each agent owns its own MCP app.
+ *  Used by real clicks (explore mode) so the preview always matches. */
+function previewPatch(
+  stores: DemoStores,
+  agentId: string,
+): Record<string, string> {
+  const shipped = stores.ui.get().inputs.shipped === "1";
+  const rafaAdmin = stores.ui.get().inputs.rafa === "1";
+  if (agentId === "vela-settings") {
+    return {
+      "preview:vela": settingsApp({ rafaAdmin }),
+      "preview-url": "vela · settings/members",
+    };
+  }
+  if (agentId === "vela-ops") {
+    return { "preview:vela": storeOpsApp(), "preview-url": "vela · sales" };
+  }
+  if (agentId === "vela-bot") {
+    return {
+      "preview:vela": velaPreview({ winter: shipped }),
+      "preview-url": "vela.shop",
+    };
+  }
+  // The pilot's home is the OPERATIONS dashboard, not the site.
+  return { "preview:vela": orgDashboard(), "preview-url": "vela · operations" };
 }
 
 function Crumb({
@@ -325,7 +509,13 @@ function DemoToolbar({ stores }: { stores: DemoStores }) {
           <Crumb
             target="crumb:org"
             active={level === "org"}
-            onClick={() => setInputs(stores, { level: "org", agent: "" })}
+            onClick={() =>
+              setInputs(stores, {
+                level: "org",
+                agent: "",
+                ...previewPatch(stores, "vela"),
+              })
+            }
           >
             <span className="flex size-5 items-center justify-center rounded-md bg-lime-200 text-[10px] font-semibold text-lime-950">
               V
@@ -486,6 +676,23 @@ function ThreadRow({
   );
 }
 
+/** "Invite your team" — always present at the sidebar's bottom, in every
+ *  scope. Setup is one person's job; everyone else just gets invited. */
+function InviteTeamRow() {
+  return (
+    <button
+      type="button"
+      data-demo-target="invite-team"
+      className="mt-auto flex items-center gap-2.5 rounded-lg border border-dashed border-border px-2 py-2 text-left text-[13px] font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+    >
+      <span className="flex size-6 items-center justify-center rounded-md bg-muted text-[13px] text-muted-foreground">
+        +
+      </span>
+      Invite your team
+    </button>
+  );
+}
+
 function DemoSidebar({
   stores,
   level,
@@ -538,13 +745,17 @@ function DemoSidebar({
         </>
       ) : (
         <>
-          {/* Same thread UI inside the org — see what teammates are on. */}
-          <span data-demo-target="team-threads" className="contents">
+          {/* Same thread UI inside the org — see what teammates are on.
+              A real box (NOT display:contents) so the ghost cursor can aim. */}
+          <div
+            data-demo-target="team-threads"
+            className="flex flex-col gap-0.5"
+          >
             <SidebarSectionLabel>Team threads</SidebarSectionLabel>
             {VELA_TEAM_THREADS.map((t) => (
               <ThreadRow key={t.title} {...t} />
             ))}
-          </span>
+          </div>
           <SidebarSectionLabel>My threads</SidebarSectionLabel>
           {velaThreadLive && (
             <ThreadRow title="Ship the Winter Drop hero" meta="now" active />
@@ -563,6 +774,7 @@ function DemoSidebar({
           ))}
         </>
       )}
+      <InviteTeamRow />
     </nav>
   );
 }
@@ -580,7 +792,12 @@ function SidebarOrgRow({ stores, org }: { stores: DemoStores; org: Org }) {
       sub={org.tagline}
       onClick={
         org.id === "vela"
-          ? () => setInputs(stores, { level: "org", agent: "" })
+          ? () =>
+              setInputs(stores, {
+                level: "org",
+                agent: "",
+                ...previewPatch(stores, "vela"),
+              })
           : undefined
       }
     />
@@ -608,8 +825,16 @@ function SidebarAgentRow({
       sub={agent.sub}
       onClick={() =>
         agent.id === "vela"
-          ? setInputs(stores, { level: "org", agent: "" })
-          : setInputs(stores, { level: "agent", agent: agent.id })
+          ? setInputs(stores, {
+              level: "org",
+              agent: "",
+              ...previewPatch(stores, "vela"),
+            })
+          : setInputs(stores, {
+              level: "agent",
+              agent: agent.id,
+              ...previewPatch(stores, agent.id),
+            })
       }
     />
   );
@@ -800,7 +1025,12 @@ function OrgCard({ stores, org }: { stores: DemoStores; org: Org }) {
       data-demo-target={`org-card:${org.id}`}
       onClick={
         org.id === "vela"
-          ? () => setInputs(stores, { level: "org", agent: "" })
+          ? () =>
+              setInputs(stores, {
+                level: "org",
+                agent: "",
+                ...previewPatch(stores, "vela"),
+              })
           : undefined
       }
       className="flex w-full flex-col rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-accent/40"
@@ -1069,11 +1299,8 @@ async function goodMorning(d: Director) {
   d.setInput("dot:atlas", "ok");
 
   await deco.stream(MORNING_DIGEST, { instant: true });
-  d.caption("One brief. One thing that needs you.");
-  await d.beat(7000); // the money frame — hold long enough to read the table
-
-  // The brief ends in an ACTION, not a paragraph: a card that takes you to
-  // the org that needs you, straight into a thread with the question open.
+  // The brief ends in an ACTION, not a paragraph — the card lands WITH the
+  // digest, not after a pause: a button straight to the org that needs you.
   deco.showCard("org_cta", {
     orgName: "Vela Store",
     glyph: "V",
@@ -1089,7 +1316,8 @@ async function goodMorning(d: Director) {
     ],
   });
   deco.endTurn();
-  await d.beat(2600);
+  d.caption("One brief. One thing that needs you.");
+  await d.beat(7500); // hold: read the table + the card together
 }
 
 async function hopIntoVela(d: Director) {
@@ -1109,21 +1337,15 @@ async function hopIntoVela(d: Director) {
     tile: "bg-lime-200 text-lime-950",
   });
   d.setInput("thread:vela", "1"); // the thread appears under My threads
+  d.caption("You land on Vela's operations — the pilot was already waiting");
   await vela.stream(
     "Morning! The Winter Drop hero is ready — assets approved, QA passed. Ship it now?",
     { cps: 60 },
   );
   vela.endTurn();
-  d.caption("Same product, one level down — Vela was already waiting for you");
-  await d.beat(2600);
+  await d.beat(2600); // read the dashboard + the pilot's question
 
-  // The org has the same thread UI — and team threads show who's on what.
-  d.caption("Team threads — see what your teammates are working on");
-  d.showCursor();
-  await d.click("team-threads");
-  await d.beat(2400);
-  d.hideCursor();
-
+  // Answer immediately — the urgency is the point. No sidebar detours.
   await say(d, vela, "Yes — ship it.");
   await d.beat(400);
   await vela.think(
@@ -1141,7 +1363,10 @@ async function hopIntoVela(d: Director) {
       latencyMs: 2200,
     }),
   );
+  // The preview swaps from the ops dashboard to the site to SHOW the change.
+  d.setInput("preview-url", "vela.shop");
   d.setPreview("vela", velaPreview({ winter: true }));
+  d.setInput("shipped", "1");
   await d.beat(1800); // let the storefront swap land before the next tool
 
   // The pilot audits on its own, catches the regression, and DELEGATES the
@@ -1175,11 +1400,24 @@ async function hopIntoVela(d: Director) {
     }),
   );
   await vela.stream(
-    "✅ Live on vela.shop — Winter Drop hero, fast (LCP **1.2s**).",
+    "✅ Live on vela.shop — Winter Drop hero, fast (LCP **1.2s**). I've queued the follow-ups on the board.",
     { cps: 44 },
   );
   vela.endTurn();
-  await d.beat(3200);
+  await d.beat(1200);
+
+  // Shipped → who sees it: teammates' threads live in the same sidebar.
+  d.caption("Your teammates see it land — team threads, right there");
+  d.showCursor();
+  await d.click("team-threads");
+  await d.beat(2200);
+  d.hideCursor();
+
+  // → and where the follow-ups went: the org's board.
+  d.caption("Follow-ups land on the kanban — assign to an agent or a person");
+  d.setInput("preview-url", "vela · tasks");
+  d.setPreview("vela", tasksKanban());
+  await d.beat(5200);
 }
 
 const SALES_RECAP = `Yesterday on vela.shop:
@@ -1199,6 +1437,9 @@ async function zoomIntoAgent(d: Director) {
   await d.click("agent:vela-ops");
   d.setInput("level", "agent");
   d.setInput("agent", "vela-ops");
+  // Store Ops has its OWN app in the preview — sales data, not the site.
+  d.setInput("preview-url", "vela · sales");
+  d.setPreview("vela", storeOpsApp());
   d.hideCursor();
   await d.beat(900);
 
@@ -1220,6 +1461,21 @@ async function zoomIntoAgent(d: Director) {
   await ops.stream(SALES_RECAP, { instant: true });
   ops.endTurn();
   await d.beat(4200); // hold the sales table
+}
+
+async function shareOpsToWhatsApp(d: Director) {
+  // Share is demonstrated where it's most visceral: THIS sales agent, on
+  // your phone. Every breadcrumb level mints an MCP URL for its scope.
+  d.caption("Every scope is an MCP URL — take this exact agent to WhatsApp");
+  d.showCursor();
+  await d.beat(500);
+  await d.click("share-button");
+  d.setInput("share", "open");
+  await d.beat(1200);
+  d.hideCursor();
+  await d.beat(3600); // read the URL + client chips
+  d.setInput("share", "");
+  await d.beat(400);
 }
 
 /** Settings is an agent, its screens are MCP apps in the preview — chat +
@@ -1252,25 +1508,16 @@ async function settingsAsAgent(d: Director) {
     }),
   );
   d.setPreview("vela", settingsApp({ rafaAdmin: true }));
+  d.setInput("rafa", "1");
   await st.stream("Done — Rafa is an **admin** now. Anything else?", {
     cps: 44,
   });
   st.endTurn();
   d.caption("No settings screen — chat + preview, everywhere");
-  await d.beat(3400);
-}
-
-async function shareThisScope(d: Director) {
-  d.caption("Every level is an MCP endpoint — Share connects any client HERE");
-  d.showCursor();
-  await d.beat(600);
-  await d.click("share-button");
-  d.setInput("share", "open");
-  await d.beat(1200);
-  d.hideCursor();
-  await d.beat(3800); // read the URL + client chips
-  d.setInput("share", "");
-  await d.beat(400);
+  await d.beat(3000);
+  // Setup is one person's job — everyone else just gets invited.
+  d.caption("Invite your team — they get agents already set up, not setup");
+  await d.beat(2800);
 }
 
 async function backHome(d: Director) {
@@ -1310,14 +1557,16 @@ export const turtlesScenario: Scenario = {
   },
   run: async (d: Director) => {
     d.setInput("level", "home");
-    d.setPreview("vela", velaPreview({ winter: false }));
+    // Entering an org lands on its OPERATIONS dashboard, not a site preview.
+    d.setPreview("vela", orgDashboard());
+    d.setInput("preview-url", "vela · operations");
     await d.beat(600);
 
     await goodMorning(d);
     await hopIntoVela(d);
     await zoomIntoAgent(d);
+    await shareOpsToWhatsApp(d);
     await settingsAsAgent(d);
-    await shareThisScope(d);
     await backHome(d);
   },
 };
