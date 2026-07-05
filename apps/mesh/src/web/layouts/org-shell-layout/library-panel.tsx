@@ -89,20 +89,18 @@ export function LibraryPanel({
   if (!open) return null;
 
   return (
-    <aside className="flex h-full w-[min(560px,42vw)] shrink-0 flex-col bg-sidebar">
-      <div className="flex h-10 shrink-0 items-center justify-between px-3">
-        <span className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground">
-          <Folder size={14} />
-          Library
-        </span>
-        <ToolbarIconButton onClick={onClose} aria-label="Close library">
-          <XClose size={16} />
-        </ToolbarIconButton>
-      </div>
-      {/* The Library floats its own card-shadow card and expects the shell's
-          cream (bg-sidebar) behind it with a little breathing room on top —
-          without it the card's rounded top edge renders clipped/flush. */}
-      <div className="min-h-0 flex-1 overflow-hidden pt-0.5">
+    // No panel header: the Library renders its own title inside its floating
+    // card, and that card uses the same shell padding as the chat card
+    // (pr-1 pb-1 + p-0.5), so with nothing above it the two cards top-align.
+    <aside className="relative flex h-full w-[min(560px,42vw)] shrink-0 flex-col bg-sidebar">
+      <ToolbarIconButton
+        onClick={onClose}
+        aria-label="Close library"
+        className="absolute right-3 top-2.5 z-10"
+      >
+        <XClose size={16} />
+      </ToolbarIconButton>
+      <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<PanelFallback />}>
           <Library />
         </Suspense>
