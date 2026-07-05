@@ -617,7 +617,7 @@ function MetricSquare({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-[62px] flex-col justify-between rounded-lg border border-border/70 bg-muted/30 p-2">
+    <div className="flex min-h-[78px] flex-col justify-between rounded-lg border border-border/70 bg-muted/30 p-2.5">
       <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80">
         {label}
       </span>
@@ -635,7 +635,7 @@ function OrgCard({ stores, org }: { stores: DemoStores; org: Org }) {
   return (
     <div
       data-demo-target={`org-card:${org.id}`}
-      className="flex w-full flex-col rounded-2xl border border-border bg-card px-3 py-3 transition-colors hover:bg-accent/40"
+      className="flex w-full flex-col rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-accent/40"
     >
       <div className="flex items-center gap-3">
         <span
@@ -669,12 +669,12 @@ function OrgCard({ stores, org }: { stores: DemoStores; org: Org }) {
 
       <div className="mt-2.5 grid grid-cols-3 gap-1.5">
         <MetricSquare label={org.metrics.stat.label}>
-          <span className="flex items-baseline gap-1">
-            <span className="text-sm font-semibold text-foreground">
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-lg font-semibold text-foreground">
               {org.metrics.stat.value}
             </span>
             {org.metrics.stat.delta && (
-              <span className="text-[10px] font-medium text-emerald-700">
+              <span className="text-[11px] font-medium text-emerald-700">
                 ▲ {org.metrics.stat.delta.replace("+", "")}
               </span>
             )}
@@ -682,14 +682,14 @@ function OrgCard({ stores, org }: { stores: DemoStores; org: Org }) {
         </MetricSquare>
         <MetricSquare label={org.metrics.trend.label}>
           <Sparkline points={org.metrics.trend.points} className={org.spark} />
-          <span className="text-[11px] font-semibold text-foreground">
+          <span className="text-xs font-semibold text-foreground">
             {org.metrics.trend.value}
           </span>
         </MetricSquare>
         <MetricSquare label={org.metrics.watch.label}>
           <span
             key={watchValue}
-            className="text-sm font-semibold text-foreground animate-in fade-in duration-500"
+            className="text-lg font-semibold text-foreground animate-in fade-in duration-500"
           >
             {watchValue}
           </span>
@@ -746,8 +746,9 @@ function HomeLevel({ stores }: { stores: DemoStores }) {
           </div>
           {!hasMessages && <div className="flex-1" aria-hidden />}
         </div>
-        {/* Org rail — every org you belong to, reporting as an agent. */}
-        <div className="relative flex w-[340px] shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-border/60 p-3">
+        {/* Org rail — every org you belong to, reporting as an agent.
+            Half the surface: the orgs are the home's co-protagonist. */}
+        <div className="relative flex min-w-0 flex-1 flex-col gap-2.5 overflow-y-auto border-l border-border/60 p-4">
           <div className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
             Your orgs
           </div>
