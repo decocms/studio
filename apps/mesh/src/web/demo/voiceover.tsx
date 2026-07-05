@@ -1,47 +1,108 @@
 /**
- * Demo Mode — narration (trial).
+ * Demo Mode — narration.
  *
- * Pre-recorded voice-over for the caption pills (macOS `say`, Samantha
- * Enhanced → AAC in public/demo/vo/). OFF by default: browsers block audio
- * until a user gesture, so the floating toggle doubles as the unlock. The
- * player is a plain store subscriber created inside the stage's sanctioned
- * lifecycle effect — when the caption changes and narration is on, the
- * matching clip plays (any previous clip stops first).
+ * The captions ARE the script: every pill line has a pre-recorded voice-over
+ * clip (macOS `say`, Zoe Premium @186wpm → AAC in public/demo/vo/), keyed by
+ * the exact caption text. Narration is ON by default; browsers block audio
+ * until a user gesture, so the player retries the current line on the first
+ * pointer/keydown anywhere (the standard unlock pattern). The toggle mutes.
  *
- * Trial scope: only the first two captions are recorded.
+ * The player is a plain store subscriber created inside the stage's
+ * sanctioned lifecycle effect — when the caption changes and narration is
+ * on, the matching clip plays (any previous clip stops first).
  */
 import { useSyncExternalStore } from "react";
 import { VolumeMax, VolumeX } from "@untitledui/icons";
 import type { DemoStores } from "./director-stores";
 
-/** caption text → clip. Keep keys EXACTLY in sync with the script. */
+/** caption text → clip. Keys must EXACTLY match the script's captions. */
 const VO_FILES: Record<string, string> = {
-  "This is your deco — every org you belong to, as an agent":
-    "/demo/vo/vo-your-deco.m4a",
-  "Your deco asks each org's pilot — in parallel": "/demo/vo/vo-parallel.m4a",
+  "This is your deco — every org you belong to, working for you":
+    "/demo/vo/vo-01.m4a",
+  "Every morning starts the same — you ask what needs you":
+    "/demo/vo/vo-02.m4a",
+  "Your deco asks each org's pilot — in parallel": "/demo/vo/vo-03.m4a",
+  "One brief, three orgs — exactly one thing needs you, and it's a button":
+    "/demo/vo/vo-04.m4a",
+  "The card takes you straight into Vela — no context to rebuild":
+    "/demo/vo/vo-05.m4a",
+  "You land on its operations — everything the pilot watches, live":
+    "/demo/vo/vo-06.m4a",
+  "You say ship it — that's the whole job": "/demo/vo/vo-07.m4a",
+  "It audits before shipping, finds a regression — and fixes it itself":
+    "/demo/vo/vo-08.m4a",
+  "Your teammates see it land — their threads live right beside yours":
+    "/demo/vo/vo-09.m4a",
+  "Every follow-up becomes a card — assigned to an agent, or a person":
+    "/demo/vo/vo-10.m4a",
+  "Go one level deeper — every part of an org is an agent too":
+    "/demo/vo/vo-11.m4a",
+  "Every scope is an MCP URL — take this exact agent to WhatsApp":
+    "/demo/vo/vo-12.m4a",
+  "Even Settings is an agent — its screens are just apps in the preview":
+    "/demo/vo/vo-13.m4a",
+  "No settings screens anywhere — chat and preview, all the way through":
+    "/demo/vo/vo-14.m4a",
+  "Setup is one person's job — everyone else just gets invited":
+    "/demo/vo/vo-15.m4a",
+  "And the logo always takes you back to yourself": "/demo/vo/vo-16.m4a",
+  "It's agents all the way down — same product, only the zoom changes":
+    "/demo/vo/vo-17.m4a",
 };
 
-/** Subscribe to caption changes and narrate. Returns an unsubscribe fn. */
+/** ON unless explicitly muted — narration leads the tale by default. */
+function isOn(stores: DemoStores): boolean {
+  return stores.ui.get().inputs.vo !== "off";
+}
+
+/** Subscribe to caption changes and narrate. Returns a cleanup fn. */
 export function createVoicePlayer(stores: DemoStores): () => void {
   let lastCaption: string | null = null;
   let current: HTMLAudioElement | null = null;
+  let unlocked = false;
 
-  const unsub = stores.ui.subscribe(() => {
-    const { caption, inputs } = stores.ui.get();
-    if (caption === lastCaption) return;
-    lastCaption = caption;
+  const playCaption = (caption: string | null) => {
     current?.pause();
     current = null;
-    if (inputs.vo !== "on" || !caption) return;
+    if (!caption || !isOn(stores)) return;
     const src = VO_FILES[caption];
     if (!src) return;
     current = new Audio(src);
-    // Autoplay may still reject if the unlock gesture hasn't happened.
-    current.play().catch(() => {});
+    current.play().then(
+      () => {
+        unlocked = true;
+      },
+      () => {
+        /* blocked until a user gesture — the unlock listener retries */
+      },
+    );
+  };
+
+  const unsub = stores.ui.subscribe(() => {
+    const { caption } = stores.ui.get();
+    if (caption === lastCaption) return;
+    lastCaption = caption;
+    playCaption(caption);
   });
+
+  // Autoplay unlock: on the FIRST gesture anywhere, re-speak the line that's
+  // currently on screen so narration starts mid-show instead of never.
+  const unlock = () => {
+    if (unlocked) return cleanupUnlock();
+    unlocked = true;
+    cleanupUnlock();
+    playCaption(stores.ui.get().caption);
+  };
+  const cleanupUnlock = () => {
+    window.removeEventListener("pointerdown", unlock);
+    window.removeEventListener("keydown", unlock);
+  };
+  window.addEventListener("pointerdown", unlock);
+  window.addEventListener("keydown", unlock);
 
   return () => {
     unsub();
+    cleanupUnlock();
     current?.pause();
   };
 }
@@ -49,8 +110,8 @@ export function createVoicePlayer(stores: DemoStores): () => void {
 export function VoiceToggle({ stores }: { stores: DemoStores }) {
   const on = useSyncExternalStore(
     stores.ui.subscribe,
-    () => stores.ui.get().inputs.vo === "on",
-    () => stores.ui.get().inputs.vo === "on",
+    () => stores.ui.get().inputs.vo !== "off",
+    () => stores.ui.get().inputs.vo !== "off",
   );
   return (
     <button
@@ -58,7 +119,7 @@ export function VoiceToggle({ stores }: { stores: DemoStores }) {
       onClick={() =>
         stores.ui.update((s) => ({
           ...s,
-          inputs: { ...s.inputs, vo: on ? "" : "on" },
+          inputs: { ...s.inputs, vo: on ? "off" : "" },
         }))
       }
       aria-pressed={on}
