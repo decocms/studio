@@ -299,12 +299,14 @@ export interface OrgCtaState {
   button: string;
   /** ghost-cursor target id for the navigate button */
   target: string;
+  /** status chips rendered like a real app UI ("Assets approved ✓", …) */
+  chips?: { label: string; state: "done" | "pending" }[];
 }
 
 export function OrgCtaCard({ cta }: { cta: OrgCtaState }) {
   return (
     <div className="my-2 w-full animate-in fade-in slide-in-from-bottom-2 overflow-hidden rounded-2xl border border-border bg-card duration-500">
-      <div className="flex items-center gap-3 p-4">
+      <div className="flex items-center gap-3 border-b border-border px-4 py-3">
         <span
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold",
@@ -314,12 +316,36 @@ export function OrgCtaCard({ cta }: { cta: OrgCtaState }) {
           {cta.glyph}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-foreground">
+          <div className="text-sm font-semibold text-foreground">
             {cta.headline}
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">{cta.body}</div>
         </div>
-        <Button size="sm" data-demo-target={cta.target} className="shrink-0">
+      </div>
+      <div className="flex items-center gap-2 px-4 py-3">
+        {cta.chips?.map((chip) => (
+          <span
+            key={chip.label}
+            className={cn(
+              "flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium",
+              chip.state === "done"
+                ? "bg-primary/10 text-primary"
+                : "bg-amber-500/10 text-amber-600",
+            )}
+          >
+            {chip.state === "done" ? (
+              <Check className="size-3" />
+            ) : (
+              <span className="size-1.5 rounded-full bg-amber-500" />
+            )}
+            {chip.label}
+          </span>
+        ))}
+        <Button
+          size="sm"
+          data-demo-target={cta.target}
+          className="ml-auto shrink-0"
+        >
           {cta.button}
           <ArrowRight size={14} />
         </Button>

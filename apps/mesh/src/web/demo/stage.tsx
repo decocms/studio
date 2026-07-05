@@ -27,11 +27,14 @@ function DemoCaption({ stores }: { stores: DemoStores }) {
   const caption = useCaption(stores);
   if (!caption) return null;
   return (
-    <div className="pointer-events-none absolute bottom-7 left-1/2 z-50 -translate-x-1/2">
+    // Top of the stage (clear of the breadcrumb) — the bottom sat over the
+    // composer and was easy to miss. Purple so it stands apart from the
+    // product UI: this is the narrator, not a component.
+    <div className="pointer-events-none absolute left-1/2 top-6 z-50 -translate-x-1/2">
       {/* key on text so each new caption fades/slides in fresh */}
       <div
         key={caption}
-        className="animate-in fade-in slide-in-from-bottom-2 duration-500 rounded-full bg-foreground/90 px-4 py-1.5 text-sm font-medium text-background shadow-lg backdrop-blur"
+        className="animate-in fade-in slide-in-from-top-2 duration-500 rounded-full bg-violet-950/70 px-5 py-2.5 text-[15px] font-medium text-violet-50 shadow-xl ring-1 ring-violet-400/40 backdrop-blur-md"
       >
         {caption}
       </div>
