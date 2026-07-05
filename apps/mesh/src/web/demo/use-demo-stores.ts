@@ -50,3 +50,16 @@ export function useTrackBusy(stores: DemoStores, orgId: string): boolean {
       store.get().status === "streaming" || store.get().status === "submitted",
   );
 }
+
+/** True once a track has any messages — drives hero → thread view swaps. */
+export function useTrackHasMessages(
+  stores: DemoStores,
+  trackId: string,
+): boolean {
+  const store = stores.getChat(trackId);
+  return useSyncExternalStore(
+    store.subscribe,
+    () => store.get().messages.length > 0,
+    () => store.get().messages.length > 0,
+  );
+}

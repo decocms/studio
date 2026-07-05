@@ -8,7 +8,7 @@
 /** A browser-like preview pane that renders demo HTML in an isolated iframe. */
 export function PreviewFrame({ url, html }: { url: string; html: string }) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card">
+    <div className="flex h-full flex-col overflow-hidden bg-background">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-3">
         <span className="flex gap-1.5">
           <span className="size-2.5 rounded-full bg-muted-foreground/25" />

@@ -8,23 +8,39 @@
  *   breadcrumb says who it is. The logo takes you to yourself.
  *
  * Beats:
- *   1. `/` — your deco. Org cards (each org = an agent that reports) + a chat.
+ *   1. Home — your deco. The REAL home look (hero, capybara, composer, corner
+ *      art) with your orgs as tiles below — each org an agent that reports.
  *      "Good morning — what needs me?" fans out to every org's pilot.
- *   2. Hop into an org via its card → breadcrumb grows → same product, one
+ *   2. Hop into an org via its tile → breadcrumb grows → same product, one
  *      level down. Give the org's pilot a task; watch the storefront change.
  *   3. Zoom into one agent inside the org → breadcrumb grows again.
- *   4. Share — every breadcrumb level mints an MCP URL for exactly that scope.
- *   5. Logo → home. The cards already reflect the work. Turtles all the way.
+ *   4. Share (right next to the breadcrumb) — every level mints an MCP URL
+ *      for exactly that scope.
+ *   5. Logo → home. The tiles already reflect the work. Turtles all the way.
  *
- * All data is mocked; the chat pipeline is the REAL renderer driven by the
- * Director (same machinery as the other demo scenarios).
+ * All data is mocked; the chat pipeline is the REAL renderer, and the chrome
+ * copies the real shell's classes/assets (bg-sidebar body, card-shadow float
+ * cards, the home hero + capybara, the composer's Tools/scope/model rows).
  */
+import {
+  ArrowUp,
+  ChevronDown,
+  Cloud01,
+  Microphone01,
+  Sliders01,
+  Stars01,
+} from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Chat } from "@/web/components/chat";
 import { DemoChatStreamProvider } from "../demo-chat-stream";
 import { PreviewFrame } from "../chrome";
 import { genericTool } from "../message-builders";
-import { useDemoInput, useNotified, useTrackBusy } from "../use-demo-stores";
+import {
+  useDemoInput,
+  useNotified,
+  useTrackBusy,
+  useTrackHasMessages,
+} from "../use-demo-stores";
 import type { Director, Track } from "../director";
 import type { DemoStores } from "../director-stores";
 import type { Scenario } from "../types";
@@ -37,32 +53,50 @@ const ORGS = [
   {
     id: "vela",
     name: "Vela Store",
-    domain: "vela.shop",
     glyph: "V",
     tagline: "Fashion storefront",
+    tile: "bg-lime-200 text-lime-950",
   },
   {
     id: "aurora",
     name: "Aurora Coffee",
-    domain: "auroracoffee.com",
     glyph: "A",
     tagline: "DTC subscriptions",
+    tile: "bg-amber-200 text-amber-950",
   },
   {
     id: "atlas",
     name: "Atlas Labs",
-    domain: "atlaslabs.io",
     glyph: "L",
     tagline: "B2B SaaS",
+    tile: "bg-sky-200 text-sky-950",
   },
 ] as const;
 
 type Org = (typeof ORGS)[number];
 
 const VELA_AGENTS = [
-  { id: "vela", name: "Vela Pilot", sub: "the org's teammate", glyph: "V" },
-  { id: "vela-bot", name: "Storefront Bot", sub: "vela.shop", glyph: "S" },
-  { id: "vela-support", name: "Support Triage", sub: "inbox", glyph: "T" },
+  {
+    id: "vela",
+    name: "Vela Pilot",
+    sub: "the org's teammate",
+    glyph: "V",
+    tile: "bg-lime-200 text-lime-950",
+  },
+  {
+    id: "vela-bot",
+    name: "Storefront Bot",
+    sub: "vela.shop",
+    glyph: "S",
+    tile: "bg-violet-200 text-violet-950",
+  },
+  {
+    id: "vela-support",
+    name: "Support Triage",
+    sub: "inbox",
+    glyph: "T",
+    tile: "bg-pink-200 text-pink-950",
+  },
 ] as const;
 
 const BASE = "https://studio.decocms.com/api";
@@ -72,6 +106,14 @@ function scopeUrl(level: string, agent: string): string {
   if (level === "agent") return `${BASE}/vela/mcp/${agent || "vela-bot"}`;
   if (level === "org") return `${BASE}/vela/mcp`;
   return `${BASE}/you/mcp`;
+}
+
+/** Who the always-available chat is, per breadcrumb level. */
+function scopeChipLabel(level: string, agent: string): string {
+  if (level === "agent")
+    return VELA_AGENTS.find((a) => a.id === agent)?.name ?? "Storefront Bot";
+  if (level === "org") return "Vela Pilot";
+  return "Decopilot";
 }
 
 // ============================================================================
@@ -106,7 +148,7 @@ function velaPreview({ winter }: { winter: boolean }): string {
 }
 
 // ============================================================================
-// Chrome — breadcrumb topbar + share popover
+// Shell chrome — real toolbar look: breadcrumb + Share right beside it
 // ============================================================================
 
 function Crumb({
@@ -125,7 +167,7 @@ function Crumb({
         "flex items-center gap-2 rounded-md px-1.5 py-1 text-sm transition-colors",
         active
           ? "font-medium text-foreground"
-          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
       )}
     >
       {children}
@@ -148,7 +190,7 @@ function SharePopover({ stores }: { stores: DemoStores }) {
         : "your entire deco — every org you belong to";
 
   return (
-    <div className="absolute right-4 top-12 z-40 w-80 rounded-xl border border-border bg-card p-4 shadow-xl animate-in fade-in slide-in-from-top-2 duration-300">
+    <div className="absolute left-0 top-9 z-40 w-80 rounded-xl bg-background p-4 card-shadow animate-in fade-in slide-in-from-top-2 duration-300">
       <div className="text-sm font-medium text-foreground">
         Connect a client to this scope
       </div>
@@ -172,17 +214,19 @@ function SharePopover({ stores }: { stores: DemoStores }) {
   );
 }
 
-function Breadcrumb({ stores }: { stores: DemoStores }) {
+function DemoToolbar({ stores }: { stores: DemoStores }) {
   const level = useDemoInput(stores, "level") || "home";
   const agentId = useDemoInput(stores, "agent");
   const agent = VELA_AGENTS.find((a) => a.id === agentId);
 
   return (
-    <header className="relative flex h-12 shrink-0 items-center gap-1 border-b border-border bg-background px-3">
+    <header className="flex h-12 shrink-0 items-center gap-1 bg-sidebar px-3">
       <Crumb target="crumb:home" active={level === "home"}>
-        <span className="flex size-6 items-center justify-center rounded-md bg-foreground text-[11px] font-bold text-background">
-          d
-        </span>
+        <img
+          src="/logos/deco logo.svg"
+          alt="deco"
+          className="size-6 select-none"
+        />
         <span>deco</span>
       </Crumb>
 
@@ -204,143 +248,138 @@ function Breadcrumb({ stores }: { stores: DemoStores }) {
         </>
       )}
 
-      <div className="ml-auto flex items-center gap-2">
+      {/* Share sits right beside the breadcrumb — it shares THIS scope. */}
+      <span className="relative ml-2">
         <button
           type="button"
           data-demo-target="share-button"
-          className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <span className="size-1.5 rounded-full bg-primary/70" />
           Share
         </button>
-      </div>
-      <SharePopover stores={stores} />
+        <SharePopover stores={stores} />
+      </span>
     </header>
   );
 }
 
 // ============================================================================
-// Composer — "there's always a chat"
+// Sidebar — real shell look (cream, uppercase section labels, tile avatars)
 // ============================================================================
 
-function Composer({ stores }: { stores: DemoStores }) {
-  const value = useDemoInput(stores, "composer");
+function SidebarSectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="shrink-0 border-t border-border p-3">
-      <div className="flex min-h-11 items-center rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm">
-        {value ? (
-          <span className="text-foreground">
-            {value}
-            <span className="ml-px inline-block h-4 w-px animate-pulse bg-foreground align-middle" />
-          </span>
-        ) : (
-          <span className="text-muted-foreground">Ask anything…</span>
-        )}
-      </div>
+    <div className="px-2 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+      {children}
     </div>
   );
 }
 
-function ChatPane({
-  stores,
-  trackId,
-  className,
+function SidebarRow({
+  target,
+  active,
+  busy,
+  tile,
+  glyph,
+  name,
+  sub,
 }: {
-  stores: DemoStores;
-  trackId: string;
-  className?: string;
+  target?: string;
+  active: boolean;
+  busy?: boolean;
+  tile: string;
+  glyph: React.ReactNode;
+  name: string;
+  sub?: string;
 }) {
   return (
-    <div
+    <span
+      data-demo-target={target}
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card",
-        className,
+        "flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors duration-300",
+        active
+          ? "bg-sidebar-accent text-sidebar-foreground"
+          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60",
       )}
     >
-      <DemoChatStreamProvider store={stores.getChat(trackId)}>
-        <Chat className="bg-card">
-          <Chat.Messages />
-        </Chat>
-      </DemoChatStreamProvider>
-      <Composer stores={stores} />
-    </div>
-  );
-}
-
-// ============================================================================
-// Home level — your deco
-// ============================================================================
-
-function OrgCard({ stores, org }: { stores: DemoStores; org: Org }) {
-  const status = useDemoInput(stores, `status:${org.id}`);
-  const dot = useDemoInput(stores, `dot:${org.id}`); // "ok" | "busy" | "needs"
-  const needs = useNotified(stores, org.id);
-  return (
-    <div
-      data-demo-target={`org-card:${org.id}`}
-      className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-foreground/20"
-    >
-      <div className="flex items-center gap-3">
-        <span className="relative flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-sm font-semibold text-foreground">
-          {org.glyph}
-          {needs && (
-            <span className="absolute -right-1 -top-1 size-2.5 rounded-full bg-primary ring-2 ring-card animate-in zoom-in duration-300" />
-          )}
-        </span>
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-medium text-foreground">
-            {org.name}
-          </span>
-          <span className="truncate text-xs text-muted-foreground">
-            {org.tagline}
-          </span>
-        </span>
+      <span className="relative shrink-0">
         <span
           className={cn(
-            "ml-auto size-2 shrink-0 rounded-full",
-            dot === "needs" && "bg-primary",
-            dot === "busy" && "animate-pulse bg-primary/60",
-            (dot === "ok" || !dot) && "bg-muted-foreground/30",
+            "flex size-6 items-center justify-center rounded-md text-[11px] font-semibold",
+            tile,
           )}
-        />
-      </div>
-      {status && (
-        <div
-          key={status}
-          className="mt-3 border-t border-border pt-2.5 text-xs leading-relaxed text-muted-foreground animate-in fade-in duration-500"
         >
-          {status}
-        </div>
-      )}
-    </div>
+          {glyph}
+        </span>
+        {busy && !active && (
+          <span className="absolute -right-1 -top-1 size-2 animate-pulse rounded-full bg-primary/70 ring-2 ring-sidebar" />
+        )}
+      </span>
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className="truncate text-[13px] font-medium">{name}</span>
+        {sub && (
+          <span className="truncate text-[11px] text-muted-foreground">
+            {sub}
+          </span>
+        )}
+      </span>
+    </span>
   );
 }
 
-function HomeLevel({ stores }: { stores: DemoStores }) {
+function DemoSidebar({
+  stores,
+  level,
+  activeAgent,
+}: {
+  stores: DemoStores;
+  level: string;
+  activeAgent: string;
+}) {
   return (
-    <div className="mx-auto grid min-h-0 w-full max-w-6xl flex-1 grid-cols-[1fr_320px] gap-4 p-4">
-      <ChatPane stores={stores} trackId="deco" />
-      <div className="flex min-h-0 flex-col gap-2.5 overflow-y-auto">
-        <div className="px-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-          Your orgs
-        </div>
-        {ORGS.map((o) => (
-          <OrgCard key={o.id} stores={stores} org={o} />
-        ))}
-        <div className="px-1 pt-1 text-[11px] leading-relaxed text-muted-foreground/60">
-          Each org is a connection and an agent in your personal org — it
-          reports here, and you can talk to it.
-        </div>
-      </div>
-    </div>
+    <nav className="flex w-60 shrink-0 flex-col gap-0.5 bg-sidebar p-2 pt-1">
+      {level === "home" ? (
+        <>
+          <SidebarRow
+            active
+            tile="bg-sidebar-accent text-sidebar-foreground"
+            glyph="⌂"
+            name="Home"
+          />
+          <SidebarSectionLabel>My threads</SidebarSectionLabel>
+          <SidebarSectionLabel>Agents 1</SidebarSectionLabel>
+          <SidebarRow
+            active={false}
+            tile="bg-lime-200 text-lime-950"
+            glyph={
+              <img
+                src="/logos/deco logo.svg"
+                alt=""
+                className="size-4 select-none"
+              />
+            }
+            name="Decopilot"
+          />
+        </>
+      ) : (
+        <>
+          <SidebarSectionLabel>Agents {VELA_AGENTS.length}</SidebarSectionLabel>
+          {VELA_AGENTS.map((a) => (
+            <SidebarAgentRow
+              key={a.id}
+              stores={stores}
+              agent={a}
+              active={a.id === activeAgent}
+            />
+          ))}
+        </>
+      )}
+    </nav>
   );
 }
 
-// ============================================================================
-// Org / agent levels — same shell, one zoom apart
-// ============================================================================
-
-function AgentRow({
+function SidebarAgentRow({
   stores,
   agent,
   active,
@@ -351,44 +390,235 @@ function AgentRow({
 }) {
   const busy = useTrackBusy(stores, agent.id);
   return (
-    <span
-      data-demo-target={`agent:${agent.id}`}
-      className={cn(
-        "flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors duration-300",
-        active ? "bg-muted" : "hover:bg-muted/50",
-      )}
-    >
-      <span className="relative shrink-0">
-        <span
-          className={cn(
-            "flex size-7 items-center justify-center rounded-md text-[12px] font-semibold",
-            active
-              ? "bg-foreground text-background"
-              : "bg-muted text-muted-foreground",
-          )}
-        >
-          {agent.glyph}
-        </span>
-        {busy && !active && (
-          <span className="absolute -right-1 -top-1 size-2 animate-pulse rounded-full bg-primary/70 ring-2 ring-background" />
-        )}
-      </span>
-      <span className="flex min-w-0 flex-col leading-tight">
-        <span
-          className={cn(
-            "truncate text-[13px] font-medium",
-            active ? "text-foreground" : "text-muted-foreground",
-          )}
-        >
-          {agent.name}
-        </span>
-        <span className="truncate text-[11px] text-muted-foreground">
-          {agent.sub}
-        </span>
-      </span>
+    <SidebarRow
+      target={`agent:${agent.id}`}
+      active={active}
+      busy={busy}
+      tile={agent.tile}
+      glyph={agent.glyph}
+      name={agent.name}
+      sub={agent.sub}
+    />
+  );
+}
+
+// ============================================================================
+// Composer — clone of the real Chat.Input chrome (Tools · scope · model · send)
+// ============================================================================
+
+function ComposerChip({
+  icon,
+  label,
+  chevron,
+}: {
+  icon?: React.ReactNode;
+  label: string;
+  chevron?: boolean;
+}) {
+  return (
+    <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-muted-foreground">
+      {icon}
+      {label}
+      {chevron && <ChevronDown size={14} className="opacity-60" />}
     </span>
   );
 }
+
+function Composer({
+  stores,
+  compact,
+}: {
+  stores: DemoStores;
+  compact?: boolean;
+}) {
+  const value = useDemoInput(stores, "composer");
+  const level = useDemoInput(stores, "level") || "home";
+  const agent = useDemoInput(stores, "agent");
+
+  return (
+    <div
+      className={cn(
+        "relative flex w-full flex-col rounded-2xl bg-card card-shadow",
+        compact ? "min-h-[96px]" : "min-h-[110px] md:min-h-[130px]",
+      )}
+    >
+      <div className="flex-1 px-4 pt-3.5 text-[15px]">
+        {value ? (
+          <span className="text-foreground">
+            {value}
+            <span className="ml-px inline-block h-4 w-px animate-pulse bg-foreground align-middle" />
+          </span>
+        ) : (
+          <span className="text-muted-foreground">
+            Ask anything, / for prompts, @ for agents &amp; resources...
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 p-2">
+        <ComposerChip icon={<Sliders01 size={16} />} label="Tools" />
+        <div className="flex-1" />
+        <ComposerChip
+          icon={<Cloud01 size={16} />}
+          label={scopeChipLabel(level, agent)}
+          chevron
+        />
+        <ComposerChip icon={<Stars01 size={16} />} label="Smart" chevron />
+        <span className="flex size-8 items-center justify-center rounded-lg text-muted-foreground">
+          <Microphone01 size={18} />
+        </span>
+        <span className="flex size-8 items-center justify-center rounded-lg bg-foreground text-background">
+          <ArrowUp size={16} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Float card — the real shell's content card (rounded, card-shadow, on cream)
+// ============================================================================
+
+function FloatCard({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("h-full min-h-0 p-0.5", className)}>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[0.75rem] bg-background card-shadow">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Faded decorative corners — same assets as the real home. */
+function HomeCorners() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 overflow-hidden"
+    >
+      <img
+        src="/home/bg-top-left.svg"
+        alt=""
+        className="absolute left-0 top-0 h-auto w-[420px] select-none opacity-80"
+      />
+      <img
+        src="/home/bg-bottom-right.svg"
+        alt=""
+        className="absolute bottom-0 right-0 h-auto w-[305px] select-none opacity-80"
+      />
+    </div>
+  );
+}
+
+// ============================================================================
+// Home level — the real home look, with your orgs as tiles
+// ============================================================================
+
+function OrgTile({ stores, org }: { stores: DemoStores; org: Org }) {
+  const status = useDemoInput(stores, `status:${org.id}`);
+  const dot = useDemoInput(stores, `dot:${org.id}`); // "ok" | "busy" | "needs"
+  const needs = useNotified(stores, org.id);
+  return (
+    <div
+      data-demo-target={`org-card:${org.id}`}
+      className="flex w-full flex-col rounded-2xl bg-card card-shadow px-3 py-2.5 transition-colors hover:bg-accent/40"
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className={cn(
+            "relative flex size-10 shrink-0 items-center justify-center rounded-xl text-sm font-semibold",
+            org.tile,
+          )}
+        >
+          {org.glyph}
+          {needs && (
+            <span className="absolute -right-1 -top-1 size-2.5 rounded-full bg-primary ring-2 ring-card animate-in zoom-in duration-300" />
+          )}
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm font-medium text-foreground">
+            {org.name}
+          </span>
+          <span className="truncate text-xs text-muted-foreground">
+            {org.tagline}
+          </span>
+        </span>
+        <span
+          className={cn(
+            "size-2 shrink-0 rounded-full",
+            dot === "needs" && "bg-primary",
+            dot === "busy" && "animate-pulse bg-primary/60",
+            (dot === "ok" || !dot) && "bg-muted-foreground/30",
+          )}
+        />
+      </div>
+      {status && (
+        <div
+          key={status}
+          className="mt-2 border-t border-border pt-2 text-xs leading-relaxed text-muted-foreground animate-in fade-in duration-500"
+        >
+          {status}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HomeLevel({ stores }: { stores: DemoStores }) {
+  const hasMessages = useTrackHasMessages(stores, "deco");
+
+  return (
+    <FloatCard className="flex-1">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <HomeCorners />
+        <div className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-10">
+          {hasMessages ? (
+            <div className="flex min-h-0 w-full max-w-[720px] flex-1 flex-col">
+              <DemoChatStreamProvider store={stores.getChat("deco")}>
+                <Chat>
+                  <Chat.Messages />
+                </Chat>
+              </DemoChatStreamProvider>
+            </div>
+          ) : (
+            // Real home with tiles is TOP-anchored (pt-32) — see DesktopHome.
+            <div className="shrink-0 pb-10 pt-28 text-center">
+              <p className="text-3xl font-medium text-foreground">
+                What's on your mind, Gui?
+              </p>
+            </div>
+          )}
+          <div className="relative w-full max-w-[672px] shrink-0 pb-4">
+            {!hasMessages && (
+              <img
+                src="/home/capybara.png"
+                alt=""
+                aria-hidden
+                className="pointer-events-none absolute -top-16 right-6 z-20 h-20 w-auto select-none"
+              />
+            )}
+            <Composer stores={stores} />
+          </div>
+          <div className="relative mx-auto mt-6 grid w-full max-w-[900px] shrink-0 grid-cols-3 gap-3 pb-6">
+            {ORGS.map((o) => (
+              <OrgTile key={o.id} stores={stores} org={o} />
+            ))}
+          </div>
+          {!hasMessages && <div className="flex-1" aria-hidden />}
+        </div>
+      </div>
+    </FloatCard>
+  );
+}
+
+// ============================================================================
+// Org / agent levels — same shell, one zoom apart
+// ============================================================================
 
 function OrgLevel({
   stores,
@@ -399,24 +629,22 @@ function OrgLevel({
 }) {
   const previewHtml = useDemoInput(stores, "preview:vela");
   return (
-    <div className="flex min-h-0 flex-1">
-      <nav className="flex w-56 shrink-0 flex-col gap-0.5 border-r border-border bg-card/40 p-2">
-        <div className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-          Agents
+    <div className="grid min-h-0 flex-1 grid-cols-2">
+      <FloatCard>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <DemoChatStreamProvider store={stores.getChat(activeAgent)}>
+            <Chat>
+              <Chat.Messages />
+            </Chat>
+          </DemoChatStreamProvider>
+          <div className="shrink-0 p-2">
+            <Composer stores={stores} compact />
+          </div>
         </div>
-        {VELA_AGENTS.map((a) => (
-          <AgentRow
-            key={a.id}
-            stores={stores}
-            agent={a}
-            active={a.id === activeAgent}
-          />
-        ))}
-      </nav>
-      <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 p-3">
-        <ChatPane stores={stores} trackId={activeAgent} />
+      </FloatCard>
+      <FloatCard>
         <PreviewFrame url="vela.shop" html={previewHtml} />
-      </div>
+      </FloatCard>
     </div>
   );
 }
@@ -430,21 +658,28 @@ function TurtlesStage({ stores }: { stores: DemoStores }) {
   const agentId = useDemoInput(stores, "agent") || "vela";
 
   return (
-    <div className="flex h-full flex-col">
-      <Breadcrumb stores={stores} />
-      {/* key on level+agent → each zoom crossfades like a route change */}
-      <div
-        key={`${level}:${agentId}`}
-        className="flex min-h-0 flex-1 flex-col animate-in fade-in duration-500"
-      >
-        {level === "home" ? (
-          <HomeLevel stores={stores} />
-        ) : (
-          <OrgLevel
-            stores={stores}
-            activeAgent={level === "agent" ? agentId : "vela"}
-          />
-        )}
+    <div className="flex h-full flex-col bg-sidebar">
+      <DemoToolbar stores={stores} />
+      <div className="flex min-h-0 flex-1">
+        <DemoSidebar
+          stores={stores}
+          level={level}
+          activeAgent={level === "agent" ? agentId : "vela"}
+        />
+        {/* key on level+agent → each zoom crossfades like a route change */}
+        <div
+          key={`${level}:${agentId}`}
+          className="flex min-h-0 flex-1 flex-col pb-1 pr-1 animate-in fade-in duration-500"
+        >
+          {level === "home" ? (
+            <HomeLevel stores={stores} />
+          ) : (
+            <OrgLevel
+              stores={stores}
+              activeAgent={level === "agent" ? agentId : "vela"}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
