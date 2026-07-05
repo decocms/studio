@@ -396,14 +396,37 @@ export class Director {
   /** Earliest wall-clock time the current caption may be replaced — set from
    *  its narration clip length so a line is NEVER cropped by the next one. */
   private captionHoldUntil = 0;
+  /** Bumped per caption so a stale auto-clear never wipes a newer line. */
+  private captionSeq = 0;
+  /** Breathing room between one line's narration ending and the next pill —
+   *  the metronome of the show. Only applies when the screenplay is ready
+   *  early; if the animation already ran past it, the next line fires at once. */
+  private static readonly CAPTION_GAP_MS = 700;
 
   /** Set the chapter caption (null clears it). Awaits the previous line's
-   *  narration window first — the systemic no-crop guarantee. */
+   *  narration window (plus a fixed gap) first — the systemic no-crop, steady-
+   *  cadence guarantee. The pill then behaves like a subtitle: once ITS
+   *  narration window ends it clears itself, so text never idles over a long
+   *  tool sequence waiting for the next line. */
   async caption(text: string | null): Promise<void> {
-    const remaining = this.captionHoldUntil - Date.now();
-    if (remaining > 0) await this.wait(remaining);
+    const remaining =
+      this.captionHoldUntil - Date.now() + Director.CAPTION_GAP_MS;
+    if (this.captionHoldUntil > 0 && remaining > 0) await this.wait(remaining);
+    const seq = ++this.captionSeq;
     this.stores.ui.update((s) => ({ ...s, caption: text }));
-    this.captionHoldUntil = text ? Date.now() + captionHoldMs(text) : 0;
+    const hold = text ? captionHoldMs(text) : 0;
+    this.captionHoldUntil = hold ? Date.now() + hold : 0;
+    if (!hold) return;
+    void this.wait(hold + 400)
+      .then(() => {
+        if (this.captionSeq !== seq) return; // a newer line took over
+        this.stores.ui.update((s) =>
+          s.caption === text ? { ...s, caption: null } : s,
+        );
+      })
+      .catch(() => {
+        /* aborted — stage is unmounting */
+      });
   }
 
   // ---- ending / replay ----------------------------------------------------
