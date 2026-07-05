@@ -353,3 +353,37 @@ export function OrgCtaCard({ cta }: { cta: OrgCtaState }) {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Sender row — who's speaking. Rendered as the first part of every assistant
+// turn on tracks with an identity (Track.setSender), like a chat sender line.
+// ---------------------------------------------------------------------------
+
+export interface SenderState {
+  name: string;
+  logo?: boolean;
+  glyph?: string;
+  tile?: string;
+}
+
+export function SenderRow({ sender }: { sender: SenderState }) {
+  return (
+    <div className="mb-1.5 mt-1 flex items-center gap-2">
+      {sender.logo ? (
+        <img src="/logos/deco logo.svg" alt="" className="size-5 select-none" />
+      ) : (
+        <span
+          className={cn(
+            "flex size-5 items-center justify-center rounded-md text-[10px] font-semibold",
+            sender.tile,
+          )}
+        >
+          {sender.glyph}
+        </span>
+      )}
+      <span className="text-xs font-medium text-muted-foreground">
+        {sender.name}
+      </span>
+    </div>
+  );
+}
