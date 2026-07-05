@@ -17,7 +17,7 @@ import type { DemoStores } from "./director-stores";
 
 /** caption text → clip. Keys must EXACTLY match the script's captions. */
 const VO_FILES: Record<string, string> = {
-  "This is your deco — every team you're part of, working for you":
+  "This is your deco Studio — the home for your AI agents":
     "/demo/vo/vo-01.m4a",
   "Every morning starts the same — you ask what needs you":
     "/demo/vo/vo-02.m4a",
@@ -53,7 +53,7 @@ const VO_FILES: Record<string, string> = {
 /** Clip length (ms) per file — the Director holds each pill at least this
  *  long so narration NEVER gets cropped by the next line. */
 export const VO_MS: Record<string, number> = {
-  "/demo/vo/vo-01.m4a": 4209,
+  "/demo/vo/vo-01.m4a": 4412,
   "/demo/vo/vo-02.m4a": 3977,
   "/demo/vo/vo-03.m4a": 3141,
   "/demo/vo/vo-04.m4a": 5301,
