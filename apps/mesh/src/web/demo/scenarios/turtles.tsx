@@ -266,6 +266,9 @@ function DemoToolbar({ stores }: { stores: DemoStores }) {
         <>
           <span className="text-muted-foreground/40">/</span>
           <Crumb target="crumb:org" active={level === "org"}>
+            <span className="flex size-5 items-center justify-center rounded-md bg-lime-200 text-[10px] font-semibold text-lime-950">
+              V
+            </span>
             Vela Store
           </Crumb>
         </>
@@ -275,6 +278,14 @@ function DemoToolbar({ stores }: { stores: DemoStores }) {
         <>
           <span className="text-muted-foreground/40">/</span>
           <Crumb target="crumb:agent" active>
+            <span
+              className={cn(
+                "flex size-5 items-center justify-center rounded-md text-[10px] font-semibold",
+                agent.tile,
+              )}
+            >
+              {agent.glyph}
+            </span>
             {agent.name}
           </Crumb>
         </>
@@ -973,9 +984,14 @@ async function goodMorning(d: Director) {
     glyph: "V",
     tile: "bg-lime-200 text-lime-950",
     headline: "Vela Store needs you",
-    body: "Winter Drop hero — assets approved, QA passed, waiting on your go.",
+    body: "Winter Drop hero is staged and waiting on your go.",
     button: "Take me there",
     target: "org-cta",
+    chips: [
+      { label: "Assets approved", state: "done" },
+      { label: "QA passed", state: "done" },
+      { label: "Hero not shipped", state: "pending" },
+    ],
   });
   deco.endTurn();
   await d.beat(2600);
