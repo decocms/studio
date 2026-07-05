@@ -730,7 +730,7 @@ function DemoSidebar({
             }
             name="Decopilot"
           />
-          {/* Your orgs ARE agents in your personal org — they list here too. */}
+          {/* Your teams ARE agents in your personal org — they list here too. */}
           {ORGS.map((o) => (
             <SidebarOrgRow key={o.id} stores={stores} org={o} />
           ))}
@@ -1148,13 +1148,13 @@ function HomeLevel({ stores }: { stores: DemoStores }) {
             Half the surface: the orgs are the home's co-protagonist. */}
         <div className="relative flex min-w-0 flex-1 flex-col gap-2.5 overflow-y-auto border-l border-border/60 p-4">
           <div className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-            Your orgs
+            Your teams
           </div>
           {ORGS.map((o) => (
             <OrgCard key={o.id} stores={stores} org={o} />
           ))}
           <div className="px-1 text-[11px] leading-relaxed text-muted-foreground/60">
-            Each org is a connection and an agent in your personal org — it
+            Each team is a connection and an agent in your personal deco — it
             reports here, and you can talk to it.
           </div>
         </div>
@@ -1239,7 +1239,7 @@ function TurtlesStage({ stores }: { stores: DemoStores }) {
 
 const MORNING_DIGEST = `### While you were away
 
-| Org | Status | Needs you |
+| Team | Status | Needs you |
 | --- | --- | --- |
 | **Vela Store** | Winter Drop assets approved, hero not shipped | **Yes — ship it** |
 | **Aurora Coffee** | Subscription churn down 12% after winback flow | No |
@@ -1267,10 +1267,12 @@ async function say(d: Director, t: Track, text: string) {
 async function goodMorning(d: Director) {
   const deco = d.track("deco").setSender({ name: "Decopilot", logo: true });
 
-  d.caption("This is your deco — every org you belong to, working for you");
-  await d.beat(3600);
+  await d.caption(
+    "This is your deco — every team you're part of, working for you",
+  );
+  await d.beat(4800);
 
-  d.caption("Every morning starts the same — you ask what needs you");
+  await d.caption("Every morning starts the same — you ask what needs you");
   await say(d, deco, "Good morning — what needs me today?");
   await d.beat(400);
   await deco.think(
@@ -1278,7 +1280,7 @@ async function goodMorning(d: Director) {
     { cps: 85 },
   );
 
-  d.caption("Your deco asks each org's pilot — in parallel");
+  await d.caption("Your deco asks each team's pilot — in parallel");
   d.setInput("dot:vela", "busy");
   d.setInput("dot:aurora", "busy");
   d.setInput("dot:atlas", "busy");
@@ -1317,14 +1319,16 @@ async function goodMorning(d: Director) {
     ],
   });
   deco.endTurn();
-  d.caption(
-    "One brief, three orgs — and exactly one thing that actually needs you",
+  await d.caption(
+    "One brief, three teams — and exactly one thing that actually needs you",
   );
   await d.beat(7500); // hold: read the table + the card together
 }
 
 async function hopIntoVela(d: Director) {
-  d.caption("The card takes you straight into Vela — no context to rebuild");
+  await d.caption(
+    "The card takes you straight into Vela — no context to rebuild",
+  );
   d.showCursor();
   await d.beat(600);
   await d.click("org-cta");
@@ -1340,8 +1344,10 @@ async function hopIntoVela(d: Director) {
     tile: "bg-lime-200 text-lime-950",
   });
   d.setInput("thread:vela", "1"); // the thread appears under My threads
-  await d.beat(2700); // let line 5's narration finish over the dashboard
-  d.caption("You land on its operations — everything the pilot watches, live");
+  await d.beat(3300); // let line 5's narration finish over the dashboard
+  await d.caption(
+    "You land on its operations — everything the pilot watches, live",
+  );
   await vela.stream(
     "Morning! The Winter Drop hero is ready — assets approved, QA passed. Ship it now?",
     { cps: 60 },
@@ -1350,7 +1356,7 @@ async function hopIntoVela(d: Director) {
   await d.beat(2600); // read the dashboard + the pilot's question
 
   // Answer immediately — the urgency is the point. No sidebar detours.
-  d.caption("You say ship it — that's the whole job");
+  await d.caption("You say ship it — that's the whole job");
   await say(d, vela, "Yes — ship it.");
   await d.beat(400);
   await vela.think(
@@ -1384,7 +1390,7 @@ async function hopIntoVela(d: Director) {
       latencyMs: 2100,
     }),
   );
-  d.caption(
+  await d.caption(
     "It audits before shipping, finds a regression — and fixes it itself",
   );
   await vela.stream(
@@ -1414,7 +1420,7 @@ async function hopIntoVela(d: Director) {
   await d.beat(1200);
 
   // Shipped → who sees it: teammates' threads live in the same sidebar.
-  d.caption(
+  await d.caption(
     "Your teammates see it land — their threads live right beside yours",
   );
   d.showCursor();
@@ -1423,7 +1429,7 @@ async function hopIntoVela(d: Director) {
   d.hideCursor();
 
   // → and where the follow-ups went: the org's board.
-  d.caption(
+  await d.caption(
     "Every follow-up becomes a card — assigned to an agent, or a person",
   );
   d.setInput("preview-url", "vela · tasks");
@@ -1442,7 +1448,7 @@ const SALES_RECAP = `Yesterday on vela.shop:
 Top seller: the **Winter Parka** — the drop is converting at 2.1× your baseline. Want this recap every morning?`;
 
 async function zoomIntoAgent(d: Director) {
-  d.caption("Go one level deeper — every part of an org is an agent too");
+  await d.caption("Go one level deeper — every part of a team is an agent too");
   d.showCursor();
   await d.beat(500);
   await d.click("agent:vela-ops");
@@ -1477,7 +1483,9 @@ async function zoomIntoAgent(d: Director) {
 async function shareOpsToWhatsApp(d: Director) {
   // Share is demonstrated where it's most visceral: THIS sales agent, on
   // your phone. Every breadcrumb level mints an MCP URL for its scope.
-  d.caption("Every scope is an MCP URL — take this exact agent to WhatsApp");
+  await d.caption(
+    "Every scope is an MCP URL — take this exact agent to WhatsApp",
+  );
   d.showCursor();
   await d.beat(500);
   await d.click("share-button");
@@ -1492,7 +1500,7 @@ async function shareOpsToWhatsApp(d: Director) {
 /** Settings is an agent, its screens are MCP apps in the preview — chat +
  *  preview is the ONE pattern; settings gets no special screen. */
 async function settingsAsAgent(d: Director) {
-  d.caption(
+  await d.caption(
     "Even Settings is an agent — its screens are just apps in the preview",
   );
   d.showCursor();
@@ -1526,17 +1534,19 @@ async function settingsAsAgent(d: Director) {
     cps: 44,
   });
   st.endTurn();
-  d.caption(
+  await d.caption(
     "No settings screens anywhere — chat and preview, all the way through",
   );
-  await d.beat(4800);
+  await d.beat(5200);
   // Setup is one person's job — everyone else just gets invited.
-  d.caption("Setup is one person's job — everyone else just gets invited");
+  await d.caption(
+    "Setup is one person's job — everyone else just gets invited",
+  );
   await d.beat(4800);
 }
 
 async function backHome(d: Director) {
-  d.caption("And the logo always takes you back to yourself");
+  await d.caption("And the logo always takes you back to yourself");
   d.showCursor();
   await d.beat(500);
   await d.click("crumb:home");
@@ -1555,7 +1565,7 @@ async function backHome(d: Director) {
     { cps: 44 },
   );
   deco.endTurn();
-  d.caption(
+  await d.caption(
     "It's agents all the way down — same product, only the zoom changes",
   );
   await d.beat(6500);
@@ -1568,7 +1578,7 @@ export const turtlesScenario: Scenario = {
   endCard: {
     title: "It's agents all the way down",
     subtitle:
-      "Your deco, your orgs, their agents — one product, one URL per scope.",
+      "Your deco, your teams, their agents — one product, one URL per scope.",
   },
   run: async (d: Director) => {
     d.setInput("level", "home");

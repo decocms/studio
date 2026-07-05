@@ -35,6 +35,7 @@ import {
   workPlanPart,
   type ToolStep,
 } from "./message-builders";
+import { captionHoldMs } from "./voiceover";
 import type {
   DemoChatState,
   DemoStores,
@@ -392,9 +393,17 @@ export class Director {
     return this.wait(ms);
   }
 
-  /** Set the chapter caption shown over the stage (null clears it). */
-  caption(text: string | null): void {
+  /** Earliest wall-clock time the current caption may be replaced — set from
+   *  its narration clip length so a line is NEVER cropped by the next one. */
+  private captionHoldUntil = 0;
+
+  /** Set the chapter caption (null clears it). Awaits the previous line's
+   *  narration window first — the systemic no-crop guarantee. */
+  async caption(text: string | null): Promise<void> {
+    const remaining = this.captionHoldUntil - Date.now();
+    if (remaining > 0) await this.wait(remaining);
     this.stores.ui.update((s) => ({ ...s, caption: text }));
+    this.captionHoldUntil = text ? Date.now() + captionHoldMs(text) : 0;
   }
 
   // ---- ending / replay ----------------------------------------------------

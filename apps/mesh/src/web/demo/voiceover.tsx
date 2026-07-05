@@ -17,12 +17,12 @@ import type { DemoStores } from "./director-stores";
 
 /** caption text → clip. Keys must EXACTLY match the script's captions. */
 const VO_FILES: Record<string, string> = {
-  "This is your deco — every org you belong to, working for you":
+  "This is your deco — every team you're part of, working for you":
     "/demo/vo/vo-01.m4a",
   "Every morning starts the same — you ask what needs you":
     "/demo/vo/vo-02.m4a",
-  "Your deco asks each org's pilot — in parallel": "/demo/vo/vo-03.m4a",
-  "One brief, three orgs — and exactly one thing that actually needs you":
+  "Your deco asks each team's pilot — in parallel": "/demo/vo/vo-03.m4a",
+  "One brief, three teams — and exactly one thing that actually needs you":
     "/demo/vo/vo-04.m4a",
   "The card takes you straight into Vela — no context to rebuild":
     "/demo/vo/vo-05.m4a",
@@ -35,7 +35,7 @@ const VO_FILES: Record<string, string> = {
     "/demo/vo/vo-09.m4a",
   "Every follow-up becomes a card — assigned to an agent, or a person":
     "/demo/vo/vo-10.m4a",
-  "Go one level deeper — every part of an org is an agent too":
+  "Go one level deeper — every part of a team is an agent too":
     "/demo/vo/vo-11.m4a",
   "Every scope is an MCP URL — take this exact agent to WhatsApp":
     "/demo/vo/vo-12.m4a",
@@ -49,6 +49,34 @@ const VO_FILES: Record<string, string> = {
   "It's agents all the way down — same product, only the zoom changes":
     "/demo/vo/vo-17.m4a",
 };
+
+/** Clip length (ms) per file — the Director holds each pill at least this
+ *  long so narration NEVER gets cropped by the next line. */
+export const VO_MS: Record<string, number> = {
+  "/demo/vo/vo-01.m4a": 4300,
+  "/demo/vo/vo-02.m4a": 4100,
+  "/demo/vo/vo-03.m4a": 3200,
+  "/demo/vo/vo-04.m4a": 5500,
+  "/demo/vo/vo-05.m4a": 4300,
+  "/demo/vo/vo-06.m4a": 4600,
+  "/demo/vo/vo-07.m4a": 2700,
+  "/demo/vo/vo-08.m4a": 5100,
+  "/demo/vo/vo-09.m4a": 4300,
+  "/demo/vo/vo-10.m4a": 4800,
+  "/demo/vo/vo-11.m4a": 4500,
+  "/demo/vo/vo-12.m4a": 5400,
+  "/demo/vo/vo-13.m4a": 4700,
+  "/demo/vo/vo-14.m4a": 4700,
+  "/demo/vo/vo-15.m4a": 4800,
+  "/demo/vo/vo-16.m4a": 3100,
+  "/demo/vo/vo-17.m4a": 4700,
+};
+
+/** Milliseconds the caption must stay up for its clip (0 if unnarrated). */
+export function captionHoldMs(caption: string): number {
+  const src = VO_FILES[caption];
+  return src ? (VO_MS[src] ?? 0) + 300 : 0;
+}
 
 /** ON unless explicitly muted — narration leads the tale by default. */
 function isOn(stores: DemoStores): boolean {
