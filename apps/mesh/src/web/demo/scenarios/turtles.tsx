@@ -110,8 +110,8 @@ type Org = (typeof ORGS)[number];
 const VELA_AGENTS = [
   {
     id: "vela",
-    name: "Vela Pilot",
-    sub: "the org's teammate",
+    name: "Vela Agent",
+    sub: "runs the team",
     glyph: "V",
     tile: "bg-lime-200 text-lime-950",
   },
@@ -154,7 +154,7 @@ function scopeUrl(level: string, agent: string): string {
 function scopeChipLabel(level: string, agent: string): string {
   if (level === "agent")
     return VELA_AGENTS.find((a) => a.id === agent)?.name ?? "Storefront Bot";
-  if (level === "org") return "Vela Pilot";
+  if (level === "org") return "Vela Agent";
   return "Decopilot";
 }
 
@@ -301,13 +301,52 @@ ${kpi("Open opportunities", "3", "1", false, [2, 3, 3, 4, 4, 5, 5])}
 </body></html>`;
 }
 
+/** Minified SLO strip — every agent is a LOOP over goals, and this card is
+ *  the loop made visible: each goal is an SLI with a target, an error budget,
+ *  and a trend. Incident opens on breach, closes on recovery; the agent
+ *  pursues these continuously and remembers what worked. */
+function sloCard(
+  title: string,
+  rows: {
+    name: string;
+    target: string;
+    sli: string;
+    budget: string;
+    state: "ok" | "risk";
+    pts: number[];
+  }[],
+  memory: string,
+): string {
+  const COLOR = { ok: "#4ade80", risk: "#fbbf24" } as const;
+  const row = (r: (typeof rows)[number]) => {
+    const c = COLOR[r.state];
+    return `<div class="sr"><div class="sn">${r.name}<span>target: ${r.target}</span></div><div class="sb"><i style="background:${c};width:${r.sli}"></i></div><b style="color:${c}">${r.budget}</b>${sparkSvg(r.pts, c)}</div>`;
+  };
+  const healthy = rows.filter((r) => r.state === "ok").length;
+  const risk = rows.length - healthy;
+  return `<div class="slo"><div class="sh"><span>◈ ${title} · goals</span><span class="st"><em class="ok">${healthy} healthy</em>${risk ? `<em class="rk">${risk} at risk</em>` : ""}</span></div>${rows.map(row).join("")}<div class="sf">agent loop — pursues these continuously · ${memory}</div></div>`;
+}
+
+const SLO_STYLE = `
+.slo{background:#101418;border-radius:12px;padding:12px 14px;margin-bottom:12px;font-family:ui-monospace,SFMono-Regular,monospace}
+.sh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.sh>span:first-child{color:#f9fafb;font-size:11px;font-weight:700}
+.st em{font-style:normal;font-size:9px;border-radius:99px;padding:2px 7px;margin-left:5px}
+.st .ok{background:#14532d;color:#86efac}.st .rk{background:#451a03;color:#fcd34d}
+.sr{display:grid;grid-template-columns:1fr 90px 44px 64px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #1c2128}
+.sn{color:#e5e7eb;font-size:10px;font-weight:600}
+.sn span{display:block;color:#6b7280;font-size:9px;font-weight:400;margin-top:1px}
+.sb{background:#1c2128;border-radius:99px;height:5px;overflow:hidden}.sb i{display:block;height:100%;border-radius:99px}
+.sr b{font-size:10px;text-align:right}
+.sf{color:#6b7280;font-size:9px;margin-top:8px;border-top:1px solid #1c2128;padding-top:7px}`;
+
 /** Store Ops' own app: yesterday's sales, revenue trend, top products. */
 function storeOpsApp(): string {
   const bar = (h: number, hot = false) =>
     `<div style="flex:1;background:${hot ? "#4d7c0f" : "#e4e7ec"};border-radius:4px 4px 0 0;height:${h}%"></div>`;
   const prod = (name: string, rev: string, share: string) =>
     `<div class="it"><div><div class="t">${name}</div><div class="s">${share} of revenue</div></div><span class="assign">${rev}</span></div>`;
-  return `<!doctype html><html><head><meta charset="utf8"><style>${DASH_STYLE}
+  return `<!doctype html><html><head><meta charset="utf8"><style>${DASH_STYLE}${SLO_STYLE}
 .chart{display:flex;align-items:flex-end;gap:6px;height:90px;padding-top:6px}
 .lbl{display:flex;gap:6px;font-size:10px;color:#98a2b3;margin-top:4px}
 .lbl span{flex:1;text-align:center}</style></head><body>
@@ -316,6 +355,36 @@ ${`<div class="kpi"><div class="l">Orders · yesterday</div><div class="v">412</
 ${`<div class="kpi"><div class="l">Revenue · yesterday</div><div class="v">R$96k</div><div class="d good">↗ 44%</div></div>`}
 ${`<div class="kpi"><div class="l">Avg. order</div><div class="v">R$233</div><div class="d good">↗ 5%</div></div>`}
 </div>
+${sloCard(
+  "Store Ops",
+  [
+    {
+      name: "Daily recap delivered by 8am",
+      target: "99%",
+      sli: "96%",
+      budget: "87%",
+      state: "ok",
+      pts: [5, 5, 6, 5, 6, 6, 6],
+    },
+    {
+      name: "Conversion rate",
+      target: "≥ 2.0%",
+      sli: "92%",
+      budget: "64%",
+      state: "ok",
+      pts: [4, 4, 5, 4, 5, 6, 6],
+    },
+    {
+      name: "Stockout alert time",
+      target: "< 15 min",
+      sli: "78%",
+      budget: "22%",
+      state: "risk",
+      pts: [6, 6, 5, 5, 4, 4, 3],
+    },
+  ],
+  "memory: 214 learnings",
+)}
 <div class="card"><h2>Revenue · last 7 days</h2>
 <div class="chart">${bar(38)}${bar(42)}${bar(35)}${bar(48)}${bar(52)}${bar(61)}${bar(96, true)}</div>
 <div class="lbl"><span>Sat</span><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span></div>
@@ -1249,7 +1318,7 @@ One thing needs you: **Vela's Winter Drop hero** is approved and waiting.`;
 
 function orgPilotCall(org: Org, summary: string, latencyMs: number) {
   return genericTool({
-    name: "ask_org_pilot",
+    name: "ask_team_agent",
     input: { org: org.id, question: "morning brief" },
     output: { result: summary },
     latencyMs,
@@ -1268,17 +1337,19 @@ async function goodMorning(d: Director) {
   const deco = d.track("deco").setSender({ name: "Decopilot", logo: true });
 
   await d.caption("This is your deco Studio — the home for your AI agents");
-  await d.beat(4800);
+  await d.beat(4300);
 
-  await d.caption("Every morning starts the same — you ask what needs you");
-  await say(d, deco, "Good morning — what needs me today?");
+  await d.caption(
+    "Every morning, your agents report on what's new — and what needs you",
+  );
+  await say(d, deco, "Good morning!");
   await d.beat(400);
   await deco.think(
-    "I'll ask each org's pilot for its overnight report, then rank what actually needs Gui.",
+    "I'll ask each team's agent for its overnight report, then rank what actually needs Gui.",
     { cps: 85 },
   );
 
-  await d.caption("Your deco asks each team's pilot — in parallel");
+  await d.caption("Your deco asks each team's agent — in parallel");
   d.setInput("dot:vela", "busy");
   d.setInput("dot:aurora", "busy");
   d.setInput("dot:atlas", "busy");
@@ -1318,14 +1389,14 @@ async function goodMorning(d: Director) {
   });
   deco.endTurn();
   await d.caption(
-    "One brief, three teams — and exactly one thing that actually needs you",
+    "Your agents handle the routine — you make the calls that matter",
   );
-  await d.beat(7500); // hold: read the table + the card together
+  await d.beat(5600); // hold: read the table + the card together
 }
 
 async function hopIntoVela(d: Director) {
   await d.caption(
-    "The card takes you straight into Vela — no context to rebuild",
+    "The card takes you straight into the team context — nothing to rebuild",
   );
   d.showCursor();
   await d.beat(600);
@@ -1337,14 +1408,14 @@ async function hopIntoVela(d: Director) {
   // You land in a thread where Vela's pilot has ALREADY asked the question —
   // answer it and work proceeds. No re-explaining context.
   const vela = d.track("vela").setSender({
-    name: "Vela Pilot",
+    name: "Vela Agent",
     glyph: "V",
     tile: "bg-lime-200 text-lime-950",
   });
   d.setInput("thread:vela", "1"); // the thread appears under My threads
   await d.beat(3300); // let line 5's narration finish over the dashboard
   await d.caption(
-    "You land on its operations — everything the pilot watches, live",
+    "You land on its operations — everything the agent watches, live",
   );
   await vela.stream(
     "Morning! The Winter Drop hero is ready — assets approved, QA passed. Ship it now?",
@@ -1369,58 +1440,59 @@ async function hopIntoVela(d: Director) {
       name: "edit_section",
       input: { section: "hero", variant: "winter-drop" },
       output: { result: "hero → Winter Drop · banner enabled" },
-      latencyMs: 2200,
+      latencyMs: 1800,
     }),
   );
   // The preview swaps from the ops dashboard to the site to SHOW the change.
   d.setInput("preview-url", "vela.shop");
   d.setPreview("vela", velaPreview({ winter: true }));
   d.setInput("shipped", "1");
-  await d.beat(1800); // let the storefront swap land before the next tool
 
   // The pilot audits on its own, catches the regression, and DELEGATES the
   // fix to its own specialist — the user never has to know what LCP is.
+  // The line narrates WHILE the audit/fix run, not after them.
+  await d.caption(
+    "It audits before shipping, finds a regression — and fixes it itself",
+  );
   await vela.tool(
     genericTool({
       name: "audit_page",
       input: { url: "vela.shop", checks: ["performance", "seo"] },
       output: { result: "LCP 1.9s — new hero image 840KB, no preload" },
-      latencyMs: 2100,
+      latencyMs: 1500,
     }),
-  );
-  await d.caption(
-    "It audits before shipping, finds a regression — and fixes it itself",
   );
   await vela.stream(
     "The new hero slowed the page down. Sending it to Storefront Bot before we ship.",
-    { cps: 44 },
+    { cps: 55 },
   );
   await vela.tool(
     genericTool({
       name: "subtask",
       input: { agent: "Storefront Bot", task: "optimize the new hero asset" },
       output: { result: "hero.webp 168KB · preload added · LCP 1.2s ✓" },
-      latencyMs: 2600,
+      latencyMs: 1400,
     }),
   );
   await vela.tool(
     genericTool({
       name: "deploy",
       output: { result: "vela.shop · v87 live" },
-      latencyMs: 1800,
+      latencyMs: 1000,
     }),
   );
-  await vela.stream(
-    "✅ Live on vela.shop — Winter Drop hero, fast (LCP **1.2s**). I've queued the follow-ups on the board.",
-    { cps: 44 },
-  );
-  vela.endTurn();
-  await d.beat(1200);
 
   // Shipped → who sees it: teammates' threads live in the same sidebar.
+  // Narrates over the ✅ message landing, then the sidebar click.
   await d.caption(
     "Your teammates see it land — their threads live right beside yours",
   );
+  await vela.stream(
+    "✅ Live on vela.shop — Winter Drop hero, fast (LCP **1.2s**). I've queued the follow-ups on the board.",
+    { cps: 55 },
+  );
+  vela.endTurn();
+  await d.beat(400);
   d.showCursor();
   await d.click("team-threads");
   await d.beat(2200);
@@ -1446,9 +1518,11 @@ const SALES_RECAP = `Yesterday on vela.shop:
 Top seller: the **Winter Parka** — the drop is converting at 2.1× your baseline. Want this recap every morning?`;
 
 async function zoomIntoAgent(d: Director) {
-  await d.caption("Go one level deeper — every part of a team is an agent too");
+  await d.caption(
+    "Go one level deeper — every level runs an agent loop, with goals and memory",
+  );
   d.showCursor();
-  await d.beat(500);
+  await d.beat(400);
   await d.click("agent:vela-ops");
   d.setInput("level", "agent");
   d.setInput("agent", "vela-ops");
@@ -1470,12 +1544,12 @@ async function zoomIntoAgent(d: Director) {
       name: "query_orders",
       input: { range: "yesterday", compare: "prior_day" },
       output: { result: "412 orders · R$96k · AOV R$233" },
-      latencyMs: 2100,
+      latencyMs: 1600,
     }),
   );
   await ops.stream(SALES_RECAP, { instant: true });
   ops.endTurn();
-  await d.beat(4200); // hold the sales table
+  await d.beat(2200); // hold the sales table + the goals card
 }
 
 async function shareOpsToWhatsApp(d: Director) {
@@ -1488,9 +1562,9 @@ async function shareOpsToWhatsApp(d: Director) {
   await d.beat(500);
   await d.click("share-button");
   d.setInput("share", "open");
-  await d.beat(1200);
+  await d.beat(800);
   d.hideCursor();
-  await d.beat(3600); // read the URL + client chips
+  await d.beat(2200); // read the URL + client chips
   d.setInput("share", "");
   await d.beat(400);
 }
@@ -1509,7 +1583,7 @@ async function settingsAsAgent(d: Director) {
   d.setInput("preview-url", "vela · settings/members");
   d.setPreview("vela", settingsApp({ rafaAdmin: false }));
   d.hideCursor();
-  await d.beat(1600);
+  await d.beat(1000);
 
   const st = d.track("vela-settings").setSender({
     name: "Settings",
@@ -1523,7 +1597,7 @@ async function settingsAsAgent(d: Director) {
       name: "update_member",
       input: { member: "rafa@vela.shop", role: "admin" },
       output: { result: "Rafa · member → admin" },
-      latencyMs: 1900,
+      latencyMs: 1500,
     }),
   );
   d.setPreview("vela", settingsApp({ rafaAdmin: true }));
@@ -1559,14 +1633,14 @@ async function backHome(d: Director) {
 
   const deco = d.track("deco");
   await deco.stream(
-    "Vela's Winter Drop is live and fast. Nothing else needs you — go have your coffee. ☕",
+    "Vela's Winter Drop is live and fast. Every agent logged what it learned today. Nothing else needs you — go have your coffee. ☕",
     { cps: 44 },
   );
   deco.endTurn();
   await d.caption(
-    "It's agents all the way down — same product, only the zoom changes",
+    "It's agents all the way down — same intelligence, only the context changes",
   );
-  await d.beat(6500);
+  await d.beat(5600);
 }
 
 export const turtlesScenario: Scenario = {

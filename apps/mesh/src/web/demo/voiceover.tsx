@@ -19,14 +19,14 @@ import type { DemoStores } from "./director-stores";
 const VO_FILES: Record<string, string> = {
   "This is your deco Studio — the home for your AI agents":
     "/demo/vo/vo-01.m4a",
-  "Every morning starts the same — you ask what needs you":
+  "Every morning, your agents report on what's new — and what needs you":
     "/demo/vo/vo-02.m4a",
-  "Your deco asks each team's pilot — in parallel": "/demo/vo/vo-03.m4a",
-  "One brief, three teams — and exactly one thing that actually needs you":
+  "Your deco asks each team's agent — in parallel": "/demo/vo/vo-03.m4a",
+  "Your agents handle the routine — you make the calls that matter":
     "/demo/vo/vo-04.m4a",
-  "The card takes you straight into Vela — no context to rebuild":
+  "The card takes you straight into the team context — nothing to rebuild":
     "/demo/vo/vo-05.m4a",
-  "You land on its operations — everything the pilot watches, live":
+  "You land on its operations — everything the agent watches, live":
     "/demo/vo/vo-06.m4a",
   "You say ship it — that's the whole job": "/demo/vo/vo-07.m4a",
   "It audits before shipping, finds a regression — and fixes it itself":
@@ -35,7 +35,7 @@ const VO_FILES: Record<string, string> = {
     "/demo/vo/vo-09.m4a",
   "Every follow-up becomes a card — assigned to an agent, or a person":
     "/demo/vo/vo-10.m4a",
-  "Go one level deeper — every part of a team is an agent too":
+  "Go one level deeper — every level runs an agent loop, with goals and memory":
     "/demo/vo/vo-11.m4a",
   "Every scope is an MCP URL — take this exact agent to WhatsApp":
     "/demo/vo/vo-12.m4a",
@@ -46,30 +46,31 @@ const VO_FILES: Record<string, string> = {
   "Setup is one person's job — everyone else just gets invited":
     "/demo/vo/vo-15.m4a",
   "And the logo always takes you back to yourself": "/demo/vo/vo-16.m4a",
-  "It's agents all the way down — same product, only the zoom changes":
+  "It's agents all the way down — same intelligence, only the context changes":
     "/demo/vo/vo-17.m4a",
 };
 
 /** Clip length (ms) per file — the Director holds each pill at least this
- *  long so narration NEVER gets cropped by the next line. */
+ *  long so narration NEVER gets cropped by the next line. Measured with
+ *  `afinfo` after generation (Isha Premium @182wpm). */
 export const VO_MS: Record<string, number> = {
-  "/demo/vo/vo-01.m4a": 4412,
-  "/demo/vo/vo-02.m4a": 3977,
-  "/demo/vo/vo-03.m4a": 3141,
-  "/demo/vo/vo-04.m4a": 5301,
-  "/demo/vo/vo-05.m4a": 4209,
-  "/demo/vo/vo-06.m4a": 4418,
-  "/demo/vo/vo-07.m4a": 2677,
-  "/demo/vo/vo-08.m4a": 4929,
-  "/demo/vo/vo-09.m4a": 4186,
-  "/demo/vo/vo-10.m4a": 4651,
-  "/demo/vo/vo-11.m4a": 4395,
-  "/demo/vo/vo-12.m4a": 5208,
-  "/demo/vo/vo-13.m4a": 4511,
-  "/demo/vo/vo-14.m4a": 4558,
-  "/demo/vo/vo-15.m4a": 4604,
-  "/demo/vo/vo-16.m4a": 3072,
-  "/demo/vo/vo-17.m4a": 4581,
+  "/demo/vo/vo-01.m4a": 3994,
+  "/demo/vo/vo-02.m4a": 4436,
+  "/demo/vo/vo-03.m4a": 2903,
+  "/demo/vo/vo-04.m4a": 3600,
+  "/demo/vo/vo-05.m4a": 3623,
+  "/demo/vo/vo-06.m4a": 4180,
+  "/demo/vo/vo-07.m4a": 2346,
+  "/demo/vo/vo-08.m4a": 4366,
+  "/demo/vo/vo-09.m4a": 3716,
+  "/demo/vo/vo-10.m4a": 4134,
+  "/demo/vo/vo-11.m4a": 4877,
+  "/demo/vo/vo-12.m4a": 4645,
+  "/demo/vo/vo-13.m4a": 3971,
+  "/demo/vo/vo-14.m4a": 4041,
+  "/demo/vo/vo-15.m4a": 4110,
+  "/demo/vo/vo-16.m4a": 2717,
+  "/demo/vo/vo-17.m4a": 4621,
 };
 
 /** Milliseconds the caption must stay up for its clip (0 if unnarrated). */
