@@ -15,6 +15,7 @@ import { runAutoplay } from "./runner";
 import { useCaption } from "./use-demo-stores";
 import { GhostCursor } from "./ghost-cursor";
 import { EndCard } from "./end-card";
+import { createVoicePlayer, VoiceToggle } from "./voiceover";
 import type { DemoStores } from "./director-stores";
 import type { Scenario } from "./types";
 
@@ -76,6 +77,8 @@ export function DemoStage({ scenarios }: { scenarios: Scenario[] }) {
       entry = { controller, keep: true };
       RUNNERS.set(stores, entry);
       const director = new Director(stores, controller.signal);
+      const stopVoice = createVoicePlayer(stores);
+      controller.signal.addEventListener("abort", stopVoice, { once: true });
       void runAutoplay(
         director,
         pinnedScenarios,
@@ -112,6 +115,7 @@ export function DemoStage({ scenarios }: { scenarios: Scenario[] }) {
       <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-background">
         <ActiveStage stores={stores} />
         <DemoCaption stores={stores} />
+        <VoiceToggle stores={stores} />
         <GhostCursor stores={stores} />
         <EndCard
           stores={stores}
