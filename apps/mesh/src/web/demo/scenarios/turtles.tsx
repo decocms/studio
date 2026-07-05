@@ -123,10 +123,10 @@ const VELA_AGENTS = [
     tile: "bg-violet-200 text-violet-950",
   },
   {
-    id: "vela-support",
-    name: "Support Triage",
-    sub: "inbox",
-    glyph: "T",
+    id: "vela-ops",
+    name: "Store Ops",
+    sub: "sales · analytics",
+    glyph: "O",
     tile: "bg-pink-200 text-pink-950",
   },
 ] as const;
@@ -1028,7 +1028,7 @@ async function hopIntoVela(d: Director) {
   await say(d, vela, "Yes — ship it.");
   await d.beat(400);
   await vela.think(
-    "Assets are approved. I'll swap the hero, publish, and verify.",
+    "Swap the hero, audit the page before it ships, fix anything that regressed, then deploy.",
     { cps: 85 },
   );
   await vela.stream("On it — swapping the hero for the Winter Drop.", {
@@ -1044,6 +1044,30 @@ async function hopIntoVela(d: Director) {
   );
   d.setPreview("vela", velaPreview({ winter: true }));
   await d.beat(1800); // let the storefront swap land before the next tool
+
+  // The pilot audits on its own, catches the regression, and DELEGATES the
+  // fix to its own specialist — the user never has to know what LCP is.
+  await vela.tool(
+    genericTool({
+      name: "audit_page",
+      input: { url: "vela.shop", checks: ["performance", "seo"] },
+      output: { result: "LCP 1.9s — new hero image 840KB, no preload" },
+      latencyMs: 2100,
+    }),
+  );
+  d.caption("The pilot audits before shipping — and delegates the fix itself");
+  await vela.stream(
+    "The new hero slowed the page down. Sending it to Storefront Bot before we ship.",
+    { cps: 44 },
+  );
+  await vela.tool(
+    genericTool({
+      name: "subtask",
+      input: { agent: "Storefront Bot", task: "optimize the new hero asset" },
+      output: { result: "hero.webp 168KB · preload added · LCP 1.2s ✓" },
+      latencyMs: 2600,
+    }),
+  );
   await vela.tool(
     genericTool({
       name: "deploy",
@@ -1051,47 +1075,48 @@ async function hopIntoVela(d: Director) {
       latencyMs: 1800,
     }),
   );
-  await vela.stream("✅ Live on vela.shop — Winter Drop hero + banner.", {
-    cps: 44,
-  });
+  await vela.stream(
+    "✅ Live on vela.shop — Winter Drop hero, fast (LCP **1.2s**).",
+    { cps: 44 },
+  );
   vela.endTurn();
   await d.beat(3200);
 }
+
+const SALES_RECAP = `Yesterday on vela.shop:
+
+| | Yesterday | vs. prior day |
+| --- | --- | --- |
+| Orders | **412** | ▲ 38% |
+| Revenue | **R$96k** | ▲ 44% |
+| Avg. order | **R$233** | ▲ 5% |
+
+Top seller: the **Winter Parka** — the drop is converting at 2.1× your baseline. Want this recap every morning?`;
 
 async function zoomIntoAgent(d: Director) {
   d.caption("Go deeper — everything inside an org is an agent too");
   d.showCursor();
   await d.beat(500);
-  await d.click("agent:vela-bot");
+  await d.click("agent:vela-ops");
   d.setInput("level", "agent");
-  d.setInput("agent", "vela-bot");
+  d.setInput("agent", "vela-ops");
   d.hideCursor();
   await d.beat(900);
 
-  const bot = d.track("vela-bot");
-  await say(d, bot, "Keep LCP under 1.5s on the new hero.");
+  const ops = d.track("vela-ops");
+  await say(d, ops, "How were yesterday's sales?");
   await d.beat(300);
-  await bot.stream("Checking the drop's hero image…", { cps: 44 });
-  await bot.tool(
+  await ops.tool(
     genericTool({
-      name: "audit_page",
-      input: { url: "vela.shop", metric: "LCP" },
-      output: { result: "LCP 1.9s — hero image 840KB, no preload" },
-      latencyMs: 2000,
+      name: "query_orders",
+      input: { range: "yesterday", compare: "prior_day" },
+      output: { result: "412 orders · R$96k · AOV R$233" },
+      latencyMs: 2100,
     }),
   );
-  await bot.tool(
-    genericTool({
-      name: "optimize_asset",
-      output: { result: "hero.webp 168KB · preload added · LCP 1.2s" },
-      latencyMs: 2300,
-    }),
-  );
-  await bot.stream("Done — LCP is at **1.2s**. I'll keep watching it.", {
-    cps: 44,
-  });
-  bot.endTurn();
-  await d.beat(1800);
+  await ops.stream(SALES_RECAP, { instant: true });
+  ops.endTurn();
+  await d.beat(4200); // hold the sales table
 }
 
 async function shareThisScope(d: Director) {
