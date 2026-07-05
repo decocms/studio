@@ -1,36 +1,9 @@
 /**
  * Demo Mode — shared chrome for scenario stages.
  *
- * Lightweight product-like framing (top bar, preview pane) around the REAL
- * chat. Pure presentational; all live content comes from the Director's stores.
+ * Lightweight product-like framing (preview pane) around the REAL chat.
+ * Pure presentational; all live content comes from the Director's stores.
  */
-
-export function DemoTopBar({
-  org,
-  agent,
-  left,
-  right,
-}: {
-  org: string;
-  agent: string;
-  left?: React.ReactNode;
-  right?: React.ReactNode;
-}) {
-  return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
-      <div className="flex size-6 items-center justify-center rounded-md bg-foreground text-[11px] font-bold text-background">
-        {org.slice(0, 1)}
-      </div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-sm font-medium text-foreground">{org}</span>
-        <span className="text-muted-foreground/40">/</span>
-        <span className="text-sm text-muted-foreground">{agent}</span>
-      </div>
-      {left}
-      <div className="ml-auto flex items-center gap-2">{right}</div>
-    </header>
-  );
-}
 
 /** A browser-like preview pane that renders demo HTML in an isolated iframe. */
 export function PreviewFrame({ url, html }: { url: string; html: string }) {
