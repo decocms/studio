@@ -360,6 +360,51 @@ function SidebarRow({
   );
 }
 
+/** Example threads — the sidebar of a product in use, not an empty shell.
+ *  Team threads carry the teammate's initial so you can see who's on what. */
+const HOME_MY_THREADS = [
+  { title: "Winter Drop launch plan", meta: "Vela Store · 2h" },
+  { title: "Compare churn across my orgs", meta: "Yesterday" },
+  { title: "Q3 investor update draft", meta: "Mon" },
+];
+const VELA_TEAM_THREADS = [
+  { title: "Winter Drop QA checklist", meta: "26m", by: "R" },
+  { title: "Restock alerts for knits", meta: "1h", by: "C" },
+  { title: "Checkout A/B results", meta: "3h", by: "D" },
+];
+const VELA_MY_THREADS = [{ title: "Hero copy variants", meta: "2d" }];
+
+function ThreadRow({
+  title,
+  meta,
+  by,
+  active,
+}: {
+  title: string;
+  meta: string;
+  by?: string;
+  active?: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors",
+        active
+          ? "bg-sidebar-accent text-sidebar-foreground"
+          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60",
+      )}
+    >
+      {by && (
+        <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground">
+          {by}
+        </span>
+      )}
+      <span className="min-w-0 flex-1 truncate text-[13px]">{title}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{meta}</span>
+    </span>
+  );
+}
+
 function DemoSidebar({
   stores,
   level,
@@ -369,8 +414,9 @@ function DemoSidebar({
   level: string;
   activeAgent: string;
 }) {
+  const velaThreadLive = useDemoInput(stores, "thread:vela") === "1";
   return (
-    <nav className="flex w-60 shrink-0 flex-col gap-0.5 bg-sidebar p-2 pt-1">
+    <nav className="flex w-64 shrink-0 flex-col gap-0.5 overflow-y-auto bg-sidebar p-2 pt-1">
       {level === "home" ? (
         <>
           <SidebarRow
@@ -380,6 +426,9 @@ function DemoSidebar({
             name="Home"
           />
           <SidebarSectionLabel>My threads</SidebarSectionLabel>
+          {HOME_MY_THREADS.map((t) => (
+            <ThreadRow key={t.title} {...t} />
+          ))}
           <SidebarSectionLabel>Agents {ORGS.length + 1}</SidebarSectionLabel>
           <SidebarRow
             active={false}
@@ -400,6 +449,20 @@ function DemoSidebar({
         </>
       ) : (
         <>
+          {/* Same thread UI inside the org — see what teammates are on. */}
+          <span data-demo-target="team-threads" className="contents">
+            <SidebarSectionLabel>Team threads</SidebarSectionLabel>
+            {VELA_TEAM_THREADS.map((t) => (
+              <ThreadRow key={t.title} {...t} />
+            ))}
+          </span>
+          <SidebarSectionLabel>My threads</SidebarSectionLabel>
+          {velaThreadLive && (
+            <ThreadRow title="Ship the Winter Drop hero" meta="now" active />
+          )}
+          {VELA_MY_THREADS.map((t) => (
+            <ThreadRow key={t.title} {...t} />
+          ))}
           <SidebarSectionLabel>Agents {VELA_AGENTS.length}</SidebarSectionLabel>
           {VELA_AGENTS.map((a) => (
             <SidebarAgentRow
@@ -846,7 +909,7 @@ const MORNING_DIGEST = `### While you were away
 | **Aurora Coffee** | Subscription churn down 12% after winback flow | No |
 | **Atlas Labs** | All green — 3 PRs merged overnight | No |
 
-One thing needs you: **Vela's Winter Drop hero** is approved and waiting. Want me to take you there?`;
+One thing needs you: **Vela's Winter Drop hero** is approved and waiting.`;
 
 function orgPilotCall(org: Org, summary: string, latencyMs: number) {
   return genericTool({
@@ -900,26 +963,53 @@ async function goodMorning(d: Director) {
   d.setInput("dot:atlas", "ok");
 
   await deco.stream(MORNING_DIGEST, { instant: true });
-  deco.endTurn();
   d.caption("One brief. One thing that needs you.");
-  await d.beat(9000); // the money frame — hold long enough to read the table
+  await d.beat(7000); // the money frame — hold long enough to read the table
+
+  // The brief ends in an ACTION, not a paragraph: a card that takes you to
+  // the org that needs you, straight into a thread with the question open.
+  deco.showCard("org_cta", {
+    orgName: "Vela Store",
+    glyph: "V",
+    tile: "bg-lime-200 text-lime-950",
+    headline: "Vela Store needs you",
+    body: "Winter Drop hero — assets approved, QA passed, waiting on your go.",
+    button: "Take me there",
+    target: "org-cta",
+  });
+  deco.endTurn();
+  await d.beat(2600);
 }
 
 async function hopIntoVela(d: Director) {
-  d.caption("An org is a context you enter — click through");
+  d.caption("The card takes you into the org — thread already open");
   d.showCursor();
   await d.beat(600);
-  await d.click("org-card:vela");
+  await d.click("org-cta");
   d.setInput("level", "org");
   d.setOrg("vela");
   d.hideCursor();
-  await d.beat(900);
 
-  d.caption("Same product, one level down — now you're talking to Vela");
-  await d.beat(2200);
-
+  // You land in a thread where Vela's pilot has ALREADY asked the question —
+  // answer it and work proceeds. No re-explaining context.
   const vela = d.track("vela");
-  await say(d, vela, "Ship the Winter Drop hero we approved.");
+  d.setInput("thread:vela", "1"); // the thread appears under My threads
+  await vela.stream(
+    "Morning! The Winter Drop hero is ready — assets approved, QA passed. Ship it now?",
+    { cps: 60 },
+  );
+  vela.endTurn();
+  d.caption("Same product, one level down — Vela was already waiting for you");
+  await d.beat(2600);
+
+  // The org has the same thread UI — and team threads show who's on what.
+  d.caption("Team threads — see what your teammates are working on");
+  d.showCursor();
+  await d.click("team-threads");
+  await d.beat(2400);
+  d.hideCursor();
+
+  await say(d, vela, "Yes — ship it.");
   await d.beat(400);
   await vela.think(
     "Assets are approved. I'll swap the hero, publish, and verify.",
