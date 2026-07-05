@@ -1267,9 +1267,7 @@ async function say(d: Director, t: Track, text: string) {
 async function goodMorning(d: Director) {
   const deco = d.track("deco").setSender({ name: "Decopilot", logo: true });
 
-  await d.caption(
-    "This is your deco — every team you're part of, working for you",
-  );
+  await d.caption("This is your deco Studio — the home for your AI agents");
   await d.beat(4800);
 
   await d.caption("Every morning starts the same — you ask what needs you");
