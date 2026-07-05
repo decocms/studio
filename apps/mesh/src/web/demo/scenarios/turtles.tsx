@@ -129,6 +129,16 @@ const VELA_AGENTS = [
     glyph: "O",
     tile: "bg-pink-200 text-pink-950",
   },
+  // Settings is an AGENT — always the bottom one, scoped to where you are.
+  // There is no settings screen: each settings section is an MCP app it
+  // renders in the preview panel. Chat + preview, everywhere.
+  {
+    id: "vela-settings",
+    name: "Settings",
+    sub: "this org, as apps",
+    glyph: "⚙",
+    tile: "bg-muted text-muted-foreground",
+  },
 ] as const;
 
 const BASE = "https://studio.decocms.com/api";
@@ -179,22 +189,65 @@ function velaPreview({ winter }: { winter: boolean }): string {
   </body></html>`;
 }
 
+/** The Members section rendered as an MCP app in the preview panel — settings
+ *  has no special screen; it's apps inside the Settings agent's preview. */
+function settingsApp({ rafaAdmin }: { rafaAdmin: boolean }): string {
+  const row = (name: string, email: string, role: string, hot = false) =>
+    `<div class="row"><div class="who"><div class="ava">${name[0]}</div><div><div class="nm">${name}</div><div class="em">${email}</div></div></div><span class="role ${hot ? "hot" : ""}">${role}</span></div>`;
+  return `<!doctype html><html><head><meta charset="utf8"><style>
+*{box-sizing:border-box;margin:0;font-family:Inter,system-ui,sans-serif}
+body{background:#fff;color:#101828;display:flex;min-height:100vh}
+nav{width:180px;border-right:1px solid #f0f1f3;padding:18px 10px}
+nav .t{font-size:11px;font-weight:600;color:#98a2b3;text-transform:uppercase;letter-spacing:.04em;padding:0 8px 8px}
+nav a{display:block;padding:7px 8px;border-radius:8px;font-size:13px;color:#475467;text-decoration:none}
+nav a.on{background:#f2f4f7;color:#101828;font-weight:600}
+main{flex:1;padding:26px 28px}
+h1{font-size:18px;margin-bottom:2px}
+.sub{font-size:12px;color:#667085;margin-bottom:18px}
+.row{display:flex;align-items:center;justify-content:space-between;border:1px solid #f0f1f3;border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.who{display:flex;align-items:center;gap:10px}
+.ava{width:30px;height:30px;border-radius:8px;background:#f2f4f7;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#475467}
+.nm{font-size:13px;font-weight:600}.em{font-size:11px;color:#98a2b3}
+.role{font-size:11px;font-weight:600;padding:3px 10px;border-radius:999px;background:#f2f4f7;color:#475467}
+.role.hot{background:#ecfccb;color:#3f6212}
+</style></head><body>
+<nav><div class="t">Settings</div>
+<a>General</a><a class="on">Members</a><a>Connections</a><a>Billing</a><a>Notifications</a>
+</nav>
+<main><h1>Members</h1><div class="sub">Who can act in Vela Store — every row is a tool call away.</div>
+${row("Gui", "gui@vela.shop", "Owner", true)}
+${row("Rafa", "rafa@vela.shop", rafaAdmin ? "Admin ✓" : "Member", rafaAdmin)}
+${row("Cami", "cami@vela.shop", "Member")}
+${row("Dex", "dex@vela.shop", "Member")}
+</main></body></html>`;
+}
+
 // ============================================================================
 // Shell chrome — real toolbar look: breadcrumb + Share right beside it
 // ============================================================================
 
+/** Write several ui inputs at once — the stage's own navigation primitive,
+ *  shared by the Director's script AND real clicks after the demo ends. */
+function setInputs(stores: DemoStores, patch: Record<string, string>) {
+  stores.ui.update((s) => ({ ...s, inputs: { ...s.inputs, ...patch } }));
+}
+
 function Crumb({
   target,
   active,
+  onClick,
   children,
 }: {
   target: string;
   active: boolean;
+  onClick?: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <span
+    <button
+      type="button"
       data-demo-target={target}
+      onClick={onClick}
       className={cn(
         "flex items-center gap-2 rounded-md px-1.5 py-1 text-sm transition-colors",
         active
@@ -203,7 +256,7 @@ function Crumb({
       )}
     >
       {children}
-    </span>
+    </button>
   );
 }
 
@@ -253,7 +306,11 @@ function DemoToolbar({ stores }: { stores: DemoStores }) {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 bg-sidebar px-3">
-      <Crumb target="crumb:home" active={level === "home"}>
+      <Crumb
+        target="crumb:home"
+        active={level === "home"}
+        onClick={() => setInputs(stores, { level: "home", agent: "" })}
+      >
         <img
           src="/logos/deco logo.svg"
           alt="deco"
@@ -265,7 +322,11 @@ function DemoToolbar({ stores }: { stores: DemoStores }) {
       {level !== "home" && (
         <>
           <span className="text-muted-foreground/40">/</span>
-          <Crumb target="crumb:org" active={level === "org"}>
+          <Crumb
+            target="crumb:org"
+            active={level === "org"}
+            onClick={() => setInputs(stores, { level: "org", agent: "" })}
+          >
             <span className="flex size-5 items-center justify-center rounded-md bg-lime-200 text-[10px] font-semibold text-lime-950">
               V
             </span>
@@ -296,6 +357,11 @@ function DemoToolbar({ stores }: { stores: DemoStores }) {
         <button
           type="button"
           data-demo-target="share-button"
+          onClick={() =>
+            setInputs(stores, {
+              share: stores.ui.get().inputs.share === "open" ? "" : "open",
+            })
+          }
           className="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <span className="size-1.5 rounded-full bg-primary/70" />
@@ -327,6 +393,7 @@ function SidebarRow({
   glyph,
   name,
   sub,
+  onClick,
 }: {
   target?: string;
   active: boolean;
@@ -335,12 +402,15 @@ function SidebarRow({
   glyph: React.ReactNode;
   name: string;
   sub?: string;
+  onClick?: () => void;
 }) {
   return (
-    <span
+    <button
+      type="button"
       data-demo-target={target}
+      onClick={onClick}
       className={cn(
-        "flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors duration-300",
+        "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-300",
         active
           ? "bg-sidebar-accent text-sidebar-foreground"
           : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60",
@@ -367,7 +437,7 @@ function SidebarRow({
           </span>
         )}
       </span>
-    </span>
+    </button>
   );
 }
 
@@ -440,7 +510,7 @@ function DemoSidebar({
           {HOME_MY_THREADS.map((t) => (
             <ThreadRow key={t.title} {...t} />
           ))}
-          <SidebarSectionLabel>Agents {ORGS.length + 1}</SidebarSectionLabel>
+          <SidebarSectionLabel>Agents {ORGS.length + 2}</SidebarSectionLabel>
           <SidebarRow
             active={false}
             tile="bg-lime-200 text-lime-950"
@@ -457,6 +527,14 @@ function DemoSidebar({
           {ORGS.map((o) => (
             <SidebarOrgRow key={o.id} stores={stores} org={o} />
           ))}
+          {/* Settings is an agent — always at the bottom, personal scope. */}
+          <SidebarRow
+            active={false}
+            tile="bg-muted text-muted-foreground"
+            glyph="⚙"
+            name="Settings"
+            sub="your deco"
+          />
         </>
       ) : (
         <>
@@ -500,6 +578,11 @@ function SidebarOrgRow({ stores, org }: { stores: DemoStores; org: Org }) {
       glyph={org.glyph}
       name={org.name}
       sub={org.tagline}
+      onClick={
+        org.id === "vela"
+          ? () => setInputs(stores, { level: "org", agent: "" })
+          : undefined
+      }
     />
   );
 }
@@ -523,6 +606,11 @@ function SidebarAgentRow({
       glyph={agent.glyph}
       name={agent.name}
       sub={agent.sub}
+      onClick={() =>
+        agent.id === "vela"
+          ? setInputs(stores, { level: "org", agent: "" })
+          : setInputs(stores, { level: "agent", agent: agent.id })
+      }
     />
   );
 }
@@ -707,9 +795,15 @@ function OrgCard({ stores, org }: { stores: DemoStores; org: Org }) {
   const watchValue =
     useDemoInput(stores, `metric:${org.id}`) || org.metrics.watch.fallback;
   return (
-    <div
+    <button
+      type="button"
       data-demo-target={`org-card:${org.id}`}
-      className="flex w-full flex-col rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-accent/40"
+      onClick={
+        org.id === "vela"
+          ? () => setInputs(stores, { level: "org", agent: "" })
+          : undefined
+      }
+      className="flex w-full flex-col rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-accent/40"
     >
       <div className="flex items-center gap-3">
         <span
@@ -773,12 +867,12 @@ function OrgCard({ stores, org }: { stores: DemoStores; org: Org }) {
       {status && (
         <div
           key={status}
-          className="mt-2.5 border-t border-border pt-2 text-xs leading-relaxed text-muted-foreground animate-in fade-in duration-500"
+          className="mt-2.5 w-full border-t border-border pt-2 text-xs leading-relaxed text-muted-foreground animate-in fade-in duration-500"
         >
           {status}
         </div>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -851,6 +945,7 @@ function OrgLevel({
   activeAgent: string;
 }) {
   const previewHtml = useDemoInput(stores, "preview:vela");
+  const previewUrl = useDemoInput(stores, "preview-url") || "vela.shop";
   return (
     <div className="grid min-h-0 flex-1 grid-cols-2">
       <FloatCard>
@@ -866,7 +961,7 @@ function OrgLevel({
         </div>
       </FloatCard>
       <FloatCard>
-        <PreviewFrame url="vela.shop" html={previewHtml} />
+        <PreviewFrame url={previewUrl} html={previewHtml} />
       </FloatCard>
     </div>
   );
@@ -940,7 +1035,7 @@ async function say(d: Director, t: Track, text: string) {
 }
 
 async function goodMorning(d: Director) {
-  const deco = d.track("deco");
+  const deco = d.track("deco").setSender({ name: "Decopilot", logo: true });
 
   d.caption("This is your deco — every org you belong to, as an agent");
   await d.beat(2600);
@@ -1008,7 +1103,11 @@ async function hopIntoVela(d: Director) {
 
   // You land in a thread where Vela's pilot has ALREADY asked the question —
   // answer it and work proceeds. No re-explaining context.
-  const vela = d.track("vela");
+  const vela = d.track("vela").setSender({
+    name: "Vela Pilot",
+    glyph: "V",
+    tile: "bg-lime-200 text-lime-950",
+  });
   d.setInput("thread:vela", "1"); // the thread appears under My threads
   await vela.stream(
     "Morning! The Winter Drop hero is ready — assets approved, QA passed. Ship it now?",
@@ -1103,7 +1202,11 @@ async function zoomIntoAgent(d: Director) {
   d.hideCursor();
   await d.beat(900);
 
-  const ops = d.track("vela-ops");
+  const ops = d.track("vela-ops").setSender({
+    name: "Store Ops",
+    glyph: "O",
+    tile: "bg-pink-200 text-pink-950",
+  });
   await say(d, ops, "How were yesterday's sales?");
   await d.beat(300);
   await ops.tool(
@@ -1117,6 +1220,44 @@ async function zoomIntoAgent(d: Director) {
   await ops.stream(SALES_RECAP, { instant: true });
   ops.endTurn();
   await d.beat(4200); // hold the sales table
+}
+
+/** Settings is an agent, its screens are MCP apps in the preview — chat +
+ *  preview is the ONE pattern; settings gets no special screen. */
+async function settingsAsAgent(d: Director) {
+  d.caption("Even Settings is an agent — its screens are apps in the preview");
+  d.showCursor();
+  await d.beat(500);
+  await d.click("agent:vela-settings");
+  d.setInput("level", "agent");
+  d.setInput("agent", "vela-settings");
+  d.setInput("preview-url", "vela · settings/members");
+  d.setPreview("vela", settingsApp({ rafaAdmin: false }));
+  d.hideCursor();
+  await d.beat(1600);
+
+  const st = d.track("vela-settings").setSender({
+    name: "Settings",
+    glyph: "⚙",
+    tile: "bg-muted text-muted-foreground",
+  });
+  await say(d, st, "Make Rafa an admin.");
+  await d.beat(300);
+  await st.tool(
+    genericTool({
+      name: "update_member",
+      input: { member: "rafa@vela.shop", role: "admin" },
+      output: { result: "Rafa · member → admin" },
+      latencyMs: 1900,
+    }),
+  );
+  d.setPreview("vela", settingsApp({ rafaAdmin: true }));
+  await st.stream("Done — Rafa is an **admin** now. Anything else?", {
+    cps: 44,
+  });
+  st.endTurn();
+  d.caption("No settings screen — chat + preview, everywhere");
+  await d.beat(3400);
 }
 
 async function shareThisScope(d: Director) {
@@ -1175,6 +1316,7 @@ export const turtlesScenario: Scenario = {
     await goodMorning(d);
     await hopIntoVela(d);
     await zoomIntoAgent(d);
+    await settingsAsAgent(d);
     await shareThisScope(d);
     await backHome(d);
   },

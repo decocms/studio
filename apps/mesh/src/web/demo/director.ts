@@ -50,6 +50,16 @@ type RevealPart = { type: "text" | "reasoning"; text: string };
 /** Thrown when a primitive runs after the demo was aborted. The runner swallows it. */
 export class DemoAborted extends Error {}
 
+/** A track's speaker identity — either the deco logo or a glyph tile. */
+export interface TrackSender {
+  name: string;
+  /** render the deco logo as the avatar (Decopilot) */
+  logo?: boolean;
+  glyph?: string;
+  /** tailwind classes for the glyph tile */
+  tile?: string;
+}
+
 export interface StreamOptions {
   /** characters per second for the typewriter reveal (default 55) */
   cps?: number;
@@ -75,11 +85,20 @@ export class Track {
   private planPart: { output: PlanState } | null = null;
   private prPart: { output: PRState } | null = null;
   private digestPart: { output: DigestState } | null = null;
+  /** Who speaks on this track — rendered as a header row on every assistant
+   *  turn (avatar tile or logo + name), like a real chat sender. */
+  private sender: TrackSender | null = null;
 
   constructor(
     private readonly store: Store<DemoChatState>,
     private readonly signal: AbortSignal,
   ) {}
+
+  /** Set this track's speaker identity. Chainable; call once per scenario. */
+  setSender(sender: TrackSender): this {
+    this.sender = sender;
+    return this;
+  }
 
   wait(ms: number): Promise<void> {
     return sleep(ms, { signal: this.signal });
@@ -108,6 +127,9 @@ export class Track {
 
   private startAssistantTurn() {
     const msg = emptyAssistant();
+    if (this.sender) {
+      msg.parts.push(customCardPart("sender", this.sender));
+    }
     this.draft.push(msg);
     this.activeId = msg.id;
     this.status = "streaming";

@@ -9,7 +9,9 @@ import {
   PRCard,
   DailyDigestCard,
   OrgCtaCard,
+  SenderRow,
   type OrgCtaState,
+  type SenderState,
 } from "./work-plan";
 import type { DigestState, PlanState, PRState } from "./director-stores";
 
@@ -27,4 +29,8 @@ registerPartRenderer("tool-daily_digest", (part) => (
 
 registerPartRenderer("tool-org_cta", (part) => (
   <OrgCtaCard cta={part.output as OrgCtaState} />
+));
+
+registerPartRenderer("tool-sender", (part) => (
+  <SenderRow sender={part.output as SenderState} />
 ));
