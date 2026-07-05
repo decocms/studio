@@ -1395,9 +1395,7 @@ async function goodMorning(d: Director) {
 }
 
 async function hopIntoVela(d: Director) {
-  await d.caption(
-    "The card takes you straight into the team context — nothing to rebuild",
-  );
+  await d.caption("The card takes you straight into the team context");
   d.showCursor();
   await d.beat(600);
   await d.click("org-cta");
@@ -1413,7 +1411,7 @@ async function hopIntoVela(d: Director) {
     tile: "bg-lime-200 text-lime-950",
   });
   d.setInput("thread:vela", "1"); // the thread appears under My threads
-  await d.beat(3300); // let line 5's narration finish over the dashboard
+  await d.beat(2400); // let line 5's narration finish over the dashboard
   await d.caption(
     "You land on its operations — everything the agent watches, live",
   );
@@ -1610,15 +1608,10 @@ async function settingsAsAgent(d: Director) {
     "No settings screens anywhere — chat and preview, all the way through",
   );
   await d.beat(5200);
-  // Setup is one person's job — everyone else just gets invited.
-  await d.caption(
-    "Setup is one person's job — everyone else just gets invited",
-  );
-  await d.beat(4800);
 }
 
 async function backHome(d: Director) {
-  await d.caption("And the logo always takes you back to yourself");
+  await d.caption("And the logo always takes you back home — to your agents");
   d.showCursor();
   await d.beat(500);
   await d.click("crumb:home");
@@ -1640,8 +1633,8 @@ async function backHome(d: Director) {
   await d.caption(
     "It's agents all the way down — same intelligence, only the context changes",
   );
-  // Must outlast vo-17 (6.26s) — markEnded() clears the caption AND stops
-  // the clip, so a short beat here crops the closing line.
+  // Must outlast the closing clip (6.26s) — markEnded() clears the caption
+  // AND stops the audio, so a short beat here crops the last line.
   await d.beat(7100);
 }
 
