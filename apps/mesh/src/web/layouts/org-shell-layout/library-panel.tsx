@@ -89,9 +89,9 @@ export function LibraryPanel({
   if (!open) return null;
 
   return (
-    <aside className="flex h-full w-[min(560px,42vw)] shrink-0 flex-col border-l border-border bg-background">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
-        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+    <aside className="flex h-full w-[min(560px,42vw)] shrink-0 flex-col bg-sidebar">
+      <div className="flex h-10 shrink-0 items-center justify-between px-3">
+        <span className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground">
           <Folder size={14} />
           Library
         </span>
@@ -99,7 +99,10 @@ export function LibraryPanel({
           <XClose size={16} />
         </ToolbarIconButton>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
+      {/* The Library floats its own card-shadow card and expects the shell's
+          cream (bg-sidebar) behind it with a little breathing room on top —
+          without it the card's rounded top edge renders clipped/flush. */}
+      <div className="min-h-0 flex-1 overflow-hidden pt-0.5">
         <Suspense fallback={<PanelFallback />}>
           <Library />
         </Suspense>
