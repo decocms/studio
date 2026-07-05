@@ -1,3 +1,4 @@
+import { track } from "@/web/lib/posthog-client";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowUpRight, User01 } from "@untitledui/icons";
@@ -49,7 +50,16 @@ function ScheduleMeetingCta({
       size={size}
       className={cn("w-full", className)}
     >
-      <a href={href} target="_blank" rel="noreferrer">
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={() =>
+          track("commerce_onboarding_meeting_cta_clicked", {
+            placement: "visual_card",
+          })
+        }
+      >
         Agendar uma reunião
         <ArrowUpRight size={16} />
       </a>
@@ -146,6 +156,11 @@ export function ScheduleMeetingBanner({
       href={href}
       target="_blank"
       rel="noreferrer"
+      onClick={() =>
+        track("commerce_onboarding_meeting_cta_clicked", {
+          placement: "mobile_banner",
+        })
+      }
       className={cn(
         "flex items-center gap-4 rounded-2xl border border-border bg-card p-5 card-shadow transition-colors hover:bg-accent",
         className,

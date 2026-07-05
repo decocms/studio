@@ -712,13 +712,22 @@ function CommerceSetupContent({
       return parseSelfToolResult<CommerceDiscoverySetupResult>(result);
     },
     retry: false,
-    onSuccess: (result) => {
+    onSuccess: (result, submittedSiteUrl) => {
+      track("commerce_onboarding_setup_succeeded", {
+        domain: siteUrlToHost(submittedSiteUrl) ?? undefined,
+        organization_id: org.id,
+      });
       setSetupResult(result);
       setInlineError(null);
       void connectionQuery.refetch();
       void virtualMcpQuery.refetch();
     },
-    onError: (error) => {
+    onError: (error, submittedSiteUrl) => {
+      track("commerce_onboarding_setup_failed", {
+        domain: siteUrlToHost(submittedSiteUrl) ?? undefined,
+        organization_id: org.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
       setInlineError(
         error instanceof Error
           ? error.message
@@ -788,6 +797,10 @@ function CommerceSetupContent({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    track("commerce_onboarding_site_url_submitted", {
+      domain: siteUrlToHost(siteUrlInput) ?? undefined,
+      organization_id: org.id,
+    });
     runSetup(siteUrlInput);
   };
 
@@ -799,6 +812,12 @@ function CommerceSetupContent({
 
   const openReport = async () => {
     setRunError(null);
+    // The onboarding-completion intent: the click, not the report render
+    // (mcp_app_opened covers the render after navigation).
+    track("commerce_onboarding_report_opened", {
+      domain: siteUrlToHost(currentSiteUrl) ?? undefined,
+      organization_id: org.id,
+    });
     // Trigger the enriching run now that the user is done connecting. Await it so a
     // failure surfaces (generic message, stay put) instead of silently opening an
     // empty report. No resolvable site (legacy session) ⇒ nothing to trigger, just open.
@@ -806,7 +825,12 @@ function CommerceSetupContent({
     if (normalized.ok) {
       try {
         await runMutation.mutateAsync(normalized.value);
-      } catch {
+      } catch (err) {
+        track("commerce_onboarding_run_failed", {
+          domain: siteUrlToHost(currentSiteUrl) ?? undefined,
+          organization_id: org.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
         setRunError(
           "Algo deu errado ao gerar seu relatório. Tente novamente em instantes.",
         );

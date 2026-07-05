@@ -1,4 +1,5 @@
 import { authenticateAndPersistOAuth } from "@/web/lib/authenticate-and-persist-oauth";
+import { track } from "@/web/lib/posthog-client";
 import { KEYS } from "@/web/lib/query-keys";
 import type { RegistryItem } from "@/web/components/store/types";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
@@ -47,6 +48,13 @@ export function useConnectCompanion({
   async function connect(card: CompanionCardModel): Promise<boolean> {
     setConnectingFieldKey(card.fieldKey);
     setError(null);
+    // Per-card connect rates were invisible: the only signal was the generic
+    // server-side connection_created, which carries no onboarding context.
+    track("commerce_onboarding_companion_connect_clicked", {
+      app_name: card.title,
+      field_key: card.fieldKey,
+      organization_id: org.id,
+    });
     try {
       // Step 0: reuse an existing candidate, else install a new connection.
       let companionId = card.candidateConnectionId;
@@ -97,6 +105,12 @@ export function useConnectCompanion({
           ),
       });
       if (!auth.ok) {
+        track("commerce_onboarding_companion_connect_failed", {
+          app_name: card.title,
+          field_key: card.fieldKey,
+          organization_id: org.id,
+          error: auth.error,
+        });
         setError(`Couldn't sign in to ${card.title}: ${auth.error}`);
         return false; // keep connection, no CD write
       }
@@ -125,8 +139,19 @@ export function useConnectCompanion({
       await queryClient.invalidateQueries({
         queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
       });
+      track("commerce_onboarding_companion_connected", {
+        app_name: card.title,
+        field_key: card.fieldKey,
+        organization_id: org.id,
+      });
       return true;
     } catch (err) {
+      track("commerce_onboarding_companion_connect_failed", {
+        app_name: card.title,
+        field_key: card.fieldKey,
+        organization_id: org.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
       setError(err instanceof Error ? err.message : String(err));
       return false;
     } finally {
