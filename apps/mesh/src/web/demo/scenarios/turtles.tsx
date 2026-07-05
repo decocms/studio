@@ -1640,7 +1640,9 @@ async function backHome(d: Director) {
   await d.caption(
     "It's agents all the way down — same intelligence, only the context changes",
   );
-  await d.beat(5600);
+  // Must outlast vo-17 (6.26s) — markEnded() clears the caption AND stops
+  // the clip, so a short beat here crops the closing line.
+  await d.beat(7100);
 }
 
 export const turtlesScenario: Scenario = {
