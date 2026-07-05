@@ -53,7 +53,12 @@ function CloseButton({ onClose }: { onClose: () => void }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" onClick={onClose}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          aria-label="Close preview"
+        >
           <XClose size={14} />
         </Button>
       </TooltipTrigger>

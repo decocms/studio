@@ -11,7 +11,7 @@
  * The full-page route (`/$org/files`) still exists for deep links and mobile.
  */
 import { lazy, Suspense } from "react";
-import { Folder, XClose } from "@untitledui/icons";
+import { Folder } from "@untitledui/icons";
 import {
   Tooltip,
   TooltipContent,
@@ -92,17 +92,12 @@ export function LibraryPanel({
     // No panel header: the Library renders its own title inside its floating
     // card, and that card uses the same shell padding as the chat card
     // (pr-1 pb-1 + p-0.5), so with nothing above it the two cards top-align.
+    // The close affordance renders INSIDE the Library's own header row
+    // (title · refresh · upload · close) via onClose — one consistent row.
     <aside className="relative flex h-full w-[min(560px,42vw)] shrink-0 flex-col bg-sidebar">
-      <ToolbarIconButton
-        onClick={onClose}
-        aria-label="Close library"
-        className="absolute right-3 top-2.5 z-10"
-      >
-        <XClose size={16} />
-      </ToolbarIconButton>
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<PanelFallback />}>
-          <Library />
+          <Library panelMode onClose={onClose} />
         </Suspense>
       </div>
     </aside>

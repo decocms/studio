@@ -25,6 +25,7 @@ import {
   RefreshCw01,
   Stars01,
   Upload01,
+  XClose,
   Zap,
 } from "@untitledui/icons";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -529,7 +530,7 @@ function VolumeView({
   );
 }
 
-function LibraryPage() {
+function LibraryPage({ onClose }: { onClose?: () => void }) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -762,6 +763,16 @@ function LibraryPage() {
                 className="hidden"
                 onChange={(e) => void handleUpload(e.target.files)}
               />
+              {onClose && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onClose}
+                  aria-label="Close library"
+                >
+                  <XClose size={14} />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -881,7 +892,23 @@ function LibraryPage() {
   );
 }
 
-export default function Library() {
+export default function Library({
+  panelMode = false,
+  onClose,
+}: {
+  /**
+   * True when rendered inside the narrow toolbar-toggle panel (see
+   * org-shell-layout/library-panel.tsx). The panel caps at ~560px, so a
+   * side-by-side browse|preview split is never usable there — an open
+   * preview takes over the ENTIRE panel instead. The full-page route keeps
+   * the split, where there's real horizontal space for it.
+   */
+  panelMode?: boolean;
+  /** Close the surrounding panel — rendered inline in the Library's own
+   *  header row (title · refresh · upload · close) so it's one consistent
+   *  row, not a floating control. */
+  onClose?: () => void;
+}) {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as {
@@ -943,8 +970,22 @@ export default function Library() {
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         <ErrorBoundary>
-          <LibraryPage />
+          <LibraryPage onClose={onClose} />
         </ErrorBoundary>
+      </div>
+    );
+  }
+
+  // Narrow panel + open preview → the preview takes the whole panel. The
+  // panel's own close (X / onClose) clears the param and returns to browse.
+  if (panelMode && right) {
+    return (
+      <div className="min-h-0 flex-1 pt-0 pr-1 pb-1 pl-0">
+        <div className="h-full p-0.5 pt-0.25">
+          <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
+            <ErrorBoundary>{right.panel}</ErrorBoundary>
+          </div>
+        </div>
       </div>
     );
   }
@@ -960,7 +1001,7 @@ export default function Library() {
         <div className="h-full p-0.5 pt-0.25">
           <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
             <ErrorBoundary>
-              <LibraryPage />
+              <LibraryPage onClose={onClose} />
             </ErrorBoundary>
           </div>
         </div>
