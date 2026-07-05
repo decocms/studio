@@ -4,7 +4,13 @@
  * the demo (the registry is empty in the normal app).
  */
 import { registerPartRenderer } from "@/web/components/chat/message/parts/extra-part-renderers";
-import { WorkPlanCard, PRCard, DailyDigestCard } from "./work-plan";
+import {
+  WorkPlanCard,
+  PRCard,
+  DailyDigestCard,
+  OrgCtaCard,
+  type OrgCtaState,
+} from "./work-plan";
 import type { DigestState, PlanState, PRState } from "./director-stores";
 
 registerPartRenderer("tool-work_plan", (part) => (
@@ -17,4 +23,8 @@ registerPartRenderer("tool-pull_request", (part) => (
 
 registerPartRenderer("tool-daily_digest", (part) => (
   <DailyDigestCard digest={part.output as DigestState} />
+));
+
+registerPartRenderer("tool-org_cta", (part) => (
+  <OrgCtaCard cta={part.output as OrgCtaState} />
 ));

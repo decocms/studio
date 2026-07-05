@@ -10,6 +10,7 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
+  ArrowRight,
   Bell01,
   Check,
   GitBranch01,
@@ -279,6 +280,50 @@ export function PRCard({ pr }: { pr: PRState }) {
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Org CTA card — "this org needs you" rendered inline in the personal chat,
+// with a button that navigates into the org (the Director performs the hop).
+// ---------------------------------------------------------------------------
+
+export interface OrgCtaState {
+  orgName: string;
+  glyph: string;
+  /** tailwind classes for the org's colored tile */
+  tile: string;
+  headline: string;
+  body: string;
+  button: string;
+  /** ghost-cursor target id for the navigate button */
+  target: string;
+}
+
+export function OrgCtaCard({ cta }: { cta: OrgCtaState }) {
+  return (
+    <div className="my-2 w-full animate-in fade-in slide-in-from-bottom-2 overflow-hidden rounded-2xl border border-border bg-card duration-500">
+      <div className="flex items-center gap-3 p-4">
+        <span
+          className={cn(
+            "flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold",
+            cta.tile,
+          )}
+        >
+          {cta.glyph}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-foreground">
+            {cta.headline}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">{cta.body}</div>
+        </div>
+        <Button size="sm" data-demo-target={cta.target} className="shrink-0">
+          {cta.button}
+          <ArrowRight size={14} />
+        </Button>
+      </div>
     </div>
   );
 }

@@ -25,6 +25,7 @@ import { sleep } from "@decocms/std";
 import type { Store } from "@/web/components/chat/store/store-primitive";
 import type { ChatMessage } from "@/web/components/chat/types";
 import {
+  customCardPart,
   dailyDigestPart,
   emptyAssistant,
   pullRequestPart,
@@ -259,6 +260,14 @@ export class Track {
   mergePR(): void {
     if (!this.prPart) return;
     this.prPart.output = { ...this.prPart.output, merged: true };
+    this.commit();
+  }
+
+  /** Append a static inline card rendered by a registered demo part renderer
+   *  (`tool-<type>`). For cards with no post-render state updates. */
+  showCard(type: string, output: unknown): void {
+    this.ensureAssistant();
+    this.active.parts.push(customCardPart(type, output));
     this.commit();
   }
 

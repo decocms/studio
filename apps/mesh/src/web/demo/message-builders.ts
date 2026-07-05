@@ -155,3 +155,14 @@ export function genericTool(args: {
     latencyMs: args.latencyMs ?? 1000,
   };
 }
+
+/** A pre-resolved custom card part for any registered demo renderer
+ *  (`tool-<type>`) — for static cards with no post-render state updates. */
+export function customCardPart(type: string, output: unknown): Part {
+  return {
+    type: `tool-${type}`,
+    toolCallId: crypto.randomUUID(),
+    state: "output-available",
+    output,
+  } as unknown as Part;
+}
