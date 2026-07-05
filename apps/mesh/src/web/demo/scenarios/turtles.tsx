@@ -1267,9 +1267,10 @@ async function say(d: Director, t: Track, text: string) {
 async function goodMorning(d: Director) {
   const deco = d.track("deco").setSender({ name: "Decopilot", logo: true });
 
-  d.caption("This is your deco — every org you belong to, as an agent");
-  await d.beat(2600);
+  d.caption("This is your deco — every org you belong to, working for you");
+  await d.beat(3600);
 
+  d.caption("Every morning starts the same — you ask what needs you");
   await say(d, deco, "Good morning — what needs me today?");
   await d.beat(400);
   await deco.think(
@@ -1316,12 +1317,14 @@ async function goodMorning(d: Director) {
     ],
   });
   deco.endTurn();
-  d.caption("One brief. One thing that needs you.");
+  d.caption(
+    "One brief, three orgs — exactly one thing needs you, and it's a button",
+  );
   await d.beat(7500); // hold: read the table + the card together
 }
 
 async function hopIntoVela(d: Director) {
-  d.caption("The card takes you into the org — thread already open");
+  d.caption("The card takes you straight into Vela — no context to rebuild");
   d.showCursor();
   await d.beat(600);
   await d.click("org-cta");
@@ -1337,7 +1340,7 @@ async function hopIntoVela(d: Director) {
     tile: "bg-lime-200 text-lime-950",
   });
   d.setInput("thread:vela", "1"); // the thread appears under My threads
-  d.caption("You land on Vela's operations — the pilot was already waiting");
+  d.caption("You land on its operations — everything the pilot watches, live");
   await vela.stream(
     "Morning! The Winter Drop hero is ready — assets approved, QA passed. Ship it now?",
     { cps: 60 },
@@ -1346,6 +1349,7 @@ async function hopIntoVela(d: Director) {
   await d.beat(2600); // read the dashboard + the pilot's question
 
   // Answer immediately — the urgency is the point. No sidebar detours.
+  d.caption("You say ship it — that's the whole job");
   await say(d, vela, "Yes — ship it.");
   await d.beat(400);
   await vela.think(
@@ -1379,7 +1383,9 @@ async function hopIntoVela(d: Director) {
       latencyMs: 2100,
     }),
   );
-  d.caption("The pilot audits before shipping — and delegates the fix itself");
+  d.caption(
+    "It audits before shipping, finds a regression — and fixes it itself",
+  );
   await vela.stream(
     "The new hero slowed the page down. Sending it to Storefront Bot before we ship.",
     { cps: 44 },
@@ -1407,14 +1413,18 @@ async function hopIntoVela(d: Director) {
   await d.beat(1200);
 
   // Shipped → who sees it: teammates' threads live in the same sidebar.
-  d.caption("Your teammates see it land — team threads, right there");
+  d.caption(
+    "Your teammates see it land — their threads live right beside yours",
+  );
   d.showCursor();
   await d.click("team-threads");
   await d.beat(2200);
   d.hideCursor();
 
   // → and where the follow-ups went: the org's board.
-  d.caption("Follow-ups land on the kanban — assign to an agent or a person");
+  d.caption(
+    "Every follow-up becomes a card — assigned to an agent, or a person",
+  );
   d.setInput("preview-url", "vela · tasks");
   d.setPreview("vela", tasksKanban());
   await d.beat(5200);
@@ -1431,7 +1441,7 @@ const SALES_RECAP = `Yesterday on vela.shop:
 Top seller: the **Winter Parka** — the drop is converting at 2.1× your baseline. Want this recap every morning?`;
 
 async function zoomIntoAgent(d: Director) {
-  d.caption("Go deeper — everything inside an org is an agent too");
+  d.caption("Go one level deeper — every part of an org is an agent too");
   d.showCursor();
   await d.beat(500);
   await d.click("agent:vela-ops");
@@ -1481,7 +1491,9 @@ async function shareOpsToWhatsApp(d: Director) {
 /** Settings is an agent, its screens are MCP apps in the preview — chat +
  *  preview is the ONE pattern; settings gets no special screen. */
 async function settingsAsAgent(d: Director) {
-  d.caption("Even Settings is an agent — its screens are apps in the preview");
+  d.caption(
+    "Even Settings is an agent — its screens are just apps in the preview",
+  );
   d.showCursor();
   await d.beat(500);
   await d.click("agent:vela-settings");
@@ -1513,15 +1525,17 @@ async function settingsAsAgent(d: Director) {
     cps: 44,
   });
   st.endTurn();
-  d.caption("No settings screen — chat + preview, everywhere");
+  d.caption(
+    "No settings screens anywhere — chat and preview, all the way through",
+  );
   await d.beat(3000);
   // Setup is one person's job — everyone else just gets invited.
-  d.caption("Invite your team — they get agents already set up, not setup");
+  d.caption("Setup is one person's job — everyone else just gets invited");
   await d.beat(2800);
 }
 
 async function backHome(d: Director) {
-  d.caption("The logo takes you back to yourself");
+  d.caption("And the logo always takes you back to yourself");
   d.showCursor();
   await d.beat(500);
   await d.click("crumb:home");
