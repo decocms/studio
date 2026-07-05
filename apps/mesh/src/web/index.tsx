@@ -261,6 +261,12 @@ const unifiedChatSearchSchema = z.object({
   /** Open the Library file-preview overlay over the chat (browse-grammar path
    *  "<volume>/<path…>"). Set by clickable org-file refs in agent messages. */
   preview: z.string().optional(),
+  /** Library-panel browse state (`?path=` grammar) — the Library is a
+   *  toggleable panel on any org-shell screen, so its search params must
+   *  survive this route's schema. See org-shell-layout/library-panel.tsx. */
+  path: z.string().optional(),
+  skill: z.string().optional(),
+  brand: z.string().optional(),
   id: z.string().optional(),
   toolName: z.string().optional(),
   tasks: z.number().optional(),

@@ -4,7 +4,7 @@ import type {
   SidebarSection,
 } from "@/web/components/sidebar/types";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Folder, Home01 } from "@untitledui/icons";
+import { Home01 } from "@untitledui/icons";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -32,19 +32,10 @@ export function useProjectSidebarItems(): SidebarSection[] {
     },
   };
 
-  const filesItem: NavigationSidebarItem = {
-    key: "files",
-    label: "Library",
-    icon: <Folder className="size-4!" />,
-    isActive: pathname.startsWith(`/${slug}/files`),
-    onClick: () => {
-      navigate({ to: "/$org/files", params: { org: slug } });
-    },
-  };
-
-  const sections: SidebarSection[] = [
-    { type: "items", items: [homeItem, filesItem] },
-  ];
+  // Library is no longer a sidebar destination — it's a toolbar toggle panel
+  // (see layouts/org-shell-layout/library-panel.tsx), available on any screen
+  // without navigating away. The /$org/files route stays for deep links.
+  const sections: SidebarSection[] = [{ type: "items", items: [homeItem] }];
 
   if (isCollapsed) {
     sections.push({

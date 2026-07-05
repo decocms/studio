@@ -37,8 +37,13 @@ import {
 } from "@/web/layouts/shell-controls";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
+import {
+  LibraryPanel,
+  LibraryPanelToggle,
+} from "@/web/layouts/org-shell-layout/library-panel";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
+const LIBRARY_OPEN_STORAGE_KEY = "library.open";
 
 function RouteFallback() {
   return <ShellRouteLoading />;
@@ -48,6 +53,10 @@ export default function OrgShellLayout() {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
     SIDEBAR_OPEN_STORAGE_KEY,
+    false,
+  );
+  const [libraryOpen, setLibraryOpen] = useLocalStorage<boolean>(
+    LIBRARY_OPEN_STORAGE_KEY,
     false,
   );
   const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
@@ -66,6 +75,10 @@ export default function OrgShellLayout() {
                     <LinkedDesktopIndicator />
                     <div aria-hidden className="min-w-0" />
                     <Toolbar.TogglesSlot />
+                    <LibraryPanelToggle
+                      open={libraryOpen}
+                      onToggle={() => setLibraryOpen((prev) => !prev)}
+                    />
                     <Toolbar.TabsSlot className="min-w-0 justify-self-end" />
                   </div>
                   <Toolbar.CenterSlot />
@@ -80,6 +93,10 @@ export default function OrgShellLayout() {
                       <Toolbar.Nav />
                     </span>
                     <Toolbar.TogglesSlot />
+                    <LibraryPanelToggle
+                      open={libraryOpen}
+                      onToggle={() => setLibraryOpen((prev) => !prev)}
+                    />
                     <LinkedDesktopIndicator />
                   </Toolbar.LeftColumn>
                   <Toolbar.CenterSlot />
@@ -125,7 +142,19 @@ export default function OrgShellLayout() {
                     </div>
                   </div>
                 </SidebarInset>
+                {!isMobile && (
+                  <LibraryPanel
+                    open={libraryOpen}
+                    onClose={() => setLibraryOpen(false)}
+                  />
+                )}
               </SidebarLayout>
+              {isMobile && (
+                <LibraryPanel
+                  open={libraryOpen}
+                  onClose={() => setLibraryOpen(false)}
+                />
+              )}
               {isMobile && (
                 <MobileSidebarSheet
                   renderSidebar={({ onClose }) => (
