@@ -79,6 +79,12 @@ export function useConnectCompanion({
           "command" in data.connection_headers;
 
         if (!hasUrl && !hasStdioConfig) {
+          track("commerce_onboarding_companion_connect_failed", {
+            app_name: card.title,
+            field_key: card.fieldKey,
+            organization_id: org.id,
+            error: "no_connection_method",
+          });
           setError(
             `${card.title} cannot be connected: no connection method available`,
           );
