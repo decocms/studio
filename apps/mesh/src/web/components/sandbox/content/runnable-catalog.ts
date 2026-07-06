@@ -29,6 +29,13 @@ const KIND_SINGULAR: Record<RunnableKind, string> = {
   actions: "action",
 };
 
+/**
+ * App/vendor groups whose blocks are internal plumbing, not site content —
+ * hidden from the Loaders/Actions tabs entirely (e.g. the workflows app's
+ * `workflows/loaders/events.ts` / `get.ts`).
+ */
+const HIDDEN_RUNNABLE_GROUPS = new Set(["workflows"]);
+
 export function runnableSingular(kind: RunnableKind): string {
   return KIND_SINGULAR[kind];
 }
@@ -70,6 +77,7 @@ export function listAvailableRunnables(
     if (!blockType.includes(kind)) continue;
     for (const resolveType of Object.keys(blockMap)) {
       if (resolveType.toLowerCase().includes("preview")) continue;
+      if (HIDDEN_RUNNABLE_GROUPS.has(runnableGroupKey(resolveType))) continue;
       if (seen.has(resolveType)) continue;
       seen.add(resolveType);
       const metadata = resolveBlockSchemaMetadata(resolveType, meta);
@@ -156,6 +164,7 @@ export function listSavedRunnables(
     const obj = val as Record<string, unknown>;
     const rt = obj.__resolveType;
     if (typeof rt !== "string") continue;
+    if (HIDDEN_RUNNABLE_GROUPS.has(runnableGroupKey(rt))) continue;
     if (!isManifestRunnableResolveType(meta, rt, kind)) continue;
 
     entries.push({

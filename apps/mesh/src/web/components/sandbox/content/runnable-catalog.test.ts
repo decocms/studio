@@ -22,6 +22,7 @@ const meta: LiveMeta = {
         "site/loaders/Preview.ts": { $ref: "#/definitions/Preview" },
         "shopify/loaders/internal.ts": { $ref: "#/definitions/Internal" },
         "$live/loaders/state.ts": { $ref: "#/definitions/State" },
+        "workflows/loaders/events.ts": { $ref: "#/definitions/Events" },
       },
       actions: {
         "site/actions/submit.ts": { $ref: "#/definitions/Submit" },
@@ -75,6 +76,8 @@ describe("runnable-catalog", () => {
     expect(resolveTypes).not.toContain("site/loaders/Preview.ts");
     // `ignore: true` in the schema filters the block out.
     expect(resolveTypes).not.toContain("shopify/loaders/internal.ts");
+    // The workflows app's plumbing loaders are hidden entirely.
+    expect(resolveTypes).not.toContain("workflows/loaders/events.ts");
   });
 
   it("runnableGroupKey groups by vendor / deco engine", () => {

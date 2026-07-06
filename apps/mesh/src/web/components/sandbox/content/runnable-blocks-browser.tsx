@@ -1,9 +1,14 @@
 import { useState } from "react";
 import {
+  BookOpen01,
   ChevronRight,
   Database01,
   Folder,
+  Globe01,
+  Home01,
+  LineChartUp01,
   SearchLg,
+  ShoppingCart01,
   Zap,
 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -31,9 +36,6 @@ type RunnableSelection =
   | { mode: "saved"; key: string }
   | null;
 
-/** Virtual root folder holding the saved (global) blocks. */
-const SAVED_FOLDER = "__saved__";
-
 const KIND_ICON: Record<
   RunnableKind,
   React.ComponentType<{ size?: number; className?: string }>
@@ -47,6 +49,25 @@ const KIND_LABEL: Record<RunnableKind, string> = {
   actions: "Actions",
 };
 
+type IconComponent = React.ComponentType<{ size?: number; className?: string }>;
+
+/**
+ * Icons for the root folders a deco site usually exposes; unknown vendors
+ * (shopify, vnda, …) fall back to the generic folder icon.
+ */
+const ROOT_FOLDER_ICONS: Record<string, IconComponent> = {
+  analytics: LineChartUp01,
+  blog: BookOpen01,
+  commerce: ShoppingCart01,
+  site: Home01,
+  website: Globe01,
+};
+
+function folderIcon(segment: string, depth: number): IconComponent {
+  if (depth === 0) return ROOT_FOLDER_ICONS[segment.toLowerCase()] ?? Folder;
+  return Folder;
+}
+
 interface BrowsableEntry {
   resolveType: string;
   title: string;
@@ -58,7 +79,6 @@ interface BrowsableEntry {
 
 /** Folder segment display name: pretty group title at the root, raw below. */
 function folderLabel(segment: string, depth: number): string {
-  if (segment === SAVED_FOLDER) return "Saved";
   return depth === 0 ? runnableGroupTitle(segment) : segment;
 }
 
@@ -108,11 +128,13 @@ export function RunnableBlocksBrowser({
   const singular = runnableSingular(kind);
   const Icon = KIND_ICON[kind];
 
+  // Saved (global) blocks live alongside the raw manifest blocks they
+  // instantiate — same folder, purple accent, counted on the folder card.
   const entries: BrowsableEntry[] = [
     ...listSavedRunnables(meta, decofile, kind).map((e) => ({
       resolveType: e.resolveType,
       title: e.title,
-      folderPath: [SAVED_FOLDER],
+      folderPath: runnableFolderPath(e.resolveType),
       savedKey: e.key,
     })),
     ...listAvailableRunnables(meta, kind).map((e) => ({
@@ -132,9 +154,9 @@ export function RunnableBlocksBrowser({
       )
     : [];
 
-  // Children of the current folder: sub-folders (with descendant counts) and
-  // the entries that live directly at this level.
-  const folders = new Map<string, number>();
+  // Children of the current folder: sub-folders (with descendant + saved
+  // counts) and the entries that live directly at this level.
+  const folders = new Map<string, { count: number; savedCount: number }>();
   const items: BrowsableEntry[] = [];
   if (!searching) {
     for (const entry of entries) {
@@ -145,13 +167,16 @@ export function RunnableBlocksBrowser({
         items.push(entry);
       } else {
         const name = fp[path.length]!;
-        folders.set(name, (folders.get(name) ?? 0) + 1);
+        const bucket = folders.get(name) ?? { count: 0, savedCount: 0 };
+        bucket.count += 1;
+        if (entry.savedKey !== undefined) bucket.savedCount += 1;
+        folders.set(name, bucket);
       }
     }
     items.sort((a, b) => a.title.localeCompare(b.title));
   }
   const folderList = [...folders.entries()]
-    .map(([name, count]) => ({ name, count }))
+    .map(([name, counts]) => ({ name, ...counts }))
     .sort((a, b) =>
       folderLabel(a.name, path.length).localeCompare(
         folderLabel(b.name, path.length),
@@ -299,27 +324,34 @@ export function RunnableBlocksBrowser({
             <>
               {folderList.length > 0 && (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
-                  {folderList.map((folder) => (
-                    <button
-                      key={folder.name}
-                      type="button"
-                      onClick={() => setPath([...path, folder.name])}
-                      className="flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer"
-                    >
-                      <Folder
-                        size={18}
-                        className="shrink-0 text-muted-foreground"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">
-                          {folderLabel(folder.name, path.length)}
+                  {folderList.map((folder) => {
+                    const FolderIcon = folderIcon(folder.name, path.length);
+                    return (
+                      <button
+                        key={folder.name}
+                        type="button"
+                        onClick={() => setPath([...path, folder.name])}
+                        className="flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer"
+                      >
+                        <FolderIcon
+                          size={18}
+                          className="shrink-0 text-muted-foreground"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">
+                            {folderLabel(folder.name, path.length)}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {folder.count}{" "}
+                            {folder.count === 1 ? singular : kind}
+                            {folder.savedCount > 0 && (
+                              <> · {folder.savedCount} saved</>
+                            )}
+                          </span>
                         </span>
-                        <span className="block text-xs text-muted-foreground">
-                          {folder.count} {folder.count === 1 ? singular : kind}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
               {items.length > 0 && (
