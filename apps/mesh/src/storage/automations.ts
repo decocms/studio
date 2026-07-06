@@ -103,7 +103,7 @@ export interface AutomationsStorage {
     automation: Automation,
     triggerId: string | null,
   ): Promise<string>;
-  markRunFailed(taskId: string): Promise<void>;
+  markRunFailed(taskId: string, reason?: string, kind?: string): Promise<void>;
   markRunCompleted(taskId: string): Promise<void>;
   updateTriggerLastRunAt(triggerId: string, lastRunAt: string): Promise<void>;
   deactivateAutomation(id: string): Promise<void>;
@@ -611,10 +611,22 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     return taskId;
   }
 
-  async markRunFailed(taskId: string): Promise<void> {
+  async markRunFailed(
+    taskId: string,
+    reason?: string,
+    kind?: string,
+  ): Promise<void> {
     await this.db
       .updateTable("threads")
-      .set({ status: "failed", updated_at: new Date().toISOString() })
+      .set({
+        status: "failed",
+        updated_at: new Date().toISOString(),
+        // Record WHY the fire failed so the thread doesn't show a reason-less
+        // "errored" (e.g. a 5-min timeout abort). Only overwrite when we
+        // actually have a reason — never clobber an existing one with null.
+        ...(reason != null ? { failure_reason: reason } : {}),
+        ...(kind != null ? { failure_kind: kind } : {}),
+      })
       .where("id", "=", taskId)
       .where("status", "=", "in_progress")
       .execute();

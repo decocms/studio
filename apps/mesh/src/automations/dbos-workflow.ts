@@ -383,10 +383,14 @@ async function buildDispatchRequestStep(
   return { ok: true, request: serializableRequest };
 }
 
-async function markRunFailedStep(taskId: string): Promise<void> {
+async function markRunFailedStep(
+  taskId: string,
+  reason?: string,
+  kind?: string,
+): Promise<void> {
   const rt = requireRuntime();
   try {
-    await rt.storage.markRunFailed(taskId);
+    await rt.storage.markRunFailed(taskId, reason, kind);
   } catch {
     // best-effort
   }
@@ -444,7 +448,7 @@ async function fireAutomationWorkflowFn(
     { name: "buildDispatchRequest" },
   );
   if (!built.ok) {
-    await DBOS.runStep(() => markRunFailedStep(taskId), {
+    await DBOS.runStep(() => markRunFailedStep(taskId, built.reason, "setup"), {
       name: "markRunFailed",
     });
     return { taskId, error: built.reason };
@@ -467,16 +471,17 @@ async function fireAutomationWorkflowFn(
       await DBOS.runStep(() => deactivateAutomationStep(prep.automation.id), {
         name: "deactivateAutomation",
       });
-      await DBOS.runStep(() => markRunFailedStep(taskId), {
-        name: "markRunFailed",
-      });
+      await DBOS.runStep(
+        () => markRunFailedStep(taskId, runError, "permanent"),
+        { name: "markRunFailed" },
+      );
       return { taskId, error: runError };
     }
     console.error(
       `[fireAutomationWorkflow] ERROR "${prep.automation.name}" taskId=${taskId}:`,
       runError,
     );
-    await DBOS.runStep(() => markRunFailedStep(taskId), {
+    await DBOS.runStep(() => markRunFailedStep(taskId, runError, "error"), {
       name: "markRunFailed",
     });
     return { taskId, error: runError };
