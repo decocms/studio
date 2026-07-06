@@ -6,35 +6,53 @@ interface RunBlockInput {
 }
 
 /**
- * Build the single-invoke URL Deco expects:
- * `POST <preview>/deco/invoke/<encoded resolveType>` with `{ props }` as body.
- * Same shape as the product-list preview's server route, but the fetch runs in
- * the browser (see below).
+ * Build the block-preview run URL Deco expects (same contract the admin uses):
+ * `GET <preview>/live/previews/<resolveType>` with the resolveType RAW in the
+ * path (slashes intact) and:
+ *
+ * - `__cb` — CDN cache-buster (time-encoded) so we always miss the edge cache.
+ * - `__decoFBT=0` — disables loader caching for this request.
+ * - `__d` — enables debug mode; the value is a free-form correlation id.
+ * - `props` — `btoa(encodeURIComponent(JSON.stringify(props)))`, mirroring the
+ *   admin's `encodeProps` (the runtime decodes with
+ *   `decodeURIComponent(atob(props))`; the URI-encoding step keeps `btoa` safe
+ *   for non-Latin1 characters).
+ *
+ * `nowMs` is a parameter so the function stays pure and testable.
  */
-function buildInvokeUrl(previewUrl: string, resolveType: string): string {
-  const base = previewUrl.replace(/\/+$/, "");
-  return `${base}/deco/invoke/${encodeURIComponent(resolveType)}`;
+export function buildPreviewRunUrl(
+  previewUrl: string,
+  resolveType: string,
+  props: Record<string, unknown>,
+  nowMs: number,
+): string {
+  const url = new URL(`/live/previews/${resolveType}`, previewUrl);
+  url.searchParams.set("__cb", nowMs.toString(36));
+  url.searchParams.set("__decoFBT", "0");
+  url.searchParams.set("__d", `run-${nowMs.toString(36)}`);
+  url.searchParams.set(
+    "props",
+    btoa(encodeURIComponent(JSON.stringify(props))),
+  );
+  return url.href;
 }
 
 /**
- * Live-invoke a loader/action against the running sandbox preview and return its
- * structured result.
+ * Live-invoke a loader/action against the running sandbox preview and return
+ * its structured result.
  *
  * The fetch runs CLIENT-side, straight at the preview origin — exactly like
  * `useLiveMeta` and the dynamic-options field. This matters for desktop-linked
  * sandboxes: the preview lives at `<handle>.localhost:<port>`, which the browser
- * resolves but the mesh server (Bun) does not — routing through the server
- * `preview-invoke` proxy there fails with "Preview unreachable".
+ * resolves but the mesh server (Bun) does not.
  */
 async function invokeBlock(
   previewUrl: string,
   { resolveType, props }: RunBlockInput,
 ): Promise<unknown> {
-  const res = await fetch(buildInvokeUrl(previewUrl, resolveType), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ props }),
-  });
+  const res = await fetch(
+    buildPreviewRunUrl(previewUrl, resolveType, props, Date.now()),
+  );
 
   const text = await res.text();
   let data: unknown = null;
