@@ -231,7 +231,12 @@ function CardHeader({
           )}
         </div>
         {subtitle && (
-          <span className="text-xs text-muted-foreground">{subtitle}</span>
+          <span
+            className="truncate text-xs text-muted-foreground"
+            title={subtitle}
+          >
+            {subtitle}
+          </span>
         )}
       </div>
       {actions}
@@ -315,6 +320,7 @@ export function FileCard({
   filename,
   updatedAt,
   downloadUrl,
+  subtitle,
   publicState,
   onOpen,
   onShare,
@@ -323,6 +329,8 @@ export function FileCard({
   filename: string;
   updatedAt: string;
   downloadUrl: string;
+  /** Overrides the file-type description (e.g. the containing folder). */
+  subtitle?: string;
   publicState?: PublicState;
   onOpen: () => void;
   onShare?: () => void;
@@ -336,7 +344,7 @@ export function FileCard({
         }
         name={filename}
         meta={timeAgo(updatedAt)}
-        subtitle={describeFileType(filename)}
+        subtitle={subtitle ?? describeFileType(filename)}
         publicState={publicState}
         actions={
           <FileActions
@@ -705,6 +713,8 @@ export function RecentFileCard(props: {
   updatedAt: string;
   size: number;
   downloadUrl: string;
+  /** Overrides the file-type description (e.g. the containing folder). */
+  subtitle?: string;
   publicState?: PublicState;
   onOpen: () => void;
   onShare?: () => void;
@@ -721,7 +731,7 @@ export function RecentFileCard(props: {
         }
         name={props.filename}
         meta={timeAgo(props.updatedAt)}
-        subtitle={describeFileType(props.filename)}
+        subtitle={props.subtitle ?? describeFileType(props.filename)}
         publicState={props.publicState}
         actions={
           <FileActions

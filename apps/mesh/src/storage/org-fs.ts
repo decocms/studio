@@ -566,6 +566,35 @@ export class OrgFsEntryStorage {
   }
 
   /**
+   * Live files whose path matches `query` (case-insensitive substring, so
+   * folder names in the path match too), newest first across every volume.
+   */
+  async searchFiles(params: {
+    organizationId: string;
+    query: string;
+    limit: number;
+    /** Restrict to these volumes (unset = all of the org's volumes). */
+    volumes?: string[];
+  }): Promise<OrgFsEntry[]> {
+    if (params.volumes && params.volumes.length === 0) return [];
+    // Escape LIKE metacharacters so the query is a literal substring.
+    const escaped = params.query.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+    let qb = this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", params.organizationId)
+      .where("kind", "=", "file")
+      .where("deleted_at", "is", null)
+      .where("path", "ilike", `%${escaped}%`);
+    if (params.volumes) qb = qb.where("volume", "in", params.volumes);
+    const rows = await qb
+      .select(COLUMNS)
+      .orderBy("seq", "desc")
+      .limit(params.limit)
+      .execute();
+    return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
+  }
+
+  /**
    * Change feed: entries (including tombstones) with `seq` greater than the
    * cursor, oldest first. Consumers invalidate/delete locally and advance the
    * cursor to the last `seq` returned.

@@ -56,6 +56,7 @@ import {
   buildPublicOrgFs,
   getPublicSets,
   isPublicVolume,
+  publicVolumeForSet,
 } from "@/file-storage/public-sets";
 import { buildSkillCatalog } from "@/file-storage/skill-catalog";
 import { detectContentType } from "@/object-storage/key-utils";
@@ -420,8 +421,8 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   });
 
   // Most recently written files across every volume, newest first — the
-  // Library page's "Recently added"/"All files" feed. Volume-less by design,
-  // so it lives above the `/:volume/*` routes.
+  // Library page's "Recently added" feed. Volume-less by design, so it
+  // lives above the `/:volume/*` routes.
   app.get("/recent", async (c) => {
     const ctx = c.get("meshContext");
     if (!ctx.auth?.user?.id) {
@@ -443,6 +444,55 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       return c.json({
         entries: await ctx.orgFs.recentWithEffectivePublic(limit),
       });
+    } catch (err) {
+      return fsErrorResponse(c, err);
+    }
+  });
+
+  // Path search (case-insensitive substring) across every volume, newest
+  // first — the Library's search box. Volume-less by design, so it lives
+  // above the `/:volume/*` routes.
+  app.get("/search", async (c) => {
+    const ctx = c.get("meshContext");
+    if (!ctx.auth?.user?.id) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    if (!ctx.organization?.id) {
+      return c.json({ error: "Organization required" }, 400);
+    }
+    const denied = await checkPermission(c, ctx, "ORG_FS_READ");
+    if (denied) return denied;
+    if (!ctx.orgFs) {
+      return c.json({ error: "Object storage not configured" }, 503);
+    }
+    const q = (c.req.query("q") ?? "").trim();
+    if (!q) return c.json({ entries: [] });
+    const limit = Math.min(
+      Math.max(Number(c.req.query("limit")) || DEFAULT_RECENT_LIMIT, 1),
+      MAX_RECENT_LIMIT,
+    );
+    try {
+      // Two manifests: the org's own volumes plus the deployment's shared
+      // public sets (pseudo-org, gated to the configured set volumes like
+      // the browse routes). `seq` is one global sequence, so interleaving
+      // by seq desc preserves write order across both.
+      const publicVolumes = getPublicSets().map((s) =>
+        publicVolumeForSet(s.set),
+      );
+      const [own, pub] = await Promise.all([
+        ctx.orgFs.searchWithEffectivePublic(q, limit),
+        publicVolumes.length > 0
+          ? buildPublicOrgFs(ctx).searchWithEffectivePublic(
+              q,
+              limit,
+              publicVolumes,
+            )
+          : [],
+      ]);
+      const entries = [...own, ...pub]
+        .sort((a, b) => Number(BigInt(b.seq) - BigInt(a.seq)))
+        .slice(0, limit);
+      return c.json({ entries });
     } catch (err) {
       return fsErrorResponse(c, err);
     }
