@@ -161,6 +161,26 @@ export function useOrgFsRecent(limit = 60, opts?: { enabled?: boolean }) {
   });
 }
 
+/**
+ * Path search (case-insensitive substring) across every volume, newest
+ * first — the Library's search box. Only runs for non-empty queries;
+ * previous results stay on screen while a new query loads.
+ */
+export function useOrgFsSearch(query: string, limit = 50) {
+  const { org } = useProjectContext();
+  return useQuery({
+    queryKey: KEYS.orgFsSearch(org.id, query),
+    enabled: query.length > 0,
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const res = await fsFetch(
+        `/api/${encodeURIComponent(org.slug)}/fs/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+      );
+      return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
+    },
+  });
+}
+
 /** A skill folder (dir containing SKILL.md) in the org filesystem. */
 export interface OrgFsSkill {
   volume: string;
@@ -301,11 +321,12 @@ export function useOrgFsSetShareMode(volume: string) {
       queryClient.invalidateQueries({
         queryKey: KEYS.orgFsStat(org.id, volume, input.path),
       });
-      // Refresh the browser listings + recent feed so public badges re-render.
+      // Refresh the browser listings + feeds so public badges re-render.
       queryClient.invalidateQueries({
         queryKey: KEYS.orgFsVolume(org.id, volume),
       });
       queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(org.id) });
+      queryClient.invalidateQueries({ queryKey: KEYS.orgFsSearchRoot(org.id) });
     },
   });
 }
@@ -319,6 +340,7 @@ export function useOrgFsMutations(volume: string) {
       queryKey: KEYS.orgFsVolume(org.id, volume),
     });
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(org.id) });
+    queryClient.invalidateQueries({ queryKey: KEYS.orgFsSearchRoot(org.id) });
   };
 
   const upload = useMutation({
