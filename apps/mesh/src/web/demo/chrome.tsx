@@ -4,6 +4,7 @@
  * Lightweight product-like framing (preview pane) around the REAL chat.
  * Pure presentational; all live content comes from the Director's stores.
  */
+import { cn } from "@deco/ui/lib/utils.ts";
 
 /** One selectable MCP-app tab in the preview chrome (top right). */
 export interface PreviewApp {
@@ -44,11 +45,12 @@ export function PreviewFrame({
                 type="button"
                 onClick={app.onClick}
                 data-demo-target={`app:${app.label.toLowerCase()}`}
-                className={
+                className={cn(
+                  "rounded-full px-2.5 py-0.5 text-[11px] font-medium",
                   app.active
-                    ? "rounded-full bg-foreground px-2.5 py-0.5 text-[11px] font-medium text-background"
-                    : "rounded-full px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                }
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                )}
               >
                 {app.label}
               </button>

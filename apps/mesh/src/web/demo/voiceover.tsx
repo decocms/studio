@@ -49,6 +49,24 @@ const VO_FILES: Record<string, string> = {
     "/demo/vo/vo-17.m4a",
   "It's agents all the way down — same intelligence, only the context changes":
     "/demo/vo/vo-18.m4a",
+
+  // ---- day-zero (onboarding) — clips recorded after script sign-off ----
+  "Welcome to deco — let's set up your operation": "/demo/vo/dz-01.m4a",
+  "Setup takes one technical person — everyone else just gets invited":
+    "/demo/vo/dz-02.m4a",
+  "Point deco at your code, your site, and your analytics":
+    "/demo/vo/dz-03.m4a",
+  "Now deco reads everything at once — your site, your code, your data":
+    "/demo/vo/dz-04.m4a",
+  "It turns every finding into your operations dashboard": "/demo/vo/dz-05.m4a",
+  "And a full backlog — like a month with an agency, prioritized overnight":
+    "/demo/vo/dz-06.m4a",
+  "Two minutes in — your operation is live, and it finds you where you are":
+    "/demo/vo/dz-07.m4a",
+  "Invite the brand — Michelle gets agents already set up, and never sees GitHub":
+    "/demo/vo/dz-08.m4a",
+  "Set up once — then your whole team just operates through agents":
+    "/demo/vo/dz-09.m4a",
 };
 
 /** Clip length (ms) per file — the Director holds each pill at least this
@@ -74,6 +92,16 @@ export const VO_MS: Record<string, number> = {
   "/demo/vo/vo-16.m4a": 3896,
   "/demo/vo/vo-17.m4a": 3833,
   "/demo/vo/vo-18.m4a": 4482,
+  // day-zero — measured from the generated clips
+  "/demo/vo/dz-01.m4a": 2597,
+  "/demo/vo/dz-02.m4a": 4101,
+  "/demo/vo/dz-03.m4a": 3688,
+  "/demo/vo/dz-04.m4a": 4708,
+  "/demo/vo/dz-05.m4a": 2860,
+  "/demo/vo/dz-06.m4a": 3910,
+  "/demo/vo/dz-07.m4a": 3589,
+  "/demo/vo/dz-08.m4a": 4553,
+  "/demo/vo/dz-09.m4a": 3630,
 };
 
 /** Milliseconds the caption must stay up for its clip (0 if unnarrated). */

@@ -175,7 +175,7 @@ nav a{margin-left:16px;color:#667085;text-decoration:none;font-size:12px}
 .grid{display:grid;gap:12px;padding:18px 22px;grid-template-columns:repeat(3,1fr)}
 .card{border:1px solid #f0f1f3;border-radius:10px;height:96px;background:linear-gradient(135deg,#f9fafb,#f0f1f3)}`;
 
-function velaPreview({ winter }: { winter: boolean }): string {
+export function velaPreview({ winter }: { winter: boolean }): string {
   const cards = Array.from({ length: 6 }, () => `<div class="card"></div>`);
   return `<!doctype html><html><head><meta charset="utf8"><style>${STYLE}</style></head><body>
     ${winter ? `<div class="banner">❄️ Winter Drop — new collection live</div>` : ""}
@@ -191,7 +191,7 @@ function velaPreview({ winter }: { winter: boolean }): string {
 
 /** The Members section rendered as an MCP app in the preview panel — settings
  *  has no special screen; it's apps inside the Settings agent's preview. */
-function settingsApp({ rafaAdmin }: { rafaAdmin: boolean }): string {
+export function settingsApp({ rafaAdmin }: { rafaAdmin: boolean }): string {
   const row = (name: string, email: string, role: string, hot = false) =>
     `<div class="row"><div class="who"><div class="ava">${name[0]}</div><div><div class="nm">${name}</div><div class="em">${email}</div></div></div><span class="role ${hot ? "hot" : ""}">${role}</span></div>`;
   return `<!doctype html><html><head><meta charset="utf8"><style>
@@ -265,7 +265,7 @@ body{background:#fafafa;color:#101828;padding:16px}
 /** The org pilot's home: an OPERATIONS dashboard, not a site preview —
  *  KPIs with anomalies flagged, diagnosed anomalies, agent-proposed
  *  opportunities, and the review queue. */
-function orgDashboard(): string {
+export function orgDashboard(): string {
   const kpi = (
     l: string,
     v: string,
@@ -341,7 +341,7 @@ const SLO_STYLE = `
 .sf{color:#6b7280;font-size:9px;margin-top:8px;border-top:1px solid #1c2128;padding-top:7px}`;
 
 /** Store Ops' own app: yesterday's sales, revenue trend, top products. */
-function storeOpsApp(): string {
+export function storeOpsApp(): string {
   const bar = (h: number, hot = false) =>
     `<div style="flex:1;background:${hot ? "#4d7c0f" : "#e4e7ec"};border-radius:4px 4px 0 0;height:${h}%"></div>`;
   const prod = (name: string, rev: string, share: string) =>
@@ -407,7 +407,7 @@ ${prod("Direct", "R$22k", "23%")}
  *  6px radius, ring-shadow cards) and populated with THIS session's story:
  *  the Winter Drop ship is done, the agent's queued follow-ups are moving,
  *  and the cards mirror the team threads in the sidebar. */
-function tasksKanban(): string {
+export function tasksKanban(): string {
   const card = (
     id: string,
     chip: string,
@@ -955,7 +955,7 @@ function ComposerChip({
   );
 }
 
-function Composer({
+export function Composer({
   stores,
   compact,
 }: {
@@ -1009,7 +1009,7 @@ function Composer({
 // Float card — the real shell's content card (rounded, card-shadow, on cream)
 // ============================================================================
 
-function FloatCard({
+export function FloatCard({
   children,
   className,
 }: {
@@ -1026,7 +1026,7 @@ function FloatCard({
 }
 
 /** Faded decorative corners — same assets as the real home. */
-function HomeCorners() {
+export function HomeCorners() {
   return (
     <div
       aria-hidden
