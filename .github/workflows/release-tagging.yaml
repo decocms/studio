@@ -116,6 +116,14 @@ jobs:
               continue;
             }
 
+            // The nginx conf is baked into the studio-nginx image, tagged with
+            // apps/mesh's version — so a change here must bump that version to
+            // force a rebuild (there is no ConfigMap to reload).
+            if (file.startsWith("deploy/helm/studio/files/")) {
+              manifests.add("apps/mesh/package.json");
+              continue;
+            }
+
             const match = file.match(/^packages\/([^/]+)\//);
             if (match) {
               manifests.add(`packages/${match[1]}/package.json`);
