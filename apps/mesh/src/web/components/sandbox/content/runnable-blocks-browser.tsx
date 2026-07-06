@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   BookOpen01,
+  ChevronDown,
   ChevronRight,
   Database01,
   Folder,
@@ -15,6 +16,7 @@ import { toast } from "sonner";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import type { LiveMeta } from "@/web/components/sections-editor/resolve-schema";
+import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/section-types";
 import { useSaveBlock } from "@/web/components/sections-editor/use-save-block";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
 import { EmptyMessage, ItemRow } from "./content-browser";
@@ -86,8 +88,9 @@ function folderLabel(segment: string, depth: number): string {
  * Folder-navigable browser for the Loaders / Actions content tabs. The main
  * panel walks the resolveType path as folders (vendor → category); leaves open
  * the {@link RunnableBlockEditor} (form + JSON + Run). Saved (global) blocks
- * live under a virtual "Saved" folder at the root. Searching flattens the tree
- * into a flat result list across every folder.
+ * live alongside the raw block they instantiate, behind a purple "See saved"
+ * accordion under its row. Searching flattens the tree into a flat result list
+ * across every folder.
  */
 export function RunnableBlocksBrowser({
   orgSlug,
@@ -109,6 +112,8 @@ export function RunnableBlocksBrowser({
   const [path, setPath] = useState<string[]>([]);
   const [selection, setSelection] = useState<RunnableSelection>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  // resolveTypes whose "See saved" accordion is open.
+  const [openSaved, setOpenSaved] = useState<Set<string>>(() => new Set());
 
   // Reset navigation when switching between the Loaders and Actions tabs
   // (this component is reused for both).
@@ -118,7 +123,17 @@ export function RunnableBlocksBrowser({
     setPath([]);
     setSelection(null);
     setSearchQuery("");
+    setOpenSaved(new Set());
   }
+
+  const toggleSavedOpen = (resolveType: string) => {
+    setOpenSaved((prev) => {
+      const next = new Set(prev);
+      if (next.has(resolveType)) next.delete(resolveType);
+      else next.add(resolveType);
+      return next;
+    });
+  };
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const saveReferencedBlock = createReferencedBlockSaver((blockKey, data) =>
@@ -154,27 +169,44 @@ export function RunnableBlocksBrowser({
       )
     : [];
 
-  // Children of the current folder: sub-folders (with descendant + saved
-  // counts) and the entries that live directly at this level.
+  // Children of the current folder: sub-folders (with raw + saved counts),
+  // the raw entries at this level, and their saved instances grouped by
+  // resolveType (rendered as a "See saved" accordion under each raw row).
   const folders = new Map<string, { count: number; savedCount: number }>();
   const items: BrowsableEntry[] = [];
+  const savedByResolveType = new Map<string, BrowsableEntry[]>();
   if (!searching) {
     for (const entry of entries) {
       const fp = entry.folderPath;
       if (fp.length < path.length) continue;
       if (!path.every((seg, i) => fp[i] === seg)) continue;
       if (fp.length === path.length) {
-        items.push(entry);
+        if (entry.savedKey !== undefined) {
+          const bucket = savedByResolveType.get(entry.resolveType);
+          if (bucket) bucket.push(entry);
+          else savedByResolveType.set(entry.resolveType, [entry]);
+        } else {
+          items.push(entry);
+        }
       } else {
         const name = fp[path.length]!;
         const bucket = folders.get(name) ?? { count: 0, savedCount: 0 };
-        bucket.count += 1;
         if (entry.savedKey !== undefined) bucket.savedCount += 1;
+        else bucket.count += 1;
         folders.set(name, bucket);
       }
     }
     items.sort((a, b) => a.title.localeCompare(b.title));
+    for (const bucket of savedByResolveType.values()) {
+      bucket.sort((a, b) => a.title.localeCompare(b.title));
+    }
   }
+  // Saved blocks whose raw loader isn't listed at this level (hidden or gone
+  // from the manifest) still need a home — rendered as standalone rows.
+  const orphanSaved = [...savedByResolveType.entries()]
+    .filter(([rt]) => !items.some((item) => item.resolveType === rt))
+    .flatMap(([, bucket]) => bucket)
+    .sort((a, b) => a.title.localeCompare(b.title));
   const folderList = [...folders.entries()]
     .map(([name, counts]) => ({ name, ...counts }))
     .sort((a, b) =>
@@ -311,7 +343,9 @@ export function RunnableBlocksBrowser({
                 ))}
               </div>
             )
-          ) : folderList.length === 0 && items.length === 0 ? (
+          ) : folderList.length === 0 &&
+            items.length === 0 &&
+            orphanSaved.length === 0 ? (
             <EmptyMessage
               title={`No ${kind} here`}
               description={
@@ -354,20 +388,68 @@ export function RunnableBlocksBrowser({
                   })}
                 </div>
               )}
-              {items.length > 0 && (
+              {(items.length > 0 || orphanSaved.length > 0) && (
                 <div
                   className={cn(
                     "flex flex-col gap-1",
                     folderList.length > 0 && "mt-4",
                   )}
                 >
-                  {items.map((entry) => (
+                  {items.map((entry) => {
+                    const saved =
+                      savedByResolveType.get(entry.resolveType) ?? [];
+                    const savedOpen = openSaved.has(entry.resolveType);
+                    return (
+                      <div key={entry.resolveType} className="flex flex-col">
+                        <ItemRow
+                          icon={Icon}
+                          title={entry.title}
+                          subtitle={entry.resolveType}
+                          active={false}
+                          onClick={() => selectEntry(entry)}
+                        />
+                        {saved.length > 0 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => toggleSavedOpen(entry.resolveType)}
+                              aria-expanded={savedOpen}
+                              className="flex items-center gap-1 self-start rounded-md px-2.5 py-1 text-xs font-medium transition-colors hover:bg-global-section/10 cursor-pointer ml-11"
+                              style={{ color: GLOBAL_SECTION_ICON_COLOR }}
+                            >
+                              {savedOpen ? (
+                                <ChevronDown size={12} className="shrink-0" />
+                              ) : (
+                                <ChevronRight size={12} className="shrink-0" />
+                              )}
+                              {savedOpen ? "Hide saved" : "See saved"} (
+                              {saved.length})
+                            </button>
+                            {savedOpen && (
+                              <div className="ml-11 flex flex-col gap-1 pb-1">
+                                {saved.map((savedEntry) => (
+                                  <ItemRow
+                                    key={savedEntry.savedKey}
+                                    icon={Icon}
+                                    accent="global"
+                                    title={savedEntry.title}
+                                    subtitle={savedEntry.resolveType}
+                                    active={false}
+                                    onClick={() => selectEntry(savedEntry)}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {orphanSaved.map((entry) => (
                     <ItemRow
-                      key={entry.savedKey ?? entry.resolveType}
+                      key={entry.savedKey}
                       icon={Icon}
-                      accent={
-                        entry.savedKey !== undefined ? "global" : undefined
-                      }
+                      accent="global"
                       title={entry.title}
                       subtitle={entry.resolveType}
                       active={false}
