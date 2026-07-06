@@ -47,13 +47,27 @@ export function buildInvokeRunUrl(
  * sandboxes: the preview lives at `<handle>.localhost:<port>`, which the browser
  * resolves but the mesh server (Bun) does not.
  */
+/** Cap on a single run — same limit the server-side invoke proxy used. */
+const RUN_TIMEOUT_MS = 30_000;
+
 async function invokeBlock(
   previewUrl: string,
   { resolveType, props }: RunBlockInput,
 ): Promise<unknown> {
-  const res = await fetch(
-    buildInvokeRunUrl(previewUrl, resolveType, props, Date.now()),
-  );
+  let res: Response;
+  try {
+    res = await fetch(
+      buildInvokeRunUrl(previewUrl, resolveType, props, Date.now()),
+      { signal: AbortSignal.timeout(RUN_TIMEOUT_MS) },
+    );
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(
+        `Run timed out after ${RUN_TIMEOUT_MS / 1000}s — the block may be slow or the preview unresponsive.`,
+      );
+    }
+    throw err;
+  }
 
   const text = await res.text();
   let data: unknown = null;

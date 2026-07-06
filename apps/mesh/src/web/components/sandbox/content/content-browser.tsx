@@ -536,12 +536,21 @@ function ContentBrowserReady({
     .filter((c) => c.slug)
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  if (!hasEditableDecoContent(decofile, meta) && !showBlog) {
+  const loadersCount = countAvailableRunnables(meta, "loaders");
+  const actionsCount = countAvailableRunnables(meta, "actions");
+
+  // Loader/action-only sites are still editable — don't gate them out.
+  if (
+    !hasEditableDecoContent(decofile, meta) &&
+    !showBlog &&
+    loadersCount === 0 &&
+    actionsCount === 0
+  ) {
     return (
       <EmptyMessage
         icon={AlertCircle}
         title="No editable content"
-        description="This project doesn't expose any Deco pages, sections, or apps."
+        description="This project doesn't expose any Deco pages, sections, apps, loaders, or actions."
       />
     );
   }
@@ -550,8 +559,8 @@ function ContentBrowserReady({
     pages: pages.length,
     sections: globalSections.length,
     apps: appCatalog.length,
-    loaders: countAvailableRunnables(meta, "loaders"),
-    actions: countAvailableRunnables(meta, "actions"),
+    loaders: loadersCount,
+    actions: actionsCount,
     posts: allBlogEntries.posts.length,
     authors: allBlogEntries.authors.length,
     categories: allBlogEntries.categories.length,
