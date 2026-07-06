@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { cadence, reduce, type ProbeState } from "./probe";
-import { PROBE_FAST_MS, PROBE_SLOW_MS } from "./constants";
+import {
+  cadence,
+  reduce,
+  shouldEscalateFailure,
+  type ProbeState,
+} from "./probe";
+import {
+  PROBE_FAILURE_THRESHOLD,
+  PROBE_FAST_MS,
+  PROBE_SLOW_MS,
+} from "./constants";
 
 const initial: ProbeState = {
   status: "booting",
@@ -173,6 +182,27 @@ describe("reduce", () => {
       expect(r.next).toEqual(state);
       expect(r.log).toBeUndefined();
     });
+  });
+});
+
+describe("shouldEscalateFailure", () => {
+  test("online is held below the threshold", () => {
+    expect(shouldEscalateFailure("online", 1)).toBe(false);
+    expect(shouldEscalateFailure("online", PROBE_FAILURE_THRESHOLD - 1)).toBe(
+      false,
+    );
+  });
+
+  test("online escalates at the threshold", () => {
+    expect(shouldEscalateFailure("online", PROBE_FAILURE_THRESHOLD)).toBe(true);
+    expect(shouldEscalateFailure("online", PROBE_FAILURE_THRESHOLD + 1)).toBe(
+      true,
+    );
+  });
+
+  test("booting/offline escalate immediately (no debounce)", () => {
+    expect(shouldEscalateFailure("booting", 1)).toBe(true);
+    expect(shouldEscalateFailure("offline", 1)).toBe(true);
   });
 });
 
