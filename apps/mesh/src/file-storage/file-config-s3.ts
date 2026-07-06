@@ -220,10 +220,27 @@ export async function listObjects(params: {
   ctx: FileConfigContext;
   cursor?: string | null;
   maxKeys?: number;
+  search?: string | null;
 }): Promise<ListObjectsResult> {
   const client = buildS3Client(params.ctx);
   const target = Math.min(params.maxKeys ?? 50, 200);
   const bucketPrefix = params.ctx.info.prefix ?? "";
+
+  // Search is a substring match on the object key. S3 ListObjectsV2 only
+  // filters by lexicographic prefix, and our keys embed the filename after
+  // a `<yyyy>/<mm>/<uuid>-` shard, so a prefix query can't find it. The only
+  // option is to scan pages under the broad prefix and filter server-side.
+  const search = params.search?.trim().toLowerCase();
+  if (search) {
+    return searchObjects({
+      client,
+      ctx: params.ctx,
+      bucketPrefix,
+      target,
+      cursor: params.cursor,
+      search,
+    });
+  }
 
   const now = new Date();
   const currentYear = String(now.getUTCFullYear());
@@ -295,6 +312,64 @@ export async function listObjects(params: {
 
   const items = Array.from(seen.values()).sort(byLastModifiedDesc);
   return { items, nextCursor };
+}
+
+/**
+ * Substring search over the bucket. S3 gives us no server-side "contains"
+ * filter, so we scan wide pages (up to `SCAN_PAGE_SIZE` keys each) under the
+ * broad prefix and keep the keys whose lowercased value contains `search`.
+ *
+ * We never slice matches mid-page: `nextCursor` is always a real S3 page
+ * boundary token, so "Load more" resumes the scan exactly where this one
+ * stopped without dropping matches. Each request scans at most
+ * `MAX_SCAN_PAGES` pages so a huge bucket can't stall a single call — the
+ * returned cursor lets the client continue if the target wasn't reached.
+ */
+async function searchObjects(params: {
+  client: S3Client;
+  ctx: FileConfigContext;
+  bucketPrefix: string;
+  target: number;
+  cursor?: string | null;
+  search: string;
+}): Promise<ListObjectsResult> {
+  const SCAN_PAGE_SIZE = 1000;
+  const MAX_SCAN_PAGES = 20;
+
+  const matches: ListedObject[] = [];
+  let continuationToken = params.cursor ?? undefined;
+  let hasMore = false;
+  let pagesScanned = 0;
+
+  do {
+    const res = await params.client.send(
+      new ListObjectsV2Command({
+        Bucket: params.ctx.info.bucket,
+        Prefix: params.bucketPrefix || undefined,
+        MaxKeys: SCAN_PAGE_SIZE,
+        ContinuationToken: continuationToken,
+      }),
+    );
+    pagesScanned++;
+    for (const obj of res.Contents ?? []) {
+      if (!obj.Key || obj.Key.endsWith("/")) continue;
+      if (obj.Key.toLowerCase().includes(params.search)) {
+        matches.push(toListedObject(obj, params.ctx));
+      }
+    }
+    continuationToken = res.NextContinuationToken;
+    hasMore = Boolean(res.IsTruncated && continuationToken);
+  } while (
+    matches.length < params.target &&
+    hasMore &&
+    pagesScanned < MAX_SCAN_PAGES
+  );
+
+  matches.sort(byLastModifiedDesc);
+  return {
+    items: matches,
+    nextCursor: hasMore ? (continuationToken ?? null) : null,
+  };
 }
 
 function toListedObject(

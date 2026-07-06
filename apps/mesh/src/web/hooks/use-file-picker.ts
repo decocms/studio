@@ -34,13 +34,15 @@ export interface ListObjectsResponse {
  */
 export function useFilePickerObjects(params: {
   configId: string | null;
+  search?: string;
   enabled?: boolean;
 }) {
   const { org } = useProjectContext();
   const studio = useStudioTools();
+  const search = params.search?.trim() || undefined;
 
   return useInfiniteQuery({
-    queryKey: KEYS.filePickerObjects(org.id, params.configId),
+    queryKey: KEYS.filePickerObjects(org.id, params.configId, search),
     enabled: params.enabled !== false && !!params.configId,
     staleTime: 30_000,
     initialPageParam: null as string | null,
@@ -49,6 +51,7 @@ export function useFilePickerObjects(params: {
       return await studio.call("FILE_OBJECTS_LIST", {
         configId: params.configId as string,
         cursor: pageParam ?? undefined,
+        search,
       });
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,

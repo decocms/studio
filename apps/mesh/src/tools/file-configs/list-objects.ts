@@ -18,6 +18,7 @@ export const FILE_OBJECTS_LIST = defineTool({
     configId: z.string().min(1),
     cursor: z.string().nullable().optional(),
     maxKeys: z.number().int().min(1).max(200).optional(),
+    search: z.string().nullable().optional(),
   }),
   outputSchema: z.object({
     items: z.array(
@@ -46,6 +47,7 @@ export const FILE_OBJECTS_LIST = defineTool({
       ctx: fileCfg,
       cursor: input.cursor,
       maxKeys: input.maxKeys,
+      search: input.search,
     });
   },
 });

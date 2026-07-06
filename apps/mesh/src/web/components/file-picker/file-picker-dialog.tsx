@@ -27,6 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { SearchInput } from "@deco/ui/components/search-input.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import {
   Tabs,
@@ -36,6 +37,7 @@ import {
 } from "@deco/ui/components/tabs.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ErrorBoundary } from "@/web/components/error-boundary";
+import { useDebouncedValue } from "@/web/hooks/use-debounced-value";
 import {
   type FileConfigInfo,
   useFileConfigs,
@@ -196,7 +198,12 @@ function BucketPanel({
   mode: FilePickerMode;
   onSelect: (url: string) => void;
 }) {
-  const objectsQuery = useFilePickerObjects({ configId: config.id });
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const objectsQuery = useFilePickerObjects({
+    configId: config.id,
+    search: debouncedSearch,
+  });
   const upload = useFilePickerUpload();
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -258,6 +265,13 @@ function BucketPanel({
   const items = allItems.filter((item) =>
     mode === "image" ? isImageKey(item.key) : true,
   );
+  const activeSearch = debouncedSearch.trim();
+  // The search box stays visible while a search is active even if it returns
+  // nothing, so the user can always clear or refine it.
+  const showSearch = allItems.length > 0 || search.trim().length > 0;
+  const isSearching =
+    search !== debouncedSearch ||
+    (objectsQuery.isFetching && !objectsQuery.isFetchingNextPage);
 
   return (
     <div className="flex flex-col gap-3 min-h-0 h-full">
@@ -303,15 +317,20 @@ function BucketPanel({
         />
       </button>
 
-      {objectsQuery.isFetching && !objectsQuery.isFetchingNextPage ? (
-        <div className="flex justify-end">
-          <span className="text-xs text-muted-foreground">Loading…</span>
-        </div>
+      {showSearch ? (
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          isSearching={isSearching}
+          placeholder={mode === "image" ? "Search images…" : "Search files…"}
+        />
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         {items.length === 0 ? (
-          mode === "image" && allItems.length > 0 ? (
+          activeSearch ? (
+            <NoSearchResults query={activeSearch} />
+          ) : mode === "image" && allItems.length > 0 ? (
             <NonImagesNotice />
           ) : (
             <EmptyGalleryState />
@@ -370,6 +389,20 @@ function NonImagesNotice() {
       <p className="text-sm font-medium">No images in this bucket yet</p>
       <p className="text-xs text-muted-foreground">
         The bucket has other files, but none match common image formats.
+      </p>
+    </div>
+  );
+}
+
+function NoSearchResults({ query }: { query: string }) {
+  return (
+    <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 py-8 text-center">
+      <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+        <Image01 size={18} className="text-muted-foreground" />
+      </div>
+      <p className="text-sm font-medium">No matches for "{query}"</p>
+      <p className="text-xs text-muted-foreground">
+        Try a different search, or load more files below.
       </p>
     </div>
   );
