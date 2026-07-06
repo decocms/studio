@@ -324,6 +324,7 @@ function BucketPanel({
           onChange={setSearch}
           isSearching={isSearching}
           placeholder={mode === "image" ? "Search images…" : "Search files…"}
+          className="shrink-0"
         />
       ) : null}
 
