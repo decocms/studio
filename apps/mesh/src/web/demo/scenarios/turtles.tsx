@@ -1720,7 +1720,7 @@ async function backHome(d: Director) {
 
   // The share pill at the TOP scope: hand your whole deco to Claude.
   await d.caption(
-    "And connect Claude to your deco — it gets all your teams at once",
+    "You can also connect Claude to your deco — it gets all your teams at once",
   );
   d.showCursor();
   await d.beat(300);

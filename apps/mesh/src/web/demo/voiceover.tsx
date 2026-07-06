@@ -45,7 +45,7 @@ const VO_FILES: Record<string, string> = {
     "/demo/vo/vo-15.m4a",
   "And the logo always takes you back home — to your agents":
     "/demo/vo/vo-16.m4a",
-  "And connect Claude to your deco — it gets all your teams at once":
+  "You can also connect Claude to your deco — it gets all your teams at once":
     "/demo/vo/vo-17.m4a",
   "It's agents all the way down — same intelligence, only the context changes":
     "/demo/vo/vo-18.m4a",
@@ -72,7 +72,7 @@ export const VO_MS: Record<string, number> = {
   "/demo/vo/vo-14.m4a": 4906,
   "/demo/vo/vo-15.m4a": 3521,
   "/demo/vo/vo-16.m4a": 3896,
-  "/demo/vo/vo-17.m4a": 3332,
+  "/demo/vo/vo-17.m4a": 3833,
   "/demo/vo/vo-18.m4a": 4482,
 };
 
