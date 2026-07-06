@@ -7,6 +7,9 @@ on:
     paths:
       - "apps/mesh/**"
       - "packages/**"
+      # Baked into the nginx image at build time (Dockerfile.nginx), so a change
+      # here must cut a release to rebuild that image — it is not a ConfigMap.
+      - "deploy/helm/studio/files/**"
 
 permissions:
   contents: write
@@ -109,6 +112,14 @@ jobs:
 
           for (const file of files) {
             if (file.startsWith("apps/mesh/")) {
+              manifests.add("apps/mesh/package.json");
+              continue;
+            }
+
+            // The nginx conf is baked into the studio-nginx image, tagged with
+            // apps/mesh's version — so a change here must bump that version to
+            // force a rebuild (there is no ConfigMap to reload).
+            if (file.startsWith("deploy/helm/studio/files/")) {
               manifests.add("apps/mesh/package.json");
               continue;
             }
