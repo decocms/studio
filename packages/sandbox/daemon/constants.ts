@@ -22,6 +22,14 @@ export const DECO_GID = 1000;
 export const PROBE_FAST_MS = 1000;
 export const PROBE_SLOW_MS = 30_000;
 export const PROBE_HEAD_TIMEOUT_MS = 5_000;
+// Consecutive HEAD misses required to flip an *online* server to offline
+// ("crashed"). A single slow probe is expected: a busy dev server (e.g. Vite
+// re-transforming a large edited file, or a heavy SSR of `/`) can block past
+// PROBE_HEAD_TIMEOUT_MS while still very much alive. Without this debounce one
+// slow response marks the sandbox crashed, which the UI surfaces as "the dev
+// server died". After the first miss the probe polls at PROBE_FAST_MS, so a
+// genuine crash is still caught within ~PROBE_FAILURE_THRESHOLD seconds.
+export const PROBE_FAILURE_THRESHOLD = 3;
 
 /**
  * Synthetic branches are sandbox isolation keys, not real git refs.
