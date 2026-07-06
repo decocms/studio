@@ -40,12 +40,10 @@ const VO_FILES: Record<string, string> = {
     "/demo/vo/vo-12.m4a",
   "Even Settings is an agent — its screens are just apps in the preview":
     "/demo/vo/vo-13.m4a",
-  "No settings screens anywhere — chat and preview, all the way through":
-    "/demo/vo/vo-14.m4a",
   "And the logo always takes you back home — to your agents":
-    "/demo/vo/vo-15.m4a",
+    "/demo/vo/vo-14.m4a",
   "It's agents all the way down — same intelligence, only the context changes":
-    "/demo/vo/vo-16.m4a",
+    "/demo/vo/vo-15.m4a",
 };
 
 /** Clip length (ms) per file — the Director holds each pill at least this
@@ -53,22 +51,21 @@ const VO_FILES: Record<string, string> = {
  *  with Maya1 (Apache 2.0, Indian-English voice design) on-device; durations
  *  are the sample-accurate wav lengths from the generation run. */
 export const VO_MS: Record<string, number> = {
-  "/demo/vo/vo-01.m4a": 4100,
-  "/demo/vo/vo-02.m4a": 4500,
-  "/demo/vo/vo-03.m4a": 3570,
-  "/demo/vo/vo-04.m4a": 3730,
-  "/demo/vo/vo-05.m4a": 2630,
-  "/demo/vo/vo-06.m4a": 4650,
-  "/demo/vo/vo-07.m4a": 2630,
-  "/demo/vo/vo-08.m4a": 4770,
-  "/demo/vo/vo-09.m4a": 4120,
-  "/demo/vo/vo-10.m4a": 4500,
-  "/demo/vo/vo-11.m4a": 5220,
-  "/demo/vo/vo-12.m4a": 5610,
-  "/demo/vo/vo-13.m4a": 4610,
-  "/demo/vo/vo-14.m4a": 4000,
-  "/demo/vo/vo-15.m4a": 3430,
-  "/demo/vo/vo-16.m4a": 6260,
+  "/demo/vo/vo-01.m4a": 2820,
+  "/demo/vo/vo-02.m4a": 4135,
+  "/demo/vo/vo-03.m4a": 3202,
+  "/demo/vo/vo-04.m4a": 3047,
+  "/demo/vo/vo-05.m4a": 2281,
+  "/demo/vo/vo-06.m4a": 4097,
+  "/demo/vo/vo-07.m4a": 2464,
+  "/demo/vo/vo-08.m4a": 4333,
+  "/demo/vo/vo-09.m4a": 4132,
+  "/demo/vo/vo-10.m4a": 4456,
+  "/demo/vo/vo-11.m4a": 4657,
+  "/demo/vo/vo-12.m4a": 4589,
+  "/demo/vo/vo-13.m4a": 3521,
+  "/demo/vo/vo-14.m4a": 3896,
+  "/demo/vo/vo-15.m4a": 4482,
 };
 
 /** Milliseconds the caption must stay up for its clip (0 if unnarrated). */
