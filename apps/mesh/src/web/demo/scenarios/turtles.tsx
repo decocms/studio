@@ -1290,7 +1290,9 @@ function OrgLevel({
   }));
   return (
     // Chat 40 / preview 60 — the app UI is the star at org/agent level.
-    <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr]">
+    // minmax(0,·) so long unwrappable chat content can't widen the track
+    // (plain `2fr` tracks have min-width:auto and grow with their content).
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
       <FloatCard>
         <div className="flex min-h-0 flex-1 flex-col">
           <DemoChatStreamProvider store={stores.getChat(activeAgent)}>
