@@ -384,8 +384,19 @@ export const KEYS = {
   orgFsSkills: (orgId: string) => ["org-fs-skills", orgId] as const,
 
   // File picker — objects listed from a configured bucket
-  filePickerObjects: (orgId: string, configId: string | null) =>
-    ["file-picker-objects", orgId, configId] as const,
+  filePickerObjects: (
+    orgId: string,
+    configId: string | null,
+    search?: string,
+    imageOnly?: boolean,
+  ) =>
+    [
+      "file-picker-objects",
+      orgId,
+      configId,
+      search ?? "",
+      imageOnly ?? false,
+    ] as const,
 
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>

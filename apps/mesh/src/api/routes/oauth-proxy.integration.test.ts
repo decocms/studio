@@ -50,18 +50,35 @@ const E2E_TIMEOUT = 15_000;
 
 /**
  * These tests proxy metadata / authorize redirects from LIVE third-party MCP
- * servers, so a server being slow or down makes the proxy return 502 (bad
- * gateway). That's the proxy correctly handling an unreachable upstream — not a
- * regression — and it must not red the merge gate on a third-party outage. When
- * the upstream is unreachable we skip that server's contract assertions (with a
- * loud warning); every reachable server is still fully asserted, and any
- * non-502 status still flows through to the real expectations below, so a proxy
- * bug is never masked. (None of these tests ever expects a 502.)
+ * servers, so a server being slow or down makes the proxy report a gateway
+ * error. That's the proxy correctly handling a bad upstream — not a regression —
+ * and it must not red the merge gate on a third-party outage. We skip that
+ * server's contract assertions (with a loud warning) when:
+ *   - the proxy returns 502/504 (upstream unreachable / gateway timeout), or
+ *   - the proxy returns 500 whose body is a gateway-timeout message — the shape
+ *     the proxy emits when an upstream accepts the connection then hangs (e.g.
+ *     Supabase's authorize endpoint intermittently stalls ~12s).
+ * Every reachable server is still fully asserted, and any other status flows
+ * through to the real expectations below, so a proxy bug is never masked: a
+ * genuine 500 from a logic error won't carry a "timed out" message. (None of
+ * these tests ever expects a 502/504 or a timeout.)
  */
-function skipIfUpstreamUnreachable(res: Response, serverName: string): boolean {
-  if (res.status === 502) {
+async function skipIfUpstreamUnreachable(
+  res: Response,
+  serverName: string,
+): Promise<boolean> {
+  // Read a clone so the original body stays intact for callers that parse it.
+  const isUpstreamTimeout =
+    res.status === 500 &&
+    /timed out|timeout/i.test(
+      await res
+        .clone()
+        .text()
+        .catch(() => ""),
+    );
+  if (res.status === 502 || res.status === 504 || isUpstreamTimeout) {
     console.warn(
-      `[oauth-proxy.e2e] ${serverName}: upstream unreachable (HTTP 502) — skipping contract assertions for this server`,
+      `[oauth-proxy.e2e] ${serverName}: upstream unreachable/timed out (HTTP ${res.status}) — skipping contract assertions for this server`,
     );
     return true;
   }
@@ -202,7 +219,7 @@ describe("MCP OAuth Proxy E2E", () => {
           const res = await app.request(
             `/.well-known/oauth-protected-resource/mcp/${connectionId}`,
           );
-          if (skipIfUpstreamUnreachable(res, server.name)) return;
+          if (await skipIfUpstreamUnreachable(res, server.name)) return;
 
           expect(res.status).toBe(200);
 
@@ -233,7 +250,7 @@ describe("MCP OAuth Proxy E2E", () => {
           const res = await app.request(
             `/.well-known/oauth-authorization-server/oauth-proxy/${connectionId}`,
           );
-          if (skipIfUpstreamUnreachable(res, server.name)) return;
+          if (await skipIfUpstreamUnreachable(res, server.name)) return;
 
           expect(res.status).toBe(200);
 
@@ -270,7 +287,7 @@ describe("MCP OAuth Proxy E2E", () => {
             `/oauth-proxy/${connectionId}/authorize?response_type=code&client_id=test&state=test`,
             { redirect: "manual" },
           );
-          if (skipIfUpstreamUnreachable(res, server.name)) return;
+          if (await skipIfUpstreamUnreachable(res, server.name)) return;
 
           // Must be a redirect (302)
           expect(res.status).toBe(302);
@@ -299,7 +316,7 @@ describe("MCP OAuth Proxy E2E", () => {
             `/oauth-proxy/${connectionId}/authorize?response_type=code&client_id=test&state=test&resource=${encodeURIComponent(proxyResourceUrl)}`,
             { redirect: "manual" },
           );
-          if (skipIfUpstreamUnreachable(res, server.name)) return;
+          if (await skipIfUpstreamUnreachable(res, server.name)) return;
 
           expect(res.status).toBe(302);
 
