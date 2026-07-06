@@ -62,10 +62,14 @@ export interface SandboxFsHooks {
    * retry layer. Used by the richer LLM-visible tools to cover daemon surfaces
    * the typed flat ops intentionally don't model (image reads, html-buffer
    * preview shapes, copy_to_sandbox/share_with_user transfer routes).
+   *
+   * `signal` is the run's abort signal (AI-SDK `ToolCallOptions.abortSignal`):
+   * cancelling the run aborts the in-flight daemon request.
    */
   onProxy(
     path: string,
     body: Record<string, unknown>,
     method?: "POST" | "PUT",
+    signal?: AbortSignal,
   ): Promise<unknown>;
 }

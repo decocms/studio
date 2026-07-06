@@ -73,11 +73,16 @@ export interface SandboxFsHooks {
    * routes behind `copy_to_sandbox`/`share_with_user`). New harness code should
    * prefer the typed flat ops; this exists only to cover the daemon surfaces
    * those ops don't model.
+   *
+   * `signal` is the run's abort signal (AI-SDK `ToolCallOptions.abortSignal`):
+   * cancelling the run aborts the in-flight daemon request instead of leaving
+   * it running detached.
    */
   onProxy(
     path: string,
     body: Record<string, unknown>,
     method?: "POST" | "PUT",
+    signal?: AbortSignal,
   ): Promise<unknown>;
 }
 
@@ -101,6 +106,57 @@ export interface SandboxFsHooksLifecycle {
    * paused the sandbox intentionally.
    */
   canAutoRestart: boolean;
+  /**
+   * Fixed per-op deadline override. Default derives from the op's own budget
+   * (`opDeadlineMs`); tests override with a tiny value. Production callers
+   * should not need to.
+   */
+  opTimeoutMs?: number;
+}
+
+/**
+ * HTTP deadline for one daemon op, enforced HERE (transport-agnostic) — the
+ * daemon's own bash timeout (30s default / 120s max) only protects when the
+ * daemon is healthy enough to respond. Without this bound, a wedged daemon or
+ * stalled org-fs mount left the harness awaiting silently past the 10-min
+ * liveness reaper, which then killed an otherwise healthy run.
+ *
+ * The deadline follows the op's own declared budget: `input.timeout` when the
+ * body carries one (bash; clamped to the daemon's 120s cap), else the daemon's
+ * 30s default — plus a grace window so a command the daemon kills at its cap
+ * still delivers its stdout/stderr here instead of losing the race to the
+ * client-side abort. Ops without a budget (read/write/edit/grep/glob) fail at
+ * 45s.
+ */
+const DAEMON_BASH_MAX_TIMEOUT_MS = 120_000; // daemon clamp (daemon/routes/bash.ts)
+const DAEMON_DEFAULT_TIMEOUT_MS = 30_000; // daemon default (daemon/routes/bash.ts)
+const OP_GRACE_MS = 15_000;
+
+export function opDeadlineMs(input: Record<string, unknown>): number {
+  const budget =
+    typeof input.timeout === "number" && input.timeout > 0
+      ? Math.min(input.timeout, DAEMON_BASH_MAX_TIMEOUT_MS)
+      : DAEMON_DEFAULT_TIMEOUT_MS;
+  return budget + OP_GRACE_MS;
+}
+
+/** Reject when `signal` fires, even if `promise` (a transport that ignores
+ *  signals) never settles. The orphaned promise is swallowed. */
+function abortable<T>(signal: AbortSignal, promise: Promise<T>): Promise<T> {
+  if (signal.aborted) {
+    promise.catch(() => {});
+    return Promise.reject(signal.reason ?? new Error("aborted"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      promise.catch(() => {});
+      reject(signal.reason ?? new Error("aborted"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", onAbort);
+    });
+  });
 }
 
 /**
@@ -125,28 +181,54 @@ async function daemonRequest(
   path: string,
   body: Record<string, unknown> | null,
   method: "GET" | "POST" | "PUT" = "POST",
+  opts?: { signal?: AbortSignal; timeoutMs?: number },
 ): Promise<unknown> {
+  const timeoutMs = opts?.timeoutMs ?? opDeadlineMs(body ?? {});
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const reqSignal = opts?.signal
+    ? AbortSignal.any([opts.signal, timeout])
+    : timeout;
   let res: Response;
+  let rawText: string;
   try {
     const init: {
       method: string;
       headers: Headers;
       body: string | null;
+      signal: AbortSignal;
     } = {
       method,
       headers: new Headers({ "content-type": "application/json" }),
       body: null,
+      signal: reqSignal,
     };
     // GET/HEAD must not carry a body; the runners' proxy strips it anyway,
     // but constructing it is wasteful and obscures intent.
     if (method !== "GET" && body !== null) {
       init.body = JSON.stringify(body);
     }
-    res = await runner.proxyDaemonRequest(handle, path, init);
+    // `abortable` (not just init.signal) so a transport that ignores the
+    // signal — or a body read that stalls — still respects the deadline.
+    ({ res, rawText } = await abortable(
+      reqSignal,
+      (async () => {
+        const r = await runner.proxyDaemonRequest(handle, path, init);
+        return { res: r, rawText: await r.text() };
+      })(),
+    ));
   } catch (cause) {
+    // Run cancelled: propagate as-is. Neither a timeout nor a cancel may become
+    // DaemonUnreachableError — that would trigger the auto-restart retry, which
+    // reaps and re-provisions the sandbox (wrong for a cancelled run, and too
+    // destructive for a busy-but-alive daemon that merely missed one deadline).
+    if (opts?.signal?.aborted) throw cause;
+    if (timeout.aborted) {
+      throw new Error(
+        `Sandbox ${method} ${path} timed out after ${Math.round(timeoutMs / 1000)}s — the sandbox may be overloaded or its filesystem stalled. Retry, or use a smaller operation.`,
+      );
+    }
     throw new DaemonUnreachableError(cause);
   }
-  const rawText = await res.text();
   let json: unknown;
   try {
     json = JSON.parse(rawText);
@@ -231,9 +313,13 @@ export function createSandboxFsHooks(
     daemonPath: string,
     input: Record<string, unknown>,
     method: "POST" | "PUT" = "POST",
+    signal?: AbortSignal,
   ): Promise<unknown> => {
     const tryOnce = async (handle: string) =>
-      daemonRequest(provider, handle, daemonPath, input, method);
+      daemonRequest(provider, handle, daemonPath, input, method, {
+        signal,
+        timeoutMs: lifecycle.opTimeoutMs,
+      });
     const firstHandle = await ensureHandle();
     try {
       return await tryOnce(firstHandle);
@@ -282,7 +368,7 @@ export function createSandboxFsHooks(
   };
 
   return {
-    onProxy: (path, body, method) => call(path, body, method),
+    onProxy: (path, body, method, signal) => call(path, body, method, signal),
     onRead: async (path) => {
       const r = (await call("/_sandbox/read", { path })) as { content: string };
       return r.content;
