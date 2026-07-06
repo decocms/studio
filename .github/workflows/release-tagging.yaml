@@ -7,6 +7,9 @@ on:
     paths:
       - "apps/mesh/**"
       - "packages/**"
+      # Baked into the nginx image at build time (Dockerfile.nginx), so a change
+      # here must cut a release to rebuild that image — it is not a ConfigMap.
+      - "deploy/helm/studio/files/**"
 
 permissions:
   contents: write
