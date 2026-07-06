@@ -283,9 +283,16 @@ export async function spawnClone(deps: CloneDeps): Promise<number> {
       deps,
     );
     if (fetchCode !== 0) return fetchCode;
+    // `-f`: the daemon writes files into repoDir before the first clone (that's
+    // why we're on the init+fetch path), and the CMS can leave stale untracked
+    // `.deco/blocks/*.json` there. Those collide with branch-tracked paths and
+    // a plain checkout aborts ("untracked working tree files would be
+    // overwritten"). Force lets the committed branch content win; only files
+    // that collide with tracked paths are overwritten — `.decocms/daemon.json`
+    // (not tracked on the branch) is left in place.
     const checkoutCmd = branchOnRemote
-      ? `${gc} -C ${dir} checkout -B ${branchOnRemote} refs/remotes/origin/${branchOnRemote}`
-      : `${gc} -C ${dir} checkout FETCH_HEAD`;
+      ? `${gc} -C ${dir} checkout -f -B ${branchOnRemote} refs/remotes/origin/${branchOnRemote}`
+      : `${gc} -C ${dir} checkout -f FETCH_HEAD`;
     const checkoutCode = await runStep(checkoutCmd, deps);
     if (checkoutCode !== 0) return checkoutCode;
     if (branchToForkLocally) {
