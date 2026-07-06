@@ -1337,7 +1337,7 @@ async function goodMorning(d: Director) {
   const deco = d.track("deco").setSender({ name: "Decopilot", logo: true });
 
   await d.caption("This is your deco Studio — the home for your AI agents");
-  await d.beat(4300);
+  await d.beat(3300);
 
   await d.caption(
     "Every morning, your agents report on what's new — and what needs you",
@@ -1391,7 +1391,7 @@ async function goodMorning(d: Director) {
   await d.caption(
     "Your agents handle the routine — you make the calls that matter",
   );
-  await d.beat(5600); // hold: read the table + the card together
+  await d.beat(5000); // hold: read the table + the card together
 }
 
 async function hopIntoVela(d: Director) {
@@ -1544,7 +1544,7 @@ async function zoomIntoAgent(d: Director) {
       name: "query_orders",
       input: { range: "yesterday", compare: "prior_day" },
       output: { result: "412 orders · R$96k · AOV R$233" },
-      latencyMs: 1600,
+      latencyMs: 1200,
     }),
   );
   await ops.stream(SALES_RECAP, { instant: true });
@@ -1606,10 +1606,7 @@ async function settingsAsAgent(d: Director) {
     cps: 44,
   });
   st.endTurn();
-  await d.caption(
-    "No settings screens anywhere — chat and preview, all the way through",
-  );
-  await d.beat(5200);
+  await d.beat(900); // let the Members app update land
 }
 
 async function backHome(d: Director) {
@@ -1635,9 +1632,9 @@ async function backHome(d: Director) {
   await d.caption(
     "It's agents all the way down — same intelligence, only the context changes",
   );
-  // Must outlast the closing clip (6.26s) — markEnded() clears the caption
-  // AND stops the audio, so a short beat here crops the last line.
-  await d.beat(7100);
+  // Must outlast the closing clip — markEnded() clears the caption AND
+  // stops the audio, so a short beat here crops the last line.
+  await d.beat(5400);
 }
 
 export const turtlesScenario: Scenario = {
