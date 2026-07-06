@@ -107,22 +107,38 @@ export interface SandboxFsHooksLifecycle {
    */
   canAutoRestart: boolean;
   /**
-   * Per-op deadline (default DAEMON_OP_TIMEOUT_MS). Tests override with a tiny
-   * value; production callers should not need to.
+   * Fixed per-op deadline override. Default derives from the op's own budget
+   * (`opDeadlineMs`); tests override with a tiny value. Production callers
+   * should not need to.
    */
   opTimeoutMs?: number;
 }
 
 /**
- * Deadline for one daemon op, enforced HERE (transport-agnostic) — the daemon's
- * own bash timeout (30s default / 120s max) only protects when the daemon is
- * healthy enough to respond. Without this bound, a wedged daemon or stalled
- * org-fs mount left the harness awaiting silently past the 10-min liveness
- * reaper, which then killed an otherwise healthy run. Must stay ABOVE the
- * daemon's 120s bash cap so a legitimately slow command fails daemon-side
- * (with its stdout/stderr) rather than here.
+ * HTTP deadline for one daemon op, enforced HERE (transport-agnostic) — the
+ * daemon's own bash timeout (30s default / 120s max) only protects when the
+ * daemon is healthy enough to respond. Without this bound, a wedged daemon or
+ * stalled org-fs mount left the harness awaiting silently past the 10-min
+ * liveness reaper, which then killed an otherwise healthy run.
+ *
+ * The deadline follows the op's own declared budget: `input.timeout` when the
+ * body carries one (bash; clamped to the daemon's 120s cap), else the daemon's
+ * 30s default — plus a grace window so a command the daemon kills at its cap
+ * still delivers its stdout/stderr here instead of losing the race to the
+ * client-side abort. Ops without a budget (read/write/edit/grep/glob) fail at
+ * 45s.
  */
-const DAEMON_OP_TIMEOUT_MS = 180_000;
+const DAEMON_BASH_MAX_TIMEOUT_MS = 120_000; // daemon clamp (daemon/routes/bash.ts)
+const DAEMON_DEFAULT_TIMEOUT_MS = 30_000; // daemon default (daemon/routes/bash.ts)
+const OP_GRACE_MS = 15_000;
+
+export function opDeadlineMs(input: Record<string, unknown>): number {
+  const budget =
+    typeof input.timeout === "number" && input.timeout > 0
+      ? Math.min(input.timeout, DAEMON_BASH_MAX_TIMEOUT_MS)
+      : DAEMON_DEFAULT_TIMEOUT_MS;
+  return budget + OP_GRACE_MS;
+}
 
 /** Reject when `signal` fires, even if `promise` (a transport that ignores
  *  signals) never settles. The orphaned promise is swallowed. */
@@ -167,7 +183,7 @@ async function daemonRequest(
   method: "GET" | "POST" | "PUT" = "POST",
   opts?: { signal?: AbortSignal; timeoutMs?: number },
 ): Promise<unknown> {
-  const timeoutMs = opts?.timeoutMs ?? DAEMON_OP_TIMEOUT_MS;
+  const timeoutMs = opts?.timeoutMs ?? opDeadlineMs(body ?? {});
   const timeout = AbortSignal.timeout(timeoutMs);
   const reqSignal = opts?.signal
     ? AbortSignal.any([opts.signal, timeout])

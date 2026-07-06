@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SandboxProvider } from "./types";
-import { createSandboxFsHooks } from "./sandbox-fs-hooks";
+import { createSandboxFsHooks, opDeadlineMs } from "./sandbox-fs-hooks";
 
 /**
  * A minimal fake `SandboxProvider` that only implements `proxyDaemonRequest`
@@ -153,6 +153,17 @@ describe("createSandboxFsHooks", () => {
     });
     await expect(hooks.onRead("/app/x.ts")).rejects.toThrow(/timed out after/);
     expect(invalidated).toBe(0);
+  });
+
+  test("op deadline follows the op's own budget: 45s default, budget+grace, clamped at the daemon cap", () => {
+    // No budget (read/write/edit/grep/glob): daemon default 30s + 15s grace.
+    expect(opDeadlineMs({ path: "/x" })).toBe(45_000);
+    // Bash with an explicit budget: budget + grace.
+    expect(opDeadlineMs({ command: "x", timeout: 60_000 })).toBe(75_000);
+    // Budget above the daemon's 120s clamp doesn't inflate the deadline; the
+    // deadline stays ABOVE the cap so a command the daemon kills at 120s still
+    // delivers its stdout/stderr instead of losing the race to the client abort.
+    expect(opDeadlineMs({ command: "x", timeout: 999_000 })).toBe(135_000);
   });
 
   test("cancelling the run aborts the in-flight op — no timeout wait, no restart retry", async () => {
