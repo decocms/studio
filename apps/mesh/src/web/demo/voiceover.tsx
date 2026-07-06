@@ -24,25 +24,31 @@ const VO_FILES: Record<string, string> = {
   "Your agents handle the routine — you make the calls that matter":
     "/demo/vo/vo-04.m4a",
   "The card takes you straight into the team context": "/demo/vo/vo-05.m4a",
-  "You land on its operations — everything the agent watches, live":
+  "Top left is your context — the scope you're in, the agent you're talking to":
     "/demo/vo/vo-06.m4a",
-  "You say ship it — that's the whole job": "/demo/vo/vo-07.m4a",
+  "You land on its operations — everything the agent watches, live":
+    "/demo/vo/vo-07.m4a",
+  "You say ship it — that's the whole job": "/demo/vo/vo-08.m4a",
   "It audits before shipping, finds a regression — and fixes it itself":
-    "/demo/vo/vo-08.m4a",
-  "Your teammates see it land — their threads live right beside yours":
     "/demo/vo/vo-09.m4a",
-  "Every follow-up becomes a card — assigned to an agent, or a person":
+  "Your teammates see it land — their threads live right beside yours":
     "/demo/vo/vo-10.m4a",
-  "Go one level deeper — every level runs an agent loop, with goals and memory":
+  "Every follow-up becomes a card — assigned to an agent, or a person":
     "/demo/vo/vo-11.m4a",
-  "Every scope is an MCP URL — take this exact agent to WhatsApp":
+  "Go one level deeper — every level runs an agent loop, with goals and memory":
     "/demo/vo/vo-12.m4a",
-  "Even Settings is an agent — its screens are just apps in the preview":
+  "Every scope is an MCP URL — take this exact agent to Claude Code, Codex, or anywhere":
     "/demo/vo/vo-13.m4a",
-  "And the logo always takes you back home — to your agents":
+  "Or go one level up — and share your whole team as one MCP":
     "/demo/vo/vo-14.m4a",
-  "It's agents all the way down — same intelligence, only the context changes":
+  "Even Settings is an agent — its screens are just apps in the preview":
     "/demo/vo/vo-15.m4a",
+  "And the logo always takes you back home — to your agents":
+    "/demo/vo/vo-16.m4a",
+  "And connect Claude to your deco — it gets all your teams at once":
+    "/demo/vo/vo-17.m4a",
+  "It's agents all the way down — same intelligence, only the context changes":
+    "/demo/vo/vo-18.m4a",
 };
 
 /** Clip length (ms) per file — the Director holds each pill at least this
@@ -55,16 +61,19 @@ export const VO_MS: Record<string, number> = {
   "/demo/vo/vo-03.m4a": 3202,
   "/demo/vo/vo-04.m4a": 3047,
   "/demo/vo/vo-05.m4a": 2281,
-  "/demo/vo/vo-06.m4a": 4097,
-  "/demo/vo/vo-07.m4a": 2464,
-  "/demo/vo/vo-08.m4a": 4333,
-  "/demo/vo/vo-09.m4a": 4132,
-  "/demo/vo/vo-10.m4a": 4456,
-  "/demo/vo/vo-11.m4a": 4657,
-  "/demo/vo/vo-12.m4a": 4589,
-  "/demo/vo/vo-13.m4a": 3521,
-  "/demo/vo/vo-14.m4a": 3896,
-  "/demo/vo/vo-15.m4a": 4482,
+  "/demo/vo/vo-06.m4a": 4234,
+  "/demo/vo/vo-07.m4a": 4097,
+  "/demo/vo/vo-08.m4a": 2464,
+  "/demo/vo/vo-09.m4a": 4333,
+  "/demo/vo/vo-10.m4a": 4132,
+  "/demo/vo/vo-11.m4a": 4456,
+  "/demo/vo/vo-12.m4a": 4657,
+  "/demo/vo/vo-13.m4a": 6783,
+  "/demo/vo/vo-14.m4a": 4906,
+  "/demo/vo/vo-15.m4a": 3521,
+  "/demo/vo/vo-16.m4a": 3896,
+  "/demo/vo/vo-17.m4a": 3332,
+  "/demo/vo/vo-18.m4a": 4482,
 };
 
 /** Milliseconds the caption must stay up for its clip (0 if unnarrated). */

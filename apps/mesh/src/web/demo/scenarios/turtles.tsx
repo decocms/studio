@@ -403,53 +403,60 @@ ${prod("Direct", "R$22k", "23%")}
 }
 
 /** The tasks board: every proposed action is a card — kanban, like Jira
- *  without the ceremony. Assign to an agent or a person. Styled like the
- *  product: soft column wells, white cards, brand chips. */
+ *  without the ceremony. Styled with Studio's REAL tokens (warm neutrals,
+ *  6px radius, ring-shadow cards) and populated with THIS session's story:
+ *  the Winter Drop ship is done, the agent's queued follow-ups are moving,
+ *  and the cards mirror the team threads in the sidebar. */
 function tasksKanban(): string {
   const card = (
     id: string,
     chip: string,
     chipCls: string,
     title: string,
-    impact: string,
+    meta: string,
     who: string,
     agent: boolean,
+    done = false,
   ) =>
-    `<div class="tk"><div class="th"><span class="tid">${id}</span><span class="chip ${chipCls}">${chip}</span></div><div class="tt">${title}</div><div class="ti">↗ ${impact}</div><div class="tw"><span class="av ${agent ? "bot" : "hum"}">${agent ? "🤖" : who.slice(0, 1)}</span>${who}</div></div>`;
+    `<div class="tk${done ? " done" : ""}"><div class="th"><span class="tid">${id}</span><span class="chip ${chipCls}">${chip}</span></div><div class="tt">${done ? "✓ " : ""}${title}</div><div class="ti">${meta}</div><div class="tw"><span class="av ${agent ? "bot" : "hum"}">${agent ? "🤖" : who.slice(0, 1)}</span>${who}</div></div>`;
   return `<!doctype html><html><head><meta charset="utf8"><style>${DASH_STYLE}
-body{padding:16px;background:#fafafa}
-h1{font-size:16px;letter-spacing:-.01em;margin-bottom:2px}
-.sub{font-size:11px;color:#667085;margin-bottom:14px}
+body{padding:16px;background:#fcfbfa}
+h1{font-size:16px;letter-spacing:-.01em;color:#262220;margin-bottom:2px}
+.sub{font-size:11px;color:#6b6660;margin-bottom:14px}
 .board{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-.col{background:#f2f2f0;border-radius:14px;padding:8px}
-.col h3{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#667085;font-weight:600;margin:2px 4px 8px;display:flex;justify-content:space-between;align-items:center}
-.col h3 b{background:#fff;border-radius:99px;padding:1px 7px;font-weight:600;color:#475467}
-.tk{background:#fff;border:1px solid #ececec;border-radius:12px;padding:10px;margin-bottom:8px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.col{background:#f4f2ef;border-radius:8px;padding:6px}
+.col h3{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6b6660;font-weight:600;margin:4px 6px 8px;display:flex;justify-content:space-between;align-items:center}
+.col h3 b{background:#fff;border-radius:6px;padding:1px 6px;font-weight:600;color:#262220;box-shadow:0 0 0 1px #1d1b1814}
+.tk{background:#fff;border-radius:6px;padding:9px 10px;margin-bottom:6px;box-shadow:0 0 0 1px #1d1b1814,0 1px 2px -1px #1d1b1812,0 2px 4px 0 #1d1b180d}
+.tk.done{background:#fdfdfb}
+.tk.done .tt{color:#3f6212}
 .th{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
-.tid{font-size:9px;color:#98a2b3;font-family:ui-monospace,monospace}
-.tt{font-size:12px;font-weight:600;line-height:1.3;letter-spacing:-.01em}
-.ti{font-size:10px;color:#3f6212;font-weight:600;margin-top:4px}
-.tw{display:flex;align-items:center;gap:5px;font-size:10px;color:#667085;margin-top:8px}
-.av{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:99px;font-size:8px;font-weight:700}
+.tid{font-size:9px;color:#9c968e;font-family:ui-monospace,monospace}
+.tt{font-size:12px;font-weight:600;line-height:1.3;letter-spacing:-.01em;color:#262220}
+.ti{font-size:10px;color:#6b6660;margin-top:3px}
+.tw{display:flex;align-items:center;gap:5px;font-size:10px;color:#6b6660;margin-top:8px;border-top:1px solid #f0ede9;padding-top:6px}
+.av{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:99px;font-size:8px;font-weight:700}
 .av.bot{background:#ecfccb}
-.av.hum{background:#e0e7ff;color:#3730a3}
-.chip{font-size:9px;border-radius:99px;padding:2px 7px;font-weight:600}
-.chip.anom{background:#fee4e2;color:#b42318}.chip.diag{background:#ede9fe;color:#5b21b6}.chip.jira{background:#f2f4f7;color:#475467}</style></head><body>
-<h1>Tasks</h1><div class="sub">Every proposed action lands here as a card — from diagnostics, anomalies, or your backlog. Assign to an agent or a person.</div>
+.av.hum{background:#f4f2ef;color:#44403c;box-shadow:0 0 0 1px #1d1b1814}
+.chip{font-size:9px;border-radius:6px;padding:1.5px 6px;font-weight:600}
+.chip.ship{background:#ecfccb;color:#3f6212}.chip.follow{background:#ede9fe;color:#5b21b6}.chip.qa{background:#fef3c7;color:#92400e}.chip.idea{background:#f4f2ef;color:#57534e}</style></head><body>
+<h1>Tasks</h1><div class="sub">Everything from this morning's thread became a card — done, moving, or waiting for an owner.</div>
 <div class="board">
 <div class="col"><h3>Proposed <b>2</b></h3>
-${card("T-488", "anomaly", "anom", "De-dupe GA4 purchase event by transaction_id", "Fix 5.8% revenue overstatement", "Unassigned", false)}
-${card("T-489", "diagnostic", "diag", "Index search synonyms (singular/plural)", "Recover 0-result searches", "Unassigned", false)}
+${card("T-492", "follow-up", "follow", "Winter Drop email to subscribers", "Queued by Vela Agent after the ship", "Unassigned", false)}
+${card("T-493", "idea", "idea", "Extend Winter Drop banner to category pages", "Suggested from hero engagement", "Unassigned", false)}
 </div>
 <div class="col"><h3>In progress <b>2</b></h3>
-${card("T-475", "diagnostic", "diag", "Add canonical tag to PLP template", "+18k organic sessions/mo", "SEO Agent", true)}
-${card("T-486", "jira", "jira", "Show shipping cost earlier in cart", "−4pp cart abandonment (est.)", "Guilherme R.", false)}
+${card("T-490", "follow-up", "follow", "Restock alerts for knits", "Parka converting 2.1× baseline — watch stock", "Store Ops", true)}
+${card("T-487", "follow-up", "follow", "Checkout A/B results", "Reading yesterday's experiment", "Dana K.", false)}
 </div>
 <div class="col"><h3>In review <b>1</b></h3>
-${card("T-482", "anomaly", "anom", "Strip GA tracking params before VTEX IS lookup", "+R$48k/day recovered", "Developer Agent", true)}
+${card("T-491", "qa", "qa", "Winter Drop QA checklist", "Cross-browser + mobile pass on the new hero", "Rafa", false)}
 </div>
-<div class="col"><h3>Ready to deploy <b>1</b></h3>
-${card("T-479", "diagnostic", "diag", "Preload PDP hero image + fetchpriority", "+1.8% conversion (est.)", "Camila Souza", false)}
+<div class="col"><h3>Done · today <b>3</b></h3>
+${card("T-488", "shipped", "ship", "Swap homepage hero to Winter Drop", "vela.shop · v87 live", "Vela Agent", true, true)}
+${card("T-489", "shipped", "ship", "Optimize hero asset — LCP 1.9s → 1.2s", "hero.webp 168KB · preload added", "Storefront Bot", true, true)}
+${card("T-486", "shipped", "ship", "Pre-ship audit (performance + SEO)", "Caught the LCP regression before deploy", "Vela Agent", true, true)}
 </div>
 </div>
 </body></html>`;
@@ -532,7 +539,7 @@ function SharePopover({ stores }: { stores: DemoStores }) {
       ? "this agent"
       : level === "org"
         ? "everything in Vela Store"
-        : "your entire deco — every org you belong to";
+        : "your entire deco — every team you belong to";
 
   return (
     <div className="absolute left-0 top-9 z-40 w-80 rounded-xl bg-background p-4 card-shadow animate-in fade-in slide-in-from-top-2 duration-300">
@@ -546,7 +553,7 @@ function SharePopover({ stores }: { stores: DemoStores }) {
         {url}
       </div>
       <div className="mt-3 flex gap-2">
-        {["Claude Code", "Cursor", "WhatsApp"].map((c) => (
+        {["Claude Code", "Codex", "Cursor", "WhatsApp"].map((c) => (
           <span
             key={c}
             className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground"
@@ -563,60 +570,70 @@ function DemoToolbar({ stores }: { stores: DemoStores }) {
   const level = useDemoInput(stores, "level") || "home";
   const agentId = useDemoInput(stores, "agent");
   const agent = VELA_AGENTS.find((a) => a.id === agentId);
+  // Narration can spotlight the breadcrumb — it IS the context selector.
+  const highlight = useDemoInput(stores, "hl") === "crumb";
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 bg-sidebar px-3">
-      <Crumb
-        target="crumb:home"
-        active={level === "home"}
-        onClick={() => setInputs(stores, { level: "home", agent: "" })}
+      <span
+        className={cn(
+          "flex items-center gap-1 rounded-lg transition-all duration-500",
+          highlight &&
+            "bg-violet-100/80 px-2 py-1 ring-2 ring-violet-400/70 shadow-[0_0_24px_rgba(167,139,250,0.45)]",
+        )}
       >
-        <img
-          src="/logos/deco logo.svg"
-          alt="deco"
-          className="size-6 select-none"
-        />
-        <span>deco</span>
-      </Crumb>
+        <Crumb
+          target="crumb:home"
+          active={level === "home"}
+          onClick={() => setInputs(stores, { level: "home", agent: "" })}
+        >
+          <img
+            src="/logos/deco logo.svg"
+            alt="deco"
+            className="size-6 select-none"
+          />
+          <span>deco</span>
+        </Crumb>
 
-      {level !== "home" && (
-        <>
-          <span className="text-muted-foreground/40">/</span>
-          <Crumb
-            target="crumb:org"
-            active={level === "org"}
-            onClick={() =>
-              setInputs(stores, {
-                level: "org",
-                agent: "",
-                ...previewPatch(stores, "vela"),
-              })
-            }
-          >
-            <span className="flex size-5 items-center justify-center rounded-md bg-lime-200 text-[10px] font-semibold text-lime-950">
-              V
-            </span>
-            Vela Store
-          </Crumb>
-        </>
-      )}
-
-      {level === "agent" && agent && (
-        <>
-          <span className="text-muted-foreground/40">/</span>
-          <Crumb target="crumb:agent" active>
-            <span
-              className={cn(
-                "flex size-5 items-center justify-center rounded-md text-[10px] font-semibold",
-                agent.tile,
-              )}
+        {level !== "home" && (
+          <>
+            <span className="text-muted-foreground/40">/</span>
+            <Crumb
+              target="crumb:org"
+              active={level === "org"}
+              onClick={() =>
+                setInputs(stores, {
+                  level: "org",
+                  agent: "",
+                  ...previewPatch(stores, "vela"),
+                })
+              }
             >
-              {agent.glyph}
-            </span>
-            {agent.name}
-          </Crumb>
-        </>
-      )}
+              <span className="flex size-5 items-center justify-center rounded-md bg-lime-200 text-[10px] font-semibold text-lime-950">
+                V
+              </span>
+              Vela Store
+            </Crumb>
+          </>
+        )}
+
+        {level === "agent" && agent && (
+          <>
+            <span className="text-muted-foreground/40">/</span>
+            <Crumb target="crumb:agent" active>
+              <span
+                className={cn(
+                  "flex size-5 items-center justify-center rounded-md text-[10px] font-semibold",
+                  agent.tile,
+                )}
+              >
+                {agent.glyph}
+              </span>
+              {agent.name}
+            </Crumb>
+          </>
+        )}
+      </span>
 
       {/* Share sits right beside the breadcrumb — it shares THIS scope. */}
       <span className="relative ml-2">
@@ -1465,6 +1482,16 @@ async function hopIntoVela(d: Director) {
     { cps: 60 },
   );
   vela.endTurn();
+
+  // The breadcrumb IS the context: top left always says which scope you're
+  // in and which agent you're addressing. Spotlight it while the line plays.
+  await d.caption(
+    "Top left is your context — the scope you're in, the agent you're talking to",
+  );
+  d.setInput("hl", "crumb");
+  await d.beat(4400); // hold the spotlight for the narration
+  d.setInput("hl", "");
+
   await d.caption(
     "You land on its operations — everything the agent watches, live",
   );
@@ -1603,19 +1630,36 @@ async function zoomIntoAgent(d: Director) {
   await d.beat(2200); // hold the sales table + the goals card
 }
 
-async function shareOpsToWhatsApp(d: Director) {
-  // Share is demonstrated where it's most visceral: THIS sales agent, on
-  // your phone. Every breadcrumb level mints an MCP URL for its scope.
+async function shareAnywhere(d: Director) {
+  // Share is demonstrated where it's most visceral: THIS sales agent, in any
+  // MCP client. Every breadcrumb level mints an MCP URL for its scope.
   await d.caption(
-    "Every scope is an MCP URL — take this exact agent to WhatsApp",
+    "Every scope is an MCP URL — take this exact agent to Claude Code, Codex, or anywhere",
   );
   d.showCursor();
-  await d.beat(500);
+  await d.beat(400);
   await d.click("share-button");
   d.setInput("share", "open");
   await d.beat(800);
   d.hideCursor();
-  await d.beat(4100); // read the URL + client chips (narration covers this)
+  await d.beat(3600); // read the URL + client chips (narration covers this)
+  d.setInput("share", "");
+
+  // Go UP one level in the context: the SAME share pill now mints the MCP
+  // for the whole team — sharing is just picking where in the path you are.
+  await d.caption("Or go one level up — and share your whole team as one MCP");
+  d.showCursor();
+  await d.beat(300);
+  await d.click("crumb:org");
+  d.setInput("level", "org");
+  d.setInput("agent", "");
+  d.setInput("preview-url", "vela · operations");
+  d.setPreview("vela", orgDashboard());
+  await d.beat(600);
+  await d.click("share-button");
+  d.setInput("share", "open");
+  d.hideCursor();
+  await d.beat(3400); // the URL is the team's scope now
   d.setInput("share", "");
   await d.beat(300);
 }
@@ -1648,7 +1692,7 @@ async function settingsAsAgent(d: Director) {
       name: "update_member",
       input: { member: "rafa@vela.shop", role: "admin" },
       output: { result: "Rafa · member → admin" },
-      latencyMs: 1500,
+      latencyMs: 1200,
     }),
   );
   d.setPreview("vela", settingsApp({ rafaAdmin: true }));
@@ -1657,7 +1701,7 @@ async function settingsAsAgent(d: Director) {
     cps: 44,
   });
   st.endTurn();
-  await d.beat(900); // let the Members app update land
+  await d.beat(600); // let the Members app update land
 }
 
 async function backHome(d: Director) {
@@ -1672,7 +1716,20 @@ async function backHome(d: Director) {
   d.setInput("status:vela", "Winter Drop live on vela.shop · LCP 1.2s ✓");
   d.setInput("dot:vela", "ok");
   d.setInput("metric:vela", "1.2s"); // the watched LCP square ticks down live
-  await d.beat(1200);
+  await d.beat(900);
+
+  // The share pill at the TOP scope: hand your whole deco to Claude.
+  await d.caption(
+    "And connect Claude to your deco — it gets all your teams at once",
+  );
+  d.showCursor();
+  await d.beat(300);
+  await d.click("share-button");
+  d.setInput("share", "open");
+  d.hideCursor();
+  await d.beat(2600); // the URL is your whole deco
+  d.setInput("share", "");
+  await d.beat(300);
 
   const deco = d.track("deco");
   await deco.stream(
@@ -1707,7 +1764,7 @@ export const turtlesScenario: Scenario = {
     await goodMorning(d);
     await hopIntoVela(d);
     await zoomIntoAgent(d);
-    await shareOpsToWhatsApp(d);
+    await shareAnywhere(d);
     await settingsAsAgent(d);
     await backHome(d);
   },
