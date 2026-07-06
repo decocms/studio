@@ -10,11 +10,17 @@
  * broken. See TESTING.md: don't mock your own code.
  *
  * So here `storage` is a real SqlThreadStorage against real Postgres, and we
- * assert the actual row state after each event. The two remaining deps —
- * `sseHub` and `streamBuffer` — are output side-channels (fire-and-forget,
- * the reactor never branches on their return), so we capture their emissions
- * to assert on, the same way an e2e spec reads the DB to assert. That is
- * observing output, not faking an input contract.
+ * assert the actual row state after each event. The remaining dep — `sseHub` —
+ * is an output side-channel (fire-and-forget, the reactor never branches on its
+ * return), so we capture its emissions to assert on, the same way an e2e spec
+ * reads the DB to assert. That is observing output, not faking an input
+ * contract.
+ *
+ * The reactor performs NO JetStream purge on any event: the consume step
+ * projects every dispatched run (its entry guard ignores terminal status) and
+ * needs the contiguous seq 1..N log, so purge ownership lives in the projector
+ * workflow. `RunReactorDeps` has no stream buffer — the guarantee is
+ * structural.
  */
 
 import {
@@ -37,7 +43,6 @@ import { SqlThreadStorage } from "@/storage/threads";
 import type { Thread } from "@/storage/types";
 import { reactAll, type RunReactorDeps } from "./run-reactor";
 import type { RunEvent } from "./run-state";
-import type { StreamBuffer } from "./stream-buffer";
 
 const ORG = "org_1";
 const USER = "user_1";
@@ -64,16 +69,14 @@ beforeEach(async () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Capturing reactor: real storage, plus in-memory capture of the two output
- * side-channels. Returns the deps to pass to reactAll and the captured output.
+ * Capturing reactor: real storage, plus in-memory capture of the SSE output
+ * side-channel. Returns the deps to pass to reactAll and the captured output.
  */
 function makeReactor(): {
   deps: RunReactorDeps;
   sseEvents: Array<{ orgId: string; event: SSEEvent }>;
-  purged: string[];
 } {
   const sseEvents: Array<{ orgId: string; event: SSEEvent }> = [];
-  const purged: string[] = [];
   const deps: RunReactorDeps = {
     storage,
     sseHub: {
@@ -81,14 +84,8 @@ function makeReactor(): {
         sseEvents.push({ orgId, event });
       },
     },
-    // Only purge() is exercised by the reactor; capture it.
-    streamBuffer: {
-      purge(taskId: string) {
-        purged.push(taskId);
-      },
-    } as unknown as StreamBuffer,
   };
-  return { deps, sseEvents, purged };
+  return { deps, sseEvents };
 }
 
 const react = (event: RunEvent, deps: RunReactorDeps) =>
@@ -123,7 +120,7 @@ function statusData(event: SSEEvent): Record<string, unknown> {
 describe("reactAll (real Postgres)", () => {
   describe("RUN_STARTED", () => {
     it("flips the row to in_progress and emits 1 status event", async () => {
-      const { deps, sseEvents, purged } = makeReactor();
+      const { deps, sseEvents } = makeReactor();
       const thread = await createThread(); // default status "completed"
       await database.db
         .updateTable("threads")
@@ -154,7 +151,6 @@ describe("reactAll (real Postgres)", () => {
       expect(row?.run_started_at).not.toBeNull();
       expect(rawRow.last_progress_at).toBeNull();
       expect(sseEvents).toHaveLength(1);
-      expect(purged).toHaveLength(0);
     });
 
     it("emitted status event reflects the real row (title, branch, created_at, updated_at)", async () => {
@@ -189,7 +185,7 @@ describe("reactAll (real Postgres)", () => {
 
   describe("RUN_RESUMED", () => {
     it("sets run_started_at WITHOUT touching status; emits 1 event", async () => {
-      const { deps, sseEvents, purged } = makeReactor();
+      const { deps, sseEvents } = makeReactor();
       const thread = await createThread(); // status "completed"
 
       await react(
@@ -209,13 +205,12 @@ describe("reactAll (real Postgres)", () => {
       // Proof the status column was never written: it stays "completed".
       expect(row?.status).toBe("completed");
       expect(sseEvents).toHaveLength(1);
-      expect(purged).toHaveLength(0);
     });
   });
 
   describe("STEP_COMPLETED", () => {
     it("emits 1 step event and performs no DB write", async () => {
-      const { deps, sseEvents, purged } = makeReactor();
+      const { deps, sseEvents } = makeReactor();
       const thread = await createThread();
       const before = await storage.get(thread.id, ORG);
 
@@ -228,13 +223,12 @@ describe("reactAll (real Postgres)", () => {
       expect(after?.updated_at).toBe(before?.updated_at); // untouched
       expect(after?.status).toBe(before?.status);
       expect(sseEvents).toHaveLength(1);
-      expect(purged).toHaveLength(0);
     });
   });
 
   describe("RUN_COMPLETED", () => {
-    it("does NOT write status to DB (consume step owns it), does NOT purge, emits 2 SSE events", async () => {
-      const { deps, sseEvents, purged } = makeReactor();
+    it("does NOT write status to DB (consume step owns it), emits 2 SSE events", async () => {
+      const { deps, sseEvents } = makeReactor();
       const thread = await createThread();
       await setInProgress(thread.id);
 
@@ -251,16 +245,14 @@ describe("reactAll (real Postgres)", () => {
       // run_* columns are also untouched — the consume step clears them.
       expect(row?.run_config).not.toBeNull();
       expect(row?.run_started_at).not.toBeNull();
-      // Purge ownership is the projector workflow's job (cleanupRunStep).
-      expect(purged).toHaveLength(0);
       // SSE is still emitted for instant UX.
       expect(sseEvents).toHaveLength(2);
     });
   });
 
   describe("RUN_REQUIRES_ACTION", () => {
-    it("does NOT write status to DB (consume step owns it), does NOT purge, emits 2 SSE events", async () => {
-      const { deps, sseEvents, purged } = makeReactor();
+    it("does NOT write status to DB (consume step owns it), emits 2 SSE events", async () => {
+      const { deps, sseEvents } = makeReactor();
       const thread = await createThread();
       await setInProgress(thread.id);
 
@@ -281,17 +273,15 @@ describe("reactAll (real Postgres)", () => {
       // run_* columns also stay — the consume step clears them.
       expect(row?.run_config).not.toBeNull();
       expect(row?.run_started_at).not.toBeNull();
-      // Purge is the projector workflow's job.
-      expect(purged).toHaveLength(0);
       // SSE is still emitted for instant UX.
       expect(sseEvents).toHaveLength(2);
     });
   });
 
   describe("RUN_FAILED", () => {
-    it("error/cancelled/reaped: sets status=failed, clears run_* columns, purges, 2 events", async () => {
+    it("error/cancelled/reaped: sets status=failed, clears run_* columns, 2 events", async () => {
       for (const reason of ["error", "cancelled", "reaped"] as const) {
-        const { deps, sseEvents, purged } = makeReactor();
+        const { deps, sseEvents } = makeReactor();
         const thread = await createThread();
         await setInProgress(thread.id);
 
@@ -305,13 +295,12 @@ describe("reactAll (real Postgres)", () => {
         expect(row?.run_owner_pod).toBeNull();
         expect(row?.run_config).toBeNull();
         expect(row?.run_started_at).toBeNull();
-        expect(purged).toEqual([thread.id]);
         expect(sseEvents).toHaveLength(2);
       }
     });
 
-    it("ghost: flips an in_progress row to failed (forceFailIfInProgress), clears run_*, purges, 2 events", async () => {
-      const { deps, sseEvents, purged } = makeReactor();
+    it("ghost: flips an in_progress row to failed (forceFailIfInProgress), clears run_*, 2 events", async () => {
+      const { deps, sseEvents } = makeReactor();
       const thread = await createThread();
       await setInProgress(thread.id);
 
@@ -325,12 +314,11 @@ describe("reactAll (real Postgres)", () => {
       expect(row?.run_owner_pod).toBeNull();
       expect(row?.run_config).toBeNull();
       expect(row?.run_started_at).toBeNull();
-      expect(purged).toEqual([thread.id]);
       expect(sseEvents).toHaveLength(2);
     });
 
     it("ghost: no-op when the row is NOT in_progress (real forceFailIfInProgress short-circuit)", async () => {
-      const { deps, sseEvents, purged } = makeReactor();
+      const { deps, sseEvents } = makeReactor();
       const thread = await createThread(); // status "completed", not in_progress
 
       await react(
@@ -340,14 +328,13 @@ describe("reactAll (real Postgres)", () => {
 
       const row = await storage.get(thread.id, ORG);
       expect(row?.status).toBe("completed"); // unchanged
-      expect(purged).toHaveLength(0);
       expect(sseEvents).toHaveLength(0);
     });
   });
 
   describe("PREVIOUS_RUN_ABORTED", () => {
-    it("is a no-op: no DB change, no purge, no SSE", async () => {
-      const { deps, sseEvents, purged } = makeReactor();
+    it("is a no-op: no DB change, no SSE", async () => {
+      const { deps, sseEvents } = makeReactor();
       const thread = await createThread();
       await setInProgress(thread.id);
       const before = await storage.get(thread.id, ORG);
@@ -359,7 +346,6 @@ describe("reactAll (real Postgres)", () => {
 
       const after = await storage.get(thread.id, ORG);
       expect(after).toEqual(before); // byte-for-byte unchanged
-      expect(purged).toHaveLength(0);
       expect(sseEvents).toHaveLength(0);
     });
   });

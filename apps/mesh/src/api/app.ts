@@ -1013,7 +1013,6 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   const cancelReactorDeps: RunReactorDeps = {
     storage: threadStorage,
-    streamBuffer,
     sseHub,
   };
 

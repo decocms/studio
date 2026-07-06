@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { RunRegistry } from "./run-registry";
-import type { StreamBuffer } from "./stream-buffer";
 import type { RunReactorDeps } from "./run-reactor";
 
 // ---------------------------------------------------------------------------
@@ -38,7 +37,6 @@ function inertDeps(): RunReactorDeps {
       // which is exactly the timing these pure tests exercise.
       getProgress: async () => null,
     } as unknown as RunReactorDeps["storage"],
-    streamBuffer: { purge() {} } as unknown as StreamBuffer,
     sseHub: { emit() {} },
   };
 }

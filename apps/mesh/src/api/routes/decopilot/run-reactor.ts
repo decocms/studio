@@ -1,9 +1,9 @@
 /**
  * Run Reactor — impure shell of the run lifecycle pipeline
  *
- * Every DB write, SSE emit, and stream buffer purge triggered by a run
- * state transition lives here. This is the only layer in the pipeline
- * that performs I/O; decide() and project() are kept pure.
+ * Every DB write and SSE emit triggered by a run state transition lives
+ * here. This is the only layer in the pipeline that performs I/O;
+ * decide() and project() are kept pure.
  *
  * Consumed via RunRegistry — callers should not use reactAll directly:
  *   registry.execute(command)          — dispatch + react (common case)
@@ -17,7 +17,6 @@ import {
   createDecopilotStepEvent,
   createDecopilotThreadStatusEvent,
 } from "@decocms/mesh-sdk";
-import type { StreamBuffer } from "./stream-buffer";
 import type { RunEvent, RunTransition } from "./run-state";
 
 // ============================================================================
@@ -30,7 +29,6 @@ import type { RunEvent, RunTransition } from "./run-state";
 
 export interface RunReactorDeps {
   storage: ThreadStoragePort;
-  streamBuffer: StreamBuffer;
   sseHub: { emit(orgId: string, event: SSEEvent): void };
 }
 
@@ -71,7 +69,7 @@ async function handleTerminalStatus(
 // ============================================================================
 
 async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
-  const { storage, streamBuffer, sseHub } = deps;
+  const { storage, sseHub } = deps;
 
   switch (event.type) {
     case "RUN_STARTED": {
@@ -160,7 +158,14 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           run_started_at: null,
         });
       }
-      streamBuffer.purge(event.taskId);
+      // Deliberately NO JetStream purge here. The consume step projects every
+      // dispatched run (its entry guard ignores terminal status) and requires
+      // the contiguous seq 1..N log; purging on a force-fail beheads a log the
+      // producer may still be appending to (reaped-but-alive run, or an
+      // in-band failure racing the consume step's read), and the projector
+      // then poisons the thread with a persisted "missing seq N" error part.
+      // Terminal purge is owned by the projector (runProjectorWorkflowBody);
+      // dispatch-start clears the previous turn; max_age bounds the rest.
       const failedThread = await storage.get(event.taskId, event.orgId);
       sseHub.emit(
         event.orgId,
