@@ -2,7 +2,10 @@ import { useState } from "react";
 import {
   ChevronRight,
   Code01,
+  LinkExternal01,
   Loading01,
+  Maximize01,
+  Minimize01,
   Play,
   Save01,
   X,
@@ -28,7 +31,7 @@ import { useDebouncedSaveBlock } from "@/web/components/sections-editor/use-save
 import { MakeReusableModal } from "@/web/components/sections-editor/make-reusable-modal";
 import { SaveStatus } from "./blog/save-status";
 import { runnableSingular, type RunnableKind } from "./runnable-catalog";
-import { useRunBlock } from "./use-run-block";
+import { buildInvokeRunUrl, useRunBlock } from "./use-run-block";
 
 /** What the editor is editing: an available manifest block or a saved one. */
 export type RunnableTarget =
@@ -90,6 +93,7 @@ export function RunnableBlockEditor({
   const [jsonCode, setJsonCode] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
+  const [resultExpanded, setResultExpanded] = useState(false);
   const jsonOpen = jsonCode !== null;
 
   const {
@@ -171,6 +175,17 @@ export function RunnableBlockEditor({
   const handleRun = () => {
     setResultOpen(true);
     run.mutate({ resolveType: target.resolveType, props: formValue });
+  };
+
+  // Re-runs the invoke in a new tab (fresh cache-buster) with the current
+  // form value — handy for inspecting large results with browser JSON tools.
+  const handleOpenResultInNewTab = () => {
+    if (!previewUrl) return;
+    window.open(
+      buildInvokeRunUrl(previewUrl, target.resolveType, formValue, Date.now()),
+      "_blank",
+      "noopener",
+    );
   };
 
   const headerCrumbs = [target.title, ...fieldBreadcrumbs];
@@ -277,8 +292,13 @@ export function RunnableBlockEditor({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        {/* Form / JSON region. */}
-        <div className="relative min-h-0 flex-1">
+        {/* Form / JSON region — hidden while the result panel is expanded. */}
+        <div
+          className={cn(
+            "relative min-h-0 flex-1",
+            resultOpen && resultExpanded && "hidden",
+          )}
+        >
           <ScrollArea className="h-full [&_[data-slot=scroll-area-viewport]>div]:!block">
             <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
               <div className="mx-auto max-w-2xl">
@@ -339,7 +359,13 @@ export function RunnableBlockEditor({
               data: run.data,
               hasRun: run.status !== "idle",
             }}
-            onClose={() => setResultOpen(false)}
+            expanded={resultExpanded}
+            onToggleExpand={() => setResultExpanded((prev) => !prev)}
+            onOpenInNewTab={previewUrl ? handleOpenResultInNewTab : undefined}
+            onClose={() => {
+              setResultOpen(false);
+              setResultExpanded(false);
+            }}
           />
         )}
       </div>
@@ -358,6 +384,9 @@ export function RunnableBlockEditor({
 function RunResultPanel({
   singular,
   result,
+  expanded,
+  onToggleExpand,
+  onOpenInNewTab,
   onClose,
 }: {
   singular: string;
@@ -367,6 +396,10 @@ function RunResultPanel({
     data: unknown;
     hasRun: boolean;
   };
+  expanded: boolean;
+  onToggleExpand: () => void;
+  /** Absent while the preview URL is unknown (button hidden). */
+  onOpenInNewTab?: () => void;
   onClose: () => void;
 }) {
   const resultText =
@@ -375,20 +408,62 @@ function RunResultPanel({
       : JSON.stringify(result.data ?? null, null, 2);
 
   return (
-    <div className="flex h-[45%] min-h-0 shrink-0 flex-col border-t">
+    <div
+      className={cn(
+        "flex min-h-0 flex-col border-t",
+        expanded ? "flex-1" : "h-[45%] shrink-0",
+      )}
+    >
       <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
         <span className="text-xs font-medium text-muted-foreground">
           Result
         </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          onClick={onClose}
-          aria-label="Close result"
-        >
-          <X size={14} />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          {onOpenInNewTab && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  onClick={onOpenInNewTab}
+                  aria-label="Open result in new tab"
+                >
+                  <LinkExternal01 size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Open in new tab (re-runs the {singular})
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                onClick={onToggleExpand}
+                aria-label={expanded ? "Collapse result" : "Expand result"}
+                aria-pressed={expanded}
+              >
+                {expanded ? <Minimize01 size={14} /> : <Maximize01 size={14} />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {expanded ? "Collapse" : "Expand"}
+            </TooltipContent>
+          </Tooltip>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            onClick={onClose}
+            aria-label="Close result"
+          >
+            <X size={14} />
+          </Button>
+        </div>
       </div>
       <div className="min-h-0 flex-1">
         {result.isPending ? (
