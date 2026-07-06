@@ -121,11 +121,45 @@ test("delete removes the targeted item from the list", async ({
     .toEqual({ tags: ["a", "b"] });
 
   // The per-row actions trigger is in the DOM (opacity-0 until hover) and clickable.
-  await component.getByRole("button", { name: "Open actions for a" }).click();
+  // `exact` disambiguates the button from the sortable row (whose accessible
+  // name embeds the button label).
+  await component
+    .getByRole("button", { name: "Open actions for a", exact: true })
+    .click();
   // The DropdownMenu content is portaled onto document.body — query via page.
   await page.getByRole("menuitem", { name: "Delete" }).click();
 
   await expect.poll(() => readFormValue(component)).toEqual({ tags: ["b"] });
+});
+
+test("duplicate inserts a copy right after the targeted item", async ({
+  mount,
+  page,
+}) => {
+  const meta = sectionWithProps({
+    tags: { type: "array", title: "Tags", items: { type: "string" } },
+  });
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ tags: ["a", "b"] }}
+    />,
+  );
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ tags: ["a", "b"] });
+
+  await component
+    .getByRole("button", { name: "Open actions for a", exact: true })
+    .click();
+  // The DropdownMenu content is portaled onto document.body — query via page.
+  await page.getByRole("menuitem", { name: "Duplicate" }).click();
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ tags: ["a", "a", "b"] });
 });
 
 test("add a number item appends the default 0", async ({ mount }) => {

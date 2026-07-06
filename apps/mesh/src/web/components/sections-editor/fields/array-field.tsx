@@ -18,7 +18,13 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DotsGrid, DotsHorizontal, Plus, Trash01 } from "@untitledui/icons";
+import {
+  Copy01,
+  DotsGrid,
+  DotsHorizontal,
+  Plus,
+  Trash01,
+} from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -156,12 +162,14 @@ function SortableArrayRow({
   labelText,
   imageSrc,
   onOpen,
+  onDuplicate,
   onRemove,
 }: {
   sortableId: string;
   labelText: string;
   imageSrc?: string;
   onOpen: () => void;
+  onDuplicate: () => void;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -223,6 +231,10 @@ function SortableArrayRow({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={onDuplicate}>
+            <Copy01 size={14} />
+            Duplicate
+          </DropdownMenuItem>
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={onRemove}
@@ -348,6 +360,20 @@ export function ArrayField({
       return;
     }
     addItem();
+  };
+
+  const duplicateItem = (index: number) => {
+    const original = items[index];
+    const copy =
+      typeof structuredClone === "function"
+        ? structuredClone(original)
+        : JSON.parse(JSON.stringify(original ?? null));
+    const next = [
+      ...items.slice(0, index + 1),
+      copy,
+      ...items.slice(index + 1),
+    ];
+    onChange(next);
   };
 
   const removeItem = (index: number) => {
@@ -549,6 +575,7 @@ export function ArrayField({
                       labelText={labelText}
                       imageSrc={imageSrc}
                       onOpen={() => openItem(entry.index)}
+                      onDuplicate={() => duplicateItem(entry.index)}
                       onRemove={() => removeItem(entry.index)}
                     />
                   );
