@@ -92,16 +92,16 @@ export const VO_MS: Record<string, number> = {
   "/demo/vo/vo-16.m4a": 3896,
   "/demo/vo/vo-17.m4a": 3833,
   "/demo/vo/vo-18.m4a": 4482,
-  // day-zero — estimated hold windows until the real clips land
-  "/demo/vo/dz-01.m4a": 3200,
-  "/demo/vo/dz-02.m4a": 4200,
-  "/demo/vo/dz-03.m4a": 3600,
-  "/demo/vo/dz-04.m4a": 3900,
-  "/demo/vo/dz-05.m4a": 3400,
-  "/demo/vo/dz-06.m4a": 4300,
-  "/demo/vo/dz-07.m4a": 4400,
-  "/demo/vo/dz-08.m4a": 4700,
-  "/demo/vo/dz-09.m4a": 3900,
+  // day-zero — measured from the generated clips
+  "/demo/vo/dz-01.m4a": 2597,
+  "/demo/vo/dz-02.m4a": 4101,
+  "/demo/vo/dz-03.m4a": 3688,
+  "/demo/vo/dz-04.m4a": 4708,
+  "/demo/vo/dz-05.m4a": 2860,
+  "/demo/vo/dz-06.m4a": 3910,
+  "/demo/vo/dz-07.m4a": 3589,
+  "/demo/vo/dz-08.m4a": 4553,
+  "/demo/vo/dz-09.m4a": 3630,
 };
 
 /** Milliseconds the caption must stay up for its clip (0 if unnarrated). */
