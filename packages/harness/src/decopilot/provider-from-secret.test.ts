@@ -19,10 +19,15 @@ describe("createProviderFromSecret", () => {
   // wedged on every decopilot run. `languageModel(...)` must construct a model
   // synchronously and return. (A regression would hang this test — a loud,
   // CI-visible failure, since a synchronous infinite loop ignores test timeouts.)
-  for (const providerId of ["openrouter", "deco"] as const) {
+  for (const providerId of [
+    "openrouter",
+    "deco",
+    "llmapi",
+    "openai-compatible",
+  ] as const) {
     it(`${providerId}: languageModel returns a model without self-recursion`, () => {
       const provider = createProviderFromSecret(secret(providerId));
-      const model = provider.aiSdk.languageModel("openrouter/auto");
+      const model = provider.aiSdk.languageModel("some-model");
       expect(model).toBeDefined();
       expect(typeof (model as { modelId?: unknown }).modelId).toBe("string");
     });
