@@ -10,8 +10,11 @@
  * - Per-subject message limit (500K msgs/subject) prevents one thread
  *   from starving others.
  * - Per-thread publish error tracking with sampled logging.
- * - `purge()` is called on terminal events from the run reactor to drop
- *   completed runs early; the 24h `max_age` is the upper bound.
+ * - `purge()` is owned by the projector: `runProjectorWorkflowBody` purges a
+ *   run's subject after a terminal projection, and `dispatchRun` purges the
+ *   previous turn's remnants at turn start. Nothing may purge a subject the
+ *   consume step hasn't projected yet (it needs the contiguous seq 1..N log);
+ *   the 24h `max_age` is the backstop for never-projected runs.
  */
 
 import {

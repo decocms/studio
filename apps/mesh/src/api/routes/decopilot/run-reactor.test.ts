@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { ThreadStoragePort } from "@/storage/ports";
 import { reactAll, type RunReactorDeps } from "./run-reactor";
-import type { StreamBuffer } from "./stream-buffer";
 
 describe("run reactor", () => {
-  test("RUN_FAILED purges the abandoned run's stream buffer", async () => {
-    const purged: string[] = [];
+  test("RUN_FAILED writes the terminal status + emits SSE, and does NOT purge the stream", async () => {
     const updates: unknown[] = [];
     const emitted: unknown[] = [];
     const deps: RunReactorDeps = {
@@ -22,11 +20,6 @@ describe("run reactor", () => {
         }),
         forceFailIfInProgress: async () => true,
       } as unknown as ThreadStoragePort,
-      streamBuffer: {
-        purge: (runId: string) => {
-          purged.push(runId);
-        },
-      } as unknown as StreamBuffer,
       sseHub: {
         emit: (_orgId, event) => {
           emitted.push(event);
@@ -52,10 +45,11 @@ describe("run reactor", () => {
     );
 
     expect(updates).toHaveLength(1);
-    // Failed runs are NOT projected, so the durable projector never runs its
-    // cleanup step for them — the reactor purges the abandoned stream buffer
-    // here as explicit cleanup (see run-reactor.ts RUN_FAILED handling).
-    expect(purged).toEqual(["run_1"]);
+    // Regression guard: the reactor must NOT purge the run's JetStream
+    // subject on RUN_FAILED. The consume step still projects force-failed
+    // runs and needs the contiguous seq 1..N log — a mid-run purge beheads
+    // it and the projector poisons the thread with "missing seq N".
+    // Structural since RunReactorDeps no longer accepts a stream buffer.
     expect(emitted).toHaveLength(2);
   });
 });
