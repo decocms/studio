@@ -403,7 +403,8 @@ ${prod("Direct", "R$22k", "23%")}
 }
 
 /** The tasks board: every proposed action is a card — kanban, like Jira
- *  without the ceremony. Assign to an agent or a person. */
+ *  without the ceremony. Assign to an agent or a person. Styled like the
+ *  product: soft column wells, white cards, brand chips. */
 function tasksKanban(): string {
   const card = (
     id: string,
@@ -412,37 +413,43 @@ function tasksKanban(): string {
     title: string,
     impact: string,
     who: string,
+    agent: boolean,
   ) =>
-    `<div class="tk"><div class="th"><span class="tid">${id}</span><span class="chip ${chipCls}">${chip}</span></div><div class="tt">${title}</div><div class="ti">${impact}</div><div class="tw">${who}</div></div>`;
+    `<div class="tk"><div class="th"><span class="tid">${id}</span><span class="chip ${chipCls}">${chip}</span></div><div class="tt">${title}</div><div class="ti">↗ ${impact}</div><div class="tw"><span class="av ${agent ? "bot" : "hum"}">${agent ? "🤖" : who.slice(0, 1)}</span>${who}</div></div>`;
   return `<!doctype html><html><head><meta charset="utf8"><style>${DASH_STYLE}
-body{padding:14px}
-h1{font-size:16px;margin-bottom:2px}
-.sub{font-size:11px;color:#667085;margin-bottom:12px}
-.board{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.col h3{font-size:11px;color:#667085;font-weight:600;margin-bottom:6px;display:flex;justify-content:space-between}
-.col h3 b{background:#f2f4f7;border-radius:99px;padding:0 6px;font-weight:600}
-.tk{background:#fff;border:1px solid #f0f1f3;border-radius:10px;padding:8px 9px;margin-bottom:6px}
-.th{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
-.tid{font-size:10px;color:#98a2b3;font-family:ui-monospace,monospace}
-.tt{font-size:12px;font-weight:600;line-height:1.25}
-.ti{font-size:10px;color:#15803d;font-weight:600;margin-top:3px}
-.tw{font-size:10px;color:#667085;margin-top:5px;border-top:1px solid #f6f7f9;padding-top:4px}
+body{padding:16px;background:#fafafa}
+h1{font-size:16px;letter-spacing:-.01em;margin-bottom:2px}
+.sub{font-size:11px;color:#667085;margin-bottom:14px}
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.col{background:#f2f2f0;border-radius:14px;padding:8px}
+.col h3{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#667085;font-weight:600;margin:2px 4px 8px;display:flex;justify-content:space-between;align-items:center}
+.col h3 b{background:#fff;border-radius:99px;padding:1px 7px;font-weight:600;color:#475467}
+.tk{background:#fff;border:1px solid #ececec;border-radius:12px;padding:10px;margin-bottom:8px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.th{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.tid{font-size:9px;color:#98a2b3;font-family:ui-monospace,monospace}
+.tt{font-size:12px;font-weight:600;line-height:1.3;letter-spacing:-.01em}
+.ti{font-size:10px;color:#3f6212;font-weight:600;margin-top:4px}
+.tw{display:flex;align-items:center;gap:5px;font-size:10px;color:#667085;margin-top:8px}
+.av{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:99px;font-size:8px;font-weight:700}
+.av.bot{background:#ecfccb}
+.av.hum{background:#e0e7ff;color:#3730a3}
+.chip{font-size:9px;border-radius:99px;padding:2px 7px;font-weight:600}
 .chip.anom{background:#fee4e2;color:#b42318}.chip.diag{background:#ede9fe;color:#5b21b6}.chip.jira{background:#f2f4f7;color:#475467}</style></head><body>
 <h1>Tasks</h1><div class="sub">Every proposed action lands here as a card — from diagnostics, anomalies, or your backlog. Assign to an agent or a person.</div>
 <div class="board">
 <div class="col"><h3>Proposed <b>2</b></h3>
-${card("T-488", "anomaly", "anom", "De-dupe GA4 purchase event by transaction_id", "Fix 5.8% revenue overstatement", "Unassigned")}
-${card("T-489", "diagnostic", "diag", "Index search synonyms (singular/plural)", "Recover 0-result searches", "Unassigned")}
+${card("T-488", "anomaly", "anom", "De-dupe GA4 purchase event by transaction_id", "Fix 5.8% revenue overstatement", "Unassigned", false)}
+${card("T-489", "diagnostic", "diag", "Index search synonyms (singular/plural)", "Recover 0-result searches", "Unassigned", false)}
 </div>
 <div class="col"><h3>In progress <b>2</b></h3>
-${card("T-475", "diagnostic", "diag", "Add canonical tag to PLP template", "+18k organic sessions/mo", "🤖 SEO Agent")}
-${card("T-486", "jira", "jira", "Show shipping cost earlier in cart", "−4pp cart abandonment (est.)", "Guilherme R.")}
+${card("T-475", "diagnostic", "diag", "Add canonical tag to PLP template", "+18k organic sessions/mo", "SEO Agent", true)}
+${card("T-486", "jira", "jira", "Show shipping cost earlier in cart", "−4pp cart abandonment (est.)", "Guilherme R.", false)}
 </div>
 <div class="col"><h3>In review <b>1</b></h3>
-${card("T-482", "anomaly", "anom", "Strip GA tracking params before VTEX IS lookup", "+R$48k/day recovered", "🤖 Developer Agent")}
+${card("T-482", "anomaly", "anom", "Strip GA tracking params before VTEX IS lookup", "+R$48k/day recovered", "Developer Agent", true)}
 </div>
 <div class="col"><h3>Ready to deploy <b>1</b></h3>
-${card("T-479", "diagnostic", "diag", "Preload PDP hero image + fetchpriority", "+1.8% conversion (est.)", "Camila Souza")}
+${card("T-479", "diagnostic", "diag", "Preload PDP hero image + fetchpriority", "+1.8% conversion (est.)", "Camila Souza", false)}
 </div>
 </div>
 </body></html>`;
@@ -1236,6 +1243,33 @@ function HomeLevel({ stores }: { stores: DemoStores }) {
 // Org / agent levels — same shell, one zoom apart
 // ============================================================================
 
+/** The agent's MCP apps — each entry is one app UI this agent can render in
+ *  the preview. The agent decides which apps it offers (and which is default);
+ *  the switcher lives top-right of the preview chrome, like in Studio. */
+const VELA_APPS: {
+  label: string;
+  url: string;
+  html: (s: DemoStores) => string;
+}[] = [
+  {
+    label: "Operations",
+    url: "vela · operations",
+    html: () => orgDashboard(),
+  },
+  {
+    label: "Site",
+    url: "vela.shop",
+    html: (s) => velaPreview({ winter: s.ui.get().inputs.shipped === "1" }),
+  },
+  { label: "Sales", url: "vela · sales", html: () => storeOpsApp() },
+  { label: "Tasks", url: "vela · tasks", html: () => tasksKanban() },
+  {
+    label: "Members",
+    url: "vela · settings/members",
+    html: (s) => settingsApp({ rafaAdmin: s.ui.get().inputs.rafa === "1" }),
+  },
+];
+
 function OrgLevel({
   stores,
   activeAgent,
@@ -1245,8 +1279,18 @@ function OrgLevel({
 }) {
   const previewHtml = useDemoInput(stores, "preview:vela");
   const previewUrl = useDemoInput(stores, "preview-url") || "vela.shop";
+  const apps = VELA_APPS.map((app) => ({
+    label: app.label,
+    active: previewUrl === app.url,
+    onClick: () =>
+      setInputs(stores, {
+        "preview:vela": app.html(stores),
+        "preview-url": app.url,
+      }),
+  }));
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-2">
+    // Chat 40 / preview 60 — the app UI is the star at org/agent level.
+    <div className="grid min-h-0 flex-1 grid-cols-[2fr_3fr]">
       <FloatCard>
         <div className="flex min-h-0 flex-1 flex-col">
           <DemoChatStreamProvider store={stores.getChat(activeAgent)}>
@@ -1260,7 +1304,7 @@ function OrgLevel({
         </div>
       </FloatCard>
       <FloatCard>
-        <PreviewFrame url={previewUrl} html={previewHtml} />
+        <PreviewFrame url={previewUrl} html={previewHtml} apps={apps} />
       </FloatCard>
     </div>
   );
@@ -1336,7 +1380,7 @@ async function say(d: Director, t: Track, text: string) {
 async function goodMorning(d: Director) {
   const deco = d.track("deco").setSender({ name: "Decopilot", logo: true });
 
-  await d.caption("This is your deco Studio — the home for your AI agents");
+  await d.caption("This is deco Studio — the home for your AI agents!");
   await d.beat(3300);
 
   await d.caption(
@@ -1498,13 +1542,18 @@ async function hopIntoVela(d: Director) {
   await d.beat(2200);
   d.hideCursor();
 
-  // → and where the follow-ups went: the org's board.
+  // → and where the follow-ups went: the agent's Tasks app. The cursor
+  // clicks the app switcher (top right of the preview) to make it explicit
+  // that this board is ONE of the agent's MCP apps.
   await d.caption(
     "Every follow-up becomes a card — assigned to an agent, or a person",
   );
+  d.showCursor();
+  await d.click("app:tasks");
   d.setInput("preview-url", "vela · tasks");
   d.setPreview("vela", tasksKanban());
-  await d.beat(5200);
+  d.hideCursor();
+  await d.beat(4200);
 }
 
 const SALES_RECAP = `Yesterday on vela.shop:
