@@ -35,14 +35,21 @@ export interface ListObjectsResponse {
 export function useFilePickerObjects(params: {
   configId: string | null;
   search?: string;
+  imageOnly?: boolean;
   enabled?: boolean;
 }) {
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const search = params.search?.trim() || undefined;
+  const imageOnly = params.imageOnly ?? false;
 
   return useInfiniteQuery({
-    queryKey: KEYS.filePickerObjects(org.id, params.configId, search),
+    queryKey: KEYS.filePickerObjects(
+      org.id,
+      params.configId,
+      search,
+      imageOnly,
+    ),
     enabled: params.enabled !== false && !!params.configId,
     staleTime: 30_000,
     initialPageParam: null as string | null,
@@ -52,6 +59,9 @@ export function useFilePickerObjects(params: {
         configId: params.configId as string,
         cursor: pageParam ?? undefined,
         search,
+        // imageOnly only narrows the server-side search scan; it's a no-op on
+        // the normal (non-search) listing, which the client filters instead.
+        imageOnly: imageOnly || undefined,
       });
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,

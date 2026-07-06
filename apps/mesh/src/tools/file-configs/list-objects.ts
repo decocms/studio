@@ -18,7 +18,12 @@ export const FILE_OBJECTS_LIST = defineTool({
     configId: z.string().min(1),
     cursor: z.string().nullable().optional(),
     maxKeys: z.number().int().min(1).max(200).optional(),
-    search: z.string().nullable().optional(),
+    // Bounded to keep an authenticated caller from forcing pathologically long
+    // substring scans; the scan itself is also page-capped server-side.
+    search: z.string().max(256).nullable().optional(),
+    // When true, the search scan keeps only image-extension keys so the image
+    // picker doesn't match (then discard) non-image files.
+    imageOnly: z.boolean().optional(),
   }),
   outputSchema: z.object({
     items: z.array(
@@ -48,6 +53,7 @@ export const FILE_OBJECTS_LIST = defineTool({
       cursor: input.cursor,
       maxKeys: input.maxKeys,
       search: input.search,
+      imageOnly: input.imageOnly,
     });
   },
 });

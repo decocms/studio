@@ -203,6 +203,7 @@ function BucketPanel({
   const objectsQuery = useFilePickerObjects({
     configId: config.id,
     search: debouncedSearch,
+    imageOnly: mode === "image",
   });
   const upload = useFilePickerUpload();
   const [isDragging, setIsDragging] = useState(false);

@@ -221,6 +221,7 @@ export async function listObjects(params: {
   cursor?: string | null;
   maxKeys?: number;
   search?: string | null;
+  imageOnly?: boolean;
 }): Promise<ListObjectsResult> {
   const client = buildS3Client(params.ctx);
   const target = Math.min(params.maxKeys ?? 50, 200);
@@ -239,6 +240,7 @@ export async function listObjects(params: {
       target,
       cursor: params.cursor,
       search,
+      imageOnly: params.imageOnly ?? false,
     });
   }
 
@@ -315,15 +317,78 @@ export async function listObjects(params: {
 }
 
 /**
+ * Image key extensions the pickers treat as images. This MIRRORS the
+ * client-side `isImageKey` in `web/components/file-picker/file-picker-dialog.tsx`
+ * — keep the two extension lists in sync. Filtering server-side (see
+ * `searchObjects`) matters for search: without it the scan matches non-image
+ * keys the image picker then discards, so a text match on `report.pdf` would
+ * show "no matches" and waste scan budget on rows the client throws away.
+ */
+const IMAGE_KEY_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;
+
+export function isImageKey(key: string): boolean {
+  return IMAGE_KEY_RE.test(key);
+}
+
+/** Minimal object shape the pure scan helpers reason about. */
+export interface ScanCandidate {
+  key: string;
+  size: number;
+  lastModified: string | null;
+}
+
+/**
+ * Pure: keep the candidates on one scanned page whose lowercased key contains
+ * `search` (and, when `imageOnly`, that look like images). Folder markers
+ * (keys ending in `/`) are dropped by the caller before this runs.
+ */
+export function matchScanPage(
+  candidates: ScanCandidate[],
+  search: string,
+  imageOnly: boolean,
+): ScanCandidate[] {
+  return candidates.filter(
+    (c) =>
+      c.key.toLowerCase().includes(search) && (!imageOnly || isImageKey(c.key)),
+  );
+}
+
+/**
+ * Pure: decide whether the scan loop should stop after consuming a page and
+ * what cursor to hand back. The loop stops once it has enough matches, the
+ * bucket is exhausted, or it hits the per-request page budget. `nextCursor` is
+ * the page-boundary token only while more unscanned keys remain — so "Load
+ * more" resumes exactly where this call stopped, never dropping matches.
+ */
+export function nextScanStep(params: {
+  matchCount: number;
+  target: number;
+  pagesScanned: number;
+  maxPages: number;
+  isTruncated: boolean;
+  continuationToken: string | undefined;
+}): { done: boolean; nextCursor: string | null } {
+  const hasMore = Boolean(params.isTruncated && params.continuationToken);
+  const done =
+    params.matchCount >= params.target ||
+    !hasMore ||
+    params.pagesScanned >= params.maxPages;
+  return {
+    done,
+    nextCursor: hasMore ? (params.continuationToken ?? null) : null,
+  };
+}
+
+/**
  * Substring search over the bucket. S3 gives us no server-side "contains"
  * filter, so we scan wide pages (up to `SCAN_PAGE_SIZE` keys each) under the
- * broad prefix and keep the keys whose lowercased value contains `search`.
+ * broad prefix and keep matching keys (see `matchScanPage`). A thin I/O shell:
+ * the match filter and the stop/cursor decision live in the pure `matchScanPage`
+ * / `nextScanStep` helpers so they're unit-testable without S3.
  *
- * We never slice matches mid-page: `nextCursor` is always a real S3 page
- * boundary token, so "Load more" resumes the scan exactly where this one
- * stopped without dropping matches. Each request scans at most
- * `MAX_SCAN_PAGES` pages so a huge bucket can't stall a single call — the
- * returned cursor lets the client continue if the target wasn't reached.
+ * Each request scans at most `MAX_SCAN_PAGES` pages so a huge bucket can't
+ * stall a single call — the returned cursor lets the client continue if the
+ * target wasn't reached.
  */
 async function searchObjects(params: {
   client: S3Client;
@@ -332,14 +397,18 @@ async function searchObjects(params: {
   target: number;
   cursor?: string | null;
   search: string;
+  imageOnly: boolean;
 }): Promise<ListObjectsResult> {
   const SCAN_PAGE_SIZE = 1000;
   const MAX_SCAN_PAGES = 20;
 
-  const matches: ListedObject[] = [];
+  const matches: ScanCandidate[] = [];
   let continuationToken = params.cursor ?? undefined;
-  let hasMore = false;
   let pagesScanned = 0;
+  let step: { done: boolean; nextCursor: string | null } = {
+    done: false,
+    nextCursor: null,
+  };
 
   do {
     const res = await params.client.send(
@@ -351,25 +420,33 @@ async function searchObjects(params: {
       }),
     );
     pagesScanned++;
+
+    const candidates: ScanCandidate[] = [];
     for (const obj of res.Contents ?? []) {
       if (!obj.Key || obj.Key.endsWith("/")) continue;
-      if (obj.Key.toLowerCase().includes(params.search)) {
-        matches.push(toListedObject(obj, params.ctx));
-      }
+      candidates.push({
+        key: obj.Key,
+        size: obj.Size ?? 0,
+        lastModified: obj.LastModified ? obj.LastModified.toISOString() : null,
+      });
     }
-    continuationToken = res.NextContinuationToken;
-    hasMore = Boolean(res.IsTruncated && continuationToken);
-  } while (
-    matches.length < params.target &&
-    hasMore &&
-    pagesScanned < MAX_SCAN_PAGES
-  );
+    matches.push(...matchScanPage(candidates, params.search, params.imageOnly));
 
-  matches.sort(byLastModifiedDesc);
-  return {
-    items: matches,
-    nextCursor: hasMore ? (continuationToken ?? null) : null,
-  };
+    step = nextScanStep({
+      matchCount: matches.length,
+      target: params.target,
+      pagesScanned,
+      maxPages: MAX_SCAN_PAGES,
+      isTruncated: Boolean(res.IsTruncated),
+      continuationToken: res.NextContinuationToken,
+    });
+    continuationToken = res.NextContinuationToken;
+  } while (!step.done);
+
+  const items: ListedObject[] = matches
+    .map((c) => ({ ...c, publicUrl: buildPublicUrl(params.ctx.info, c.key) }))
+    .sort(byLastModifiedDesc);
+  return { items, nextCursor: step.nextCursor };
 }
 
 function toListedObject(

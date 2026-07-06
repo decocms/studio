@@ -388,7 +388,15 @@ export const KEYS = {
     orgId: string,
     configId: string | null,
     search?: string,
-  ) => ["file-picker-objects", orgId, configId, search ?? ""] as const,
+    imageOnly?: boolean,
+  ) =>
+    [
+      "file-picker-objects",
+      orgId,
+      configId,
+      search ?? "",
+      imageOnly ?? false,
+    ] as const,
 
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>
