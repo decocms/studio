@@ -1433,7 +1433,7 @@ function SectionsRightPane({
   );
 }
 
-export function GroupHeader({
+function GroupHeader({
   icon: Icon,
   label,
   className,
@@ -2814,7 +2814,7 @@ function ItemActions({
   );
 }
 
-export function ListEmpty({
+function ListEmpty({
   hasItems,
   emptyLabel,
   emptyHint,

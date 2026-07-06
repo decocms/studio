@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import {
-  groupRunnables,
   isManifestRunnableResolveType,
   listAvailableRunnables,
   listSavedRunnables,
+  runnableFolderPath,
   runnableGroupKey,
 } from "./runnable-catalog";
 
@@ -85,20 +85,23 @@ describe("runnable-catalog", () => {
     expect(runnableGroupKey("site/loaders/products.ts")).toBe("site");
   });
 
-  it("groupRunnables buckets entries by namespace, sorted", () => {
-    const groups = groupRunnables(listAvailableRunnables(meta, "loaders"));
-    const byKey = Object.fromEntries(groups.map((g) => [g.key, g]));
-    expect(byKey.vtex?.entries.map((e) => e.resolveType)).toEqual([
-      "vtex/loaders/legacy/productList.ts",
+  it("runnableFolderPath walks the resolveType as folders", () => {
+    expect(
+      runnableFolderPath("vtex/loaders/intelligentSearch/productList.ts"),
+    ).toEqual(["vtex", "intelligentSearch"]);
+    expect(runnableFolderPath("vtex/loaders/legacy/productList.ts")).toEqual([
+      "vtex",
+      "legacy",
     ]);
-    expect(byKey.deco?.title).toBe("Deco");
-    expect(byKey.deco?.entries.map((e) => e.resolveType)).toEqual([
-      "$live/loaders/state.ts",
+    expect(runnableFolderPath("site/loaders/products.ts")).toEqual(["site"]);
+    expect(runnableFolderPath("$live/loaders/state.ts")).toEqual(["deco"]);
+    expect(
+      runnableFolderPath("deco-sites/mysite/loaders/product/detail.ts"),
+    ).toEqual(["mysite", "product"]);
+    expect(runnableFolderPath("site/actions/cart/add.ts")).toEqual([
+      "site",
+      "cart",
     ]);
-    // Groups sorted by title.
-    expect(groups.map((g) => g.title)).toEqual(
-      [...groups.map((g) => g.title)].sort((a, b) => a.localeCompare(b)),
-    );
   });
 
   it("listAvailableRunnables scopes actions to the actions block type", () => {

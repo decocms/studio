@@ -114,32 +114,30 @@ const GROUP_TITLES: Record<string, string> = {
   website: "Website",
 };
 
-function runnableGroupTitle(key: string): string {
+export function runnableGroupTitle(key: string): string {
   return GROUP_TITLES[key] ?? key;
 }
 
-export interface RunnableGroup {
-  key: string;
-  title: string;
-  entries: RunnableEntry[];
-}
-
-/** Group runnables by app/vendor namespace, sorted by group then title. */
-export function groupRunnables(entries: RunnableEntry[]): RunnableGroup[] {
-  const byKey = new Map<string, RunnableEntry[]>();
-  for (const entry of entries) {
-    const key = runnableGroupKey(entry.resolveType);
-    const bucket = byKey.get(key);
-    if (bucket) bucket.push(entry);
-    else byKey.set(key, [entry]);
+/**
+ * Folder path a runnable lives under, derived from its resolveType — the
+ * grouping the folder-navigable UI walks. The first segment is the app/vendor
+ * group ({@link runnableGroupKey}); the block-kind segment (`loaders`/`actions`,
+ * constant within a tab) and the leaf filename are dropped.
+ *
+ * `vtex/loaders/intelligentSearch/productList.ts` → `["vtex", "intelligentSearch"]`
+ * `site/loaders/products.ts`                      → `["site"]`
+ * `$live/loaders/state.ts`                        → `["deco"]`
+ * `deco-sites/mysite/loaders/product/detail.ts`   → `["mysite", "product"]`
+ */
+export function runnableFolderPath(resolveType: string): string[] {
+  const root = runnableGroupKey(resolveType);
+  const segments = resolveType.split("/").filter(Boolean);
+  let rest = segments.slice(resolveType.startsWith("deco-sites/") ? 2 : 1);
+  if (rest[0] === "loaders" || rest[0] === "actions") {
+    rest = rest.slice(1);
   }
-  return [...byKey.entries()]
-    .map(([key, groupEntries]) => ({
-      key,
-      title: runnableGroupTitle(key),
-      entries: groupEntries.sort((a, b) => a.title.localeCompare(b.title)),
-    }))
-    .sort((a, b) => a.title.localeCompare(b.title));
+  // The last segment is the block file itself, not a folder.
+  return [root, ...rest.slice(0, -1)];
 }
 
 /** Loaders/actions already saved as global blocks in the decofile. */

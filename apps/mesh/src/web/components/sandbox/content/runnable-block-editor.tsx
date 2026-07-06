@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  ArrowLeft,
   ChevronRight,
   Code01,
   LinkExternal01,
@@ -62,6 +63,7 @@ export function RunnableBlockEditor({
   isCreating,
   onCreate,
   onSaveReferencedBlock,
+  onBack,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -78,6 +80,8 @@ export function RunnableBlockEditor({
     blockKey: string,
     data: Record<string, unknown>,
   ) => void;
+  /** Navigates back to the folder browser. */
+  onBack?: () => void;
 }) {
   const inset = useInsetContext();
   const agentSiteSlug =
@@ -199,6 +203,17 @@ export function RunnableBlockEditor({
       {/* Header: breadcrumb + Run + Save (available only) + JSON toggle. */}
       <div className="shrink-0 border-b px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+          {onBack && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0"
+              onClick={onBack}
+              aria-label="Back to list"
+            >
+              <ArrowLeft size={14} />
+            </Button>
+          )}
           <nav
             aria-label="Editing breadcrumb"
             className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
