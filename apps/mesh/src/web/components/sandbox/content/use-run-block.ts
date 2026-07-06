@@ -6,27 +6,28 @@ interface RunBlockInput {
 }
 
 /**
- * Build the block-preview run URL Deco expects (same contract the admin uses):
- * `GET <preview>/live/previews/<resolveType>` with the resolveType RAW in the
- * path (slashes intact) and:
+ * Build the invoke run URL Deco expects:
+ * `GET <preview>/live/invoke/<resolveType>` with the resolveType RAW in the
+ * path (slashes intact). Unlike `/live/previews/*` (which always renders an
+ * HTML preview page), `/live/invoke/*` returns the block's structured JSON
+ * result. Search params:
  *
  * - `__cb` — CDN cache-buster (time-encoded) so we always miss the edge cache.
  * - `__decoFBT=0` — disables loader caching for this request.
  * - `__d` — enables debug mode; the value is a free-form correlation id.
- * - `props` — `btoa(encodeURIComponent(JSON.stringify(props)))`, mirroring the
- *   admin's `encodeProps` (the runtime decodes with
- *   `decodeURIComponent(atob(props))`; the URI-encoding step keeps `btoa` safe
- *   for non-Latin1 characters).
+ * - `props` — `btoa(encodeURIComponent(JSON.stringify(props)))`; the runtime's
+ *   `bodyFromUrl` decodes with `JSON.parse(decodeURIComponent(atob(props)))`
+ *   (the URI-encoding step keeps `btoa` safe for non-Latin1 characters).
  *
  * `nowMs` is a parameter so the function stays pure and testable.
  */
-export function buildPreviewRunUrl(
+export function buildInvokeRunUrl(
   previewUrl: string,
   resolveType: string,
   props: Record<string, unknown>,
   nowMs: number,
 ): string {
-  const url = new URL(`/live/previews/${resolveType}`, previewUrl);
+  const url = new URL(`/live/invoke/${resolveType}`, previewUrl);
   url.searchParams.set("__cb", nowMs.toString(36));
   url.searchParams.set("__decoFBT", "0");
   url.searchParams.set("__d", `run-${nowMs.toString(36)}`);
@@ -51,7 +52,7 @@ async function invokeBlock(
   { resolveType, props }: RunBlockInput,
 ): Promise<unknown> {
   const res = await fetch(
-    buildPreviewRunUrl(previewUrl, resolveType, props, Date.now()),
+    buildInvokeRunUrl(previewUrl, resolveType, props, Date.now()),
   );
 
   const text = await res.text();

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { buildPreviewRunUrl } from "./use-run-block";
+import { buildInvokeRunUrl } from "./use-run-block";
 
 const NOW_MS = 1_751_500_000_000;
 
-describe("buildPreviewRunUrl", () => {
+describe("buildInvokeRunUrl", () => {
   it("keeps the resolveType raw in the path (slashes intact)", () => {
     const url = new URL(
-      buildPreviewRunUrl(
+      buildInvokeRunUrl(
         "http://handle.localhost:6000",
         "vtex/loaders/intelligentSearch/productList.ts",
         {},
@@ -14,14 +14,14 @@ describe("buildPreviewRunUrl", () => {
       ),
     );
     expect(url.pathname).toBe(
-      "/live/previews/vtex/loaders/intelligentSearch/productList.ts",
+      "/live/invoke/vtex/loaders/intelligentSearch/productList.ts",
     );
     expect(url.origin).toBe("http://handle.localhost:6000");
   });
 
   it("sets the cache-bust / debug search params", () => {
     const url = new URL(
-      buildPreviewRunUrl(
+      buildInvokeRunUrl(
         "http://handle.localhost:6000/",
         "site/loaders/products.ts",
         {},
@@ -42,7 +42,7 @@ describe("buildPreviewRunUrl", () => {
       nested: { emoji: "🏖️" },
     };
     const url = new URL(
-      buildPreviewRunUrl(
+      buildInvokeRunUrl(
         "http://handle.localhost:6000",
         "site/loaders/products.ts",
         props,
