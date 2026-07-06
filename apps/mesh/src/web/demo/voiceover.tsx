@@ -17,8 +17,7 @@ import type { DemoStores } from "./director-stores";
 
 /** caption text → clip. Keys must EXACTLY match the script's captions. */
 const VO_FILES: Record<string, string> = {
-  "This is your deco Studio — the home for your AI agents":
-    "/demo/vo/vo-01.m4a",
+  "This is deco Studio — the home for your AI agents!": "/demo/vo/vo-01.m4a",
   "Every morning, your agents report on what's new — and what needs you":
     "/demo/vo/vo-02.m4a",
   "Your deco asks each team's agent — in parallel": "/demo/vo/vo-03.m4a",
@@ -51,8 +50,8 @@ const VO_FILES: Record<string, string> = {
  *  with Maya1 (Apache 2.0, Indian-English voice design) on-device; durations
  *  are the sample-accurate wav lengths from the generation run. */
 export const VO_MS: Record<string, number> = {
-  "/demo/vo/vo-01.m4a": 2820,
-  "/demo/vo/vo-02.m4a": 4135,
+  "/demo/vo/vo-01.m4a": 2738,
+  "/demo/vo/vo-02.m4a": 3382,
   "/demo/vo/vo-03.m4a": 3202,
   "/demo/vo/vo-04.m4a": 3047,
   "/demo/vo/vo-05.m4a": 2281,
