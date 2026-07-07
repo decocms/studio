@@ -130,18 +130,43 @@ export async function fetchGitDiff(
   return parseJson<GitDiffResult>(res);
 }
 
+/**
+ * Drop auto-generated files (Tailwind CSS output, `blocks.gen.json`) from a
+ * diff before sending it to `suggest-commit`. Their full-content `from`/`to`
+ * bodies can be megabytes on their own and blew past the endpoint's 512KB body
+ * limit (413). They carry no signal for an LLM commit message either — the
+ * server backfills the diff from the daemon when the client omits it, so a
+ * fully-stripped diff still yields a suggestion.
+ */
+export function stripGeneratedFilesFromDiff(
+  diff: GitDiffResult,
+): GitDiffResult {
+  const diffs: Record<string, GitDiffEntry> = {};
+  for (const [path, entry] of Object.entries(diff.diffs)) {
+    if (isBlocksGenJsonPath(path) || isTailwindCssPath(path)) continue;
+    diffs[path] = entry;
+  }
+  return { ...diff, diffs };
+}
+
 export async function fetchSuggestCommitMessage(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
   payload?: { status: GitStatus; diff: GitDiffResult },
 ): Promise<CommitSuggestion> {
+  const body = payload
+    ? {
+        status: payload.status,
+        diff: stripGeneratedFilesFromDiff(payload.diff),
+      }
+    : {};
   const res = await sandboxFetch(
     buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "suggest-commit"),
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload ?? {}),
+      body: JSON.stringify(body),
     },
   );
   return parseJson<CommitSuggestion>(res);
