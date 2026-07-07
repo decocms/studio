@@ -67,6 +67,7 @@ import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/web/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
 import { shouldRenderInlineModeRow } from "./input-mode-row";
+import { resolveComposerAction } from "./composer-action";
 
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
@@ -405,23 +406,25 @@ export function ChatInput({
   // model's context is much fuller than it actually is.
   const lastTotalTokens = lastUsage?.contextTokens ?? 0;
 
-  const canSubmit =
-    !isStreaming && !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
-
-  const showStopOrCancel = isStreaming || isRunInProgress;
+  // A draft sends even mid-run — the new message enqueues behind the running
+  // gate (concurrency=1 serializes the thread). Stop is offered only when
+  // there's nothing to send. `canSubmit`/`showStopOrCancel` are kept as the
+  // names the button/render logic below already references.
+  const hasDraft = !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
+  const composerAction = resolveComposerAction({
+    hasDraft,
+    isStreaming,
+    isRunInProgress,
+  });
+  const canSubmit = composerAction === "send";
+  const showStopOrCancel = composerAction === "stop";
   const showInlineModeRow = shouldRenderInlineModeRow({
     messageCount: messages.length,
     showConnectionsBanner,
   });
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
-    if (isStreaming) {
-      track("chat_message_stopped", { thread_id: taskId });
-      stop();
-    } else if (isRunInProgress) {
-      track("chat_message_stopped", { thread_id: taskId });
-      stop();
-    } else if (canSubmit && tiptapDoc) {
+    if (composerAction === "send" && tiptapDoc) {
       track("chat_message_sent", {
         thread_id: taskId || null,
         mode: chatMode,
@@ -437,6 +440,9 @@ export function ChatInput({
       }
       clearChatDraft(sessionStorage, locator, draftKey);
       setTiptapDoc(undefined);
+    } else if (composerAction === "stop") {
+      track("chat_message_stopped", { thread_id: taskId });
+      stop();
     }
   };
 
@@ -464,7 +470,7 @@ export function ChatInput({
             key={taskId}
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
-            disabled={isStreaming}
+            disabled={false}
             enterToSubmit={true}
             onSubmit={handleSubmit}
           >
@@ -482,7 +488,7 @@ export function ChatInput({
               <div className="group/input relative flex flex-col gap-2 flex-1">
                 <TiptapInput
                   ref={tiptapRef}
-                  disabled={isStreaming || voice.status === "recording"}
+                  disabled={voice.status === "recording"}
                   virtualMcpId={selectedVirtualMcp?.id ?? decopilotId}
                   showFileUploader={true}
                   selectedModel={selectedModel}
@@ -523,7 +529,7 @@ export function ChatInput({
                     {/* Left Actions (+, Tools, active tool pills, stats) */}
                     <div className="flex items-center gap-1.5 min-w-0">
                       <ToolsPopover
-                        disabled={isStreaming}
+                        disabled={false}
                         onOpenConnections={() => {
                           track("connections_dialog_opened", {
                             source: "tools_popover",
@@ -565,7 +571,6 @@ export function ChatInput({
                       {chatMode === "gen-image" && imageModel && (
                         <button
                           type="button"
-                          disabled={isStreaming}
                           onClick={() => {
                             playSwitchSound();
                             track("chat_mode_changed", {
@@ -592,7 +597,6 @@ export function ChatInput({
                       {chatMode === "web-search" && webSearchModel && (
                         <button
                           type="button"
-                          disabled={isStreaming}
                           onClick={() => {
                             playSwitchSound();
                             track("chat_mode_changed", {
@@ -619,7 +623,6 @@ export function ChatInput({
                       {chatMode === "deep-research" && deepResearchModel && (
                         <button
                           type="button"
-                          disabled={isStreaming}
                           onClick={() => {
                             playSwitchSound();
                             track("chat_mode_changed", {
@@ -663,14 +666,14 @@ export function ChatInput({
                       )}
                       <TierTrigger />
 
-                      {/* Microphone button — kept mounted (and disabled)
-                          during streaming/run to avoid layout shift when
-                          the send button morphs into stop/cancel. */}
+                      {/* Microphone button — always enabled; the composer has
+                          no disabled state, only a streaming state reflected by
+                          the send/stop button. */}
                       {voice.isSupported && (
                         <Button
                           type="button"
                           onClick={handleVoiceStart}
-                          disabled={isStreaming || isRunInProgress}
+                          disabled={false}
                           variant="ghost"
                           size="icon"
                           className={cn(
@@ -695,8 +698,7 @@ export function ChatInput({
                           if (showStopOrCancel) {
                             e.preventDefault();
                             e.stopPropagation();
-                            if (isStreaming) stop();
-                            else stop();
+                            stop();
                           }
                         }}
                         variant={
@@ -711,11 +713,11 @@ export function ChatInput({
                             "bg-muted text-muted-foreground hover:bg-muted hover:text-muted-foreground cursor-not-allowed",
                         )}
                         title={
-                          isStreaming
-                            ? "Stop generating"
-                            : isRunInProgress
-                              ? "Cancel run"
-                              : "Send message (Enter)"
+                          composerAction === "stop"
+                            ? isStreaming
+                              ? "Stop generating"
+                              : "Cancel run"
+                            : "Send message (Enter)"
                         }
                       >
                         {showStopOrCancel ? (
