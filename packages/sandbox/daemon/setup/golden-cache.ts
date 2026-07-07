@@ -105,7 +105,14 @@ export function goldenNodeModulesPath(opts: {
   );
 }
 
-/** True when both paths resolve to the same filesystem (reflink prerequisite). */
+/**
+ * True when both paths report the same `st_dev` — a cheap NEGATIVE filter for
+ * reflink (different dev ⇒ reflink can't work, skip the doomed cp). It is NOT
+ * sufficient: two bind-mounts of one underlying fs can share a dev number yet
+ * still EXDEV on reflink (observed on kind: /deps-cache hostPath + /app
+ * emptyDir both dev fe01, cp --reflink=always fails). The `cp` exit code is
+ * the authoritative test; callers must handle its failure regardless.
+ */
 export function sameFilesystem(a: string, b: string): boolean {
   try {
     return statSync(a).dev === statSync(b).dev;
