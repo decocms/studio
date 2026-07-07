@@ -389,6 +389,34 @@ export class ThreadConnection {
     }
   }
 
+  /**
+   * Queue a user message behind the active run: render it optimistically in
+   * the body (it is durable server-side the moment the POST lands) and POST
+   * it to the thread gate WITHOUT touching the running turn's status
+   * display (no `status`/`runStatusStage` change — that belongs to the
+   * turn already streaming). Throws if the POST fails so the caller can
+   * surface the error — the CALLER must then roll back the optimistic body
+   * row via `removeLocalMessage(message.id)` (and drop its optimistic queue
+   * entry): the POST never landed, so no server refetch will ever reconcile
+   * the row away (mergeAndSort only upserts, it never drops local rows).
+   */
+  async enqueue(message: UIMessage, opts: RequestOptions): Promise<void> {
+    const action: SubmitAction = { kind: "message", message };
+    const next = applyLocally(this.messages.get(), action);
+    if (!next) {
+      // Can't happen — a "message" action always appends. Mirrors submit()'s
+      // no-silent-no-ops guard for consistency and type-safety.
+      throw new Error(`enqueue: target not found for ${describe(action)}`);
+    }
+    this.messages.set(mergeAndSort(next, []));
+    await this.post(message, opts, undefined, true);
+  }
+
+  /** Drop a message from the local store (used when a queued turn is removed). */
+  removeLocalMessage(messageId: string): void {
+    this.messages.update((cur) => cur.filter((m) => m.id !== messageId));
+  }
+
   stop(): void {
     this.inflightPost?.abort();
     const s = this.status.get();
@@ -616,6 +644,7 @@ export class ThreadConnection {
     message: UIMessage,
     opts: RequestOptions,
     signal?: AbortSignal,
+    quiet = false,
   ): Promise<void> {
     const { system, ...rest } = opts;
     // Attach the system prompt only on a user turn. Tool-output / approval
@@ -661,7 +690,8 @@ export class ThreadConnection {
       const text = await resp.text().catch(() => "");
       throw new Error(text || `POST /messages failed (${resp.status})`);
     }
-    if (this.runStatusStage.get() !== null) {
+    // A queued (quiet) POST must not touch the running turn's status display.
+    if (!quiet && this.runStatusStage.get() !== null) {
       this.setRunStatusStage("received");
     }
   }

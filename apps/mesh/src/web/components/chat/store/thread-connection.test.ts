@@ -724,6 +724,79 @@ describe("submit", () => {
   });
 });
 
+// ─── enqueue() — quiet POST behind the active run ────────────────────────────
+
+describe("enqueue", () => {
+  test("POSTs and appends the message without touching status or runStatusStage", async () => {
+    let messagesCalls = 0;
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: () => {
+        messagesCalls++;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-enqueue-quiet", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Put the running turn's status display in a non-null stage. "sending"
+    // ranks BELOW "received", so a non-quiet POST would provably advance it
+    // (see "tracks local sending and received states around POST /messages").
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "sending" },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBe("sending");
+    const statusBefore = conn.status.get();
+
+    await conn.enqueue(
+      {
+        id: "q-1",
+        role: "user",
+        parts: [{ type: "text", text: "queued behind the run" }],
+      },
+      baseOpts,
+    );
+
+    // The POST happened and the optimistic row is in the body…
+    expect(messagesCalls).toBe(1);
+    expect(conn.messages.get().map((m) => m.id)).toContain("q-1");
+    // …but the running turn's status display is byte-for-byte untouched:
+    // no "received" bump (quiet POST), no "submitted" status flip.
+    expect(conn.runStatusStage.get()).toBe("sending");
+    expect(conn.status.get()).toEqual(statusBefore);
+    expect(conn.status.get().kind).not.toBe("submitted");
+  });
+
+  test("removeLocalMessage filters exactly the given row", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-enqueue-remove", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    await conn.enqueue(
+      { id: "q-1", role: "user", parts: [{ type: "text", text: "first" }] },
+      baseOpts,
+    );
+    await conn.enqueue(
+      { id: "q-2", role: "user", parts: [{ type: "text", text: "second" }] },
+      baseOpts,
+    );
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["q-1", "q-2"]);
+
+    conn.removeLocalMessage("q-1");
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["q-2"]);
+  });
+});
+
 // ─── submit() — defer POST while client-side resolutions are pending ─────────
 
 describe("submit defers POST", () => {
