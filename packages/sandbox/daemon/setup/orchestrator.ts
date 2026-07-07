@@ -27,6 +27,7 @@ import type { Application, Config } from "../types";
 import { autodetectApplication } from "./autodetect";
 import { type CloneResult, spawnClone } from "./clone";
 import { emitInstalledDeps } from "./dep-metrics";
+import { publishGolden, tryRestoreGolden } from "./golden-cache";
 import { configureGitIdentity } from "./identity";
 import { spawnInstall } from "./install";
 import { spawnSetupStep } from "./spawn-step";
@@ -320,6 +321,26 @@ export class SetupOrchestrator {
     }
 
     this.deps.lifecycle.transition({ phase: "installing" });
+
+    // Golden fast path: reflink a cached node_modules for this exact lockfile
+    // and skip `bun install` entirely (see golden-cache.ts). Best-effort — a
+    // miss or any failure falls through to the normal install below.
+    const installRoot = resolvePmRoot(
+      config.repoDir,
+      config.application?.packageManager?.path,
+    );
+    if (
+      await tryRestoreGolden({
+        config,
+        installRoot,
+        pm,
+        log: (m) => this.chunk(`${m}\r\n`),
+      })
+    ) {
+      this.markInstallSucceeded(config);
+      return true;
+    }
+
     this.chunk(`[orchestrator] installing dependencies\r\n`);
 
     const installLogPath = appLogPath(this.deps.logsDir, "install");
@@ -358,12 +379,18 @@ export class SetupOrchestrator {
       return false;
     }
     this.markInstallSucceeded(config);
+    // Publish this fresh node_modules as the golden for its lockfile so the
+    // next branch on this node reflink-restores it instead of reinstalling
+    // (best-effort, async — see golden-cache.ts).
+    void publishGolden({
+      config,
+      installRoot,
+      pm,
+      log: (m) => this.rawChunk(`${m}\r\n`),
+    });
     // Report the installed dep set for pre-bake analysis (best-effort, async).
     void emitInstalledDeps({
-      installRoot: resolvePmRoot(
-        config.repoDir,
-        config.application?.packageManager?.path,
-      ),
+      installRoot,
       packageManager: pm,
       bootId: process.env.DAEMON_BOOT_ID ?? "",
       repoName: config.git?.repository?.repoName,
