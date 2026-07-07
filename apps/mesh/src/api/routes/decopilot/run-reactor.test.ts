@@ -139,4 +139,49 @@ describe("run reactor", () => {
     expect(updates[0]!.failure_reason).toBeUndefined();
     expect(updates[0]!.failure_kind).toBeUndefined();
   });
+
+  test("RUN_STARTED clears any stale failure_reason/failure_kind from a prior run", async () => {
+    const updates: Record<string, unknown>[] = [];
+    const deps: RunReactorDeps = {
+      storage: {
+        update: async (
+          _id: string,
+          _orgId: string,
+          data: Record<string, unknown>,
+        ) => {
+          updates.push(data);
+          return null;
+        },
+        get: async () => ({
+          id: "run_1",
+          organization_id: "org_1",
+          created_by: "user_1",
+          status: "in_progress",
+        }),
+      } as unknown as ThreadStoragePort,
+      sseHub: { emit: () => {} },
+    };
+
+    await reactAll(
+      [
+        {
+          event: {
+            type: "RUN_STARTED",
+            taskId: "run_1",
+            orgId: "org_1",
+            userId: "user_1",
+            abortController: new AbortController(),
+            podId: "pod_1",
+          },
+          state: undefined,
+        },
+      ],
+      deps,
+    );
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.status).toBe("in_progress");
+    expect(updates[0]!.failure_reason).toBeNull();
+    expect(updates[0]!.failure_kind).toBeNull();
+  });
 });

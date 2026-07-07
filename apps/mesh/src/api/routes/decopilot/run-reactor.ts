@@ -85,6 +85,10 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         run_config: event.runConfig ?? null,
         run_started_at: new Date().toISOString(),
         last_progress_at: null,
+        // Clear any prior run's recorded failure as this new run starts, so a
+        // re-run of a previously-stalled thread doesn't carry a stale reason.
+        failure_reason: null,
+        failure_kind: null,
       });
       const startedThread = await storage.get(event.taskId, event.orgId);
       sseHub.emit(
