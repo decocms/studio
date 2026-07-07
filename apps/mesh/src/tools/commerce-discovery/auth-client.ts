@@ -9,6 +9,14 @@ const UpgradeResponseSchema = z.object({
   token: z.string().min(1),
 });
 
+const BindResponseSchema = z.object({
+  binding: z
+    .object({ resource_id: z.string(), evidence: z.string() })
+    .optional(),
+  reason: z.string().optional(),
+  detail: z.string().optional(),
+});
+
 type FetchImpl = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -24,6 +32,22 @@ export interface CommerceDiscoveryAuthInput {
   /** Deep link back to this workspace's report, used in that email. */
   reportUrl?: string;
 }
+
+export type CommerceDiscoveryProvider = "ga4" | "gsc";
+
+export interface CommerceDiscoveryBindInput {
+  siteUrl: string;
+  orgId: string;
+  provider: CommerceDiscoveryProvider;
+  /** ga4: bare numeric property id; gsc: site (sc-domain:… / URL-prefix). */
+  resourceId: string;
+}
+
+/** Verified ⇒ the resource is bound to this store; rejected ⇒ an actionable
+ *  pt-BR reason the form shows inline (wrong domain, SA not granted yet, …). */
+export type CommerceDiscoveryBindResult =
+  | { ok: true; resourceId: string; evidence: string }
+  | { ok: false; reason: string; detail: string };
 
 export interface CommerceDiscoveryAuthOptions {
   baseUrl?: string;
@@ -118,6 +142,80 @@ export async function fetchCommerceDiscoveryAuth(
   }
 
   return { authorizationToken: parsed.data.token };
+}
+
+/**
+ * Bind a GA4 property / GSC site to a store via the shared service account —
+ * the consent-free lane for the unverified-OAuth workaround. The client grants
+ * `deco-reader@…` access to the resource and types its id; Commerce Discovery
+ * VERIFIES the resource belongs to this domain before persisting (ga4: a web
+ * stream's defaultUri points here; gsc: the site id embeds the host). With a
+ * shared SA, knowing an id is never enough — the verification is the auth.
+ *
+ * Soft-tolerant: a verification failure (422) or a resource already bound to
+ * another store (409) is returned as { ok: false, reason, detail } — the detail
+ * is client-safe pt-BR the UI shows inline. Unexpected statuses still throw.
+ */
+export async function bindCommerceDiscoveryResource(
+  input: CommerceDiscoveryBindInput,
+  options: CommerceDiscoveryAuthOptions = {},
+): Promise<CommerceDiscoveryBindResult> {
+  const baseUrl = resolveBaseUrl(options);
+  const apiKey = resolveApiKey(options);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const domain = domainFromSiteUrl(input.siteUrl);
+  const url = `${baseUrl}/api/v2/internal/diagnostics/${encodeURIComponent(
+    domain,
+  )}/bindings`;
+
+  const response = await fetchImpl(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      org_id: input.orgId,
+      provider: input.provider,
+      resource_id: input.resourceId,
+    }),
+  });
+
+  if (response.status === 409) {
+    return {
+      ok: false,
+      reason: "resource_already_bound",
+      detail:
+        "Este recurso já está vinculado a outra loja. Se ele é seu, fale com o suporte para revisão manual.",
+    };
+  }
+  if (response.status === 422) {
+    const parsed = BindResponseSchema.safeParse(await response.json());
+    return {
+      ok: false,
+      reason: parsed.success
+        ? (parsed.data.reason ?? "verification_failed")
+        : "verification_failed",
+      detail:
+        (parsed.success ? parsed.data.detail : undefined) ??
+        "Não foi possível verificar o acesso a este recurso.",
+    };
+  }
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response));
+  }
+
+  const parsed = BindResponseSchema.safeParse(await response.json());
+  if (!parsed.success || !parsed.data.binding) {
+    throw new Error(
+      "Commerce Discovery bind response did not include a binding.",
+    );
+  }
+  return {
+    ok: true,
+    resourceId: parsed.data.binding.resource_id,
+    evidence: parsed.data.binding.evidence,
+  };
 }
 
 /**

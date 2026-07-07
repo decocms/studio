@@ -79,6 +79,7 @@ export const CORE_TOOLS = [
   ConnectionTools.CONNECTION_TEST,
   CommerceDiscoveryTools.COMMERCE_DISCOVERY_SETUP,
   CommerceDiscoveryTools.COMMERCE_DISCOVERY_RUN,
+  CommerceDiscoveryTools.COMMERCE_DISCOVERY_BIND,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,
