@@ -268,7 +268,19 @@ export function resolveSchema(
     unknown
   >;
 
+  // deco "block registry" unions live under `#/root/<blockType>` (matchers,
+  // sections, loaders, …) — the anyOf of every implementation plus saved
+  // blocks. These are siblings of `definitions`, so the last-segment lookup
+  // below misses them (`#/root/matchers` → `matchers`, absent from defs → {}).
+  // Recursive block-ref fields (e.g. Multi's `matchers: Matcher[]`) chain into
+  // one of these, so without this branch they resolve to an empty object and
+  // the field renders blank.
+  const root = (globalSchema.root ?? {}) as Record<string, unknown>;
   const resolveRef = (ref: string): RawSchema => {
+    if (ref.startsWith("#/root/")) {
+      const rootKey = ref.slice("#/root/".length);
+      return (root[rootKey] as RawSchema | undefined) ?? {};
+    }
     const key = ref.split("/").pop() ?? "";
     return (defs[key] as RawSchema | undefined) ?? {};
   };
@@ -573,7 +585,7 @@ export function resolveSchema(
         }
 
         if (loaderBranches.length > 0) {
-          const anyOfRefs = loaderBranches.map((branch) => {
+          const loaderRefs = loaderBranches.map((branch) => {
             const rtSchema = (branch.properties as RawSchema | undefined)
               ?.__resolveType as RawSchema | undefined;
             const rtEnum = (rtSchema?.enum ?? []) as unknown[];
@@ -591,6 +603,59 @@ export function resolveSchema(
               schema: eagerBranchSchema(branch, depth + 1, nonNull.length),
             };
           });
+
+          // Block-registry unions (`#/root/matchers`, etc.) mix inline loader
+          // branches (saved blocks) with `$ref` branches (the built-in module
+          // types). Fold those `$ref` branches in too, otherwise selecting a
+          // Multi matcher only offers saved matchers, not `cookie`/`device`/…
+          // The `Resolvable` fallback ref (no `__resolveType`) is skipped.
+          const refBranchRefs: SchemaAnyOfRef[] = [];
+          for (const branch of nonNull) {
+            if (loaderBranches.includes(branch)) continue;
+            if (typeof branch.$ref !== "string") continue;
+            const def = resolveRef(branch.$ref);
+            let rt: string | undefined;
+            const rtProp = (def.properties as RawSchema | undefined)
+              ?.__resolveType as RawSchema | undefined;
+            if (
+              Array.isArray(rtProp?.enum) &&
+              typeof rtProp.enum[0] === "string"
+            ) {
+              rt = rtProp.enum[0];
+            }
+            if (!rt && Array.isArray(def.allOf)) {
+              for (const part of def.allOf as RawSchema[]) {
+                const e = (
+                  (part.properties as RawSchema | undefined)?.__resolveType as
+                    | RawSchema
+                    | undefined
+                )?.enum;
+                if (Array.isArray(e) && typeof e[0] === "string") {
+                  rt = e[0];
+                  break;
+                }
+              }
+            }
+            if (!rt) continue;
+            refBranchRefs.push({
+              resolveType: rt,
+              title:
+                typeof def.title === "string" && !def.title.startsWith("#")
+                  ? def.title
+                  : labelFromResolveType(rt),
+              description:
+                typeof def.description === "string"
+                  ? def.description
+                  : undefined,
+              schema: eagerBranchSchema(def, depth + 1, nonNull.length),
+            });
+          }
+
+          const seenRt = new Set(loaderRefs.map((r) => r.resolveType));
+          const anyOfRefs = [
+            ...loaderRefs,
+            ...refBranchRefs.filter((r) => !seenRt.has(r.resolveType)),
+          ];
 
           // Preserve the non-loader (plain data) branch so multivariate
           // field rendering can use it instead of the circular block-ref.
@@ -709,6 +774,10 @@ export function resolveSchema(
               rt = (branch.$ref as string).split("/").pop() ?? "";
             }
             const discriminatorValue = typeDiscriminatorFromBranch(branch);
+            // Skip the `Resolvable` placeholder: it has no `__resolveType.enum`
+            // so `rt` degrades to the bare ref key (no `/`). All real module
+            // blocks (matchers, loaders, sections) contain `/` in their path.
+            if (!discriminatorValue && !rt.includes("/")) continue;
             anyOfRefs.push({
               resolveType: discriminatorValue ?? rt,
               title:
