@@ -9,6 +9,9 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.9.1: opt-in node-local deps cache (depsCache.*, default off) —
+# hostPath store keyed per-repo by the daemon. Additive; no change for
+# consumers that leave it disabled.
 # 0.9.0: org-fs is mandatory — removed the `orgFs.enabled` + `hostUsers`
 # toggles (sidecar always deployed, hostUsers fixed true). Minor bump:
 # behavior change for consumers that ran with org-fs disabled / userns
@@ -19,7 +22,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.9.0
+version: 0.9.1
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "0.5.7"
 kubeVersion: ">=1.30.0-0"
