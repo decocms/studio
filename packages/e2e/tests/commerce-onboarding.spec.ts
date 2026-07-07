@@ -245,7 +245,7 @@ test.describe("Commerce onboarding route isolation", () => {
     await expect(page.getByPlaceholder("you@example.com")).toBeVisible();
     await expect(
       page.getByRole("heading", {
-        name: "Prefere que a gente acompanhe você?",
+        name: "Precisa de ajuda? Fale conosco",
       }),
     ).toBeVisible();
 
@@ -378,9 +378,11 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding?siteUrl=example.com");
 
-    const loading = page.getByText("Desbloqueie seu diagnóstico completo");
+    const loading = page.getByText(
+      "Conecte suas ferramentas para ver o diagnóstico completo",
+    );
     const meetingHeading = page.getByRole("heading", {
-      name: "Prefere que a gente acompanhe você?",
+      name: "Precisa de ajuda? Fale conosco",
     });
 
     await expect(loading).toBeVisible();
