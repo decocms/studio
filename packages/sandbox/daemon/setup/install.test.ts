@@ -1,10 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { depsCacheEnv } from "./install";
+import { denoCacheEnv, depsCacheEnv } from "./install";
 import type { Config } from "../types";
 
-function configWith(cloneUrl?: string): Config {
+function configWith(cloneUrl?: string, pm?: string): Config {
   return {
     git: cloneUrl ? { repository: { cloneUrl } } : undefined,
+    application: pm ? { packageManager: { name: pm } } : undefined,
   } as Config;
 }
 
@@ -66,5 +67,56 @@ describe("depsCacheEnv", () => {
     expect(env?.BUN_INSTALL_CACHE_DIR).toMatch(
       /^\/deps-cache\/bun\/[0-9a-f]{16}$/,
     );
+  });
+});
+
+describe("denoCacheEnv", () => {
+  it("returns null for non-deno package managers", () => {
+    expect(
+      denoCacheEnv(configWith("https://x.com/a/b", "bun"), "/deps-cache"),
+    ).toBeNull();
+    expect(
+      denoCacheEnv(configWith("https://x.com/a/b"), "/deps-cache"),
+    ).toBeNull();
+  });
+
+  it("returns null without a cache root or cloneUrl", () => {
+    expect(
+      denoCacheEnv(configWith("https://x.com/a/b", "deno"), undefined),
+    ).toBeNull();
+    expect(
+      denoCacheEnv(configWith(undefined, "deno"), "/deps-cache"),
+    ).toBeNull();
+  });
+
+  it("sets DENO_DIR under <root>/deno/<repo-hash> for deno", () => {
+    const env = denoCacheEnv(
+      configWith("https://x.com/a/b", "deno"),
+      "/deps-cache",
+    );
+    expect(env?.DENO_DIR).toMatch(/^\/deps-cache\/deno\/[0-9a-f]{16}$/);
+  });
+
+  it("shares the per-repo key with the bun cache (same repo → same hash)", () => {
+    const deno = denoCacheEnv(
+      configWith("https://x.com/a/b", "deno"),
+      "/deps-cache",
+    );
+    const bun = depsCacheEnv(configWith("https://x.com/a/b"), "/deps-cache");
+    const denoHash = deno?.DENO_DIR?.split("/").pop();
+    const bunHash = bun?.BUN_INSTALL_CACHE_DIR?.split("/").pop();
+    expect(denoHash).toBe(bunHash);
+  });
+
+  it("is stable across git-token refresh (credential-stripped)", () => {
+    const a = denoCacheEnv(
+      configWith("https://x-access-token:t1@github.com/o/n.git", "deno"),
+      "/deps-cache",
+    );
+    const b = denoCacheEnv(
+      configWith("https://x-access-token:t2@github.com/o/n.git", "deno"),
+      "/deps-cache",
+    );
+    expect(a?.DENO_DIR).toBe(b?.DENO_DIR);
   });
 });

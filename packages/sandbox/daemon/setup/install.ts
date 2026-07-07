@@ -28,15 +28,17 @@ import { spawnSetupStep } from "./spawn-step";
  * multiple orgs at different privilege levels (public/template) it is
  * cross-tenant — a known residual gap; key by org too if it matters.
  *
- * Only bun consumes BUN_INSTALL_CACHE_DIR; npm/pnpm/yarn/deno ignore it.
+ * bun (install-time) reads BUN_INSTALL_CACHE_DIR; deno (dev-run-time) reads
+ * DENO_DIR — see `denoCacheEnv`. npm/pnpm/yarn are unaffected by both.
  */
-export function depsCacheEnv(
-  config: Config,
-  cacheRoot: string | undefined = process.env.DEPS_CACHE_ROOT,
-): Record<string, string> | null {
-  if (!cacheRoot) return null;
-  const cloneUrl = config.git?.repository?.cloneUrl;
-  if (!cloneUrl) return null;
+
+/**
+ * 16 hex chars of sha256 over the credential-stripped cloneUrl — the per-repo
+ * cache-partition key shared by every cache flavor (bun, deno, golden). Stable
+ * across git-token refresh because the token lives in the URL userinfo, which
+ * is stripped before hashing.
+ */
+function repoCacheKey(cloneUrl: string): string {
   let key = cloneUrl;
   try {
     const u = new URL(cloneUrl);
@@ -46,8 +48,45 @@ export function depsCacheEnv(
   } catch {
     // non-URL cloneUrl (ssh shorthand) — hash it as-is
   }
-  const hash = createHash("sha256").update(key).digest("hex").slice(0, 16);
-  return { BUN_INSTALL_CACHE_DIR: join(cacheRoot, "bun", hash) };
+  return createHash("sha256").update(key).digest("hex").slice(0, 16);
+}
+
+export function depsCacheEnv(
+  config: Config,
+  cacheRoot: string | undefined = process.env.DEPS_CACHE_ROOT,
+): Record<string, string> | null {
+  if (!cacheRoot) return null;
+  const cloneUrl = config.git?.repository?.cloneUrl;
+  if (!cloneUrl) return null;
+  return {
+    BUN_INSTALL_CACHE_DIR: join(cacheRoot, "bun", repoCacheKey(cloneUrl)),
+  };
+}
+
+/**
+ * Per-repo DENO_DIR for deno projects. Deno has no install step — it fetches
+ * jsr/npm/https deps lazily into DENO_DIR at `deno task dev` time — so unlike
+ * bun's cache this must be injected into the dev-server (start) env, not the
+ * install env (see orchestrator.stepStart). Returns null for non-deno package
+ * managers so bun/npm/pnpm/yarn dev servers are untouched.
+ *
+ * Kept per-repo like the bun cache. Deno DOES re-verify cached module content
+ * against deno.lock integrity hashes on load — so a shared deno cache would be
+ * materially less dangerous than a shared bun one (poison → error, not silent
+ * RCE). But that only covers lockfile-pinned modules; a repo with no/partial
+ * deno.lock has no expected hash to check, so "less dangerous" is not "safe".
+ * Stay per-repo — it costs nothing and doesn't depend on every tenant keeping
+ * a complete lockfile.
+ */
+export function denoCacheEnv(
+  config: Config,
+  cacheRoot: string | undefined = process.env.DEPS_CACHE_ROOT,
+): Record<string, string> | null {
+  if (!cacheRoot) return null;
+  if (config.application?.packageManager?.name !== "deno") return null;
+  const cloneUrl = config.git?.repository?.cloneUrl;
+  if (!cloneUrl) return null;
+  return { DENO_DIR: join(cacheRoot, "deno", repoCacheKey(cloneUrl)) };
 }
 
 export interface InstallDeps {
