@@ -10,13 +10,23 @@ import { spawnSetupStep } from "./spawn-step";
  * Per-repo package-cache env, derived from the pod-level DEPS_CACHE_ROOT
  * (the chart's node-local hostPath mount — see depsCache in
  * deploy/helm/sandbox-env/values.yaml). Keyed by the credential-stripped
- * cloneUrl so sandboxes of different repos never share cache entries: a
- * cache shared across repos would let one repo's untrusted code poison
- * another repo's store. Sandboxes of the *same* cloneUrl still share it,
- * which is intended for private repos (sandbox access implies repo
- * write) but is cross-tenant for repos reachable at different privilege
- * levels (public/template). Tampered cache entries are caught by bun's
- * lockfile integrity check on install, not by this key.
+ * cloneUrl so sandboxes of different repos never share cache entries.
+ *
+ * This key is the ONLY cross-repo isolation boundary — load-bearing, not
+ * belt-and-suspenders. bun does NOT re-verify a cache entry's integrity on
+ * install: tamper a cached file, reinstall, and the tampered bytes land in
+ * node_modules unchecked (verified empirically). The cache dir is writable
+ * by the sandbox uid, so a cache shared across repos would let one repo's
+ * untrusted code overwrite a package that every other repo then installs —
+ * a cross-tenant RCE. Neither copyfile nor hardlink helps; the shared
+ * *writable* store is the hole. Do NOT widen this to a shared cache unless
+ * it is made read-only to tenant pods and populated out-of-band by a
+ * trusted process.
+ *
+ * Same-cloneUrl sandboxes still share a cache. For private repos that's one
+ * trust domain (sandbox access implies repo write). For a repo reachable by
+ * multiple orgs at different privilege levels (public/template) it is
+ * cross-tenant — a known residual gap; key by org too if it matters.
  *
  * Only bun consumes BUN_INSTALL_CACHE_DIR; npm/pnpm/yarn/deno ignore it.
  */
