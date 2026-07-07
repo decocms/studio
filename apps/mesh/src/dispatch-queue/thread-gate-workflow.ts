@@ -296,11 +296,13 @@ async function dispatchRunAndWaitStep(
     harnessId: request.harnessId,
   });
 
-  // User-message submits now mint and persist the run fence before enqueuing
-  // this workflow. Preserve that token so the producer, hosted child workflow,
-  // JetStream dedup keys, and projector all agree. Legacy/direct callers that
-  // still enter with raw messages have no submit fence, so retain the old
-  // fallback and mint here until those callers are migrated.
+  // The run fence is minted and persisted HERE, inside the dispatch step —
+  // i.e. only while this gate holds the thread's partition slot. POST-time
+  // minting was removed: it let a message QUEUED behind a running turn
+  // overwrite the running turn's fence, which made the projector skip that
+  // turn's projection (stranding its reply). A request may still carry a
+  // fence (redelivery/replay of this step's own recorded output); absent one,
+  // mint + persist now.
   const fenceThreadId = request.taskId ?? ctx.threadId;
   const { runFenceToken, claimedRequest, shouldPersistFence } =
     claimRunFenceForDispatch(request);
@@ -615,25 +617,4 @@ export async function enqueueThreadRun(
     workflowID: opts?.workflowID,
   })(ctx);
   return { workflowID: handle.workflowID };
-}
-
-/**
- * Whether a thread-run gate workflow with this exact id already exists (any
- * status). POST /messages uses this to tell a genuine network REDELIVERY
- * (collapse onto the existing run → reuse its in-flight fence) from a NEW turn —
- * a fresh user message OR an approval/tool-output continuation, whose re-POSTed
- * assistant message hashes to a DIFFERENT idempotency key and so keys a new gate
- * workflow id. A new turn MUST mint a fresh fence: a reused fence collides the
- * hosted-harness child id `decopilot-hosted:<runId>:<fenceToken>` with the prior
- * turn's already-finished child, so DBOS dedupe would silently drop the resume
- * and the turn would hang. The `workflow_id_prefix` filter narrows the scan; the
- * exact-id check guards against a longer id that merely shares the prefix.
- */
-export async function threadRunExists(workflowID: string): Promise<boolean> {
-  const rows = await DBOS.listWorkflows({
-    workflow_id_prefix: workflowID,
-    loadInput: false,
-    loadOutput: false,
-  });
-  return rows.some((w) => w.workflowID === workflowID);
 }

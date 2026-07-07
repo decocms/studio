@@ -40,11 +40,7 @@ import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
 import { buildDurableDispatchInput, resolveHarnessId } from "./dispatch-run";
 import { stringifyError } from "@decocms/harness/stream-error";
-import {
-  cancelHostedHarness,
-  enqueueThreadRun,
-  threadRunExists,
-} from "@/dispatch-queue";
+import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import {
   publishRunStatusStage,
   shouldPublishClusterRunStatus,
@@ -61,7 +57,6 @@ import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-too
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
 import { PartEmitter } from "./part-emitter";
 import { uploadFileParts } from "./file-materializer";
-import { mintRunFenceToken } from "./dispatch-fence";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -115,43 +110,6 @@ export function computeIdempotencyKey(
   if (!lastMsg) return undefined;
   if (lastMsg.role === "user" && lastMsg.id) return lastMsg.id;
   return createHash("sha1").update(canonicalStringify(lastMsg)).digest("hex");
-}
-
-/**
- * Decide the run fence token for a POST.
- *
- * The fence MUST be fresh per TURN (see `mintRunFenceToken`): it scopes the
- * JetStream dedup key and the projector accumulator, AND keys the hosted-harness
- * child workflow id `decopilot-hosted:<runId>:<fenceToken>`. A fresh user
- * message and an approval/tool-output CONTINUATION are each a new turn, so each
- * MUST mint a fresh fence. Reusing one — e.g. a continuation inheriting the
- * proposal's fence — collides the child id with the prior turn's already-
- * finished child, so DBOS dedupe silently drops the resume and the turn hangs
- * forever (and the reused fence also merges two turns into one stream/projector
- * accumulator).
- *
- * Only a genuine network REDELIVERY (the gate workflow id already exists) reuses
- * the in-flight fence — minting there would clobber the live turn's fence and
- * strand its projection. `isRedelivery` is derived from gate-workflow existence,
- * NOT from "is the message already persisted" (which is ALSO true for a
- * continuation re-POSTing the proposal's assistant message — the bug this fixes).
- */
-export function planSubmitRunFence(input: {
-  isRedelivery: boolean;
-  existingFenceToken: string | null;
-  mintFenceToken: () => string;
-}): { runFenceToken: string; shouldWriteFence: boolean } {
-  if (input.isRedelivery && input.existingFenceToken) {
-    return {
-      runFenceToken: input.existingFenceToken,
-      shouldWriteFence: false,
-    };
-  }
-
-  return {
-    runFenceToken: input.mintFenceToken(),
-    shouldWriteFence: true,
-  };
 }
 
 export function shouldPersistRequestMessage(input: {
@@ -757,31 +715,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           .where("message_id", "=", messageId)
           .executeTakeFirst(),
       );
-      // Idempotency / fence decision. The gate workflow id is keyed by the
-      // turn's idempotency key, so a fresh user message AND an approval/
-      // tool-output continuation (whose re-POSTed assistant message hashes
-      // differently) each map to a NEW workflow id; only a network redelivery of
-      // the same POST collapses onto an existing one. The fence reuse keys off
-      // THIS redelivery — NOT `alreadyPersisted`, which is also true for a
-      // continuation that is nonetheless a new turn needing a fresh fence.
+      // Idempotency: the gate workflow id is keyed by the turn's idempotency
+      // key (user message id, or SHA1 for continuations), so a network
+      // redelivery collapses onto the existing workflow. The run FENCE is NOT
+      // minted here: `claimRunFenceForDispatch` mints + persists it inside the
+      // gate's dispatch step, i.e. only while holding the thread's partition
+      // slot — so queueing a message behind a running turn can never clobber
+      // the running turn's fence (which stranded its projection).
       const idempotencyKey = computeIdempotencyKey(persistedRequestMessage);
       const workflowID = idempotencyKey
         ? `thread-run:${taskId}:${idempotencyKey}`
         : undefined;
-      const isRedelivery = workflowID
-        ? await threadRunExists(workflowID)
-        : false;
-      const existingFenceToken = isRedelivery
-        ? await ctx.storage.threads.getRunFence(taskId)
-        : null;
-      const { runFenceToken, shouldWriteFence } = planSubmitRunFence({
-        isRedelivery,
-        existingFenceToken,
-        mintFenceToken: mintRunFenceToken,
-      });
-      if (shouldWriteFence) {
-        await ctx.storage.threads.setRunFence(taskId, runFenceToken);
-      }
 
       const emitter = new PartEmitter({
         storage: ctx.storage.threads.messageParts(),
@@ -800,7 +744,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
       const serializableRequest = buildDurableDispatchInput(input, {
         messageId,
-        runFenceToken,
         branch,
         sandboxProviderKind: pinnedKind,
         harnessId: pinnedHarness,

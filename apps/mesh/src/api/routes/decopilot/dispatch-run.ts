@@ -534,7 +534,7 @@ export interface DurableDispatchRunInput extends FrozenRunSnapshot {
   userId: string;
   taskId: string;
   messageId: string;
-  runFenceToken: string;
+  runFenceToken?: string;
   abortSignal?: AbortSignal;
   isResume?: boolean;
 }
@@ -553,7 +553,7 @@ export function buildDurableDispatchInput(
   input: DispatchRunInput,
   options: {
     messageId: string;
-    runFenceToken: string;
+    runFenceToken?: string;
     branch?: string | null;
     sandboxProviderKind?: SandboxProviderKind | null;
     harnessId?: HarnessId | null;
@@ -597,7 +597,9 @@ export function buildDurableDispatchInput(
     userId: input.userId,
     taskId: input.taskId,
     messageId: options.messageId,
-    runFenceToken: options.runFenceToken,
+    ...(options.runFenceToken !== undefined
+      ? { runFenceToken: options.runFenceToken }
+      : {}),
     ...(input.isResume !== undefined ? { isResume: input.isResume } : {}),
   };
 }
