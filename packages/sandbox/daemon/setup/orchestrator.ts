@@ -27,7 +27,7 @@ import type { Application, Config } from "../types";
 import { autodetectApplication } from "./autodetect";
 import { type CloneResult, spawnClone } from "./clone";
 import { emitInstalledDeps } from "./dep-metrics";
-import { publishGolden, tryRestoreGolden } from "./golden-cache";
+import { publishGolden, pruneGoldens, tryRestoreGolden } from "./golden-cache";
 import { configureGitIdentity } from "./identity";
 import { spawnInstall } from "./install";
 import { spawnSetupStep } from "./spawn-step";
@@ -69,6 +69,10 @@ export class SetupOrchestrator {
   private running = false;
   private currentBranchHead: string | undefined;
   private latestScripts: string[] | null = null;
+  // A fresh install that hasn't been published as a golden yet — published by
+  // publishPendingGolden() once the dev server is confirmed healthy. Null when
+  // the boot restored an existing golden (nothing new to publish).
+  private pendingGolden: { installRoot: string; pm: string } | null = null;
 
   constructor(private readonly deps: SetupOrchestratorDeps) {
     this.deps.taskManager.onTaskExit((summary) => {
@@ -118,6 +122,29 @@ export class SetupOrchestrator {
   /** True while a step is being applied. Surfaced on /health. */
   isRunning(): boolean {
     return this.running;
+  }
+
+  /**
+   * Publish the golden for this boot's fresh install — but only now that the
+   * dev server is confirmed healthy (called from the probe's `running`
+   * transition). Deferring here is what stops a broken install from becoming
+   * a reused golden. No-op when nothing is pending (golden-restore boot, or a
+   * boot with no fresh install), and self-guards against the `running`
+   * transition re-firing. Fire-and-forget; best-effort.
+   */
+  async publishPendingGolden(): Promise<void> {
+    const pending = this.pendingGolden;
+    if (!pending) return;
+    this.pendingGolden = null;
+    const config = this.currentConfig();
+    if (!config) return;
+    await publishGolden({
+      config,
+      installRoot: pending.installRoot,
+      pm: pending.pm,
+      log: (m) => this.rawChunk(`${m}\r\n`),
+    });
+    pruneGoldens();
   }
 
   pendingCount(): number {
@@ -337,6 +364,8 @@ export class SetupOrchestrator {
         log: (m) => this.chunk(`${m}\r\n`),
       })
     ) {
+      // Restored from an existing golden — nothing to publish.
+      this.pendingGolden = null;
       this.markInstallSucceeded(config);
       return true;
     }
@@ -379,19 +408,12 @@ export class SetupOrchestrator {
       return false;
     }
     this.markInstallSucceeded(config);
-    // Publish this fresh node_modules as the golden for its lockfile so the
-    // next branch on this node reflink-restores it instead of reinstalling.
-    // Awaited (not fire-and-forget) so the reflink snapshot is taken now,
-    // while node_modules is quiescent — the dev server (stepStart, next)
-    // writes node_modules/.vite, which would otherwise race the snapshot and
-    // capture an inconsistent tree. Best-effort: never throws (see
-    // golden-cache.ts). Miss-path only (~1s), so it doesn't slow warm boots.
-    await publishGolden({
-      config,
-      installRoot,
-      pm,
-      log: (m) => this.rawChunk(`${m}\r\n`),
-    });
+    // Don't publish the golden yet — defer to publishPendingGolden(), which
+    // the probe's `running` transition calls once the dev server is confirmed
+    // healthy. Publishing only from a boot that actually came up prevents a
+    // broken-but-exit-0 install from becoming a golden that every later branch
+    // then reuses (the "sticky bad golden" failure mode).
+    this.pendingGolden = { installRoot, pm };
     // Report the installed dep set for pre-bake analysis (best-effort, async).
     void emitInstalledDeps({
       installRoot,

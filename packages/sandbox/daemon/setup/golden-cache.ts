@@ -30,13 +30,28 @@ import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
+  utimesSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Config } from "../types";
+
+/**
+ * GC bounds for the golden store (a golden ≈ a full node_modules on the node
+ * hostPath, so unbounded growth would fill the disk). Pruned opportunistically
+ * after each publish: drop goldens untouched for longer than the TTL, then cap
+ * the number kept per repo (newest by mtime win). Restore touches a golden's
+ * mtime, so an actively-used lockfile never ages out.
+ */
+const GOLDEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const GOLDEN_MAX_PER_REPO = 5;
+
+/** Pod-local runtime caches that must not travel in a shared golden. */
+const RUNTIME_CACHE_DIRS = [".vite", ".cache"];
 
 /**
  * Lockfiles that fully pin a package manager's resolution, so an identical
@@ -201,15 +216,27 @@ export async function tryRestoreGolden(opts: GoldenOpts): Promise<boolean> {
     rmSync(targetNodeModules, { recursive: true, force: true });
     return false;
   }
+  // Mark recently-used so GC's TTL doesn't reap an actively-restored lockfile.
+  try {
+    const now = new Date();
+    utimesSync(golden, now, now);
+  } catch {
+    // best-effort
+  }
   log("[golden] restored node_modules from cache (skipped install)");
   return true;
 }
 
 /**
- * Snapshot a freshly-installed node_modules as the golden for its lockfile.
- * Best-effort and idempotent: no-op if a golden already exists, atomic
- * publish (reflink to a temp dir, then rename) so a concurrent publisher or a
- * crash mid-copy never leaves a half-written golden in place. Never throws.
+ * Snapshot a node_modules as the golden for its lockfile. Publish only ever
+ * runs for a boot whose dev server came up healthy (the orchestrator defers
+ * it to the `running` transition) — a broken install therefore never becomes
+ * a golden, which is what keeps a bad golden from getting stuck and reused.
+ *
+ * Best-effort and idempotent: no-op if a golden already exists; reflink to a
+ * temp dir, strip pod-local runtime caches (.vite/.cache — they churn and are
+ * per-pod), then atomically rename so a concurrent publisher or a crash
+ * mid-copy never leaves a half-written golden in place. Never throws.
  */
 export async function publishGolden(opts: GoldenOpts): Promise<void> {
   const log = opts.log ?? (() => {});
@@ -241,6 +268,11 @@ export async function publishGolden(opts: GoldenOpts): Promise<void> {
       log(`[golden] publish reflink failed (cp exit ${code})`);
       return;
     }
+    // Strip pod-local runtime caches from the snapshot (cheap — reflink is
+    // CoW, so these were near-free to clone and near-free to drop).
+    for (const d of RUNTIME_CACHE_DIRS) {
+      rmSync(join(tmp, d), { recursive: true, force: true });
+    }
     try {
       renameSync(tmp, golden);
       log("[golden] published node_modules to cache");
@@ -251,5 +283,52 @@ export async function publishGolden(opts: GoldenOpts): Promise<void> {
     }
   } catch (e) {
     log(`[golden] publish skipped: ${(e as Error).message}`);
+  }
+}
+
+/**
+ * Bound golden-store growth on the node. For each repo: drop goldens whose
+ * mtime is older than the TTL, then keep only the newest GOLDEN_MAX_PER_REPO.
+ * Opportunistic (called after a publish), best-effort, never throws. Safe to
+ * race a concurrent restore: an in-flight reflink from a golden we delete just
+ * fails → that pod falls back to install, and already-completed CoW clones are
+ * independent of the source.
+ */
+export function pruneGoldens(
+  cacheRoot: string | undefined = process.env.DEPS_CACHE_ROOT,
+  opts: { ttlMs?: number; maxPerRepo?: number; now?: number } = {},
+): void {
+  if (!cacheRoot) return;
+  const ttlMs = opts.ttlMs ?? GOLDEN_TTL_MS;
+  const maxPerRepo = opts.maxPerRepo ?? GOLDEN_MAX_PER_REPO;
+  const now = opts.now ?? Date.now();
+  const root = join(cacheRoot, "golden");
+  let repos: string[];
+  try {
+    repos = readdirSync(root);
+  } catch {
+    return; // no golden store yet
+  }
+  for (const repo of repos) {
+    const repoDir = join(root, repo);
+    let entries: { path: string; mtime: number }[];
+    try {
+      entries = readdirSync(repoDir)
+        .filter((name) => !name.startsWith(".tmp.")) // skip in-flight publishes
+        .map((name) => {
+          const path = join(repoDir, name);
+          return { path, mtime: statSync(path).mtimeMs };
+        });
+    } catch {
+      continue;
+    }
+    // Newest first; anything past the cap or older than the TTL is pruned.
+    entries.sort((a, b) => b.mtime - a.mtime);
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      if (i >= maxPerRepo || now - e.mtime > ttlMs) {
+        rmSync(e.path, { recursive: true, force: true });
+      }
+    }
   }
 }

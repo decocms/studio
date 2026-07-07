@@ -1,11 +1,18 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   goldenEnabled,
   goldenNodeModulesPath,
   lockfileHash,
+  pruneGoldens,
   sameFilesystem,
 } from "./golden-cache";
 
@@ -127,5 +134,68 @@ describe("sameFilesystem", () => {
 
   it("false when a path does not exist", () => {
     expect(sameFilesystem("/nonexistent/xyz", tmp())).toBe(false);
+  });
+});
+
+describe("pruneGoldens", () => {
+  // Make a golden dir <root>/golden/<repo>/<name> with a given mtime (ms).
+  function mkGolden(root: string, repo: string, name: string, mtimeMs: number) {
+    const dir = join(root, "golden", repo, name);
+    mkdirSync(dir, { recursive: true });
+    const t = new Date(mtimeMs);
+    utimesSync(dir, t, t);
+    return dir;
+  }
+
+  it("no-ops on a missing cache root / empty store", () => {
+    expect(() => pruneGoldens(undefined)).not.toThrow();
+    expect(() => pruneGoldens(tmp())).not.toThrow();
+  });
+
+  it("drops goldens older than the TTL, keeps fresh ones", () => {
+    const root = tmp();
+    const now = 1_000_000_000_000;
+    const fresh = mkGolden(root, "repoA", "bun-fresh", now - 1000);
+    const stale = mkGolden(root, "repoA", "bun-stale", now - 10 * 86_400_000);
+    pruneGoldens(root, { now, ttlMs: 7 * 86_400_000, maxPerRepo: 99 });
+    expect(existsSync(fresh)).toBe(true);
+    expect(existsSync(stale)).toBe(false);
+  });
+
+  it("caps to the newest maxPerRepo per repo", () => {
+    const root = tmp();
+    const now = 1_000_000_000_000;
+    const dirs = [0, 1, 2, 3].map((i) =>
+      mkGolden(root, "repoB", `bun-${i}`, now - i * 1000),
+    );
+    pruneGoldens(root, { now, ttlMs: 999 * 86_400_000, maxPerRepo: 2 });
+    // Newest two (i=0,1) survive; older two (i=2,3) are pruned.
+    expect(existsSync(dirs[0])).toBe(true);
+    expect(existsSync(dirs[1])).toBe(true);
+    expect(existsSync(dirs[2])).toBe(false);
+    expect(existsSync(dirs[3])).toBe(false);
+  });
+
+  it("never reaps in-flight .tmp. publishes", () => {
+    const root = tmp();
+    const now = 1_000_000_000_000;
+    const tmpPublish = mkGolden(
+      root,
+      "repoC",
+      ".tmp.123.node_modules",
+      now - 999 * 86_400_000, // ancient, but must be skipped
+    );
+    pruneGoldens(root, { now, ttlMs: 1, maxPerRepo: 0 });
+    expect(existsSync(tmpPublish)).toBe(true);
+  });
+
+  it("prunes each repo independently", () => {
+    const root = tmp();
+    const now = 1_000_000_000_000;
+    const a = mkGolden(root, "repoA", "bun-1", now);
+    const b = mkGolden(root, "repoB", "bun-1", now);
+    pruneGoldens(root, { now, ttlMs: 999 * 86_400_000, maxPerRepo: 5 });
+    expect(existsSync(a)).toBe(true);
+    expect(existsSync(b)).toBe(true);
   });
 });
