@@ -132,7 +132,7 @@ describe("spawnClone", () => {
     const { url, root, cleanup } = setupBareRepo();
     try {
       const repoDir = join(root, "workspace");
-      const code = await spawnClone({
+      const { code } = await spawnClone({
         config: makeConfig(repoDir, url, "feature/x"),
         onChunk: () => {},
       });
@@ -149,11 +149,16 @@ describe("spawnClone", () => {
     const { url, root, cleanup } = setupBareRepo();
     try {
       const repoDir = join(root, "workspace");
-      const code = await spawnClone({
+      const { code, fetchBase } = await spawnClone({
         config: makeConfig(repoDir, url, "feature/x"),
         onChunk: () => {},
       });
       expect(code).toBe(0);
+      // The base fetch is deferred off the clone critical path; the
+      // orchestrator runs the returned thunk in the background. Drive it here
+      // to assert the same side effects.
+      expect(fetchBase).toBeDefined();
+      await fetchBase?.(() => {});
       // Even though only feature/x was cloned, origin/main must be present with
       // origin/HEAD pointing at it — otherwise computeBranchDivergence can't
       // compute ahead/behind vs base and the header falsely shows "Up to date".
@@ -185,12 +190,14 @@ describe("spawnClone", () => {
     try {
       const repoDir = join(root, "workspace");
       // Resuming `main` (the default) hits the `base === branchOnRemote` skip:
-      // the base is already the cloned branch, so no second fetch is needed.
-      const code = await spawnClone({
+      // the base is already the cloned branch, so the deferred fetch is a
+      // no-op (it early-returns without a second network fetch).
+      const { code, fetchBase } = await spawnClone({
         config: makeConfig(repoDir, url, "main"),
         onChunk: () => {},
       });
       expect(code).toBe(0);
+      await fetchBase?.(() => {});
       expect(currentBranch(repoDir)).toBe("main");
       const div = computeBranchDivergence(repoDir);
       expect(div.base).toBe("main");
@@ -218,12 +225,14 @@ describe("spawnClone", () => {
       });
 
       const repoDir = join(root, "workspace");
-      const code = await spawnClone({
+      const { code, fetchBase } = await spawnClone({
         config: makeConfig(repoDir, url, "feature/x"),
         onChunk: () => {},
       });
       // Best-effort: the clone still succeeds; it just skips the unsafe base.
       expect(code).toBe(0);
+      // The unsafe-ref rejection lives in the deferred base fetch — drive it.
+      await fetchBase?.(() => {});
       // origin/HEAD must NOT have been pointed at the malicious ref.
       expect(
         tryGitOut(repoDir, "symbolic-ref --short refs/remotes/origin/HEAD"),
@@ -243,7 +252,7 @@ describe("spawnClone", () => {
     const { url, root, cleanup } = setupBareRepo();
     try {
       const repoDir = join(root, "workspace");
-      const code = await spawnClone({
+      const { code } = await spawnClone({
         config: makeConfig(repoDir, url, "feature/new"),
         onChunk: () => {},
       });
@@ -262,7 +271,7 @@ describe("spawnClone", () => {
     const { url, root, cleanup } = setupBareRepo();
     try {
       const repoDir = join(root, "workspace");
-      const code = await spawnClone({
+      const { code } = await spawnClone({
         config: makeConfig(repoDir, url),
         onChunk: () => {},
       });
@@ -280,7 +289,7 @@ describe("spawnClone", () => {
       // file:// URL pointing at a path that doesn't exist — ls-remote returns
       // a fatal error (not exit 2), so spawnClone must surface a non-zero
       // exit code instead of silently falling through to a local fork.
-      const code = await spawnClone({
+      const { code } = await spawnClone({
         config: makeConfig(
           repoDir,
           "file:///nonexistent/path/to/repo.git",
@@ -304,7 +313,7 @@ describe("spawnClone", () => {
       // written before the first clone. spawnClone must fall back to
       // init + fetch + checkout instead of `git clone`.
       writeFileSync(join(repoDir, "marker.txt"), "preexisting\n");
-      const code = await spawnClone({
+      const { code } = await spawnClone({
         config: makeConfig(repoDir, url, "feature/x"),
         onChunk: () => {},
       });
