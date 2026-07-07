@@ -1,5 +1,3 @@
-import type { BranchMeta } from "@decocms/sandbox/shared";
-
 export interface GitStatusFile {
   path: string;
   index: string;
@@ -321,68 +319,4 @@ export function hasUnpublishedWork(
     hasLocalWorkToPush(status) ||
     (diff != null && Object.keys(diff.diffs).length > 0)
   );
-}
-
-/**
- * Merge live `/git/status` into SSE `BranchMeta`. The status endpoint is
- * always fresh; branch SSE can lag when the daemon watcher misses a save.
- */
-function gitStatusUnpushed(gitStatus: GitStatus): number {
-  return Math.max(gitStatus.unpushed ?? 0, gitStatus.ahead);
-}
-
-function gitStatusAheadOfBase(gitStatus: GitStatus): number {
-  return gitStatus.aheadOfBase ?? 0;
-}
-
-function gitStatusBehindBase(gitStatus: GitStatus): number {
-  return gitStatus.behindBase ?? 0;
-}
-
-export function mergeBranchMetaWithGitStatus(
-  branchMeta: BranchMeta,
-  gitStatus: GitStatus | undefined,
-): BranchMeta {
-  if (!gitStatus) return branchMeta;
-
-  const gitDirty = hasGitLocalWork(gitStatus);
-  const branchName = readGitHeadBranch(gitStatus);
-  const unpushed = gitStatusUnpushed(gitStatus);
-  const aheadOfBase = gitStatusAheadOfBase(gitStatus);
-  const behindBase = gitStatusBehindBase(gitStatus);
-  const base = gitStatus.base ?? "main";
-  const headSha = gitStatus.headSha ?? "";
-
-  if (branchMeta.kind === "ready") {
-    return {
-      ...branchMeta,
-      branch: branchName ?? branchMeta.branch,
-      base: gitStatus.base ?? branchMeta.base,
-      workingTreeDirty: gitDirty,
-      unpushed: Math.max(branchMeta.unpushed, unpushed),
-      aheadOfBase: Math.max(branchMeta.aheadOfBase, aheadOfBase),
-      behindBase:
-        gitStatus.behindBase !== undefined
-          ? Math.max(branchMeta.behindBase, behindBase)
-          : branchMeta.behindBase,
-      headSha: headSha || branchMeta.headSha,
-    };
-  }
-
-  // SSE still unknown — only promote when git reports actionable divergence,
-  // not merely because `git status` can read the checked-out branch name.
-  if (!gitDirty && aheadOfBase === 0 && unpushed === 0) {
-    return branchMeta;
-  }
-
-  return {
-    kind: "ready",
-    branch: branchName ?? "",
-    base,
-    workingTreeDirty: gitDirty,
-    unpushed,
-    aheadOfBase,
-    behindBase,
-    headSha,
-  };
 }

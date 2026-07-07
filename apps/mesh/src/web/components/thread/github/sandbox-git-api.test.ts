@@ -1,25 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { BranchMeta } from "@decocms/sandbox/shared";
 import {
   hasLocalWorkToPush,
   hasUnpublishedWork,
   isDecoOnlyDiff,
-  mergeBranchMetaWithGitStatus,
   stripGeneratedFilesFromDiff,
   type GitDiffResult,
   type GitStatus,
 } from "./sandbox-git-api.ts";
-
-const readyMeta: BranchMeta = {
-  kind: "ready",
-  branch: "feat/foo",
-  base: "main",
-  workingTreeDirty: true,
-  unpushed: 0,
-  aheadOfBase: 0,
-  behindBase: 0,
-  headSha: "abc",
-};
 
 const cleanStatus: GitStatus = {
   not_added: [],
@@ -36,62 +23,6 @@ const cleanStatus: GitStatus = {
   tracking: "origin/feat/foo",
   detached: false,
 };
-
-describe("mergeBranchMetaWithGitStatus", () => {
-  test("clears stale SSE dirty flag when git status is clean", () => {
-    const merged = mergeBranchMetaWithGitStatus(readyMeta, cleanStatus);
-    expect(merged.kind).toBe("ready");
-    if (merged.kind === "ready") {
-      expect(merged.workingTreeDirty).toBe(false);
-    }
-  });
-
-  test("preserves unpushed count from git ahead", () => {
-    const merged = mergeBranchMetaWithGitStatus(readyMeta, {
-      ...cleanStatus,
-      ahead: 2,
-    });
-    if (merged.kind === "ready") {
-      expect(merged.unpushed).toBe(2);
-    }
-  });
-
-  test("unknown SSE meta + git aheadOfBase → ready with commits vs base", () => {
-    const merged = mergeBranchMetaWithGitStatus(
-      { kind: "unknown" },
-      {
-        ...cleanStatus,
-        aheadOfBase: 3,
-        base: "main",
-        headSha: "abc123",
-      },
-    );
-    expect(merged.kind).toBe("ready");
-    if (merged.kind === "ready") {
-      expect(merged.aheadOfBase).toBe(3);
-      expect(merged.base).toBe("main");
-      expect(merged.headSha).toBe("abc123");
-    }
-  });
-
-  test("unknown SSE + empty git status stays unknown", () => {
-    const merged = mergeBranchMetaWithGitStatus(
-      { kind: "unknown" },
-      cleanStatus,
-    );
-    expect(merged.kind).toBe("unknown");
-  });
-
-  test("raises stale SSE aheadOfBase when git status reports more", () => {
-    const merged = mergeBranchMetaWithGitStatus(
-      { ...readyMeta, aheadOfBase: 0 },
-      { ...cleanStatus, aheadOfBase: 2, base: "main" },
-    );
-    if (merged.kind === "ready") {
-      expect(merged.aheadOfBase).toBe(2);
-    }
-  });
-});
 
 describe("hasLocalWorkToPush", () => {
   test("false when clean tree with only base diff context", () => {

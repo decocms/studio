@@ -20,7 +20,6 @@ import { getActiveGithubRepo } from "@/web/lib/github-repo.ts";
 import { generateBranchName } from "@/shared/branch-name";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
-import { useSandboxGitStatus } from "@/web/components/sandbox/hooks/use-sandbox-git-status.ts";
 import { squashMergePullRequest } from "./github-pr-api.ts";
 import { MergeSplitButton } from "./merge-split-button.tsx";
 import { PublishDialog } from "./publish-dialog.tsx";
@@ -32,10 +31,6 @@ import {
 import * as tpl from "./message-templates.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
 import { resolveSandboxBranchFromMap } from "./resolve-sandbox-branch.ts";
-import {
-  mergeBranchMetaWithGitStatus,
-  readGitHeadBranch,
-} from "./sandbox-git-api.ts";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
@@ -87,7 +82,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
     lifecycle,
     branch: branchMeta,
     phase: claimPhase,
-    notFound: sandboxGone,
   } = useSandboxEvents();
 
   const sandboxBranch = branchMeta.kind === "ready" ? branchMeta.branch : null;
@@ -99,23 +93,10 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const sandboxRouteBranch =
     branch ?? sandboxBranch ?? sandboxMapBranch ?? undefined;
 
-  // The repo doesn't exist on disk until the clone+checkout finishes, so don't
-  // poll /git/status during those phases (it would 409 until the repo lands).
-  const repoNotClonedYet =
-    lifecycle.phase === "cloning" ||
-    lifecycle.phase === "checking-out" ||
-    lifecycle.phase === "clone-failed";
-
-  const gitStatusQuery = useSandboxGitStatus({
-    orgSlug: org.slug,
-    virtualMcpId,
-    branch: sandboxRouteBranch ?? null,
-    enabled:
-      !!githubRepo && !!sandboxRouteBranch && !sandboxGone && !repoNotClonedYet,
-  });
-
   const githubHeadBranch =
-    readGitHeadBranch(gitStatusQuery.data) ?? sandboxRouteBranch ?? null;
+    (branchMeta.kind === "ready" ? branchMeta.branch : null) ??
+    sandboxRouteBranch ??
+    null;
 
   const prQuery = usePrByBranch({
     orgId: org.id,
@@ -145,10 +126,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
     prNumber: pr && pr.state === "open" ? pr.number : null,
   });
 
-  const effectiveBranchMeta = mergeBranchMetaWithGitStatus(
-    branchMeta,
-    gitStatusQuery.data,
-  );
+  // Git state comes solely from the daemon's `branch` SSE event, which is
+  // emitted on connect and on every fs/.git change and backstopped by the
+  // daemon's own poll fallback. It also applies the boot-dirty baseline filter
+  // that a raw /git/status poll would miss.
+  const effectiveBranchMeta = branchMeta;
 
   if (!githubRepo) return null;
 
@@ -181,7 +163,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
       effectiveBranchMeta.kind === "ready"
         ? effectiveBranchMeta.workingTreeDirty
         : null,
-    gitModifiedCount: gitStatusQuery.data?.modified.length ?? null,
     unpushed:
       effectiveBranchMeta.kind === "ready"
         ? effectiveBranchMeta.unpushed
@@ -208,7 +189,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
       githubHeadBranch,
       branchMeta,
       effectiveBranchMeta,
-      gitStatus: gitStatusQuery.data ?? null,
       lifecyclePhase: lifecycle.phase,
       prNumber: pr?.number ?? null,
       prState: pr?.state ?? null,
@@ -226,7 +206,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const refreshPrState = async () => {
     await Promise.all([
       prQuery.refetch(),
-      gitStatusQuery.refetch(),
       checksQuery.refetch(),
       reviewsQuery.refetch(),
     ]);
