@@ -30,6 +30,7 @@ import {
 } from "@untitledui/icons";
 import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import type { Metadata } from "./types.ts";
 import {
   useChatPrefs,
@@ -434,6 +435,16 @@ export function ChatInput({
         submission: e ? "button_or_enter" : "programmatic",
       });
       if (stream) {
+        // The per-thread send latch drops a re-entrant send synchronously
+        // (see `sendInFlight` in chat-context.tsx). Probe it BEFORE firing
+        // so a draft typed while the previous send's POST is still in
+        // flight isn't cleared for a send that was silently dropped.
+        if (stream.isSendInFlight()) {
+          toast.info(
+            "Still sending your previous message — try again in a moment",
+          );
+          return;
+        }
         void stream.sendMessage(tiptapDoc);
       } else {
         homeSubmit({ tiptapDoc, virtualMcp: selectedVirtualMcp });

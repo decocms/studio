@@ -1186,12 +1186,14 @@ async function prepareRun(
     // fence-scoped JetStream dedup key (`runId:fenceToken:seq`) and the
     // projector's per-(runId, fenceToken) accumulator never collide two turns.
     //
-    // Durable submit callers pass the route-minted fence on
-    // `input.runFenceToken`, so we USE that value and skip the write (the route
-    // already persisted it before starting DBOS). Legacy/direct callers that
-    // omit it still mint + write here. Either way the same value flows into the
-    // wire harness input, the NATS msg ids, and the projector/consume fence
-    // checks.
+    // Durable submit callers arrive here with `input.runFenceToken` already
+    // set: the thread gate's dispatch step claims + persists the fence via
+    // `claimRunFenceForDispatch` (thread-gate-workflow.ts) while it holds the
+    // thread's partition slot, and bakes that value into the request this
+    // function receives — so we USE it and skip the write. The mint-and-write
+    // fallback below only fires for legacy/direct callers that bypass the
+    // gate. Either way the same value flows into the wire harness input, the
+    // NATS msg ids, and the projector/consume fence checks.
     // Note: a failed link run leaves run_fence_token set until Task 7 clears it
     // (harmless: next run overwrites; ws/cloud never read it).
     let runFenceToken: string;

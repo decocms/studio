@@ -140,6 +140,13 @@ export interface ChatStreamContextValue {
   submit: (action: SubmitAction, opts: RequestOptions) => Promise<void>;
   /** Drop a message from the local store (used when a queued turn is removed). */
   removeLocalMessage: (messageId: string) => void;
+  /** Synchronous probe for the module-level `sendInFlight` latch (same key
+   *  `sendMessageInternal` latches on: this task's id). Lets callers that
+   *  clear UI state right after firing `sendMessage` (e.g. the composer's
+   *  draft) check FIRST whether that send will actually be accepted or
+   *  silently dropped by the latch, so they don't destroy state for a send
+   *  that never happened. */
+  isSendInFlight: () => boolean;
   error: Error | null;
   clearError: () => void;
   finishReason: string | null;
@@ -1294,6 +1301,7 @@ export function ActiveTaskProvider({
     stop: () => void cancelRun(),
     submit: (action, opts) => conn.submit(action, opts),
     removeLocalMessage: (messageId) => conn.removeLocalMessage(messageId),
+    isSendInFlight: () => sendInFlight.has(taskId),
     error: chatError,
     clearError: () => setChatError(null),
     finishReason,
