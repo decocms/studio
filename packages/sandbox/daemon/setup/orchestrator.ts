@@ -25,7 +25,7 @@ import { appLogPath, hasGitRepo, resolvePmRoot } from "../paths";
 import { discoverScripts } from "../process/script-discovery";
 import type { Application, Config } from "../types";
 import { autodetectApplication } from "./autodetect";
-import { spawnClone } from "./clone";
+import { type CloneResult, spawnClone } from "./clone";
 import { emitInstalledDeps } from "./dep-metrics";
 import { configureGitIdentity } from "./identity";
 import { spawnInstall } from "./install";
@@ -235,9 +235,9 @@ export class SetupOrchestrator {
         /* not present */
       }
       const cloneTee = new LogTee(cloneLogPath, INSTALL_LOG_MAX_BYTES);
-      let code: number;
+      let result: CloneResult;
       try {
-        code = await spawnClone({
+        result = await spawnClone({
           config,
           onChunk: (_src, data) => {
             this.rawChunk(data);
@@ -252,11 +252,27 @@ export class SetupOrchestrator {
         return false;
       }
       cloneTee.close();
-      if (code !== 0) {
-        const error = `exit ${code}`;
+      if (result.code !== 0) {
+        const error = `exit ${result.code}`;
         this.chunk(`\r\n[orchestrator] clone failed (${error})\r\n`);
         this.deps.lifecycle.transition({ phase: "clone-failed", error });
         return false;
+      }
+      // Base-branch fetch is off the critical path: fire it detached so
+      // install+start don't wait on 1-2 network round trips that only feed
+      // the divergence header. Logs via rawChunk (the clone tee is closed);
+      // refreshes branch status when it lands so the header updates without
+      // waiting for the next poll. Best-effort — a failure just leaves the
+      // header in its "unavailable until next fetch" state.
+      if (result.fetchBase) {
+        void result
+          .fetchBase((_src, data) => this.rawChunk(data))
+          .then(() => this.deps.branchStatus.refresh())
+          .catch((e) =>
+            this.rawChunk(
+              `\r\n[clone] deferred base fetch failed: ${(e as Error).message}\r\n`,
+            ),
+          );
       }
     } else if (cloneUrl) {
       // Repo exists. If a different branch is configured, treat that as a
