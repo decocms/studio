@@ -199,7 +199,7 @@ describe("buildCompanionCards", () => {
   const curated = {
     vtex: {
       registryAppId: "deco/vtex",
-      checks: 49,
+      area: "Catálogo",
       headline: "vtex value",
       bullets: ["b1"],
     },
@@ -222,14 +222,14 @@ describe("buildCompanionCards", () => {
       bindingType: "vtex",
       title: "VTEX",
       icon: "https://x/VTEX.png",
-      checks: 49,
+      area: "Catálogo",
       headline: "vtex value",
       bullets: ["b1"],
       satisfied: false,
       candidateConnectionId: null,
     });
   });
-  it("uncurated survivor renders plain (registry short_description, no checks/bullets)", () => {
+  it("uncurated survivor renders plain (registry short_description, no area/bullets)", () => {
     const cards = buildCompanionCards({
       requirements: [{ fieldKey: "SHOP", bindingType: "shopify" }],
       itemsById: {},
@@ -241,7 +241,7 @@ describe("buildCompanionCards", () => {
     expect(cards[0]).toMatchObject({
       title: "shopify",
       headline: "shopify desc",
-      checks: null,
+      area: null,
       bullets: [],
     });
   });

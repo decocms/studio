@@ -33,13 +33,9 @@ describe("commerce onboarding loading state", () => {
     const { getByText, container } = render(<CompanionMcpsSectionSkeleton />);
 
     expect(
-      getByText("Desbloqueie seu diagnóstico completo"),
+      getByText("Conecte suas ferramentas para ver o diagnóstico completo"),
     ).toBeInTheDocument();
-    expect(
-      getByText(
-        "Conecte suas ferramentas para liberar mais de 100 verificações no seu funil.",
-      ),
-    ).toBeInTheDocument();
-    expect(container.querySelectorAll(".animate-pulse")).toHaveLength(15);
+    // 4 skeleton cards × 4 pulse nodes each (icon, title, benefit line, action)
+    expect(container.querySelectorAll(".animate-pulse")).toHaveLength(16);
   });
 });

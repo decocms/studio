@@ -44,8 +44,8 @@ export interface CompanionCardModel {
   icon: string | null;
   /** Curated headline if present, else the registry short_description. */
   headline: string | null;
-  /** Curated-only; null for plain cards. */
-  checks: number | null;
+  /** Curated business-area tag (e.g. "Funil"); null for plain cards. */
+  area: string | null;
   bullets: string[];
   satisfied: boolean;
   candidateConnectionId: string | null;
@@ -280,7 +280,7 @@ export function buildCompanionCards(args: {
         curatedEntry?.headline ??
         item._meta?.["mcp.mesh"]?.short_description ??
         null,
-      checks: curatedEntry?.checks ?? null,
+      area: curatedEntry?.area ?? null,
       bullets: curatedEntry?.bullets ?? [],
       satisfied,
       candidateConnectionId: satisfied
