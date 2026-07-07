@@ -38,7 +38,7 @@ import { spawnSetupStep } from "./spawn-step";
  * across git-token refresh because the token lives in the URL userinfo, which
  * is stripped before hashing.
  */
-export function repoCacheKey(cloneUrl: string): string {
+function repoCacheKey(cloneUrl: string): string {
   let key = cloneUrl;
   try {
     const u = new URL(cloneUrl);
