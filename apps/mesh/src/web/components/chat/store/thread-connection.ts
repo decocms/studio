@@ -479,33 +479,17 @@ export class ThreadConnection {
       return;
     }
     try {
-      const result = await this.client.callTool({
-        name: "COLLECTION_THREAD_MESSAGES_LIST",
-        arguments: {
-          thread_id: this.threadId,
-          limit: this.pageSize,
-          offset: 0,
-          orderBy: [{ field: ["created_at"], direction: "desc" }],
-        },
-      });
-      if (this.abort.signal.aborted) {
+      const page = await this.fetchLatestPage(
+        "COLLECTION_THREAD_MESSAGES_LIST failed",
+      );
+      if (page.kind === "aborted") {
         this.resolveReady();
         return;
       }
-      if ((result as { isError?: boolean }).isError) {
-        throw new Error(
-          extractToolErrorMessage(
-            result,
-            "COLLECTION_THREAD_MESSAGES_LIST failed",
-          ),
-        );
+      if (page.kind === "error") {
+        throw new Error(page.message);
       }
-      const payload = ((result as { structuredContent?: unknown })
-        .structuredContent ?? result) as {
-        items?: UIMessage[];
-        hasMore?: boolean;
-      };
-      const items = payload.items ?? [];
+      const items = page.items;
       this.messages.update((curr) => mergeAndSort(curr, items));
       // Re-surface a settled turn's finish reason (e.g. the step-limit
       // "tool-calls" pause) so the "Response incomplete" banner persists
@@ -521,7 +505,7 @@ export class ThreadConnection {
         if (fr) this.finishReason.set(fr);
       }
       this.serverFetchedCount = items.length;
-      this.hasMoreOlder.set(payload.hasMore ?? false);
+      this.hasMoreOlder.set(page.hasMore ?? false);
       if (this.status.get().kind === "loading") {
         this.status.set({ kind: "ready" });
       }
@@ -541,6 +525,52 @@ export class ThreadConnection {
   }
 
   /**
+   * Shared fetch core for the three latest-page readers (`loadInitialPage`,
+   * `refetchLatestPage`, `reconcileFromServer`): one
+   * COLLECTION_THREAD_MESSAGES_LIST call for the newest `pageSize` rows plus
+   * the structuredContent unwrap. Callers own everything after the fetch —
+   * how to merge (`mergeAndSort` vs `reconcileLatestPage`), how `hasMore`
+   * feeds `hasMoreOlder`, and whether a tool error throws (initial load) or
+   * is logged (background refetches) — with the tool-error fallback label
+   * kept per-caller via `errorFallback`.
+   */
+  private async fetchLatestPage(
+    errorFallback: string,
+  ): Promise<
+    | { kind: "ok"; items: UIMessage[]; hasMore?: boolean }
+    | { kind: "aborted" }
+    | { kind: "error"; message: string }
+  > {
+    if (!this.client) return { kind: "aborted" };
+    const result = await this.client.callTool({
+      name: "COLLECTION_THREAD_MESSAGES_LIST",
+      arguments: {
+        thread_id: this.threadId,
+        limit: this.pageSize,
+        offset: 0,
+        orderBy: [{ field: ["created_at"], direction: "desc" }],
+      },
+    });
+    if (this.abort.signal.aborted) return { kind: "aborted" };
+    if ((result as { isError?: boolean }).isError) {
+      return {
+        kind: "error",
+        message: extractToolErrorMessage(result, errorFallback),
+      };
+    }
+    const payload = ((result as { structuredContent?: unknown })
+      .structuredContent ?? result) as {
+      items?: UIMessage[];
+      hasMore?: boolean;
+    };
+    return {
+      kind: "ok",
+      items: payload.items ?? [],
+      hasMore: payload.hasMore,
+    };
+  }
+
+  /**
    * Refresh the latest page after an SSE reconnect. Same args as the initial
    * load; the merge (upsert-by-id + sort by created_at) absorbs any overlap
    * with rows already in `messages` and preserves any optimistic-local rows
@@ -551,36 +581,82 @@ export class ThreadConnection {
   private async refetchLatestPage(): Promise<void> {
     if (!this.client) return;
     try {
-      const result = await this.client.callTool({
-        name: "COLLECTION_THREAD_MESSAGES_LIST",
-        arguments: {
-          thread_id: this.threadId,
-          limit: this.pageSize,
-          offset: 0,
-          orderBy: [{ field: ["created_at"], direction: "desc" }],
-        },
-      });
-      if (this.abort.signal.aborted) return;
-      if ((result as { isError?: boolean }).isError) {
-        console.warn(
-          "[chat-store] refetchLatestPage:",
-          extractToolErrorMessage(result, "tool error"),
-        );
+      const page = await this.fetchLatestPage("tool error");
+      if (page.kind === "aborted") return;
+      if (page.kind === "error") {
+        console.warn("[chat-store] refetchLatestPage:", page.message);
         return;
       }
-      const payload = ((result as { structuredContent?: unknown })
-        .structuredContent ?? result) as {
-        items?: UIMessage[];
-        hasMore?: boolean;
-      };
-      const items = payload.items ?? [];
-      this.messages.update((curr) => mergeAndSort(curr, items));
-      if (payload.hasMore !== undefined) {
-        this.hasMoreOlder.set(payload.hasMore);
+      this.messages.update((curr) => mergeAndSort(curr, page.items));
+      if (page.hasMore !== undefined) {
+        this.hasMoreOlder.set(page.hasMore);
       }
     } catch (err) {
       console.warn("[chat-store] refetchLatestPage failed:", err);
     }
+  }
+
+  /**
+   * Reconcile the live store against the server's authoritative latest page.
+   *
+   * Unlike `refetchLatestPage` (a plain merge used on reconnect), this DROPS
+   * stale in-flight assistant rows that the live fold left behind — the
+   * transient, client-id assistant a dequeued queued turn folds into, which
+   * clobbers the prior reply and can't dedupe against its persisted id (see
+   * `reconcileLatestPage`). Called on a run terminal while the thread's message
+   * queue is active, so the body catches up to DB truth (the dequeued turn's
+   * user bubble + reply) without a manual reload. Public: the chat-context
+   * observer drives it off the SSE-driven run-status edge — no polling.
+   *
+   * Returns true iff the fetched page was actually APPLIED to the store —
+   * false on error, abort, or when the apply was skipped because a run is
+   * live (see `applyReconcile`). Callers use this to keep the queue-dirty
+   * flag set when the reconcile didn't land, so a later terminal retries.
+   *
+   * Errors are logged, not surfaced — the next terminal (or a reload) retries.
+   */
+  async reconcileFromServer(): Promise<boolean> {
+    if (!this.client) return false;
+    try {
+      const page = await this.fetchLatestPage("tool error");
+      if (page.kind === "aborted") return false;
+      if (page.kind === "error") {
+        console.warn("[chat-store] reconcileFromServer:", page.message);
+        return false;
+      }
+      return this.applyReconcile(page.items, page.hasMore);
+    } catch (err) {
+      console.warn("[chat-store] reconcileFromServer failed:", err);
+      return false;
+    }
+  }
+
+  /**
+   * Apply a fetched authoritative page to the live store — the apply half of
+   * `reconcileFromServer`, split out so the live-run guard is unit-testable.
+   *
+   * Guard: if a run is live on this connection RIGHT NOW ("submitted" /
+   * "streaming"), skip the apply entirely and return false. The reconcile
+   * fetch resolves asynchronously — by the time it lands, the NEXT queued
+   * turn may already be streaming, and its in-flight transient assistant row
+   * is indistinguishable from a stale one; applying now would drop the live
+   * turn's not-yet-persisted reply mid-stream (it would visibly vanish until
+   * that turn's own terminal re-reconciles). Skipping is safe: the caller
+   * keeps the queue-dirty flag set, so the streaming turn's own terminal
+   * `decopilot.thread.status` event re-triggers a reconcile at a quiet
+   * moment. The status check and the store update run in the same
+   * synchronous block, so no chunk can interleave between them.
+   */
+  applyReconcile(items: UIMessage[], hasMore?: boolean): boolean {
+    const statusKind = this.status.get().kind;
+    if (statusKind === "submitted" || statusKind === "streaming") {
+      return false;
+    }
+    this.messages.update((curr) => reconcileLatestPage(curr, items));
+    if (hasMore !== undefined) {
+      this.hasMoreOlder.set(hasMore);
+    }
+    return true;
   }
 
   /**
@@ -1332,6 +1408,50 @@ export function mergeAndSort(
  * back to metadata so a still-streaming turn-1 reply doesn't leap behind a
  * newly-submitted turn-2 user row during live mergeAndSort.
  */
+/**
+ * Reconcile the live message store against an authoritative latest page from
+ * the server, dropping stale in-flight assistant rows the live substream-fold
+ * left behind.
+ *
+ * Why this exists: when a queued turn dequeues, its chunks fold into the
+ * already-open stream under a TRANSIENT client-generated id (the relay doesn't
+ * propagate the server's persisted message id in the `start` chunk). That
+ * transient assistant can clobber the prior turn's reply, and because its id
+ * never matches the persisted id a plain `mergeAndSort` would DUPLICATE it
+ * rather than replace it. On each run terminal we refetch the authoritative
+ * latest page and call this: any assistant row inside the fetched window (a
+ * timestamp-less transient, or one newer than the oldest fetched row) whose id
+ * is absent from the fetch is stale and dropped; the fetched rows then merge in
+ * as DB truth.
+ *
+ * Only assistant rows are dropped — user rows are either persisted (in the
+ * fetch) or optimistic for a not-yet-terminal turn and must survive. Rows at or
+ * below the fetched window's oldest timestamp (earlier pages / history) are
+ * untouched. Pure + total.
+ */
+export function reconcileLatestPage(
+  current: UIMessage[],
+  fetched: UIMessage[],
+): UIMessage[] {
+  if (fetched.length === 0) return current;
+  const fetchedIds = new Set(fetched.map((m) => m.id));
+  let cutoff = Number.POSITIVE_INFINITY;
+  for (const m of fetched) {
+    const t = readTimestamp(m);
+    if (t < cutoff) cutoff = t;
+  }
+  const kept = current.filter((m) => {
+    if (m.role !== "assistant") return true;
+    if (fetchedIds.has(m.id)) return true;
+    // Assistant absent from the authoritative fetch: keep only if it's older
+    // history (finite timestamp at or below the window). A transient (+Infinity)
+    // or a row newer than the window's floor but missing from the page is stale.
+    const t = readTimestamp(m);
+    return Number.isFinite(t) && t <= cutoff;
+  });
+  return mergeAndSort(kept, fetched);
+}
+
 function readTimestamp(m: UIMessage): number {
   const withTs = m as unknown as { created_at?: string | number | Date };
   if (withTs.created_at != null) {

@@ -72,6 +72,7 @@ import {
   readToolApprovalLevel,
 } from "../../hooks/use-preferences";
 import { useInvalidateCollectionsOnToolCall } from "../../hooks/use-invalidate-collections-on-tool-call";
+import { useDecopilotEvents } from "../../hooks/use-decopilot-events";
 import { useTaskReadState } from "../../hooks/use-task-read-state";
 import { authClient } from "../../lib/auth-client";
 import { track } from "../../lib/posthog-client";
@@ -111,7 +112,14 @@ import type { RunStatusStage } from "./run-status";
 import { useLocalStorage } from "../../hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
-import { enqueueMessage, refreshMessageQueue } from "./message-queue-store";
+import {
+  clearQueueDirty,
+  enqueueMessage,
+  isQueueDirty,
+  markQueueDirty,
+  messageQueueStore,
+  refreshMessageQueue,
+} from "./message-queue-store";
 import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
 
@@ -899,6 +907,43 @@ export function ActiveTaskProvider({
     orgSlug: org.slug,
   };
 
+  // Race-free body reconcile for queued turns. When a message is sent behind a
+  // running turn it's queued on the thread gate; the dequeued run's reply is
+  // NOT streamed to this thread's open /stream (a desktop run dispatches only
+  // after the gate slot frees, and its content lands only in the DB via the
+  // projector). The projector/run-reactor emit `decopilot.thread.status` on the
+  // shared /api/:org/watch pool STRICTLY AFTER that turn's thread_message_parts
+  // are durably committed (projector path: enforced by DBOS step journaling —
+  // the parts step is recorded before the terminal-status step runs). So one
+  // refetch on this event always sees the reply: no sleep, no retry, no timer.
+  // The event carries only `subject = threadId` (no per-run id), so we resync
+  // the whole list via `reconcileFromServer` (idempotent, DB-authoritative).
+  // Delivery is at-most-once (NATS Core, no replay): a dropped event self-heals
+  // because any LATER same-thread status event re-reconciles. Scoped to threads
+  // that actually queued work (`isQueueDirty`) so normal threads are untouched.
+  useDecopilotEvents({
+    orgSlug: org.slug,
+    taskId,
+    onTaskStatus: () => {
+      const cb = cbRef.current;
+      if (!isQueueDirty(cb.taskId)) return;
+      void (async () => {
+        await refreshMessageQueue(cb.orgSlug, cb.taskId);
+        const applied = await conn.reconcileFromServer();
+        // The gate queue has drained — the last queued turn finished and its
+        // parts are committed (guaranteed by the ordering above), so the body
+        // is whole. Stop reconciling until the next time work is queued.
+        // Gate on `applied`: `reconcileFromServer` skips its apply while the
+        // next queued turn is already mid-stream (racing dequeue) — and by
+        // then the gate queue can look drained. The flag must survive the
+        // skip so that turn's own terminal event retries the reconcile.
+        if (applied && messageQueueStore(cb.taskId).get().length === 0) {
+          clearQueueDirty(cb.taskId);
+        }
+      })();
+    },
+  });
+
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
   useEffect(() => {
     const observer: ThreadObserver = {
@@ -1016,11 +1061,11 @@ export function ActiveTaskProvider({
     // or thread switch still shows what's queued.
     void refreshMessageQueue(cbRef.current.orgSlug, cbRef.current.taskId);
 
-    // Re-sync the queue on every SSE run start/end edge. A gate dequeue flips
-    // conn.status idle→active (the next queued message began streaming); a
-    // finish flips active→idle (the slot freed). This is the SSE-driven
-    // refresh — the queue updates exactly when the thread gate advances, off
-    // the same stream the chat uses.
+    // Keep the queue PANEL in sync on every local run start/end edge (the live
+    // stream's own status). This is panel-only; the body reconcile for queued
+    // turns is driven separately off `decopilot.thread.status` (see
+    // `useDecopilotEvents` above), which — unlike this live-stream edge — is
+    // guaranteed to fire only AFTER the run's parts are durably committed.
     const isActiveStatus = (k: ConnStatus["kind"]) =>
       k === "submitted" || k === "streaming";
     let prevActive = isActiveStatus(conn.status.get().kind);
@@ -1160,6 +1205,11 @@ export function ActiveTaskProvider({
             status: "queued",
             enqueuedAt: Date.now(),
           });
+          // The body now trails the gate: this queued turn's reply will fold
+          // into a transient stream id when it dequeues and never lands in
+          // the body on its own. Mark the thread dirty so each run terminal
+          // reconciles the body against the server until the queue drains.
+          markQueueDirty(capturedTaskId);
         } catch (err) {
           // Roll back the optimistic body row FIRST — the POST never landed,
           // so no server refetch will ever reconcile it away (mergeAndSort
