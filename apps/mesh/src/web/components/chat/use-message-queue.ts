@@ -22,8 +22,13 @@ export function useMessageQueue(threadId: string): QueueItemDTO[] {
 export interface MessageQueueActions {
   /** Optimistically append a just-sent message. */
   enqueue: (threadId: string, item: QueueItemDTO) => void;
-  /** Cancel a queued message: drop it locally, POST the cancel, re-sync. */
-  cancel: (threadId: string, messageId: string) => Promise<void>;
+  /** Cancel a queued message: drop it locally, POST the cancel, re-sync.
+   *  Resolves true when the server confirmed (ok, or 404 = already gone),
+   *  false on failure — callers must gate irreversible local cleanup (e.g.
+   *  dropping the message bubble) on a true result. Either way the optimistic
+   *  queue-store drop happens immediately and the finally-refresh restores
+   *  the entry if the cancel didn't land. */
+  cancel: (threadId: string, messageId: string) => Promise<boolean>;
   /** Re-fetch the server's queue and replace the local store. */
   refresh: (threadId: string) => Promise<void>;
 }
@@ -45,8 +50,10 @@ export function useMessageQueueActions(): MessageQueueActions {
         if (!res.ok && res.status !== 404) {
           throw new Error(`Cancel failed: ${res.status}`);
         }
+        return true;
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to cancel");
+        return false;
       } finally {
         await refreshMessageQueue(org.slug, threadId);
       }

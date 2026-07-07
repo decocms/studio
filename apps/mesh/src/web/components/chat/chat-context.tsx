@@ -130,6 +130,8 @@ export interface ChatStreamContextValue {
    *  response. Patches local messages, clears finishReason, POSTs to /messages.
    *  Throws if a toolOutput / approval target isn't found in current messages. */
   submit: (action: SubmitAction, opts: RequestOptions) => Promise<void>;
+  /** Drop a message from the local store (used when a queued turn is removed). */
+  removeLocalMessage: (messageId: string) => void;
   error: Error | null;
   clearError: () => void;
   finishReason: string | null;
@@ -1241,6 +1243,7 @@ export function ActiveTaskProvider({
     sendMessage: sendMessagePublic,
     stop: () => void cancelRun(),
     submit: (action, opts) => conn.submit(action, opts),
+    removeLocalMessage: (messageId) => conn.removeLocalMessage(messageId),
     error: chatError,
     clearError: () => setChatError(null),
     finishReason,

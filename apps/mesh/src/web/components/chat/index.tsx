@@ -5,7 +5,12 @@ import {
   type PropsWithChildren,
   type RefObject,
 } from "react";
-import { ActiveTaskProvider, ChatProvider, useChatStream } from "./context";
+import {
+  ActiveTaskProvider,
+  ChatProvider,
+  useChatStream,
+  useChatTask,
+} from "./context";
 
 export { useChatTask } from "./context";
 import { IceBreakers } from "./ice-breakers";
@@ -13,6 +18,11 @@ import { HIGHLIGHT_COLLAPSED_HEIGHT_PX } from "./highlight/collapsible-highlight
 import { useHighlightCount } from "./highlight/use-highlight-count";
 import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
+import { selectQueuedItems } from "./queue-items.ts";
+import {
+  useMessageQueue,
+  useMessageQueueActions,
+} from "./use-message-queue.ts";
 import { SubtaskRunsProvider } from "./subtask-runs-context.tsx";
 import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
 import { CreditsEmptyState } from "./credits-empty-state";
@@ -124,10 +134,58 @@ function ChatMessages() {
     hasMoreOlder,
     isFetchingOlder,
     fetchOlderMessages,
+    stop,
+    removeLocalMessage,
   } = useChatStream();
+  const { taskId } = useChatTask();
   const messagePairs = useMessagePairs(messages);
-  const lastMessagePair = messagePairs.at(-1);
   const highlightCount = useHighlightCount();
+
+  // Queued-bubble affordances: which pairs are waiting behind the gate, and
+  // which one (the FIFO head) can be promoted via "Run now".
+  const queueItems = useMessageQueue(taskId ?? "");
+  const queuedItems = selectQueuedItems(queueItems);
+  const queuedIds = new Set(queuedItems.map((i) => i.messageId));
+  const promotableId = queuedItems[0]?.messageId;
+  const queueActions = useMessageQueueActions();
+
+  // The "live" pair — the turn actually streaming (or the most recent
+  // completed one) — is the last pair whose user message is NOT queued.
+  // With messages queued behind a running turn the queued pairs sit at the
+  // tail of `messagePairs`, so `.at(-1)` would misroute the live
+  // `status`/`isLast` treatment onto a queued bubble: the streaming pair
+  // would lose its GeneratingFooter/auto-scroll and could render "No
+  // response was generated" MID-STREAM, while the scroll ref pinned the
+  // queued bubble instead. Fallback (every pair queued — transient
+  // optimistic states) keeps the old last-pair behavior. With zero queued
+  // items this is exactly `length - 1`.
+  const liveIndex = (() => {
+    for (let i = messagePairs.length - 1; i >= 0; i--) {
+      const uid = messagePairs[i]?.user?.id;
+      if (!uid || !queuedIds.has(uid)) return i;
+    }
+    return messagePairs.length - 1;
+  })();
+  const livePair = messagePairs[liveIndex];
+
+  const getQueuedInfo = (pair: MessagePair) =>
+    pair.user && queuedIds.has(pair.user.id)
+      ? { isQueued: true, isPromotable: pair.user.id === promotableId }
+      : undefined;
+
+  const handleRunNow = () => stop();
+
+  const handleRemove = (pair: MessagePair) => async () => {
+    if (!pair.user) return;
+    const messageId = pair.user.id;
+    // Server first: only drop the bubble once the cancel is confirmed (ok or
+    // 404 = already gone). On failure the workflow is still alive — deleting
+    // the local row would leave an invisible-but-live turn. The queue store's
+    // optimistic drop inside `cancel` keeps the UI feedback instant, and its
+    // finally-refresh restores the queue entry when the POST didn't land.
+    const ok = await queueActions.cancel(taskId, messageId);
+    if (ok) removeLocalMessage(messageId);
+  };
 
   // Reserve `n × h + 16px` of bottom padding so that, when every highlight
   // is collapsed, the last message sits a comfortable gap above the top of
@@ -161,23 +219,43 @@ function ChatMessages() {
               Loading older messages…
             </div>
           )}
-          {messagePairs.slice(0, -1).map((pair, index) => (
+          {/* Pairs before the live one: settled history, no live status. */}
+          {messagePairs.slice(0, liveIndex).map((pair) => (
             <MessagePair
               key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
               pair={pair}
               isLastPair={false}
-              status={index === messagePairs.length - 1 ? status : undefined}
+              queuedInfo={getQueuedInfo(pair)}
+              onRunNow={handleRunNow}
+              onRemove={handleRemove(pair)}
             />
           ))}
         </div>
-        {lastMessagePair && (
+        {livePair && (
           <div className="min-h-full min-w-0 max-w-2xl mx-auto w-full">
+            {/* The live pair: gets the streaming status, isLast semantics and
+                the scroll-into-view treatment (via isLastPair inside). */}
             <MessagePair
-              key={`pair-${lastMessagePair.user?.id ?? lastMessagePair.assistant?.id}`}
-              pair={lastMessagePair}
+              key={`pair-${livePair.user?.id ?? livePair.assistant?.id}`}
+              pair={livePair}
               isLastPair={true}
               status={status}
+              queuedInfo={getQueuedInfo(livePair)}
+              onRunNow={handleRunNow}
+              onRemove={handleRemove(livePair)}
             />
+            {/* Queued tail: bubbles waiting behind the live turn — spinner +
+                affordances only, never live status/isLast. */}
+            {messagePairs.slice(liveIndex + 1).map((pair) => (
+              <MessagePair
+                key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
+                pair={pair}
+                isLastPair={false}
+                queuedInfo={getQueuedInfo(pair)}
+                onRunNow={handleRunNow}
+                onRemove={handleRemove(pair)}
+              />
+            ))}
           </div>
         )}
       </div>
