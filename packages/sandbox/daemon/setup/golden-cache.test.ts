@@ -1,8 +1,9 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  goldenEnabled,
   goldenNodeModulesPath,
   lockfileHash,
   sameFilesystem,
@@ -88,6 +89,33 @@ describe("lockfileHash", () => {
     expect(lockfileHash(dir, "npm")).toBeTruthy();
     // bun ignores an npm lockfile
     expect(lockfileHash(dir, "bun")).toBeNull();
+  });
+});
+
+describe("goldenEnabled (kill switch)", () => {
+  const orig = process.env.GOLDEN_CACHE_ENABLED;
+  afterEach(() => {
+    if (orig === undefined) delete process.env.GOLDEN_CACHE_ENABLED;
+    else process.env.GOLDEN_CACHE_ENABLED = orig;
+  });
+
+  it("is off by default (unset)", () => {
+    delete process.env.GOLDEN_CACHE_ENABLED;
+    expect(goldenEnabled()).toBe(false);
+  });
+
+  it('is on for "1" and "true" only', () => {
+    process.env.GOLDEN_CACHE_ENABLED = "1";
+    expect(goldenEnabled()).toBe(true);
+    process.env.GOLDEN_CACHE_ENABLED = "true";
+    expect(goldenEnabled()).toBe(true);
+  });
+
+  it("stays off for other values", () => {
+    for (const v of ["0", "false", "yes", "", "on"]) {
+      process.env.GOLDEN_CACHE_ENABLED = v;
+      expect(goldenEnabled()).toBe(false);
+    }
   });
 });
 

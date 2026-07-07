@@ -380,9 +380,13 @@ export class SetupOrchestrator {
     }
     this.markInstallSucceeded(config);
     // Publish this fresh node_modules as the golden for its lockfile so the
-    // next branch on this node reflink-restores it instead of reinstalling
-    // (best-effort, async — see golden-cache.ts).
-    void publishGolden({
+    // next branch on this node reflink-restores it instead of reinstalling.
+    // Awaited (not fire-and-forget) so the reflink snapshot is taken now,
+    // while node_modules is quiescent — the dev server (stepStart, next)
+    // writes node_modules/.vite, which would otherwise race the snapshot and
+    // capture an inconsistent tree. Best-effort: never throws (see
+    // golden-cache.ts). Miss-path only (~1s), so it doesn't slow warm boots.
+    await publishGolden({
       config,
       installRoot,
       pm,

@@ -123,6 +123,17 @@ export function sameFilesystem(a: string, b: string): boolean {
 
 type Log = (msg: string) => void;
 
+/**
+ * Independent kill switch. Golden touches the boot's install path, so it stays
+ * OFF unless explicitly enabled — separate from depsCache (which only mounts
+ * the cache + biases bun's backend). Ships dormant; flip GOLDEN_CACHE_ENABLED
+ * to turn it on, unset to disable without redeploying the daemon image.
+ */
+export function goldenEnabled(): boolean {
+  const v = process.env.GOLDEN_CACHE_ENABLED;
+  return v === "1" || v === "true";
+}
+
 /** reflink-clone `src` → `dst` via coreutils cp. Resolves to the exit code. */
 function reflinkClone(src: string, dst: string): Promise<number> {
   // --reflink=always (not auto): fail loudly rather than silently degrade to a
@@ -150,6 +161,7 @@ function resolveGolden(opts: GoldenOpts): {
   golden: string;
   targetNodeModules: string;
 } | null {
+  if (!goldenEnabled()) return null;
   const cacheRoot = opts.cacheRoot ?? process.env.DEPS_CACHE_ROOT;
   const golden = goldenNodeModulesPath({
     cacheRoot,
