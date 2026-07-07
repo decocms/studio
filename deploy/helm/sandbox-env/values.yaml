@@ -230,6 +230,29 @@ orgFs:
 # dev server start) on staging before merging an override.
 readOnlyRootFilesystem: true
 
+# ── node-local dependency cache ────────────────────────────────────────
+# Shares the package-manager download/extract cache across all sandbox
+# pods on a node via a hostPath mount. With a warm cache, `bun install`
+# hardlinks packages into node_modules instead of downloading + copying
+# (measured: 21s → ~1s on a 703MB node_modules). Hardlinks require the
+# cache and /app to sit on the same filesystem: works with the default
+# readOnlyRootFilesystem: true (/app is a node-disk emptyDir); with an
+# overlayfs /app (readOnlyRootFilesystem: false) bun silently falls back
+# to copying and only the download is saved.
+#
+# The daemon keys the cache per-repo under this root (DEPS_CACHE_ROOT →
+# BUN_INSTALL_CACHE_DIR=<root>/bun/<repo-hash>), so sandboxes of
+# different repos never share cache entries — a sandbox running
+# untrusted code can only poison the cache of its own repo, which that
+# code could already reach by other means.
+depsCache:
+  enabled: false
+  # Node path backing the cache. Created root-owned by kubelet
+  # (DirectoryOrCreate); the chown init container below hands it to the
+  # sandbox uid. Unbounded growth is accepted for now: node-image GC
+  # replaces nodes long before 100GB+ of package cache accrues.
+  hostPath: /var/cache/studio-sandbox-deps
+
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:
   # Optional: supply an explicit token so CI can pass the same value to
