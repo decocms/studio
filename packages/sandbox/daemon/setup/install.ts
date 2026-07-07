@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { PACKAGE_MANAGER_DAEMON_CONFIG } from "../constants";
-import { resolvePmRoot } from "../paths";
+import { gitSync } from "../git/git-sync";
+import { hasGitRepo, resolvePmRoot } from "../paths";
 import type { Config } from "../types";
 import { spawnSetupStep } from "./spawn-step";
 
@@ -51,12 +52,36 @@ function repoCacheKey(cloneUrl: string): string {
   return createHash("sha256").update(key).digest("hex").slice(0, 16);
 }
 
+/**
+ * The repo's cloneUrl for cache-key derivation. Prefer the daemon config, but
+ * fall back to the cloned repo's `origin` remote: on warm-pool adopt/resurrect
+ * paths the runtime config often arrives without `git.repository`, so keying
+ * off the config alone silently disables every cache (DENO_DIR, bun, golden)
+ * and each boot re-fetches from cold. The repo is always cloned by the time
+ * any cache is consulted (install/start), so its origin remote is a reliable
+ * fallback. repoCacheKey strips credentials, so the token in the remote URL
+ * doesn't perturb the key.
+ */
+export function resolveCloneUrl(config: Config): string | undefined {
+  const fromConfig = config.git?.repository?.cloneUrl;
+  if (fromConfig) return fromConfig;
+  const repoDir = config.repoDir;
+  if (!repoDir || !hasGitRepo(repoDir)) return undefined;
+  try {
+    return (
+      gitSync(["remote", "get-url", "origin"], { cwd: repoDir }) || undefined
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 export function depsCacheEnv(
   config: Config,
   cacheRoot: string | undefined = process.env.DEPS_CACHE_ROOT,
 ): Record<string, string> | null {
   if (!cacheRoot) return null;
-  const cloneUrl = config.git?.repository?.cloneUrl;
+  const cloneUrl = resolveCloneUrl(config);
   if (!cloneUrl) return null;
   return {
     BUN_INSTALL_CACHE_DIR: join(cacheRoot, "bun", repoCacheKey(cloneUrl)),
@@ -84,7 +109,7 @@ export function denoCacheEnv(
 ): Record<string, string> | null {
   if (!cacheRoot) return null;
   if (config.application?.packageManager?.name !== "deno") return null;
-  const cloneUrl = config.git?.repository?.cloneUrl;
+  const cloneUrl = resolveCloneUrl(config);
   if (!cloneUrl) return null;
   return { DENO_DIR: join(cacheRoot, "deno", repoCacheKey(cloneUrl)) };
 }

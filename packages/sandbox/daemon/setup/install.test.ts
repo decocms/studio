@@ -1,5 +1,9 @@
-import { describe, expect, it } from "bun:test";
-import { denoCacheEnv, depsCacheEnv } from "./install";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "bun:test";
+import { denoCacheEnv, depsCacheEnv, resolveCloneUrl } from "./install";
 import type { Config } from "../types";
 
 function configWith(cloneUrl?: string, pm?: string): Config {
@@ -8,6 +12,60 @@ function configWith(cloneUrl?: string, pm?: string): Config {
     application: pm ? { packageManager: { name: pm } } : undefined,
   } as Config;
 }
+
+/** A real on-disk git repo with an `origin` remote, for the fallback path. */
+function repoWithOrigin(originUrl: string): string {
+  const dir = mkdtempSync(join(tmpdir(), "deps-cache-test-"));
+  const run = (args: string[]) => spawnSync("git", args, { cwd: dir });
+  run(["init", "-q"]);
+  run(["remote", "add", "origin", originUrl]);
+  return dir;
+}
+
+describe("resolveCloneUrl", () => {
+  const tmpDirs: string[] = [];
+  afterAll(() => {
+    for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
+  });
+
+  it("prefers the cloneUrl in the config", () => {
+    expect(resolveCloneUrl(configWith("https://x.com/a/b"))).toBe(
+      "https://x.com/a/b",
+    );
+  });
+
+  it("falls back to the cloned repo's origin remote when config has none", () => {
+    // Regression: on warm-pool adopt/resurrect the runtime config arrives
+    // without git.repository, so keying off config alone leaves DENO_DIR unset
+    // and every boot re-fetches cold.
+    const dir = repoWithOrigin("https://github.com/o/n.git");
+    tmpDirs.push(dir);
+    const config = { repoDir: dir } as Config;
+    expect(resolveCloneUrl(config)).toBe("https://github.com/o/n.git");
+    // and the cache env now keys off it instead of returning null
+    expect(depsCacheEnv(config, "/deps-cache")?.BUN_INSTALL_CACHE_DIR).toMatch(
+      /^\/deps-cache\/bun\/[0-9a-f]{16}$/,
+    );
+  });
+
+  it("fallback key matches the same repo passed via config (token-stripped)", () => {
+    const dir = repoWithOrigin("https://x-access-token:tok@github.com/o/n.git");
+    tmpDirs.push(dir);
+    const viaRemote = depsCacheEnv({ repoDir: dir } as Config, "/deps-cache");
+    const viaConfig = depsCacheEnv(
+      configWith("https://github.com/o/n.git"),
+      "/deps-cache",
+    );
+    expect(viaRemote).toEqual(viaConfig);
+  });
+
+  it("returns undefined with neither config cloneUrl nor a git repo", () => {
+    expect(resolveCloneUrl({} as Config)).toBeUndefined();
+    const empty = mkdtempSync(join(tmpdir(), "deps-cache-test-"));
+    tmpDirs.push(empty);
+    expect(resolveCloneUrl({ repoDir: empty } as Config)).toBeUndefined();
+  });
+});
 
 describe("depsCacheEnv", () => {
   it("returns null without a cache root", () => {

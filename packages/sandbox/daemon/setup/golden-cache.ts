@@ -39,6 +39,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Config } from "../types";
+import { resolveCloneUrl } from "./install";
 
 /**
  * GC bounds for the golden store (a golden ≈ a full node_modules on the node
@@ -180,7 +181,7 @@ function resolveGolden(opts: GoldenOpts): {
   const cacheRoot = opts.cacheRoot ?? process.env.DEPS_CACHE_ROOT;
   const golden = goldenNodeModulesPath({
     cacheRoot,
-    cloneUrl: opts.config.git?.repository?.cloneUrl,
+    cloneUrl: resolveCloneUrl(opts.config),
     pm: opts.pm,
     lockHash: lockfileHash(opts.installRoot, opts.pm),
   });
