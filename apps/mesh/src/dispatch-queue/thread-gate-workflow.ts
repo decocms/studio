@@ -331,7 +331,6 @@ async function dispatchRunAndWaitStep(
         fenceToken: runFenceToken,
         threadId: ctx.threadId,
         request: claimedRequest,
-        ...(ctx.timeoutMs != null ? { timeoutMs: ctx.timeoutMs } : {}),
       },
     };
   }
