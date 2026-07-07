@@ -80,6 +80,7 @@ export const CORE_TOOLS = [
   CommerceDiscoveryTools.COMMERCE_DISCOVERY_SETUP,
   CommerceDiscoveryTools.COMMERCE_DISCOVERY_RUN,
   CommerceDiscoveryTools.COMMERCE_DISCOVERY_BIND,
+  CommerceDiscoveryTools.COMMERCE_DISCOVERY_CONNECTION_STATUS,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,

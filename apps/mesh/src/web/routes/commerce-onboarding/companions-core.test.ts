@@ -334,6 +334,44 @@ describe("buildCompanionCards", () => {
     });
     expect(cards[0]!.icon).toBeNull();
   });
+  it("marks a card connected via the shared-SA binding (boundVia='sa')", () => {
+    const cards = buildCompanionCards({
+      requirements: [{ fieldKey: "GA", bindingType: "google-analytics" }],
+      itemsById: {},
+      itemsByName: {
+        "google-analytics": item("deco/google-analytics", "google-analytics"),
+      },
+      connections: [],
+      configurationState: null,
+      curated,
+      saBindings: { "google-analytics": { resource: "123456789" } },
+    });
+    expect(cards[0]!.satisfied).toBe(true);
+    expect(cards[0]!.boundVia).toBe("sa");
+    expect(cards[0]!.boundResource).toBe("123456789");
+    expect(cards[0]!.linkedConnectionId).toBeNull();
+  });
+  it("OAuth linkage wins over an SA binding (run-time precedence)", () => {
+    const cards = buildCompanionCards({
+      requirements: [{ fieldKey: "GA", bindingType: "google-analytics" }],
+      itemsById: {},
+      itemsByName: {
+        "google-analytics": item("deco/google-analytics", "google-analytics"),
+      },
+      connections: [
+        { id: "c_ga", app_name: "google-analytics", status: "active" },
+      ],
+      configurationState: {
+        GA: { __type: "google-analytics", value: "c_ga" },
+      },
+      curated,
+      saBindings: { "google-analytics": { resource: "123" } },
+    });
+    expect(cards[0]!.satisfied).toBe(true);
+    expect(cards[0]!.boundVia).toBe("oauth");
+    expect(cards[0]!.boundResource).toBeNull();
+    expect(cards[0]!.linkedConnectionId).toBe("c_ga");
+  });
 });
 
 describe("matchGscSite", () => {

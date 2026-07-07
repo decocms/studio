@@ -81,6 +81,7 @@ const ALL_TOOL_NAMES = [
   "COMMERCE_DISCOVERY_SETUP",
   "COMMERCE_DISCOVERY_RUN",
   "COMMERCE_DISCOVERY_BIND",
+  "COMMERCE_DISCOVERY_CONNECTION_STATUS",
   // Virtual MCP tools
   "COLLECTION_VIRTUAL_MCP_CREATE",
   "COLLECTION_VIRTUAL_MCP_LIST",
@@ -442,6 +443,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "COMMERCE_DISCOVERY_BIND",
     description: "Bind Commerce Discovery data source",
+    category: "Connections",
+  },
+  {
+    name: "COMMERCE_DISCOVERY_CONNECTION_STATUS",
+    description: "Read Commerce Discovery connection status",
     category: "Connections",
   },
   {
@@ -1158,6 +1164,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COMMERCE_DISCOVERY_SETUP",
       "COMMERCE_DISCOVERY_RUN",
       "COMMERCE_DISCOVERY_BIND",
+      "COMMERCE_DISCOVERY_CONNECTION_STATUS",
     ],
     dangerous: true,
   },

@@ -129,6 +129,7 @@ function CompanionMcpsSectionContent({
     selfClient,
     org,
     cdConnectionId,
+    siteUrl,
   });
   const {
     connect,

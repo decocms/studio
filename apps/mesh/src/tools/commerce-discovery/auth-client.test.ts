@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   bindCommerceDiscoveryResource,
   fetchCommerceDiscoveryAuth,
+  fetchCommerceDiscoveryConnectionStatus,
   triggerCommerceDiscoveryRun,
 } from "./auth-client";
 
@@ -324,5 +325,58 @@ describe("bindCommerceDiscoveryResource", () => {
     ).rejects.toThrow(
       "COMMERCE_DISCOVERY_INTERNAL_API_KEY is required to set up Commerce Discovery.",
     );
+  });
+});
+
+describe("fetchCommerceDiscoveryConnectionStatus", () => {
+  test("GETs the status for the normalized domain + org and returns providers", async () => {
+    const captured: Array<{ method: string; url: string }> = [];
+
+    const out = await fetchCommerceDiscoveryConnectionStatus(
+      { siteUrl: "https://example.com/loja", orgId: "org_123" },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async (input, init) => {
+          const request = new Request(input, init);
+          captured.push({ method: request.method, url: request.url });
+          return Response.json({
+            url: "example.com",
+            org_id: "org_123",
+            providers: {
+              ga4: { connected: true, via: "sa", resource: "123456789" },
+              gsc: { connected: false, via: null, resource: null },
+              vtex: { connected: true, via: "oauth", resource: null },
+            },
+          });
+        },
+      },
+    );
+
+    expect(out.ga4).toEqual({
+      connected: true,
+      via: "sa",
+      resource: "123456789",
+    });
+    expect(out.gsc?.connected).toBe(false);
+    expect(captured).toEqual([
+      {
+        method: "GET",
+        url: "https://commerce.example.test/api/v2/internal/diagnostics/example.com/connections/status?org_id=org_123",
+      },
+    ]);
+  });
+
+  test("treats a 409 (never upgraded) as everything disconnected, not a throw", async () => {
+    const out = await fetchCommerceDiscoveryConnectionStatus(
+      { siteUrl: "https://example.com", orgId: "org_123" },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async () =>
+          Response.json({ error: "not_upgraded" }, { status: 409 }),
+      },
+    );
+    expect(out).toEqual({});
   });
 });

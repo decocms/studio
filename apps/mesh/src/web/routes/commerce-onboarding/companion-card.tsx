@@ -23,6 +23,11 @@ import {
   shouldAutoOpenCompanionConfig,
 } from "./companions-core.ts";
 import { COMPANION_CONFIG_FORMS } from "./companion-forms/registry.ts";
+import { SaBindingForm } from "./companion-forms/sa-binding-form.tsx";
+import {
+  type BindProvider,
+  PROVIDER_BY_BINDING_TYPE,
+} from "./companion-forms/sa-binding-copy.ts";
 
 /**
  * Loading placeholder that mirrors {@link CompanionCard}'s box model (square-ish
@@ -67,9 +72,26 @@ export function CompanionCard({
   onAutoOpenConfigHandled: () => void;
 }) {
   const linkedConnectionId = card.linkedConnectionId;
+  // GA4/GSC use the shared-SA lane by default; only fall back to the OAuth gear
+  // when the card was actually satisfied via OAuth (has a companion connection).
+  const saProvider = PROVIDER_BY_BINDING_TYPE[card.bindingType] as
+    | BindProvider
+    | undefined;
+  const useSaFlow = !!saProvider && card.boundVia !== "oauth";
 
   const action =
-    card.satisfied && linkedConnectionId ? (
+    useSaFlow && saProvider ? (
+      <SaConnectAction
+        card={card}
+        provider={saProvider}
+        org={org}
+        selfClient={selfClient}
+        siteUrl={siteUrl}
+        onOAuthInstead={onConnect}
+        disabled={disabled}
+        connecting={connecting}
+      />
+    ) : card.satisfied && linkedConnectionId ? (
       <div className="flex items-center justify-end gap-1 sm:justify-start">
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <CheckCircle size={16} className="text-success" /> Conectado
@@ -149,6 +171,119 @@ export function CompanionCard({
 
       <div className="shrink-0 sm:mt-auto sm:w-full sm:pt-1">{action}</div>
     </div>
+  );
+}
+
+/** The shared-SA connect/config action for GA4/GSC: a "Conectar" button (or a
+ *  "Conectado" + gear once bound) that opens a dialog with the step-by-step
+ *  binding form. The low-key "authorize via OAuth" link inside the dialog runs
+ *  the legacy OAuth flow for anyone who prefers it. No companion MCP client is
+ *  needed — the binding lives in commerce-discovery, not a Studio connection. */
+function SaConnectAction({
+  card,
+  provider,
+  org,
+  selfClient,
+  siteUrl,
+  onOAuthInstead,
+  disabled,
+  connecting,
+}: {
+  card: CompanionCardModel;
+  provider: BindProvider;
+  org: { id: string; slug: string };
+  selfClient: Client;
+  siteUrl?: string;
+  onOAuthInstead: () => void;
+  disabled: boolean;
+  connecting: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [savePending, setSavePending] = useState(false);
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next && savePending) return; // don't close mid-verify
+    setOpen(next);
+  };
+
+  return (
+    <>
+      {card.satisfied ? (
+        <div className="flex items-center justify-end gap-1 sm:justify-start">
+          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <CheckCircle size={16} className="text-success" /> Conectado
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0"
+                onClick={() => setOpen(true)}
+                aria-label={`Configurar ${card.title}`}
+              >
+                <Settings01 size={16} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Editar configuração</TooltipContent>
+          </Tooltip>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="sm:w-full"
+          disabled={disabled || connecting}
+          onClick={() => setOpen(true)}
+          aria-label={`Conectar ${card.title}`}
+        >
+          {connecting ? (
+            <Loading01 size={16} className="animate-spin" />
+          ) : (
+            "Conectar"
+          )}
+        </Button>
+      )}
+
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
+            <IntegrationIcon
+              icon={card.icon}
+              name={card.title}
+              size="md"
+              fit="contain"
+              className="p-1.5"
+            />
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <DialogTitle>{card.title}</DialogTitle>
+              <DialogDescription>
+                Conceda acesso ao nosso leitor e informe o identificador
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+          <SaBindingForm
+            provider={provider}
+            siteUrl={siteUrl}
+            selfClient={selfClient}
+            org={org}
+            initialResourceId={card.boundResource ?? undefined}
+            onDone={() => setOpen(false)}
+            onIsPendingChange={setSavePending}
+            onOAuthInstead={
+              card.satisfied
+                ? undefined
+                : () => {
+                    setOpen(false);
+                    onOAuthInstead();
+                  }
+            }
+          />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

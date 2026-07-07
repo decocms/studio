@@ -254,3 +254,52 @@ export async function triggerCommerceDiscoveryRun(
   }
   return { triggered: true };
 }
+
+const ConnectionStatusSchema = z.object({
+  providers: z.record(
+    z.string(),
+    z.object({
+      connected: z.boolean(),
+      via: z.enum(["oauth", "sa"]).nullable(),
+      resource: z.string().nullable(),
+    }),
+  ),
+});
+
+export type CommerceDiscoveryConnectionStatus = z.infer<
+  typeof ConnectionStatusSchema
+>["providers"];
+
+/**
+ * Read per-provider connection status for a store — the single source of truth
+ * the studio card renders as "Conectado", unifying both lanes (Studio-vault
+ * OAuth and shared-SA binding). Read-only; soft-tolerant: a diagnostic that was
+ * never upgraded (404/409) reports everything disconnected rather than throwing,
+ * so the onboarding UI degrades cleanly before the first upgrade.
+ */
+export async function fetchCommerceDiscoveryConnectionStatus(
+  input: { siteUrl: string; orgId: string },
+  options: CommerceDiscoveryAuthOptions = {},
+): Promise<CommerceDiscoveryConnectionStatus> {
+  const baseUrl = resolveBaseUrl(options);
+  const apiKey = resolveApiKey(options);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const domain = domainFromSiteUrl(input.siteUrl);
+  const url = `${baseUrl}/api/v2/internal/diagnostics/${encodeURIComponent(
+    domain,
+  )}/connections/status?org_id=${encodeURIComponent(input.orgId)}`;
+
+  const response = await fetchImpl(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+
+  if (response.status === 404 || response.status === 409) {
+    return {};
+  }
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response));
+  }
+  const parsed = ConnectionStatusSchema.safeParse(await response.json());
+  return parsed.success ? parsed.data.providers : {};
+}
