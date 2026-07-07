@@ -38,6 +38,23 @@ describe("depsCacheEnv", () => {
     expect(a).toEqual(bare);
   });
 
+  it("is stable across git token refresh (github x-access-token form)", () => {
+    // Mesh embeds a short-lived OAuth token in the cloneUrl userinfo
+    // (github-clone-info.ts: https://x-access-token:<token>@github.com/...)
+    // and rotates it via git-credential-refresh. The cache key must not
+    // move when the token does, or every refresh orphans the cache.
+    const url = (tok: string) =>
+      `https://x-access-token:${tok}@github.com/o/n.git`;
+    const a = depsCacheEnv(configWith(url("ghs_expires")), "/deps-cache");
+    const b = depsCacheEnv(configWith(url("ghs_refreshed")), "/deps-cache");
+    const bare = depsCacheEnv(
+      configWith("https://github.com/o/n.git"),
+      "/deps-cache",
+    );
+    expect(a).toEqual(b);
+    expect(a).toEqual(bare);
+  });
+
   it("distinct repos get distinct cache dirs", () => {
     const a = depsCacheEnv(configWith("https://x.com/a/b"), "/deps-cache");
     const b = depsCacheEnv(configWith("https://x.com/a/c"), "/deps-cache");
