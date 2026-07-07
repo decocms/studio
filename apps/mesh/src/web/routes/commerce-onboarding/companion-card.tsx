@@ -72,7 +72,7 @@ export function CompanionCard({
     card.satisfied && linkedConnectionId ? (
       <div className="flex items-center justify-end gap-1 sm:justify-start">
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <CheckCircle size={16} className="text-emerald-600" /> Conectado
+          <CheckCircle size={16} className="text-success" /> Conectado
         </span>
         {/* Own Suspense boundary: CompanionConfiguration opens the companion's
             own MCP client (useMCPClient → useSuspenseQuery). Isolating it keeps
@@ -92,10 +92,6 @@ export function CompanionCard({
           />
         </Suspense>
       </div>
-    ) : card.satisfied ? (
-      <span className="flex items-center justify-end gap-1.5 text-sm text-muted-foreground sm:justify-start">
-        <CheckCircle size={16} className="text-emerald-600" /> Conectado
-      </span>
     ) : (
       <Button
         type="button"
@@ -154,11 +150,6 @@ export function CompanionCard({
       <div className="shrink-0 sm:mt-auto sm:w-full sm:pt-1">{action}</div>
     </div>
   );
-}
-
-export function maskConfigValue(key: string, value: string) {
-  const isSensitiveKey = /(token|secret|password|appKey|key)$/i.test(key);
-  return isSensitiveKey ? "••••••••" : value;
 }
 
 interface CompanionConfigurationProps {
