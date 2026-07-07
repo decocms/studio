@@ -231,26 +231,33 @@ orgFs:
 readOnlyRootFilesystem: true
 
 # ── node-local dependency cache ────────────────────────────────────────
-# Shares the package-manager download/extract cache across all sandbox
-# pods on a node via a hostPath mount. With a warm cache, `bun install`
-# hardlinks packages into node_modules instead of downloading + copying
-# (measured: 21s → ~1s on a 703MB node_modules). Hardlinks require the
-# cache and /app to sit on the same filesystem: works with the default
-# readOnlyRootFilesystem: true (/app is a node-disk emptyDir); with an
-# overlayfs /app (readOnlyRootFilesystem: false) bun silently falls back
-# to copying and only the download is saved.
+# Shares bun's download/extract cache across all sandbox pods on a node
+# via a hostPath mount, so a warm `bun install` skips the registry
+# fetch + tarball extract (measured on kind: cold ~6s → warm ~3.4s).
+# Only bun reads BUN_INSTALL_CACHE_DIR — npm/pnpm/yarn/deno installs are
+# unaffected.
+#
+# No hardlinking here: the hostPath cache and the pod's /app emptyDir are
+# separate mounts, so bun's link() into node_modules fails EXDEV and it
+# falls back to copyfile on every install. The win is the saved
+# download + extract, not a zero-copy link. Near-instant install needs a
+# prebaked read-only node_modules overlay — a separate design.
 #
 # The daemon keys the cache per-repo under this root (DEPS_CACHE_ROOT →
 # BUN_INSTALL_CACHE_DIR=<root>/bun/<repo-hash>), so sandboxes of
-# different repos never share cache entries — a sandbox running
-# untrusted code can only poison the cache of its own repo, which that
-# code could already reach by other means.
+# different repos never share cache entries. Within one repo the shared
+# cache is still cross-tenant when the same cloneUrl is reachable at
+# different privilege levels (public/template repos): tampered entries
+# are caught by bun's lockfile integrity check, not by this isolation.
 depsCache:
   enabled: false
   # Node path backing the cache. Created root-owned by kubelet
   # (DirectoryOrCreate); the chown init container below hands it to the
-  # sandbox uid. Unbounded growth is accepted for now: node-image GC
-  # replaces nodes long before 100GB+ of package cache accrues.
+  # sandbox uid. WARNING: hostPath has no sizeLimit and the sandbox runs
+  # untrusted code as its owner — a runaway/malicious pod can fill the
+  # node disk and trigger DiskPressure evictions of co-located tenants.
+  # Growth is currently unreaped; only enable on nodes you're willing to
+  # let accrue package cache until the node is recycled.
   hostPath: /var/cache/studio-sandbox-deps
 
 # ── sentinel token ─────────────────────────────────────────────────────

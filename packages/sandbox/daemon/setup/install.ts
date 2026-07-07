@@ -11,10 +11,14 @@ import { spawnSetupStep } from "./spawn-step";
  * (the chart's node-local hostPath mount — see depsCache in
  * deploy/helm/sandbox-env/values.yaml). Keyed by the credential-stripped
  * cloneUrl so sandboxes of different repos never share cache entries: a
- * cache shared across tenants would let one repo's untrusted code poison
- * another repo's node_modules through the hardlinked store. Within one
- * repo that risk is moot — anyone who can run code in its sandboxes can
- * already ship code to that repo.
+ * cache shared across repos would let one repo's untrusted code poison
+ * another repo's store. Sandboxes of the *same* cloneUrl still share it,
+ * which is intended for private repos (sandbox access implies repo
+ * write) but is cross-tenant for repos reachable at different privilege
+ * levels (public/template). Tampered cache entries are caught by bun's
+ * lockfile integrity check on install, not by this key.
+ *
+ * Only bun consumes BUN_INSTALL_CACHE_DIR; npm/pnpm/yarn/deno ignore it.
  */
 export function depsCacheEnv(
   config: Config,
