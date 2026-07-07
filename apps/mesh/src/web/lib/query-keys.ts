@@ -80,6 +80,10 @@ export const KEYS = {
     ] as const,
   commerceDiscoveryCompanionGscSites: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "companion-gsc-sites", orgId, connectionId] as const,
+  // Per-(org, siteUrl) connection status from commerce-discovery — the single
+  // source of truth for "Conectado" across both lanes (OAuth + shared-SA).
+  commerceDiscoveryConnectionStatus: (orgId: string, siteUrl: string) =>
+    ["commerce-discovery", "connection-status", orgId, siteUrl] as const,
 
   connectionActivity: (
     connectionId: string,
