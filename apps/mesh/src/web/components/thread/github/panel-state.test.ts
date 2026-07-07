@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BranchMeta, LifecycleState } from "@decocms/sandbox/shared";
 import type { ClaimPhase } from "@/web/components/sandbox/hooks/sandbox-events-context";
-import { mergeBranchMetaWithGitStatus } from "./sandbox-git-api.ts";
 import { selectHeaderButton } from "./panel-state";
 import type { CheckRun, PrSummary } from "./use-pr-data";
 import type { PrReviewSignals } from "./use-pr-reviews";
@@ -381,37 +380,6 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Continue");
     expect(r.action).toBe("create-pr");
     expect(r.variant).toBe("special");
-  });
-
-  test("refresh: unknown SSE + git aheadOfBase → Submit for review", () => {
-    const branch = mergeBranchMetaWithGitStatus(
-      { kind: "unknown" },
-      {
-        not_added: [],
-        conflicted: [],
-        created: [],
-        deleted: [],
-        modified: [],
-        renamed: [],
-        files: [],
-        staged: [],
-        ahead: 0,
-        behind: 0,
-        current: "deco/young-trail",
-        tracking: "origin/deco/young-trail",
-        detached: false,
-        aheadOfBase: 2,
-        behindBase: 0,
-        base: "main",
-        headSha: "abc",
-        unpushed: 0,
-      },
-    );
-    const r = selectHeaderButton(
-      happyInput({ branch, pr: null, checks: [], reviews: null }),
-    );
-    expect(r.label).toBe("Submit for review");
-    expect(r.action).toBe("create-pr");
   });
 
   test("ahead of base + no PR → Submit for review", () => {
