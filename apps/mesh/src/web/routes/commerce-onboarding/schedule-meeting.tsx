@@ -1,6 +1,6 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ArrowUpRight, User01 } from "@untitledui/icons";
+import { ArrowUpRight } from "@untitledui/icons";
 
 /**
  * Where "Schedule a meeting" sends people who'd rather have us run the
@@ -8,12 +8,23 @@ import { ArrowUpRight, User01 } from "@untitledui/icons";
  * grant it. Books onto the deco commerce team calendar. Swap the URL to
  * repoint the calendar.
  */
-const SCHEDULE_MEETING_URL =
-  "https://decocms-tanstack.deco-cx.workers.dev/agendar";
+const SCHEDULE_MEETING_URL = "https://decocms.com/agendar";
 
-const HEADLINE = "Prefere que a gente acompanhe você?";
+const HEADLINE = "Precisa de ajuda? Fale conosco";
 const BODY =
   "Agende uma chamada de 20 minutos e rodamos o diagnóstico com você, ao vivo.";
+
+/**
+ * The deco commerce specialist who runs these live diagnostics — a real face
+ * makes the "book a call" feel like a call, not an abstraction. Swap `name`/
+ * `role` to whoever staffs the calendar.
+ */
+const HOST = {
+  photo:
+    "https://decoims.com/image?src=decocms%2Fb07a1c19-0cd6-49c8-b326-86055ee78605%2Fauthor-1763423987973-baby.jpeg&quality=original&fit=cover&width=200&height=200",
+} as const;
+
+const GREEN_DARK = "var(--brand-green-dark)";
 
 /**
  * Build the scheduling link, prefilling the site under diagnosis and the
@@ -43,6 +54,8 @@ function ScheduleMeetingCta({
   className?: string;
 }) {
   return (
+    // Same style as the left-side "Conectar" buttons (outline) for consistency
+    // across the onboarding screen.
     <Button
       asChild
       variant="outline"
@@ -57,52 +70,30 @@ function ScheduleMeetingCta({
   );
 }
 
-function ConnectionNode({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="relative z-10 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card card-shadow">
-      {children}
-    </div>
-  );
-}
-
 /**
- * Animated "you → deco" connection: two nodes joined by a hairline wire with a
- * dot travelling across it and a ring blooming from the deco end as it lands.
- * Kept monochrome so the green deco mark is the only spot of colour.
+ * The host's face with a single live-availability dot (DS success green), tucked
+ * against the avatar's lower-right edge. Sits overlapping the card's green header
+ * band, so the brand colour comes from the solid band, not the avatar.
  */
-function ConnectionAnimation() {
+function HostAvatar({ size = 72 }: { size?: number }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-muted/40 px-7 py-7">
-      <ConnectionNode>
-        <User01 size={20} className="text-muted-foreground" />
-      </ConnectionNode>
-
-      {/* Hairline wire + travelling dot */}
-      <div className="relative mx-4 h-px flex-1 bg-border">
-        <span
-          className="absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground animate-connection-travel"
-          aria-hidden
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <div className="h-full w-full overflow-hidden rounded-full border-4 border-card bg-muted">
+        <img
+          src={HOST.photo}
+          alt="Especialista da deco"
+          className="h-full w-full object-cover"
+          loading="lazy"
         />
       </div>
-
-      <div className="relative">
+      {/* availability dot — hugs the avatar edge, DS success colour */}
+      <span className="absolute bottom-1.5 right-1.5 flex h-3.5 w-3.5">
         <span
-          className="absolute inset-0 rounded-full border border-foreground/40 animate-connection-arrive"
+          className="absolute inline-flex h-full w-full rounded-full bg-success opacity-60 motion-safe:animate-ping"
           aria-hidden
         />
-        <ConnectionNode>
-          <img
-            src="/logos/deco logo.svg"
-            alt="deco"
-            className="h-6 w-6 dark:hidden"
-          />
-          <img
-            src="/logos/deco logo negative.svg"
-            alt="deco"
-            className="hidden h-6 w-6 dark:block"
-          />
-        </ConnectionNode>
-      </div>
+        <span className="relative inline-flex h-3.5 w-3.5 rounded-full border-2 border-card bg-success" />
+      </span>
     </div>
   );
 }
@@ -111,19 +102,35 @@ function ConnectionAnimation() {
  * Right-hand panel for the commerce onboarding split screen (md+ only, it lives
  * in the AuthSplitLayout `visual` slot). The "or" to the connect-your-tools
  * flow on the left: a human escape hatch for people who resist granting access.
+ *
+ * Structured like a "meet your specialist" card: a solid deco-green header band
+ * carries the brand colour and the host's face overlaps it, with a clean
+ * left-aligned body below. Green is the solid band, never a gradient wash.
  */
 export function ScheduleMeetingVisual({ href }: { href?: string }) {
   return (
     <div className="relative flex h-full w-full items-center justify-center p-10">
-      <div className="flex w-full max-w-[380px] flex-col gap-6 rounded-3xl border border-border bg-card p-8 card-shadow">
-        <ConnectionAnimation />
-        <div className="grid gap-2">
-          <h2 className="text-xl font-medium leading-7 text-foreground">
-            {HEADLINE}
-          </h2>
-          <p className="text-base leading-6 text-muted-foreground">{BODY}</p>
+      {/* Bigger footprint (wide card + generous padding); content stays at its
+          normal scale. */}
+      <div className="w-full max-w-[440px] overflow-hidden rounded-3xl border border-border bg-card card-shadow">
+        {/* Solid brand-green header band */}
+        <div className="h-20" style={{ backgroundColor: GREEN_DARK }} />
+
+        <div className="px-8 pb-8">
+          {/* Face overlaps the band */}
+          <div className="-mt-9 mb-4">
+            <HostAvatar />
+          </div>
+
+          <div className="grid gap-1.5">
+            <h2 className="text-lg font-medium leading-6 text-foreground">
+              {HEADLINE}
+            </h2>
+            <p className="text-sm leading-5 text-muted-foreground">{BODY}</p>
+          </div>
+
+          <ScheduleMeetingCta href={href} size="lg" className="mt-6" />
         </div>
-        <ScheduleMeetingCta href={href} size="xl" />
       </div>
     </div>
   );
@@ -151,16 +158,29 @@ export function ScheduleMeetingBanner({
         className,
       )}
     >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <User01 size={20} />
+      <span className="relative shrink-0">
+        <span
+          className="block h-11 w-11 overflow-hidden rounded-full"
+          style={{ boxShadow: `0 0 0 2px ${GREEN_DARK}` }}
+        >
+          <img
+            src={HOST.photo}
+            alt="Especialista da deco"
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        </span>
+        <span
+          className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-card bg-success"
+          aria-hidden
+        />
       </span>
-      <span className="flex flex-1 flex-col gap-0.5">
-        <span className="text-base font-medium leading-5 text-foreground">
-          Prefere falar com uma pessoa?
-        </span>
-        <span className="text-sm leading-5 text-muted-foreground">
-          Agende uma chamada e rodamos o diagnóstico com você.
-        </span>
+      {/* Mobile-only banner: headline over two lines, no description (the
+          desktop ScheduleMeetingVisual keeps the description). */}
+      <span className="flex-1 text-base font-medium leading-5 text-foreground">
+        Precisa de ajuda?
+        <br />
+        Fale conosco
       </span>
       <ArrowUpRight size={18} className="shrink-0 text-muted-foreground" />
     </a>
