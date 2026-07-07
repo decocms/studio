@@ -59,7 +59,7 @@ export function removeMessage(threadId: string, messageId: string): void {
 }
 
 /** Replace a thread's queue with the server's authoritative list. */
-export function setQueue(threadId: string, items: QueueItemDTO[]): void {
+function setQueue(threadId: string, items: QueueItemDTO[]): void {
   messageQueueStore(threadId).set(items);
 }
 
