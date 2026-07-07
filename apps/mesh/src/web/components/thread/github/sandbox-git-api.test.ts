@@ -5,6 +5,7 @@ import {
   hasUnpublishedWork,
   isDecoOnlyDiff,
   mergeBranchMetaWithGitStatus,
+  stripGeneratedFilesFromDiff,
   type GitDiffResult,
   type GitStatus,
 } from "./sandbox-git-api.ts";
@@ -208,5 +209,34 @@ describe("isDecoOnlyDiff", () => {
   test("false for empty diff", () => {
     expect(isDecoOnlyDiff({ diffs: {} })).toBe(false);
     expect(isDecoOnlyDiff(null)).toBe(false);
+  });
+});
+
+describe("stripGeneratedFilesFromDiff", () => {
+  test("drops blocks.gen.json and tailwind css, keeps source", () => {
+    const diff: GitDiffResult = {
+      mergeBaseSha: "abc",
+      diffs: {
+        "routes/index.tsx": { from: "a", to: "b" },
+        "src/server/cms/blocks.gen.json": { from: "{}", to: '{"foo":{}}' },
+        "static/tailwind.css": { from: ".a{}", to: ".a{}.b{}" },
+        "src/static/tailwind.css": { from: "x", to: "y" },
+        ".deco/blocks/home.json": { from: "{}", to: "{}" },
+      },
+    };
+    const stripped = stripGeneratedFilesFromDiff(diff);
+    expect(Object.keys(stripped.diffs).sort()).toEqual([
+      ".deco/blocks/home.json",
+      "routes/index.tsx",
+    ]);
+    expect(stripped.mergeBaseSha).toBe("abc");
+  });
+
+  test("does not mutate the input diff", () => {
+    const diff: GitDiffResult = {
+      diffs: { "blocks.gen.json": { from: "{}", to: '{"a":{}}' } },
+    };
+    stripGeneratedFilesFromDiff(diff);
+    expect(Object.keys(diff.diffs)).toEqual(["blocks.gen.json"]);
   });
 });
