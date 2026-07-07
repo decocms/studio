@@ -89,7 +89,6 @@ export const AUTOMATIONS_PARTITION_CONCURRENCY = 10;
 export const AUTOMATIONS_POLL_INTERVAL_MS = 5_000;
 /** Prefix of the retired per-org queues — kept only for migration cleanup. */
 const AUTOMATIONS_ORG_QUEUE_PREFIX = "automations-org-";
-const AUTOMATIONS_RUN_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * MIGRATION (remove once no `automations-org-*` rows remain): delete the
@@ -125,7 +124,6 @@ export async function cleanupOrphanedOrgQueues(pool: Pool): Promise<void> {
 export interface AutomationRuntime {
   storage: AutomationsStorage;
   meshContextFactory: StudioContextFactory;
-  runTimeoutMs?: number;
 }
 
 let runtime: AutomationRuntime | null = null;
@@ -454,12 +452,10 @@ async function fireAutomationWorkflowFn(
     return { taskId, error: built.reason };
   }
 
-  const rt = requireRuntime();
   try {
     await runDispatchSteps({
       threadId: taskId,
       request: built.request,
-      timeoutMs: rt.runTimeoutMs ?? AUTOMATIONS_RUN_TIMEOUT_MS,
       source: "automation",
     });
   } catch (err) {

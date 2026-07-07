@@ -295,6 +295,25 @@ describe("reactAll (real Postgres)", () => {
         expect(row?.run_owner_pod).toBeNull();
         expect(row?.run_config).toBeNull();
         expect(row?.run_started_at).toBeNull();
+        // `Thread` (storage.get()'s return type) doesn't surface
+        // failure_reason/failure_kind — only ThreadUpdateData carries them for
+        // writes. Read the raw column directly so this still exercises the
+        // real SQL write path (the update() whitelist forwarding) rather than
+        // the read-side mapper.
+        const dbRow = await database.db
+          .selectFrom("threads")
+          .select(["failure_reason", "failure_kind"])
+          .where("id", "=", thread.id)
+          .executeTakeFirstOrThrow();
+        if (reason === "reaped") {
+          expect(dbRow.failure_reason).toBe(
+            "Run stalled — no progress within the idle timeout window",
+          );
+          expect(dbRow.failure_kind).toBe("stall");
+        } else {
+          expect(dbRow.failure_reason).toBeNull();
+          expect(dbRow.failure_kind).toBeNull();
+        }
         expect(sseEvents).toHaveLength(2);
       }
     });

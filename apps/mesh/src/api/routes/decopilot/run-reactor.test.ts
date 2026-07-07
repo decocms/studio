@@ -52,4 +52,136 @@ describe("run reactor", () => {
     // Structural since RunReactorDeps no longer accepts a stream buffer.
     expect(emitted).toHaveLength(2);
   });
+
+  test("RUN_FAILED reason 'reaped' records a stall failure_reason/kind", async () => {
+    const updates: Record<string, unknown>[] = [];
+    const deps: RunReactorDeps = {
+      storage: {
+        update: async (
+          _id: string,
+          _orgId: string,
+          data: Record<string, unknown>,
+        ) => {
+          updates.push(data);
+          return null;
+        },
+        get: async () => ({
+          id: "run_1",
+          organization_id: "org_1",
+          created_by: "user_1",
+          status: "failed",
+        }),
+        forceFailIfInProgress: async () => true,
+      } as unknown as ThreadStoragePort,
+      sseHub: { emit: () => {} },
+    };
+
+    await reactAll(
+      [
+        {
+          event: {
+            type: "RUN_FAILED",
+            taskId: "run_1",
+            orgId: "org_1",
+            reason: "reaped",
+          },
+          state: undefined,
+        },
+      ],
+      deps,
+    );
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.status).toBe("failed");
+    expect(updates[0]!.failure_reason).toBe(
+      "Run stalled — no progress within the idle timeout window",
+    );
+    expect(updates[0]!.failure_kind).toBe("stall");
+  });
+
+  test("RUN_FAILED reason 'error' does NOT set failure_reason (unchanged)", async () => {
+    const updates: Record<string, unknown>[] = [];
+    const deps: RunReactorDeps = {
+      storage: {
+        update: async (
+          _id: string,
+          _orgId: string,
+          data: Record<string, unknown>,
+        ) => {
+          updates.push(data);
+          return null;
+        },
+        get: async () => ({
+          id: "run_1",
+          organization_id: "org_1",
+          status: "failed",
+        }),
+        forceFailIfInProgress: async () => true,
+      } as unknown as ThreadStoragePort,
+      sseHub: { emit: () => {} },
+    };
+
+    await reactAll(
+      [
+        {
+          event: {
+            type: "RUN_FAILED",
+            taskId: "run_1",
+            orgId: "org_1",
+            reason: "error",
+          },
+          state: undefined,
+        },
+      ],
+      deps,
+    );
+
+    expect(updates[0]!.failure_reason).toBeUndefined();
+    expect(updates[0]!.failure_kind).toBeUndefined();
+  });
+
+  test("RUN_STARTED clears any stale failure_reason/failure_kind from a prior run", async () => {
+    const updates: Record<string, unknown>[] = [];
+    const deps: RunReactorDeps = {
+      storage: {
+        update: async (
+          _id: string,
+          _orgId: string,
+          data: Record<string, unknown>,
+        ) => {
+          updates.push(data);
+          return null;
+        },
+        get: async () => ({
+          id: "run_1",
+          organization_id: "org_1",
+          created_by: "user_1",
+          status: "in_progress",
+        }),
+      } as unknown as ThreadStoragePort,
+      sseHub: { emit: () => {} },
+    };
+
+    await reactAll(
+      [
+        {
+          event: {
+            type: "RUN_STARTED",
+            taskId: "run_1",
+            orgId: "org_1",
+            userId: "user_1",
+            abortController: new AbortController(),
+            podId: "pod_1",
+          },
+          state: undefined,
+        },
+      ],
+      deps,
+    );
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.status).toBe("in_progress");
+    expect(updates[0]!.failure_reason).toBeNull();
+    expect(updates[0]!.failure_kind).toBeNull();
+  });
 });
