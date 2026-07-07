@@ -11,6 +11,16 @@ on:
       # here must cut a release to rebuild that image — it is not a ConfigMap.
       - "deploy/helm/studio/files/**"
 
+# Serialize release-tagging across merges. This job pushes a `[release]:`
+# version-bump commit straight to main; two runs from near-simultaneous
+# merges would otherwise race and one push would be rejected non-fast-forward.
+# cancel-in-progress: false — every merge's bump must run, so queue them
+# rather than cancel. (The push step also rebases-and-retries as a backstop
+# for main advancing via an unrelated merge.)
+concurrency:
+  group: release-tagging-main
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: read
@@ -262,7 +272,25 @@ jobs:
           fi
 
           git commit -F .release-commit-message
-          git push origin main
+          # main can advance between our checkout and this push (a sibling
+          # merge). Rebase our bump onto the latest main and retry instead of
+          # failing non-fast-forward — the bump only touches version manifests,
+          # so it rebases cleanly over unrelated merges. (A concurrent bump of
+          # the *same* manifest is serialized away by the `concurrency` guard
+          # above; if one still conflicts, we fail loudly rather than guess.)
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "pushed version bump (attempt ${attempt})"
+              break
+            fi
+            if [ "${attempt}" = "5" ]; then
+              echo "::error::version-bump push rejected after ${attempt} attempts"
+              exit 1
+            fi
+            echo "push rejected; rebasing onto origin/main and retrying"
+            git fetch origin main
+            git rebase origin/main
+          done
           # No [skip ci], no API dispatch: this push (made with the App token,
           # which re-triggers workflows) is itself what kicks off release-mesh
           # and the package publish workflows for the package.json files that
