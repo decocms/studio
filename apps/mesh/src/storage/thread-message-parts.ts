@@ -125,6 +125,21 @@ export class SqlThreadMessagePartStorage {
   }
 
   /**
+   * Hard-delete every part row (including the finish anchor) of one message.
+   * Used when a QUEUED user turn is removed from the thread's gate queue —
+   * the request message was persisted at POST time, so cancelling the gate
+   * workflow alone would leave an orphaned bubble that reappears on reload.
+   * Caller must have verified thread ownership (tenant scope).
+   */
+  async deleteMessageParts(threadId: string, messageId: string): Promise<void> {
+    await this.db
+      .deleteFrom("thread_message_parts")
+      .where("thread_id", "=", threadId)
+      .where("message_id", "=", messageId)
+      .execute();
+  }
+
+  /**
    * Highest `created_at` (epoch ms) already persisted for a run, or null when
    * the run has no parts yet. The projector uses this as its PartEmitter base
    * so a freshly-projected message sorts AFTER everything already in the thread
