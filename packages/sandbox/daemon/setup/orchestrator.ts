@@ -29,7 +29,7 @@ import { type CloneResult, spawnClone } from "./clone";
 import { emitInstalledDeps } from "./dep-metrics";
 import { publishGolden, pruneGoldens, tryRestoreGolden } from "./golden-cache";
 import { configureGitIdentity } from "./identity";
-import { spawnInstall } from "./install";
+import { denoCacheEnv, spawnInstall } from "./install";
 import { spawnSetupStep } from "./spawn-step";
 import { installProtectedBranchHook } from "../git/protect-branch";
 
@@ -471,7 +471,10 @@ export class SetupOrchestrator {
     await this.deps.taskManager.spawn({
       command: command.cmd,
       cwd: command.cwd,
-      env: buildDevEnv(config, config.env),
+      // denoCacheEnv points DENO_DIR at the per-repo node-local cache for deno
+      // dev servers (no-op for other PMs); layered under config.env so a
+      // user-supplied DENO_DIR still wins.
+      env: buildDevEnv(config, { ...denoCacheEnv(config), ...config.env }),
       label: command.label,
       mode: "pty",
       logName: command.source,
