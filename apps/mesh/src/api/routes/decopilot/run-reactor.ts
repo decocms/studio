@@ -19,6 +19,10 @@ import {
 } from "@decocms/mesh-sdk";
 import type { RunEvent, RunTransition } from "./run-state";
 
+/** Recorded on a run the idle reaper force-fails for lack of progress. */
+const STALL_FAILURE_REASON =
+  "Run stalled — no progress within the idle timeout window";
+
 // ============================================================================
 // Errors
 // ============================================================================
@@ -156,6 +160,12 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           status: "failed",
           run_config: null,
           run_started_at: null,
+          // A reaped run stalled (no progress within the idle window); record a
+          // legible reason. Other reasons ("error"/"cancelled") keep their bare
+          // terminal write — their reason is surfaced elsewhere.
+          ...(event.reason === "reaped"
+            ? { failure_reason: STALL_FAILURE_REASON, failure_kind: "stall" }
+            : {}),
         });
       }
       // Deliberately NO JetStream purge here. The consume step projects every
