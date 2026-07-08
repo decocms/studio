@@ -9,6 +9,7 @@ import {
   Copy01,
   DotsGrid,
   DotsHorizontal,
+  Edit03,
   LayoutAlt01,
   Plus,
   Trash01,
@@ -83,12 +84,14 @@ function VariantRowContent({
   label,
   canDelete,
   dragging,
+  onRename,
   onDuplicate,
   onDelete,
 }: {
   label: string;
   canDelete: boolean;
   dragging?: boolean;
+  onRename?: () => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
 }) {
@@ -124,6 +127,17 @@ function VariantRowContent({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {onRename && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRename();
+                }}
+              >
+                <Edit03 size={14} />
+                Rename
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
@@ -156,6 +170,7 @@ function SortableVariantRow({
   selected,
   canDelete,
   onSelect,
+  onRename,
   onDuplicate,
   onDelete,
 }: {
@@ -163,6 +178,7 @@ function SortableVariantRow({
   selected: boolean;
   canDelete: boolean;
   onSelect: () => void;
+  onRename?: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
@@ -199,6 +215,7 @@ function SortableVariantRow({
       <VariantRowContent
         label={entry.label}
         canDelete={canDelete}
+        onRename={onRename}
         onDuplicate={onDuplicate}
         onDelete={onDelete}
       />
@@ -211,6 +228,7 @@ export function SectionVariantList({
   variants,
   selectedIndex,
   onSelect,
+  onRename,
   onDuplicate,
   onDelete,
   onRemoveAll,
@@ -221,6 +239,7 @@ export function SectionVariantList({
   variants: SectionVariantEntry[];
   selectedIndex: number;
   onSelect: (index: number) => void;
+  onRename?: (index: number) => void;
   onDuplicate: (index: number) => void;
   onDelete: (index: number) => void;
   onRemoveAll: () => void;
@@ -368,6 +387,7 @@ export function SectionVariantList({
                 selected={entry.index === selectedIndex}
                 canDelete={canDelete}
                 onSelect={() => handleSelect(entry.index)}
+                onRename={onRename ? () => onRename(entry.index) : undefined}
                 onDuplicate={() => onDuplicate(entry.index)}
                 onDelete={() => onDelete(entry.index)}
               />

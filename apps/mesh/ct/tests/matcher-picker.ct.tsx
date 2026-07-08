@@ -104,3 +104,71 @@ test("typing in the search filters the rule list", async ({ mount, page }) => {
   await expect(page.getByRole("option", { name: /Geolocation/ })).toBeVisible();
   await expect(page.getByRole("option", { name: /Device/ })).toHaveCount(0);
 });
+
+const GLOBALS = [
+  {
+    blockKey: "TestHero",
+    title: "Test Hero",
+    description: "50% of sessions",
+    iconName: "Shuffle01",
+  },
+  {
+    blockKey: "MobileOnly",
+    title: "Mobile Only",
+    description: "Mobile",
+    iconName: "Phone01",
+  },
+];
+
+test("renders saved global rules in a separate group", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <MatcherPickerHarness
+      currentRt=""
+      currentLabel="Always"
+      matchers={MATCHERS}
+      globals={GLOBALS}
+    />,
+  );
+  await component.getByRole("button", { name: "Always" }).click();
+  await expect(page.getByRole("option", { name: /Test Hero/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /Mobile Only/ })).toBeVisible();
+});
+
+test("selecting a global emits its blockKey", async ({ mount, page }) => {
+  const component = await mount(
+    <MatcherPickerHarness
+      currentRt=""
+      currentLabel="Always"
+      matchers={MATCHERS}
+      globals={GLOBALS}
+    />,
+  );
+  await component.getByRole("button", { name: "Always" }).click();
+  await page.getByRole("option", { name: /Test Hero/ }).click();
+  await expect
+    .poll(() => readEvents(component))
+    .toEqual([{ type: "selectGlobal", blockKey: "TestHero" }]);
+});
+
+test("search matches globals by title and description", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <MatcherPickerHarness
+      currentRt=""
+      currentLabel="Always"
+      matchers={MATCHERS}
+      globals={GLOBALS}
+    />,
+  );
+  await component.getByRole("button", { name: "Always" }).click();
+  await page.getByPlaceholder("Search rules...").fill("Hero");
+  await expect(page.getByRole("option", { name: /Test Hero/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /Mobile Only/ })).toHaveCount(
+    0,
+  );
+});
