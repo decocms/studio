@@ -452,8 +452,9 @@ describe("runProjectorWorkflowBody", () => {
 
   test("forwards input.messageId to projectFn (queue ordering plumb)", async () => {
     // Guards the plumb from thread-gate-workflow → consumeRunProjection →
-    // runProjectorWorkflowBody → projectFn (production: projectFromJetStreamStep,
-    // which threads it into createRunPersistence's requestMessageId).
+    // runProjectorWorkflowBody → projectFn. This asserts up to the projectFn
+    // boundary only; the final projectFromJetStreamStep → createRunPersistence
+    // (requestMessageId) hop is DB/JetStream-bound and covered by the CI e2e.
     const { rt } = makeRuntime();
     const receivedInputs: ProjectorWorkflowInput[] = [];
     const projectFn = async (inp: ProjectorWorkflowInput) => {
