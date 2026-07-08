@@ -1,3 +1,4 @@
+import type { UIMessage } from "ai";
 import {
   dropQueueItem,
   upsertQueueItem,
@@ -61,6 +62,34 @@ export function removeMessage(threadId: string, messageId: string): void {
 /** Replace a thread's queue with the server's authoritative list. */
 function setQueue(threadId: string, items: QueueItemDTO[]): void {
   messageQueueStore(threadId).set(items);
+}
+
+/**
+ * Full original messages for queued turns sent FROM THIS CLIENT, keyed
+ * `${threadId}:${messageId}`. At dispatch (in_progress + message_id event)
+ * the stashed message is applied to the body with full fidelity (attachments
+ * included) with zero fetches; reload/other clients fall back to the
+ * refetch/reconcile path. Deliberately outside the queue Store so a server
+ * list refresh (setQueue) can't drop it.
+ */
+const pendingBodies = new Map<string, UIMessage>();
+
+export function stashPendingBody(threadId: string, message: UIMessage): void {
+  pendingBodies.set(`${threadId}:${message.id}`, message);
+}
+
+export function takePendingBody(
+  threadId: string,
+  messageId: string,
+): UIMessage | undefined {
+  const key = `${threadId}:${messageId}`;
+  const m = pendingBodies.get(key);
+  pendingBodies.delete(key);
+  return m;
+}
+
+export function dropPendingBody(threadId: string, messageId: string): void {
+  pendingBodies.delete(`${threadId}:${messageId}`);
 }
 
 /**

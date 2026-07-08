@@ -8,6 +8,31 @@ export interface QueueItemDTO {
   status: "running" | "queued";
   /** Epoch ms the gate was created/enqueued. */
   enqueuedAt: number;
+  /** The queued turn's text, for tray rendering. */
+  text: string;
+  /** Whether the queued turn has non-text parts (attachments/files). */
+  hasAttachments?: boolean;
+  /** True for a locally-queued item not yet confirmed by the server list. */
+  optimistic?: boolean;
+}
+
+/** Queued (not yet running) messageIds — the body render filters these out. */
+export function selectHiddenFromBody(items: QueueItemDTO[]): Set<string> {
+  return new Set(
+    items.filter((i) => i.status === "queued").map((i) => i.messageId),
+  );
+}
+
+/** Concat the text parts of a message for optimistic tray display. Pure + total. */
+export function textFromParts(
+  parts: ReadonlyArray<{ type?: string; text?: unknown }> | undefined,
+): string {
+  return (parts ?? [])
+    .map((p) =>
+      p?.type === "text" && typeof p.text === "string" ? p.text : "",
+    )
+    .join("")
+    .trim();
 }
 
 /** The queued (not yet running) items, oldest first. Pure + total. */

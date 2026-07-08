@@ -114,12 +114,17 @@ import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
 import {
   clearQueueDirty,
+  dropPendingBody,
   enqueueMessage,
   isQueueDirty,
   markQueueDirty,
   messageQueueStore,
   refreshMessageQueue,
+  removeMessage,
+  stashPendingBody,
+  takePendingBody,
 } from "./message-queue-store";
+import { textFromParts } from "./queue-items";
 import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
 
@@ -931,8 +936,16 @@ export function ActiveTaskProvider({
   useDecopilotEvents({
     orgSlug: org.slug,
     taskId,
-    onTaskStatus: () => {
+    onTaskStatus: (event) => {
       const cb = cbRef.current;
+      const messageId = event.data.message_id;
+      if (event.data.status === "in_progress" && messageId) {
+        // The gate started executing this queued message — flip tray → body.
+        removeMessage(cb.taskId, messageId);
+        const stashed = takePendingBody(cb.taskId, messageId);
+        if (stashed) conn.applyLocalMessage(stashed);
+        void refreshMessageQueue(cb.orgSlug, cb.taskId); // authoritative re-sync
+      }
       if (!isQueueDirty(cb.taskId)) return;
       void (async () => {
         await refreshMessageQueue(cb.orgSlug, cb.taskId);
@@ -1197,20 +1210,23 @@ export function ActiveTaskProvider({
 
     // A run is already streaming (this thread) or in progress (hosted): this
     // message can't be the current turn, so queue it behind the running one.
-    // `conn.enqueue` still renders it optimistically in the body (it's
-    // durable server-side the moment the POST lands) and mirrors it into the
-    // frontend message queue so the queue UI can show it as waiting.
+    // It stays tray-only — nothing renders in the body — until the gate's
+    // `in_progress` event carries this message's id; the full message is
+    // stashed now so that dispatch-time flip can apply it with zero fetches.
     // Otherwise this is the current turn — submit normally so it streams
     // immediately.
     try {
       if (isStreaming || isRunInProgress) {
         try {
+          stashPendingBody(capturedTaskId, userMessage);
           await conn.enqueue(userMessage, requestOptions);
           enqueueMessage(capturedTaskId, {
             workflowId: `thread-run:${capturedTaskId}:${userMessage.id}`,
             messageId: userMessage.id,
+            text: textFromParts(parts),
             status: "queued",
             enqueuedAt: Date.now(),
+            optimistic: true,
           });
           // The body now trails the gate: this queued turn's reply will fold
           // into a transient stream id when it dequeues and never lands in
@@ -1218,10 +1234,10 @@ export function ActiveTaskProvider({
           // reconciles the body against the server until the queue drains.
           markQueueDirty(capturedTaskId);
         } catch (err) {
-          // Roll back the optimistic body row FIRST — the POST never landed,
-          // so no server refetch will ever reconcile it away (mergeAndSort
-          // only upserts; it never drops locally-known rows).
-          conn.removeLocalMessage(userMessage.id);
+          // The POST never landed — nothing was appended to the body, so
+          // just drop the stash and the optimistic tray entry.
+          dropPendingBody(capturedTaskId, userMessage.id);
+          removeMessage(capturedTaskId, userMessage.id);
           setChatError(err instanceof Error ? err : new Error(String(err)));
           toast.error(
             err instanceof Error ? err.message : "Failed to queue message",

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
   dropQueueItem,
+  selectHiddenFromBody,
   selectQueuedItems,
+  textFromParts,
   upsertQueueItem,
   type QueueItemDTO,
 } from "./queue-items";
@@ -15,6 +17,7 @@ const item = (
   messageId: id,
   status,
   enqueuedAt,
+  text: `text-${id}`,
 });
 
 describe("selectQueuedItems", () => {
@@ -74,5 +77,70 @@ describe("dropQueueItem", () => {
   it("is a no-op when the id is absent", () => {
     const out = dropQueueItem([item("a", "queued", 1)], "zzz");
     expect(out.map((i) => i.messageId)).toEqual(["a"]);
+  });
+});
+
+describe("selectHiddenFromBody", () => {
+  it("returns an empty set for an empty queue", () => {
+    expect(selectHiddenFromBody([])).toEqual(new Set());
+  });
+
+  it("excludes the running head — it's already shown in the body", () => {
+    expect(selectHiddenFromBody([item("head", "running", 1)])).toEqual(
+      new Set(),
+    );
+  });
+
+  it("includes only queued messageIds", () => {
+    const out = selectHiddenFromBody([
+      item("head", "running", 1),
+      item("q1", "queued", 2),
+      item("q2", "queued", 3),
+    ]);
+    expect(out).toEqual(new Set(["q1", "q2"]));
+  });
+});
+
+describe("textFromParts", () => {
+  it("returns an empty string for undefined parts", () => {
+    expect(textFromParts(undefined)).toBe("");
+  });
+
+  it("returns an empty string for no parts", () => {
+    expect(textFromParts([])).toBe("");
+  });
+
+  it("concatenates multiple text parts", () => {
+    expect(
+      textFromParts([
+        { type: "text", text: "hello " },
+        { type: "text", text: "world" },
+      ]),
+    ).toBe("hello world");
+  });
+
+  it("skips non-text parts", () => {
+    expect(
+      textFromParts([
+        { type: "text", text: "hello" },
+        { type: "file", text: "ignored" },
+        { type: "text", text: " there" },
+      ]),
+    ).toBe("hello there");
+  });
+
+  it("trims leading/trailing whitespace off the joined result", () => {
+    expect(textFromParts([{ type: "text", text: "  padded  " }])).toBe(
+      "padded",
+    );
+  });
+
+  it("skips a text part whose text isn't a string", () => {
+    expect(
+      textFromParts([
+        { type: "text", text: 42 as unknown as string },
+        { type: "text", text: "ok" },
+      ]),
+    ).toBe("ok");
   });
 });

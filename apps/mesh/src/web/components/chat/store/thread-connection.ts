@@ -390,26 +390,32 @@ export class ThreadConnection {
   }
 
   /**
-   * Queue a user message behind the active run: render it optimistically in
-   * the body (it is durable server-side the moment the POST lands) and POST
-   * it to the thread gate WITHOUT touching the running turn's status
-   * display (no `status`/`runStatusStage` change — that belongs to the
-   * turn already streaming). Throws if the POST fails so the caller can
-   * surface the error — the CALLER must then roll back the optimistic body
-   * row via `removeLocalMessage(message.id)` (and drop its optimistic queue
-   * entry): the POST never landed, so no server refetch will ever reconcile
-   * the row away (mergeAndSort only upserts, it never drops local rows).
+   * Queue a user message behind the active run: POST it to the thread gate
+   * WITHOUT touching the running turn's status display (no
+   * `status`/`runStatusStage` change — that belongs to the turn already
+   * streaming) and WITHOUT rendering it in the body — tray-only until
+   * dispatch; the caller stashes the message for the dispatch-time flip.
+   * Throws if the POST fails so the caller can surface the error.
    */
   async enqueue(message: UIMessage, opts: RequestOptions): Promise<void> {
-    const action: SubmitAction = { kind: "message", message };
-    const next = applyLocally(this.messages.get(), action);
-    if (!next) {
-      // Can't happen — a "message" action always appends. Mirrors submit()'s
-      // no-silent-no-ops guard for consistency and type-safety.
-      throw new Error(`enqueue: target not found for ${describe(action)}`);
-    }
-    this.messages.set(mergeAndSort(next, []));
     await this.post(message, opts, undefined, true);
+  }
+
+  /** Append one message to the local body store (dispatch-time tray→body flip). */
+  applyLocalMessage(message: UIMessage): void {
+    // `applyLocally` can only return null for toolOutput/approval actions
+    // whose target isn't found — a "message" action always appends. The
+    // `?? cur` fallback exists purely to satisfy the Store<UIMessage[]>
+    // updater's return type.
+    //
+    // Route through the same mergeAndSort pass submit() uses: its Map-by-id
+    // rebuild dedupes against a copy of this row that a server refetch (e.g.
+    // an SSE-reconnect refetchLatestPage) may have already merged into the
+    // body — without it the flip would append a SECOND row with the same id.
+    this.messages.update((cur) => {
+      const next = applyLocally(cur, { kind: "message", message }) ?? cur;
+      return mergeAndSort(next, []);
+    });
   }
 
   /** Drop a message from the local store (used when a queued turn is removed). */

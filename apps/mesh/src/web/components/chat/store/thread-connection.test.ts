@@ -725,10 +725,10 @@ describe("submit", () => {
   });
 });
 
-// ─── enqueue() — quiet POST behind the active run ────────────────────────────
+// ─── enqueue() — quiet POST behind the active run, tray-only (no body append) ─
 
 describe("enqueue", () => {
-  test("POSTs and appends the message without touching status or runStatusStage", async () => {
+  test("POSTs quietly without touching status, runStatusStage, or the message store", async () => {
     let messagesCalls = 0;
     const stream = controllableStream();
     globalThis.fetch = makeFetchMock({
@@ -755,6 +755,7 @@ describe("enqueue", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(conn.runStatusStage.get()).toBe("sending");
     const statusBefore = conn.status.get();
+    const messagesBefore = conn.messages.get();
 
     await conn.enqueue(
       {
@@ -765,10 +766,13 @@ describe("enqueue", () => {
       baseOpts,
     );
 
-    // The POST happened and the optimistic row is in the body…
+    // The POST happened…
     expect(messagesCalls).toBe(1);
-    expect(conn.messages.get().map((m) => m.id)).toContain("q-1");
-    // …but the running turn's status display is byte-for-byte untouched:
+    // …but the body is untouched — tray-only until the dispatch-time flip
+    // (same array reference: enqueue() never calls messages.set/update).
+    expect(conn.messages.get()).toBe(messagesBefore);
+    expect(conn.messages.get().map((m) => m.id)).not.toContain("q-1");
+    // …and the running turn's status display is byte-for-byte untouched:
     // no "received" bump (quiet POST), no "submitted" status flip.
     expect(conn.runStatusStage.get()).toBe("sending");
     expect(conn.status.get()).toEqual(statusBefore);
@@ -783,18 +787,87 @@ describe("enqueue", () => {
     });
     await new Promise((r) => setTimeout(r, 20));
 
-    await conn.enqueue(
-      { id: "q-1", role: "user", parts: [{ type: "text", text: "first" }] },
-      baseOpts,
-    );
-    await conn.enqueue(
-      { id: "q-2", role: "user", parts: [{ type: "text", text: "second" }] },
-      baseOpts,
-    );
+    conn.applyLocalMessage({
+      id: "q-1",
+      role: "user",
+      parts: [{ type: "text", text: "first" }],
+    });
+    conn.applyLocalMessage({
+      id: "q-2",
+      role: "user",
+      parts: [{ type: "text", text: "second" }],
+    });
     expect(conn.messages.get().map((m) => m.id)).toEqual(["q-1", "q-2"]);
 
     conn.removeLocalMessage("q-1");
     expect(conn.messages.get().map((m) => m.id)).toEqual(["q-2"]);
+  });
+});
+
+// ─── applyLocalMessage() — dispatch-time tray→body flip ──────────────────────
+
+describe("applyLocalMessage", () => {
+  test("appends a message to the body", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-apply-local-message", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(conn.messages.get()).toEqual([]);
+    conn.applyLocalMessage({
+      id: "flip-1",
+      role: "user",
+      parts: [{ type: "text", text: "dispatched" }],
+    });
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["flip-1"]);
+  });
+
+  test("dedupes by id when the row is already in the body (refetch raced the flip)", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-apply-local-dedupe", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // A server refetch (e.g. an SSE-reconnect refetchLatestPage) already
+    // merged the persisted copy of the queued row into the body.
+    conn.messages.set([
+      {
+        id: "m1",
+        role: "user",
+        parts: [{ type: "text", text: "server copy" }],
+        created_at: "2026-01-01T00:00:00.000Z",
+      } as UIMessage,
+      {
+        id: "other",
+        role: "assistant",
+        parts: [{ type: "text", text: "reply" }],
+        created_at: "2026-01-01T00:00:01.000Z",
+      } as UIMessage,
+    ]);
+
+    conn.applyLocalMessage({
+      id: "m1",
+      role: "user",
+      parts: [{ type: "text", text: "stashed copy" }],
+    });
+
+    const msgs = conn.messages.get();
+    // Exactly ONE m1 — the flip must not duplicate a row a refetch already
+    // merged in.
+    expect(msgs.filter((m) => m.id === "m1")).toHaveLength(1);
+    // mergeAndSort's Map-by-id rebuild is last-entry-wins for duplicates
+    // within the list, so the just-applied (stashed) version replaces the
+    // earlier server copy — and applyLocally stamps it with a fresh
+    // created_at strictly after every existing row, so it sorts last.
+    const m1 = msgs.find((m) => m.id === "m1");
+    expect(
+      (m1?.parts?.[0] as { type: string; text?: string } | undefined)?.text,
+    ).toBe("stashed copy");
+    expect(msgs.map((m) => m.id)).toEqual(["other", "m1"]);
   });
 });
 
