@@ -53,13 +53,13 @@ export function resolveSourceDaemonPath(): string {
  * derivation to be unit-testable with Windows-style paths from any host.
  */
 export function deriveNodeModulesDir(entryPath: string): string {
-  const match = /^(.*[/\\]node_modules)[/\\]/.exec(entryPath);
-  if (!match) {
+  const dir = /^(.*[/\\]node_modules)[/\\]/.exec(entryPath)?.[1];
+  if (!dir) {
     throw new Error(
       `could not derive node_modules path from node-pty resolution: ${entryPath}`,
     );
   }
-  return match[1];
+  return dir;
 }
 
 export function resolveNodePtyNodeModulesDir(): string {
