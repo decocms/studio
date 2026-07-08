@@ -136,6 +136,21 @@ const CLEAN_RECONNECT_DELAY_MS = 50;
  *  idempotency-keyed (workflowID), so a timeout-then-retry is safe. */
 const POST_TIMEOUT_MS = 60_000;
 
+/**
+ * Reconcile-poll backoff (ms). After a POST the live `/stream` tail can miss a
+ * fast run's chunks entirely — the JetStream subject is purged on terminal
+ * status, so if this client's consumer isn't attached during the brief publish
+ * window it sees 0 live chunks and there's nothing to replay. Nothing then
+ * clears the "Request received" spinner even though the answer is already
+ * persisted (the reported hang). While we sit in the `submitted` state with the
+ * spinner up, poll the persisted page on this schedule and clear the spinner
+ * the moment the turn's reply lands. The poll yields immediately once a live
+ * chunk arrives (status flips to `streaming`). */
+const RECONCILE_POLL_DELAYS_MS = [1_500, 2_500, 4_000, 6_000, 8_000] as const;
+/** Bound the poll so an abandoned-but-open tab doesn't reconcile forever.
+ *  ~5 min of coverage (mostly 8s steps) comfortably outlasts a queued run. */
+const RECONCILE_POLL_MAX_ATTEMPTS = 40;
+
 // Browser uses rAF for chunk-coalescing; tests run under Bun where rAF is absent.
 const scheduleFrame: (cb: () => void) => number =
   typeof requestAnimationFrame === "function"
@@ -296,6 +311,22 @@ export class ThreadConnection {
    */
   private waitingForNewRun = false;
   private acceptPreStartRunStatus = true;
+  /**
+   * Active reconcile poll (see runReconcilePoll). At most one runs per
+   * connection — armed after a POST, aborted on a new submit, stop(), or
+   * dispose().
+   */
+  private reconcilePoll: AbortController | null = null;
+  /**
+   * True only between a NEW user-message POST and its reply surfacing. Gates
+   * the stuck-spinner reconcile (see tryClearStuckSpinner) so it fires only for
+   * a fresh turn — whose optimistic last message is the USER row until the
+   * reply lands. A tool-output / approval continuation re-POSTs an assistant
+   * message that is ALREADY the last row, so `last.role === "assistant"` can't
+   * tell "reply arrived" from "still continuing"; those keep the live-stream
+   * behavior untouched.
+   */
+  private awaitingMessageTurn = false;
   /** `start` chunk opened a new assistant turn — don't seed the prior one. */
   private freshRunSubstream = false;
   private client: MCPClient | null;
@@ -334,6 +365,8 @@ export class ThreadConnection {
   }
 
   dispose(): void {
+    this.reconcilePoll?.abort();
+    this.reconcilePoll = null;
     this.abort.abort();
   }
 
@@ -375,11 +408,20 @@ export class ThreadConnection {
 
     this.runStatusStage.set("sending");
     this.status.set({ kind: "submitted" });
+    // Only a fresh user turn is reconcilable (its last row is the optimistic
+    // user message until the reply lands). Continuations re-POST an existing
+    // assistant row, so they opt out of the stuck-spinner reconcile.
+    this.awaitingMessageTurn = action.kind === "message";
 
     const abort = new AbortController();
     this.inflightPost = abort;
     try {
       await this.post(last, opts, abort.signal);
+      // The run is accepted and we're now waiting on the live `/stream` tail.
+      // Arm a DB-reconcile safety net in case that tail never delivers a finish
+      // (fast run + purged JetStream subject) — without it the spinner sticks.
+      // Only for a fresh user turn (see awaitingMessageTurn).
+      if (this.awaitingMessageTurn) this.armReconcilePoll();
     } catch (err) {
       const e = err instanceof Error ? err : new Error(String(err));
       this.clearRunStatusStage();
@@ -391,6 +433,9 @@ export class ThreadConnection {
 
   stop(): void {
     this.inflightPost?.abort();
+    this.reconcilePoll?.abort();
+    this.reconcilePoll = null;
+    this.awaitingMessageTurn = false;
     const s = this.status.get();
     if (s.kind === "submitted" || s.kind === "streaming") {
       this.status.set({ kind: "ready" });
@@ -550,8 +595,71 @@ export class ThreadConnection {
       if (payload.hasMore !== undefined) {
         this.hasMoreOlder.set(payload.hasMore);
       }
+      // Safety valve: if this refetch surfaced the active turn's persisted
+      // reply while the live spinner is still up, clear it. The spinner must
+      // never outlive a persisted answer (the reported hang). Every refetch
+      // trigger — reconnect, 204 recovery, the reconcile poll — runs through
+      // here, so this single check covers them all.
+      this.tryClearStuckSpinner();
     } catch (err) {
       console.warn("[chat-store] refetchLatestPage failed:", err);
+    }
+  }
+
+  /**
+   * Clear a "received" spinner that the live `/stream` tail never closed.
+   *
+   * The spinner (and the `submitted` status that renders it) is normally
+   * cleared by the stream's `finish` chunk. A fast run can complete and have
+   * its JetStream subject purged before this client's tail consumer reads any
+   * chunk, so no `finish` ever arrives — yet the answer is persisted. When a
+   * refetch surfaces that persisted assistant reply as the latest message,
+   * treat the run as done. No-op unless we're actually stuck (`submitted`),
+   * so it never interrupts an in-flight live stream (which is `streaming`).
+   */
+  private tryClearStuckSpinner(): void {
+    if (!this.awaitingMessageTurn) return;
+    if (this.status.get().kind !== "submitted") return;
+    const last = this.messages.get().at(-1);
+    if (last?.role !== "assistant") return;
+    this.awaitingMessageTurn = false;
+    this.clearRunStatusStage();
+    this.status.set({ kind: "ready" });
+  }
+
+  /**
+   * Arm the post-POST reconcile poll. Cancels any prior poll so only one runs
+   * per connection. The poll's signal also fires on dispose() via `this.abort`.
+   */
+  private armReconcilePoll(): void {
+    this.reconcilePoll?.abort();
+    const ctrl = new AbortController();
+    this.reconcilePoll = ctrl;
+    const signal = AbortSignal.any([this.abort.signal, ctrl.signal]);
+    void this.runReconcilePoll(signal);
+  }
+
+  /**
+   * Poll the persisted page while a run sits in `submitted` with the spinner
+   * up. Each refetch self-clears the spinner once the reply lands (see
+   * tryClearStuckSpinner). Yields the moment a live chunk arrives (status flips
+   * out of `submitted`), so the cost is a few cheap reads only when the live
+   * tail is silent — exactly the stuck case. Bounded by
+   * RECONCILE_POLL_MAX_ATTEMPTS.
+   */
+  private async runReconcilePoll(signal: AbortSignal): Promise<void> {
+    for (let attempt = 0; attempt < RECONCILE_POLL_MAX_ATTEMPTS; attempt++) {
+      const delay =
+        RECONCILE_POLL_DELAYS_MS[
+          Math.min(attempt, RECONCILE_POLL_DELAYS_MS.length - 1)
+        ]!;
+      await sleep(delay, { signal }).catch(() => {});
+      if (signal.aborted) return;
+      // Only a still-`submitted` turn can be stuck; once a live chunk folds,
+      // status is `streaming`/`ready` and there's nothing to reconcile.
+      if (this.status.get().kind !== "submitted") return;
+      await this.refetchLatestPage();
+      if (this.status.get().kind !== "submitted") return; // reconciled
     }
   }
 
@@ -693,25 +801,38 @@ export class ThreadConnection {
           headers: { accept: "text/event-stream" },
           signal: this.abort.signal,
         });
-        if (resp.status === 204 || !resp.body) return;
-        if (!resp.ok) {
+        if (resp.status === 204 || !resp.body) {
+          // 204 = degraded JetStream buffer on this pod (no live tail right
+          // now). This used to `return` permanently, which stranded the
+          // thread: with no reconnect a run that finished while the tail was
+          // down never surfaced and the "Request received" spinner stuck
+          // forever. Treat it as transient — pull the latest page so a
+          // just-persisted answer shows (refetch self-clears a stuck spinner),
+          // then fall through to a jittered backoff and retry. The buffer
+          // usually recovers, or a later attempt lands on a healthy pod.
+          await this.refetchLatestPage();
+          firstConnect = false;
+          // cleanExit stays false → jittered backoff below (grows toward the
+          // 30s cap so a persistently-degraded pod isn't hammered).
+        } else if (!resp.ok) {
           const text = await resp.text().catch(() => "");
           this.failTo(new Error(text || `GET /stream failed (${resp.status})`));
           return;
-        }
-        attempt = 0;
-        if (!firstConnect) {
-          // On reconnect, refresh the latest page so any messages persisted
-          // while disconnected become visible. Merge is upsert-by-id + sort
-          // by created_at; optimistic local rows survive (their id isn't on
-          // the server yet).
-          await this.refetchLatestPage();
-        }
-        firstConnect = false;
-        cleanExit = await this.consumeStreamSse(resp.body);
-        if (!cleanExit && this.status.get().kind === "error") {
-          // Schema mismatch / parser failure routed through failTo — terminal.
-          return;
+        } else {
+          attempt = 0;
+          if (!firstConnect) {
+            // On reconnect, refresh the latest page so any messages persisted
+            // while disconnected become visible. Merge is upsert-by-id + sort
+            // by created_at; optimistic local rows survive (their id isn't on
+            // the server yet).
+            await this.refetchLatestPage();
+          }
+          firstConnect = false;
+          cleanExit = await this.consumeStreamSse(resp.body);
+          if (!cleanExit && this.status.get().kind === "error") {
+            // Schema mismatch / parser failure routed through failTo — terminal.
+            return;
+          }
         }
       } catch (err) {
         if (this.abort.signal.aborted) return;
