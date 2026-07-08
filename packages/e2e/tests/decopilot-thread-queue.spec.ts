@@ -7,10 +7,13 @@
  *
  *   GET  /api/:org/decopilot/queue/:threadId
  *     → 200 { items: [{ workflowId, messageId, status: "running"|"queued",
- *              enqueuedAt, source? }] }
+ *              enqueuedAt, source?, text, hasAttachments }] }
  *     Gate workflow ids are `thread-run:<threadId>:<messageId>`. The PENDING
  *     row is the running head; ENQUEUED rows are the queued tail, oldest
- *     first. There is no `text` field on this DTO.
+ *     first. `text`/`hasAttachments` are hydrated server-side from the
+ *     item's persisted `thread_message_parts` (`foldQueueHydration`,
+ *     `apps/mesh/src/api/routes/decopilot/queue-text.ts`) — never carried on
+ *     the durable gate input, which stays content-free.
  *
  *   POST /api/:org/decopilot/queue/:threadId/cancel/:workflowId
  *     → 202 { cancelled: true } | 404 (not pending for this thread)
@@ -18,7 +21,10 @@
  *     the stop endpoint below) — the queue then continues with the next
  *     ENQUEUED item ("run now"). Cancelling a QUEUED item instead deletes
  *     its message's part rows server-side, so the bubble does not
- *     resurrect on reload.
+ *     resurrect on reload. This is also the first half of an "edit": the
+ *     tray's `editQueuedMessage` cancels the original, then re-POSTs the
+ *     edited text as a brand-new message id (DBOS workflow ids are
+ *     once-ever), re-enqueuing it at the queue TAIL.
  *
  *   POST /api/:org/decopilot/cancel/:threadId
  *     → 202 { cancelled: true, async: true } (always)
@@ -32,15 +38,15 @@
  * rows directly (`seedGate`) — cheap, and enough to pin the pure read/guard
  * behavior.
  *
- * The four scenario tests (brief Step 2) need a REAL running turn (A) with a
- * REAL queued turn (B) behind it, so the assertions exercise the live queue
- * promotion machinery (DBOS dequeuing the ENQUEUED item once the PENDING
- * head's partition slot frees) rather than just static listing. This mirrors
- * `decopilot-fence-queueing.spec.ts`: a fake tunnel-link daemon claims turn
- * A's work item but withholds its relay, holding A genuinely PENDING for as
- * long as the test needs (deterministic, not a timing race) while B is
- * POSTed on the same thread and parks ENQUEUED behind A's partition slot
- * (THREAD_GATE_PARTITION_CONCURRENCY = 1).
+ * The scenario tests below (brief Step 2) need a REAL running turn (A) with
+ * a REAL queued turn (B) behind it, so the assertions exercise the live
+ * queue promotion machinery (DBOS dequeuing the ENQUEUED item once the
+ * PENDING head's partition slot frees) rather than just static listing.
+ * This mirrors `decopilot-fence-queueing.spec.ts`: a fake tunnel-link daemon
+ * claims turn A's work item but withholds its relay, holding A genuinely
+ * PENDING for as long as the test needs (deterministic, not a timing race)
+ * while B is POSTed on the same thread and parks ENQUEUED behind A's
+ * partition slot (THREAD_GATE_PARTITION_CONCURRENCY = 1).
  */
 
 import { expect, newApiContext, test } from "../fixtures/test";
@@ -501,19 +507,20 @@ test.describe("thread queue — live overlap (running head + queued tail)", () =
       );
 
       const messageIdB = `queue-vis-b-${Date.now()}`;
+      const textB = "Turn B — queued.";
       const postB = await postMessage(
         api,
         orgSlug,
         agentId,
         threadId,
         messageIdB,
-        "Turn B — queued.",
+        textB,
       );
       expect(postB.status()).toBe(202);
 
       // ── The contract assertion: while A runs and B waits, GET /queue
       // surfaces both — the running head and the queued tail — keyed by
-      // messageId.
+      // messageId, hydrated with the persisted turn's text.
       const res = await api.get(`/api/${orgSlug}/decopilot/queue/${threadId}`);
       expect(res.status()).toBe(200);
       const body = (await res.json()) as {
@@ -522,6 +529,8 @@ test.describe("thread queue — live overlap (running head + queued tail)", () =
           messageId: string;
           status: string;
           enqueuedAt: number;
+          text: string;
+          hasAttachments: boolean;
         }>;
       };
       expect(body.items).toHaveLength(2);
@@ -531,6 +540,11 @@ test.describe("thread queue — live overlap (running head + queued tail)", () =
       expect(running?.workflowId).toBe(`thread-run:${threadId}:${messageIdA}`);
       expect(queued?.messageId).toBe(messageIdB);
       expect(queued?.workflowId).toBe(`thread-run:${threadId}:${messageIdB}`);
+      // ── Hydration proof: the queued item's `text` is the persisted concat
+      // of its text parts (folded server-side from `thread_message_parts`,
+      // not carried on the durable gate input) and it has no attachments.
+      expect(queued?.text).toBe(textB);
+      expect(queued?.hasAttachments).toBe(false);
 
       // ── Drain both turns so no gate workflow is left running past this
       // test (hygiene: a live PENDING workflow left dangling would keep
@@ -647,6 +661,145 @@ test.describe("thread queue — live overlap (running head + queued tail)", () =
       const afterACompletes = await listMessages(api, orgSlug, threadId);
       expect(afterACompletes.some((m) => m.id === messageIdB)).toBe(false);
       expect(await fetchMessagePartsCount(db, threadId, messageIdB)).toBe(0);
+    } finally {
+      await daemon?.close();
+      await db.end();
+    }
+  });
+
+  test("editing a queued turn cancels the original and requeues the edit at the tail (fresh id, B's text never lands)", async ({
+    authedPage,
+  }) => {
+    test.setTimeout(CASE_TIMEOUT_MS);
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
+    try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
+      const orgId = await orgIdForSlug(db, orgSlug);
+      const { agentId, threadId } = await createPullThread(
+        api,
+        db,
+        orgSlug,
+        orgId,
+      );
+
+      const messageIdA = `edit-a-${Date.now()}`;
+      const turnA = await dispatchAndClaimWorkItem(
+        api,
+        orgSlug,
+        agentId,
+        threadId,
+        daemon,
+        messageIdA,
+        "Turn A — hold please.",
+      );
+
+      // Queue B behind A with its ORIGINAL text.
+      const messageIdB = `edit-b-${Date.now()}`;
+      const originalTextB = "Turn B — original (will be edited).";
+      const postB = await postMessage(
+        api,
+        orgSlug,
+        agentId,
+        threadId,
+        messageIdB,
+        originalTextB,
+      );
+      expect(postB.status()).toBe(202);
+
+      // ── Act 1: the client's `editQueuedMessage` cancels the original turn
+      // FIRST, awaited, via the per-item queue-cancel endpoint — this is the
+      // API-level composition the tray drives.
+      const wfIdB = `thread-run:${threadId}:${messageIdB}`;
+      const cancelRes = await api.post(
+        `/api/${orgSlug}/decopilot/queue/${threadId}/cancel/${encodeURIComponent(wfIdB)}`,
+      );
+      expect(cancelRes.status()).toBe(202);
+      expect(await cancelRes.json()).toEqual({ cancelled: true });
+
+      // B's parts are deleted (awaited server-side before the 202) and its
+      // gate workflow has settled to CANCELLED.
+      expect(await fetchMessagePartsCount(db, threadId, messageIdB)).toBe(0);
+      expect(await fetchGateWorkflowStatus(db, wfIdB)).toBe("CANCELLED");
+      const afterCancel = await listMessages(api, orgSlug, threadId);
+      expect(afterCancel.some((m) => m.id === messageIdB)).toBe(false);
+
+      // ── Act 2: re-POST the edited text as a FRESH message id (B2) — DBOS
+      // workflow ids are once-ever, so an edit can never reuse B's id; this
+      // mirrors `editQueuedMessage`'s re-enqueue-at-the-tail behavior.
+      const messageIdB2 = `edit-b2-${Date.now()}`;
+      const editedTextB2 = "Turn B — edited (final).";
+      const postB2 = await postMessage(
+        api,
+        orgSlug,
+        agentId,
+        threadId,
+        messageIdB2,
+        editedTextB2,
+      );
+      expect(postB2.status()).toBe(202);
+      const wfIdB2 = `thread-run:${threadId}:${messageIdB2}`;
+
+      // B2 parks ENQUEUED behind A's still-held partition slot, exactly like
+      // any fresh queued turn would — and B no longer appears at all.
+      const queueAfterB2 = await api.get(
+        `/api/${orgSlug}/decopilot/queue/${threadId}`,
+      );
+      const queueBodyAfterB2 = (await queueAfterB2.json()) as {
+        items: Array<{ messageId: string; status: string; text: string }>;
+      };
+      const b2Item = queueBodyAfterB2.items.find(
+        (i) => i.messageId === messageIdB2,
+      );
+      expect(b2Item?.status).toBe("queued");
+      expect(b2Item?.text).toBe(editedTextB2);
+      expect(
+        queueBodyAfterB2.items.some((i) => i.messageId === messageIdB),
+      ).toBe(false);
+
+      // ── Drain A, then let B2 dequeue and run for real.
+      const markerA = `edit-marker-a-${Date.now()}`;
+      const relayA = buildTurnRelayBody({
+        messageId: `msg_${messageIdA}`,
+        text: markerA,
+      });
+      await relay(turnA.runId, turnA.workItem.runFenceToken, relayA.body);
+      await expect(async () => {
+        expect(await fetchThreadStatus(db, threadId)).toBe("completed");
+      }).toPass(POLL_OPTS);
+
+      const workItemB2 = await daemon.nextWorkItem(threadId, {
+        timeoutMs: 35_000,
+      });
+      const markerB2 = `edit-marker-b2-${Date.now()}`;
+      const relayB2 = buildTurnRelayBody({
+        messageId: `msg_${messageIdB2}`,
+        text: markerB2,
+      });
+      await relay(threadId, workItemB2.runFenceToken, relayB2.body);
+
+      // ── THE CONTRACT ASSERTION: the final read shows B2's edited text —
+      // never B's original — and both gate workflows have settled to their
+      // expected terminal statuses.
+      await expect(async () => {
+        expect(await fetchThreadStatus(db, threadId)).toBe("completed");
+        const items = await listMessages(api, orgSlug, threadId);
+        expect(items.some((m) => m.id === messageIdB)).toBe(false);
+        expect(items.some((m) => m.id === messageIdB2)).toBe(true);
+        const userTexts = items
+          .filter((m) => m.role === "user")
+          .map((m) => JSON.stringify(m.parts));
+        expect(userTexts.some((t) => t.includes(editedTextB2))).toBe(true);
+        expect(userTexts.some((t) => t.includes(originalTextB))).toBe(false);
+        const assistantTexts = items
+          .filter((m) => m.role === "assistant")
+          .map((m) => JSON.stringify(m.parts));
+        expect(assistantTexts.some((t) => t.includes(markerB2))).toBe(true);
+        expect(await fetchGateWorkflowStatus(db, wfIdB)).toBe("CANCELLED");
+        expect(await fetchGateWorkflowStatus(db, wfIdB2)).toBe("SUCCESS");
+      }).toPass(POLL_OPTS);
     } finally {
       await daemon?.close();
       await db.end();
@@ -932,6 +1085,23 @@ test("POST keeps message content (and attachments) out of the DBOS workflow inpu
     const combinedParts = partRows.map((r) => r.p).join("\n");
     expect(combinedParts).not.toContain("data:image/png;base64,");
     expect(combinedParts).toContain("mesh-storage:");
+
+    // ── CONTRACT 3: the turn is still claimable (daemon has the work item,
+    // relay hasn't landed yet) — GET /queue must hydrate `hasAttachments`
+    // from the persisted file part folded above, so the tray can hide the
+    // Edit action for this turn (edit is text-only by design). This lone
+    // turn is the gate's PENDING head, so it surfaces with status "running"
+    // rather than "queued" — but it is the same hydration path a genuinely
+    // queued (ENQUEUED) attachment turn would go through.
+    const queueRes = await api.get(
+      `/api/${orgSlug}/decopilot/queue/${threadId}`,
+    );
+    expect(queueRes.status()).toBe(200);
+    const queueBody = (await queueRes.json()) as {
+      items: Array<{ messageId: string; hasAttachments: boolean }>;
+    };
+    const queueItem = queueBody.items.find((i) => i.messageId === messageId);
+    expect(queueItem?.hasAttachments).toBe(true);
 
     // Drain the turn to a terminal status so no PENDING gate workflow is
     // left dangling in the shared CI server process past this test.
