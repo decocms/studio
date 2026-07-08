@@ -229,7 +229,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const switchToFreshBranch = async () => {
-    const nextBranch = generateBranchName();
+    const nextBranch = generateBranchName(
+      session?.user?.name ?? session?.user?.email?.split("@")[0],
+    );
     await setCurrentTaskBranch(nextBranch);
   };
 

@@ -61,6 +61,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
+  const userLabel = session?.user?.name ?? session?.user?.email?.split("@")[0];
   const { org } = useProjectContext();
 
   const branchPill =
@@ -69,6 +70,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         orgId={org.id}
         orgSlug={org.slug}
         userId={userId}
+        userLabel={userLabel}
         virtualMcpId={virtualMcp?.id ?? ""}
         connectionId={connectionId}
         owner={githubRepo.owner}

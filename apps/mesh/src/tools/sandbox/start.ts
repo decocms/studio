@@ -104,7 +104,11 @@ export const SANDBOX_START = defineTool({
     requireAuth(ctx);
     const organization = requireOrganization(ctx);
     await ctx.access.check();
-    const resolvedBranch = input.branch ?? generateBranchName();
+    const resolvedBranch =
+      input.branch ??
+      generateBranchName(
+        ctx.auth.user?.name ?? ctx.auth.user?.email?.split("@")[0],
+      );
 
     // Resolve kind after loading metadata so recorded sandboxMap entries can
     // pin the provider when the caller did not pass an explicit kind.

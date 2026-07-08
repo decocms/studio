@@ -12,6 +12,7 @@ interface Props {
   orgId: string;
   orgSlug: string;
   userId: string;
+  userLabel: string | null | undefined;
   virtualMcpId: string;
   connectionId: string | null;
   owner: string;

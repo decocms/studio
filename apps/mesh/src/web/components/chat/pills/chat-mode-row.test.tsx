@@ -68,6 +68,7 @@ const BRANCH_PILL_PROPS = {
   orgId: "org-1",
   orgSlug: "my-org",
   userId: "user-1",
+  userLabel: "Test User",
   virtualMcpId: "vmcp-1",
   connectionId: "conn-1",
   owner: "acme",

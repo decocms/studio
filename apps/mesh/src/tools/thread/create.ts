@@ -127,7 +127,9 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       branch =
         data.branch ??
         pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
-        generateBranchName();
+        generateBranchName(
+          ctx.auth.user?.name ?? ctx.auth.user?.email?.split("@")[0],
+        );
     }
 
     const result = await ctx.storage.threads.create({
