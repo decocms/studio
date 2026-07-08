@@ -23,7 +23,7 @@
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export interface DaemonProcess {
@@ -47,16 +47,23 @@ export function resolveSourceDaemonPath(): string {
   return resolve(fileURLToPath(new URL("../daemon/entry.ts", import.meta.url)));
 }
 
-export function resolveNodePtyNodeModulesDir(): string {
-  const ptyEntry = Bun.resolveSync("node-pty", import.meta.dir);
-  const marker = "/node_modules/";
-  const idx = ptyEntry.lastIndexOf(marker);
-  if (idx < 0) {
+/**
+ * Matches on `/` or `\` regardless of host OS: Bun.resolveSync returns
+ * native separators (backslashes on Windows), but we also want this
+ * derivation to be unit-testable with Windows-style paths from any host.
+ */
+export function deriveNodeModulesDir(entryPath: string): string {
+  const match = /^(.*[/\\]node_modules)[/\\]/.exec(entryPath);
+  if (!match) {
     throw new Error(
-      `could not derive node_modules path from node-pty resolution: ${ptyEntry}`,
+      `could not derive node_modules path from node-pty resolution: ${entryPath}`,
     );
   }
-  return ptyEntry.slice(0, idx + marker.length - 1);
+  return match[1];
+}
+
+export function resolveNodePtyNodeModulesDir(): string {
+  return deriveNodeModulesDir(Bun.resolveSync("node-pty", import.meta.dir));
 }
 
 export async function materializeDaemonBundle(
@@ -141,7 +148,7 @@ export function createDefaultDaemonSpawn(
     const ptyNodeModulesDir = resolveNodePtyNodeModulesDir();
     const existingNodePath = process.env.NODE_PATH;
     const nodePath = existingNodePath
-      ? `${ptyNodeModulesDir}:${existingNodePath}`
+      ? `${ptyNodeModulesDir}${delimiter}${existingNodePath}`
       : ptyNodeModulesDir;
     // Per-sandbox log: open `<workdir>/tmp/daemon.log` (truncate every spawn)
     // and point this sandbox daemon's stdout/stderr at it, so each sandbox's
