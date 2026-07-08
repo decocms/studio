@@ -160,7 +160,7 @@ jobs:
             echo "::group::$f"
             bun test "$f"
             echo "::endgroup::"
-          done < <(find apps/mesh/src packages \
+          done < <(find apps/mesh/src apps/mesh/migrations packages \
             \( -name '*.test.ts' -o -name '*.test.tsx' \) \
             ! -name '*.integration.test.ts' \
             ! -name '*.e2e.test.ts')
