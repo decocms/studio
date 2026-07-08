@@ -25,6 +25,14 @@
  *     pending body so it can't leak (the workflow id is gone for good).
  *   - Send now (head of queue only): cancels the current turn so the gate
  *     FIFO promotes this message next.
+ *
+ * While an edit is in flight (`isEditBusy`), every row's Edit/Remove buttons
+ * are disabled — not just the row being edited. Without this, clicking Edit
+ * on another row reassigns `editingId` away from the in-flight row, which
+ * both hides its synthetic retry surface (the `showSyntheticEditRow` check
+ * now points at the wrong id) and orphans the pending `editQueuedMessage`
+ * promise's `.then` (it would flip `editingId` back to `null` on success,
+ * silently "confirming" a row the user never touched).
  */
 import { useState } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -117,6 +125,7 @@ export function QueueTray({ taskId }: { taskId: string }) {
                   variant="ghost"
                   size="icon-sm"
                   title="Edit (re-queues at the end)"
+                  disabled={isEditBusy}
                   onClick={() => {
                     setEditingId(item.messageId);
                     setDraft(item.text);
@@ -130,6 +139,7 @@ export function QueueTray({ taskId }: { taskId: string }) {
                 variant="ghost"
                 size="icon-sm"
                 title="Remove from queue"
+                disabled={isEditBusy}
                 onClick={() =>
                   void actions.cancel(taskId, item.messageId).then((ok) => {
                     if (ok) dropPendingBody(taskId, item.messageId);
