@@ -565,11 +565,19 @@ export async function runDispatchSteps(
   // Recovery-safe: `consumeRunProjection` has an entry guard that returns early
   // on a terminal status (the run already finished).
   const runId = ctx.request.taskId ?? ctx.threadId;
+  // `messageId` only exists on `DurableDispatchRunInput` (the durable/gate
+  // path); the legacy direct `DispatchRunInput` union member has no such
+  // field, so a plain `ctx.request.messageId` does not type-check across the
+  // union — same cast pattern as dispatch-run.ts's `(input as { messageId?:
+  // string }).messageId`. Anchors the projected reply right after its own
+  // user message (queue ordering) instead of after later-queued turns.
+  const requestMessageId = (ctx.request as { messageId?: string }).messageId;
   await DBOS.runStep(
     () =>
       consumeRunProjection({
         runId,
         fenceToken: dispatchResult.runFenceToken,
+        messageId: requestMessageId,
       }),
     { name: "consumeRunProjection" },
   );

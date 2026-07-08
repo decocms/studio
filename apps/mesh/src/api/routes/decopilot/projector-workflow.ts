@@ -27,6 +27,9 @@ export interface ProjectorWorkflowInput {
   runId: string;
   fenceToken: string;
   finalSeq?: number;
+  /** The turn's request message id — anchors the projected reply's created_at
+   *  right after its own user message (queue ordering). */
+  messageId?: string;
 }
 
 export interface ProjectorRunRow {
@@ -120,6 +123,7 @@ export async function projectFromJetStreamStep(
       messageParts: rt.messageParts,
       orgId,
       runId: input.runId,
+      requestMessageId: input.messageId,
       replaceFinal: true,
     }),
     originalMessages,

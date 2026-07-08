@@ -449,6 +449,57 @@ describe("runProjectorWorkflowBody", () => {
     const purgeCalls = calls.filter((c) => c.kind === "purge");
     expect(purgeCalls).toHaveLength(0);
   });
+
+  test("forwards input.messageId to projectFn (queue ordering plumb)", async () => {
+    // Guards the plumb from thread-gate-workflow → consumeRunProjection →
+    // runProjectorWorkflowBody → projectFn (production: projectFromJetStreamStep,
+    // which threads it into createRunPersistence's requestMessageId).
+    const { rt } = makeRuntime();
+    const receivedInputs: ProjectorWorkflowInput[] = [];
+    const projectFn = async (inp: ProjectorWorkflowInput) => {
+      receivedInputs.push(inp);
+      return {
+        chunkCount: 1,
+        attempts: 1,
+        outcome: {
+          failed: false as const,
+          finishReason: "stop" as const,
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finalParts: [],
+        },
+      };
+    };
+
+    await runProjectorWorkflowBody(
+      { ...input, messageId: "msg_u2" },
+      rt,
+      projectFn,
+    );
+
+    expect(receivedInputs[0]?.messageId).toBe("msg_u2");
+  });
+
+  test("input.messageId is undefined when the caller doesn't supply one (legacy)", async () => {
+    const { rt } = makeRuntime();
+    const receivedInputs: ProjectorWorkflowInput[] = [];
+    const projectFn = async (inp: ProjectorWorkflowInput) => {
+      receivedInputs.push(inp);
+      return {
+        chunkCount: 1,
+        attempts: 1,
+        outcome: {
+          failed: false as const,
+          finishReason: "stop" as const,
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finalParts: [],
+        },
+      };
+    };
+
+    await runProjectorWorkflowBody(input, rt, projectFn);
+
+    expect(receivedInputs[0]?.messageId).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
