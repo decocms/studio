@@ -81,6 +81,12 @@ import {
   useSandboxReloadHandler,
 } from "../hooks/use-sandbox-events";
 import { SandboxStateCard } from "./state-card";
+import {
+  lastPreviewPageKey,
+  readLastPreviewPage,
+  writeLastPreviewPage,
+  type LastPreviewPage,
+} from "./last-preview-page";
 import { derivePhaseProgress } from "./derive-phase-progress";
 import { track } from "@/web/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
@@ -475,7 +481,18 @@ export function PreviewContent() {
         )
       : null;
 
-  // Reset navigation when the VM preview base URL changes (branch switch, etc.)
+  // Last visited page (incl. `:param` values), persisted per project+branch.
+  const previewStorageKey =
+    virtualMcpId && branch
+      ? lastPreviewPageKey(org.slug, virtualMcpId, branch)
+      : null;
+  const persistLastPage = (page: LastPreviewPage) => {
+    if (previewStorageKey) writeLastPreviewPage(previewStorageKey, page);
+  };
+
+  // When the VM preview base URL appears or changes (first boot, branch
+  // switch, etc.), restore the last visited page for this project+branch;
+  // reset navigation to "/" when there's nothing saved.
   const [prevIframeBase, setPrevIframeBase] = useState<string | null>(null);
   if (
     previewState.kind === "iframe" &&
@@ -483,7 +500,21 @@ export function PreviewContent() {
   ) {
     const hadPreviousBase = prevIframeBase !== null;
     setPrevIframeBase(previewState.previewUrl);
-    if (hadPreviousBase) {
+    const saved = previewStorageKey
+      ? readLastPreviewPage(previewStorageKey)
+      : null;
+    if (saved) {
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- expect the restored page's resolved path on the next iframe load
+      intendedPathRef.current = fillPathTemplate(saved.path, saved.params);
+      setCurrentPath(saved.path);
+      setPinnedPageKey(saved.pageKey);
+      setDirectPreviewUrl(null);
+      setActiveGlobalSection(null);
+      if (saved.pageKey && Object.keys(saved.params).length > 0) {
+        const pageKey = saved.pageKey;
+        setPathParamsByPage((prev) => ({ ...prev, [pageKey]: saved.params }));
+      }
+    } else if (hadPreviousBase) {
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- clear stale navigation intent on branch switch
       intendedPathRef.current = null;
       setCurrentPath("/");
@@ -749,16 +780,15 @@ export function PreviewContent() {
 
   const navigatePreviewToPage = (page: PageEntry) => {
     // The iframe loads the template with any stored param values filled in.
-    intendedPathRef.current = fillPathTemplate(
-      page.path,
-      pathParamsByPage[page.key] ?? {},
-    );
+    const params = pathParamsByPage[page.key] ?? {};
+    intendedPathRef.current = fillPathTemplate(page.path, params);
     setActiveGlobalSection(null);
     setDirectPreviewUrl(null);
     setPinnedPageKey(page.key);
     setCurrentPath(page.path);
     setCmsSelectedSectionIndex(null);
     setCmsInitialEditSeo(false);
+    persistLastPage({ path: page.path, pageKey: page.key, params });
   };
 
   const setPathParamValue = (name: string, value: string) => {
@@ -768,6 +798,7 @@ export function PreviewContent() {
     // Guard against a stale onLoad from the previous URL resetting currentPath.
     intendedPathRef.current = fillPathTemplate(currentPath, nextValues);
     setPathParamsByPage((prev) => ({ ...prev, [pageKey]: nextValues }));
+    persistLastPage({ path: currentPath, pageKey, params: nextValues });
   };
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
@@ -1479,6 +1510,11 @@ export function PreviewContent() {
                         return;
                       }
                       setCurrentPath(iframePath);
+                      persistLastPage({
+                        path: iframePath,
+                        pageKey: pinnedPageKey,
+                        params: pathParamValues,
+                      });
                     } catch {
                       // Cross-origin — can't read, keep current value
                     }
