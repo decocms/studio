@@ -107,7 +107,11 @@ function byteResponse(
       : "private, max-age=0",
   };
   if (contentType.startsWith("text/html")) {
-    headers["Content-Security-Policy"] = "sandbox allow-scripts allow-modals";
+    // TEMP(demo 2026-07-08, REVERT): allow-same-origin gives previews a real
+    // origin so nested frame-ancestors checks pass — but re-enables
+    // credentialed same-origin API calls from member HTML.
+    headers["Content-Security-Policy"] =
+      "sandbox allow-scripts allow-modals allow-same-origin";
   }
   return c.body(Buffer.from(bytes), 200, headers);
 }
