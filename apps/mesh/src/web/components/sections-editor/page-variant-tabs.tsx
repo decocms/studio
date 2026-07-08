@@ -27,9 +27,9 @@ import {
 import {
   SortableContext,
   arrayMove,
-  horizontalListSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
+  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -45,9 +45,10 @@ import { resolveMatcherIconName } from "./matcher-icons";
 import type { PageVariant } from "./page-variants";
 import type { LiveMeta } from "./resolve-schema";
 
-const VARIANT_GREEN_TEXT = "oklch(0.65 0.15 160)";
-const VARIANT_TAB_ACTIVE_CLASS =
-  "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.22)]";
+const VARIANT_ROW_CLASS =
+  "text-[oklch(0.45_0.15_160)] hover:bg-[oklch(0.65_0.15_160/0.12)] dark:text-[oklch(0.78_0.15_160)] dark:hover:bg-[oklch(0.65_0.15_160/0.15)]";
+const VARIANT_SELECTED_ROW_CLASS =
+  "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.2)]";
 
 export function VariantTabIcon({
   rule,
@@ -94,7 +95,86 @@ function remapEntryIndices(entries: VariantTabEntry[]): VariantTabEntry[] {
   }));
 }
 
-function SortablePageVariantTab({
+function PageVariantRowContent({
+  label,
+  effectiveRule,
+  matchers,
+  canDelete,
+  dragging,
+  onRename,
+  onDuplicate,
+  onDelete,
+}: {
+  label: string;
+  effectiveRule: Record<string, unknown> | undefined;
+  matchers: Array<{ resolveType: string; iconName: string }>;
+  canDelete: boolean;
+  dragging?: boolean;
+  onRename?: () => void;
+  onDuplicate?: () => void;
+  onDelete?: () => void;
+}) {
+  return (
+    <>
+      <VariantTabIcon rule={effectiveRule} matchers={matchers} />
+      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+        {label}
+      </span>
+
+      {!dragging && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`Actions for ${label}`}
+              className="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <DotsHorizontal size={14} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-36">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onRename?.();
+              }}
+            >
+              <Edit01 size={14} />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicate?.();
+              }}
+            >
+              <Copy01 size={14} />
+              Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={!canDelete}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete?.();
+              }}
+            >
+              <Trash01 size={14} />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </>
+  );
+}
+
+function SortablePageVariantRow({
   entry,
   sortableId,
   isActive,
@@ -127,7 +207,7 @@ function SortablePageVariantTab({
 
   const style = {
     transform: CSS.Transform.toString(
-      transform ? { ...transform, y: 0 } : null,
+      transform ? { ...transform, x: 0 } : null,
     ),
     opacity: isDragging ? 0 : undefined,
   };
@@ -142,65 +222,38 @@ function SortablePageVariantTab({
     <div
       ref={setNodeRef}
       style={style}
+      {...attributes}
+      {...listeners}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
       className={cn(
-        "group shrink-0 inline-flex items-center rounded-md transition-colors touch-none",
-        isActive
-          ? VARIANT_TAB_ACTIVE_CLASS
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-        isDragging ? "cursor-grabbing" : "cursor-grab",
+        "group flex select-none items-center gap-2 rounded-md px-2 py-2.5 transition-colors touch-none",
+        isDragging
+          ? "cursor-grabbing"
+          : "cursor-pointer active:cursor-grabbing",
+        isActive ? VARIANT_SELECTED_ROW_CLASS : VARIANT_ROW_CLASS,
       )}
     >
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        onClick={onSelect}
-        className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 text-sm font-medium cursor-[inherit]"
-      >
-        <VariantTabIcon rule={effectiveRule} matchers={matchers} />
-        <span className="truncate">{entry.variant.label}</span>
-      </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            aria-label={`Actions for ${entry.variant.label}`}
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-            className={cn(
-              "inline-flex h-8 w-6 items-center justify-center pr-1 cursor-pointer transition-opacity",
-              "opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100",
-              isActive && "opacity-100",
-            )}
-          >
-            <DotsHorizontal size={12} />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-36">
-          <DropdownMenuItem onClick={onRename}>
-            <Edit01 size={14} />
-            Rename
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={onDuplicate}>
-            <Copy01 size={14} />
-            Duplicate
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={!canDelete}
-            onClick={onDelete}
-          >
-            <Trash01 size={14} />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <PageVariantRowContent
+        label={entry.variant.label}
+        effectiveRule={effectiveRule}
+        matchers={matchers}
+        canDelete={canDelete}
+        onRename={onRename}
+        onDuplicate={onDuplicate}
+        onDelete={onDelete}
+      />
     </div>
   );
 }
 
-function PageVariantTabPreview({
+function PageVariantRowPreview({
   variant,
   decofile,
   meta,
@@ -220,12 +273,17 @@ function PageVariantTabPreview({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1.5 h-8 pl-3 pr-3 text-sm font-medium rounded-md shadow-lg ring-1 ring-border/60 cursor-grabbing",
-        VARIANT_TAB_ACTIVE_CLASS,
+        "flex items-center gap-2 rounded-md px-2 py-2.5 shadow-lg ring-1 ring-border/60 cursor-grabbing",
+        VARIANT_SELECTED_ROW_CLASS,
       )}
     >
-      <VariantTabIcon rule={effectiveRule} matchers={matchers} />
-      <span className="truncate">{variant.label}</span>
+      <PageVariantRowContent
+        label={variant.label}
+        effectiveRule={effectiveRule}
+        matchers={matchers}
+        canDelete={false}
+        dragging
+      />
     </div>
   );
 }
@@ -338,26 +396,41 @@ export function PageVariantTabs({
   };
 
   return (
-    <div className="flex items-center border-b shrink-0">
-      <div
-        className={cn(
-          "flex flex-1 min-w-0 items-center gap-1.5 pl-3 pr-2 py-2 overflow-x-auto",
-          activeEntry && "cursor-grabbing",
-        )}
+    <div className="space-y-1 border-b p-2 shrink-0">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground">
+          Variants
+        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Add variant"
+              className="size-6"
+              onClick={onAdd}
+            >
+              <Plus size={14} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Add variant</TooltipContent>
+        </Tooltip>
+      </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
+        <SortableContext
+          items={entryIds}
+          strategy={verticalListSortingStrategy}
         >
-          <SortableContext
-            items={entryIds}
-            strategy={horizontalListSortingStrategy}
-          >
+          <div className="space-y-0.5">
             {entries.map((entry) => (
-              <SortablePageVariantTab
+              <SortablePageVariantRow
                 key={entry.id}
                 sortableId={entry.id}
                 entry={entry}
@@ -372,38 +445,20 @@ export function PageVariantTabs({
                 onDelete={() => onDelete(entry.index)}
               />
             ))}
-          </SortableContext>
+          </div>
+        </SortableContext>
 
-          <DragOverlay dropAnimation={null}>
-            {activeEntry ? (
-              <PageVariantTabPreview
-                variant={activeEntry.variant}
-                decofile={decofile}
-                meta={meta}
-                matchers={matchers}
-              />
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      </div>
-      <div className="shrink-0 pr-3 pl-1 py-2">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Add variant"
-              className="size-8 shrink-0 cursor-pointer"
-              style={{ color: VARIANT_GREEN_TEXT }}
-              onClick={onAdd}
-            >
-              <Plus size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Add variant</TooltipContent>
-        </Tooltip>
-      </div>
+        <DragOverlay dropAnimation={null}>
+          {activeEntry ? (
+            <PageVariantRowPreview
+              variant={activeEntry.variant}
+              decofile={decofile}
+              meta={meta}
+              matchers={matchers}
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
     </div>
   );
 }
