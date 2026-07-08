@@ -575,6 +575,20 @@ test.describe("thread queue — live overlap (running head + queued tail)", () =
           .filter((m) => m.role === "assistant")
           .map((m) => JSON.stringify(m.parts));
         expect(assistantTexts.some((t) => t.includes(markerB))).toBe(true);
+
+        // ── Queue-ordering regression (Fix A): the durable projector anchors
+        // each assistant reply's `created_at` to its OWN request message's
+        // max, not the run-wide max — so A's reply sorts immediately after
+        // A's user message, never after B's later-queued user message (the
+        // pre-fix bug produced u1,u2,a1,a2 instead of u1,a1,u2,a2). Assert
+        // the full interleaved order via the same folded read path the chat
+        // UI renders from.
+        expect(items.map((m) => m.id)).toEqual([
+          messageIdA,
+          `msg_${messageIdA}`,
+          messageIdB,
+          `msg_${messageIdB}`,
+        ]);
       }).toPass(POLL_OPTS);
     } finally {
       await daemon?.close();
