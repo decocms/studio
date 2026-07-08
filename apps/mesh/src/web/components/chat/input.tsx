@@ -40,6 +40,7 @@ import {
 import { useThreadActions } from "./store/hooks";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
+import { QueueTray } from "./queue-tray";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
 import { ChatModeRow } from "./pills/chat-mode-row";
 import { TierTrigger } from "./tier-trigger";
@@ -476,6 +477,8 @@ export function ChatInput({
               an active task — it depends on useChatStream + useChatTask, both
               absent on the home composer. */}
           {stream && taskCtx && <ChatHighlight />}
+
+          {stream && taskCtx && taskId ? <QueueTray taskId={taskId} /> : null}
 
           <TiptapProvider
             key={taskId}

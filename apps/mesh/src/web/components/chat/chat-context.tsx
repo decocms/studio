@@ -125,6 +125,7 @@ import {
   takePendingBody,
 } from "./message-queue-store";
 import { textFromParts } from "./queue-items";
+import { useMessageQueueActions } from "./use-message-queue";
 import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
 
@@ -138,13 +139,18 @@ export interface ChatStreamContextValue {
   sendMessage: (
     params: SendMessageParams | Metadata["tiptapDoc"],
   ) => Promise<void>;
+  /** Edit a QUEUED (not-yet-running) message: cancel its gate workflow and
+   *  re-POST the edited text as a fresh message (re-enqueues at the queue
+   *  tail — see the implementation). Resolves true when the edited message
+   *  was dispatched OK; false on ANY failure (latch drop, cancel failure,
+   *  failed re-POST) — callers must keep the user's draft alive on false.
+   *  Every failure path surfaces its own toast. */
+  editQueuedMessage: (messageId: string, text: string) => Promise<boolean>;
   stop: () => void;
   /** Single mutator entry point — new user message, tool output, or approval
    *  response. Patches local messages, clears finishReason, POSTs to /messages.
    *  Throws if a toolOutput / approval target isn't found in current messages. */
   submit: (action: SubmitAction, opts: RequestOptions) => Promise<void>;
-  /** Drop a message from the local store (used when a queued turn is removed). */
-  removeLocalMessage: (messageId: string) => void;
   /** Synchronous probe for the module-level `sendInFlight` latch (same key
    *  `sendMessageInternal` latches on: this task's id). Lets callers that
    *  clear UI state right after firing `sendMessage` (e.g. the composer's
@@ -864,6 +870,7 @@ export function ActiveTaskProvider({
   const { user, contextPrompt, preferences, rawNavigateToTask } = internals;
 
   const { org, locator } = useProjectContext();
+  const queueActions = useMessageQueueActions();
 
   const [chatError, setChatError] = useState<Error | null>(null);
 
@@ -1120,35 +1127,23 @@ export function ActiveTaskProvider({
     connStatus.kind === "ready" &&
     messages.length > 0;
 
-  // sendMessage — captures context at call time
-  async function sendMessageInternal(params: SendMessageParams): Promise<void> {
-    const parts = params.parts ?? derivePartsFromTiptapDoc(params.tiptapDoc);
-    if (parts.length === 0) return;
-
-    // Capture at send time (frozen in closure)
+  // Shared tail for dispatching a fresh user message — used by BOTH a plain
+  // composer send (sendMessageInternal) and a re-POSTed queued-message edit
+  // (editQueuedMessage). Builds requestOptions from the current thread/prefs
+  // state, then either queues the message behind an in-progress run or
+  // submits it immediately. Owns releasing the `sendInFlight` latch (finally):
+  // callers are responsible for the synchronous latch check + add BEFORE
+  // calling this, so a re-entrant call is rejected before any work happens.
+  //
+  // Resolves `true` when the message was handed off (queued or submitted).
+  // The enqueue branch handles its own errors (toast + chatError, never
+  // rethrows) and resolves `false` on failure so edit-flow callers can react;
+  // the immediate-submit branch still RETHROWS on failure — unchanged
+  // plain-send behavior (sendMessageInternal ignores the return value).
+  async function dispatchUserMessage(message: ChatMessage): Promise<boolean> {
+    // Capture at dispatch time (frozen in closure)
     const capturedTaskId = taskId;
     const capturedVirtualMcpId = virtualMcpId;
-
-    // Synchronous per-thread latch — drop a re-entrant send (double-Enter)
-    // before it mints a second message id and double-queues the draft.
-    if (sendInFlight.has(capturedTaskId)) return;
-    sendInFlight.add(capturedTaskId);
-
-    // Drop any error banner from a prior turn — explicitly sending a new
-    // message means the user has moved on and a stale "network error"
-    // toast on top of a fresh request is just noise. (finishReason is
-    // cleared inside conn.submit synchronously.)
-    setChatError(null);
-    setTiptapDoc(undefined);
-
-    const messageMetadata: Metadata = {
-      tiptapDoc: params.tiptapDoc,
-      created_at: new Date().toISOString(),
-      user: {
-        avatar: user?.image ?? undefined,
-        name: user?.name ?? "you",
-      },
-    };
 
     const appContextEntries = Object.entries(appContexts);
     const appContextSection =
@@ -1176,13 +1171,6 @@ export function ActiveTaskProvider({
     if (modeToSend === "web-search" || modeToSend === "deep-research") {
       setChatMode("default");
     }
-
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      parts,
-      metadata: messageMetadata,
-    };
 
     const requestOptions: RequestOptions = {
       tier: activeTier,
@@ -1217,13 +1205,19 @@ export function ActiveTaskProvider({
     // immediately.
     try {
       if (isStreaming || isRunInProgress) {
+        let queuedOk = true;
         try {
-          stashPendingBody(capturedTaskId, userMessage);
-          await conn.enqueue(userMessage, requestOptions);
+          stashPendingBody(capturedTaskId, message);
+          await conn.enqueue(message, requestOptions);
           enqueueMessage(capturedTaskId, {
-            workflowId: `thread-run:${capturedTaskId}:${userMessage.id}`,
-            messageId: userMessage.id,
-            text: textFromParts(parts),
+            workflowId: `thread-run:${capturedTaskId}:${message.id}`,
+            messageId: message.id,
+            text: textFromParts(message.parts),
+            // Computed locally so the tray's edit affordance is correct from
+            // the first render — leaving this undefined for one server
+            // round-trip would offer "edit" on an attachment-bearing turn,
+            // and an edit taken in that window drops the attachment for good.
+            hasAttachments: message.parts.some((p) => p.type === "file"),
             status: "queued",
             enqueuedAt: Date.now(),
             optimistic: true,
@@ -1236,8 +1230,9 @@ export function ActiveTaskProvider({
         } catch (err) {
           // The POST never landed — nothing was appended to the body, so
           // just drop the stash and the optimistic tray entry.
-          dropPendingBody(capturedTaskId, userMessage.id);
-          removeMessage(capturedTaskId, userMessage.id);
+          queuedOk = false;
+          dropPendingBody(capturedTaskId, message.id);
+          removeMessage(capturedTaskId, message.id);
           setChatError(err instanceof Error ? err : new Error(String(err)));
           toast.error(
             err instanceof Error ? err.message : "Failed to queue message",
@@ -1245,14 +1240,106 @@ export function ActiveTaskProvider({
         }
         // Reconcile the optimistic row against the gate's authoritative list.
         void refreshMessageQueue(org.slug, capturedTaskId);
-      } else {
-        await conn.submit(
-          { kind: "message", message: userMessage },
-          requestOptions,
-        );
+        return queuedOk;
       }
+      await conn.submit({ kind: "message", message }, requestOptions);
+      return true;
     } finally {
       sendInFlight.delete(capturedTaskId);
+    }
+  }
+
+  // sendMessage — captures context at call time
+  async function sendMessageInternal(params: SendMessageParams): Promise<void> {
+    const parts = params.parts ?? derivePartsFromTiptapDoc(params.tiptapDoc);
+    if (parts.length === 0) return;
+
+    // Synchronous per-thread latch — drop a re-entrant send (double-Enter)
+    // before it mints a second message id and double-queues the draft.
+    if (sendInFlight.has(taskId)) return;
+    sendInFlight.add(taskId);
+
+    // Drop any error banner from a prior turn — explicitly sending a new
+    // message means the user has moved on and a stale "network error"
+    // toast on top of a fresh request is just noise. (finishReason is
+    // cleared inside conn.submit synchronously.)
+    setChatError(null);
+    setTiptapDoc(undefined);
+
+    const messageMetadata: Metadata = {
+      tiptapDoc: params.tiptapDoc,
+      created_at: new Date().toISOString(),
+      user: {
+        avatar: user?.image ?? undefined,
+        name: user?.name ?? "you",
+      },
+    };
+
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      parts,
+      metadata: messageMetadata,
+    };
+
+    await dispatchUserMessage(userMessage);
+  }
+
+  // Edit a QUEUED message: cancel the old gate workflow (server also deletes
+  // its persisted parts), then re-POST the edited text as a fresh message —
+  // which re-enqueues at the queue TAIL (DBOS workflow ids are once-ever; an
+  // accepted trade-off, only observable with 2+ queued). Text-only by design.
+  //
+  // Resolves `true` only when the edited message was dispatched OK; `false`
+  // on any failure (latch drop, cancel failure, failed re-POST) so the tray
+  // can keep the user's draft alive instead of discarding it. Every false
+  // path surfaces its own toast.
+  async function editQueuedMessage(
+    messageId: string,
+    text: string,
+  ): Promise<boolean> {
+    // Same synchronous per-thread latch sendMessageInternal uses — an edit
+    // is itself a dispatch, so it must not race a concurrent send/edit. The
+    // tray probes isSendInFlight() before calling, so this drop is a
+    // belt-and-braces guard — but report it honestly rather than resolving
+    // as if the edit happened.
+    if (sendInFlight.has(taskId)) {
+      toast.info("Still sending your previous message — try again in a moment");
+      return false;
+    }
+    sendInFlight.add(taskId);
+
+    const ok = await queueActions.cancel(taskId, messageId);
+    if (!ok) {
+      sendInFlight.delete(taskId);
+      toast.error("Couldn't remove the original message");
+      return false;
+    }
+    dropPendingBody(taskId, messageId);
+
+    const edited: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      parts: [{ type: "text", text }],
+      metadata: {
+        created_at: new Date().toISOString(),
+        user: {
+          avatar: user?.image ?? undefined,
+          name: user?.name ?? "you",
+        },
+      },
+    };
+    // Reuse the exact enqueue-or-submit branch sendMessageInternal runs.
+    // The enqueue branch resolves false on failure (it toasts internally);
+    // the immediate-submit branch rethrows instead — map that to false too
+    // (with its own toast) so the tray sees one honest boolean either way.
+    try {
+      return await dispatchUserMessage(edited);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to send edited message",
+      );
+      return false;
     }
   }
 
@@ -1314,9 +1401,9 @@ export function ActiveTaskProvider({
     messages,
     status: statusToString(connStatus),
     sendMessage: sendMessagePublic,
+    editQueuedMessage,
     stop: () => void cancelRun(),
     submit: (action, opts) => conn.submit(action, opts),
-    removeLocalMessage: (messageId) => conn.removeLocalMessage(messageId),
     isSendInFlight: () => sendInFlight.has(taskId),
     error: chatError,
     clearError: () => setChatError(null),
