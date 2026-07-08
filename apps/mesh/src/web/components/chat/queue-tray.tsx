@@ -5,13 +5,21 @@
  * in `input.tsx` whenever the active thread has queued items; renders
  * nothing otherwise.
  *
- * Per-row actions:
- *   - Remove: cancels the queued gate workflow, then drops the stashed
- *     pending body so it can't leak (the workflow id is gone for good) and
- *     the local body row a reload/refetch may have preloaded (otherwise the
- *     cancel would unhide it as a stale, forever-unanswered bubble).
- *   - Send now (head of queue only): cancels the current turn so the gate
- *     FIFO promotes this message next.
+ * Layout (V1, settled via visual companion 2026-07-08): quiet header —
+ * "N queued" left, an outlined "Send next" button right — above a flat
+ * numbered list. Rows are uniform (`number chip · text · ✕ on hover`);
+ * numbers make the FIFO order legible, and the single header button makes
+ * it honest that only the HEAD can be promoted.
+ *
+ * Actions:
+ *   - Send next (header): cancels the current turn so the gate FIFO
+ *     promotes the first queued message — same stop() as the composer's
+ *     stop button.
+ *   - Remove (per row): cancels the queued gate workflow, then drops the
+ *     stashed pending body so it can't leak (the workflow id is gone for
+ *     good) and the local body row a reload/refetch may have preloaded
+ *     (otherwise the cancel would unhide it as a stale, forever-unanswered
+ *     bubble).
  *
  * No edit action, by product decision: DBOS workflow ids are once-ever, so
  * an "edit" can only be cancel + re-POST — which re-enqueues at the TAIL,
@@ -20,6 +28,11 @@
  * (`editQueuedMessage` in chat-context still implements the composition).
  */
 import { Button } from "@deco/ui/components/button.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { ArrowUp, XClose } from "@untitledui/icons";
 import { useChatStream } from "./context";
 import { dropPendingBody } from "./message-queue-store";
@@ -36,14 +49,37 @@ export function QueueTray({ taskId }: { taskId: string }) {
 
   return (
     <div className="mb-1 overflow-hidden rounded-2xl border border-border bg-card dark:bg-muted">
-      <div className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
-        {queued.length} queued message{queued.length > 1 ? "s" : ""}
+      <div className="flex items-center justify-between gap-2 border-b border-border py-1.5 pr-2 pl-3 text-xs text-muted-foreground">
+        <span>
+          {queued.length} queued message{queued.length > 1 ? "s" : ""}
+        </span>
+        <Tooltip delayDuration={400}>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => void stop()}
+            >
+              <ArrowUp size={14} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <p className="text-xs">Send now</p>
+          </TooltipContent>
+        </Tooltip>
       </div>
       {queued.map((item, index) => (
         <div
           key={item.messageId}
           className="group/queuerow flex items-center gap-2 px-3 py-1.5"
         >
+          {/* Chip surface must differ from the tray surface in BOTH modes —
+              the tray is bg-card light / bg-muted dark, so bg-muted would
+              vanish in dark mode. */}
+          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground dark:bg-background">
+            {index + 1}
+          </span>
           <span className="min-w-0 flex-1 truncate text-sm text-foreground">
             {item.text}
           </span>
@@ -69,17 +105,6 @@ export function QueueTray({ taskId }: { taskId: string }) {
             >
               <XClose className="size-3.5" />
             </Button>
-            {index === 0 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                title="Send now (cancels the current turn)"
-                onClick={() => void stop()}
-              >
-                <ArrowUp size={14} />
-              </Button>
-            )}
           </div>
         </div>
       ))}
