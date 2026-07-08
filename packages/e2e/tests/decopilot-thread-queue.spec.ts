@@ -817,12 +817,13 @@ test.describe("thread queue — live overlap (running head + queued tail)", () =
   });
 });
 
-test("POST externalizes a data: attachment out of the DBOS workflow input", async ({
+test("POST keeps message content (and attachments) out of the DBOS workflow input, externalized into parts", async ({
   authedPage,
 }) => {
-  // Object storage (S3 + org-fs) must be available for this assertion to hold:
-  // uploadFileParts only materializes when ctx.orgFs is present, which requires
-  // a real S3-backed objectStorage. Skip on plain local dev without MinIO.
+  // Object storage (S3 + org-fs) must be available for the mesh-storage
+  // assertion to hold: uploadFileParts only materializes when ctx.orgFs is
+  // present, which requires a real S3-backed objectStorage. Skip on plain
+  // local dev without MinIO.
   test.skip(
     !(
       process.env.S3_ENDPOINT &&
@@ -854,11 +855,12 @@ test("POST externalizes a data: attachment out of the DBOS workflow input", asyn
     const messageId = `img-${Date.now()}`;
 
     // Same wire shape as `postMessage`, plus the data: file part. The
-    // externalization under test (`uploadFileParts`) runs unconditionally in
-    // the POST handler before enqueue — it is harness-agnostic — but the POST
-    // itself must route via the suite's claude-code + user-desktop pattern:
-    // the decopilot harness resolves a model TIER at POST time, which 400s
-    // (TierUnavailableError) in this providerless test org.
+    // contracts under test are harness-agnostic (`uploadFileParts` +
+    // `emitRequestMessage` run unconditionally in the POST handler before
+    // enqueue) — but the POST itself must route via the suite's claude-code +
+    // user-desktop pattern: the decopilot harness resolves a model TIER at
+    // POST time, which 400s (TierUnavailableError) in this providerless
+    // test org.
     const res = await api.post(
       `/api/${orgSlug}/decopilot/threads/${threadId}/messages`,
       {
@@ -895,8 +897,13 @@ test("POST externalizes a data: attachment out of the DBOS workflow input", asyn
     const workItem = await daemon.nextWorkItem(runId);
     expect(workItem.threadId).toBe(threadId);
 
-    // ── THE CONTRACT ASSERTION: the persisted gate input must NOT contain
-    // the base64 data: blob — only the externalized mesh-storage: ref.
+    // ── CONTRACT 1: the durable gate input is content-free/small. The
+    // `DurableDispatchRunInput` carries only config + the messageId — no
+    // `messages`/parts at all (the gate re-loads history from the DB at
+    // dispatch) — so neither the raw base64 blob nor any parts array may
+    // appear in the persisted workflow input. This is the contract that
+    // superseded "externalize attachments INTO the input": there is no
+    // message content in the input to externalize anymore.
     // `inputs` is a TEXT column (the {"json":[ctx]} envelope) — read as string.
     const wfId = `thread-run:${threadId}:${messageId}`;
     const { rows } = await db.query(
@@ -907,7 +914,24 @@ test("POST externalizes a data: attachment out of the DBOS workflow input", asyn
       (rows[0] as { inputs: string } | undefined)?.inputs ?? "",
     );
     expect(serialized).not.toContain("data:image/png;base64,");
-    expect(serialized).toContain("mesh-storage:");
+    expect(serialized).not.toContain('"parts"');
+
+    // ── CONTRACT 2: the attachment IS externalized — in the PERSISTED PARTS.
+    // `uploadFileParts` materializes the data: URL to object storage BEFORE
+    // `emitRequestMessage` persists the user turn (both synchronous in the
+    // POST handler), so the stored file part must carry the stable
+    // `mesh-storage:` ref, never the raw base64 blob.
+    const { rows: partRows } = await db.query<{ p: string }>(
+      `SELECT payload::text AS p
+         FROM thread_message_parts
+        WHERE thread_id = $1
+          AND message_id = $2`,
+      [threadId, messageId],
+    );
+    expect(partRows.length).toBeGreaterThan(0);
+    const combinedParts = partRows.map((r) => r.p).join("\n");
+    expect(combinedParts).not.toContain("data:image/png;base64,");
+    expect(combinedParts).toContain("mesh-storage:");
 
     // Drain the turn to a terminal status so no PENDING gate workflow is
     // left dangling in the shared CI server process past this test.
