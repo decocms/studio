@@ -1,5 +1,6 @@
 import { sleep } from "@decocms/std";
 import { existsSync, readdirSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import { isSyntheticBranch } from "../constants";
 import type { Config } from "../types";
 import { spawnSetupStep } from "./spawn-step";
@@ -235,7 +236,7 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
   if (!cloneUrl) {
     return { code: 1 };
   }
-  if (!config.repoDir || !config.repoDir.startsWith("/")) {
+  if (!config.repoDir || !isAbsolute(config.repoDir)) {
     deps.onChunk(
       "setup",
       `\r\n[clone] repoDir is not an absolute path (got: ${String(config.repoDir)}) — aborting clone to prevent relative-path mishap\r\n`,
