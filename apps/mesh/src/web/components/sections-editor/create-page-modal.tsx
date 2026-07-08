@@ -10,22 +10,35 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Loading01 } from "@untitledui/icons";
 import { validatePagePath } from "./page-path-utils";
+import { BLANK_TEMPLATE, PageTemplateSelect } from "./page-template-select";
+import type { PageEntry } from "./page-list";
 
 export function CreatePageModal({
   open,
   onOpenChange,
   isPending = false,
   error,
+  templates,
   onSubmit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isPending?: boolean;
   error?: string;
-  onSubmit: (values: { name: string; path: string }) => void | Promise<void>;
+  /**
+   * Existing pages offered as content templates. Picking one clones its
+   * content; only the name and path come from the form.
+   */
+  templates?: PageEntry[];
+  onSubmit: (values: {
+    name: string;
+    path: string;
+    templateKey: string | null;
+  }) => void | Promise<void>;
 }) {
   const [name, setName] = useState("My New Page");
   const [path, setPath] = useState("/example-path");
+  const [templateKey, setTemplateKey] = useState(BLANK_TEMPLATE);
   const [localError, setLocalError] = useState<string | null>(null);
   const [prevOpen, setPrevOpen] = useState(open);
 
@@ -34,9 +47,12 @@ export function CreatePageModal({
     if (open) {
       setName("My New Page");
       setPath("/example-path");
+      setTemplateKey(BLANK_TEMPLATE);
       setLocalError(null);
     }
   }
+
+  const showTemplates = !!templates?.length;
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && !isPending) {
@@ -56,7 +72,12 @@ export function CreatePageModal({
       return;
     }
     setLocalError(null);
-    await onSubmit({ name: trimmedName, path: trimmedPath });
+    await onSubmit({
+      name: trimmedName,
+      path: trimmedPath,
+      templateKey:
+        showTemplates && templateKey !== BLANK_TEMPLATE ? templateKey : null,
+    });
   };
 
   const displayError = localError ?? error;
@@ -101,6 +122,23 @@ export function CreatePageModal({
                 disabled={isPending}
               />
             </div>
+            {showTemplates && (
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="new-page-template"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Template
+                </label>
+                <PageTemplateSelect
+                  id="new-page-template"
+                  value={templateKey}
+                  onChange={setTemplateKey}
+                  templates={templates ?? []}
+                  disabled={isPending}
+                />
+              </div>
+            )}
             {displayError && (
               <p className="text-xs text-destructive">{displayError}</p>
             )}

@@ -10,6 +10,11 @@ import {
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { validatePagePath } from "@/web/components/sections-editor/page-path-utils";
+import {
+  BLANK_TEMPLATE,
+  PageTemplateSelect,
+} from "@/web/components/sections-editor/page-template-select";
+import type { PageEntry } from "@/web/components/sections-editor/page-list";
 
 export type PageFormMode = "create" | "duplicate" | "rename";
 
@@ -39,6 +44,12 @@ export function PageFormDialog({
   isPending = false,
   error,
   /**
+   * Existing pages offered as content templates in "create" mode. Picking
+   * one clones its content; only the name and path come from the form.
+   * Ignored for other modes.
+   */
+  templates,
+  /**
    * Returns a validation error to display (e.g. "path already in use"),
    * or null when the values pass. Called on submit; lets the host
    * de-dupe against the latest decofile snapshot.
@@ -53,12 +64,18 @@ export function PageFormDialog({
   initialPath: string;
   isPending?: boolean;
   error?: string;
+  templates?: PageEntry[];
   validate?: (values: { name: string; path: string }) => string | null;
-  onSubmit: (values: { name: string; path: string }) => void | Promise<void>;
+  onSubmit: (values: {
+    name: string;
+    path: string;
+    templateKey: string | null;
+  }) => void | Promise<void>;
   onOpenChange: (open: boolean) => void;
 }) {
   const [name, setName] = useState(initialName);
   const [path, setPath] = useState(initialPath);
+  const [templateKey, setTemplateKey] = useState(BLANK_TEMPLATE);
   const [localError, setLocalError] = useState<string | null>(null);
   const [prevOpen, setPrevOpen] = useState(open);
 
@@ -67,9 +84,12 @@ export function PageFormDialog({
     if (open) {
       setName(initialName);
       setPath(initialPath);
+      setTemplateKey(BLANK_TEMPLATE);
       setLocalError(null);
     }
   }
+
+  const showTemplates = mode === "create" && !!templates?.length;
 
   const handleOpenChange = (next: boolean) => {
     if (!next && !isPending) {
@@ -94,7 +114,12 @@ export function PageFormDialog({
       return;
     }
     setLocalError(null);
-    await onSubmit({ name: trimmedName, path: trimmedPath });
+    await onSubmit({
+      name: trimmedName,
+      path: trimmedPath,
+      templateKey:
+        showTemplates && templateKey !== BLANK_TEMPLATE ? templateKey : null,
+    });
   };
 
   const displayError = localError ?? error;
@@ -108,6 +133,23 @@ export function PageFormDialog({
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {showTemplates && (
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="page-form-template"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Template
+                </label>
+                <PageTemplateSelect
+                  id="page-form-template"
+                  value={templateKey}
+                  onChange={setTemplateKey}
+                  templates={templates ?? []}
+                  disabled={isPending}
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
               <label
                 htmlFor="page-form-name"
