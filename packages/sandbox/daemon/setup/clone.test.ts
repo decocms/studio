@@ -282,6 +282,16 @@ describe("spawnClone", () => {
     }
   }, 30_000);
 
+  it("rejects a relative repoDir instead of cloning into it", async () => {
+    const chunks: string[] = [];
+    const { code } = await spawnClone({
+      config: makeConfig("relative/workspace", "file:///irrelevant.git"),
+      onChunk: (_source, data) => chunks.push(data),
+    });
+    expect(code).toBe(1);
+    expect(chunks.join("")).toContain("not an absolute path");
+  });
+
   it("fails with a non-zero exit when ls-remote cannot reach the remote", async () => {
     const { root, cleanup } = setupBareRepo();
     try {
