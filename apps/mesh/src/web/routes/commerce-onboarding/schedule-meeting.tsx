@@ -17,15 +17,23 @@ const HEADLINE = "Precisa de ajuda? Fale conosco";
 const BODY =
   "Agende uma chamada de 20 minutos e rodamos o diagnóstico com você, ao vivo.";
 
-/**
- * The deco commerce specialist who runs these live diagnostics — a real face
- * makes the "book a call" feel like a call, not an abstraction. Swap `name`/
- * `role` to whoever staffs the calendar.
- */
-const HOST = {
-  photo:
-    "https://decoims.com/image?src=decocms%2Fb07a1c19-0cd6-49c8-b326-86055ee78605%2Fauthor-1763423987973-baby.jpeg&quality=original&fit=cover&width=200&height=200",
-} as const;
+const TEAM = [
+  {
+    photo:
+      "https://decoims.com/image?src=decocms%2Fb07a1c19-0cd6-49c8-b326-86055ee78605%2Fauthor-1763423987973-baby.jpeg&quality=original&fit=cover&width=200&height=200",
+    alt: "Especialista da deco",
+  },
+  {
+    photo:
+      "https://decoims.com/decocms/07c2daf4-a3c2-485e-a1a8-341585a06e3b/cecilia.png",
+    alt: "Especialista da deco",
+  },
+  {
+    photo:
+      "https://decoims.com/decocms/48013ca2-3277-464b-b0f1-dd5f1f08d986/tavano.png",
+    alt: "Especialista da deco",
+  },
+] as const;
 
 const GREEN_DARK = "var(--brand-green-dark)";
 
@@ -85,30 +93,40 @@ function ScheduleMeetingCta({
   );
 }
 
-/**
- * The host's face with a single live-availability dot (DS success green), tucked
- * against the avatar's lower-right edge. Sits overlapping the card's green header
- * band, so the brand colour comes from the solid band, not the avatar.
- */
-function HostAvatar({ size = 72 }: { size?: number }) {
+function TeamAvatars({ size = 72 }: { size?: number }) {
+  const overlap = Math.round(size * 0.3);
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <div className="h-full w-full overflow-hidden rounded-full border-4 border-card bg-muted">
-        <img
-          src={HOST.photo}
-          alt="Especialista da deco"
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
-      </div>
-      {/* availability dot — hugs the avatar edge, DS success colour */}
-      <span className="absolute bottom-1.5 right-1.5 flex h-3.5 w-3.5">
-        <span
-          className="absolute inline-flex h-full w-full rounded-full bg-success opacity-60 motion-safe:animate-ping"
-          aria-hidden
-        />
-        <span className="relative inline-flex h-3.5 w-3.5 rounded-full border-2 border-card bg-success" />
-      </span>
+    <div className="flex items-end" style={{ height: size }}>
+      {TEAM.map((member, i) => (
+        <div
+          key={member.photo}
+          className="relative shrink-0"
+          style={{
+            width: size,
+            height: size,
+            marginLeft: i === 0 ? 0 : -overlap,
+            zIndex: TEAM.length - i,
+          }}
+        >
+          <div className="h-full w-full overflow-hidden rounded-full border-4 border-card bg-muted">
+            <img
+              src={member.photo}
+              alt={member.alt}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          </div>
+          {i === 0 && (
+            <span className="absolute bottom-1.5 right-1.5 flex h-3.5 w-3.5">
+              <span
+                className="absolute inline-flex h-full w-full rounded-full bg-success opacity-60 motion-safe:animate-ping"
+                aria-hidden
+              />
+              <span className="relative inline-flex h-3.5 w-3.5 rounded-full border-2 border-card bg-success" />
+            </span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -138,9 +156,9 @@ export function ScheduleMeetingVisual({
         <div className="h-20" style={{ backgroundColor: GREEN_DARK }} />
 
         <div className="px-8 pb-8">
-          {/* Face overlaps the band */}
+          {/* Team overlaps the band */}
           <div className="-mt-9 mb-4">
-            <HostAvatar />
+            <TeamAvatars />
           </div>
 
           <div className="grid gap-1.5">
@@ -192,21 +210,28 @@ export function ScheduleMeetingBanner({
         className,
       )}
     >
-      <span className="relative shrink-0">
-        <span
-          className="block h-11 w-11 overflow-hidden rounded-full"
-          style={{ boxShadow: `0 0 0 2px ${GREEN_DARK}` }}
-        >
-          <img
-            src={HOST.photo}
-            alt="Especialista da deco"
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-        </span>
+      <span
+        className="relative flex shrink-0 items-center"
+        style={{ height: 44, width: 44 + 2 * Math.round(44 * 0.7) }}
+      >
+        {TEAM.map((member, i) => (
+          <span
+            key={member.photo}
+            className="absolute block h-11 w-11 overflow-hidden rounded-full border-2 border-card"
+            style={{ left: i * Math.round(44 * 0.7), zIndex: TEAM.length - i }}
+          >
+            <img
+              src={member.photo}
+              alt={member.alt}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          </span>
+        ))}
         <span
           className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-card bg-success"
           aria-hidden
+          style={{ zIndex: TEAM.length + 1 }}
         />
       </span>
       {/* Mobile-only banner: headline over two lines, no description (the
