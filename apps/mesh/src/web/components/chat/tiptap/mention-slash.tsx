@@ -175,7 +175,7 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
   const promptsQueryKey = KEYS.virtualMcpPrompts(virtualMcpId, org.id);
   const resourcesQueryKey = KEYS.virtualMcpResources(virtualMcpId, org.id);
   // Skill catalog is org-scoped (not per-MCP): home + public sets.
-  const skillsQueryKey = ["slash-skills", org.id] as const;
+  const skillsQueryKey = KEYS.slashSkills(org.id);
   // Combined key for the suggestion dropdown
   const queryKey = [
     "slash-mention",
