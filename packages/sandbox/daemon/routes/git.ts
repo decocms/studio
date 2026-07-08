@@ -16,6 +16,7 @@ import {
 import { safePath } from "../paths";
 import type { OperatorIdentity } from "../types";
 import { git } from "../setup/git";
+import { gitAsync } from "../git/git-async";
 import { jsonResponse, parseJsonBody } from "./body-parser";
 
 export interface GitDeps {
@@ -60,11 +61,50 @@ function tryGit(repoDir: string, args: string[]): string | null {
   }
 }
 
+// Async twins of runGit/tryGit for the git/diff hot path. The expensive steps
+// there — network `git fetch` and reading large blobs via `git show` — must not
+// block the daemon's single event loop (see git-async.ts). Cheap metadata
+// probes (rev-parse, merge-base) stay synchronous; they return in single-digit
+// ms and converting them buys nothing.
+async function runGitAsync(
+  repoDir: string,
+  args: string[],
+  opts?: { env?: Record<string, string> },
+): Promise<string> {
+  return gitAsync(["-c", "safe.directory=*", ...args], {
+    cwd: repoDir,
+    env: { ...gitEnv(repoDir), ...opts?.env },
+  });
+}
+
+async function tryGitAsync(
+  repoDir: string,
+  args: string[],
+): Promise<string | null> {
+  try {
+    return await runGitAsync(repoDir, args);
+  } catch {
+    return null;
+  }
+}
+
 // repoDir is pre-created empty on boot; the clone only runs after config
 // arrives. Status/diff probes that race the clone would otherwise exit 128
 // ("not a git repository") and surface as a 500.
 function isGitRepo(repoDir: string): boolean {
   return tryGit(repoDir, ["rev-parse", "--git-dir"]) !== null;
+}
+
+/**
+ * Uniform 409 for mutating/reading git endpoints invoked before (or racing) the
+ * clone. Without it the raw `git ... rev-parse` 128 ("not a git repository")
+ * leaks to the client as a scary 500. `notReady` lets the UI retry.
+ */
+function repoNotReadyResponse(): Response {
+  return jsonResponse(
+    { error: "repository not initialized", notReady: true },
+    409,
+  );
 }
 
 export interface GitStatusFile {
@@ -187,15 +227,6 @@ function computeStatus(repoDir: string): GitStatusResult {
   return { ...working, ...divergence };
 }
 
-function readWorkingFile(repoDir: string, filePath: string): string | null {
-  const abs = path.join(repoDir, filePath);
-  try {
-    return fs.readFileSync(abs, "utf8");
-  } catch {
-    return null;
-  }
-}
-
 function readRefFile(
   repoDir: string,
   ref: string,
@@ -204,39 +235,63 @@ function readRefFile(
   return tryGit(repoDir, ["show", `${ref}:${filePath}`]);
 }
 
-function computeDiff(repoDir: string): GitDiffResult {
+async function readWorkingFileAsync(
+  repoDir: string,
+  filePath: string,
+): Promise<string | null> {
+  try {
+    return await fs.promises.readFile(path.join(repoDir, filePath), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+async function readRefFileAsync(
+  repoDir: string,
+  ref: string,
+  filePath: string,
+): Promise<string | null> {
+  return tryGitAsync(repoDir, ["show", `${ref}:${filePath}`]);
+}
+
+async function computeDiff(repoDir: string): Promise<GitDiffResult> {
   const status = computeWorkingTreeStatus(repoDir);
   const paths = [
     ...new Set(status.files.map((f) => f.path).filter((p) => p.length > 0)),
   ];
 
   const diffs: Record<string, GitDiffEntry> = {};
-  for (const filePath of paths) {
-    const file = status.files.find((f) => f.path === filePath);
-    const index = file?.index ?? " ";
-    const working = file?.working_dir ?? " ";
-    const isDeleted = index === "D" || working === "D";
-    const isNew =
-      (index === "?" && working === "?") ||
-      index === "A" ||
-      working === "A" ||
-      (!readRefFile(repoDir, "HEAD", filePath) && !isDeleted);
+  // Read every file's before/after off the event loop and in parallel — the
+  // per-file `git show` + working-tree read is what dominates a big diff.
+  await Promise.all(
+    paths.map(async (filePath) => {
+      const file = status.files.find((f) => f.path === filePath);
+      const index = file?.index ?? " ";
+      const working = file?.working_dir ?? " ";
+      const isDeleted = index === "D" || working === "D";
+      const head = await readRefFileAsync(repoDir, "HEAD", filePath);
+      const isNew =
+        (index === "?" && working === "?") ||
+        index === "A" ||
+        working === "A" ||
+        (!head && !isDeleted);
 
-    diffs[filePath] = {
-      from: isNew ? null : readRefFile(repoDir, "HEAD", filePath),
-      to: isDeleted ? null : readWorkingFile(repoDir, filePath),
-    };
-  }
+      diffs[filePath] = {
+        from: isNew ? null : head,
+        to: isDeleted ? null : await readWorkingFileAsync(repoDir, filePath),
+      };
+    }),
+  );
 
   return { diffs };
 }
 
 /** Committed changes on HEAD since branching from `origin/{base}` (PR scope). */
-export function computeDiffAgainstBase(
+export async function computeDiffAgainstBase(
   repoDir: string,
   base: string,
   headSha?: string,
-): GitDiffResult {
+): Promise<GitDiffResult> {
   assertValidRemoteBranchName(base);
 
   const branch = tryGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
@@ -246,13 +301,22 @@ export function computeDiffAgainstBase(
   assertValidRemoteBranchName(branch);
 
   // Shallow clones often miss one side of the fork — fetch both tips with depth.
+  // This is a NETWORK call and by far the slowest step; keep it async so a slow
+  // fetch never freezes the daemon (and trips crash detection).
   try {
-    runGit(repoDir, ["fetch", "--depth", "100", "origin", base, branch]);
+    await runGitAsync(repoDir, [
+      "fetch",
+      "--depth",
+      "100",
+      "origin",
+      base,
+      branch,
+    ]);
   } catch {
     // Local-only fixtures / offline sandboxes may already have the refs we need.
   }
   if (headSha && /^[0-9a-f]{40}$/i.test(headSha)) {
-    tryGit(repoDir, ["fetch", "--depth", "100", "origin", headSha]);
+    await tryGitAsync(repoDir, ["fetch", "--depth", "100", "origin", headSha]);
   }
 
   const upstream = `origin/${base}`;
@@ -275,7 +339,14 @@ export function computeDiffAgainstBase(
 
   if (paths.length === 0) {
     try {
-      runGit(repoDir, ["fetch", "--deepen", "500", "origin", base, branch]);
+      await runGitAsync(repoDir, [
+        "fetch",
+        "--deepen",
+        "500",
+        "origin",
+        base,
+        branch,
+      ]);
     } catch {
       /* see fetch note above */
     }
@@ -286,12 +357,16 @@ export function computeDiffAgainstBase(
     tryGit(repoDir, ["merge-base", upstream, headRef]) ?? upstream;
 
   const diffs: Record<string, GitDiffEntry> = {};
-  for (const filePath of paths) {
-    diffs[filePath] = {
-      from: readRefFile(repoDir, mergeBase, filePath),
-      to: readRefFile(repoDir, headRef, filePath),
-    };
-  }
+  // Read both sides of every changed file off the event loop, in parallel.
+  await Promise.all(
+    paths.map(async (filePath) => {
+      const [from, to] = await Promise.all([
+        readRefFileAsync(repoDir, mergeBase, filePath),
+        readRefFileAsync(repoDir, headRef, filePath),
+      ]);
+      diffs[filePath] = { from, to };
+    }),
+  );
 
   return { diffs, mergeBaseSha: mergeBase.trim() };
 }
@@ -466,10 +541,7 @@ function discard(deps: GitDeps, filepaths: string[]): void {
 export function makeGitStatusHandler(deps: GitDeps) {
   return async (_req: Request): Promise<Response> => {
     if (!isGitRepo(deps.repoDir)) {
-      return jsonResponse(
-        { error: "repository not initialized", notReady: true },
-        409,
-      );
+      return repoNotReadyResponse();
     }
     try {
       return jsonResponse(computeStatus(deps.repoDir));
@@ -485,10 +557,7 @@ export function makeGitStatusHandler(deps: GitDeps) {
 export function makeGitDiffHandler(deps: GitDeps) {
   return async (req: Request): Promise<Response> => {
     if (!isGitRepo(deps.repoDir)) {
-      return jsonResponse(
-        { error: "repository not initialized", notReady: true },
-        409,
-      );
+      return repoNotReadyResponse();
     }
     try {
       let base: string | undefined;
@@ -510,8 +579,8 @@ export function makeGitDiffHandler(deps: GitDeps) {
       }
 
       const result = base
-        ? computeDiffAgainstBase(deps.repoDir, base, headSha)
-        : computeDiff(deps.repoDir);
+        ? await computeDiffAgainstBase(deps.repoDir, base, headSha)
+        : await computeDiff(deps.repoDir);
       return jsonResponse(result);
     } catch (err) {
       if (err instanceof InvalidRemoteBranchNameError) {
@@ -527,6 +596,9 @@ export function makeGitDiffHandler(deps: GitDeps) {
 
 export function makeGitPublishHandler(deps: GitDeps) {
   return async (req: Request): Promise<Response> => {
+    if (!isGitRepo(deps.repoDir)) {
+      return repoNotReadyResponse();
+    }
     let body: { message?: string };
     try {
       body = (await parseJsonBody(req)) as { message?: string };
@@ -545,6 +617,9 @@ export function makeGitPublishHandler(deps: GitDeps) {
 
 export function makeGitDiscardHandler(deps: GitDeps) {
   return async (req: Request): Promise<Response> => {
+    if (!isGitRepo(deps.repoDir)) {
+      return repoNotReadyResponse();
+    }
     let body: { filepaths?: string[] };
     try {
       body = (await parseJsonBody(req)) as { filepaths?: string[] };
@@ -569,6 +644,9 @@ export function makeGitDiscardHandler(deps: GitDeps) {
 
 export function makeGitRebaseHandler(deps: GitDeps) {
   return async (req: Request): Promise<Response> => {
+    if (!isGitRepo(deps.repoDir)) {
+      return repoNotReadyResponse();
+    }
     let body: { base?: string };
     try {
       body = (await parseJsonBody(req)) as { base?: string };

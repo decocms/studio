@@ -2,12 +2,18 @@ import { KEYS } from "@/web/lib/query-keys";
 import { callRegistryTool } from "@/web/utils/registry-utils";
 import { useMCPClient, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useQuery,
+  useSuspenseQueries,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
+import { PROVIDER_BY_BINDING_TYPE } from "./companion-forms/sa-binding-copy.ts";
 import { COMMERCE_COMPANION_MCPS } from "./companions.ts";
 import {
   buildCompanionCards,
   buildRegistryWhere,
   parseBindingRequirements,
+  type SaBindings,
   unwrapToolResult,
   type CandidateConnection,
   type CompanionCardModel,
@@ -25,14 +31,27 @@ type ConnectionWhereCondition = {
   value: string[];
 };
 
+interface ConnectionStatusResult {
+  providers?: Record<
+    string,
+    {
+      connected?: boolean;
+      via?: "oauth" | "sa" | null;
+      resource?: string | null;
+    }
+  >;
+}
+
 export function useCommerceCompanions({
   selfClient,
   org,
   cdConnectionId,
+  siteUrl,
 }: {
   selfClient: Client;
   org: CompanionOrg;
   cdConnectionId: string;
+  siteUrl?: string;
 }): { cards: CompanionCardModel[] } {
   // 1) CD's live config schema (on the CD connection's OWN client).
   const cdClient = useMCPClient({
@@ -214,6 +233,29 @@ export function useCommerceCompanions({
     if (item.server?.name) itemsByName[item.server.name] = item;
   }
 
+  // Shared-SA connection status from commerce-discovery — the source of truth
+  // for the SA lane (OAuth is judged locally, above). Non-suspense + soft: while
+  // it loads, or when there's no siteUrl yet, SA-bound cards simply read as not
+  // connected until it resolves. A binding write invalidates this key.
+  const statusQuery = useQuery({
+    queryKey: KEYS.commerceDiscoveryConnectionStatus(org.id, siteUrl ?? ""),
+    enabled: !!siteUrl,
+    queryFn: async () => {
+      const result = await selfClient.callTool({
+        name: "COMMERCE_DISCOVERY_CONNECTION_STATUS",
+        arguments: { siteUrl },
+      });
+      return unwrapToolResult<ConnectionStatusResult>(result);
+    },
+  });
+  const saBindings: SaBindings = {};
+  for (const [bindingType, code] of Object.entries(PROVIDER_BY_BINDING_TYPE)) {
+    const p = statusQuery.data?.providers?.[code];
+    if (p?.connected && p.via === "sa") {
+      saBindings[bindingType] = { resource: p.resource ?? null };
+    }
+  }
+
   const cards = buildCompanionCards({
     requirements,
     itemsById,
@@ -222,6 +264,7 @@ export function useCommerceCompanions({
     connectionReadiness,
     configurationState,
     curated: COMMERCE_COMPANION_MCPS,
+    saBindings,
   });
 
   return { cards };

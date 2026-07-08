@@ -668,9 +668,11 @@ export function PreviewContent() {
   const handleCreatePage = async ({
     name,
     path,
+    templateKey,
   }: {
     name: string;
     path: string;
+    templateKey: string | null;
   }) => {
     if (!virtualMcpId || !branch) return;
     const pathError = validatePagePath(path);
@@ -685,11 +687,20 @@ export function PreviewContent() {
       setCreatePageError(`A page with path "${trimmedPath}" already exists.`);
       return;
     }
+    let template: Record<string, unknown> | undefined;
+    if (templateKey) {
+      template = decofile?.[templateKey] as Record<string, unknown> | undefined;
+      if (!template) {
+        setCreatePageError("Selected template no longer exists.");
+        return;
+      }
+    }
     setCreatePageError(undefined);
     try {
       const result = await createPage.mutateAsync({
         name,
         path: trimmedPath,
+        template,
       });
       setCreatePageDialogOpen(false);
       toast.success(`Page "${name}" created`);
@@ -1321,6 +1332,7 @@ export function PreviewContent() {
         onOpenChange={setCreatePageDialogOpen}
         isPending={createPage.isPending}
         error={createPageError}
+        templates={pages}
         onSubmit={handleCreatePage}
       />
 

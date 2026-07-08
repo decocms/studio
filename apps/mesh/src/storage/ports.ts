@@ -40,6 +40,10 @@ export type ThreadUpdateData = Partial<Thread> & {
    * active.
    */
   last_progress_at?: string | null;
+  /** Human-readable reason a run ended in "failed" (e.g. a stall). */
+  failure_reason?: string | null;
+  /** Coarse failure category (e.g. "stall"). */
+  failure_kind?: string | null;
 };
 
 export interface ThreadStoragePort {

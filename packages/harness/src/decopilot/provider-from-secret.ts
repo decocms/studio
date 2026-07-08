@@ -114,14 +114,20 @@ export function createProviderFromSecret(
       );
     }
 
+    case "llmapi":
     case "openai-compatible": {
+      // llmapi is a fixed-endpoint OpenAI-compatible gateway; openai-compatible
+      // is user-configured. Both route languageModel() through chat completions.
       let normalizedBaseUrl = (baseUrl ?? "").replace(/\/+$/, "");
+      if (providerId === "llmapi" && !normalizedBaseUrl) {
+        normalizedBaseUrl = "https://api.llmapi.ai/v1";
+      }
       if (normalizedBaseUrl && !normalizedBaseUrl.endsWith("/v1")) {
         normalizedBaseUrl += "/v1";
       }
       const openai = createOpenAI({
         apiKey: apiKey || "not-needed",
-        name: "openai-compatible",
+        name: providerId,
         ...(normalizedBaseUrl ? { baseURL: normalizedBaseUrl } : {}),
         ...(extraHeaders ? { headers: extraHeaders } : {}),
       });
@@ -137,7 +143,7 @@ export function createProviderFromSecret(
     default:
       throw new Error(
         `decopilot: unsupported modelSource.providerId '${providerId}'. ` +
-          "Supported: anthropic, google, openrouter, deco, openai-compatible.",
+          "Supported: anthropic, google, openrouter, deco, openai-compatible, llmapi.",
       );
   }
 }

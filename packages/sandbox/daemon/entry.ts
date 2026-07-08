@@ -277,6 +277,11 @@ const lastProbe = startUpstreamProbe({
         htmlSupport: s.htmlSupport,
       });
       if (wasDown) broadcaster.emit("reload", {});
+      // Dev server is confirmed healthy — safe to publish this boot's fresh
+      // install as the golden node_modules (no-op unless one is pending). Only
+      // publishing from a boot that actually came up keeps a broken install
+      // from becoming a sticky, reused golden. Best-effort, fire-and-forget.
+      if (wasDown) void orchestrator.publishPendingGolden();
       if (!baselineTimer) {
         baselineTimer = setTimeout(() => {
           baselineTimer = null;

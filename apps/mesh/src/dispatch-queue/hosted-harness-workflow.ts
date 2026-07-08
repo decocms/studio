@@ -84,13 +84,6 @@ export interface HostedHarnessInput {
   threadId: string;
   /** Dispatch input minus the non-serializable abort signal. */
   request: SerializableDispatchRunInput;
-  /**
-   * Optional per-run timeout (ms). When set, the run aborts after this
-   * duration. Automations pass an explicit value; user messages leave it unset
-   * (tool-using agent loops routinely outlast any fixed cap). Falls back to the
-   * runtime's `runTimeoutMs` when omitted.
-   */
-  timeoutMs?: number;
 }
 
 export interface HostedHarnessRuntime {
@@ -102,12 +95,6 @@ export interface HostedHarnessRuntime {
     DispatchRunDeps,
     "runRegistry" | "cancelBroadcast" | "streamBuffer" | "sseHub"
   >;
-  /**
-   * Default per-run timeout (ms). Overridable per-call via
-   * `HostedHarnessInput.timeoutMs`. When neither is set, no abort timer is
-   * installed.
-   */
-  runTimeoutMs?: number;
 }
 
 let runtime: HostedHarnessRuntime | null = null;
@@ -164,27 +151,17 @@ async function runHostedHarness(
     meshCtx.metadata.runMetadata = request.runMetadata;
   }
 
-  // Abort timer is opt-in. Automations supply a cap so a runaway cron can't
-  // pin a thread slot forever; user messages leave it unset because tool-using
-  // agent loops (Claude Code, deep research, multi-step assistants) routinely
-  // outlast any fixed cap, and were not bounded by the legacy fire-and-forget
-  // HTTP path.
-  const timeoutMs = input.timeoutMs ?? rt.runTimeoutMs;
+  // No wall-clock cap: a hosted run lives as long as it makes progress. The
+  // RunRegistry idle reaper aborts + fails a run that goes RUN_IDLE_TIMEOUT_MS
+  // with no progress (see run-registry.ts). The AbortController is retained for
+  // explicit cancellation and the reaper's force-fail.
   const abortController = new AbortController();
-  const timeoutHandle =
-    timeoutMs != null
-      ? setTimeout(() => abortController.abort(), timeoutMs)
-      : null;
 
-  try {
-    await rt.dispatchRunFn(
-      { ...request, abortSignal: abortController.signal },
-      meshCtx,
-      rt.deps,
-    );
-  } finally {
-    if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-  }
+  await rt.dispatchRunFn(
+    { ...request, abortSignal: abortController.signal },
+    meshCtx,
+    rt.deps,
+  );
 }
 
 async function hostedHarnessWorkflowFn(

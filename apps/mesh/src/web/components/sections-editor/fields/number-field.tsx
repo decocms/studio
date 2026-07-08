@@ -1,7 +1,19 @@
+import { useState } from "react";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import type { FieldProps } from "./field-props";
 
+/** Intermediate numeric strings the user can be mid-typing: "", "-", "+", ".", "0.", "1e-", "1e+5". */
+const PARTIAL_NUMBER = /^[+-]?\d*\.?\d*(?:[eE][+-]?\d*)?$/;
+
+/**
+ * Number input that keeps the raw typed string in local state instead of
+ * reflecting the parsed number back into the field. A controlled `type="number"`
+ * bound to `Number(value)` collapses transient states like "0." to "0" on every
+ * keystroke, so a leading decimal ("0.4") can never be typed left-to-right. We
+ * hold the raw text, parse it for the model, and only re-adopt the external
+ * value when it changes to a genuinely different number (e.g. switching variants).
+ */
 export function NumberField({
   schema,
   value,
@@ -9,7 +21,18 @@ export function NumberField({
   path,
   label,
 }: FieldProps) {
-  const numValue = typeof value === "number" ? value : "";
+  const externalStr = typeof value === "number" ? String(value) : "";
+  const [raw, setRaw] = useState(externalStr);
+  const [prevExternal, setPrevExternal] = useState(externalStr);
+
+  if (externalStr !== prevExternal) {
+    setPrevExternal(externalStr);
+    // Don't clobber an in-progress edit ("0.") that already parses to the
+    // incoming value; only adopt a truly different external number.
+    const sameNumber =
+      raw !== "" && externalStr !== "" && Number(raw) === Number(externalStr);
+    if (!sameNumber) setRaw(externalStr);
+  }
 
   return (
     <div className="space-y-2">
@@ -23,11 +46,15 @@ export function NumberField({
       </div>
       <Input
         id={path}
-        type="number"
-        value={numValue}
+        type="text"
+        inputMode={schema.type === "integer" ? "numeric" : "decimal"}
+        value={raw}
         onChange={(e) => {
-          const v = e.target.value;
-          onChange(v === "" ? undefined : Number(v));
+          const next = e.target.value;
+          if (next !== "" && !PARTIAL_NUMBER.test(next)) return;
+          setRaw(next);
+          const parsed = Number(next);
+          onChange(next === "" || Number.isNaN(parsed) ? undefined : parsed);
         }}
         className="h-10"
       />

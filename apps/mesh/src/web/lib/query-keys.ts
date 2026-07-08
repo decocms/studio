@@ -80,6 +80,10 @@ export const KEYS = {
     ] as const,
   commerceDiscoveryCompanionGscSites: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "companion-gsc-sites", orgId, connectionId] as const,
+  // Per-(org, siteUrl) connection status from commerce-discovery — the single
+  // source of truth for "Conectado" across both lanes (OAuth + shared-SA).
+  commerceDiscoveryConnectionStatus: (orgId: string, siteUrl: string) =>
+    ["commerce-discovery", "connection-status", orgId, siteUrl] as const,
 
   connectionActivity: (
     connectionId: string,
@@ -379,13 +383,29 @@ export const KEYS = {
   // volume named like the segment can never collide; mutations invalidate it
   // explicitly alongside the volume prefix.
   orgFsRecent: (orgId: string) => ["org-fs-recent", orgId] as const,
+  // Cross-volume path search (Library search box). The root key is the
+  // prefix mutations invalidate; per-query keys nest under it.
+  orgFsSearchRoot: (orgId: string) => ["org-fs-search", orgId] as const,
+  orgFsSearch: (orgId: string, query: string) =>
+    ["org-fs-search", orgId, query] as const,
   // Skill folders (dirs with SKILL.md) across home + public sets — the
   // attachable-skill set for agent knowledge.
   orgFsSkills: (orgId: string) => ["org-fs-skills", orgId] as const,
 
   // File picker — objects listed from a configured bucket
-  filePickerObjects: (orgId: string, configId: string | null) =>
-    ["file-picker-objects", orgId, configId] as const,
+  filePickerObjects: (
+    orgId: string,
+    configId: string | null,
+    search?: string,
+    imageOnly?: boolean,
+  ) =>
+    [
+      "file-picker-objects",
+      orgId,
+      configId,
+      search ?? "",
+      imageOnly ?? false,
+    ] as const,
 
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>

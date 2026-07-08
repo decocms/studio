@@ -115,6 +115,7 @@ const THOUGHT_SIGNATURE_ID_PROVIDERS = new Set<string>([
   "openai-compatible",
   "openrouter",
   "deco",
+  "llmapi",
 ]);
 
 /**

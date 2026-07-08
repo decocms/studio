@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SandboxProvider } from "./types";
-import { createSandboxFsHooks } from "./sandbox-fs-hooks";
+import { createSandboxFsHooks, opDeadlineMs } from "./sandbox-fs-hooks";
 
 /**
  * A minimal fake `SandboxProvider` that only implements `proxyDaemonRequest`
@@ -130,6 +130,77 @@ describe("createSandboxFsHooks", () => {
       { file: "a.ts", line: 3, text: "hello" },
       { file: "b.ts", line: 7, text: "hello" },
     ]);
+  });
+
+  test("a daemon op that never responds fails at the op deadline — without reaping the sandbox", async () => {
+    // The silent-hang regression: a wedged daemon (stalled org-fs mount) left
+    // the harness awaiting forever with no chunks, so the 10-min liveness
+    // reaper killed an otherwise healthy run. The op deadline converts the
+    // wedge into a tool error the model can react to. It must NOT be treated
+    // as daemon-unreachable — that path reaps + re-provisions the sandbox.
+    let invalidated = 0;
+    const provider = {
+      kind: "agent-sandbox",
+      proxyDaemonRequest: () => new Promise<Response>(() => {}), // never settles
+    } as unknown as SandboxProvider;
+    const hooks = createSandboxFsHooks(provider, {
+      ensureHandle: async () => "h",
+      invalidateHandle: async () => {
+        invalidated++;
+      },
+      canAutoRestart: true,
+      opTimeoutMs: 30,
+    });
+    await expect(hooks.onRead("/app/x.ts")).rejects.toThrow(/timed out after/);
+    expect(invalidated).toBe(0);
+  });
+
+  test("op deadline follows the op's own budget: 45s default, budget+grace, clamped at the daemon cap", () => {
+    // No budget (read/write/edit/grep/glob): daemon default 30s + 15s grace.
+    expect(opDeadlineMs({ path: "/x" })).toBe(45_000);
+    // Bash with an explicit budget: budget + grace.
+    expect(opDeadlineMs({ command: "x", timeout: 60_000 })).toBe(75_000);
+    // Budget above the daemon's 120s clamp doesn't inflate the deadline; the
+    // deadline stays ABOVE the cap so a command the daemon kills at 120s still
+    // delivers its stdout/stderr instead of losing the race to the client abort.
+    expect(opDeadlineMs({ command: "x", timeout: 999_000 })).toBe(135_000);
+  });
+
+  test("cancelling the run aborts the in-flight op — no timeout wait, no restart retry", async () => {
+    let invalidated = 0;
+    let sawSignal: AbortSignal | undefined;
+    const provider = {
+      kind: "agent-sandbox",
+      proxyDaemonRequest: (
+        _handle: string,
+        _path: string,
+        init: { signal?: AbortSignal },
+      ) => {
+        sawSignal = init.signal;
+        return new Promise<Response>(() => {}); // never settles on its own
+      },
+    } as unknown as SandboxProvider;
+    const hooks = createSandboxFsHooks(provider, {
+      ensureHandle: async () => "h",
+      invalidateHandle: async () => {
+        invalidated++;
+      },
+      canAutoRestart: true,
+      opTimeoutMs: 60_000,
+    });
+    const runAbort = new AbortController();
+    const pending = hooks.onProxy(
+      "/_sandbox/bash",
+      { command: "sleep 999" },
+      "POST",
+      runAbort.signal,
+    );
+    runAbort.abort(new Error("run cancelled"));
+    await expect(pending).rejects.toThrow("run cancelled");
+    expect(invalidated).toBe(0);
+    // The composed signal reaches the transport so honoring providers can
+    // tear down the underlying request too.
+    expect(sawSignal?.aborted).toBe(true);
   });
 
   test("retries once on daemon-unreachable when canAutoRestart is true", async () => {

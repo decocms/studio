@@ -1,5 +1,3 @@
-import type { BranchMeta } from "@decocms/sandbox/shared";
-
 export interface GitStatusFile {
   path: string;
   index: string;
@@ -130,18 +128,43 @@ export async function fetchGitDiff(
   return parseJson<GitDiffResult>(res);
 }
 
+/**
+ * Drop auto-generated files (Tailwind CSS output, `blocks.gen.json`) from a
+ * diff before sending it to `suggest-commit`. Their full-content `from`/`to`
+ * bodies can be megabytes on their own and blew past the endpoint's 512KB body
+ * limit (413). They carry no signal for an LLM commit message either — the
+ * server backfills the diff from the daemon when the client omits it, so a
+ * fully-stripped diff still yields a suggestion.
+ */
+export function stripGeneratedFilesFromDiff(
+  diff: GitDiffResult,
+): GitDiffResult {
+  const diffs: Record<string, GitDiffEntry> = {};
+  for (const [path, entry] of Object.entries(diff.diffs)) {
+    if (isBlocksGenJsonPath(path) || isTailwindCssPath(path)) continue;
+    diffs[path] = entry;
+  }
+  return { ...diff, diffs };
+}
+
 export async function fetchSuggestCommitMessage(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
   payload?: { status: GitStatus; diff: GitDiffResult },
 ): Promise<CommitSuggestion> {
+  const body = payload
+    ? {
+        status: payload.status,
+        diff: stripGeneratedFilesFromDiff(payload.diff),
+      }
+    : {};
   const res = await sandboxFetch(
     buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "suggest-commit"),
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload ?? {}),
+      body: JSON.stringify(body),
     },
   );
   return parseJson<CommitSuggestion>(res);
@@ -296,68 +319,4 @@ export function hasUnpublishedWork(
     hasLocalWorkToPush(status) ||
     (diff != null && Object.keys(diff.diffs).length > 0)
   );
-}
-
-/**
- * Merge live `/git/status` into SSE `BranchMeta`. The status endpoint is
- * always fresh; branch SSE can lag when the daemon watcher misses a save.
- */
-function gitStatusUnpushed(gitStatus: GitStatus): number {
-  return Math.max(gitStatus.unpushed ?? 0, gitStatus.ahead);
-}
-
-function gitStatusAheadOfBase(gitStatus: GitStatus): number {
-  return gitStatus.aheadOfBase ?? 0;
-}
-
-function gitStatusBehindBase(gitStatus: GitStatus): number {
-  return gitStatus.behindBase ?? 0;
-}
-
-export function mergeBranchMetaWithGitStatus(
-  branchMeta: BranchMeta,
-  gitStatus: GitStatus | undefined,
-): BranchMeta {
-  if (!gitStatus) return branchMeta;
-
-  const gitDirty = hasGitLocalWork(gitStatus);
-  const branchName = readGitHeadBranch(gitStatus);
-  const unpushed = gitStatusUnpushed(gitStatus);
-  const aheadOfBase = gitStatusAheadOfBase(gitStatus);
-  const behindBase = gitStatusBehindBase(gitStatus);
-  const base = gitStatus.base ?? "main";
-  const headSha = gitStatus.headSha ?? "";
-
-  if (branchMeta.kind === "ready") {
-    return {
-      ...branchMeta,
-      branch: branchName ?? branchMeta.branch,
-      base: gitStatus.base ?? branchMeta.base,
-      workingTreeDirty: gitDirty,
-      unpushed: Math.max(branchMeta.unpushed, unpushed),
-      aheadOfBase: Math.max(branchMeta.aheadOfBase, aheadOfBase),
-      behindBase:
-        gitStatus.behindBase !== undefined
-          ? Math.max(branchMeta.behindBase, behindBase)
-          : branchMeta.behindBase,
-      headSha: headSha || branchMeta.headSha,
-    };
-  }
-
-  // SSE still unknown — only promote when git reports actionable divergence,
-  // not merely because `git status` can read the checked-out branch name.
-  if (!gitDirty && aheadOfBase === 0 && unpushed === 0) {
-    return branchMeta;
-  }
-
-  return {
-    kind: "ready",
-    branch: branchName ?? "",
-    base,
-    workingTreeDirty: gitDirty,
-    unpushed,
-    aheadOfBase,
-    behindBase,
-    headSha,
-  };
 }

@@ -53,9 +53,10 @@ function applyContentPolicy(headers: Headers, contentType: string): void {
     contentType.startsWith("text/html") ||
     contentType.startsWith("image/svg")
   ) {
+    // TEMP(demo 2026-07-08, REVERT): allow-same-origin — see org-fs.ts.
     headers.set(
       "Content-Security-Policy",
-      "sandbox allow-scripts allow-modals",
+      "sandbox allow-scripts allow-modals allow-same-origin",
     );
   }
 }

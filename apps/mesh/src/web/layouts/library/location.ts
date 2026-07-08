@@ -55,6 +55,22 @@ export function browsePathFor(
   return location.volume ? `${location.volume}/${entryPath}` : entryPath;
 }
 
+const PUBLIC_VOLUME_PREFIX = "public-";
+
+/** Set name for a `public-<set>` volume (a shared read-only set), else null. */
+export function publicSetOf(volume: string): string | null {
+  return volume.startsWith(PUBLIC_VOLUME_PREFIX)
+    ? volume.slice(PUBLIC_VOLUME_PREFIX.length)
+    : null;
+}
+
+/** Browse path for a cross-volume feed entry (search/recent): `public-<set>`
+ *  volumes map back to the `public/<set>` browse namespace. */
+export function browsePathForEntry(volume: string, entryPath: string): string {
+  const set = publicSetOf(volume);
+  return set ? `public/${set}/${entryPath}` : `${volume}/${entryPath}`;
+}
+
 export function basename(path: string): string {
   const i = path.lastIndexOf("/");
   return i === -1 ? path : path.slice(i + 1);

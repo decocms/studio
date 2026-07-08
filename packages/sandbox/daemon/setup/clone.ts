@@ -204,19 +204,43 @@ async function fetchBaseBranch(
   );
 }
 
-/** Resolves to exit code (0 on success). Emits chunks via `onChunk`. */
-export async function spawnClone(deps: CloneDeps): Promise<number> {
+export interface CloneResult {
+  /** Exit code — 0 on success. */
+  code: number;
+  /**
+   * Deferred, best-effort fetch of the remote's default branch (+ the
+   * origin/HEAD pointer) so `computeBranchDivergence` can report ahead/behind
+   * vs base. Split off the clone critical path: it's 1-2 network round trips
+   * (`ls-remote --symref` + `fetch`) that only feed the divergence header, so
+   * the orchestrator runs it in the background once the working tree is ready
+   * rather than blocking install+start behind it (the header just shows its
+   * "unavailable until next fetch" state for a beat). Absent when no base
+   * fetch is warranted (target branch absent on remote → local fork; or the
+   * target IS the default branch). `onChunk` is injected by the caller because
+   * the clone's own log tee is closed by the time this runs.
+   */
+  fetchBase?: (
+    onChunk: (source: "setup", data: string) => void,
+  ) => Promise<void>;
+}
+
+/**
+ * Acquires the repo working tree (0 on success). Emits progress via `onChunk`.
+ * The returned `fetchBase` thunk (when present) does the off-critical-path
+ * base-branch fetch — see CloneResult.
+ */
+export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
   const { config } = deps;
   const cloneUrl = config.git?.repository?.cloneUrl;
   if (!cloneUrl) {
-    return 1;
+    return { code: 1 };
   }
   if (!config.repoDir || !config.repoDir.startsWith("/")) {
     deps.onChunk(
       "setup",
       `\r\n[clone] repoDir is not an absolute path (got: ${String(config.repoDir)}) — aborting clone to prevent relative-path mishap\r\n`,
     );
-    return 1;
+    return { code: 1 };
   }
 
   // GIT_TERMINAL_PROMPT=0 + GIT_ASKPASS=true: refuse to ever prompt for
@@ -258,9 +282,19 @@ export async function spawnClone(deps: CloneDeps): Promise<number> {
         "setup",
         `\r\n[clone] ls-remote failed (exit ${probe}); aborting clone\r\n`,
       );
-      return probe;
+      return { code: probe };
     }
   }
+
+  // Built once branchOnRemote is known; both acquisition paths return it so
+  // the orchestrator can run the base fetch after the dev server is up.
+  const deferBaseFetch =
+    (branchOnRemoteForFetch: string) =>
+    (onChunk: (source: "setup", data: string) => void) =>
+      fetchBaseBranch(gc, dir, cloneUrl, branchOnRemoteForFetch, {
+        ...deps,
+        onChunk,
+      });
 
   // When repoDir already has files (e.g. .decocms/daemon.json written before
   // the first clone) but no .git, `git clone` would fail with "already exists
@@ -273,7 +307,7 @@ export async function spawnClone(deps: CloneDeps): Promise<number> {
     ];
     for (const step of localSteps) {
       const code = await runStep(step, deps);
-      if (code !== 0) return code;
+      if (code !== 0) return { code };
     }
     const fetchRef = branchOnRemote
       ? `+refs/heads/${branchOnRemote}:refs/remotes/origin/${branchOnRemote}`
@@ -282,34 +316,48 @@ export async function spawnClone(deps: CloneDeps): Promise<number> {
       `${gc} -C ${dir} fetch --depth 1 origin ${fetchRef}`,
       deps,
     );
-    if (fetchCode !== 0) return fetchCode;
+    if (fetchCode !== 0) return { code: fetchCode };
+    // `-f`: the daemon writes files into repoDir before the first clone (that's
+    // why we're on the init+fetch path), and the CMS can leave stale untracked
+    // `.deco/blocks/*.json` there. Those collide with branch-tracked paths and
+    // a plain checkout aborts ("untracked working tree files would be
+    // overwritten"). Force lets the committed branch content win; only files
+    // that collide with tracked paths are overwritten — `.decocms/daemon.json`
+    // (not tracked on the branch) is left in place.
     const checkoutCmd = branchOnRemote
-      ? `${gc} -C ${dir} checkout -B ${branchOnRemote} refs/remotes/origin/${branchOnRemote}`
-      : `${gc} -C ${dir} checkout FETCH_HEAD`;
+      ? `${gc} -C ${dir} checkout -f -B ${branchOnRemote} refs/remotes/origin/${branchOnRemote}`
+      : `${gc} -C ${dir} checkout -f FETCH_HEAD`;
     const checkoutCode = await runStep(checkoutCmd, deps);
-    if (checkoutCode !== 0) return checkoutCode;
+    if (checkoutCode !== 0) return { code: checkoutCode };
     if (branchToForkLocally) {
-      return runStep(
-        `${gc} -C ${dir} checkout -B ${branchToForkLocally}`,
-        deps,
-      );
+      return {
+        code: await runStep(
+          `${gc} -C ${dir} checkout -B ${branchToForkLocally}`,
+          deps,
+        ),
+      };
     }
-    if (branchOnRemote) {
-      await fetchBaseBranch(gc, dir, cloneUrl, branchOnRemote, deps);
-    }
-    return 0;
+    return {
+      code: 0,
+      ...(branchOnRemote ? { fetchBase: deferBaseFetch(branchOnRemote) } : {}),
+    };
   }
 
   const cloneCmd = branchOnRemote
     ? `${gc} clone --depth 1 --branch ${branchOnRemote} ${cloneUrl} ${dir}`
     : `${gc} clone --depth 1 ${cloneUrl} ${dir}`;
   const cloneCode = await runNetworkStep(cloneCmd, deps);
-  if (cloneCode !== 0) return cloneCode;
+  if (cloneCode !== 0) return { code: cloneCode };
   if (branchToForkLocally) {
-    return runStep(`${gc} -C ${dir} checkout -B ${branchToForkLocally}`, deps);
+    return {
+      code: await runStep(
+        `${gc} -C ${dir} checkout -B ${branchToForkLocally}`,
+        deps,
+      ),
+    };
   }
-  if (branchOnRemote) {
-    await fetchBaseBranch(gc, dir, cloneUrl, branchOnRemote, deps);
-  }
-  return 0;
+  return {
+    code: 0,
+    ...(branchOnRemote ? { fetchBase: deferBaseFetch(branchOnRemote) } : {}),
+  };
 }

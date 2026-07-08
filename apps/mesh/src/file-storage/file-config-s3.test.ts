@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { buildPublicUrl, stsCredentialProvider } from "./file-config-s3";
+import {
+  buildPublicUrl,
+  isImageKey,
+  matchScanPage,
+  nextScanStep,
+  type ScanCandidate,
+  stsCredentialProvider,
+} from "./file-config-s3";
 import type { FileConfigInfo } from "../storage/types";
 
 function info(overrides: Partial<FileConfigInfo>): FileConfigInfo {
@@ -77,6 +84,107 @@ describe("buildPublicUrl", () => {
     expect(buildPublicUrl(info({}), "folder/with spaces/é.png")).toBe(
       "https://my-bucket.s3.us-east-1.amazonaws.com/folder/with%20spaces/%C3%A9.png",
     );
+  });
+});
+
+describe("isImageKey", () => {
+  test("matches common image extensions case-insensitively", () => {
+    for (const key of [
+      "a.png",
+      "b.JPG",
+      "c/d.jpeg",
+      "e.webp",
+      "f.SVG",
+      "g.avif",
+    ]) {
+      expect(isImageKey(key)).toBe(true);
+    }
+  });
+
+  test("rejects non-image and extensionless keys", () => {
+    for (const key of ["a.pdf", "b.docx", "c.png.txt", "folder/", "noext"]) {
+      expect(isImageKey(key)).toBe(false);
+    }
+  });
+});
+
+describe("matchScanPage", () => {
+  const page: ScanCandidate[] = [
+    { key: "2026/07/uuid-report.pdf", size: 1, lastModified: null },
+    { key: "2026/07/uuid-Report.png", size: 2, lastModified: null },
+    { key: "2026/07/uuid-invoice.jpg", size: 3, lastModified: null },
+  ];
+
+  test("substring match is case-insensitive on the full key", () => {
+    const hits = matchScanPage(page, "report", false).map((c) => c.key);
+    expect(hits).toEqual([
+      "2026/07/uuid-report.pdf",
+      "2026/07/uuid-Report.png",
+    ]);
+  });
+
+  test("imageOnly drops non-image matches", () => {
+    const hits = matchScanPage(page, "report", true).map((c) => c.key);
+    expect(hits).toEqual(["2026/07/uuid-Report.png"]);
+  });
+
+  test("no matches returns empty", () => {
+    expect(matchScanPage(page, "nope", false)).toEqual([]);
+  });
+});
+
+describe("nextScanStep", () => {
+  const base = {
+    target: 50,
+    pagesScanned: 1,
+    maxPages: 20,
+    isTruncated: true,
+    continuationToken: "tok",
+  };
+
+  test("continues when under target and more pages remain", () => {
+    expect(nextScanStep({ ...base, matchCount: 10 })).toEqual({
+      done: false,
+      nextCursor: "tok",
+    });
+  });
+
+  test("stops once target is reached, keeping the resume cursor", () => {
+    // Enough matches to stop, but the bucket still has unscanned keys — the
+    // cursor must be handed back so "Load more" resumes without dropping them.
+    expect(nextScanStep({ ...base, matchCount: 50 })).toEqual({
+      done: true,
+      nextCursor: "tok",
+    });
+  });
+
+  test("stops with null cursor when the bucket is exhausted", () => {
+    expect(
+      nextScanStep({
+        ...base,
+        matchCount: 3,
+        isTruncated: false,
+        continuationToken: undefined,
+      }),
+    ).toEqual({ done: true, nextCursor: null });
+  });
+
+  test("stops at the page budget but preserves the resume cursor", () => {
+    expect(nextScanStep({ ...base, matchCount: 0, pagesScanned: 20 })).toEqual({
+      done: true,
+      nextCursor: "tok",
+    });
+  });
+
+  test("truncated without a token is treated as exhausted", () => {
+    expect(
+      nextScanStep({
+        ...base,
+        matchCount: 0,
+        isTruncated: true,
+        continuationToken: undefined,
+      }),
+    ).toEqual({ done: true, nextCursor: null });
   });
 });
 

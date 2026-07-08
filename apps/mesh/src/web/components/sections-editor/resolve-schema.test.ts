@@ -1115,3 +1115,113 @@ describe("resolveSchema – allOf is an intersection, never an inline-union", ()
     });
   });
 });
+
+describe("resolveSchema – #/root block-registry refs (recursive matchers)", () => {
+  // Mirrors the /live/_meta shape for the Multi matcher: its `matchers: Matcher[]`
+  // field chains $ref → [Matcher] → Matcher → matchers → #/root/matchers, the
+  // union of every matcher implementation plus saved matcher blocks. Before the
+  // fix, resolveRef only understood #/definitions/… so #/root/matchers resolved
+  // to {} and each array item rendered as an empty object (blank "Item 1").
+  function matcherMeta(): LiveMeta {
+    return {
+      manifest: {
+        blocks: {
+          matchers: {
+            "website/matchers/multi.ts": { $ref: "#/definitions/MultiDef" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          MultiDef: {
+            title: "Multi",
+            allOf: [{ $ref: "#/definitions/MultiProps" }],
+            properties: {
+              __resolveType: { enum: ["website/matchers/multi.ts"] },
+            },
+          },
+          MultiProps: {
+            type: "object",
+            required: ["op", "matchers"],
+            properties: {
+              op: { type: "string" },
+              matchers: { $ref: "#/definitions/MatcherArr", title: "Matchers" },
+            },
+          },
+          MatcherArr: {
+            type: "array",
+            items: { $ref: "#/definitions/MatcherRef" },
+            title: "[Matcher]",
+          },
+          MatcherRef: { $ref: "#/definitions/MatcherUnion", title: "Matcher" },
+          MatcherUnion: { $ref: "#/root/matchers", title: "matchers" },
+          Cookie: {
+            title: "Cookie",
+            properties: {
+              __resolveType: { enum: ["website/matchers/cookie.ts"] },
+              name: { type: "string", title: "Name" },
+            },
+          },
+          Resolvable: {},
+        },
+        root: {
+          matchers: {
+            title: "matchers",
+            anyOf: [
+              // fallback saved-block ref, carries no __resolveType — skipped
+              { $ref: "#/definitions/Resolvable" },
+              // built-in module matcher, referenced by $ref
+              { $ref: "#/definitions/Cookie" },
+              // recursion: Multi can nest itself — must not loop forever
+              { $ref: "#/definitions/MultiDef" },
+              // saved matcher block, inlined with a __resolveType enum
+              {
+                title: "#website/matchers/device.ts@Desktop",
+                properties: { __resolveType: { enum: ["Desktop"] } },
+              },
+            ],
+          },
+        },
+      },
+    };
+  }
+
+  test("resolves the nested Matcher array item into a block-ref picker", () => {
+    const items = resolveSchema("website/matchers/multi.ts", matcherMeta())
+      ?.properties?.matchers?.items;
+
+    expect(items?.type).toBe("block-ref");
+    const rts = items?.anyOfRefs?.map((r) => r.resolveType) ?? [];
+    // inline saved block + built-in module matcher + recursive self, in one union
+    expect(rts).toContain("Desktop");
+    expect(rts).toContain("website/matchers/cookie.ts");
+    expect(rts).toContain("website/matchers/multi.ts");
+    // the bare Resolvable fallback (no __resolveType) is not offered as an option
+    expect(rts).not.toContain("Resolvable");
+  });
+
+  test("Resolvable placeholder ($ref branch with no __resolveType enum) is excluded from the picker", () => {
+    // deco-start emits root.matchers as all-$ref branches: Resolvable first,
+    // then concrete matchers. Resolvable has no __resolveType.enum so its `rt`
+    // falls back to the bare ref key ("Resolvable", no "/") — it must be skipped.
+    const it = resolveSchema("website/matchers/multi.ts", matcherMeta())
+      ?.properties?.matchers?.items;
+    const rts = it?.anyOfRefs?.map((r) => r.resolveType) ?? [];
+    expect(rts).not.toContain("Resolvable");
+    expect(rts.length).toBeGreaterThan(0);
+  });
+
+  test("without #/root handling the item would resolve empty (regression guard)", () => {
+    // A #/root ref that does not exist must degrade to {} (empty object), never
+    // throw — matching the old missing-key behavior for unknown registries.
+    const meta = matcherMeta();
+    (meta.schema.root as Record<string, unknown>).matchers = {
+      $ref: "#/root/doesNotExist",
+      title: "matchers",
+    };
+    const items = resolveSchema("website/matchers/multi.ts", meta)?.properties
+      ?.matchers?.items;
+    expect(items?.type).toBe("object");
+    expect(items?.anyOfRefs ?? []).toHaveLength(0);
+  });
+});

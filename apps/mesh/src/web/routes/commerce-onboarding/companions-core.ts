@@ -44,14 +44,25 @@ export interface CompanionCardModel {
   icon: string | null;
   /** Curated headline if present, else the registry short_description. */
   headline: string | null;
-  /** Curated-only; null for plain cards. */
-  checks: number | null;
+  /** Curated business-area tag (e.g. "Funil"); null for plain cards. */
+  area: string | null;
   bullets: string[];
   satisfied: boolean;
   candidateConnectionId: string | null;
   linkedConnectionId: string | null;
   configurationState: Record<string, unknown> | null;
+  /** Which lane satisfied this card: "oauth" (Studio-vault companion connection)
+   *  or "sa" (shared service-account verified binding in commerce-discovery).
+   *  null when not connected. Drives which config/connect UI the card opens. */
+  boundVia: "oauth" | "sa" | null;
+  /** The SA-bound resource (GA4 property id / GSC site) when boundVia === "sa",
+   *  so the card can prefill it for viewing/editing. Null otherwise. */
+  boundResource: string | null;
 }
+
+/** Providers connected through the shared-SA lane, keyed by binding type
+ *  (e.g. "google-analytics"), from the commerce-discovery status endpoint. */
+export type SaBindings = Record<string, { resource: string | null }>;
 
 type ComparisonWhere = { field: string[]; operator: "in"; value: string[] };
 type WhereExpr =
@@ -251,6 +262,8 @@ export function buildCompanionCards(args: {
   connectionReadiness?: Record<string, boolean>;
   configurationState: Record<string, unknown> | null | undefined;
   curated: Record<string, CompanionCopy>;
+  /** Providers connected via the shared-SA lane (from commerce-discovery). */
+  saBindings?: SaBindings;
 }): CompanionCardModel[] {
   const cards: CompanionCardModel[] = [];
   const connectionsById = new Map(args.connections.map((c) => [c.id, c]));
@@ -269,7 +282,18 @@ export function buildCompanionCards(args: {
     const linkedReady = linkedConnectionId
       ? args.connectionReadiness?.[linkedConnectionId] !== false
       : false;
-    const satisfied = !!linkedConnectionId && linkedReady;
+    // OAuth (local configuration_state) takes precedence; else the shared-SA
+    // binding reported by commerce-discovery. Mirrors run-time resolution.
+    const oauthSatisfied = !!linkedConnectionId && linkedReady;
+    const saBinding = oauthSatisfied
+      ? undefined
+      : args.saBindings?.[req.bindingType];
+    const satisfied = oauthSatisfied || !!saBinding;
+    const boundVia: "oauth" | "sa" | null = oauthSatisfied
+      ? "oauth"
+      : saBinding
+        ? "sa"
+        : null;
     cards.push({
       fieldKey: req.fieldKey,
       bindingType: req.bindingType,
@@ -280,7 +304,7 @@ export function buildCompanionCards(args: {
         curatedEntry?.headline ??
         item._meta?.["mcp.mesh"]?.short_description ??
         null,
-      checks: curatedEntry?.checks ?? null,
+      area: curatedEntry?.area ?? null,
       bullets: curatedEntry?.bullets ?? [],
       satisfied,
       candidateConnectionId: satisfied
@@ -294,6 +318,8 @@ export function buildCompanionCards(args: {
             ),
       linkedConnectionId,
       configurationState: linkedConnection?.configuration_state ?? null,
+      boundVia,
+      boundResource: saBinding?.resource ?? null,
     });
   }
   return cards;

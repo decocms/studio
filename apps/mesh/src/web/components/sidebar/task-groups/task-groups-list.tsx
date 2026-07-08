@@ -169,7 +169,7 @@ export function TaskGroupsList({
   // to home). Their thread groups are folded into the live counterpart's group
   // (rendered as a "Develop" sub-section) so dev sessions stay navigable under
   // one entry instead of a confusing standalone group.
-  const groups = useSidebarGroupOrder(
+  const orderedGroups = useSidebarGroupOrder(
     orderScope,
     foldDevGroupsIntoLive(
       groupThreadsByVirtualMcp(sortedThreads, decopilotId),
@@ -178,6 +178,21 @@ export function TaskGroupsList({
     decopilotId,
     orgPinnedIds,
     orderRevision,
+  );
+
+  // Groups are built from threads, whose virtual_mcp_id has no FK cascade — so a
+  // deleted agent leaves its threads orphaned and would render a ghost "Agent"
+  // group. Drop groups whose agent no longer exists in the (delete-invalidated)
+  // list. Decopilot (synthetic well-known) and the tool-call-runs bucket are
+  // never backed by a listed agent, so they're always kept.
+  const knownAgentIds = new Set(
+    agents.map((a) => a.id).filter((id): id is string => Boolean(id)),
+  );
+  const groups = orderedGroups.filter(
+    (g) =>
+      g.virtualMcpId === decopilotId ||
+      g.virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY ||
+      knownAgentIds.has(g.virtualMcpId),
   );
 
   const memberFiltered = (threads: Task[]) =>
