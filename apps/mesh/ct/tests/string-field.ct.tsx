@@ -164,6 +164,22 @@ test("color-input text input round-trips the hex value", async ({ mount }) => {
     .toEqual({ color: "#ff0000" });
 });
 
+// deco sites (via @decocms/start's `Color` widget alias) emit format: "color".
+test('"color" format renders a color input plus a text input', async ({
+  mount,
+}) => {
+  const meta = sectionWithProps({
+    color: { type: "string", title: "Color", format: "color" },
+  });
+  const component = await mount(
+    <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
+  );
+
+  await expect(component.locator('input[type="color"]')).toBeVisible();
+  const textInput = component.getByLabel("Color");
+  await expect(textInput).toBeVisible();
+});
+
 test("date format renders input[type=date] and converts to an ISO string", async ({
   mount,
 }) => {

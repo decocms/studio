@@ -221,7 +221,9 @@ export function StringField({
     );
   }
 
-  if (format === "color-input") {
+  // "color" is the format emitted by @decocms/start's schema generator for the
+  // `Color` widget alias; "color-input" is our own alias. Accept both.
+  if (format === "color-input" || format === "color") {
     return (
       <div className="space-y-2">
         <FieldLabel
