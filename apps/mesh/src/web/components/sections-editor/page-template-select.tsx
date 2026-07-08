@@ -1,0 +1,132 @@
+"use client";
+
+import { useState } from "react";
+import { Check, ChevronSelectorVertical } from "@untitledui/icons";
+import { cn } from "@deco/ui/lib/utils.ts";
+import { Button } from "@deco/ui/components/button.tsx";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@deco/ui/components/command.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@deco/ui/components/popover.tsx";
+
+/** A page that can seed a new page's content. */
+export type PageTemplateOption = { key: string; name: string; path: string };
+
+/** Sentinel value for "start from a blank page". */
+export const BLANK_TEMPLATE = "__blank__";
+
+/**
+ * Searchable template picker for the create-page dialogs. Shows each page's
+ * name and path, and filters by either as you type. The "Blank page" entry is
+ * always first and is the default.
+ */
+export function PageTemplateSelect({
+  id,
+  value,
+  onChange,
+  templates,
+  disabled,
+}: {
+  id?: string;
+  value: string;
+  onChange: (value: string) => void;
+  templates: PageTemplateOption[];
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = templates.find((t) => t.key === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          id={id}
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className="w-full justify-between font-normal"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate">{selected?.name ?? "Blank page"}</span>
+            {selected?.path ? (
+              <span className="truncate text-muted-foreground">
+                {selected.path}
+              </span>
+            ) : null}
+          </span>
+          <ChevronSelectorVertical className="shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="p-0"
+        style={{ width: "var(--radix-popover-trigger-width)" }}
+      >
+        <Command>
+          <CommandInput placeholder="Search pages…" className="h-9" />
+          <CommandList
+            // The popover is portalled outside the Dialog, so Radix's
+            // react-remove-scroll blocks wheel events over it (scrollbar drag
+            // still works). Scroll the list ourselves to restore the wheel.
+            onWheel={(e) => {
+              e.currentTarget.scrollTop += e.deltaY;
+            }}
+          >
+            <CommandEmpty>No pages found.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="Blank page"
+                onSelect={() => {
+                  onChange(BLANK_TEMPLATE);
+                  setOpen(false);
+                }}
+              >
+                Blank page
+                <Check
+                  className={cn(
+                    "ml-auto",
+                    value === BLANK_TEMPLATE ? "opacity-100" : "opacity-0",
+                  )}
+                />
+              </CommandItem>
+              {templates.map((t) => (
+                <CommandItem
+                  key={t.key}
+                  value={t.key}
+                  keywords={[t.name, t.path]}
+                  onSelect={() => {
+                    onChange(t.key);
+                    setOpen(false);
+                  }}
+                >
+                  <div className="flex min-w-0 flex-col">
+                    <span className="truncate">{t.name}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {t.path}
+                    </span>
+                  </div>
+                  <Check
+                    className={cn(
+                      "ml-auto",
+                      value === t.key ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}

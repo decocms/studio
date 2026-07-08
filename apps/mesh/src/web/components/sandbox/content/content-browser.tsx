@@ -627,12 +627,24 @@ function ContentBrowserReady({
     });
   };
 
-  const submitPageDialog = async (values: { name: string; path: string }) => {
+  const submitPageDialog = async (values: {
+    name: string;
+    path: string;
+    templateKey: string | null;
+  }) => {
     if (!pageDialog) return;
     const { mode, sourceKey } = pageDialog;
     try {
       if (mode === "create") {
-        const data = buildEmptyPage(values.name, values.path);
+        // A template clones an existing page's content; only name/path change.
+        const template = values.templateKey
+          ? (decofile[values.templateKey] as
+              | Record<string, unknown>
+              | undefined)
+          : undefined;
+        const data = template
+          ? { ...template, name: values.name, path: values.path }
+          : buildEmptyPage(values.name, values.path);
         const key = generateUniquePageBlockKey(decofile, values.name);
         await saveBlock.mutateAsync({ blockKey: key, data });
         toast.success(`Created "${values.name}"`);
@@ -1251,6 +1263,7 @@ function ContentBrowserReady({
           initialPath={pageDialog.initialPath}
           isPending={saveBlock.isPending}
           error={pageDialogError}
+          templates={pages}
           validate={validatePageValues}
           onSubmit={submitPageDialog}
           onOpenChange={(next) => {

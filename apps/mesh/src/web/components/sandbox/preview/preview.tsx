@@ -668,9 +668,11 @@ export function PreviewContent() {
   const handleCreatePage = async ({
     name,
     path,
+    templateKey,
   }: {
     name: string;
     path: string;
+    templateKey: string | null;
   }) => {
     if (!virtualMcpId || !branch) return;
     const pathError = validatePagePath(path);
@@ -687,9 +689,14 @@ export function PreviewContent() {
     }
     setCreatePageError(undefined);
     try {
+      const template =
+        templateKey && decofile
+          ? (decofile[templateKey] as Record<string, unknown> | undefined)
+          : undefined;
       const result = await createPage.mutateAsync({
         name,
         path: trimmedPath,
+        template,
       });
       setCreatePageDialogOpen(false);
       toast.success(`Page "${name}" created`);
@@ -1321,6 +1328,7 @@ export function PreviewContent() {
         onOpenChange={setCreatePageDialogOpen}
         isPending={createPage.isPending}
         error={createPageError}
+        templates={pages}
         onSubmit={handleCreatePage}
       />
 
