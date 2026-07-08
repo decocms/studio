@@ -50,11 +50,12 @@ export function useConnectCompanion({
     setError(null);
     // Per-card connect rates were invisible: the only signal was the generic
     // server-side connection_created, which carries no onboarding context.
-    track("commerce_onboarding_companion_connect_clicked", {
+    const basePayload = {
       app_name: card.title,
       field_key: card.fieldKey,
       organization_id: org.id,
-    });
+    };
+    track("commerce_onboarding_companion_connect_clicked", basePayload);
     try {
       // Step 0: reuse an existing candidate, else install a new connection.
       let companionId = card.candidateConnectionId;
@@ -80,9 +81,7 @@ export function useConnectCompanion({
 
         if (!hasUrl && !hasStdioConfig) {
           track("commerce_onboarding_companion_connect_failed", {
-            app_name: card.title,
-            field_key: card.fieldKey,
-            organization_id: org.id,
+            ...basePayload,
             error: "no_connection_method",
           });
           setError(
@@ -112,9 +111,7 @@ export function useConnectCompanion({
       });
       if (!auth.ok) {
         track("commerce_onboarding_companion_connect_failed", {
-          app_name: card.title,
-          field_key: card.fieldKey,
-          organization_id: org.id,
+          ...basePayload,
           error: auth.error,
         });
         setError(`Couldn't sign in to ${card.title}: ${auth.error}`);
@@ -145,17 +142,11 @@ export function useConnectCompanion({
       await queryClient.invalidateQueries({
         queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
       });
-      track("commerce_onboarding_companion_connected", {
-        app_name: card.title,
-        field_key: card.fieldKey,
-        organization_id: org.id,
-      });
+      track("commerce_onboarding_companion_connected", basePayload);
       return true;
     } catch (err) {
       track("commerce_onboarding_companion_connect_failed", {
-        app_name: card.title,
-        field_key: card.fieldKey,
-        organization_id: org.id,
+        ...basePayload,
         error: err instanceof Error ? err.message : String(err),
       });
       setError(err instanceof Error ? err.message : String(err));

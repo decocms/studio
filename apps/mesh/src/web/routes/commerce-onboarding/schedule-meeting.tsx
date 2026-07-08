@@ -3,6 +3,8 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowUpRight, User01 } from "@untitledui/icons";
 
+type MeetingCtaPlacement = "visual_card" | "mobile_banner";
+
 /**
  * Where "Schedule a meeting" sends people who'd rather have us run the
  * diagnostic live, don't have access to their tools yet, or aren't ready to
@@ -38,10 +40,12 @@ function ScheduleMeetingCta({
   href = SCHEDULE_MEETING_URL,
   size = "lg",
   className,
+  orgId,
 }: {
   href?: string;
   size?: "lg" | "xl";
   className?: string;
+  orgId?: string;
 }) {
   return (
     <Button
@@ -56,7 +60,8 @@ function ScheduleMeetingCta({
         rel="noreferrer"
         onClick={() =>
           track("commerce_onboarding_meeting_cta_clicked", {
-            placement: "visual_card",
+            placement: "visual_card" satisfies MeetingCtaPlacement,
+            organization_id: orgId,
           })
         }
       >
@@ -122,7 +127,13 @@ function ConnectionAnimation() {
  * in the AuthSplitLayout `visual` slot). The "or" to the connect-your-tools
  * flow on the left: a human escape hatch for people who resist granting access.
  */
-export function ScheduleMeetingVisual({ href }: { href?: string }) {
+export function ScheduleMeetingVisual({
+  href,
+  orgId,
+}: {
+  href?: string;
+  orgId?: string;
+}) {
   return (
     <div className="relative flex h-full w-full items-center justify-center p-10">
       <div className="flex w-full max-w-[380px] flex-col gap-6 rounded-3xl border border-border bg-card p-8 card-shadow">
@@ -133,7 +144,7 @@ export function ScheduleMeetingVisual({ href }: { href?: string }) {
           </h2>
           <p className="text-base leading-6 text-muted-foreground">{BODY}</p>
         </div>
-        <ScheduleMeetingCta href={href} size="xl" />
+        <ScheduleMeetingCta href={href} size="xl" orgId={orgId} />
       </div>
     </div>
   );
@@ -147,9 +158,11 @@ export function ScheduleMeetingVisual({ href }: { href?: string }) {
 export function ScheduleMeetingBanner({
   className,
   href = SCHEDULE_MEETING_URL,
+  orgId,
 }: {
   className?: string;
   href?: string;
+  orgId?: string;
 }) {
   return (
     <a
@@ -158,7 +171,8 @@ export function ScheduleMeetingBanner({
       rel="noreferrer"
       onClick={() =>
         track("commerce_onboarding_meeting_cta_clicked", {
-          placement: "mobile_banner",
+          placement: "mobile_banner" satisfies MeetingCtaPlacement,
+          organization_id: orgId,
         })
       }
       className={cn(

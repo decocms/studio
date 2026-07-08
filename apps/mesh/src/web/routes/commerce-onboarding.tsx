@@ -582,7 +582,9 @@ function CommerceSetup({
     siteUrl: initialSiteUrl,
     email: session?.user?.email,
   });
-  const meetingVisual = <ScheduleMeetingVisual href={meetingUrl} />;
+  const meetingVisual = (
+    <ScheduleMeetingVisual href={meetingUrl} orgId={org.id} />
+  );
 
   return (
     <QueryErrorResetBoundary>
@@ -773,7 +775,7 @@ function CommerceSetupContent({
     email: sessionEmail,
   });
   const currentMeetingVisual = (
-    <ScheduleMeetingVisual href={currentMeetingUrl} />
+    <ScheduleMeetingVisual href={currentMeetingUrl} orgId={org.id} />
   );
 
   const runSetup = (rawSiteUrl: string) => {
@@ -797,10 +799,13 @@ function CommerceSetupContent({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    track("commerce_onboarding_site_url_submitted", {
-      domain: siteUrlToHost(siteUrlInput) ?? undefined,
-      organization_id: org.id,
-    });
+    const normalizedForTracking = normalizeCommerceSiteUrl(siteUrlInput);
+    if (normalizedForTracking.ok) {
+      track("commerce_onboarding_site_url_submitted", {
+        domain: new URL(normalizedForTracking.value).hostname,
+        organization_id: org.id,
+      });
+    }
     runSetup(siteUrlInput);
   };
 
@@ -814,7 +819,7 @@ function CommerceSetupContent({
     setRunError(null);
     // The onboarding-completion intent: the click, not the report render
     // (mcp_app_opened covers the render after navigation).
-    track("commerce_onboarding_report_opened", {
+    track("commerce_onboarding_open_report_clicked", {
       domain: siteUrlToHost(currentSiteUrl) ?? undefined,
       organization_id: org.id,
     });
@@ -1019,7 +1024,11 @@ function CommerceDiscoveryReady({
         <div className="flex shrink-0 flex-col gap-3 md:mt-8">
           {/* Right-side ScheduleMeetingVisual is hidden on mobile, so the human
               escape hatch rides in the footer above the report CTA. */}
-          <ScheduleMeetingBanner className="md:hidden" href={meetingUrl} />
+          <ScheduleMeetingBanner
+            className="md:hidden"
+            href={meetingUrl}
+            orgId={org.id}
+          />
           {error ? <InlineError message={error} /> : null}
           <Button
             type="button"
