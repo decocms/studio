@@ -68,13 +68,12 @@ interface SlashItem extends BaseItem {
 
 /** Metadata stashed on a skill mention; consumed by derive-parts. */
 export interface SkillMentionMeta {
-  skillId: string;
-  /** Sandbox dir the skill's files are mounted under (for scripts/assets). */
+  /** Sandbox dir the skill's files are mounted under (for omitted files). */
   sandboxPath: string;
-  /** SKILL.md + sibling text/reference files, inlined at select time. */
+  /** Markdown/text docs, inlined (content baked) at select time. */
   files: OrgFsSkillFile[];
-  /** A size/count cap was hit — some files were left on disk. */
-  truncated?: boolean;
+  /** Relative paths of files left on disk (scripts/assets/oversized). */
+  omittedPaths: string[];
 }
 
 interface PromptSelectContext {
@@ -144,16 +143,15 @@ async function fetchAndInsertSkill(
   skill: OrgFsSkillCatalogEntry,
 ) {
   try {
-    const { files, truncated } = await fetchOrgFsSkillFiles(
+    const { files, omittedPaths } = await fetchOrgFsSkillFiles(
       orgSlug,
       skill.volume,
       skill.path,
     );
     const metadata: SkillMentionMeta = {
-      skillId: skill.id,
       sandboxPath: skill.sandboxPath,
       files,
-      truncated,
+      omittedPaths,
     };
     insertMention(editor, range, {
       id: skill.id,

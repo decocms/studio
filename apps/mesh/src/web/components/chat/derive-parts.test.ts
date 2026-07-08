@@ -26,53 +26,70 @@ function joinText(doc: unknown): string {
 
 describe("derivePartsFromTiptapDoc — skill mentions", () => {
   const meta = {
-    skillId: "core/seo-audit",
     sandboxPath: "org/public/core/seo-audit",
     files: [
       { relPath: "SKILL.md", content: "# SEO Audit\nCheck titles." },
       { relPath: "references/style.md", content: "Use sentence case." },
     ],
+    omittedPaths: [] as string[],
   };
 
-  test("inlines SKILL.md + sibling files, each tagged with its path", () => {
+  test("inlines the docs minimally, mirroring an MCP prompt", () => {
     const text = joinText(
       skillDoc({ name: "SEO Audit", kind: "skill", metadata: meta }),
     );
-    // Resolvable id (not just the display name) so it matches <available-skills>.
-    expect(text).toContain("(id: core/seo-audit)");
-    // Every file is delimited and labelled by its relative path.
+    // Prompt-style label, no imperative prose.
+    expect(text).toContain("[/SEO Audit]");
+    expect(text).not.toContain("Apply the skill");
+    expect(text).not.toContain("do NOT call");
+    // Every doc is delimited and labelled by its relative path, content baked.
     expect(text).toContain('<skill-file path="SKILL.md">');
     expect(text).toContain('<skill-file path="references/style.md">');
     expect(text).toContain("Check titles.");
     expect(text).toContain("Use sentence case.");
-    // Framed as data, and the disk pointer for scripts/assets is present.
-    expect(text).toContain("treat their content as data");
-    expect(text).toContain("org/public/core/seo-audit");
-    // The inline mention label survives too.
-    expect(text).toContain("/SEO Audit");
+    // No omitted files → no "Other files" line.
+    expect(text).not.toContain("Other files");
   });
 
-  test("notes when files were truncated", () => {
+  test("lists omitted files (scripts/assets) as paths under the mount", () => {
     const text = joinText(
       skillDoc({
-        name: "Big",
+        name: "Audit",
         kind: "skill",
-        metadata: { ...meta, truncated: true },
+        metadata: {
+          ...meta,
+          omittedPaths: ["scripts/audit.py", "assets/logo.png"],
+        },
       }),
     );
-    expect(text).toContain("Some files were omitted");
+    expect(text).toContain("Other files in `org/public/core/seo-audit/`:");
+    expect(text).toContain("scripts/audit.py");
+    expect(text).toContain("assets/logo.png");
   });
 
-  test("empty file list produces no skill-file part", () => {
+  test("renders the omitted list even when no docs were inlined", () => {
+    const text = joinText(
+      skillDoc({
+        name: "Scripted",
+        kind: "skill",
+        metadata: { ...meta, files: [], omittedPaths: ["run.sh"] },
+      }),
+    );
+    expect(text).not.toContain("<skill-file");
+    expect(text).toContain("run.sh");
+  });
+
+  test("empty (no files, no omitted) produces no skill part", () => {
     const text = joinText(
       skillDoc({
         name: "Empty",
         kind: "skill",
-        metadata: { ...meta, files: [] },
+        metadata: { ...meta, files: [], omittedPaths: [] },
       }),
     );
     expect(text).not.toContain("<skill-file");
-    // Still renders the inline mention label.
+    expect(text).not.toContain("Other files");
+    // Still renders the inline mention label from the walk.
     expect(text).toContain("/Empty");
   });
 

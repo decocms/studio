@@ -256,54 +256,49 @@ export interface OrgFsSkillFile {
   content: string;
 }
 
-// Doc/reference/template extensions we inline. Scripts (.py/.sh/.js/.ts) and
-// binaries are intentionally excluded — they stay on disk in the sandbox to be
-// executed, not read into the prompt.
-const SKILL_TEXT_EXTENSIONS = new Set([
+// Markdown/text docs whose content we inline (bake into the message). Every
+// other file — scripts, configs, binaries, assets — is left on disk and only
+// its path is surfaced, so the agent knows what exists and where.
+const SKILL_INLINE_EXTENSIONS = new Set([
   "md",
   "mdx",
   "markdown",
   "txt",
   "text",
-  "rst",
-  "json",
-  "yaml",
-  "yml",
-  "toml",
-  "csv",
-  "html",
-  "htm",
-  "xml",
-  "css",
 ]);
 const SKILL_MAX_FILES = 25;
 const SKILL_MAX_FILE_BYTES = 64 * 1024;
 const SKILL_MAX_TOTAL_BYTES = 256 * 1024;
 const SKILL_MAX_DEPTH = 4;
 
-function isTextSkillFile(path: string): boolean {
+function isInlineDoc(path: string): boolean {
   const dot = path.lastIndexOf(".");
   if (dot === -1) return false;
-  return SKILL_TEXT_EXTENSIONS.has(path.slice(dot + 1).toLowerCase());
+  return SKILL_INLINE_EXTENSIONS.has(path.slice(dot + 1).toLowerCase());
 }
 
 /**
- * Collect a skill folder's inlinable text files (SKILL.md + sibling docs /
- * templates), bounded by depth, count, and total bytes. Scripts and binaries
- * are skipped (left on disk). Best-effort: unreadable files / list failures are
- * silently skipped. `truncated` signals a cap was hit so the caller can note it.
+ * Walk a skill folder (bounded by depth/count/bytes) and split its files:
+ * markdown/text docs are read and inlined (`files`, content baked in), every
+ * other file — plus any doc that failed to read or blew a cap — is left on
+ * disk and returned as a relative path in `omittedPaths`. Best-effort: a list
+ * failure just skips that subtree.
  */
 export async function fetchOrgFsSkillFiles(
   orgSlug: string,
   volume: string,
   dirPath: string,
-): Promise<{ files: OrgFsSkillFile[]; truncated: boolean }> {
-  const filePaths: string[] = [];
-  let truncated = false;
+): Promise<{ files: OrgFsSkillFile[]; omittedPaths: string[] }> {
+  const prefix = dirPath ? `${dirPath}/` : "";
+  const rel = (p: string) =>
+    p.startsWith(prefix) ? p.slice(prefix.length) : p;
+
+  const inlineCandidates: string[] = [];
+  const omittedPaths: string[] = [];
   const queue: Array<{ path: string; depth: number }> = [
     { path: dirPath, depth: 0 },
   ];
-  while (queue.length > 0 && filePaths.length < SKILL_MAX_FILES) {
+  while (queue.length > 0) {
     const next = queue.shift();
     if (!next) break;
     let entries: OrgFsEntry[];
@@ -321,45 +316,35 @@ export async function fetchOrgFsSkillFiles(
           queue.push({ path: e.path, depth: next.depth + 1 });
         continue;
       }
-      if (!isTextSkillFile(e.path)) continue;
-      if (e.size > SKILL_MAX_FILE_BYTES) {
-        truncated = true;
-        continue;
+      if (
+        isInlineDoc(e.path) &&
+        e.size <= SKILL_MAX_FILE_BYTES &&
+        inlineCandidates.length < SKILL_MAX_FILES
+      ) {
+        inlineCandidates.push(e.path);
+      } else {
+        omittedPaths.push(rel(e.path));
       }
-      if (filePaths.length >= SKILL_MAX_FILES) {
-        truncated = true;
-        break;
-      }
-      filePaths.push(e.path);
     }
   }
 
-  const prefix = dirPath ? `${dirPath}/` : "";
-  const read = await Promise.all(
-    filePaths.map(async (p): Promise<OrgFsSkillFile | null> => {
-      try {
-        const content = await fetchOrgFsText(orgSlug, volume, p);
-        return {
-          relPath: p.startsWith(prefix) ? p.slice(prefix.length) : p,
-          content,
-        };
-      } catch {
-        return null;
-      }
-    }),
+  const contents = await Promise.all(
+    inlineCandidates.map((p) =>
+      fetchOrgFsText(orgSlug, volume, p).catch(() => null),
+    ),
   );
-
   const files: OrgFsSkillFile[] = [];
   let total = 0;
-  for (const f of read) {
-    if (!f) continue;
-    if (total + f.content.length > SKILL_MAX_TOTAL_BYTES) {
-      truncated = true;
-      break;
+  inlineCandidates.forEach((p, i) => {
+    const content = contents[i];
+    if (content == null || total + content.length > SKILL_MAX_TOTAL_BYTES) {
+      omittedPaths.push(rel(p));
+      return;
     }
-    total += f.content.length;
-    files.push(f);
-  }
+    total += content.length;
+    files.push({ relPath: rel(p), content });
+  });
+
   // SKILL.md first, then alphabetical, so the rendered block is stable.
   files.sort((a, b) =>
     a.relPath === "SKILL.md"
@@ -368,7 +353,8 @@ export async function fetchOrgFsSkillFiles(
         ? 1
         : a.relPath.localeCompare(b.relPath),
   );
-  return { files, truncated };
+  omittedPaths.sort();
+  return { files, omittedPaths };
 }
 
 /** The deployment's shared public skill sets (readonly volumes). */
