@@ -80,6 +80,30 @@ function resourcesToParts(
 }
 
 /**
+ * Converts a skill mention to a UI message part: the SKILL.md body inlined
+ * (like a prompt/resource), plus a note pointing the agent at the sandbox dir
+ * where the skill's files are mounted, so it can read anything the SKILL.md
+ * references (scripts, templates) via bash.
+ */
+function skillMentionToParts(
+  meta: { skillId: string; sandboxPath: string; content: string },
+  mentionName: string,
+): ChatMessage["parts"] {
+  const body = meta.content?.trim();
+  if (!body) return [];
+  return [
+    {
+      type: "text",
+      text:
+        `[SKILL: ${mentionName}]\n${body}\n\n---\n` +
+        `This skill's files are mounted in the sandbox at \`${meta.sandboxPath}/\`. ` +
+        `To load any file, script, or template this skill references, read it ` +
+        `from there with bash (e.g. \`cat ${meta.sandboxPath}/<file>\`).`,
+    },
+  ];
+}
+
+/**
  * Converts prompt messages to UI message parts
  */
 function promptMessagesToParts(
@@ -221,6 +245,15 @@ export function derivePartsFromTiptapDoc(
               mentionName,
             ),
           );
+        }
+      } else if (node.attrs.kind === "skill") {
+        // Skill mention: SKILL.md body + a note on where its files live.
+        const meta = node.attrs.metadata as
+          | { skillId: string; sandboxPath: string; content: string }
+          | null
+          | undefined;
+        if (meta && !Array.isArray(meta) && typeof meta.content === "string") {
+          parts.push(...skillMentionToParts(meta, mentionName));
         }
       } else {
         // Slash mentions: prompts or resources (both use "/")

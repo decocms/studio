@@ -211,6 +211,44 @@ export function useOrgFsSkills(opts?: { enabled?: boolean }) {
   });
 }
 
+/**
+ * Full skill catalog entry as returned by `/fs/skills` (the SAME shape the
+ * server's `buildSkillCatalog` emits). Unlike `OrgFsSkill` (attach picker,
+ * volume+path only) this carries the display + resolution fields the chat
+ * slash picker needs: the `id` the `skill` tool takes, the description shown
+ * in the dropdown, and the `sandboxPath` referenced files live under.
+ */
+export interface OrgFsSkillCatalogEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  source: string;
+  volume: string;
+  path: string;
+  sandboxPath: string;
+}
+
+/** Fetch the full skill catalog (used by the chat `/` picker, not react-query). */
+export async function fetchOrgFsSkillCatalog(
+  orgSlug: string,
+): Promise<OrgFsSkillCatalogEntry[]> {
+  const res = await fsFetch(`/api/${encodeURIComponent(orgSlug)}/fs/skills`);
+  const { skills } = (await res.json()) as {
+    skills: OrgFsSkillCatalogEntry[];
+  };
+  return skills;
+}
+
+/** Read a file's contents as UTF-8 text (org-fs `/read` endpoint). */
+export async function fetchOrgFsText(
+  orgSlug: string,
+  volume: string,
+  path: string,
+): Promise<string> {
+  const res = await fsFetch(fsUrl(orgSlug, volume, "read", { path }));
+  return res.text();
+}
+
 /** The deployment's shared public skill sets (readonly volumes). */
 export function useOrgFsPublicSets() {
   const { org } = useProjectContext();
