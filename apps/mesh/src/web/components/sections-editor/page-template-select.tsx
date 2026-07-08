@@ -17,9 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
-
-/** A page that can seed a new page's content. */
-export type PageTemplateOption = { key: string; name: string; path: string };
+import type { PageEntry } from "./page-list";
 
 /** Sentinel value for "start from a blank page". */
 export const BLANK_TEMPLATE = "__blank__";
@@ -39,7 +37,7 @@ export function PageTemplateSelect({
   id?: string;
   value: string;
   onChange: (value: string) => void;
-  templates: PageTemplateOption[];
+  templates: PageEntry[];
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -78,8 +76,10 @@ export function PageTemplateSelect({
             // The popover is portalled outside the Dialog, so Radix's
             // react-remove-scroll blocks wheel events over it (scrollbar drag
             // still works). Scroll the list ourselves to restore the wheel.
+            // deltaMode 1 is line-based (Firefox); scale to approx pixels.
             onWheel={(e) => {
-              e.currentTarget.scrollTop += e.deltaY;
+              const factor = e.deltaMode === 1 ? 16 : 1;
+              e.currentTarget.scrollTop += e.deltaY * factor;
             }}
           >
             <CommandEmpty>No pages found.</CommandEmpty>
@@ -101,9 +101,11 @@ export function PageTemplateSelect({
               </CommandItem>
               {templates.map((t) => (
                 <CommandItem
+                  // Search on human text, not the `pages-<uuid>` key (whose
+                  // prefix + hex would create spurious matches). Selection
+                  // uses t.key directly, so the display value is free to differ.
                   key={t.key}
-                  value={t.key}
-                  keywords={[t.name, t.path]}
+                  value={`${t.name} ${t.path}`}
                   onSelect={() => {
                     onChange(t.key);
                     setOpen(false);

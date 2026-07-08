@@ -637,14 +637,16 @@ function ContentBrowserReady({
     try {
       if (mode === "create") {
         // A template clones an existing page's content; only name/path change.
-        const template = values.templateKey
-          ? (decofile[values.templateKey] as
-              | Record<string, unknown>
-              | undefined)
-          : undefined;
-        const data = template
-          ? { ...template, name: values.name, path: values.path }
-          : buildEmptyPage(values.name, values.path);
+        let data: Record<string, unknown>;
+        if (values.templateKey) {
+          const template = decofile[values.templateKey] as
+            | Record<string, unknown>
+            | undefined;
+          if (!template) throw new Error("Selected template no longer exists.");
+          data = { ...template, name: values.name, path: values.path };
+        } else {
+          data = buildEmptyPage(values.name, values.path);
+        }
         const key = generateUniquePageBlockKey(decofile, values.name);
         await saveBlock.mutateAsync({ blockKey: key, data });
         toast.success(`Created "${values.name}"`);

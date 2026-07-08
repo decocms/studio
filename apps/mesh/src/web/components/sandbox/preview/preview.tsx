@@ -687,12 +687,16 @@ export function PreviewContent() {
       setCreatePageError(`A page with path "${trimmedPath}" already exists.`);
       return;
     }
+    let template: Record<string, unknown> | undefined;
+    if (templateKey) {
+      template = decofile?.[templateKey] as Record<string, unknown> | undefined;
+      if (!template) {
+        setCreatePageError("Selected template no longer exists.");
+        return;
+      }
+    }
     setCreatePageError(undefined);
     try {
-      const template =
-        templateKey && decofile
-          ? (decofile[templateKey] as Record<string, unknown> | undefined)
-          : undefined;
       const result = await createPage.mutateAsync({
         name,
         path: trimmedPath,

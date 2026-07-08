@@ -13,12 +13,10 @@ import { validatePagePath } from "@/web/components/sections-editor/page-path-uti
 import {
   BLANK_TEMPLATE,
   PageTemplateSelect,
-  type PageTemplateOption,
 } from "@/web/components/sections-editor/page-template-select";
+import type { PageEntry } from "@/web/components/sections-editor/page-list";
 
 export type PageFormMode = "create" | "duplicate" | "rename";
-
-export type { PageTemplateOption };
 
 const TITLES: Record<PageFormMode, string> = {
   create: "Create new page",
@@ -66,7 +64,7 @@ export function PageFormDialog({
   initialPath: string;
   isPending?: boolean;
   error?: string;
-  templates?: PageTemplateOption[];
+  templates?: PageEntry[];
   validate?: (values: { name: string; path: string }) => string | null;
   onSubmit: (values: {
     name: string;

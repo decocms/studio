@@ -10,13 +10,8 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Loading01 } from "@untitledui/icons";
 import { validatePagePath } from "./page-path-utils";
-import {
-  BLANK_TEMPLATE,
-  PageTemplateSelect,
-  type PageTemplateOption,
-} from "./page-template-select";
-
-export type { PageTemplateOption };
+import { BLANK_TEMPLATE, PageTemplateSelect } from "./page-template-select";
+import type { PageEntry } from "./page-list";
 
 export function CreatePageModal({
   open,
@@ -34,7 +29,7 @@ export function CreatePageModal({
    * Existing pages offered as content templates. Picking one clones its
    * content; only the name and path come from the form.
    */
-  templates?: PageTemplateOption[];
+  templates?: PageEntry[];
   onSubmit: (values: {
     name: string;
     path: string;
