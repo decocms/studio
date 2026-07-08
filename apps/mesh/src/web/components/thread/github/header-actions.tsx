@@ -16,7 +16,7 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/web/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
-import { getActiveGithubRepo } from "@/web/lib/github-repo.ts";
+import { resolveGithubAttachment } from "@/web/lib/github-repo.ts";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { squashMergePullRequest } from "./github-pr-api.ts";
@@ -51,9 +51,10 @@ const LOADING_BRANCH_BUTTON: HeaderButton = {
  * PR state. Save changes opens the publish dialog; open-PR and squash-merge
  * call GitHub MCP tools directly. Other actions still send chat prompts.
  *
- * Gated on an active GitHub repo. Once wired, the button always renders —
- * disabled status pills (Loading…, Up to date, Published, …) cover cases
- * where there is no actionable next step.
+ * Mounted for `attached` and `detached` repos (see resolveGithubAttachment).
+ * When attached the button always renders — disabled status pills (Loading…,
+ * Up to date, Published, …) cover cases with no actionable next step. When
+ * detached it renders a reconnect pill rather than nothing.
  */
 export function HeaderActions({ virtualMcpId }: Props) {
   const { org } = useProjectContext();
@@ -68,7 +69,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const [githubActionPending, setGithubActionPending] = useState(false);
   const debugKeyRef = useRef("");
 
-  const githubRepo = getActiveGithubRepo(vm);
+  const attachment = resolveGithubAttachment(vm);
+  const githubRepo =
+    attachment.status === "attached" || attachment.status === "public-clone"
+      ? attachment.repo
+      : null;
   const userId = session?.user?.id;
 
   const githubClient = useMCPClient({
@@ -131,6 +136,18 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // that a raw /git/status poll would miss.
   const effectiveBranchMeta = branchMeta;
 
+  // Detached: repo linked via a GitHub connection that's no longer aggregated.
+  // Render a reconnect pill instead of nothing so the user has a recovery path
+  // (a stale/mid-mutation aggregation must never leave the header blank).
+  if (attachment.status === "detached") {
+    return (
+      <WithTooltip label="GitHub connection was removed — relink the repository in Settings to save changes">
+        <Button size="sm" variant="outline" disabled>
+          Reconnect GitHub
+        </Button>
+      </WithTooltip>
+    );
+  }
   if (!githubRepo) return null;
 
   const branchMap =

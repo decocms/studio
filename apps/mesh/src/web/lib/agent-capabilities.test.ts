@@ -146,6 +146,23 @@ describe("agentShowsGithubHeaderActions", () => {
       } as any),
     ).toBe(true);
   });
+
+  it("returns true for a detached imported repo (so the header can offer reconnect)", () => {
+    expect(
+      agentShowsGithubHeaderActions({
+        connections: [{ connection_id: "conn_other" }],
+        metadata: {
+          instructions: null,
+          githubRepo: {
+            url: "https://github.com/acme/app",
+            owner: "acme",
+            name: "app",
+            connectionId: "conn_github",
+          },
+        },
+      } as any),
+    ).toBe(true);
+  });
 });
 
 describe("hasLocalCliHarness", () => {
