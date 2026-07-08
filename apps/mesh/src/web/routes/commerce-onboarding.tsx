@@ -582,7 +582,9 @@ function CommerceSetup({
     siteUrl: initialSiteUrl,
     email: session?.user?.email,
   });
-  const meetingVisual = <ScheduleMeetingVisual href={meetingUrl} />;
+  const meetingVisual = (
+    <ScheduleMeetingVisual href={meetingUrl} orgId={org.id} />
+  );
 
   return (
     <QueryErrorResetBoundary>
@@ -712,13 +714,22 @@ function CommerceSetupContent({
       return parseSelfToolResult<CommerceDiscoverySetupResult>(result);
     },
     retry: false,
-    onSuccess: (result) => {
+    onSuccess: (result, submittedSiteUrl) => {
+      track("commerce_onboarding_setup_succeeded", {
+        domain: siteUrlToHost(submittedSiteUrl) ?? undefined,
+        organization_id: org.id,
+      });
       setSetupResult(result);
       setInlineError(null);
       void connectionQuery.refetch();
       void virtualMcpQuery.refetch();
     },
-    onError: (error) => {
+    onError: (error, submittedSiteUrl) => {
+      track("commerce_onboarding_setup_failed", {
+        domain: siteUrlToHost(submittedSiteUrl) ?? undefined,
+        organization_id: org.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
       setInlineError(
         error instanceof Error
           ? error.message
@@ -764,7 +775,7 @@ function CommerceSetupContent({
     email: sessionEmail,
   });
   const currentMeetingVisual = (
-    <ScheduleMeetingVisual href={currentMeetingUrl} />
+    <ScheduleMeetingVisual href={currentMeetingUrl} orgId={org.id} />
   );
 
   const runSetup = (rawSiteUrl: string) => {
@@ -788,6 +799,13 @@ function CommerceSetupContent({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const normalizedForTracking = normalizeCommerceSiteUrl(siteUrlInput);
+    if (normalizedForTracking.ok) {
+      track("commerce_onboarding_site_url_submitted", {
+        domain: new URL(normalizedForTracking.value).hostname,
+        organization_id: org.id,
+      });
+    }
     runSetup(siteUrlInput);
   };
 
@@ -799,6 +817,12 @@ function CommerceSetupContent({
 
   const openReport = async () => {
     setRunError(null);
+    // The onboarding-completion intent: the click, not the report render
+    // (mcp_app_opened covers the render after navigation).
+    track("commerce_onboarding_open_report_clicked", {
+      domain: siteUrlToHost(currentSiteUrl) ?? undefined,
+      organization_id: org.id,
+    });
     // Trigger the enriching run now that the user is done connecting. Await it so a
     // failure surfaces (generic message, stay put) instead of silently opening an
     // empty report. No resolvable site (legacy session) ⇒ nothing to trigger, just open.
@@ -806,7 +830,12 @@ function CommerceSetupContent({
     if (normalized.ok) {
       try {
         await runMutation.mutateAsync(normalized.value);
-      } catch {
+      } catch (err) {
+        track("commerce_onboarding_run_failed", {
+          domain: siteUrlToHost(currentSiteUrl) ?? undefined,
+          organization_id: org.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
         setRunError(
           "Algo deu errado ao gerar seu relatório. Tente novamente em instantes.",
         );
@@ -995,7 +1024,11 @@ function CommerceDiscoveryReady({
         <div className="flex shrink-0 flex-col gap-3 md:mt-8">
           {/* Right-side ScheduleMeetingVisual is hidden on mobile, so the human
               escape hatch rides in the footer above the report CTA. */}
-          <ScheduleMeetingBanner className="md:hidden" href={meetingUrl} />
+          <ScheduleMeetingBanner
+            className="md:hidden"
+            href={meetingUrl}
+            orgId={org.id}
+          />
           {error ? <InlineError message={error} /> : null}
           <Button
             type="button"

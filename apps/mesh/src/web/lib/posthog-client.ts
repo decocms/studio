@@ -114,6 +114,13 @@ export function initPostHog(key: string, host: string) {
     // *.posthog.com) don't drop events. ui_host must stay real PostHog so the
     // toolbar and "open in PostHog" links resolve.
     ui_host: "https://us.posthog.com",
+    // Persist the PostHog cookie on the `.decocms.com` root domain so a
+    // visitor is the SAME person across www.decocms.com (landing) and
+    // studio.decocms.com. Required for the unified acquisition → signup
+    // funnel. posthog-js defaults this to true; pinned explicitly so it
+    // can't silently regress and split cross-domain identity. (Supersedes
+    // PR #3968, which no longer merged cleanly.)
+    cross_subdomain_cookie: true,
     ...(lpDistinctId ? { bootstrap: { distinctID: lpDistinctId } } : {}),
     capture_pageview: "history_change",
     capture_pageleave: true,

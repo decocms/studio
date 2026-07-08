@@ -1,6 +1,9 @@
+import { track } from "@/web/lib/posthog-client";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowUpRight } from "@untitledui/icons";
+
+type MeetingCtaPlacement = "visual_card" | "mobile_banner";
 
 /**
  * Where "Schedule a meeting" sends people who'd rather have us run the
@@ -48,10 +51,12 @@ function ScheduleMeetingCta({
   href = SCHEDULE_MEETING_URL,
   size = "lg",
   className,
+  orgId,
 }: {
   href?: string;
   size?: "lg" | "xl";
   className?: string;
+  orgId?: string;
 }) {
   return (
     // Same style as the left-side "Conectar" buttons (outline) for consistency
@@ -62,7 +67,17 @@ function ScheduleMeetingCta({
       size={size}
       className={cn("w-full", className)}
     >
-      <a href={href} target="_blank" rel="noreferrer">
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={() =>
+          track("commerce_onboarding_meeting_cta_clicked", {
+            placement: "visual_card" satisfies MeetingCtaPlacement,
+            organization_id: orgId,
+          })
+        }
+      >
         Agendar uma reunião
         <ArrowUpRight size={16} />
       </a>
@@ -107,7 +122,13 @@ function HostAvatar({ size = 72 }: { size?: number }) {
  * carries the brand colour and the host's face overlaps it, with a clean
  * left-aligned body below. Green is the solid band, never a gradient wash.
  */
-export function ScheduleMeetingVisual({ href }: { href?: string }) {
+export function ScheduleMeetingVisual({
+  href,
+  orgId,
+}: {
+  href?: string;
+  orgId?: string;
+}) {
   return (
     <div className="relative flex h-full w-full items-center justify-center p-10">
       {/* Bigger footprint (wide card + generous padding); content stays at its
@@ -129,7 +150,12 @@ export function ScheduleMeetingVisual({ href }: { href?: string }) {
             <p className="text-sm leading-5 text-muted-foreground">{BODY}</p>
           </div>
 
-          <ScheduleMeetingCta href={href} size="lg" className="mt-6" />
+          <ScheduleMeetingCta
+            href={href}
+            size="lg"
+            className="mt-6"
+            orgId={orgId}
+          />
         </div>
       </div>
     </div>
@@ -144,15 +170,23 @@ export function ScheduleMeetingVisual({ href }: { href?: string }) {
 export function ScheduleMeetingBanner({
   className,
   href = SCHEDULE_MEETING_URL,
+  orgId,
 }: {
   className?: string;
   href?: string;
+  orgId?: string;
 }) {
   return (
     <a
       href={href}
       target="_blank"
       rel="noreferrer"
+      onClick={() =>
+        track("commerce_onboarding_meeting_cta_clicked", {
+          placement: "mobile_banner" satisfies MeetingCtaPlacement,
+          organization_id: orgId,
+        })
+      }
       className={cn(
         "flex items-center gap-4 rounded-2xl border border-border bg-card p-5 card-shadow transition-colors hover:bg-accent",
         className,
