@@ -26,8 +26,9 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import {
   fetchOrgFsSkillCatalog,
-  fetchOrgFsText,
+  fetchOrgFsSkillFiles,
   type OrgFsSkillCatalogEntry,
+  type OrgFsSkillFile,
 } from "@/web/hooks/use-org-fs";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Editor, Range } from "@tiptap/react";
@@ -68,10 +69,12 @@ interface SlashItem extends BaseItem {
 /** Metadata stashed on a skill mention; consumed by derive-parts. */
 export interface SkillMentionMeta {
   skillId: string;
-  /** Sandbox dir the skill's files are mounted under (for referenced files). */
+  /** Sandbox dir the skill's files are mounted under (for scripts/assets). */
   sandboxPath: string;
-  /** The SKILL.md body, fetched at select time. */
-  content: string;
+  /** SKILL.md + sibling text/reference files, inlined at select time. */
+  files: OrgFsSkillFile[];
+  /** A size/count cap was hit — some files were left on disk. */
+  truncated?: boolean;
 }
 
 interface PromptSelectContext {
@@ -141,15 +144,16 @@ async function fetchAndInsertSkill(
   skill: OrgFsSkillCatalogEntry,
 ) {
   try {
-    const content = await fetchOrgFsText(
+    const { files, truncated } = await fetchOrgFsSkillFiles(
       orgSlug,
       skill.volume,
-      `${skill.path}/SKILL.md`,
+      skill.path,
     );
     const metadata: SkillMentionMeta = {
       skillId: skill.id,
       sandboxPath: skill.sandboxPath,
-      content,
+      files,
+      truncated,
     };
     insertMention(editor, range, {
       id: skill.id,

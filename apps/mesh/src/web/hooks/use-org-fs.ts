@@ -249,6 +249,128 @@ export async function fetchOrgFsText(
   return res.text();
 }
 
+/** A text file inside a skill folder, collected for inlining into chat. */
+export interface OrgFsSkillFile {
+  /** Path relative to the skill dir (e.g. "SKILL.md", "references/style.md"). */
+  relPath: string;
+  content: string;
+}
+
+// Doc/reference/template extensions we inline. Scripts (.py/.sh/.js/.ts) and
+// binaries are intentionally excluded — they stay on disk in the sandbox to be
+// executed, not read into the prompt.
+const SKILL_TEXT_EXTENSIONS = new Set([
+  "md",
+  "mdx",
+  "markdown",
+  "txt",
+  "text",
+  "rst",
+  "json",
+  "yaml",
+  "yml",
+  "toml",
+  "csv",
+  "html",
+  "htm",
+  "xml",
+  "css",
+]);
+const SKILL_MAX_FILES = 25;
+const SKILL_MAX_FILE_BYTES = 64 * 1024;
+const SKILL_MAX_TOTAL_BYTES = 256 * 1024;
+const SKILL_MAX_DEPTH = 4;
+
+function isTextSkillFile(path: string): boolean {
+  const dot = path.lastIndexOf(".");
+  if (dot === -1) return false;
+  return SKILL_TEXT_EXTENSIONS.has(path.slice(dot + 1).toLowerCase());
+}
+
+/**
+ * Collect a skill folder's inlinable text files (SKILL.md + sibling docs /
+ * templates), bounded by depth, count, and total bytes. Scripts and binaries
+ * are skipped (left on disk). Best-effort: unreadable files / list failures are
+ * silently skipped. `truncated` signals a cap was hit so the caller can note it.
+ */
+export async function fetchOrgFsSkillFiles(
+  orgSlug: string,
+  volume: string,
+  dirPath: string,
+): Promise<{ files: OrgFsSkillFile[]; truncated: boolean }> {
+  const filePaths: string[] = [];
+  let truncated = false;
+  const queue: Array<{ path: string; depth: number }> = [
+    { path: dirPath, depth: 0 },
+  ];
+  while (queue.length > 0 && filePaths.length < SKILL_MAX_FILES) {
+    const next = queue.shift();
+    if (!next) break;
+    let entries: OrgFsEntry[];
+    try {
+      const res = await fsFetch(
+        fsUrl(orgSlug, volume, "list", { path: next.path }),
+      );
+      entries = ((await res.json()) as { entries: OrgFsEntry[] }).entries;
+    } catch {
+      continue;
+    }
+    for (const e of [...entries].sort((a, b) => a.path.localeCompare(b.path))) {
+      if (e.kind === "dir") {
+        if (next.depth < SKILL_MAX_DEPTH)
+          queue.push({ path: e.path, depth: next.depth + 1 });
+        continue;
+      }
+      if (!isTextSkillFile(e.path)) continue;
+      if (e.size > SKILL_MAX_FILE_BYTES) {
+        truncated = true;
+        continue;
+      }
+      if (filePaths.length >= SKILL_MAX_FILES) {
+        truncated = true;
+        break;
+      }
+      filePaths.push(e.path);
+    }
+  }
+
+  const prefix = dirPath ? `${dirPath}/` : "";
+  const read = await Promise.all(
+    filePaths.map(async (p): Promise<OrgFsSkillFile | null> => {
+      try {
+        const content = await fetchOrgFsText(orgSlug, volume, p);
+        return {
+          relPath: p.startsWith(prefix) ? p.slice(prefix.length) : p,
+          content,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  const files: OrgFsSkillFile[] = [];
+  let total = 0;
+  for (const f of read) {
+    if (!f) continue;
+    if (total + f.content.length > SKILL_MAX_TOTAL_BYTES) {
+      truncated = true;
+      break;
+    }
+    total += f.content.length;
+    files.push(f);
+  }
+  // SKILL.md first, then alphabetical, so the rendered block is stable.
+  files.sort((a, b) =>
+    a.relPath === "SKILL.md"
+      ? -1
+      : b.relPath === "SKILL.md"
+        ? 1
+        : a.relPath.localeCompare(b.relPath),
+  );
+  return { files, truncated };
+}
+
 /** The deployment's shared public skill sets (readonly volumes). */
 export function useOrgFsPublicSets() {
   const { org } = useProjectContext();
