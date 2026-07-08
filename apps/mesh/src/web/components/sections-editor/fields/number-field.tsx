@@ -3,8 +3,8 @@ import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import type { FieldProps } from "./field-props";
 
-/** Intermediate numeric strings the user can be mid-typing: "", "-", ".", "0.", "1e-". */
-const PARTIAL_NUMBER = /^-?\d*\.?\d*(?:[eE]-?\d*)?$/;
+/** Intermediate numeric strings the user can be mid-typing: "", "-", "+", ".", "0.", "1e-", "1e+5". */
+const PARTIAL_NUMBER = /^[+-]?\d*\.?\d*(?:[eE][+-]?\d*)?$/;
 
 /**
  * Number input that keeps the raw typed string in local state instead of

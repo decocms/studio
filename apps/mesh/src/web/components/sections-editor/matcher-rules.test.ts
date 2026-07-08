@@ -31,7 +31,7 @@ describe("matcher-rules", () => {
   };
 
   it("lists only saved matcher blocks (globals), excluding sections and pages", () => {
-    expect(listSavedMatcherBlocks(decofile)).toEqual([
+    expect(listSavedMatcherBlocks(null, decofile)).toEqual([
       {
         blockKey: "MobilePromo",
         matcherResolveType: "website/matchers/device.ts",
@@ -41,11 +41,41 @@ describe("matcher-rules", () => {
   });
 
   it("sorts saved matcher blocks by display name", () => {
-    const result = listSavedMatcherBlocks({
+    const result = listSavedMatcherBlocks(null, {
       Zeta: { __resolveType: "website/matchers/random.ts", name: "Alpha rule" },
       Alpha: { __resolveType: "website/matchers/random.ts", name: "Zeta rule" },
     });
     expect(result.map((b) => b.blockKey)).toEqual(["Zeta", "Alpha"]);
+  });
+
+  it("falls back to blockKey for name and sort when name is absent", () => {
+    const result = listSavedMatcherBlocks(null, {
+      Bravo: { __resolveType: "website/matchers/random.ts" },
+      Alpha: { __resolveType: "website/matchers/random.ts" },
+    });
+    expect(result).toEqual([
+      {
+        blockKey: "Alpha",
+        matcherResolveType: "website/matchers/random.ts",
+        name: undefined,
+      },
+      {
+        blockKey: "Bravo",
+        matcherResolveType: "website/matchers/random.ts",
+        name: undefined,
+      },
+    ]);
+  });
+
+  it("excludes auto-generated preview stubs", () => {
+    expect(
+      listSavedMatcherBlocks(null, {
+        "Preview MobilePromo": {
+          __resolveType: "website/matchers/device.ts",
+          mobile: true,
+        },
+      }),
+    ).toEqual([]);
   });
 
   it("detects saved matcher block references", () => {

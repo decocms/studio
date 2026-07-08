@@ -45,7 +45,7 @@ export function extractMatcherGlobals(
   meta: LiveMeta,
   decofile: Record<string, unknown>,
 ): MatcherGlobalEntry[] {
-  return listSavedMatcherBlocks(decofile, meta).map((block) => {
+  return listSavedMatcherBlocks(meta, decofile).map((block) => {
     const raw = (decofile[block.blockKey] ?? {}) as Record<string, unknown>;
     const inlined = inlineMatcherRule(
       buildMatcherBlockReference(block.blockKey),

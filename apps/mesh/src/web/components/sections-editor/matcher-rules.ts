@@ -1,4 +1,5 @@
 import {
+  isAutoPreviewBlockKey,
   isManifestMatcherResolveType,
   isSavedBlockResolveType,
 } from "./block-type-utils";
@@ -52,13 +53,14 @@ export interface SavedMatcherBlock {
  * reference an existing global instead of an inline matcher.
  */
 export function listSavedMatcherBlocks(
+  meta: LiveMeta | null | undefined,
   decofile: Record<string, unknown>,
-  meta?: LiveMeta | null,
 ): SavedMatcherBlock[] {
   const entries: SavedMatcherBlock[] = [];
 
   for (const [key, val] of Object.entries(decofile)) {
     if (key.includes("/") || !isSavedBlockResolveType(key)) continue;
+    if (isAutoPreviewBlockKey(key)) continue;
     if (!val || typeof val !== "object" || Array.isArray(val)) continue;
 
     const obj = val as Record<string, unknown>;
