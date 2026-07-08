@@ -479,15 +479,15 @@ describe("SANDBOX_START", () => {
     expect(result.isNewVm).toBe(false);
   });
 
-  it("generates a Bayer-style branch when input.branch is omitted and threads it into the ref", async () => {
+  it("generates a <creator-slug>-<timestamp> branch when input.branch is omitted and threads it into the ref", async () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
     const result = await SANDBOX_START.handler({ virtualMcpId: VMCP_ID }, ctx);
 
-    // <greek-letter>-<constellation>, no namespace prefix.
-    expect(result.branch).toMatch(/^[a-z]+-[a-z]+$/);
+    // <creator-slug>-<base36-timestamp>, no namespace prefix. Test user is "Test".
+    expect(result.branch).toMatch(/^test-[0-9a-z]+$/);
     expect(result.branch.includes("/")).toBe(false);
     const [id] = mockEnsure.mock.calls[0]! as [SandboxId];
     expect(id.projectRef).toBe(
