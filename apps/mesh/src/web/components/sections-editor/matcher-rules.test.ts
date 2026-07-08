@@ -5,6 +5,7 @@ import {
   getSavedMatcherBlockKey,
   inlineMatcherRule,
   isSavedMatcherBlockReference,
+  listSavedMatcherBlocks,
   readMatcherRuleFormState,
   resolveEffectiveMatcherRule,
   resolveVariantRuleLabel,
@@ -28,6 +29,24 @@ describe("matcher-rules", () => {
       name: "Home",
     },
   };
+
+  it("lists only saved matcher blocks (globals), excluding sections and pages", () => {
+    expect(listSavedMatcherBlocks(decofile)).toEqual([
+      {
+        blockKey: "MobilePromo",
+        matcherResolveType: "website/matchers/device.ts",
+        name: "Mobile Promo",
+      },
+    ]);
+  });
+
+  it("sorts saved matcher blocks by display name", () => {
+    const result = listSavedMatcherBlocks({
+      Zeta: { __resolveType: "website/matchers/random.ts", name: "Alpha rule" },
+      Alpha: { __resolveType: "website/matchers/random.ts", name: "Zeta rule" },
+    });
+    expect(result.map((b) => b.blockKey)).toEqual(["Zeta", "Alpha"]);
+  });
 
   it("detects saved matcher block references", () => {
     expect(

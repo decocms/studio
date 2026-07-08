@@ -13,12 +13,52 @@ import { resolveBlockSchemaMetadata, type LiveMeta } from "./resolve-schema";
 import { MatcherIcon, resolveMatcherIconName } from "./matcher-icons";
 import { labelFromResolveType } from "./section-types";
 import { getIconComponent } from "../agent-icon";
+import {
+  buildMatcherBlockReference,
+  inlineMatcherRule,
+  listSavedMatcherBlocks,
+} from "./matcher-rules";
+import { globalSectionLabel } from "./page-list";
+import { formatMatcher } from "./format-matcher";
 
 export interface MatcherEntry {
   resolveType: string;
   title: string;
   description?: string;
   iconName: string;
+}
+
+/** A saved matcher block (global rule) shown under the picker's "Saved rules". */
+export interface MatcherGlobalEntry {
+  /** Decofile key referenced as the rule's `__resolveType`. */
+  blockKey: string;
+  title: string;
+  description?: string;
+  iconName: string;
+}
+
+/**
+ * Build the "Saved rules" list from the decofile: every global matcher block,
+ * labelled by its name and described by a human summary of its underlying rule.
+ */
+export function extractMatcherGlobals(
+  meta: LiveMeta,
+  decofile: Record<string, unknown>,
+): MatcherGlobalEntry[] {
+  return listSavedMatcherBlocks(decofile, meta).map((block) => {
+    const raw = (decofile[block.blockKey] ?? {}) as Record<string, unknown>;
+    const inlined = inlineMatcherRule(
+      buildMatcherBlockReference(block.blockKey),
+      decofile,
+      meta,
+    );
+    return {
+      blockKey: block.blockKey,
+      title: globalSectionLabel(block.blockKey, raw),
+      description: formatMatcher(inlined),
+      iconName: resolveMatcherIconName(block.matcherResolveType),
+    };
+  });
 }
 
 const ALWAYS_MATCHER_ICON = "Users03";
@@ -71,20 +111,38 @@ function resolveCurrentMatcherIcon(
 export function MatcherPicker({
   currentRt,
   currentLabel,
+  currentGlobalKey,
   matchers,
+  globals = [],
   onSelect,
+  onSelectGlobal,
 }: {
   currentRt: string;
   currentLabel: string;
+  /** Block key when the current rule references a saved global matcher block. */
+  currentGlobalKey?: string;
   matchers: MatcherEntry[];
+  globals?: MatcherGlobalEntry[];
   onSelect: (resolveType: string) => void;
+  onSelectGlobal?: (blockKey: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const currentIconName = resolveCurrentMatcherIcon(currentRt, matchers);
+  // A saved-block reference wins the trigger icon; otherwise fall back to the
+  // built-in matcher module's icon.
+  const currentGlobal = currentGlobalKey
+    ? globals.find((g) => g.blockKey === currentGlobalKey)
+    : undefined;
+  const currentIconName =
+    currentGlobal?.iconName ?? resolveCurrentMatcherIcon(currentRt, matchers);
   const CurrentIcon = getIconComponent(currentIconName);
 
   const handleSelect = (rt: string) => {
     onSelect(rt);
+    setOpen(false);
+  };
+
+  const handleSelectGlobal = (blockKey: string) => {
+    onSelectGlobal?.(blockKey);
     setOpen(false);
   };
 
@@ -116,7 +174,10 @@ export function MatcherPicker({
             <CommandItem
               value="always Target all users"
               onSelect={() => handleSelect("")}
-              className={cn("gap-2.5", !currentRt && "bg-accent/60")}
+              className={cn(
+                "gap-2.5",
+                !currentRt && !currentGlobalKey && "bg-accent/60",
+              )}
             >
               <MatcherIcon iconName={ALWAYS_MATCHER_ICON} size="sm" />
               <div className="flex min-w-0 flex-1 flex-col">
@@ -133,7 +194,9 @@ export function MatcherPicker({
                 onSelect={() => handleSelect(matcher.resolveType)}
                 className={cn(
                   "gap-2.5",
-                  currentRt === matcher.resolveType && "bg-accent/60",
+                  !currentGlobalKey &&
+                    currentRt === matcher.resolveType &&
+                    "bg-accent/60",
                 )}
               >
                 <MatcherIcon iconName={matcher.iconName} size="sm" />
@@ -148,6 +211,31 @@ export function MatcherPicker({
               </CommandItem>
             ))}
           </CommandGroup>
+          {globals.length > 0 && (
+            <CommandGroup heading="Saved rules">
+              {globals.map((global) => (
+                <CommandItem
+                  key={global.blockKey}
+                  value={`${global.title} ${global.blockKey} ${global.description ?? ""}`}
+                  onSelect={() => handleSelectGlobal(global.blockKey)}
+                  className={cn(
+                    "gap-2.5",
+                    currentGlobalKey === global.blockKey && "bg-accent/60",
+                  )}
+                >
+                  <MatcherIcon iconName={global.iconName} size="sm" />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm">{global.title}</span>
+                    {global.description && (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {global.description}
+                      </span>
+                    )}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
         </CommandList>
       </CommandDialog>
     </>

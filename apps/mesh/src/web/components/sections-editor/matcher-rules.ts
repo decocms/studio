@@ -35,6 +35,47 @@ function isMatcherBlockData(
   return isMatcherModuleResolveType(moduleRt);
 }
 
+/** A saved matcher block (a global rule) stored in the decofile. */
+export interface SavedMatcherBlock {
+  /** Decofile key used as the `__resolveType` reference (e.g. `TestHero`). */
+  blockKey: string;
+  /** The underlying matcher module (e.g. `website/matchers/random.ts`). */
+  matcherResolveType: string;
+  /** Optional display name stored on the block. */
+  name?: string;
+}
+
+/**
+ * List all saved matcher blocks (global rules) in the decofile — decofile
+ * entries keyed by a bare id (no module path) whose body is a matcher block.
+ * These are what the rule picker offers under "Saved rules" so a variant can
+ * reference an existing global instead of an inline matcher.
+ */
+export function listSavedMatcherBlocks(
+  decofile: Record<string, unknown>,
+  meta?: LiveMeta | null,
+): SavedMatcherBlock[] {
+  const entries: SavedMatcherBlock[] = [];
+
+  for (const [key, val] of Object.entries(decofile)) {
+    if (key.includes("/") || !isSavedBlockResolveType(key)) continue;
+    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
+
+    const obj = val as Record<string, unknown>;
+    if (!isMatcherBlockData(obj, meta)) continue;
+
+    entries.push({
+      blockKey: key,
+      matcherResolveType: (obj.__resolveType as string) ?? "",
+      name: typeof obj.name === "string" ? obj.name : undefined,
+    });
+  }
+
+  return entries.sort((a, b) =>
+    (a.name ?? a.blockKey).localeCompare(b.name ?? b.blockKey),
+  );
+}
+
 export function isSavedMatcherBlockReference(
   rule: Record<string, unknown> | undefined,
   decofile: Record<string, unknown>,
