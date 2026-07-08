@@ -58,8 +58,13 @@ export function AgentRow({
       tabIndex={0}
       onClick={() => onOpen(virtualMcpId)}
       onKeyDown={(e) => {
+        // Preserve dnd-kit's keyboard sensor (Space/arrows to reorder) — the
+        // spread listeners' onKeyDown is otherwise shadowed by this handler.
+        sortable?.listeners?.onKeyDown?.(e);
+        if (e.defaultPrevented) return;
         if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") {
+        // Enter opens the agent; Space is left to the drag sensor.
+        if (e.key === "Enter") {
           e.preventDefault();
           onOpen(virtualMcpId);
         }
@@ -85,6 +90,8 @@ export function AgentRow({
         <button
           type="button"
           aria-label="New thread with this agent"
+          // Keep the pointerdown from reaching the sortable row's drag sensor.
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             onNewTask(virtualMcpId);

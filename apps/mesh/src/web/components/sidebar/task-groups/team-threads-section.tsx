@@ -57,6 +57,7 @@ export function TeamThreadsSection({
         open={open}
         onToggle={() => setOpen((v) => !v)}
         count={threads.length}
+        controlsId="sidebar-section-team-threads"
         action={{
           label: "See all",
           icon: <ArrowNarrowRight size={11} />,
@@ -64,7 +65,10 @@ export function TeamThreadsSection({
         }}
       />
       {open && (
-        <>
+        <div
+          id="sidebar-section-team-threads"
+          className="flex flex-col gap-0.5"
+        >
           {preview.map((task) => (
             <TaskRow
               key={task.id}
@@ -85,7 +89,7 @@ export function TeamThreadsSection({
               <ArrowNarrowRight size={12} />
             </button>
           )}
-        </>
+        </div>
       )}
     </>
   );
