@@ -62,6 +62,7 @@ import {
   cancelThreadGateWorkflow,
   listThreadGateQueue,
 } from "@/dispatch-queue/thread-gate-queue";
+import { type QueuePartRow, foldQueueHydration } from "./queue-text";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -758,6 +759,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // so idempotent retries that collapse onto an existing workflowID
       // don't double-count in PostHog. Don't add a duplicate emit here.
       if (
+        existingThread?.status !== "in_progress" &&
         shouldPublishClusterRunStatus({
           harnessId: pinnedHarness,
           sandboxProviderKind: target.sandboxProviderKind,
@@ -913,9 +915,29 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // ==========================================================================
 
   app.get("/:org/decopilot/queue/:threadId", async (c) => {
-    const { taskId } = await validateThreadOwnership(c);
+    const { ctx, taskId } = await validateThreadOwnership(c);
     const items = await listThreadGateQueue(taskId);
-    return c.json({ items });
+    if (items.length === 0) return c.json({ items: [] });
+    // Hydrate tray display text + attachment presence from the persisted
+    // request parts (the durable gate input carries no message content).
+    const rows = await ctx.db
+      .selectFrom("thread_message_parts")
+      .select(["message_id", "kind", "seq", "payload"])
+      .where("thread_id", "=", taskId)
+      .where(
+        "message_id",
+        "in",
+        items.map((i) => i.messageId),
+      )
+      .execute();
+    const hydration = foldQueueHydration(rows as QueuePartRow[]);
+    return c.json({
+      items: items.map((i) => ({
+        ...i,
+        text: hydration.get(i.messageId)?.text ?? "",
+        hasAttachments: hydration.get(i.messageId)?.hasAttachments ?? false,
+      })),
+    });
   });
 
   app.post("/:org/decopilot/queue/:threadId/cancel/:workflowId", async (c) => {
