@@ -12,18 +12,22 @@ export function SidebarSectionHeader({
   onToggle,
   count,
   action,
+  controlsId,
 }: {
   label: string;
   open: boolean;
   onToggle: () => void;
   count?: number;
   action?: { label: string; icon?: ReactNode; onClick: () => void };
+  /** id of the collapsible content panel this header toggles (a11y). */
+  controlsId?: string;
 }) {
   return (
     <div className="group/section flex items-center gap-1 px-2 pt-1 pb-0.5">
       <button
         type="button"
         aria-expanded={open}
+        aria-controls={controlsId}
         onClick={onToggle}
         className="flex flex-1 min-w-0 items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80 hover:text-foreground transition-colors focus-visible:outline-none"
       >

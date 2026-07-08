@@ -15,6 +15,8 @@ import {
 import { SidebarMenu, useSidebar } from "@deco/ui/components/sidebar.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
+  SELF_MCP_ALIAS_ID,
+  useMCPClient,
   useProjectContext,
   useVirtualMCPActions,
   useVirtualMCPs,
@@ -75,6 +77,11 @@ export function TaskGroupsList({
   const currentUserId = session?.user?.id;
   const sidebarUserId = currentUserId ?? "anon";
   const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const agents = useVirtualMCPs();
   const { liveToDev, devToLive } = getLiveDevAgentMaps(agents);
@@ -254,15 +261,52 @@ export function TaskGroupsList({
 
   // Click an agent → open its most recent thread; if it has none, start a new
   // one (which also adds it to the personal sidebar order).
-  const handleOpenAgent = (virtualMcpId: string) => {
-    const last = myThreadsAll.find((t) => t.virtual_mcp_id === virtualMcpId);
+  const handleOpenAgent = async (virtualMcpId: string) => {
+    const loaded = myThreadsAll.find((t) => t.virtual_mcp_id === virtualMcpId);
+    if (loaded) {
+      track("sidebar_agent_opened", {
+        virtual_mcp_id: virtualMcpId,
+        had_thread: true,
+      });
+      closeAfterNavigation();
+      setTaskId(loaded.id, virtualMcpId);
+      return;
+    }
+
+    // The loaded window is only the first global page — a pinned/persisted
+    // agent may have older personal threads beyond it. Ask the server for its
+    // most recent one before falling back to creating a brand-new thread.
+    let existingId: string | null = null;
+    if (currentUserId) {
+      try {
+        const res = await client.callTool({
+          name: "COLLECTION_THREADS_LIST",
+          arguments: {
+            limit: 1,
+            offset: 0,
+            orderBy: [{ field: ["updated_at"], direction: "desc" }],
+            where: {
+              hidden: false,
+              virtual_mcp_id: virtualMcpId,
+              created_by: currentUserId,
+            },
+          },
+        });
+        const payload = ((res as { structuredContent?: unknown })
+          .structuredContent ?? res) as { items?: Task[] };
+        existingId = payload.items?.[0]?.id ?? null;
+      } catch {
+        // Fall through to a new thread if the lookup fails.
+      }
+    }
+
     track("sidebar_agent_opened", {
       virtual_mcp_id: virtualMcpId,
-      had_thread: Boolean(last),
+      had_thread: Boolean(existingId),
     });
     closeAfterNavigation();
-    if (last) {
-      setTaskId(last.id, virtualMcpId);
+    if (existingId) {
+      setTaskId(existingId, virtualMcpId);
     } else {
       navigateToAgent(virtualMcpId);
     }
@@ -472,19 +516,25 @@ export function TaskGroupsList({
           open={myThreadsOpen}
           onToggle={() => setMyThreadsOpen((v) => !v)}
           count={myThreads.length}
+          controlsId="sidebar-section-my-threads"
         />
         {myThreadsOpen && (
-          <MyThreadsSection
-            threads={myThreads}
-            groupBy={groupBy}
-            activeTaskId={activeTaskId}
-            onSelectTask={handleSelectTask}
-            onArchiveTask={handleArchive}
-            filters={filters}
-            hasMore={hasMore}
-            isFetchingMore={isFetchingMore}
-            onLoadMore={() => void fetchNextPage()}
-          />
+          <div
+            id="sidebar-section-my-threads"
+            className="flex flex-col gap-0.5"
+          >
+            <MyThreadsSection
+              threads={myThreads}
+              groupBy={groupBy}
+              activeTaskId={activeTaskId}
+              onSelectTask={handleSelectTask}
+              onArchiveTask={handleArchive}
+              filters={filters}
+              hasMore={hasMore}
+              isFetchingMore={isFetchingMore}
+              onLoadMore={() => void fetchNextPage()}
+            />
+          </div>
         )}
         <div className="mx-2 my-2 border-b" />
         <SidebarSectionHeader
@@ -492,16 +542,19 @@ export function TaskGroupsList({
           open={agentsOpen}
           onToggle={() => setAgentsOpen((v) => !v)}
           count={agentGroups.length}
+          controlsId="sidebar-section-agents"
         />
         {agentsOpen && (
-          <SortableAgentRows
-            groups={agentGroups}
-            orderScope={orderScope}
-            decopilotId={decopilotId}
-            orgPinnedIds={orgPinnedIds}
-            onReorder={() => setLocalOrderRevision((n) => n + 1)}
-            renderGroup={buildAgentRowProps}
-          />
+          <div id="sidebar-section-agents" className="flex flex-col gap-0.5">
+            <SortableAgentRows
+              groups={agentGroups}
+              orderScope={orderScope}
+              decopilotId={decopilotId}
+              orgPinnedIds={orgPinnedIds}
+              onReorder={() => setLocalOrderRevision((n) => n + 1)}
+              renderGroup={buildAgentRowProps}
+            />
+          </div>
         )}
       </div>
       {searchEverOpened && (
