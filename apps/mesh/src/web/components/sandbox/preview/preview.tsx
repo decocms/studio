@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Code01,
   Code02,
+  CornerDownLeft,
   CursorClick01,
   DotsHorizontal,
   Globe02,
@@ -55,8 +56,12 @@ import {
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
 import {
+  extractPathParams,
+  fillPathTemplate,
   normalizePagePath,
+  splitPathTemplate,
   validatePagePath,
+  type PathToken,
 } from "@/web/components/sections-editor/page-path-utils";
 import { decoBlockFileViewPath } from "@/web/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/web/components/sections-editor/section-catalog";
@@ -76,6 +81,12 @@ import {
   useSandboxReloadHandler,
 } from "../hooks/use-sandbox-events";
 import { SandboxStateCard } from "./state-card";
+import {
+  lastPreviewPageKey,
+  readLastPreviewPage,
+  writeLastPreviewPage,
+  type LastPreviewPage,
+} from "./last-preview-page";
 import { derivePhaseProgress } from "./derive-phase-progress";
 import { track } from "@/web/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
@@ -186,6 +197,77 @@ function resolveSectionCandidates(
   return [rt];
 }
 
+/**
+ * Inline editor for one `:param` token, rendered in place inside the URL
+ * label. Grows with its content and commits on Enter/blur.
+ */
+function PathParamInput({
+  name,
+  value,
+  onCommit,
+}: {
+  name: string;
+  value: string;
+  onCommit: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
+  const cancelledRef = useRef(false);
+  const sizer = draft || `:${name}`;
+  return (
+    <>
+      <span className="relative inline-flex max-w-64 shrink-0 items-center overflow-hidden">
+        {/* Invisible sizer: the box hugs the rendered text exactly. Must
+          mirror the input's font size and horizontal padding. */}
+        <span
+          aria-hidden
+          className="invisible whitespace-pre px-1 py-0.5 text-[12px]"
+        >
+          {sizer}
+        </span>
+        <input
+          type="text"
+          value={draft}
+          placeholder={`:${name}`}
+          title={`Value for :${name}`}
+          spellCheck={false}
+          className="absolute inset-0 rounded-sm bg-violet-500/15 px-1 text-[12px] text-violet-600 outline-none placeholder:text-violet-500/60 focus:bg-violet-500/25 dark:text-violet-400"
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              cancelledRef.current = true;
+              setDraft(value);
+              e.currentTarget.blur();
+            }
+          }}
+          onBlur={() => {
+            setFocused(false);
+            if (cancelledRef.current) {
+              cancelledRef.current = false;
+              return;
+            }
+            // Blank values are not accepted: clearing the input reverts to the
+            // bare `:param` token (placeholder) and the template URL.
+            const next = draft.trim();
+            setDraft(next);
+            if (next !== value) onCommit(next);
+          }}
+        />
+      </span>
+      {/* Editing hint, outside the value box */}
+      {focused && (
+        <span className="pointer-events-none ml-1.5 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+          <CornerDownLeft size={10} />
+          Enter to go
+        </span>
+      )}
+    </>
+  );
+}
+
 /** Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`). */
 function withDeviceHint(url: string, device: PreviewDeviceSize): string {
   const parsed = new URL(url, window.location.href);
@@ -238,6 +320,10 @@ export function PreviewContent() {
   const [currentPath, setCurrentPath] = useState("/");
   /** Explicit page block key from the page picker; disambiguates duplicate paths. */
   const [pinnedPageKey, setPinnedPageKey] = useState<string | null>(null);
+  /** User-provided values for `:param` tokens in path templates, keyed by page block key. */
+  const [pathParamsByPage, setPathParamsByPage] = useState<
+    Record<string, Record<string, string>>
+  >({});
 
   // SEO panel state
   const [cmsInitialEditSeo, setCmsInitialEditSeo] = useState(false);
@@ -311,6 +397,14 @@ export function PreviewContent() {
     : currentPage?.name;
   const currentPageKey = currentPage?.key ?? null;
 
+  // Path templates: pages like `/blog/:slug` expose inline inputs in the URL
+  // bar. `currentPath` keeps the template (so the page stays matched); the
+  // iframe navigates to the template with the user's values filled in.
+  const pathParams = extractPathParams(currentPath);
+  const pathParamValues =
+    (currentPageKey ? pathParamsByPage[currentPageKey] : undefined) ?? {};
+  const resolvedPath = fillPathTemplate(currentPath, pathParamValues);
+
   // Per-section metadata for the CMS hover overlay, aligned by index with the
   // iframe's top-level section list. `label`: ONLY global (saved block)
   // sections get a name — the DOM can't carry it (incl. globals inside async
@@ -380,14 +474,25 @@ export function PreviewContent() {
       ? withVariantMatcherOverride(
           withDeviceHint(
             directPreviewUrl ??
-              new URL(currentPath, previewState.previewUrl).href,
+              new URL(resolvedPath, previewState.previewUrl).href,
             previewDeviceSize,
           ),
           sectionsOpen && variantOverrideParams ? variantOverrideParams : [],
         )
       : null;
 
-  // Reset navigation when the VM preview base URL changes (branch switch, etc.)
+  // Last visited page (incl. `:param` values), persisted per project+branch.
+  const previewStorageKey =
+    virtualMcpId && branch
+      ? lastPreviewPageKey(org.slug, virtualMcpId, branch)
+      : null;
+  const persistLastPage = (page: LastPreviewPage) => {
+    if (previewStorageKey) writeLastPreviewPage(previewStorageKey, page);
+  };
+
+  // When the VM preview base URL appears or changes (first boot, branch
+  // switch, etc.), restore the last visited page for this project+branch;
+  // reset navigation to "/" when there's nothing saved.
   const [prevIframeBase, setPrevIframeBase] = useState<string | null>(null);
   if (
     previewState.kind === "iframe" &&
@@ -395,7 +500,21 @@ export function PreviewContent() {
   ) {
     const hadPreviousBase = prevIframeBase !== null;
     setPrevIframeBase(previewState.previewUrl);
-    if (hadPreviousBase) {
+    const saved = previewStorageKey
+      ? readLastPreviewPage(previewStorageKey)
+      : null;
+    if (saved) {
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- expect the restored page's resolved path on the next iframe load
+      intendedPathRef.current = fillPathTemplate(saved.path, saved.params);
+      setCurrentPath(saved.path);
+      setPinnedPageKey(saved.pageKey);
+      setDirectPreviewUrl(null);
+      setActiveGlobalSection(null);
+      if (saved.pageKey && Object.keys(saved.params).length > 0) {
+        const pageKey = saved.pageKey;
+        setPathParamsByPage((prev) => ({ ...prev, [pageKey]: saved.params }));
+      }
+    } else if (hadPreviousBase) {
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- clear stale navigation intent on branch switch
       intendedPathRef.current = null;
       setCurrentPath("/");
@@ -631,21 +750,55 @@ export function PreviewContent() {
     if (activeGlobalSection) return activeGlobalSection.name;
     try {
       const url = new URL(previewUrl);
-      const path = currentPath === "/" ? "" : currentPath;
+      const path = resolvedPath === "/" ? "" : resolvedPath;
       return `${url.host}${path}`;
     } catch {
       return previewUrl;
     }
   })();
 
+  // URL-label tokens for path-template pages: host + static path text stay
+  // plain text; each `:param` renders in place as an inline input. Null when
+  // the current path has no params (plain `previewLabel` is used instead).
+  const previewLabelTokens = (() => {
+    if (!previewUrl || activeGlobalSection || !currentPageKey) return null;
+    if (pathParams.length === 0) return null;
+    try {
+      const host = new URL(previewUrl).host;
+      const tokens = splitPathTemplate(currentPath);
+      const first = tokens[0];
+      return first?.type === "text"
+        ? ([
+            { type: "text", text: `${host}${first.text}` },
+            ...tokens.slice(1),
+          ] satisfies PathToken[])
+        : ([{ type: "text", text: host }, ...tokens] satisfies PathToken[]);
+    } catch {
+      return null;
+    }
+  })();
+
   const navigatePreviewToPage = (page: PageEntry) => {
-    intendedPathRef.current = page.path;
+    // The iframe loads the template with any stored param values filled in.
+    const params = pathParamsByPage[page.key] ?? {};
+    intendedPathRef.current = fillPathTemplate(page.path, params);
     setActiveGlobalSection(null);
     setDirectPreviewUrl(null);
     setPinnedPageKey(page.key);
     setCurrentPath(page.path);
     setCmsSelectedSectionIndex(null);
     setCmsInitialEditSeo(false);
+    persistLastPage({ path: page.path, pageKey: page.key, params });
+  };
+
+  const setPathParamValue = (name: string, value: string) => {
+    if (!currentPageKey) return;
+    const pageKey = currentPageKey;
+    const nextValues = { ...pathParamValues, [name]: value };
+    // Guard against a stale onLoad from the previous URL resetting currentPath.
+    intendedPathRef.current = fillPathTemplate(currentPath, nextValues);
+    setPathParamsByPage((prev) => ({ ...prev, [pageKey]: nextValues }));
+    persistLastPage({ path: currentPath, pageKey, params: nextValues });
   };
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
@@ -812,33 +965,69 @@ export function PreviewContent() {
                   ref={pagesContainerRef}
                   className="relative min-w-0 flex-1"
                 >
-                  <button
-                    type="button"
-                    className="flex h-8 w-full min-w-0 items-center gap-1 rounded-md bg-background px-2 transition-colors duration-200 hover:bg-accent"
-                    onClick={() => setPagesOpen((prev) => !prev)}
-                  >
-                    {activeGlobalSection && (
-                      <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                        <Globe02 size={11} />
-                        Global
-                      </span>
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground/88">
-                      {previewLabel}
-                    </span>
-                    {currentPageName && !activeGlobalSection && (
-                      <span className="shrink-0 text-[12px] text-muted-foreground">
-                        {currentPageName}
-                      </span>
-                    )}
-                    <ChevronDown
-                      size={12}
-                      className={cn(
-                        "shrink-0 text-muted-foreground transition-transform",
-                        pagesOpen && "rotate-180",
+                  <div className="flex h-8 w-full min-w-0 items-center rounded-md bg-background transition-colors duration-200 hover:bg-accent">
+                    {/* Not a <button>: path-template pages render `:param`
+                        inputs inline, and inputs can't nest inside a button.
+                        Keyboard toggling stays on the chevron button. */}
+                    <div
+                      className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 pl-2 pr-1"
+                      onClick={() => setPagesOpen((prev) => !prev)}
+                    >
+                      {activeGlobalSection && (
+                        <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                          <Globe02 size={11} />
+                          Global
+                        </span>
                       )}
-                    />
-                  </button>
+                      {previewLabelTokens ? (
+                        <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-left text-[12px] text-foreground/88">
+                          {previewLabelTokens.map((token, i) =>
+                            token.type === "text" ? (
+                              <span
+                                key={`text-${i}`}
+                                className={cn(
+                                  i === 0 ? "min-w-0 truncate" : "shrink-0",
+                                )}
+                              >
+                                {token.text}
+                              </span>
+                            ) : (
+                              <PathParamInput
+                                key={`${currentPageKey}:${token.name}`}
+                                name={token.name}
+                                value={pathParamValues[token.name] ?? ""}
+                                onCommit={(value) =>
+                                  setPathParamValue(token.name, value)
+                                }
+                              />
+                            ),
+                          )}
+                        </span>
+                      ) : (
+                        <span className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground/88">
+                          {previewLabel}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="flex h-full shrink-0 items-center gap-1 pl-1 pr-2"
+                      onClick={() => setPagesOpen((prev) => !prev)}
+                    >
+                      {currentPageName && !activeGlobalSection && (
+                        <span className="shrink-0 text-[12px] text-muted-foreground">
+                          {currentPageName}
+                        </span>
+                      )}
+                      <ChevronDown
+                        size={12}
+                        className={cn(
+                          "shrink-0 text-muted-foreground transition-transform",
+                          pagesOpen && "rotate-180",
+                        )}
+                      />
+                    </button>
+                  </div>
 
                   {pagesOpen && (
                     <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
@@ -1309,12 +1498,23 @@ export function PreviewContent() {
                       const intended = intendedPathRef.current;
                       if (intended !== null) {
                         intendedPathRef.current = null;
-                        if (normPath(iframePath) === normPath(intended)) {
-                          setCurrentPath(iframePath);
+                        // Stale onLoad from the previous URL — ignore.
+                        if (normPath(iframePath) !== normPath(intended)) {
+                          return;
                         }
+                      }
+                      // Keep the template as currentPath when the loaded
+                      // path is just the template with params filled in —
+                      // otherwise the page match and param inputs are lost.
+                      if (normPath(iframePath) === normPath(resolvedPath)) {
                         return;
                       }
                       setCurrentPath(iframePath);
+                      persistLastPage({
+                        path: iframePath,
+                        pageKey: pinnedPageKey,
+                        params: pathParamValues,
+                      });
                     } catch {
                       // Cross-origin — can't read, keep current value
                     }
