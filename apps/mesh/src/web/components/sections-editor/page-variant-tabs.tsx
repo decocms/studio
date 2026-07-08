@@ -396,7 +396,7 @@ export function PageVariantTabs({
   };
 
   return (
-    <div className="space-y-1 border-b p-2 shrink-0">
+    <div className="space-y-1 border-b p-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">
           Variants
