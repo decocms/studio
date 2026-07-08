@@ -151,6 +151,13 @@ export interface ChatStreamContextValue {
    *  response. Patches local messages, clears finishReason, POSTs to /messages.
    *  Throws if a toolOutput / approval target isn't found in current messages. */
   submit: (action: SubmitAction, opts: RequestOptions) => Promise<void>;
+  /** Drop a message from the local body store. Used after a CONFIRMED cancel
+   *  of a queued turn: a reload/refetch can preload the queued message's
+   *  persisted row into the local store (render-hidden only while it stays
+   *  queued) — cancelling would otherwise unhide it as a stale, forever-
+   *  unanswered bubble. Removing an absent id is a no-op, so callers invoke
+   *  it unconditionally after the server confirms the cancel. */
+  removeLocalMessage: (messageId: string) => void;
   /** Synchronous probe for the module-level `sendInFlight` latch (same key
    *  `sendMessageInternal` latches on: this task's id). Lets callers that
    *  clear UI state right after firing `sendMessage` (e.g. the composer's
@@ -1316,6 +1323,13 @@ export function ActiveTaskProvider({
       return false;
     }
     dropPendingBody(taskId, messageId);
+    // A reload/refetch may have preloaded the original queued message's
+    // persisted row into the local body store (render-hidden only while it
+    // stayed queued). The cancel just deleted its server parts and its
+    // queue entry — drop the stale local row too or the ORIGINAL text
+    // resurrects as a forever-unanswered bubble while the edited text is
+    // queued. Removing an absent id is a no-op, so call unconditionally.
+    conn.removeLocalMessage(messageId);
 
     const edited: ChatMessage = {
       id: crypto.randomUUID(),
@@ -1404,6 +1418,7 @@ export function ActiveTaskProvider({
     editQueuedMessage,
     stop: () => void cancelRun(),
     submit: (action, opts) => conn.submit(action, opts),
+    removeLocalMessage: (messageId) => conn.removeLocalMessage(messageId),
     isSendInFlight: () => sendInFlight.has(taskId),
     error: chatError,
     clearError: () => setChatError(null),

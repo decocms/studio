@@ -22,7 +22,9 @@
  *     fails (re-confirming is safe: the cancel endpoint treats an
  *     already-gone workflow as success).
  *   - Remove: cancels the queued gate workflow, then drops the stashed
- *     pending body so it can't leak (the workflow id is gone for good).
+ *     pending body so it can't leak (the workflow id is gone for good) and
+ *     the local body row a reload/refetch may have preloaded (otherwise the
+ *     cancel would unhide it as a stale, forever-unanswered bubble).
  *   - Send now (head of queue only): cancels the current turn so the gate
  *     FIFO promotes this message next.
  *
@@ -47,7 +49,8 @@ export function QueueTray({ taskId }: { taskId: string }) {
   const items = useMessageQueue(taskId);
   const queued = selectQueuedItems(items);
   const actions = useMessageQueueActions();
-  const { stop, editQueuedMessage, isSendInFlight } = useChatStream();
+  const { stop, editQueuedMessage, isSendInFlight, removeLocalMessage } =
+    useChatStream();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [isEditBusy, setIsEditBusy] = useState(false);
@@ -142,7 +145,15 @@ export function QueueTray({ taskId }: { taskId: string }) {
                 disabled={isEditBusy}
                 onClick={() =>
                   void actions.cancel(taskId, item.messageId).then((ok) => {
-                    if (ok) dropPendingBody(taskId, item.messageId);
+                    if (ok) {
+                      dropPendingBody(taskId, item.messageId);
+                      // A reload/refetch may have preloaded this queued
+                      // message's persisted row into the local body store
+                      // (render-hidden only while queued) — drop it too or
+                      // the cancel unhides it as a stale, forever-unanswered
+                      // bubble. No-op when the row was never loaded.
+                      removeLocalMessage(item.messageId);
+                    }
                   })
                 }
               >
