@@ -240,7 +240,7 @@ export async function fetchOrgFsSkillCatalog(
 }
 
 /** Read a file's contents as UTF-8 text (org-fs `/read` endpoint). */
-export async function fetchOrgFsText(
+async function fetchOrgFsText(
   orgSlug: string,
   volume: string,
   path: string,
