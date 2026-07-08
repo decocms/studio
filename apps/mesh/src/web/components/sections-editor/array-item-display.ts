@@ -1,3 +1,4 @@
+import { arrayItemDisplayValue } from "./array-item-hidden";
 import { lazyWrappedInner } from "./block-ref-field-utils";
 import { extractUrl } from "./fields/extract-url";
 import type { SchemaProperty } from "./resolve-schema";
@@ -113,7 +114,9 @@ export function getArrayItemLabel(
     return String(item);
   }
   if (item && typeof item === "object" && !Array.isArray(item)) {
-    let obj = item as Record<string, unknown>;
+    // Hidden items (`{ __resolveType: ".../multivariate.ts", variants: [{ value, rule: never }] }`)
+    // should be labelled by the value they hide, not "Multivariate".
+    let obj = arrayItemDisplayValue(item) as Record<string, unknown>;
     // Lazy-wrapped section items (`{ __resolveType: ".../Lazy.tsx", section: {...} }`)
     // should be labelled by the inner section, not "Lazy".
     const inner = lazyWrappedInner(obj);

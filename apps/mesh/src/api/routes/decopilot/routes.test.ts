@@ -13,7 +13,6 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   applyThreadLock,
   computeIdempotencyKey,
-  planSubmitRunFence,
   shouldPersistRequestMessage,
 } from "./routes";
 import { StreamRequestSchema } from "./schemas";
@@ -157,56 +156,6 @@ describe("StreamRequestSchema", () => {
     });
 
     expect(result.sandboxProviderKind).toBe("agent-sandbox");
-  });
-});
-
-describe("planSubmitRunFence", () => {
-  test("reuses the in-flight fence for a network redelivery", () => {
-    const plan = planSubmitRunFence({
-      isRedelivery: true,
-      existingFenceToken: "fence-existing",
-      mintFenceToken: () => "fence-new",
-    });
-
-    expect(plan.runFenceToken).toBe("fence-existing");
-    expect(plan.shouldWriteFence).toBe(false);
-  });
-
-  test("recovers a redelivery with a missing fence by minting one", () => {
-    const plan = planSubmitRunFence({
-      isRedelivery: true,
-      existingFenceToken: null,
-      mintFenceToken: () => "fence-recovered",
-    });
-
-    expect(plan.runFenceToken).toBe("fence-recovered");
-    expect(plan.shouldWriteFence).toBe(true);
-  });
-
-  test("fresh messages mint a fence before user parts are emitted", () => {
-    const plan = planSubmitRunFence({
-      isRedelivery: false,
-      existingFenceToken: null,
-      mintFenceToken: () => "fence-fresh",
-    });
-
-    expect(plan.runFenceToken).toBe("fence-fresh");
-    expect(plan.shouldWriteFence).toBe(true);
-  });
-
-  test("a NEW turn mints a fresh fence even when a prior turn's fence exists (approval/tool continuation must not inherit the proposal fence)", () => {
-    // The continuation re-POSTs an already-persisted assistant message, so the
-    // thread still carries the proposal turn's fence — but it is a NEW turn
-    // (not a redelivery), so it MUST mint a fresh fence. Reusing the prior fence
-    // would collide the hosted-harness child id and strand the resume.
-    const plan = planSubmitRunFence({
-      isRedelivery: false,
-      existingFenceToken: "fence-proposal",
-      mintFenceToken: () => "fence-continuation",
-    });
-
-    expect(plan.runFenceToken).toBe("fence-continuation");
-    expect(plan.shouldWriteFence).toBe(true);
   });
 });
 

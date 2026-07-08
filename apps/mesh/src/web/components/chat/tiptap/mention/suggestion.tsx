@@ -221,7 +221,7 @@ const MentionItemList = <T extends BaseItem>({
       <div className="p-1">
         {items.map((item, index) => (
           <MentionItem
-            key={item.name}
+            key={`${item.kind ?? "item"}:${item.name}`}
             item={item}
             isSelected={index === selectedIndex}
             ref={

@@ -38,7 +38,8 @@ describe("COLLECTION_THREADS_CREATE", () => {
       env.ctx,
     );
 
-    expect(result.item.branch).toMatch(/^[a-z]+-[a-z]+$/);
+    // <creator-slug>-<base36-timestamp>; the test user's name is "T".
+    expect(result.item.branch).toMatch(/^t-[0-9a-z]+$/);
     expect(result.item.virtual_mcp_id).toBe(vmcp.id);
   });
 

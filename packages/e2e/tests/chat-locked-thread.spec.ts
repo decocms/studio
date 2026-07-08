@@ -112,7 +112,7 @@ async function createAgentAndThread(
   // (`pickWarmBranchFromSandboxMap` → `generateBranchName()`), which
   // would beat the body's "main" in the route handler's
   // `existingThread?.branch ?? input.branch` resolution and pin the row
-  // to a synthetic name like "deco/keen-forge". Seed the row at "main"
+  // to a synthetic name like "jane-doe-mabc1x9z". Seed the row at "main"
   // so the lock assertions can check against a stable value.
   const thread = await callSelfMcpTool<{ item: { id: string } }>(
     api,

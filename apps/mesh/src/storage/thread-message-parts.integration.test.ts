@@ -160,6 +160,61 @@ describe("SqlThreadMessagePartStorage", () => {
     expect(Number(rows[0]!.n)).toBe(3);
   });
 
+  it("deleteMessageParts hard-deletes one message's rows (incl. finish anchor) and leaves the other message intact", async () => {
+    await parts.appendParts([
+      mk({
+        id: "r_del:m_keep:0",
+        seq: 0,
+        run_id: "r_del",
+        message_id: "m_keep",
+        payload: { type: "text", text: "keep me" },
+      }),
+      mk({
+        id: "r_del:m_keep:1",
+        seq: 1,
+        run_id: "r_del",
+        message_id: "m_keep",
+        kind: "finish",
+        payload: {},
+      }),
+    ]);
+    await parts.appendParts([
+      mk({
+        id: "r_del:m_gone:0",
+        seq: 0,
+        run_id: "r_del",
+        message_id: "m_gone",
+        payload: { type: "text", text: "delete me" },
+      }),
+      mk({
+        id: "r_del:m_gone:1",
+        seq: 1,
+        run_id: "r_del",
+        message_id: "m_gone",
+        kind: "finish",
+        payload: {},
+      }),
+    ]);
+
+    await parts.deleteMessageParts(threadId, "m_gone");
+
+    const { rows: goneRows } = await sql<{ n: string }>`
+      SELECT count(*) AS n FROM thread_message_parts WHERE message_id='m_gone'`.execute(
+      database.db,
+    );
+    expect(Number(goneRows[0]!.n)).toBe(0);
+
+    const { rows: keepRows } = await sql<{ n: string }>`
+      SELECT count(*) AS n FROM thread_message_parts WHERE message_id='m_keep'`.execute(
+      database.db,
+    );
+    expect(Number(keepRows[0]!.n)).toBe(2);
+
+    const { messages } = await parts.loadWindow(threadId, { limit: 500 });
+    expect(messages.some((m) => m.id === "m_gone")).toBe(false);
+    expect(messages.some((m) => m.id === "m_keep")).toBe(true);
+  });
+
   it("C1: a finished message is durably complete after append", async () => {
     await parts.appendParts([
       mk({

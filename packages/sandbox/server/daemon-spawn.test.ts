@@ -1,9 +1,34 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildSandboxDaemonSpawnCommand,
+  deriveNodeModulesDir,
   resolveDaemonStdio,
   sandboxDaemonLogPath,
 } from "./daemon-spawn";
+
+describe("deriveNodeModulesDir", () => {
+  it("derives the node_modules dir from a POSIX node-pty resolution", () => {
+    expect(
+      deriveNodeModulesDir(
+        "/Users/me/project/node_modules/node-pty/lib/index.js",
+      ),
+    ).toBe("/Users/me/project/node_modules");
+  });
+
+  it("derives the node_modules dir from a Windows node-pty resolution", () => {
+    expect(
+      deriveNodeModulesDir(
+        "C:\\Users\\me\\AppData\\Local\\Temp\\bunx-123\\node_modules\\node-pty\\lib\\index.js",
+      ),
+    ).toBe("C:\\Users\\me\\AppData\\Local\\Temp\\bunx-123\\node_modules");
+  });
+
+  it("throws when the path has no node_modules segment", () => {
+    expect(() =>
+      deriveNodeModulesDir("/Users/me/project/lib/index.js"),
+    ).toThrow("could not derive node_modules path from node-pty resolution");
+  });
+});
 
 describe("resolveDaemonStdio", () => {
   it("inherits the parent fds when no log fd is given", () => {

@@ -4,6 +4,7 @@ import {
   dropRedundantStubs,
   getOrOpenStream,
   mergeAndSort,
+  reconcileLatestPage,
   type RequestOptions,
   type ThreadObserver,
   upsertById,
@@ -724,6 +725,152 @@ describe("submit", () => {
   });
 });
 
+// ─── enqueue() — quiet POST behind the active run, tray-only (no body append) ─
+
+describe("enqueue", () => {
+  test("POSTs quietly without touching status, runStatusStage, or the message store", async () => {
+    let messagesCalls = 0;
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: () => {
+        messagesCalls++;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-enqueue-quiet", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Put the running turn's status display in a non-null stage. "sending"
+    // ranks BELOW "received", so a non-quiet POST would provably advance it
+    // (see "tracks local sending and received states around POST /messages").
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "sending" },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBe("sending");
+    const statusBefore = conn.status.get();
+    const messagesBefore = conn.messages.get();
+
+    await conn.enqueue(
+      {
+        id: "q-1",
+        role: "user",
+        parts: [{ type: "text", text: "queued behind the run" }],
+      },
+      baseOpts,
+    );
+
+    // The POST happened…
+    expect(messagesCalls).toBe(1);
+    // …but the body is untouched — tray-only until the dispatch-time flip
+    // (same array reference: enqueue() never calls messages.set/update).
+    expect(conn.messages.get()).toBe(messagesBefore);
+    expect(conn.messages.get().map((m) => m.id)).not.toContain("q-1");
+    // …and the running turn's status display is byte-for-byte untouched:
+    // no "received" bump (quiet POST), no "submitted" status flip.
+    expect(conn.runStatusStage.get()).toBe("sending");
+    expect(conn.status.get()).toEqual(statusBefore);
+    expect(conn.status.get().kind).not.toBe("submitted");
+  });
+
+  test("removeLocalMessage filters exactly the given row", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-enqueue-remove", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    conn.applyLocalMessage({
+      id: "q-1",
+      role: "user",
+      parts: [{ type: "text", text: "first" }],
+    });
+    conn.applyLocalMessage({
+      id: "q-2",
+      role: "user",
+      parts: [{ type: "text", text: "second" }],
+    });
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["q-1", "q-2"]);
+
+    conn.removeLocalMessage("q-1");
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["q-2"]);
+  });
+});
+
+// ─── applyLocalMessage() — dispatch-time tray→body flip ──────────────────────
+
+describe("applyLocalMessage", () => {
+  test("appends a message to the body", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-apply-local-message", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(conn.messages.get()).toEqual([]);
+    conn.applyLocalMessage({
+      id: "flip-1",
+      role: "user",
+      parts: [{ type: "text", text: "dispatched" }],
+    });
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["flip-1"]);
+  });
+
+  test("dedupes by id when the row is already in the body (refetch raced the flip)", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-apply-local-dedupe", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // A server refetch (e.g. an SSE-reconnect refetchLatestPage) already
+    // merged the persisted copy of the queued row into the body.
+    conn.messages.set([
+      {
+        id: "m1",
+        role: "user",
+        parts: [{ type: "text", text: "server copy" }],
+        created_at: "2026-01-01T00:00:00.000Z",
+      } as UIMessage,
+      {
+        id: "other",
+        role: "assistant",
+        parts: [{ type: "text", text: "reply" }],
+        created_at: "2026-01-01T00:00:01.000Z",
+      } as UIMessage,
+    ]);
+
+    conn.applyLocalMessage({
+      id: "m1",
+      role: "user",
+      parts: [{ type: "text", text: "stashed copy" }],
+    });
+
+    const msgs = conn.messages.get();
+    // Exactly ONE m1 — the flip must not duplicate a row a refetch already
+    // merged in.
+    expect(msgs.filter((m) => m.id === "m1")).toHaveLength(1);
+    // mergeAndSort's Map-by-id rebuild is last-entry-wins for duplicates
+    // within the list, so the just-applied (stashed) version replaces the
+    // earlier server copy — and applyLocally stamps it with a fresh
+    // created_at strictly after every existing row, so it sorts last.
+    const m1 = msgs.find((m) => m.id === "m1");
+    expect(
+      (m1?.parts?.[0] as { type: string; text?: string } | undefined)?.text,
+    ).toBe("stashed copy");
+    expect(msgs.map((m) => m.id)).toEqual(["other", "m1"]);
+  });
+});
+
 // ─── submit() — defer POST while client-side resolutions are pending ─────────
 
 describe("submit defers POST", () => {
@@ -1142,6 +1289,175 @@ describe("mergeAndSort", () => {
       "u-1",
       "msg_A",
     ]);
+  });
+});
+
+// ─── reconcileLatestPage ─────────────────────────────────────────────────────
+
+describe("reconcileLatestPage", () => {
+  function msg(
+    id: string,
+    createdAt: string | undefined,
+    role: "user" | "assistant" = "user",
+  ): UIMessage {
+    return {
+      id,
+      role,
+      parts: [{ type: "text", text: id }],
+      ...(createdAt !== undefined ? { created_at: createdAt } : {}),
+      // biome-ignore lint/suspicious/noExplicitAny: test helper
+    } as any;
+  }
+
+  test("empty fetched → returns current unchanged", () => {
+    const current = [msg("u1", "2026-01-01T00:00:00Z")];
+    expect(reconcileLatestPage(current, [])).toBe(current);
+  });
+
+  test("drops a transient in-flight assistant absent from the authoritative fetch", () => {
+    // The queued turn's reply folded into a transient client id and clobbered
+    // the prior turn. The fetch is DB truth; the transient must be dropped, not
+    // duplicated.
+    const current = [
+      msg("u1", "2026-01-01T00:00:00Z", "user"),
+      msg("transient", undefined, "assistant"), // +Infinity, not in fetch
+    ];
+    const fetched = [
+      msg("u1", "2026-01-01T00:00:00Z", "user"),
+      msg("a1", "2026-01-01T00:00:01Z", "assistant"),
+    ];
+    const out = reconcileLatestPage(current, fetched);
+    expect(out.map((m) => m.id)).toEqual(["u1", "a1"]);
+    expect(out.some((m) => m.id === "transient")).toBe(false);
+  });
+
+  test("renders the dequeued turn's user bubble + reply from the fetch", () => {
+    // Live store only has the prior turn (msg1) + a clobbered transient holding
+    // msg2's answer. After reconcile, msg2's user bubble and its real reply
+    // appear in order, and the transient is gone.
+    const current = [
+      msg("u-msg1", "2026-01-01T00:00:00Z", "user"),
+      msg("transient", undefined, "assistant"), // holds "4", wrong slot
+    ];
+    const fetched = [
+      msg("u-msg1", "2026-01-01T00:00:00Z", "user"),
+      msg("a-msg1", "2026-01-01T00:00:01Z", "assistant"),
+      msg("u-msg2", "2026-01-01T00:00:02Z", "user"),
+      msg("a-msg2", "2026-01-01T00:00:03Z", "assistant"),
+    ];
+    const out = reconcileLatestPage(current, fetched);
+    expect(out.map((m) => m.id)).toEqual([
+      "u-msg1",
+      "a-msg1",
+      "u-msg2",
+      "a-msg2",
+    ]);
+  });
+
+  test("keeps older-page assistant rows below the fetched window", () => {
+    // An assistant from an earlier page (older than the fetch's oldest row) is
+    // not in the fetch but must survive — it's history, not a transient.
+    const current = [
+      msg("old-a", "2026-01-01T00:00:00Z", "assistant"), // older than cutoff
+      msg("u2", "2026-01-01T00:00:05Z", "user"),
+    ];
+    const fetched = [
+      msg("u2", "2026-01-01T00:00:05Z", "user"),
+      msg("a2", "2026-01-01T00:00:06Z", "assistant"),
+    ];
+    const out = reconcileLatestPage(current, fetched);
+    expect(out.map((m) => m.id)).toEqual(["old-a", "u2", "a2"]);
+  });
+
+  test("never drops user rows even when absent from the fetch", () => {
+    // An optimistic user row for a not-yet-terminal turn must survive a
+    // reconcile triggered by a different turn's terminal.
+    const current = [
+      msg("u1", "2026-01-01T00:00:00Z", "user"),
+      msg("u-optimistic", undefined, "user"), // +Infinity, not in fetch
+    ];
+    const fetched = [msg("u1", "2026-01-01T00:00:00Z", "user")];
+    const out = reconcileLatestPage(current, fetched);
+    expect(out.some((m) => m.id === "u-optimistic")).toBe(true);
+  });
+
+  test("upserts a persisted row already present in current (fetch wins)", () => {
+    const current = [msg("a1", undefined, "assistant")]; // streamed, no ts
+    const fetched = [msg("a1", "2026-01-01T00:00:01Z", "assistant")];
+    const out = reconcileLatestPage(current, fetched);
+    expect(out).toHaveLength(1);
+    expect((out[0] as { created_at?: string }).created_at).toBe(
+      "2026-01-01T00:00:01Z",
+    );
+  });
+});
+
+// ─── applyReconcile (live-run guard) ─────────────────────────────────────────
+
+describe("applyReconcile", () => {
+  function msg(
+    id: string,
+    createdAt: string | undefined,
+    role: "user" | "assistant" = "user",
+  ): UIMessage {
+    return {
+      id,
+      role,
+      parts: [{ type: "text", text: id }],
+      ...(createdAt !== undefined ? { created_at: createdAt } : {}),
+      // biome-ignore lint/suspicious/noExplicitAny: test helper
+    } as any;
+  }
+
+  test("skips the apply while a run is live — the live transient survives", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+    const conn = getOrOpenStream("acme", "thread-reconcile-guard", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20)); // bootstrap → ready
+
+    // Turn B is streaming: its reply is a transient (no created_at) assistant
+    // row not yet persisted. A reconcile fetch triggered by turn A's terminal
+    // resolves NOW — applying it would drop B's live row mid-stream, since
+    // it's indistinguishable from a stale transient.
+    const live = [
+      msg("u1", "2026-01-01T00:00:00Z", "user"),
+      msg("b-transient", undefined, "assistant"),
+    ];
+    conn.messages.set(live);
+    conn.status.set({ kind: "streaming" });
+
+    const fetched = [
+      msg("u1", "2026-01-01T00:00:00Z", "user"),
+      msg("a1", "2026-01-01T00:00:01Z", "assistant"),
+    ];
+    expect(conn.applyReconcile(fetched, false)).toBe(false);
+    expect(conn.messages.get()).toBe(live); // untouched — not even re-merged
+
+    // "submitted" (POST sent, first chunk pending) must skip too.
+    conn.status.set({ kind: "submitted" });
+    expect(conn.applyReconcile(fetched, false)).toBe(false);
+    expect(conn.messages.get()).toBe(live);
+  });
+
+  test("applies when idle — stale transient drops and hasMore lands", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+    const conn = getOrOpenStream("acme", "thread-reconcile-apply", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20)); // bootstrap → ready
+
+    conn.messages.set([
+      msg("u1", "2026-01-01T00:00:00Z", "user"),
+      msg("stale-transient", undefined, "assistant"),
+    ]);
+    const fetched = [
+      msg("u1", "2026-01-01T00:00:00Z", "user"),
+      msg("a1", "2026-01-01T00:00:01Z", "assistant"),
+    ];
+    expect(conn.applyReconcile(fetched, true)).toBe(true);
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["u1", "a1"]);
+    expect(conn.hasMoreOlder.get()).toBe(true);
   });
 });
 

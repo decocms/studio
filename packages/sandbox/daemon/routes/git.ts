@@ -300,44 +300,75 @@ export async function computeDiffAgainstBase(
   }
   assertValidRemoteBranchName(branch);
 
-  // Shallow clones often miss one side of the fork — fetch both tips with depth.
-  // This is a NETWORK call and by far the slowest step; keep it async so a slow
-  // fetch never freezes the daemon (and trips crash detection).
-  try {
-    await runGitAsync(repoDir, [
-      "fetch",
-      "--depth",
-      "100",
-      "origin",
-      base,
-      branch,
-    ]);
-  } catch {
-    // Local-only fixtures / offline sandboxes may already have the refs we need.
-  }
-  if (headSha && /^[0-9a-f]{40}$/i.test(headSha)) {
-    await tryGitAsync(repoDir, ["fetch", "--depth", "100", "origin", headSha]);
-  }
-
   const upstream = `origin/${base}`;
-  if (!tryGit(repoDir, ["rev-parse", "--verify", upstream])) {
-    throw new Error(`Base branch '${base}' not found on origin`);
-  }
-
   const remoteHead = `origin/${branch}`;
-  let headRef = "HEAD";
-  if (
-    headSha &&
-    tryGit(repoDir, ["rev-parse", "--verify", `${headSha}^{commit}`]) !== null
-  ) {
-    headRef = headSha;
-  } else if (tryGit(repoDir, ["rev-parse", "--verify", remoteHead])) {
-    headRef = remoteHead;
+  const hasValidHeadSha = !!headSha && /^[0-9a-f]{40}$/i.test(headSha);
+
+  const resolveLocally = (ref: string): boolean =>
+    tryGit(repoDir, ["rev-parse", "--verify", ref]) !== null;
+
+  // Fast path: skip the network fetch when we can already compute the diff from
+  // local refs. Shallow clones miss one side of the fork on the FIRST request,
+  // so that one must fetch — but once the base tip, the exact requested head
+  // commit, and their fork point (merge-base) are all present locally, every
+  // later request (modal reopen, 30s refetch) can compute offline. We only take
+  // this path with an explicit headSha that resolves locally: that pins the
+  // exact commit the client asked for, so there's no staleness risk. Without a
+  // headSha we fall through and fetch to be sure origin/<branch> is current.
+  let headRef: string | null = null;
+  const canSkipFetch =
+    hasValidHeadSha &&
+    resolveLocally(upstream) &&
+    resolveLocally(`${headSha}^{commit}`) &&
+    tryGit(repoDir, ["merge-base", upstream, headSha!]) !== null;
+  if (canSkipFetch) {
+    headRef = headSha!;
+  } else {
+    // Shallow clones often miss one side of the fork — fetch both tips with
+    // depth. This is a NETWORK call and by far the slowest step; keep it async
+    // so a slow fetch never freezes the daemon (and trips crash detection).
+    try {
+      await runGitAsync(repoDir, [
+        "fetch",
+        "--depth",
+        "100",
+        "origin",
+        base,
+        branch,
+      ]);
+    } catch {
+      // Local-only fixtures / offline sandboxes may already have the refs.
+    }
+    if (hasValidHeadSha) {
+      await tryGitAsync(repoDir, [
+        "fetch",
+        "--depth",
+        "100",
+        "origin",
+        headSha!,
+      ]);
+    }
+
+    if (!resolveLocally(upstream)) {
+      throw new Error(`Base branch '${base}' not found on origin`);
+    }
+
+    if (hasValidHeadSha && resolveLocally(`${headSha}^{commit}`)) {
+      headRef = headSha!;
+    } else if (resolveLocally(remoteHead)) {
+      headRef = remoteHead;
+    } else {
+      headRef = "HEAD";
+    }
   }
 
   let paths = listThreeDotDiffPaths(repoDir, upstream, headRef);
 
-  if (paths.length === 0) {
+  // An empty diff after a shallow fetch may just mean the fork point is still
+  // beyond our history — deepen and retry. Skip this on the fast path: we
+  // already have a valid merge-base there, so an empty result is a real empty
+  // diff and a deepen fetch would only add a pointless network round-trip.
+  if (paths.length === 0 && !canSkipFetch) {
     try {
       await runGitAsync(repoDir, [
         "fetch",

@@ -2,7 +2,6 @@ export {
   enqueueThreadRun,
   runDispatchSteps,
   setThreadGateRuntime,
-  threadRunExists,
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
   type SerializableDispatchRunInput,

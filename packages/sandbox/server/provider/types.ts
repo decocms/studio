@@ -60,9 +60,11 @@ export interface EnsureOptions {
      * Clone URL. May embed an OAuth credential via userinfo (e.g.
      * `https://x-access-token:TOKEN@github.com/...`) — `git clone` stores
      * the credential on the remote so subsequent fetch/pull/push from
-     * inside the sandbox work without further plumbing. The token is
-     * frozen for the lifetime of the sandbox: to refresh, destroy and
-     * recreate.
+     * inside the sandbox work without further plumbing. The embedded token
+     * is short-lived (~1h GitHub App token); callers should pass a freshly
+     * minted URL on every ensure. Runners that reuse a running pod
+     * (resume/adopt) forward the new credential to the daemon so it rotates
+     * `origin` in place rather than leaving a stale token.
      */
     cloneUrl: string;
     userName: string;

@@ -2680,24 +2680,6 @@ export function SectionsEditor({
         )}
       </div>
 
-      {/* Variant selector (when page sections are multivariate) */}
-      {hasMultipleVariants && !isEditing && !editingSeo && activePageKey && (
-        <PageVariantTabs
-          listKey={activePageKey}
-          variants={pageVariants}
-          activeIndex={safeVariantIndex}
-          decofile={decofile ?? {}}
-          meta={meta}
-          matchers={availableMatchers}
-          onSelect={selectPageVariant}
-          onReorder={handleReorderPageVariants}
-          onRename={setRenameVariantIndex}
-          onDuplicate={handleDuplicatePageVariant}
-          onDelete={handleDeletePageVariant}
-          onAdd={handleAddPageVariant}
-        />
-      )}
-
       {/* Drill-down: SEO form, section form, or section list */}
       {editingSeo ? (
         <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
@@ -2821,6 +2803,23 @@ export function SectionsEditor({
         </ScrollArea>
       ) : (
         <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+          {/* Variant selector (when page sections are multivariate) */}
+          {hasMultipleVariants && activePageKey && (
+            <PageVariantTabs
+              listKey={activePageKey}
+              variants={pageVariants}
+              activeIndex={safeVariantIndex}
+              decofile={decofile ?? {}}
+              meta={meta}
+              matchers={availableMatchers}
+              onSelect={selectPageVariant}
+              onReorder={handleReorderPageVariants}
+              onRename={setRenameVariantIndex}
+              onDuplicate={handleDuplicatePageVariant}
+              onDelete={handleDeletePageVariant}
+              onAdd={handleAddPageVariant}
+            />
+          )}
           {/* Variant rule editor (collapsible so users can reclaim space) */}
           {hasMultipleVariants && ruleResolveType !== null && (
             <div

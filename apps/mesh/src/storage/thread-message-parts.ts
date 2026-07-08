@@ -125,6 +125,21 @@ export class SqlThreadMessagePartStorage {
   }
 
   /**
+   * Hard-delete every part row (including the finish anchor) of one message.
+   * Used when a QUEUED user turn is removed from the thread's gate queue —
+   * the request message was persisted at POST time, so cancelling the gate
+   * workflow alone would leave an orphaned bubble that reappears on reload.
+   * Caller must have verified thread ownership (tenant scope).
+   */
+  async deleteMessageParts(threadId: string, messageId: string): Promise<void> {
+    await this.db
+      .deleteFrom("thread_message_parts")
+      .where("thread_id", "=", threadId)
+      .where("message_id", "=", messageId)
+      .execute();
+  }
+
+  /**
    * Highest `created_at` (epoch ms) already persisted for a run, or null when
    * the run has no parts yet. The projector uses this as its PartEmitter base
    * so a freshly-projected message sorts AFTER everything already in the thread
@@ -137,6 +152,28 @@ export class SqlThreadMessagePartStorage {
       .selectFrom("thread_message_parts")
       .select((eb) => eb.fn.max("created_at").as("max"))
       .where("run_id", "=", runId)
+      .executeTakeFirst();
+    if (!row?.max) return null;
+    const ms = new Date(row.max as unknown as string).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  /**
+   * Highest `created_at` (epoch ms) persisted for ONE message of a run, or null
+   * when that message has no parts yet. The projector uses the request message's
+   * own max as the assistant base so a reply sorts immediately after ITS user
+   * message — excluding later-queued turns that share `run_id` (== threadId) but
+   * were POSTed after this turn. See run-persistence.ts.
+   */
+  async maxCreatedAtMsForMessage(
+    runId: string,
+    messageId: string,
+  ): Promise<number | null> {
+    const row = await this.db
+      .selectFrom("thread_message_parts")
+      .select((eb) => eb.fn.max("created_at").as("max"))
+      .where("run_id", "=", runId)
+      .where("message_id", "=", messageId)
       .executeTakeFirst();
     if (!row?.max) return null;
     const ms = new Date(row.max as unknown as string).getTime();

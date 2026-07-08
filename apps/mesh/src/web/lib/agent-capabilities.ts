@@ -1,6 +1,6 @@
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import type { CurrentLink } from "@/web/hooks/use-current-link";
-import { getActiveGithubRepo } from "./github-repo";
+import { resolveGithubAttachment } from "./github-repo";
 
 /**
  * True when the agent has source code we can check out into a per-branch
@@ -25,24 +25,26 @@ export function agentHasClonableSource(metadata: unknown): boolean {
  * connection (i.e. authenticated github identity, not a public-clone
  * template). Gate the git tab on this predicate.
  *
- * Built on top of `getActiveGithubRepo`, which already returns null
- * when a stale connectionId references a detached connection.
+ * A `detached` repo (connection removed) is deliberately NOT connected here:
+ * the git tab has nothing to operate on until the user reconnects.
  */
 export function agentHasConnectedGithub(
   virtualMcp: VirtualMCPEntity | null | undefined,
 ): boolean {
-  return !!getActiveGithubRepo(virtualMcp ?? null)?.connectionId;
+  return resolveGithubAttachment(virtualMcp).status === "attached";
 }
 
 /**
  * The top-right GitHub header actions operate on GitHub PR/check/review state,
- * so they require an authenticated, attached GitHub connection. Public template
- * clones are clonable sources, but they are not GitHub-linked projects.
+ * so they require a GitHub-linked project. Public template clones are clonable
+ * sources but not GitHub-linked, so they get no header. A `detached` repo still
+ * shows the header — as a reconnect affordance — rather than silently vanishing.
  */
 export function agentShowsGithubHeaderActions(
   virtualMcp: VirtualMCPEntity | null | undefined,
 ): boolean {
-  return agentHasConnectedGithub(virtualMcp);
+  const status = resolveGithubAttachment(virtualMcp).status;
+  return status === "attached" || status === "detached";
 }
 
 /**

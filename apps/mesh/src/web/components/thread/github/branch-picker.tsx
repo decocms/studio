@@ -29,6 +29,9 @@ interface Props {
   orgId: string;
   orgSlug: string;
   userId: string;
+  /** Human-readable creator label (display name, else email local-part) used to
+   *  seed generated branch names. */
+  userLabel: string | null | undefined;
   virtualMcpId: string;
   connectionId: string | null;
   owner: string;
@@ -51,6 +54,7 @@ export function BranchPicker({
   orgId,
   orgSlug,
   userId,
+  userLabel,
   // virtualMcpId is consumed by callers via Props (e.g. BranchPill);
   // BranchPicker itself doesn't use it directly. Kept on the Props
   // contract so the pill container can pass it down uniformly.
@@ -194,7 +198,7 @@ export function BranchPicker({
               variant="outline"
               size="sm"
               className="h-7 shrink-0"
-              onClick={() => pick(generateBranchName())}
+              onClick={() => pick(generateBranchName(userLabel))}
             >
               New
             </Button>

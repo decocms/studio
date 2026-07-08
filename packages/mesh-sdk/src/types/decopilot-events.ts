@@ -68,6 +68,10 @@ export interface DecopilotThreadStatusEvent extends BaseDecopilotEvent {
   type: typeof DECOPILOT_EVENTS.THREAD_STATUS;
   data: {
     status: ThreadStatus;
+    /** The user message this turn executes — present on RUN_STARTED-driven
+     *  "in_progress" events so the queue tray can flip exactly this item
+     *  into the chat body at dispatch, without a fetch. */
+    message_id?: string;
     virtual_mcp_id?: string;
     /** User who created the thread; needed to populate filter-complete cache rows on the client. */
     created_by?: string;
@@ -146,6 +150,7 @@ export function createDecopilotThreadStatusEvent(
     createdAt?: string;
     updatedAt?: string;
     metadata?: Record<string, unknown>;
+    messageId?: string;
   },
 ): DecopilotThreadStatusEvent {
   return {
@@ -155,6 +160,7 @@ export function createDecopilotThreadStatusEvent(
     subject: taskId,
     data: {
       status,
+      ...(opts?.messageId !== undefined && { message_id: opts.messageId }),
       ...(opts?.virtualMcpId !== undefined && {
         virtual_mcp_id: opts.virtualMcpId,
       }),

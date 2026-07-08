@@ -10,6 +10,9 @@ export interface ConsumeRunProjectionOptions {
   fenceToken?: string;
   idleTimeoutMs?: number;
   signal?: AbortSignal;
+  /** The turn's request message id — forwarded to the projector so the
+   *  assistant base anchors right after this message (queue ordering). */
+  messageId?: string;
 }
 
 /**
@@ -50,7 +53,7 @@ export async function consumeRunProjection(
   if (!js) throw new Error("JetStream unavailable for consume step");
 
   await runProjectorWorkflowBody(
-    { runId, fenceToken },
+    { runId, fenceToken, messageId: opts.messageId },
     rt,
     projectFromJetStreamStep,
   );
