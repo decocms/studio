@@ -19,7 +19,10 @@
  *      strictly after its own user message and prior turns no matter how late
  *      the writer runs — without it a backlogged/redelivered write would stamp
  *      a wall-clock `Date.now()` that can sort after a *later* turn's user
- *      message.
+ *      message. When the request `messageId` is known, the base is instead
+ *      seeded from THAT message's own max — anchoring the reply right after its
+ *      own user message even when a queued turn's projection runs after later
+ *      turns have already been persisted under the same run (== thread).
  *
  * Before this helper each site re-derived the base inline and they had already
  * drifted (one omitted it entirely, defaulting to `Date.now()` and re-opening
@@ -36,6 +39,12 @@ export interface AssistantEmitterArgs {
   orgId: string;
   /** runId === threadId by convention (a thread hosts one run id per turn). */
   runId: string;
+  /**
+   * The turn's user message id; when set, the assistant base is that
+   * message's own max created_at so the reply anchors right after it instead
+   * of after later-queued turns.
+   */
+  requestMessageId?: string;
 }
 
 /**
@@ -46,9 +55,18 @@ export interface AssistantEmitterArgs {
 async function createAssistantEmitter(
   args: AssistantEmitterArgs,
 ): Promise<PartEmitter> {
-  const maxExistingMs = await args.messageParts.maxCreatedAtMsForRun(
-    args.runId,
-  );
+  // Prefer the request message's OWN max: anchors the reply right after its user
+  // message, excluding later-queued turns that share run_id (== threadId). Fall
+  // back to the run-wide max when no messageId is threaded (legacy callers) or
+  // the message has no parts yet.
+  const maxForMessage = args.requestMessageId
+    ? await args.messageParts.maxCreatedAtMsForMessage(
+        args.runId,
+        args.requestMessageId,
+      )
+    : null;
+  const maxExistingMs =
+    maxForMessage ?? (await args.messageParts.maxCreatedAtMsForRun(args.runId));
   return new PartEmitter({
     storage: args.messageParts,
     orgId: args.orgId,

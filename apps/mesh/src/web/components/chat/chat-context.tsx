@@ -72,6 +72,7 @@ import {
   readToolApprovalLevel,
 } from "../../hooks/use-preferences";
 import { useInvalidateCollectionsOnToolCall } from "../../hooks/use-invalidate-collections-on-tool-call";
+import { useDecopilotEvents } from "../../hooks/use-decopilot-events";
 import { useTaskReadState } from "../../hooks/use-task-read-state";
 import { authClient } from "../../lib/auth-client";
 import { track } from "../../lib/posthog-client";
@@ -80,6 +81,12 @@ import { track } from "../../lib/posthog-client";
 // session per thread_id. Prevents duplicates from re-renders while still
 // re-firing when the user switches tasks.
 const openedChats = new Set<string>();
+
+/** Threads with a sendMessage currently in flight — a synchronous latch so a
+ * rapid double-Enter can't double-submit/double-queue the same draft (the
+ * composer intentionally never disables; state-based guards re-render too
+ * late to stop the second keypress). */
+const sendInFlight = new Set<string>();
 
 /** Subscribe a React component to a connection Store via useSyncExternalStore. */
 function useStore<T>(store: Store<T>): T {
@@ -105,6 +112,20 @@ import type { RunStatusStage } from "./run-status";
 import { useLocalStorage } from "../../hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
+import {
+  clearQueueDirty,
+  dropPendingBody,
+  enqueueMessage,
+  isQueueDirty,
+  markQueueDirty,
+  messageQueueStore,
+  refreshMessageQueue,
+  removeMessage,
+  stashPendingBody,
+  takePendingBody,
+} from "./message-queue-store";
+import { textFromParts } from "./queue-items";
+import { useMessageQueueActions } from "./use-message-queue";
 import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
 
@@ -118,11 +139,32 @@ export interface ChatStreamContextValue {
   sendMessage: (
     params: SendMessageParams | Metadata["tiptapDoc"],
   ) => Promise<void>;
+  /** Edit a QUEUED (not-yet-running) message: cancel its gate workflow and
+   *  re-POST the edited text as a fresh message (re-enqueues at the queue
+   *  tail — see the implementation). Resolves true when the edited message
+   *  was dispatched OK; false on ANY failure (latch drop, cancel failure,
+   *  failed re-POST) — callers must keep the user's draft alive on false.
+   *  Every failure path surfaces its own toast. */
+  editQueuedMessage: (messageId: string, text: string) => Promise<boolean>;
   stop: () => void;
   /** Single mutator entry point — new user message, tool output, or approval
    *  response. Patches local messages, clears finishReason, POSTs to /messages.
    *  Throws if a toolOutput / approval target isn't found in current messages. */
   submit: (action: SubmitAction, opts: RequestOptions) => Promise<void>;
+  /** Drop a message from the local body store. Used after a CONFIRMED cancel
+   *  of a queued turn: a reload/refetch can preload the queued message's
+   *  persisted row into the local store (render-hidden only while it stays
+   *  queued) — cancelling would otherwise unhide it as a stale, forever-
+   *  unanswered bubble. Removing an absent id is a no-op, so callers invoke
+   *  it unconditionally after the server confirms the cancel. */
+  removeLocalMessage: (messageId: string) => void;
+  /** Synchronous probe for the module-level `sendInFlight` latch (same key
+   *  `sendMessageInternal` latches on: this task's id). Lets callers that
+   *  clear UI state right after firing `sendMessage` (e.g. the composer's
+   *  draft) check FIRST whether that send will actually be accepted or
+   *  silently dropped by the latch, so they don't destroy state for a send
+   *  that never happened. */
+  isSendInFlight: () => boolean;
   error: Error | null;
   clearError: () => void;
   finishReason: string | null;
@@ -835,6 +877,7 @@ export function ActiveTaskProvider({
   const { user, contextPrompt, preferences, rawNavigateToTask } = internals;
 
   const { org, locator } = useProjectContext();
+  const queueActions = useMessageQueueActions();
 
   const [chatError, setChatError] = useState<Error | null>(null);
 
@@ -890,6 +933,51 @@ export function ActiveTaskProvider({
     orgSlug: org.slug,
   };
 
+  // Race-free body reconcile for queued turns. When a message is sent behind a
+  // running turn it's queued on the thread gate; the dequeued run's reply is
+  // NOT streamed to this thread's open /stream (a desktop run dispatches only
+  // after the gate slot frees, and its content lands only in the DB via the
+  // projector). The projector/run-reactor emit `decopilot.thread.status` on the
+  // shared /api/:org/watch pool STRICTLY AFTER that turn's thread_message_parts
+  // are durably committed (projector path: enforced by DBOS step journaling —
+  // the parts step is recorded before the terminal-status step runs). So one
+  // refetch on this event always sees the reply: no sleep, no retry, no timer.
+  // The event carries only `subject = threadId` (no per-run id), so we resync
+  // the whole list via `reconcileFromServer` (idempotent, DB-authoritative).
+  // Delivery is at-most-once (NATS Core, no replay): a dropped event self-heals
+  // because any LATER same-thread status event re-reconciles. Scoped to threads
+  // that actually queued work (`isQueueDirty`) so normal threads are untouched.
+  useDecopilotEvents({
+    orgSlug: org.slug,
+    taskId,
+    onTaskStatus: (event) => {
+      const cb = cbRef.current;
+      const messageId = event.data.message_id;
+      if (event.data.status === "in_progress" && messageId) {
+        // The gate started executing this queued message — flip tray → body.
+        removeMessage(cb.taskId, messageId);
+        const stashed = takePendingBody(cb.taskId, messageId);
+        if (stashed) conn.applyLocalMessage(stashed);
+        void refreshMessageQueue(cb.orgSlug, cb.taskId); // authoritative re-sync
+      }
+      if (!isQueueDirty(cb.taskId)) return;
+      void (async () => {
+        await refreshMessageQueue(cb.orgSlug, cb.taskId);
+        const applied = await conn.reconcileFromServer();
+        // The gate queue has drained — the last queued turn finished and its
+        // parts are committed (guaranteed by the ordering above), so the body
+        // is whole. Stop reconciling until the next time work is queued.
+        // Gate on `applied`: `reconcileFromServer` skips its apply while the
+        // next queued turn is already mid-stream (racing dequeue) — and by
+        // then the gate queue can look drained. The flag must survive the
+        // skip so that turn's own terminal event retries the reconcile.
+        if (applied && messageQueueStore(cb.taskId).get().length === 0) {
+          clearQueueDirty(cb.taskId);
+        }
+      })();
+    },
+  });
+
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
   useEffect(() => {
     const observer: ThreadObserver = {
@@ -937,6 +1025,9 @@ export function ActiveTaskProvider({
       },
       onFinish: (message, _messages, finishReason) => {
         const cb = cbRef.current;
+        // Terminal event: the gate advanced — re-sync the queue so the
+        // dequeued message drops and the next one surfaces.
+        if (cb.taskId) void refreshMessageQueue(cb.orgSlug, cb.taskId);
         if (cb.taskId) {
           cb.manager.patchThread({
             id: cb.taskId,
@@ -999,8 +1090,30 @@ export function ActiveTaskProvider({
       onToolCall: (event) => cbRef.current.onToolCall(event as never),
     };
     conn.observer = observer;
+
+    // Seed the frontend message queue from the gate on (re)mount so a reload
+    // or thread switch still shows what's queued.
+    void refreshMessageQueue(cbRef.current.orgSlug, cbRef.current.taskId);
+
+    // Keep the queue PANEL in sync on every local run start/end edge (the live
+    // stream's own status). This is panel-only; the body reconcile for queued
+    // turns is driven separately off `decopilot.thread.status` (see
+    // `useDecopilotEvents` above), which — unlike this live-stream edge — is
+    // guaranteed to fire only AFTER the run's parts are durably committed.
+    const isActiveStatus = (k: ConnStatus["kind"]) =>
+      k === "submitted" || k === "streaming";
+    let prevActive = isActiveStatus(conn.status.get().kind);
+    const unsubStatus = conn.status.subscribe(() => {
+      const active = isActiveStatus(conn.status.get().kind);
+      if (active === prevActive) return;
+      prevActive = active;
+      const cb = cbRef.current;
+      void refreshMessageQueue(cb.orgSlug, cb.taskId);
+    });
+
     return () => {
       if (conn.observer === observer) conn.observer = null;
+      unsubStatus();
     };
   }, [conn]);
 
@@ -1021,30 +1134,23 @@ export function ActiveTaskProvider({
     connStatus.kind === "ready" &&
     messages.length > 0;
 
-  // sendMessage — captures context at call time
-  async function sendMessageInternal(params: SendMessageParams): Promise<void> {
-    const parts = params.parts ?? derivePartsFromTiptapDoc(params.tiptapDoc);
-    if (parts.length === 0) return;
-
-    // Capture at send time (frozen in closure)
+  // Shared tail for dispatching a fresh user message — used by BOTH a plain
+  // composer send (sendMessageInternal) and a re-POSTed queued-message edit
+  // (editQueuedMessage). Builds requestOptions from the current thread/prefs
+  // state, then either queues the message behind an in-progress run or
+  // submits it immediately. Owns releasing the `sendInFlight` latch (finally):
+  // callers are responsible for the synchronous latch check + add BEFORE
+  // calling this, so a re-entrant call is rejected before any work happens.
+  //
+  // Resolves `true` when the message was handed off (queued or submitted).
+  // The enqueue branch handles its own errors (toast + chatError, never
+  // rethrows) and resolves `false` on failure so edit-flow callers can react;
+  // the immediate-submit branch still RETHROWS on failure — unchanged
+  // plain-send behavior (sendMessageInternal ignores the return value).
+  async function dispatchUserMessage(message: ChatMessage): Promise<boolean> {
+    // Capture at dispatch time (frozen in closure)
     const capturedTaskId = taskId;
     const capturedVirtualMcpId = virtualMcpId;
-
-    // Drop any error banner from a prior turn — explicitly sending a new
-    // message means the user has moved on and a stale "network error"
-    // toast on top of a fresh request is just noise. (finishReason is
-    // cleared inside conn.submit synchronously.)
-    setChatError(null);
-    setTiptapDoc(undefined);
-
-    const messageMetadata: Metadata = {
-      tiptapDoc: params.tiptapDoc,
-      created_at: new Date().toISOString(),
-      user: {
-        avatar: user?.image ?? undefined,
-        name: user?.name ?? "you",
-      },
-    };
 
     const appContextEntries = Object.entries(appContexts);
     const appContextSection =
@@ -1073,6 +1179,109 @@ export function ActiveTaskProvider({
       setChatMode("default");
     }
 
+    const requestOptions: RequestOptions = {
+      tier: activeTier,
+      mode: modeToSend,
+      toolApprovalLevel:
+        preferences.toolApprovalLevel ?? readToolApprovalLevel(),
+      system: system || undefined,
+      agent: { id: capturedVirtualMcpId },
+      thread_id: capturedTaskId,
+      ...resolveSubmitSettings({
+        thread: activeTask
+          ? {
+              harness_id: activeTask.harness_id ?? null,
+              sandbox_provider_kind: activeTask.sandbox_provider_kind ?? null,
+              branch: activeTask.branch ?? null,
+            }
+          : null,
+        globals: {
+          harnessId: pendingHarnessId ?? undefined,
+          sandboxProviderKind: pendingSandboxProviderKind ?? undefined,
+          branch: currentBranch,
+        },
+      }),
+    };
+
+    // A run is already streaming (this thread) or in progress (hosted): this
+    // message can't be the current turn, so queue it behind the running one.
+    // It stays tray-only — nothing renders in the body — until the gate's
+    // `in_progress` event carries this message's id; the full message is
+    // stashed now so that dispatch-time flip can apply it with zero fetches.
+    // Otherwise this is the current turn — submit normally so it streams
+    // immediately.
+    try {
+      if (isStreaming || isRunInProgress) {
+        let queuedOk = true;
+        try {
+          stashPendingBody(capturedTaskId, message);
+          await conn.enqueue(message, requestOptions);
+          enqueueMessage(capturedTaskId, {
+            workflowId: `thread-run:${capturedTaskId}:${message.id}`,
+            messageId: message.id,
+            text: textFromParts(message.parts),
+            // Computed locally so the tray's edit affordance is correct from
+            // the first render — leaving this undefined for one server
+            // round-trip would offer "edit" on an attachment-bearing turn,
+            // and an edit taken in that window drops the attachment for good.
+            hasAttachments: message.parts.some((p) => p.type === "file"),
+            status: "queued",
+            enqueuedAt: Date.now(),
+            optimistic: true,
+          });
+          // The body now trails the gate: this queued turn's reply will fold
+          // into a transient stream id when it dequeues and never lands in
+          // the body on its own. Mark the thread dirty so each run terminal
+          // reconciles the body against the server until the queue drains.
+          markQueueDirty(capturedTaskId);
+        } catch (err) {
+          // The POST never landed — nothing was appended to the body, so
+          // just drop the stash and the optimistic tray entry.
+          queuedOk = false;
+          dropPendingBody(capturedTaskId, message.id);
+          removeMessage(capturedTaskId, message.id);
+          setChatError(err instanceof Error ? err : new Error(String(err)));
+          toast.error(
+            err instanceof Error ? err.message : "Failed to queue message",
+          );
+        }
+        // Reconcile the optimistic row against the gate's authoritative list.
+        void refreshMessageQueue(org.slug, capturedTaskId);
+        return queuedOk;
+      }
+      await conn.submit({ kind: "message", message }, requestOptions);
+      return true;
+    } finally {
+      sendInFlight.delete(capturedTaskId);
+    }
+  }
+
+  // sendMessage — captures context at call time
+  async function sendMessageInternal(params: SendMessageParams): Promise<void> {
+    const parts = params.parts ?? derivePartsFromTiptapDoc(params.tiptapDoc);
+    if (parts.length === 0) return;
+
+    // Synchronous per-thread latch — drop a re-entrant send (double-Enter)
+    // before it mints a second message id and double-queues the draft.
+    if (sendInFlight.has(taskId)) return;
+    sendInFlight.add(taskId);
+
+    // Drop any error banner from a prior turn — explicitly sending a new
+    // message means the user has moved on and a stale "network error"
+    // toast on top of a fresh request is just noise. (finishReason is
+    // cleared inside conn.submit synchronously.)
+    setChatError(null);
+    setTiptapDoc(undefined);
+
+    const messageMetadata: Metadata = {
+      tiptapDoc: params.tiptapDoc,
+      created_at: new Date().toISOString(),
+      user: {
+        avatar: user?.image ?? undefined,
+        name: user?.name ?? "you",
+      },
+    };
+
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
@@ -1080,32 +1289,72 @@ export function ActiveTaskProvider({
       metadata: messageMetadata,
     };
 
-    await conn.submit(
-      { kind: "message", message: userMessage },
-      {
-        tier: activeTier,
-        mode: modeToSend,
-        toolApprovalLevel:
-          preferences.toolApprovalLevel ?? readToolApprovalLevel(),
-        system: system || undefined,
-        agent: { id: capturedVirtualMcpId },
-        thread_id: capturedTaskId,
-        ...resolveSubmitSettings({
-          thread: activeTask
-            ? {
-                harness_id: activeTask.harness_id ?? null,
-                sandbox_provider_kind: activeTask.sandbox_provider_kind ?? null,
-                branch: activeTask.branch ?? null,
-              }
-            : null,
-          globals: {
-            harnessId: pendingHarnessId ?? undefined,
-            sandboxProviderKind: pendingSandboxProviderKind ?? undefined,
-            branch: currentBranch,
-          },
-        }),
+    await dispatchUserMessage(userMessage);
+  }
+
+  // Edit a QUEUED message: cancel the old gate workflow (server also deletes
+  // its persisted parts), then re-POST the edited text as a fresh message —
+  // which re-enqueues at the queue TAIL (DBOS workflow ids are once-ever; an
+  // accepted trade-off, only observable with 2+ queued). Text-only by design.
+  //
+  // Resolves `true` only when the edited message was dispatched OK; `false`
+  // on any failure (latch drop, cancel failure, failed re-POST) so the tray
+  // can keep the user's draft alive instead of discarding it. Every false
+  // path surfaces its own toast.
+  async function editQueuedMessage(
+    messageId: string,
+    text: string,
+  ): Promise<boolean> {
+    // Same synchronous per-thread latch sendMessageInternal uses — an edit
+    // is itself a dispatch, so it must not race a concurrent send/edit. The
+    // tray probes isSendInFlight() before calling, so this drop is a
+    // belt-and-braces guard — but report it honestly rather than resolving
+    // as if the edit happened.
+    if (sendInFlight.has(taskId)) {
+      toast.info("Still sending your previous message — try again in a moment");
+      return false;
+    }
+    sendInFlight.add(taskId);
+
+    const ok = await queueActions.cancel(taskId, messageId);
+    if (!ok) {
+      sendInFlight.delete(taskId);
+      toast.error("Couldn't remove the original message");
+      return false;
+    }
+    dropPendingBody(taskId, messageId);
+    // A reload/refetch may have preloaded the original queued message's
+    // persisted row into the local body store (render-hidden only while it
+    // stayed queued). The cancel just deleted its server parts and its
+    // queue entry — drop the stale local row too or the ORIGINAL text
+    // resurrects as a forever-unanswered bubble while the edited text is
+    // queued. Removing an absent id is a no-op, so call unconditionally.
+    conn.removeLocalMessage(messageId);
+
+    const edited: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      parts: [{ type: "text", text }],
+      metadata: {
+        created_at: new Date().toISOString(),
+        user: {
+          avatar: user?.image ?? undefined,
+          name: user?.name ?? "you",
+        },
       },
-    );
+    };
+    // Reuse the exact enqueue-or-submit branch sendMessageInternal runs.
+    // The enqueue branch resolves false on failure (it toasts internally);
+    // the immediate-submit branch rethrows instead — map that to false too
+    // (with its own toast) so the tray sees one honest boolean either way.
+    try {
+      return await dispatchUserMessage(edited);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to send edited message",
+      );
+      return false;
+    }
   }
 
   // Cancel run
@@ -1166,8 +1415,11 @@ export function ActiveTaskProvider({
     messages,
     status: statusToString(connStatus),
     sendMessage: sendMessagePublic,
+    editQueuedMessage,
     stop: () => void cancelRun(),
     submit: (action, opts) => conn.submit(action, opts),
+    removeLocalMessage: (messageId) => conn.removeLocalMessage(messageId),
+    isSendInFlight: () => sendInFlight.has(taskId),
     error: chatError,
     clearError: () => setChatError(null),
     finishReason,

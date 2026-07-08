@@ -5,7 +5,12 @@ import {
   type PropsWithChildren,
   type RefObject,
 } from "react";
-import { ActiveTaskProvider, ChatProvider, useChatStream } from "./context";
+import {
+  ActiveTaskProvider,
+  ChatProvider,
+  useChatStream,
+  useChatTask,
+} from "./context";
 
 export { useChatTask } from "./context";
 import { IceBreakers } from "./ice-breakers";
@@ -13,6 +18,8 @@ import { HIGHLIGHT_COLLAPSED_HEIGHT_PX } from "./highlight/collapsible-highlight
 import { useHighlightCount } from "./highlight/use-highlight-count";
 import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
+import { selectHiddenFromBody } from "./queue-items.ts";
+import { useMessageQueue } from "./use-message-queue.ts";
 import { SubtaskRunsProvider } from "./subtask-runs-context.tsx";
 import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
 import { CreditsEmptyState } from "./credits-empty-state";
@@ -125,7 +132,19 @@ function ChatMessages() {
     isFetchingOlder,
     fetchOlderMessages,
   } = useChatStream();
-  const messagePairs = useMessagePairs(messages);
+  const { taskId } = useChatTask();
+
+  // Queued turns render tray-side only (see queue-items.ts / the message
+  // queue tray) — filter them out of the body BEFORE pairing so a queued
+  // user message never shows up as a bubble, whether it arrived via the
+  // optimistic enqueue or was fetched back from the DB on reload.
+  const queueItems = useMessageQueue(taskId ?? "");
+  const hiddenFromBody = selectHiddenFromBody(queueItems);
+  const visibleMessages =
+    hiddenFromBody.size === 0
+      ? messages
+      : messages.filter((m) => !hiddenFromBody.has(m.id));
+  const messagePairs = useMessagePairs(visibleMessages);
   const lastMessagePair = messagePairs.at(-1);
   const highlightCount = useHighlightCount();
 

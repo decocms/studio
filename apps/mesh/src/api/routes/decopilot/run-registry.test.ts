@@ -114,6 +114,35 @@ describe("RunRegistry (in-memory state machine)", () => {
       expect(newSignal).not.toBeNull();
       expect(newSignal).not.toBe(firstSignal);
     });
+
+    it("copies messageId onto the RUN_STARTED event", () => {
+      const registry = createRegistry();
+      const pairs = registry.dispatch({
+        type: "START",
+        taskId: "t1",
+        orgId: "org1",
+        userId: "u1",
+        abortController: new AbortController(),
+        messageId: "m1",
+      });
+
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("RUN_STARTED");
+      if (pairs[0]!.event.type === "RUN_STARTED") {
+        expect(pairs[0]!.event.messageId).toBe("m1");
+      }
+    });
+
+    it("leaves messageId undefined on RUN_STARTED when the START command omits it", () => {
+      const registry = createRegistry();
+      const pairs = startThread(registry, "t1");
+
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("RUN_STARTED");
+      if (pairs[0]!.event.type === "RUN_STARTED") {
+        expect(pairs[0]!.event.messageId).toBeUndefined();
+      }
+    });
   });
 
   // -------------------------------------------------------------------------

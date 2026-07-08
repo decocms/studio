@@ -101,6 +101,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           branch: startedThread?.branch ?? null,
           createdAt: startedThread?.created_at,
           updatedAt: startedThread?.updated_at,
+          messageId: event.messageId,
         }),
       );
       return;

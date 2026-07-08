@@ -40,11 +40,7 @@ import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
 import { buildDurableDispatchInput, resolveHarnessId } from "./dispatch-run";
 import { stringifyError } from "@decocms/harness/stream-error";
-import {
-  cancelHostedHarness,
-  enqueueThreadRun,
-  threadRunExists,
-} from "@/dispatch-queue";
+import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import {
   publishRunStatusStage,
   shouldPublishClusterRunStatus,
@@ -61,7 +57,12 @@ import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-too
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
 import { PartEmitter } from "./part-emitter";
 import { uploadFileParts } from "./file-materializer";
-import { mintRunFenceToken } from "./dispatch-fence";
+import {
+  cancelThreadGateHead,
+  cancelThreadGateWorkflow,
+  listThreadGateQueue,
+} from "@/dispatch-queue/thread-gate-queue";
+import { type QueuePartRow, foldQueueHydration } from "./queue-text";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -115,43 +116,6 @@ export function computeIdempotencyKey(
   if (!lastMsg) return undefined;
   if (lastMsg.role === "user" && lastMsg.id) return lastMsg.id;
   return createHash("sha1").update(canonicalStringify(lastMsg)).digest("hex");
-}
-
-/**
- * Decide the run fence token for a POST.
- *
- * The fence MUST be fresh per TURN (see `mintRunFenceToken`): it scopes the
- * JetStream dedup key and the projector accumulator, AND keys the hosted-harness
- * child workflow id `decopilot-hosted:<runId>:<fenceToken>`. A fresh user
- * message and an approval/tool-output CONTINUATION are each a new turn, so each
- * MUST mint a fresh fence. Reusing one — e.g. a continuation inheriting the
- * proposal's fence — collides the child id with the prior turn's already-
- * finished child, so DBOS dedupe silently drops the resume and the turn hangs
- * forever (and the reused fence also merges two turns into one stream/projector
- * accumulator).
- *
- * Only a genuine network REDELIVERY (the gate workflow id already exists) reuses
- * the in-flight fence — minting there would clobber the live turn's fence and
- * strand its projection. `isRedelivery` is derived from gate-workflow existence,
- * NOT from "is the message already persisted" (which is ALSO true for a
- * continuation re-POSTing the proposal's assistant message — the bug this fixes).
- */
-export function planSubmitRunFence(input: {
-  isRedelivery: boolean;
-  existingFenceToken: string | null;
-  mintFenceToken: () => string;
-}): { runFenceToken: string; shouldWriteFence: boolean } {
-  if (input.isRedelivery && input.existingFenceToken) {
-    return {
-      runFenceToken: input.existingFenceToken,
-      shouldWriteFence: false,
-    };
-  }
-
-  return {
-    runFenceToken: input.mintFenceToken(),
-    shouldWriteFence: true,
-  };
 }
 
 export function shouldPersistRequestMessage(input: {
@@ -757,31 +721,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           .where("message_id", "=", messageId)
           .executeTakeFirst(),
       );
-      // Idempotency / fence decision. The gate workflow id is keyed by the
-      // turn's idempotency key, so a fresh user message AND an approval/
-      // tool-output continuation (whose re-POSTed assistant message hashes
-      // differently) each map to a NEW workflow id; only a network redelivery of
-      // the same POST collapses onto an existing one. The fence reuse keys off
-      // THIS redelivery — NOT `alreadyPersisted`, which is also true for a
-      // continuation that is nonetheless a new turn needing a fresh fence.
+      // Idempotency: the gate workflow id is keyed by the turn's idempotency
+      // key (user message id, or SHA1 for continuations), so a network
+      // redelivery collapses onto the existing workflow. The run FENCE is NOT
+      // minted here: `claimRunFenceForDispatch` mints + persists it inside the
+      // gate's dispatch step, i.e. only while holding the thread's partition
+      // slot — so queueing a message behind a running turn can never clobber
+      // the running turn's fence (which stranded its projection).
       const idempotencyKey = computeIdempotencyKey(persistedRequestMessage);
       const workflowID = idempotencyKey
         ? `thread-run:${taskId}:${idempotencyKey}`
         : undefined;
-      const isRedelivery = workflowID
-        ? await threadRunExists(workflowID)
-        : false;
-      const existingFenceToken = isRedelivery
-        ? await ctx.storage.threads.getRunFence(taskId)
-        : null;
-      const { runFenceToken, shouldWriteFence } = planSubmitRunFence({
-        isRedelivery,
-        existingFenceToken,
-        mintFenceToken: mintRunFenceToken,
-      });
-      if (shouldWriteFence) {
-        await ctx.storage.threads.setRunFence(taskId, runFenceToken);
-      }
 
       const emitter = new PartEmitter({
         storage: ctx.storage.threads.messageParts(),
@@ -800,7 +750,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
       const serializableRequest = buildDurableDispatchInput(input, {
         messageId,
-        runFenceToken,
         branch,
         sandboxProviderKind: pinnedKind,
         harnessId: pinnedHarness,
@@ -810,6 +759,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // so idempotent retries that collapse onto an existing workflowID
       // don't double-count in PostHog. Don't add a duplicate emit here.
       if (
+        existingThread?.status !== "in_progress" &&
         shouldPublishClusterRunStatus({
           harnessId: pinnedHarness,
           sandboxProviderKind: target.sandboxProviderKind,
@@ -846,9 +796,18 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // Cancel Endpoint — cancel ongoing run (local or via NATS to owning pod)
   // ============================================================================
 
-  app.post("/:org/decopilot/cancel/:threadId", async (c) => {
-    const { ctx, taskId, thread, organization, userId } =
-      await validateThreadOwnership(c);
+  // Shared run-cancel teardown: durable cancel flag, background-job teardown,
+  // hosted-child cancel, in-pod abort + cross-pod NATS broadcast, local turn
+  // cancel, gate-head cancel, ghost force-fail. Used by the stop endpoint and
+  // the per-item queue cancel (running head).
+  async function cancelActiveThreadRun(args: {
+    ctx: StudioContext;
+    taskId: string;
+    thread: Thread;
+    organization: { id: string };
+    userId: string;
+  }): Promise<void> {
+    const { ctx, taskId, thread, organization, userId } = args;
 
     // Persist durable cancel flag so the ingest backstop rejects 409.
     await ctx.storage.threads.setCancelRequested(taskId, organization.id);
@@ -859,6 +818,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     // must not block the user-facing cancel.
     await cancelThreadBackgroundJobs(taskId).catch((err) => {
       console.error("[decopilot:cancel] failed to cancel background jobs", {
+        taskId,
+        err,
+      });
+    });
+
+    // Free a stranded/stuck PENDING gate head so the partition slot releases
+    // and the queue can proceed (an orphaned/zombie gate has no in-memory run
+    // for the CANCEL command to abort — cancelling the DBOS workflow row is
+    // the only thing that frees the concurrency=1 partition).
+    await cancelThreadGateHead(taskId).catch((err) => {
+      console.error("[decopilot:cancel] failed to cancel gate head", {
         taskId,
         err,
       });
@@ -897,23 +867,18 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       type: "CANCEL",
       taskId,
     });
-    if (cancelTransitions.some((t) => t.event.type === "RUN_FAILED")) {
-      cancelBroadcast.publishControlFrame(userId, {
-        type: "cancel",
-        runId: taskId,
-      });
-      return c.json({ cancelled: true });
-    }
-
     cancelBroadcast.publishControlFrame(userId, {
       type: "cancel",
       runId: taskId,
     });
+    const producedRunFailed = cancelTransitions.some(
+      (t) => t.event.type === "RUN_FAILED",
+    );
 
     // Ghost run: server restarted while a run was in progress. No pod has this
     // run in memory, so the broadcast will never resolve. Force-fail the thread
     // in the DB so the user can send new messages.
-    if (thread.status === "in_progress") {
+    if (!producedRunFailed && thread.status === "in_progress") {
       console.warn("[decopilot:cancel] Ghost run detected, force-failing", {
         taskId,
       });
@@ -934,8 +899,100 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           );
         });
     }
+  }
 
+  app.post("/:org/decopilot/cancel/:threadId", async (c) => {
+    const { ctx, taskId, thread, organization, userId } =
+      await validateThreadOwnership(c);
+    await cancelActiveThreadRun({ ctx, taskId, thread, organization, userId });
     return c.json({ cancelled: true, async: true }, 202);
+  });
+
+  // ==========================================================================
+  // Queue Endpoints — the thread's pending gate workflows (running head +
+  // queued tail), surfaced so the UI can render queued bubbles and cancel
+  // them. Owner-only (validateThreadOwnership).
+  // ==========================================================================
+
+  app.get("/:org/decopilot/queue/:threadId", async (c) => {
+    const { ctx, taskId } = await validateThreadOwnership(c);
+    const items = await listThreadGateQueue(taskId);
+    if (items.length === 0) return c.json({ items: [] });
+    // Hydrate tray display text + attachment presence from the persisted
+    // request parts (the durable gate input carries no message content).
+    const rows = await ctx.db
+      .selectFrom("thread_message_parts")
+      .select(["message_id", "kind", "seq", "payload"])
+      .where("thread_id", "=", taskId)
+      .where(
+        "message_id",
+        "in",
+        items.map((i) => i.messageId),
+      )
+      .execute();
+    const hydration = foldQueueHydration(rows as QueuePartRow[]);
+    return c.json({
+      items: items.map((i) => ({
+        ...i,
+        text: hydration.get(i.messageId)?.text ?? "",
+        hasAttachments: hydration.get(i.messageId)?.hasAttachments ?? false,
+      })),
+    });
+  });
+
+  app.post("/:org/decopilot/queue/:threadId/cancel/:workflowId", async (c) => {
+    const { ctx, taskId, thread, organization, userId } =
+      await validateThreadOwnership(c);
+    const workflowId = c.req.param("workflowId");
+
+    // The item must currently be pending for THIS thread (prefix-scoped list).
+    const items = await listThreadGateQueue(taskId);
+    const target = items.find((i) => i.workflowId === workflowId);
+    if (!target) return c.body(null, 404);
+
+    const ok = await cancelThreadGateWorkflow(taskId, workflowId);
+    if (!ok) return c.body(null, 404);
+
+    if (target.status === "running") {
+      // The head was already live: also run the full run-cancel teardown
+      // (abort + broadcast + registry CANCEL + ghost force-fail). The
+      // re-cancel of the gate head inside is an idempotent no-op.
+      await cancelActiveThreadRun({
+        ctx,
+        taskId,
+        thread,
+        organization,
+        userId,
+      });
+    } else {
+      // Removed a QUEUED turn: its request message was already persisted at
+      // POST time — delete the part rows so the bubble doesn't resurrect on
+      // reload. Only for plain user turns; a queued approval-continuation's
+      // message id points at the historical assistant proposal, which must
+      // NOT be deleted. Best-effort: the workflow is already CANCELLED (an
+      // irrevocable success), so a transient DB failure here must not 500 the
+      // request — log it and still report the cancel as done.
+      try {
+        const role = await ctx.db
+          .selectFrom("thread_message_parts")
+          .select("role")
+          .where("thread_id", "=", taskId)
+          .where("message_id", "=", target.messageId)
+          .limit(1)
+          .executeTakeFirst();
+        if (role?.role === "user") {
+          await ctx.storage.threads
+            .messageParts()
+            .deleteMessageParts(taskId, target.messageId);
+        }
+      } catch (err) {
+        console.error(
+          "[decopilot:queue-cancel] failed to delete queued message parts",
+          { taskId, messageId: target.messageId, err },
+        );
+      }
+    }
+    return c.json({ cancelled: true }, 202);
   });
 
   // ============================================================================
