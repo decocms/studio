@@ -2,7 +2,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { useRef } from "react";
 import type { ChatMessage, ChatStatus } from "../types.ts";
 import { MessageAssistant } from "./assistant.tsx";
-import { MessageUser, type QueuedMessageInfo } from "./user.tsx";
+import { MessageUser } from "./user.tsx";
 
 export interface MessagePair {
   user: ChatMessage | null;
@@ -55,22 +55,9 @@ interface MessagePairProps {
   pair: MessagePair;
   isLastPair: boolean;
   status?: ChatStatus;
-  /** Set when `pair.user` sits in the thread's gate queue. */
-  queuedInfo?: QueuedMessageInfo;
-  /** Cancel the current turn so FIFO promotes this (head-of-queue) message next. */
-  onRunNow?: () => void;
-  /** Drop this message from the queue (local store + server cancel). */
-  onRemove?: () => void;
 }
 
-export function MessagePair({
-  pair,
-  isLastPair,
-  status,
-  queuedInfo,
-  onRunNow,
-  onRemove,
-}: MessagePairProps) {
+export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
   const pairRef = useRef<HTMLDivElement>(null);
   /**
    * Initial-scroll once per MessagePair mount. The ref callback below fires
@@ -121,13 +108,6 @@ export function MessagePair({
     }
   };
 
-  // A queued pair has no run yet — the message is still waiting behind the
-  // gate. Render only the bubble (with its spinner/actions) and skip the
-  // assistant slot entirely: MessageAssistant would otherwise render
-  // EmptyAssistantState ("No response was generated" / "Resuming task...")
-  // for a turn that hasn't started.
-  const isQueued = queuedInfo?.isQueued ?? false;
-
   return (
     <div
       ref={handlePairRef}
@@ -137,33 +117,25 @@ export function MessagePair({
         <>
           <div className="sticky top-0 z-50 w-full h-4 bg-background" />
           <div className="sticky mb-8 sm:mb-6 top-4 z-50">
-            <MessageUser
-              message={pair.user}
-              onScrollToPair={scrollToPair}
-              queuedInfo={queuedInfo}
-              onRunNow={onRunNow}
-              onRemove={onRemove}
-            />
+            <MessageUser message={pair.user} onScrollToPair={scrollToPair} />
           </div>
         </>
       )}
-      {!isQueued && (
-        <MessageAssistant
-          message={pair.assistant}
-          // Top-level `created_at` on the user row is a custom field added by
-          // our DB pipeline (see `readTimestamp` in thread-connection.ts) and
-          // isn't declared on the AI-SDK UIMessage type, so cast to read it.
-          // Falls through to `undefined` for assistant-only pairs (no preceding
-          // user) or for optimistic user rows before the server-confirmed row
-          // replaces them — MessageAssistant handles that with `Date.now()`.
-          turnStartedAt={
-            (pair.user as unknown as { created_at?: string | Date | null })
-              ?.created_at ?? null
-          }
-          status={status}
-          isLast={isLastPair}
-        />
-      )}
+      <MessageAssistant
+        message={pair.assistant}
+        // Top-level `created_at` on the user row is a custom field added by
+        // our DB pipeline (see `readTimestamp` in thread-connection.ts) and
+        // isn't declared on the AI-SDK UIMessage type, so cast to read it.
+        // Falls through to `undefined` for assistant-only pairs (no preceding
+        // user) or for optimistic user rows before the server-confirmed row
+        // replaces them — MessageAssistant handles that with `Date.now()`.
+        turnStartedAt={
+          (pair.user as unknown as { created_at?: string | Date | null })
+            ?.created_at ?? null
+        }
+        status={status}
+        isLast={isLastPair}
+      />
     </div>
   );
 }

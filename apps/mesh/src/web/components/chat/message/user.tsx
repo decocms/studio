@@ -1,8 +1,6 @@
-import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Loading01, XClose } from "@untitledui/icons";
 import { type UIMessage } from "ai";
 import { useRef, useState } from "react";
 import { FileNode } from "../tiptap/file/node.tsx";
@@ -15,23 +13,10 @@ import {
   TriggerEventPart,
 } from "./parts/trigger-event-part.tsx";
 
-/** Queued-bubble affordance state, threaded `index.tsx → MessagePair → MessageUser`. */
-export interface QueuedMessageInfo {
-  /** True while this user message is sitting in the thread's gate queue. */
-  isQueued: boolean;
-  /** True only for the head of the queue — the sole item "Run now" can promote. */
-  isPromotable: boolean;
-}
-
 export interface MessageProps<T extends Metadata> {
   message: UIMessage<T>;
   className?: string;
   onScrollToPair?: () => void;
-  queuedInfo?: QueuedMessageInfo;
-  /** Cancel the current turn so FIFO promotes this (head-of-queue) message next. */
-  onRunNow?: () => void;
-  /** Drop this message from the queue (local store + server cancel). */
-  onRemove?: () => void;
 }
 
 const EXTENSIONS = [
@@ -78,9 +63,6 @@ export function MessageUser<T extends Metadata>({
   message,
   className,
   onScrollToPair,
-  queuedInfo,
-  onRunNow,
-  onRemove,
 }: MessageProps<T>) {
   const { id, parts, metadata } = message;
   const [isFocused, setIsFocused] = useState(false);
@@ -121,7 +103,7 @@ export function MessageUser<T extends Metadata>({
             onClick={handleClick}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            className="w-full border border-border/60 min-w-0 shadow-xs rounded-lg text-[14px] wrap-break-word overflow-wrap-anywhere bg-background cursor-pointer transition-colors relative flex items-center outline-none group/message"
+            className="w-full border border-border/60 min-w-0 shadow-xs rounded-lg text-[14px] wrap-break-word overflow-wrap-anywhere bg-background cursor-pointer transition-colors relative flex outline-none"
           >
             <div className="absolute inset-0 bg-muted/75 rounded-lg pointer-events-none" />
             <div
@@ -172,40 +154,6 @@ export function MessageUser<T extends Metadata>({
                 )}
               </div>
             </div>
-            {queuedInfo?.isQueued && (
-              <div className="z-10 flex shrink-0 items-center gap-1 pr-3">
-                <Loading01
-                  size={14}
-                  className="animate-spin text-muted-foreground"
-                />
-                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover/message:opacity-100">
-                  {queuedInfo.isPromotable && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="Run now (cancels the current turn)"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRunNow?.();
-                      }}
-                    >
-                      Run now
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    title="Remove from queue"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemove?.();
-                    }}
-                  >
-                    <XClose className="size-3.5" />
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
           <MessageTimestamp message={message} className="mt-1 mr-1 self-end" />
         </div>
