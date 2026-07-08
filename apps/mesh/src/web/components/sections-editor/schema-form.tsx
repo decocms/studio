@@ -301,7 +301,7 @@ export function renderField(props: FieldProps) {
     case "string": {
       // Format-based widgets
       const fmt = schema.format;
-      if (fmt === "color-input") {
+      if (fmt === "color-input" || fmt === "color") {
         return <StringField key={props.path} {...effectiveProps} />;
       }
       if (fmt === "textarea" || fmt === "rich-text" || fmt === "html") {

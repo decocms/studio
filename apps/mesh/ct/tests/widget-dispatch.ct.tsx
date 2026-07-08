@@ -162,6 +162,19 @@ test("color-input format → native color input", async ({ mount }) => {
   await expect(component.locator('input[type="color"]')).toBeVisible();
 });
 
+// @decocms/start's schema generator maps the `Color` widget alias to
+// format: "color", so deco sites emit "color" rather than our "color-input".
+test("color format → native color input", async ({ mount }) => {
+  const meta = sectionWithProps({
+    accent: { type: "string", title: "Accent", format: "color" },
+  });
+  const component = await mount(
+    <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
+  );
+
+  await expect(component.locator('input[type="color"]')).toBeVisible();
+});
+
 test("date format → native date input", async ({ mount }) => {
   const meta = sectionWithProps({
     publishedAt: { type: "string", title: "Published At", format: "date" },
