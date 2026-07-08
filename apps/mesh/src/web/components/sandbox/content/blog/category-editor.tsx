@@ -69,6 +69,10 @@ export function CategoryEditor({
   block: Record<string, unknown> | undefined;
   decofile: Record<string, unknown>;
   meta: LiveMeta;
+  /**
+   * Jump to the posts list with the bulk "Update category" panel open for
+   * this category.
+   */
   onManagePosts: (slug: string) => void;
   onOpenPost: (key: string) => void;
   previewBaseUrl?: string | null;
@@ -277,16 +281,12 @@ export function CategoryEditor({
                   disabled={!committedSlug}
                   title={
                     !committedSlug
-                      ? "Set a slug to manage this category's posts"
-                      : postCount === 0
-                        ? "Go to the posts list to add posts to this category"
-                        : "Jump to the posts list filtered by this category"
+                      ? "Set a slug to add posts to this category"
+                      : "Pick posts to add to this category"
                   }
-                  onClick={() =>
-                    onManagePosts(postCount === 0 ? "" : committedSlug)
-                  }
+                  onClick={() => onManagePosts(committedSlug)}
                 >
-                  {postCount === 0 ? "Add posts" : "Manage posts"}
+                  Add posts
                   <ArrowRight size={14} />
                 </Button>
               </div>
