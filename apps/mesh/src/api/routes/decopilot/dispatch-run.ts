@@ -1166,6 +1166,7 @@ async function prepareRun(
           windowSize: input.windowSize,
           triggerId: input.triggerId,
         },
+        messageId: (input as { messageId?: string }).messageId,
       });
     }
     runStarted = true;

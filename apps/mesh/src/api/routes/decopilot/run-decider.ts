@@ -19,6 +19,7 @@ export function decide(
         abortController: command.abortController,
         runConfig: command.runConfig,
         podId: command.podId,
+        messageId: command.messageId,
       };
 
       if (state?.status.tag === "running") {

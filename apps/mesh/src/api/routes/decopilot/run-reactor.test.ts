@@ -184,4 +184,50 @@ describe("run reactor", () => {
     expect(updates[0]!.failure_reason).toBeNull();
     expect(updates[0]!.failure_kind).toBeNull();
   });
+
+  test("RUN_STARTED emits the in_progress thread-status event with data.message_id", async () => {
+    const emitted: { type: string; data: Record<string, unknown> }[] = [];
+    const deps: RunReactorDeps = {
+      storage: {
+        update: async () => null,
+        get: async () => ({
+          id: "run_1",
+          organization_id: "org_1",
+          created_by: "user_1",
+          status: "in_progress",
+        }),
+      } as unknown as ThreadStoragePort,
+      sseHub: {
+        emit: (_orgId, event) => {
+          emitted.push(
+            event as { type: string; data: Record<string, unknown> },
+          );
+        },
+      },
+    };
+
+    await reactAll(
+      [
+        {
+          event: {
+            type: "RUN_STARTED",
+            taskId: "run_1",
+            orgId: "org_1",
+            userId: "user_1",
+            abortController: new AbortController(),
+            podId: "pod_1",
+            messageId: "m1",
+          },
+          state: undefined,
+        },
+      ],
+      deps,
+    );
+
+    const statusEvent = emitted.find(
+      (event) => event.type === "decopilot.thread.status",
+    );
+    expect(statusEvent).toBeDefined();
+    expect(statusEvent!.data.message_id).toBe("m1");
+  });
 });
