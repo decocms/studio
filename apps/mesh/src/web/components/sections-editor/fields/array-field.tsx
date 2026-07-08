@@ -22,6 +22,8 @@ import {
   Copy01,
   DotsGrid,
   DotsHorizontal,
+  Eye,
+  EyeOff,
   Plus,
   Trash01,
 } from "@untitledui/icons";
@@ -33,8 +35,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { getArrayItemImageSrc, getArrayItemLabel } from "../array-item-display";
+import {
+  arrayItemDisplayValue,
+  hideArrayItem,
+  isArrayItemHidden,
+  showArrayItem,
+} from "../array-item-hidden";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import {
   buildArrayDrillDownBreadcrumb,
@@ -161,6 +174,8 @@ function SortableArrayRow({
   sortableId,
   labelText,
   imageSrc,
+  hidden,
+  onToggleHidden,
   onOpen,
   onDuplicate,
   onRemove,
@@ -168,6 +183,8 @@ function SortableArrayRow({
   sortableId: string;
   labelText: string;
   imageSrc?: string;
+  hidden?: boolean;
+  onToggleHidden?: () => void;
   onOpen: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
@@ -215,7 +232,42 @@ function SortableArrayRow({
           className="h-12 max-w-[100px] shrink-0 rounded object-cover"
         />
       )}
-      <span className="min-w-0 flex-1 truncate text-sm">{labelText}</span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-sm",
+          hidden && "line-through opacity-50",
+        )}
+      >
+        {labelText}
+      </span>
+      {onToggleHidden && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={hidden ? "Show item" : "Hide item"}
+              className={cn(
+                "size-6 shrink-0",
+                hidden
+                  ? "opacity-100"
+                  : "opacity-0 transition-opacity group-hover:opacity-100",
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleHidden();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {hidden ? "Show item" : "Hide item"}
+          </TooltipContent>
+        </Tooltip>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -269,6 +321,9 @@ export function ArrayField({
   const itemSchema = schema.items;
   const arrayFieldKey = arrayFieldKeyFromPath(path);
   const usesSectionPicker = isSectionArrayField(schema, arrayFieldKey);
+  // Only plain object arrays (banners, links, …) get the hide toggle. Section
+  // pickers have their own hide flow, and primitive arrays can't be wrapped.
+  const canHideItems = !usesSectionPicker && itemSchema?.type === "object";
   const selection = resolveArrayItemSelection(
     label,
     breadcrumbPath,
@@ -295,7 +350,7 @@ export function ArrayField({
   }
 
   const itemLabel = (item: unknown, index: number) =>
-    getArrayItemLabel(item, index, itemSchema);
+    getArrayItemLabel(arrayItemDisplayValue(item), index, itemSchema);
 
   const openItem = (index: number) => {
     if (suppressClickRef.current) return;
@@ -376,6 +431,15 @@ export function ArrayField({
     onChange(next);
   };
 
+  const toggleItemHidden = (index: number) => {
+    const item = items[index];
+    const next = [...items];
+    next[index] = isArrayItemHidden(item)
+      ? showArrayItem(item)
+      : hideArrayItem(item);
+    onChange(next);
+  };
+
   const removeItem = (index: number) => {
     onChange(items.filter((_, i) => i !== index));
     if (selectedIndex === index) {
@@ -389,7 +453,8 @@ export function ArrayField({
 
   const updateItem = (index: number, val: unknown) => {
     const next = [...items];
-    next[index] = val;
+    // Preserve the hidden wrapper when editing a hidden item's inner value.
+    next[index] = isArrayItemHidden(items[index]) ? hideArrayItem(val) : val;
     onChange(next);
 
     // When editing the currently selected item, the display label may change
@@ -455,11 +520,11 @@ export function ArrayField({
       : null;
   const activeImage =
     activeEntry != null && activeItem !== undefined
-      ? getArrayItemImageSrc(activeItem, itemSchema)
+      ? getArrayItemImageSrc(arrayItemDisplayValue(activeItem), itemSchema)
       : undefined;
 
   if (selectedIndex !== null && selectedIndex < items.length) {
-    const item = items[selectedIndex];
+    const item = arrayItemDisplayValue(items[selectedIndex]);
     const editorSchema = itemEditorSchema(
       item,
       itemSchema,
@@ -567,13 +632,22 @@ export function ArrayField({
                   const item = items[entry.index];
                   if (item === undefined) return null;
                   const labelText = itemLabel(item, entry.index);
-                  const imageSrc = getArrayItemImageSrc(item, itemSchema);
+                  const imageSrc = getArrayItemImageSrc(
+                    arrayItemDisplayValue(item),
+                    itemSchema,
+                  );
                   return (
                     <SortableArrayRow
                       key={entry.id}
                       sortableId={entry.id}
                       labelText={labelText}
                       imageSrc={imageSrc}
+                      hidden={isArrayItemHidden(item)}
+                      onToggleHidden={
+                        canHideItems
+                          ? () => toggleItemHidden(entry.index)
+                          : undefined
+                      }
                       onOpen={() => openItem(entry.index)}
                       onDuplicate={() => duplicateItem(entry.index)}
                       onRemove={() => removeItem(entry.index)}
