@@ -392,6 +392,11 @@ export const KEYS = {
   // attachable-skill set for agent knowledge.
   orgFsSkills: (orgId: string) => ["org-fs-skills", orgId] as const,
 
+  // Full skill catalog for the chat "/" picker. Distinct from `orgFsSkills`
+  // (same endpoint, but that caches a stripped {volume,path} shape) — reusing
+  // its key would collide two writers with incompatible payloads.
+  slashSkills: (orgId: string) => ["slash-skills", orgId] as const,
+
   // File picker — objects listed from a configured bucket
   filePickerObjects: (
     orgId: string,

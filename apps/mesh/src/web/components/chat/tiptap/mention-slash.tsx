@@ -1,6 +1,8 @@
 /**
- * Unified slash (/) mention component that combines prompts and resources
- * into a single dropdown. Prompts appear first, followed by resources.
+ * Unified slash (/) mention component that combines prompts, resources, and
+ * skills into a single dropdown, in that order. Prompts/resources come from the
+ * connected MCP; skills come from the org's skill catalog (home + public sets,
+ * incl. storefront) and inline their SKILL.md when selected.
  */
 
 import {
@@ -22,6 +24,12 @@ import type {
   ListResourcesResult,
   Prompt,
 } from "@modelcontextprotocol/sdk/types.js";
+import {
+  fetchOrgFsSkillCatalog,
+  fetchOrgFsSkillFiles,
+  type OrgFsSkillCatalogEntry,
+  type OrgFsSkillFile,
+} from "@/web/hooks/use-org-fs";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Editor, Range } from "@tiptap/react";
 import { useRef, useState } from "react";
@@ -47,13 +55,25 @@ interface SlashMentionProps {
 }
 
 interface SlashItem extends BaseItem {
-  kind: "prompt" | "resource";
+  kind: "prompt" | "resource" | "skill";
   /** For resources */
   uri?: string;
   /** For prompts - arguments definition */
   arguments?: Prompt["arguments"];
   /** For prompts - MCP metadata */
   _meta?: Prompt["_meta"];
+  /** For skills - the catalog entry used to fetch SKILL.md on select. */
+  skill?: OrgFsSkillCatalogEntry;
+}
+
+/** Metadata stashed on a skill mention; consumed by derive-parts. */
+export interface SkillMentionMeta {
+  /** Sandbox dir the skill's files are mounted under (for omitted files). */
+  sandboxPath: string;
+  /** Markdown/text docs, inlined (content baked) at select time. */
+  files: OrgFsSkillFile[];
+  /** Relative paths of files left on disk (scripts/assets/oversized). */
+  omittedPaths: string[];
 }
 
 interface PromptSelectContext {
@@ -116,6 +136,36 @@ async function fetchAndInsertResource(
   }
 }
 
+async function fetchAndInsertSkill(
+  editor: Editor,
+  range: Range,
+  orgSlug: string,
+  skill: OrgFsSkillCatalogEntry,
+) {
+  try {
+    const { files, omittedPaths } = await fetchOrgFsSkillFiles(
+      orgSlug,
+      skill.volume,
+      skill.path,
+    );
+    const metadata: SkillMentionMeta = {
+      sandboxPath: skill.sandboxPath,
+      files,
+      omittedPaths,
+    };
+    insertMention(editor, range, {
+      id: skill.id,
+      name: skill.name,
+      metadata,
+      char: "/",
+      kind: "skill",
+    });
+  } catch (error) {
+    console.error("[slash] Failed to fetch skill:", error);
+    toast.error("Failed to load skill. Please try again.");
+  }
+}
+
 export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
   const queryClient = useQueryClient();
   const { org } = useProjectContext();
@@ -126,6 +176,8 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
   });
   const promptsQueryKey = KEYS.virtualMcpPrompts(virtualMcpId, org.id);
   const resourcesQueryKey = KEYS.virtualMcpResources(virtualMcpId, org.id);
+  // Skill catalog is org-scoped (not per-MCP): home + public sets.
+  const skillsQueryKey = KEYS.slashSkills(org.id);
   // Combined key for the suggestion dropdown
   const queryKey = [
     "slash-mention",
@@ -188,6 +240,10 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
       }
       const clientId = getGatewayClientId(item._meta);
       await fetchAndInsertPrompt(editor, range, client, item.name, clientId);
+    } else if (item.kind === "skill") {
+      if (item.skill) {
+        await fetchAndInsertSkill(editor, range, org.slug, item.skill);
+      }
     } else {
       // Resource
       if (item.uri) {
@@ -254,10 +310,11 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
     const { query } = props;
     if (!client) return [];
 
-    // Fetch prompts and resources in parallel
-    const [prompts, resources] = await Promise.all([
+    // Fetch prompts, resources, and skills in parallel
+    const [prompts, resources, skills] = await Promise.all([
       fetchPrompts(queryClient, promptsQueryKey, client),
       fetchResources(queryClient, resourcesQueryKey, client),
+      fetchSkills(queryClient, skillsQueryKey, org.slug),
     ]);
 
     const lowerQuery = query.trim().toLowerCase();
@@ -297,8 +354,25 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
         uri: r.uri,
       }));
 
-    // Prompts first, then resources
-    return [...promptItems, ...resourceItems];
+    // Build skill items (public sets + org home, incl. storefront)
+    const skillItems: SlashItem[] = (skills ?? [])
+      .filter(
+        (s) =>
+          !lowerQuery ||
+          s.name.toLowerCase().includes(lowerQuery) ||
+          s.id.toLowerCase().includes(lowerQuery) ||
+          s.description?.toLowerCase().includes(lowerQuery),
+      )
+      .map((s) => ({
+        name: s.name,
+        title: s.name,
+        description: s.description ?? undefined,
+        kind: "skill" as const,
+        skill: s,
+      }));
+
+    // Prompts first, then resources, then skills
+    return [...promptItems, ...resourceItems, ...skillItems];
   };
 
   // Build a dialog-compatible prompt object from SlashItem
@@ -385,6 +459,25 @@ async function fetchPrompts(
       .catch(() => {});
   }
   return cached?.prompts ?? [];
+}
+
+async function fetchSkills(
+  queryClient: ReturnType<typeof useQueryClient>,
+  queryKey: readonly unknown[],
+  orgSlug: string,
+): Promise<OrgFsSkillCatalogEntry[]> {
+  const cached = queryClient.getQueryData<OrgFsSkillCatalogEntry[]>(queryKey);
+  const revalidate = () =>
+    queryClient.fetchQuery({
+      queryKey,
+      queryFn: () => fetchOrgFsSkillCatalog(orgSlug),
+      staleTime: 60000,
+    });
+  // Skills are additive — a fetch failure (e.g. missing ORG_FS_READ) must never
+  // take down the whole "/" picker (prompts + resources), so degrade to [].
+  if (!cached) return revalidate().catch(() => []);
+  revalidate().catch(() => {});
+  return cached;
 }
 
 async function fetchResources(
