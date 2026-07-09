@@ -27,6 +27,50 @@ describe("page-list", () => {
     ]);
   });
 
+  it("extractPages derives a name from the key, stripping uuid and hex suffixes", () => {
+    const decofile = {
+      "pages-home-11111111-1111-4111-8111-111111111111": {
+        __resolveType: "website/pages/Page.tsx",
+        path: "/",
+      },
+      "pages-about-c4bcbfb771e9": {
+        __resolveType: "website/pages/Page.tsx",
+        path: "/about",
+      },
+    };
+
+    expect(extractPages(decofile)).toEqual([
+      {
+        key: "pages-home-11111111-1111-4111-8111-111111111111",
+        name: "home",
+        path: "/",
+      },
+      { key: "pages-about-c4bcbfb771e9", name: "about", path: "/about" },
+    ]);
+  });
+
+  it("extractPages URL-decodes derived names and falls back to raw text on malformed encoding", () => {
+    const decofile = {
+      "pages-Category%20Page-c4bcbfb771e9": {
+        __resolveType: "website/pages/Page.tsx",
+        path: "/category",
+      },
+      "pages-bad-%E0%A4%A": {
+        __resolveType: "website/pages/Page.tsx",
+        path: "/bad",
+      },
+    };
+
+    expect(extractPages(decofile)).toEqual([
+      {
+        key: "pages-Category%20Page-c4bcbfb771e9",
+        name: "Category Page",
+        path: "/category",
+      },
+      { key: "pages-bad-%E0%A4%A", name: "bad-%E0%A4%A", path: "/bad" },
+    ]);
+  });
+
   it("findPageForPath prefers an explicit block key when paths collide", () => {
     const pages = [
       {
