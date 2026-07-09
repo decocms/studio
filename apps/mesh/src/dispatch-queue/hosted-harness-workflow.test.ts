@@ -221,6 +221,120 @@ describe("hostedHarnessWorkflowFn's try/catch contract (Finding 1)", () => {
   });
 });
 
+// unified-control-plane T9 proof obligation 1 (carried from T1's review): the
+// "half-terminal" invariant — `{done}` must NEVER be published when the
+// error-chunk publish itself failed (returned false OR threw), and the
+// child's outer catch must swallow that failure rather than rethrow (per
+// `hostedHarnessWorkflowFn`'s guarantee: it always returns normally). This is
+// best proved as a unit test on `publishHostedHarnessFailure`'s ordering
+// rather than forced into e2e (there is no black-box way to make JetStream's
+// publish call fail on demand from Playwright).
+describe("half-terminal invariant (T9 proof obligation 1): done is never published when the error-terminal publish itself failed", () => {
+  const request = {
+    organizationId: "org-1",
+    userId: "user-1",
+  } as SerializableDispatchRunInput;
+
+  const input: HostedHarnessInput = {
+    runId: "run-half-terminal",
+    fenceToken: "fence-half-terminal",
+    threadId: "thread-half-terminal",
+    request,
+  };
+
+  test("publishRawChunk returns false → publishDone is NOT called, and publishHostedHarnessFailure itself resolves without throwing", async () => {
+    const streamBuffer = {
+      publishRawChunk: mock(() => Promise.resolve(false)),
+      publishDone: mock(() => Promise.resolve(true)),
+    } as unknown as NonNullable<HostedHarnessRuntime["deps"]["streamBuffer"]>;
+    setHostedHarnessRuntime({
+      dispatchRunFn: mock(() => Promise.resolve({ taskId: "t" })),
+      meshContextFactory: async () => null,
+      deps: {
+        runRegistry: {} as HostedHarnessRuntime["deps"]["runRegistry"],
+        cancelBroadcast: {} as HostedHarnessRuntime["deps"]["cancelBroadcast"],
+        streamBuffer,
+      },
+    });
+
+    await expect(
+      publishHostedHarnessFailure(input, new Error("harness exploded")),
+    ).resolves.toBeUndefined();
+
+    expect(streamBuffer.publishRawChunk).toHaveBeenCalledTimes(1);
+    expect(streamBuffer.publishDone).not.toHaveBeenCalled();
+  });
+
+  test("publishRawChunk throws → publishDone is NOT called (the rejection propagates out of publishHostedHarnessFailure itself, unswallowed at this layer)", async () => {
+    const publishErr = new Error("JetStream unavailable");
+    const streamBuffer = {
+      publishRawChunk: mock(() => Promise.reject(publishErr)),
+      publishDone: mock(() => Promise.resolve(true)),
+    } as unknown as NonNullable<HostedHarnessRuntime["deps"]["streamBuffer"]>;
+    setHostedHarnessRuntime({
+      dispatchRunFn: mock(() => Promise.resolve({ taskId: "t" })),
+      meshContextFactory: async () => null,
+      deps: {
+        runRegistry: {} as HostedHarnessRuntime["deps"]["runRegistry"],
+        cancelBroadcast: {} as HostedHarnessRuntime["deps"]["cancelBroadcast"],
+        streamBuffer,
+      },
+    });
+
+    await expect(
+      publishHostedHarnessFailure(input, new Error("harness exploded")),
+    ).rejects.toBe(publishErr);
+
+    expect(streamBuffer.publishRawChunk).toHaveBeenCalledTimes(1);
+    expect(streamBuffer.publishDone).not.toHaveBeenCalled();
+  });
+
+  test("end-to-end: dispatchRunFn throws AND the error-terminal publish itself throws → the reconstructed workflow body (mirroring hostedHarnessWorkflowFn's outer .catch) still returns normally, never rethrows", async () => {
+    const dispatchErr = new Error("harness exploded mid-stream");
+    const publishErr = new Error("JetStream unavailable");
+    const streamBuffer = {
+      publishRawChunk: mock(() => Promise.reject(publishErr)),
+      publishDone: mock(() => Promise.resolve(true)),
+    } as unknown as NonNullable<HostedHarnessRuntime["deps"]["streamBuffer"]>;
+    setHostedHarnessRuntime({
+      dispatchRunFn: mock(() => Promise.reject(dispatchErr)),
+      meshContextFactory: async () => null,
+      deps: {
+        runRegistry: {} as HostedHarnessRuntime["deps"]["runRegistry"],
+        cancelBroadcast: {} as HostedHarnessRuntime["deps"]["cancelBroadcast"],
+        streamBuffer,
+      },
+    });
+
+    // Reconstruct hostedHarnessWorkflowFn's full try/catch — including the
+    // OUTER `.catch` wrapped around the `publishHostedHarnessFailure` step —
+    // the same technique the "Finding 1" describe block above uses, since
+    // this test tier can't launch a real DBOS.runStep. See that block's
+    // comment for why.
+    let escaped: unknown;
+    try {
+      try {
+        await runHostedHarness(input, {} as StudioContext);
+      } catch (err) {
+        await publishHostedHarnessFailure(input, err).catch(() => {
+          // mirrors hostedHarnessWorkflowFn's console.error-and-swallow —
+          // "there's nothing more this workflow can durably do" per its
+          // comment.
+        });
+      }
+    } catch (err) {
+      escaped = err;
+    }
+
+    // The child catch swallows, never rethrows: nothing escapes the
+    // reconstructed workflow body.
+    expect(escaped).toBeUndefined();
+    // done was never published — the half-terminal invariant.
+    expect(streamBuffer.publishRawChunk).toHaveBeenCalledTimes(1);
+    expect(streamBuffer.publishDone).not.toHaveBeenCalled();
+  });
+});
+
 describe("hostedChildWorkflowId", () => {
   test("derives the deterministic child workflow id from (runId, fenceToken)", () => {
     expect(hostedChildWorkflowId("run-1", "fence-a")).toBe(
