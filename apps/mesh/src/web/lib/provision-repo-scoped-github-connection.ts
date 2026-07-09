@@ -9,7 +9,7 @@ type McpCallTool = (req: {
 const REFRESH_GRANT_METADATA_ERROR =
   "GitHub MCP did not return refreshable repo grant metadata";
 
-function nonEmptyString(value: unknown): string | null {
+export function nonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -17,7 +17,7 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function isHttpTokenEndpoint(value: string): boolean {
+export function isHttpTokenEndpoint(value: string): boolean {
   try {
     const url = new URL(value);
     return (
@@ -30,7 +30,7 @@ function isHttpTokenEndpoint(value: string): boolean {
   }
 }
 
-function normalizeRepositoryId(value: unknown): number | undefined {
+export function normalizeRepositoryId(value: unknown): number | undefined {
   return typeof value === "number" &&
     Number.isFinite(value) &&
     Number.isInteger(value) &&
