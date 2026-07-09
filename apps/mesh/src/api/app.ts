@@ -873,10 +873,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       init: async () => {},
       // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
       // `execute` actually runs to completion. Nothing is buffered;
-      // `createTailStream` returns null so /stream surfaces a 204 / 503
-      // to the client when NATS isn't available.
+      // `createTailStream` returns null so `dispatchRunAndWait` never takes
+      // the tail-wait branch that calls `pump()` — this stub only exists to
+      // satisfy the `StreamBuffer` interface (`disableNats` mode has no
+      // durable subject to race, so there's nothing to propagate here).
       pump: (stream: ReadableStream) => {
-        void (async () => {
+        return (async () => {
           const reader = stream.getReader();
           try {
             while (true) {

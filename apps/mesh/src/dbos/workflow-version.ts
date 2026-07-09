@@ -27,5 +27,32 @@
  *
  * Bumping deliberately strands whatever is mid-flight on the prior version (a
  * one-time cost) — correct, because those instances ARE incompatible.
+ *
+ * EXEMPLAR — "3" -> "4" (unified-control-plane T3, `threadGateWorkflow`):
+ * the gate's hosted-dispatch branch used to `await enqueueHostedHarness(...)`
+ * — start the hosted child AND block until `handle.getResult()` resolved —
+ * before proceeding to its `consumeRunProjection` step. That became
+ * `startHostedHarness(...)`: start the child, do NOT await its result, fall
+ * straight through to `consumeRunProjection`. Two things make this
+ * version-bump-worthy rather than recovery-compatible:
+ *   1. Dropping the `getResult()` wait removes a whole recorded parent-
+ *      workflow operation from `threadGateWorkflow`'s journal — an in-flight
+ *      v3 instance recovered against v4 code would replay dispatch, then look
+ *      for a recorded "await the child" operation that the new code path
+ *      never issues, and diverge.
+ *   2. The step immediately after — `consumeRunProjection` — now runs at a
+ *      structurally different point in time for the hosted topology: before,
+ *      it always ran AFTER the child (and everything it published) had
+ *      already finished; now it runs concurrently with the child, live-
+ *      tailing the stream exactly like the desktop topology already did (see
+ *      `consume-run-projection.ts`'s T3 comment). That's a genuine step-
+ *      sequence/timing contract change on a durably-recorded step, not an
+ *      edit confined to logic inside one step.
+ * Deploy consequence: any v3 gate workflow still mid-flight at deploy time
+ * (a message queued or a run in progress when the new pods roll out) strands
+ * — no v4 executor can recover it, by design (see "Bumping deliberately
+ * strands..." above). The existing Stop-button cancel path
+ * (`cancelThreadGateHead` + `cancelHostedHarness`, `routes.ts`) is the
+ * user-facing recovery: cancel the stranded gate/child and re-send.
  */
-export const DBOS_WORKFLOW_VERSION = "3";
+export const DBOS_WORKFLOW_VERSION = "4";

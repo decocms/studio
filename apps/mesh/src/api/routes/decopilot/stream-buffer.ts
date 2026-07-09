@@ -19,14 +19,24 @@ export interface StreamBuffer {
   init(): Promise<void>;
 
   /**
-   * Detached pump from `stream` into the per-task subject. Fire-and-forget:
-   * returns synchronously, then drains `stream` in the background, publishing
-   * each chunk as a JetStream message. When `stream` ends (or `registrySignal`
-   * aborts), publishes a `{done: true}` sentinel so tail consumers can close.
+   * Drains `stream` into the per-task subject, publishing each chunk as a
+   * JetStream message. When `stream` ends (or `registrySignal` aborts),
+   * publishes a `{done: true}` sentinel so tail consumers can close — even on
+   * a mid-stream failure, so a live `/stream` tail always sees SOME done
+   * marker instead of hanging.
    *
    * The pump is the sole consumer of `stream`; do not also `pipeThrough` or
    * `tee` it for the HTTP response. Tail consumers read from JetStream via
    * `createTailStream`.
+   *
+   * Returns a promise: the caller need not await it to let draining start
+   * (it begins synchronously, same as the old fire-and-forget contract), but
+   * AWAITING it surfaces a mid-stream `stream` error as a rejection — the
+   * `{done}` sentinel above is published regardless, so a rejection here
+   * means "the tail closed, but the run did not finish cleanly," not "the
+   * tail never closed." `dispatchRunAndWait` awaits this after its own
+   * tail-wait loop so a mid-stream ingest failure (with healthy JetStream)
+   * propagates instead of looking like a clean completion.
    *
    * `orgId` is optional but recommended — it tags the `decopilot.stream.publish_errors`
    * OTEL counter so per-org alerting is possible.
@@ -36,7 +46,7 @@ export interface StreamBuffer {
     taskId: string,
     registrySignal: AbortSignal,
     orgId?: string,
-  ): void;
+  ): Promise<void>;
 
   /**
    * Publish ONE raw chunk to the per-task subject and AWAIT the publish ack.
