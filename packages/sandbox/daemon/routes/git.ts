@@ -4,7 +4,7 @@ import path from "node:path";
 import { appendCoAuthorTrailer } from "../../git-co-author";
 import { computeBranchDivergence } from "../git/branch-divergence";
 import { parsePorcelainFiles } from "../git/porcelain";
-import { rebaseOntoBase } from "../git/rebase-onto-base";
+import { integrateRemoteBranch, rebaseOntoBase } from "../git/rebase-onto-base";
 import {
   cloneUrlHasCredentials,
   syncOriginRemote,
@@ -535,6 +535,14 @@ export function publish(deps: GitDeps, message: string): { pushed: boolean } {
       );
     }
   }
+
+  // Another session may have pushed to origin/<branch> since this sandbox
+  // last synced (two tabs, agent + human, a redeployed sandbox); a blind push
+  // is then rejected as non-fast-forward and the save fails. Replay local
+  // commits on top of the remote branch so the push is a fast-forward.
+  integrateRemoteBranch(repoDir, branch, {
+    operator: deps.getOperator?.() ?? undefined,
+  });
 
   pushBranch(repoDir, branch);
   return { pushed: true };
