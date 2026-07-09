@@ -19,6 +19,28 @@
  * terminal-status writes happen here — the durable projector / consume step
  * owns terminal status.
  *
+ * ## Guarantee: the child publishes its own fence-scoped terminal for every
+ * CAUGHT failure (and `{done}` on success)
+ *
+ * NOT yet covered: a mid-stream harness failure with healthy JetStream is
+ * swallowed inside `dispatch-run.ts`'s pump (unfenced `{done}` only, which
+ * the consume step ignores) and never reaches this wrapper — closing that
+ * class is the unified-control-plane T2 (hosted ingest becomes a thin
+ * publisher whose throws propagate). Until then that class terminates via
+ * the liveness reaper with a generic reason.
+ *
+ * A started hosted child either publishes `{done}` after a clean completion
+ * (already true via `ingestRun`'s `publishDone` inside `runHostedHarness`), or
+ * — on ANY caught failure — a synthesized in-band `{type:"error"}` chunk
+ * followed by `{done}` (see `buildTerminalErrorChunks` /
+ * `hostedHarnessWorkflowFn`'s catch below). The durable projector treats an
+ * in-band error chunk with no following `{type:"finish"}` as the run's failed
+ * verdict (`project-chunks.ts`'s `failed` flag), so the thread reaches a
+ * terminal status purely from what's on the stream — the workflow's own DBOS
+ * status is deliberately NOT the signal (see the catch's comment for why).
+ * This is the foundation the gate (Task 3) builds on to stop awaiting the
+ * child and treat the projector's live-tail as the sole terminal authority.
+ *
  * Runtime dependencies (the dispatch fn, the studio-context factory, the
  * dispatch deps) are looked up via a module-level registry, mirroring
  * `thread-gate-workflow.ts`. App boot wires them via `setHostedHarnessRuntime`
@@ -27,12 +49,14 @@
  */
 
 import { DBOS } from "@dbos-inc/dbos-sdk";
+import type { UIMessageChunk } from "ai";
 import type {
   DispatchRunDeps,
   DispatchRunRuntimeInput,
   DispatchRunInput,
   DurableDispatchRunInput,
 } from "@/api/routes/decopilot/dispatch-run";
+import { synthesizedErrorMessageId } from "@/api/routes/decopilot/message-ids";
 import type { StudioContext } from "@/core/studio-context";
 
 export { HOSTED_HARNESS_QUEUE } from "./queue-names";
@@ -164,22 +188,170 @@ async function runHostedHarness(
   );
 }
 
+/**
+ * Deterministic error-terminal payload for a caught hosted-harness failure.
+ * Pure (no I/O) so it's unit-testable without a DBOS/NATS harness.
+ *
+ * Returns an in-band `{type:"error"}` `UIMessageChunk` — NOT a thrown
+ * exception — because the harness kernel's AI-SDK reader treats an in-band
+ * error chunk with no following `{type:"finish"}` as the run's terminal
+ * failure verdict (see `project-chunks.ts`'s `failed` flag); no `start`/
+ * `finish` wrapper is needed. `errorText` is the REAL `err.message` — the
+ * wire/client may mask it later for display, but the subject must carry the
+ * truth (a masked subject is what turned a recent prod incident into an
+ * archaeology dig — every layer had already thrown away the real message).
+ *
+ * `startSeq` (default 1) is the seq to publish the error chunk at; the paired
+ * `{done}` sentinel's `finalSeq` is the same value (this is the run's only
+ * chunk in the caller's common case). Defaulting to 1 is deliberate: every
+ * failure this helper is invoked for today (StudioContext resolution,
+ * `HostedHarnessRuntime` not wired) throws BEFORE `dispatchRunFn` publishes
+ * any content chunk, so seq 1 is genuinely free. The one known gap:
+ * `dispatchRunAndWait` can publish real content chunks (via `ingestRun`'s
+ * internal `ackSeq` counter) before rejecting — in the degraded
+ * no-JetStream-tail fallback branch, and also in the healthy branch when
+ * the tail-subscription read itself errors mid-run (NATS drop) after
+ * seqs 1..K published — and that counter isn't threaded back through
+ * `DispatchRunAndWaitFn`'s `{ taskId }` result — so in that rare case a caller
+ * MUST pass the true next seq once that plumbing exists; until then the
+ * projector's contiguity check (`assertContiguousAndDedup`) surfaces a
+ * "missing seq" error for that run instead of a clean `failed` status, which
+ * is still strictly better than today's silent unfenced-done stall.
+ *
+ * The message id is `synthesizedErrorMessageId(runId, fenceToken)` — the SAME
+ * pure function the durable projector calls when ITS OWN re-projection of
+ * this chunk synthesizes the persisted error row (see
+ * `projector-workflow.ts`). The AI-SDK `error` chunk shape carries no id
+ * field, so it isn't stamped onto the wire chunk itself; returning it here
+ * documents (and lets tests assert) the convergence — whichever writer needs
+ * a stable row id for this failure computes the exact same one, so retries
+ * collapse via `ON CONFLICT DO NOTHING` instead of duplicating.
+ */
+export interface HostedHarnessTerminalError {
+  messageId: string;
+  errorChunk: UIMessageChunk;
+  seq: number;
+  finalSeq: number;
+}
+
+export function buildTerminalErrorChunks(
+  runId: string,
+  fenceToken: string,
+  err: unknown,
+  startSeq = 1,
+): HostedHarnessTerminalError {
+  const errorText = err instanceof Error ? err.message : String(err);
+  return {
+    messageId: synthesizedErrorMessageId(runId, fenceToken),
+    errorChunk: { type: "error", errorText },
+    seq: startSeq,
+    finalSeq: startSeq,
+  };
+}
+
+/**
+ * Publish the caught failure's terminal (error chunk + `{done}`) to the run's
+ * subject, via the SAME `StreamBuffer` surface `ingestRun` uses on the clean
+ * path (`publishRawChunk` + `publishDone`). Returns without throwing when the
+ * error-chunk publish itself reports failure (JetStream unavailable) — there
+ * is nothing more this function can durably do; the caller logs and moves on
+ * (see `hostedHarnessWorkflowFn`'s catch).
+ */
+async function publishHostedHarnessFailure(
+  input: HostedHarnessInput,
+  err: unknown,
+): Promise<void> {
+  const rt = requireRuntime();
+  const { streamBuffer } = rt.deps;
+  const { messageId, errorChunk, seq, finalSeq } = buildTerminalErrorChunks(
+    input.runId,
+    input.fenceToken,
+    err,
+  );
+  if (!streamBuffer) {
+    // No JetStream buffer wired (test mode / NATS down) — mirrors
+    // `dispatchRunAndWait`'s own degraded fallback: nothing durable to do.
+    console.error(
+      `[hostedHarness] no streamBuffer configured; dropping terminal error for run=${input.runId} fence=${input.fenceToken} messageId=${messageId}`,
+    );
+    return;
+  }
+  const published = await streamBuffer.publishRawChunk(
+    input.runId,
+    errorChunk,
+    {
+      fenceToken: input.fenceToken,
+      seq,
+    },
+  );
+  if (!published) {
+    console.error(
+      `[hostedHarness] failed to publish terminal error chunk for run=${input.runId} fence=${input.fenceToken} messageId=${messageId}`,
+    );
+    return;
+  }
+  await streamBuffer.publishDone(input.runId, input.fenceToken, finalSeq);
+}
+
 async function hostedHarnessWorkflowFn(
   input: HostedHarnessInput,
 ): Promise<void> {
-  // ONE step: run the agent loop to completion, streaming to NATS + publishing
-  // {done}. Retriable — hosted/in-process runs have no external daemon to race,
-  // so DBOS can recover them (the queue's concurrency=1 per threadId still
-  // guarantees a single in-flight hosted run per thread).
-  await DBOS.runStep(() => runHostedHarness(input), {
-    name: "runHostedHarness",
-    retriesAllowed: true,
-  });
+  try {
+    // ONE step (happy path): run the agent loop to completion, streaming to
+    // NATS + publishing {done}. Retriable — hosted/in-process runs have no
+    // external daemon to race, so DBOS can recover them (the queue's
+    // concurrency=1 per threadId still guarantees a single in-flight hosted
+    // run per thread).
+    await DBOS.runStep(() => runHostedHarness(input), {
+      name: "runHostedHarness",
+      retriesAllowed: true,
+    });
+  } catch (err) {
+    // Second step, only reached on failure: publish the fence-scoped error +
+    // {done} terminal, then RETURN NORMALLY — do not rethrow. The child's
+    // DBOS status becoming SUCCESS here is intentional: run OUTCOME lives on
+    // the thread via the projector's fold of what's on the stream (an in-band
+    // error chunk with no following finish → failed), not on this workflow's
+    // DBOS status. Appending a step only on this (previously-terminal, never
+    // replayed) failure branch doesn't retroactively change any ALREADY
+    // recorded step for an in-flight workflow being recovered, so this is
+    // recovery-compatible — no DBOS_WORKFLOW_VERSION bump needed (only a
+    // workflow-source-guard snapshot re-baseline).
+    //
+    // Interim note (until Task 3 lands): the gate's `runDispatchSteps` still
+    // awaits this child via `enqueueHostedHarness`'s `getResult()`. Before
+    // this change, a caught failure rejected the child workflow, so the
+    // gate's `trackMessageFailed` catch (thread-gate-workflow.ts ~544-555)
+    // fired for it. After this change, `getResult()` resolves instead, so
+    // that catch no longer fires for hosted-child failures — `chat_message_
+    // failed` posthog analytics undercounts them until T3 rewires the gate to
+    // read status from the projector fold instead of the child's outcome.
+    await DBOS.runStep(() => publishHostedHarnessFailure(input, err), {
+      name: "publishHostedHarnessFailure",
+      retriesAllowed: true,
+    }).catch((publishErr) => {
+      // Best-effort: if we can't even publish the failure terminal (e.g.
+      // JetStream itself is down), there's nothing more this workflow can
+      // durably do — swallow so it still returns normally per the guarantee
+      // above. A thread stuck with NO fence-scoped terminal at all needs a
+      // different safety net (idle reaper / manual unbrick), out of scope
+      // here.
+      console.error(
+        `[hostedHarness] could not publish terminal error for run=${input.runId} fence=${input.fenceToken}`,
+        publishErr,
+      );
+    });
+  }
 }
 
 // ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
 // step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
-// — see apps/mesh/src/dbos/workflow-version.ts.
+// — see apps/mesh/src/dbos/workflow-version.ts. Exception (used by the
+// failure-terminal step below): appending a step on a branch where the OLD
+// code recorded nothing further (a previously-rethrowing failure path) is
+// recovery-compatible — old in-flight instances never reach the new step's
+// function id, so no replay mismatch. Re-baseline the source-guard snapshot
+// only.
 const hostedHarnessWorkflow = DBOS.registerWorkflow(hostedHarnessWorkflowFn, {
   name: "hostedHarnessWorkflow",
   // A hosted run now spans a whole agent loop with no fixed cap, so a
