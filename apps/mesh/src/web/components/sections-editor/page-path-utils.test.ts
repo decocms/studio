@@ -19,6 +19,12 @@ describe("page-path-utils", () => {
     expect(isValidPagePath("//evil.com")).toBe(false);
     expect(isValidPagePath("/../secret")).toBe(false);
     expect(isValidPagePath("about")).toBe(false);
+    expect(isValidPagePath("/foo\\bar")).toBe(false);
+  });
+
+  it("isValidPagePath trims surrounding whitespace before checking", () => {
+    expect(isValidPagePath("  /about  ")).toBe(true);
+    expect(isValidPagePath("  about  ")).toBe(false);
   });
 
   it("validatePagePath returns error messages", () => {
