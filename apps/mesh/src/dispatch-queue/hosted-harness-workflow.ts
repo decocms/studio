@@ -5,13 +5,19 @@
  * thread-gate's `!useLink` branch into a single callable `runHostedHarness`
  * and wrapped in its own DBOS child workflow (`hostedHarnessWorkflow`).
  *
- * Task 7b wiring: the thread gate's `dispatchRunAndWaitStep` now enqueues this
- * child fire-and-forget onto `HOSTED_HARNESS_QUEUE` (partitioned by threadId,
- * concurrency 1 — one active hosted run per thread) instead of running inline.
- * The parent gate immediately proceeds to its consume step, which drains the
- * run's JetStream consumer, projects final parts/title, and writes terminal
- * status — providing unified terminal-status writes for both hosted and desktop
- * topologies.
+ * unified-control-plane T3: the thread gate's `runDispatchSteps` now STARTS
+ * this child on `HOSTED_HARNESS_QUEUE` (partitioned by threadId, concurrency 1
+ * — one active hosted run per thread) and does NOT await its result —
+ * `startHostedHarness` below returns as soon as the start itself is durably
+ * recorded. The parent gate immediately proceeds to its consume step, which
+ * live-tails the run's JetStream subject, projects final parts/title, and
+ * writes terminal status — providing unified terminal-status writes for both
+ * hosted and desktop topologies, with the SAME timing shape: the consume step
+ * is opened before the producer (child workflow / desktop daemon) has
+ * necessarily published anything yet. (Before T3, the gate `await`ed the
+ * child's `getResult()` in full before starting the consume step — a
+ * carried-over interim behavior from before the child published its own
+ * terminal; see the "Guarantee" section below.)
  *
  * The hosted execution body is exactly what `dispatchRunAndWait` does: claim
  * the run, drive the agent loop via the harness kernel, stream chunks to
@@ -54,8 +60,9 @@
  * verdict (`project-chunks.ts`'s `failed` flag), so the thread reaches a
  * terminal status purely from what's on the stream — the workflow's own DBOS
  * status is deliberately NOT the signal (see the catch's comment for why).
- * This is the foundation the gate (Task 3) builds on to stop awaiting the
- * child and treat the projector's live-tail as the sole terminal authority.
+ * This is the foundation T3 builds on: the gate no longer awaits the child at
+ * all (`startHostedHarness` below) — the projector's live-tail is now the
+ * SOLE terminal authority, for both a clean finish and every caught failure.
  *
  * Runtime dependencies (the dispatch fn, the studio-context factory, the
  * dispatch deps) are looked up via a module-level registry, mirroring
@@ -363,18 +370,16 @@ async function hostedHarnessWorkflowFn(
     // recovery-compatible — no DBOS_WORKFLOW_VERSION bump needed (only a
     // workflow-source-guard snapshot re-baseline).
     //
-    // Interim note (until Task 3 lands): the gate's `runDispatchSteps` still
-    // awaits this child via `enqueueHostedHarness`'s `getResult()`. Before
-    // this change, a caught failure rejected the child workflow, so the
-    // gate's `trackMessageFailed` catch (thread-gate-workflow.ts) fired for
-    // it (mislabeled `error_category: "setup"` even for in-flight failures).
-    // After this change, `getResult()` resolves instead, so that catch no
-    // longer fires for hosted-child failures. The `chat_message_failed`
-    // signal is NOT lost, though: `runProjectorWorkflowBody`'s `recordFailed`
-    // (unified-control-plane T2) is now the sole source, firing once the
-    // consume step folds the in-band error chunk this catch publishes below
-    // — correctly categorized (`kind: "harness"`) and, unlike the old gate
-    // catch, consistent with the desktop topology's failure analytics too.
+    // T3 update: the gate's `runDispatchSteps` no longer awaits this child at
+    // all (`startHostedHarness` below returns right after the start is
+    // recorded) — so there is no `getResult()` rejection for a gate-level
+    // catch to observe in the first place, for EITHER a clean finish or a
+    // caught failure. The `chat_message_failed` signal is NOT lost:
+    // `runProjectorWorkflowBody`'s `recordFailed` (unified-control-plane T2)
+    // is the sole source, firing once the consume step's live tail folds the
+    // in-band error chunk this catch publishes below — correctly categorized
+    // (`kind: "harness"`) and consistent with the desktop topology's failure
+    // analytics.
     await DBOS.runStep(() => publishHostedHarnessFailure(input, err), {
       name: "publishHostedHarnessFailure",
       retriesAllowed: true,
@@ -410,35 +415,68 @@ const hostedHarnessWorkflow = DBOS.registerWorkflow(hostedHarnessWorkflowFn, {
 });
 
 /**
- * Enqueue a hosted harness run on the partitioned hosted-harness queue. The
- * partition key is the threadId, so per-thread concurrency=1 serializes hosted
- * runs on the same thread (mirroring the thread gate). The workflow ID is keyed
- * by `(runId, fenceToken)` so a redelivered enqueue collapses onto the existing
- * workflow handle instead of duplicating the run.
- *
- * Returns after the hosted harness child workflow completes. The thread-gate
- * workflow calls this before its projector step; projecting before the hosted
- * child has produced any retained JetStream messages can race an empty consumer
- * and leave the thread stuck in_progress.
+ * Deterministic hosted-child workflow ID, keyed by `(runId, fenceToken)` — a
+ * redelivered start (a DBOS replay of the parent gate workflow) collapses
+ * onto the SAME child instead of spawning a second agent loop for the same
+ * attempt. Exported: this is the single source of truth for the id — both
+ * `startHostedHarness` and `cancelHostedHarness` below derive it from here,
+ * and unified-control-plane T7 (stop cancels the live child, not just the
+ * in-memory run registry) will too, rather than reconstructing the
+ * `decopilot-hosted:<runId>:<fenceToken>` string independently.
  */
-function hostedHarnessWorkflowId(runId: string, fenceToken: string): string {
+export function hostedChildWorkflowId(
+  runId: string,
+  fenceToken: string,
+): string {
   return `decopilot-hosted:${runId}:${fenceToken}`;
 }
 
-export async function enqueueHostedHarness(
+/**
+ * Start (do NOT await) a hosted harness run on the partitioned hosted-harness
+ * queue. The partition key is the threadId, so per-thread concurrency=1
+ * serializes hosted runs on the same thread (mirroring the thread gate). The
+ * workflow ID is `hostedChildWorkflowId(runId, fenceToken)`, so a redelivered
+ * start collapses onto the existing workflow handle instead of duplicating
+ * the run.
+ *
+ * unified-control-plane T3: this used to be `enqueueHostedHarness`, which
+ * additionally `await`ed `handle.getResult()` — the thread-gate workflow
+ * blocked on the ENTIRE child agent loop before proceeding to its consume
+ * step (a carried-over interim shape from before T1 gave the child its own
+ * terminal-publishing guarantee). That coupling is gone: the caller now
+ * starts the child and moves straight to `consumeRunProjection`, which
+ * live-tails the run's JetStream subject exactly like the desktop topology
+ * already does — the child publishes chunks as it runs; the consume step's
+ * `DeliverPolicy.All` consumer, opened BEFORE chunk 1 is necessarily
+ * published, simply waits for it (see `projector-chunk-stream.ts` /
+ * `nats-chunk-source.ts`'s live-tail pull semantics). The child is a fully
+ * detached, pure executor per T1's contract: whatever it does (clean finish
+ * or a caught failure), it publishes its own fence-scoped terminal to the
+ * stream — the projector's live tail is now the ONLY thing the gate's
+ * completion depends on, for BOTH topologies.
+ *
+ * Only the START call is durably recorded here (DBOS forbids
+ * `DBOS.startWorkflow` from within a step/transaction, so this must run from
+ * workflow body context — same restriction as before). Dropping the
+ * `getResult()` wait removes a whole recorded parent-workflow operation from
+ * `threadGateWorkflow`'s journal, which is why this change requires the
+ * `DBOS_WORKFLOW_VERSION` bump (see workflow-version.ts) — an in-flight v3
+ * gate replayed against v4 code would replay dispatch, hit the missing
+ * recorded `getResult`, and diverge.
+ */
+export async function startHostedHarness(
   input: HostedHarnessInput,
 ): Promise<{ workflowID: string }> {
   const handle = await DBOS.startWorkflow(hostedHarnessWorkflow, {
-    workflowID: hostedHarnessWorkflowId(input.runId, input.fenceToken),
+    workflowID: hostedChildWorkflowId(input.runId, input.fenceToken),
     queueName: HOSTED_HARNESS_QUEUE,
     enqueueOptions: { queuePartitionKey: input.threadId },
   })(input);
-  await handle.getResult();
   return { workflowID: handle.workflowID };
 }
 
 /**
- * Best-effort cancel of a hosted-harness child workflow (Task 7b). The in-memory
+ * Best-effort cancel of a hosted-harness child workflow. The in-memory
  * cancel path (`cancelBroadcast` + run-registry CANCEL → AbortController) already
  * stops the running harness loop; this additionally tells DBOS to stop
  * recovering / retrying the child workflow on pod recycles. Cancelling an
@@ -449,5 +487,5 @@ export async function cancelHostedHarness(
   runId: string,
   fenceToken: string,
 ): Promise<void> {
-  await DBOS.cancelWorkflow(hostedHarnessWorkflowId(runId, fenceToken));
+  await DBOS.cancelWorkflow(hostedChildWorkflowId(runId, fenceToken));
 }

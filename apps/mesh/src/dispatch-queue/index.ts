@@ -17,3 +17,12 @@ export {
   type HostedHarnessInput,
   type HostedHarnessRuntime,
 } from "./hosted-harness-workflow";
+// `hostedChildWorkflowId` is intentionally NOT re-exported here yet — no
+// caller outside this module needs it today (`startHostedHarness` and
+// `cancelHostedHarness`, both already barrel-exported above, are the only
+// current consumers). Knip flags an unconsumed barrel re-export as dead
+// code, and per repo policy that's fixed by not adding the export, not by
+// suppressing the warning. unified-control-plane T7 (stop cancels the live
+// hosted child by id, not just via `cancelHostedHarness`) should add
+// `hostedChildWorkflowId` to this re-export list — it's already exported
+// from `./hosted-harness-workflow` directly — when it lands the consumer.

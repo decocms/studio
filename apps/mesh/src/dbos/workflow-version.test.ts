@@ -8,6 +8,6 @@ describe("DBOS_WORKFLOW_VERSION", () => {
   });
 
   it("is the current pinned version", () => {
-    expect(DBOS_WORKFLOW_VERSION).toBe("3");
+    expect(DBOS_WORKFLOW_VERSION).toBe("4");
   });
 });

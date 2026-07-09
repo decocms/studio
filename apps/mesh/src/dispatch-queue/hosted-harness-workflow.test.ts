@@ -6,6 +6,7 @@ import type { WithLastAckSeq } from "@/api/routes/decopilot/ingest-run";
 import type { StudioContext } from "@/core/studio-context";
 import {
   buildTerminalErrorChunks,
+  hostedChildWorkflowId,
   type HostedHarnessInput,
   type HostedHarnessRuntime,
   publishHostedHarnessFailure,
@@ -217,5 +218,59 @@ describe("hostedHarnessWorkflowFn's try/catch contract (Finding 1)", () => {
     expect(idx).toBeGreaterThan(-1);
     const stepConfig = src.slice(idx, idx + 100);
     expect(stepConfig).toContain("retriesAllowed: false");
+  });
+});
+
+describe("hostedChildWorkflowId", () => {
+  test("derives the deterministic child workflow id from (runId, fenceToken)", () => {
+    expect(hostedChildWorkflowId("run-1", "fence-a")).toBe(
+      "decopilot-hosted:run-1:fence-a",
+    );
+  });
+
+  test("distinct fence tokens on the same run produce distinct ids (no cross-turn collision)", () => {
+    expect(hostedChildWorkflowId("run-1", "fence-a")).not.toBe(
+      hostedChildWorkflowId("run-1", "fence-b"),
+    );
+  });
+
+  test("is the SAME id both cancelHostedHarness and startHostedHarness derive — single source of truth", () => {
+    // Source-text assertion: both call sites must read through this helper
+    // rather than reconstructing the `decopilot-hosted:` string independently
+    // (the exact drift this export exists to prevent — see the module doc
+    // comment; unified-control-plane T7 will add a third call site for
+    // stop-cancellation).
+    const src = readFileSync(
+      join(import.meta.dir, "hosted-harness-workflow.ts"),
+      "utf8",
+    );
+    const startMatches = src.match(
+      /startWorkflow\(hostedHarnessWorkflow, \{\s*workflowID: hostedChildWorkflowId\(/,
+    );
+    const cancelMatches = src.match(/cancelWorkflow\(hostedChildWorkflowId\(/);
+    expect(startMatches).not.toBeNull();
+    expect(cancelMatches).not.toBeNull();
+  });
+});
+
+// T3 regression: `startHostedHarness` must NOT await the child's result — the
+// gate no longer blocks on the hosted agent loop before proceeding to its
+// consume step (that coupling is what this task removes). Exercising the
+// real `DBOS.startWorkflow` call requires a launched DBOS instance (repo
+// policy: no DBOS mocks), so — same technique as the `retriesAllowed: false`
+// regression above — this reads the real function body directly.
+describe("startHostedHarness (T3: start-only, no getResult await)", () => {
+  test("does not call handle.getResult()", () => {
+    const src = readFileSync(
+      join(import.meta.dir, "hosted-harness-workflow.ts"),
+      "utf8",
+    );
+    const marker = "export async function startHostedHarness(";
+    const idx = src.indexOf(marker);
+    expect(idx).toBeGreaterThan(-1);
+    const nextFnStart = src.indexOf("\nexport async function", idx + 1);
+    const body = src.slice(idx, nextFnStart === -1 ? undefined : nextFnStart);
+    expect(body).toContain("DBOS.startWorkflow(hostedHarnessWorkflow");
+    expect(body).not.toContain("getResult()");
   });
 });
