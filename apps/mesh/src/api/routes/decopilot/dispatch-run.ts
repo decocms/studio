@@ -84,7 +84,6 @@ import { synthesizedErrorMessageId } from "./message-ids";
 import { loadDecopilotContext } from "@/harnesses/decopilot/context-loader";
 import { PartEmitter } from "./part-emitter";
 import { foldedToUIMessage } from "./projector-seed";
-import { ProgressBumpThrottle } from "./progress-bump";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
 import type { ToolApprovalLevel } from "./helpers";
 import { type ChatMode } from "./mode-config";
@@ -141,46 +140,6 @@ const finishDurationHistogram = meter.createHistogram(
 const FINISH_TRACE = process.env.DECOPILOT_FINISH_TRACE === "1";
 
 /**
- * Process-wide progress-bump throttle (Task 9, A1/A2). One instance shared by
- * every run on this pod — it dedupes `last_progress_at` writes to ≤1 per ~3s
- * per task. Lives at module scope (not per-run) so its per-task last-bump map
- * survives across the multiple `prepareRun` invocations a thread may see.
- */
-const progressThrottle = new ProgressBumpThrottle();
-
-/**
- * Tap a UI stream so each chunk drives a THROTTLED `last_progress_at` bump.
- * Pure pass-through: every chunk is forwarded unchanged; the bump is a
- * fire-and-forget side effect that never blocks or fails the stream. This is
- * the run's liveness heartbeat — the reaper reads `last_progress_at` to decide
- * whether a run is stuck.
- */
-function tapProgress(
-  stream: ReadableStream<unknown>,
-  ctx: StudioContext,
-  taskId: string,
-): ReadableStream<unknown> {
-  return stream.pipeThrough(
-    new TransformStream<unknown, unknown>({
-      transform(chunk, controller) {
-        if (progressThrottle.shouldBump(taskId)) {
-          ctx.storage.threads.bumpProgress(taskId).catch(() => {
-            // Heartbeat is best-effort; a failed bump just means the reaper
-            // may rely on an older timestamp. Never surface to the stream.
-          });
-        }
-        controller.enqueue(chunk);
-      },
-      flush() {
-        // Run ended — drop this task's throttle state so the map can't grow
-        // unbounded across many short-lived threads.
-        progressThrottle.clear(taskId);
-      },
-    }),
-  );
-}
-
-/**
  * Defer stream construction until the first consumer pull.
  *
  * `prepareRun` must NOT start any harness work unless its `uiStream` is
@@ -195,10 +154,10 @@ function tapProgress(
  * factory.
  *
  * `highWaterMark: 0` is load-bearing: with the default (1) the stream calls
- * `pull` at construction to pre-fill its queue, defeating the laziness.
- * For the same reason the factory must contain any `pipeThrough` wrapping
- * (e.g. `tapProgress`) — piping into a transform with the default writable
- * high-water mark eagerly pulls one chunk even with no downstream consumer.
+ * `pull` at construction to pre-fill its queue, defeating the laziness. For
+ * the same reason, any future `pipeThrough` wrapping must live INSIDE the
+ * factory — piping into a transform with the default writable high-water
+ * mark eagerly pulls one chunk even with no downstream consumer.
  */
 function lazyStream<T>(factory: () => ReadableStream<T>): ReadableStream<T> {
   let reader: ReadableStreamDefaultReader<T> | null = null;
@@ -1551,185 +1510,182 @@ async function prepareRun(
     // `whenComplete` resolves, so awaiting it from there would deadlock. The
     // ordering that matters now is that the same lazy kernel path publishes
     // the JetStream chunks before invoking the finish hook.
-    // The progress tap (the run's liveness heartbeat) lives INSIDE the lazy
-    // factory: `pipeThrough` at the return site would eagerly pull one chunk
-    // through the lazy stream even with no consumer (transform writable
-    // high-water mark), starting the harness for never-consumed link runs.
+    //
+    // No progress tap wraps this stream: `buildAgentSandboxUiStream`'s
+    // returned `ReadableStream` never enqueues a value (it only
+    // closes/errors — raw chunks go to JetStream via `ingestRun`
+    // internally), so a chunk-driven tap here would never fire. The
+    // projector's `tapProgressStream` (progress-bump.ts, driven from the
+    // JetStream-sourced chunkStream in projector-workflow.ts) is the single
+    // liveness heartbeat for both hosted and desktop runs.
     const uiStream = lazyStream(() =>
-      tapProgress(
-        buildAgentSandboxUiStream({
-          runId: mem.thread.id,
-          fenceToken: runFenceToken,
-          streamBuffer: streamBuffer ?? {
-            publishRawChunk: async () => false,
-            publishDone: async () => false,
+      buildAgentSandboxUiStream({
+        runId: mem.thread.id,
+        fenceToken: runFenceToken,
+        streamBuffer: streamBuffer ?? {
+          publishRawChunk: async () => false,
+          publishDone: async () => false,
+        },
+        // Heartbeat wraps the RAW harness source, before ingestRun's
+        // seq-wrapper (unified-control-plane T5) — a `data-liveness`
+        // chunk injected during a silent model/tool wait gets a real seq
+        // through the exact same publish path as every other chunk (see
+        // with-liveness-heartbeat.ts's module doc for the full contract).
+        chunks: withLivenessHeartbeat(dispatchHarnessChunks()),
+        // Deterministic per turn (runId + fence) so a synthesized error
+        // message dedupes across the live write + projector retries while
+        // distinct turns of the same thread never collide. See message-ids.ts.
+        errorMessageId: synthesizedErrorMessageId(mem.thread.id, runFenceToken),
+        // Seed the hook reassembly with the trailing persisted message so a
+        // tool-approval CONTINUATION reconciles its tool-output against the
+        // proposal (and adopts its id) instead of throwing. Mirrors the
+        // projector's `loadWindow` seed. Lazy + only `.at(-1)` is used, so a
+        // single-row window is enough; V1 threads (no part storage) skip it.
+        loadOriginalMessages: partEmitter
+          ? async () =>
+              (
+                await ctx.storage.threads
+                  .messageParts()
+                  .loadWindow(mem.thread.id, { limit: 1 })
+              ).messages.map(foldedToUIMessage)
+          : undefined,
+        title: {
+          currentThreadTitle: mem.thread.title,
+          threadId: mem.thread.id,
+          // Projector owns the title write — `ingestRun` neutralizes this
+          // persistence callback. The projector is the sole sidebar-SSE
+          // source for both hosted and desktop now.
+          persistTitle: async (threadId, title) => {
+            await ctx.storage.threads.update(threadId, { title });
           },
-          // Heartbeat wraps the RAW harness source, before ingestRun's
-          // seq-wrapper (unified-control-plane T5) — a `data-liveness`
-          // chunk injected during a silent model/tool wait gets a real seq
-          // through the exact same publish path as every other chunk (see
-          // with-liveness-heartbeat.ts's module doc for the full contract).
-          chunks: withLivenessHeartbeat(dispatchHarnessChunks()),
-          // Deterministic per turn (runId + fence) so a synthesized error
-          // message dedupes across the live write + projector retries while
-          // distinct turns of the same thread never collide. See message-ids.ts.
-          errorMessageId: synthesizedErrorMessageId(
-            mem.thread.id,
-            runFenceToken,
-          ),
-          // Seed the hook reassembly with the trailing persisted message so a
-          // tool-approval CONTINUATION reconciles its tool-output against the
-          // proposal (and adopts its id) instead of throwing. Mirrors the
-          // projector's `loadWindow` seed. Lazy + only `.at(-1)` is used, so a
-          // single-row window is enough; V1 threads (no part storage) skip it.
-          loadOriginalMessages: partEmitter
-            ? async () =>
-                (
-                  await ctx.storage.threads
-                    .messageParts()
-                    .loadWindow(mem.thread.id, { limit: 1 })
-                ).messages.map(foldedToUIMessage)
-            : undefined,
-          title: {
-            currentThreadTitle: mem.thread.title,
-            threadId: mem.thread.id,
-            // Projector owns the title write — `ingestRun` neutralizes this
-            // persistence callback. The projector is the sole sidebar-SSE
-            // source for both hosted and desktop now.
-            persistTitle: async (threadId, title) => {
-              await ctx.storage.threads.update(threadId, { title });
-            },
+        },
+        hooks: {
+          onStep: () => {
+            const transitions = runRegistry.dispatch({
+              type: "STEP_DONE",
+              taskId: mem.thread.id,
+            });
+            pendingOps.push(
+              runRegistry.react(transitions).catch((e) => {
+                console.error(
+                  "[decopilot:stream] onStepFinish reactor failed",
+                  e,
+                );
+              }),
+            );
           },
-          hooks: {
-            onStep: () => {
-              const transitions = runRegistry.dispatch({
-                type: "STEP_DONE",
-                taskId: mem.thread.id,
-              });
-              pendingOps.push(
-                runRegistry.react(transitions).catch((e) => {
-                  console.error(
-                    "[decopilot:stream] onStepFinish reactor failed",
-                    e,
-                  );
+          onFinish: async (responseMessage, finishReason) => {
+            const pendingCount = pendingOps.length;
+
+            // Phase 1 (settle): await the dispatch-level side-effect ops
+            // accumulated during the run (step reactors). The kernel already
+            // settled its own pending before invoking this hook, so this
+            // segment isolates the dispatch-side flush cost.
+            const settleStart = performance.now();
+            await Promise.allSettled(pendingOps);
+            finishDurationHistogram.record(performance.now() - settleStart, {
+              phase: "settle",
+            });
+
+            if (registrySignal.aborted) return;
+
+            // Yield a macrotask before the synchronous finish bookkeeping so
+            // the settle-burst of pending-op continuations and the FINISH
+            // reactor's DB write don't run in one tick — lets queued I/O
+            // (health probes) get a turn and caps the worst onFinish
+            // event-loop stalls.
+            await sleep(0);
+
+            const heapBefore = FINISH_TRACE ? safeMemoryUsage() : null;
+            const saveStart = performance.now();
+
+            const threadStatus = resolveThreadStatus(
+              finishReason,
+              responseMessage?.parts as {
+                type: string;
+                state?: string;
+                text?: string;
+              }[],
+            );
+
+            await runRegistry.execute({
+              type: "FINISH",
+              taskId: mem.thread.id,
+              threadStatus,
+            });
+
+            const saveMs = performance.now() - saveStart;
+            finishDurationHistogram.record(saveMs, { phase: "save" });
+
+            if (FINISH_TRACE && heapBefore) {
+              const heapAfter = safeMemoryUsage() ?? heapBefore;
+              let messageBytes = -1;
+              try {
+                messageBytes = JSON.stringify(responseMessage)?.length ?? -1;
+              } catch {
+                // circular/oversized — leave -1
+              }
+              console.warn(
+                JSON.stringify({
+                  msg: "decopilot-finish-trace",
+                  threadId: mem.thread.id,
+                  pendingOps: pendingCount,
+                  saveMs: Math.round(saveMs),
+                  parts: responseMessage?.parts?.length ?? 0,
+                  messageBytes,
+                  rssDelta: heapAfter.rss - heapBefore.rss,
+                  heapUsedDelta: heapAfter.heapUsed - heapBefore.heapUsed,
+                  externalDelta: heapAfter.external - heapBefore.external,
                 }),
               );
-            },
-            onFinish: async (responseMessage, finishReason) => {
-              const pendingCount = pendingOps.length;
+            }
 
-              // Phase 1 (settle): await the dispatch-level side-effect ops
-              // accumulated during the run (step reactors). The kernel already
-              // settled its own pending before invoking this hook, so this
-              // segment isolates the dispatch-side flush cost.
-              const settleStart = performance.now();
-              await Promise.allSettled(pendingOps);
-              finishDurationHistogram.record(performance.now() - settleStart, {
-                phase: "settle",
+            // Completion analytics are emitted by the projector after the
+            // same fenced JetStream log is durably materialized.
+          },
+          onError: (error) => {
+            if (registrySignal.aborted) {
+              // User cancelled (frontend stop button), tab closed mid-stream,
+              // or run was force-failed. Frontend chat_message_stopped covers
+              // the first case; this server event also covers the other two.
+              posthog.capture({
+                distinctId: input.userId,
+                event: "chat_message_aborted",
+                groups: { organization: input.organizationId },
+                properties: {
+                  organization_id: input.organizationId,
+                  thread_id: mem.thread.id,
+                  agent_id: input.agent.id,
+                  model_id: models.thinking.id,
+                  mode: input.mode,
+                  duration_ms: Date.now() - streamStartAt,
+                  is_resume: input.isResume ?? false,
+                },
               });
+              return;
+            }
+            console.error("[decopilot] stream error:", stringifyError(error));
+            // Failure analytics (`chat_message_failed`) are emitted by the
+            // projector's `recordFailed`, same as the completion event above —
+            // this hook used to double-capture it here. The projector fires
+            // once the run's fenced terminal (in-band error chunk +
+            // `{done}`) is durably materialized, which happens for every
+            // caught failure now that `dispatchRunAndWait` propagates a
+            // mid-stream ingest error instead of swallowing it (see
+            // `hosted-harness-workflow.ts`'s catch).
 
-              if (registrySignal.aborted) return;
-
-              // Yield a macrotask before the synchronous finish bookkeeping so
-              // the settle-burst of pending-op continuations and the FINISH
-              // reactor's DB write don't run in one tick — lets queued I/O
-              // (health probes) get a turn and caps the worst onFinish
-              // event-loop stalls.
-              await sleep(0);
-
-              const heapBefore = FINISH_TRACE ? safeMemoryUsage() : null;
-              const saveStart = performance.now();
-
-              const threadStatus = resolveThreadStatus(
-                finishReason,
-                responseMessage?.parts as {
-                  type: string;
-                  state?: string;
-                  text?: string;
-                }[],
-              );
-
-              await runRegistry.execute({
+            runRegistry
+              .execute({
                 type: "FINISH",
                 taskId: mem.thread.id,
-                threadStatus,
+                threadStatus: "failed",
+              })
+              .catch((e) => {
+                console.error("[decopilot:stream] onError reactor failed", e);
               });
-
-              const saveMs = performance.now() - saveStart;
-              finishDurationHistogram.record(saveMs, { phase: "save" });
-
-              if (FINISH_TRACE && heapBefore) {
-                const heapAfter = safeMemoryUsage() ?? heapBefore;
-                let messageBytes = -1;
-                try {
-                  messageBytes = JSON.stringify(responseMessage)?.length ?? -1;
-                } catch {
-                  // circular/oversized — leave -1
-                }
-                console.warn(
-                  JSON.stringify({
-                    msg: "decopilot-finish-trace",
-                    threadId: mem.thread.id,
-                    pendingOps: pendingCount,
-                    saveMs: Math.round(saveMs),
-                    parts: responseMessage?.parts?.length ?? 0,
-                    messageBytes,
-                    rssDelta: heapAfter.rss - heapBefore.rss,
-                    heapUsedDelta: heapAfter.heapUsed - heapBefore.heapUsed,
-                    externalDelta: heapAfter.external - heapBefore.external,
-                  }),
-                );
-              }
-
-              // Completion analytics are emitted by the projector after the
-              // same fenced JetStream log is durably materialized.
-            },
-            onError: (error) => {
-              if (registrySignal.aborted) {
-                // User cancelled (frontend stop button), tab closed mid-stream,
-                // or run was force-failed. Frontend chat_message_stopped covers
-                // the first case; this server event also covers the other two.
-                posthog.capture({
-                  distinctId: input.userId,
-                  event: "chat_message_aborted",
-                  groups: { organization: input.organizationId },
-                  properties: {
-                    organization_id: input.organizationId,
-                    thread_id: mem.thread.id,
-                    agent_id: input.agent.id,
-                    model_id: models.thinking.id,
-                    mode: input.mode,
-                    duration_ms: Date.now() - streamStartAt,
-                    is_resume: input.isResume ?? false,
-                  },
-                });
-                return;
-              }
-              console.error("[decopilot] stream error:", stringifyError(error));
-              // Failure analytics (`chat_message_failed`) are emitted by the
-              // projector's `recordFailed`, same as the completion event above —
-              // this hook used to double-capture it here. The projector fires
-              // once the run's fenced terminal (in-band error chunk +
-              // `{done}`) is durably materialized, which happens for every
-              // caught failure now that `dispatchRunAndWait` propagates a
-              // mid-stream ingest error instead of swallowing it (see
-              // `hosted-harness-workflow.ts`'s catch).
-
-              runRegistry
-                .execute({
-                  type: "FINISH",
-                  taskId: mem.thread.id,
-                  threadStatus: "failed",
-                })
-                .catch((e) => {
-                  console.error("[decopilot:stream] onError reactor failed", e);
-                });
-            },
           },
-        }),
-        ctx,
-        mem.thread.id,
-      ),
+        },
+      }),
     );
 
     // Setup complete — hand the uiStream back to `dispatchRunAndWait`,
@@ -1737,12 +1693,9 @@ async function prepareRun(
     // finishes. The harness does not start until that first pull (see
     // `lazyStream`). When a streamBuffer is configured the run also pumps
     // into JetStream so `/stream` tails see chunks live across runs and tabs.
-    //
-    // The stream is wrapped (inside the lazy factory) with a throttled
-    // progress tap (Task 9): every chunk that flows out is "progress",
-    // collapsed to ≤1 `last_progress_at` write per ~3s per run. The single
-    // consumer downstream (pump or direct drain) pulls through this tap, so
-    // the heartbeat fires regardless of which consumption path runs.
+    // The run's liveness heartbeat is driven by the projector's own tap on
+    // its JetStream-sourced chunk consumption (see progress-bump.ts), not
+    // this stream.
     return {
       taskId: mem.thread.id,
       uiStream,
