@@ -1,11 +1,22 @@
 import { describe, expect, it } from "bun:test";
+import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import type { CurrentLink } from "@/web/hooks/use-current-link";
 import {
   agentHasClonableSource,
   agentHasConnectedGithub,
   agentShowsGithubHeaderActions,
+  findDevPartner,
+  getDevAgentIds,
+  getLiveDevAgentMaps,
   hasLocalCliHarness,
 } from "./agent-capabilities";
+
+const agent = (id: string, liveAgentId?: string): VirtualMCPEntity =>
+  ({
+    id,
+    connections: [],
+    metadata: liveAgentId ? { instructions: null, liveAgentId } : null,
+  }) as any;
 
 describe("agentHasClonableSource", () => {
   it("returns false for null/undefined metadata", () => {
@@ -203,5 +214,63 @@ describe("hasLocalCliHarness", () => {
         link({ online: true, capabilities: ["claude-code", "codex"] }),
       ),
     ).toBe(true);
+  });
+});
+
+describe("getDevAgentIds", () => {
+  it("returns an empty set for null/undefined/empty agents", () => {
+    expect(getDevAgentIds(null).size).toBe(0);
+    expect(getDevAgentIds(undefined).size).toBe(0);
+    expect(getDevAgentIds([]).size).toBe(0);
+  });
+
+  it("only includes agents with a string liveAgentId", () => {
+    const agents = [agent("dev-1", "live-1"), agent("plain-1")];
+    expect(getDevAgentIds(agents)).toEqual(new Set(["dev-1"]));
+  });
+});
+
+describe("getLiveDevAgentMaps", () => {
+  it("returns empty maps for null/undefined/empty agents", () => {
+    const { liveToDev, devToLive } = getLiveDevAgentMaps(null);
+    expect(liveToDev.size).toBe(0);
+    expect(devToLive.size).toBe(0);
+  });
+
+  it("builds both directions from dev agents' liveAgentId", () => {
+    const agents = [agent("dev-1", "live-1"), agent("plain-1")];
+    const { liveToDev, devToLive } = getLiveDevAgentMaps(agents);
+    expect(devToLive.get("dev-1")).toBe("live-1");
+    expect(liveToDev.get("live-1")).toBe("dev-1");
+    expect(devToLive.has("plain-1")).toBe(false);
+  });
+});
+
+describe("findDevPartner", () => {
+  it("returns null for a null/undefined agent", () => {
+    expect(findDevPartner(null, [])).toBeNull();
+    expect(findDevPartner(undefined, [])).toBeNull();
+  });
+
+  it("returns 'dev' mode when the agent itself has a liveAgentId", () => {
+    const dev = agent("dev-1", "live-1");
+    expect(findDevPartner(dev, [dev])).toEqual({
+      mode: "dev",
+      targetId: "live-1",
+    });
+  });
+
+  it("returns 'live' mode when some dev agent points back at this agent", () => {
+    const live = agent("live-1");
+    const dev = agent("dev-1", "live-1");
+    expect(findDevPartner(live, [dev, live])).toEqual({
+      mode: "live",
+      targetId: "dev-1",
+    });
+  });
+
+  it("returns null when the agent has no dev/live pairing", () => {
+    const solo = agent("solo-1");
+    expect(findDevPartner(solo, [solo])).toBeNull();
   });
 });
