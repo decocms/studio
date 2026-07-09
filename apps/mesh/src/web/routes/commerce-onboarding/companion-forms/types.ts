@@ -14,6 +14,7 @@ export interface CompanionFormProps {
   org: CompanionOrg;
   contextSiteUrl?: string;
   onDone: () => void;
+  onDisconnect?: () => void;
   onIsPendingChange?: (isPending: boolean) => void;
 }
 

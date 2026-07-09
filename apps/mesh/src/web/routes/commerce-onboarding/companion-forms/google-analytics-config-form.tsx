@@ -32,6 +32,7 @@ export function GoogleAnalyticsConfigForm({
   selfClient,
   org,
   onDone,
+  onDisconnect,
   onIsPendingChange,
 }: CompanionFormProps) {
   const propertiesQuery = useQuery({
@@ -97,6 +98,22 @@ export function GoogleAnalyticsConfigForm({
           Nenhuma propriedade do Google Analytics foi encontrada. Conecte uma
           conta do Google Analytics com propriedades.
         </p>
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {onDisconnect ? (
+            <button
+              type="button"
+              onClick={onDisconnect}
+              className="text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive"
+            >
+              Desconectar conta
+            </button>
+          ) : (
+            <span />
+          )}
+          <Button type="button" variant="outline" onClick={onDone}>
+            Fechar
+          </Button>
+        </DialogFooter>
       </div>
     );
   }
@@ -132,18 +149,32 @@ export function GoogleAnalyticsConfigForm({
         </p>
       )}
 
-      <DialogFooter className="pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onDone}
-          disabled={isPending}
-        >
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={isPending}>
-          {isPending ? "Salvando..." : "Salvar"}
-        </Button>
+      <DialogFooter className="flex-col gap-2 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        {onDisconnect ? (
+          <button
+            type="button"
+            onClick={onDisconnect}
+            disabled={isPending}
+            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive disabled:opacity-50"
+          >
+            Desconectar conta
+          </button>
+        ) : (
+          <span />
+        )}
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onDone}
+            disabled={isPending}
+          >
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={isPending}>
+            {isPending ? "Salvando..." : "Salvar"}
+          </Button>
+        </div>
       </DialogFooter>
     </form>
   );

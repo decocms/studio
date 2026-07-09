@@ -1,4 +1,5 @@
 import { IntegrationIcon } from "@/web/components/integration-icon";
+import { KEYS } from "@/web/lib/query-keys";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
@@ -15,8 +16,10 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@decocms/mesh-sdk";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, Loading01, Settings01 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
+import { toast } from "sonner";
 import type { CompanionCardModel } from "./companions-core.ts";
 import {
   getConfigurationSummaryEntries,
@@ -321,6 +324,7 @@ function CompanionConfiguration({
   });
   const [dialogOpen, setDialogOpen] = useState(autoOpen);
   const [isSavePending, setIsSavePending] = useState(false);
+  const queryClient = useQueryClient();
 
   const FormComponent = COMPANION_CONFIG_FORMS[card.bindingType];
   const savedConfigEntries = getConfigurationSummaryEntries(
@@ -344,6 +348,25 @@ function CompanionConfiguration({
     }
     setDialogOpen(true);
   };
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      await selfClient.callTool({
+        name: "COLLECTION_CONNECTIONS_DELETE",
+        arguments: { id: connectionId, force: true },
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
+      });
+      toast.success(`${card.title} desconectado`);
+      closeDialog();
+    },
+    onError: () => {
+      toast.error("Não foi possível desconectar. Tente novamente.");
+    },
+  });
 
   // No config form for this binding → nothing to open; skip the gear entirely.
   if (!FormComponent) {
@@ -395,6 +418,7 @@ function CompanionConfiguration({
             org={org}
             contextSiteUrl={contextSiteUrl}
             onDone={closeDialog}
+            onDisconnect={() => disconnectMutation.mutate()}
             onIsPendingChange={setIsSavePending}
           />
         </DialogContent>
