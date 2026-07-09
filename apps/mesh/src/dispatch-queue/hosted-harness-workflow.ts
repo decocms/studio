@@ -22,12 +22,28 @@
  * ## Guarantee: the child publishes its own fence-scoped terminal for every
  * CAUGHT failure (and `{done}` on success)
  *
- * NOT yet covered: a mid-stream harness failure with healthy JetStream is
- * swallowed inside `dispatch-run.ts`'s pump (unfenced `{done}` only, which
- * the consume step ignores) and never reaches this wrapper — closing that
- * class is the unified-control-plane T2 (hosted ingest becomes a thin
- * publisher whose throws propagate). Until then that class terminates via
- * the liveness reaper with a generic reason.
+ * Closed (unified-control-plane T2): a mid-stream harness failure with
+ * healthy JetStream used to be swallowed inside `dispatch-run.ts`'s pump
+ * (`NatsStreamBuffer.pump` caught the `uiStream` error, logged it, and only
+ * published the legacy UNFENCED `{done}` sentinel — which the consume step
+ * deliberately ignores — so `dispatchRunAndWait` returned as if the run had
+ * finished cleanly). `pump()` now returns a promise that REJECTS with the
+ * same error after publishing that sentinel; `dispatchRunAndWait` awaits it
+ * (after its own tail-wait loop) so the error propagates out of
+ * `rt.dispatchRunFn` here, straight into THIS wrapper's existing catch below
+ * — no new call site needed, since `runHostedHarness` is a thin wrapper
+ * around `dispatchRunFn` with no try/catch of its own. The degraded
+ * fallback branch (`dispatchRunAndWait` with no JetStream tail) already
+ * propagated correctly before this change; the fix makes the healthy-
+ * JetStream branch behave the SAME way instead of a special-cased swallow.
+ *
+ * The seq the failure-terminal publishes at is also threaded through now:
+ * `ingestRun` stamps the highest contiguous published seq onto the thrown
+ * error as `.lastAckSeq` (own-enumerable, survives the DBOS step boundary —
+ * see `ingest-run.ts`'s `WithLastAckSeq`) before re-throwing; the catch below
+ * reads it via `terminalErrorStartSeq` and passes `lastAckSeq + 1` as
+ * `buildTerminalErrorChunks`'s `startSeq`, so a mid-stream failure after
+ * content chunks 1..K continues the log at K+1 instead of colliding with it.
  *
  * A started hosted child either publishes `{done}` after a clean completion
  * (already true via `ingestRun`'s `publishDone` inside `runHostedHarness`), or
@@ -57,6 +73,7 @@ import type {
   DurableDispatchRunInput,
 } from "@/api/routes/decopilot/dispatch-run";
 import { synthesizedErrorMessageId } from "@/api/routes/decopilot/message-ids";
+import type { WithLastAckSeq } from "@/api/routes/decopilot/ingest-run";
 import type { StudioContext } from "@/core/studio-context";
 
 export { HOSTED_HARNESS_QUEUE } from "./queue-names";
@@ -152,8 +169,12 @@ function requireRuntime(): HostedHarnessRuntime {
  * No DB terminal-status writes here — the consume / projector step owns
  * terminal status. The NATS streaming + `{done}` publish happen inside
  * `dispatchRunAndWait` (via `ingestRun` / the stream buffer pump).
+ *
+ * Exported (only) for `hosted-harness-workflow.test.ts`, which calls this
+ * directly to reconstruct `hostedHarnessWorkflowFn`'s try/catch without the
+ * `DBOS.runStep` wrapping — see that test file's comment for why.
  */
-async function runHostedHarness(
+export async function runHostedHarness(
   input: HostedHarnessInput,
   ctx?: StudioContext,
 ): Promise<void> {
@@ -203,20 +224,13 @@ async function runHostedHarness(
  *
  * `startSeq` (default 1) is the seq to publish the error chunk at; the paired
  * `{done}` sentinel's `finalSeq` is the same value (this is the run's only
- * chunk in the caller's common case). Defaulting to 1 is deliberate: every
- * failure this helper is invoked for today (StudioContext resolution,
- * `HostedHarnessRuntime` not wired) throws BEFORE `dispatchRunFn` publishes
- * any content chunk, so seq 1 is genuinely free. The one known gap:
- * `dispatchRunAndWait` can publish real content chunks (via `ingestRun`'s
- * internal `ackSeq` counter) before rejecting — in the degraded
- * no-JetStream-tail fallback branch, and also in the healthy branch when
- * the tail-subscription read itself errors mid-run (NATS drop) after
- * seqs 1..K published — and that counter isn't threaded back through
- * `DispatchRunAndWaitFn`'s `{ taskId }` result — so in that rare case a caller
- * MUST pass the true next seq once that plumbing exists; until then the
- * projector's contiguity check (`assertContiguousAndDedup`) surfaces a
- * "missing seq" error for that run instead of a clean `failed` status, which
- * is still strictly better than today's silent unfenced-done stall.
+ * chunk in the common case: a failure before any content chunk published —
+ * StudioContext resolution, `HostedHarnessRuntime` not wired — so seq 1 is
+ * genuinely free). `publishHostedHarnessFailure` below no longer always
+ * defaults it: when the caught error carries `ingestRun`'s `.lastAckSeq` (a
+ * mid-stream failure AFTER content chunks 1..K were already confirmed —
+ * `terminalErrorStartSeq` reads it), it passes `K + 1` so the error chunk
+ * continues the run's contiguous log instead of colliding with it.
  *
  * The message id is `synthesizedErrorMessageId(runId, fenceToken)` — the SAME
  * pure function the durable projector calls when ITS OWN re-projection of
@@ -250,14 +264,32 @@ export function buildTerminalErrorChunks(
 }
 
 /**
+ * Reads `ingestRun`'s `.lastAckSeq` (see `ingest-run.ts`'s `WithLastAckSeq`)
+ * off a caught failure and returns the seq the terminal error chunk must
+ * publish at to stay contiguous with it — `lastAckSeq + 1`. `undefined` when
+ * the caught value isn't an `Error` or carries no seq info (a setup failure
+ * before any chunk was ever published), in which case
+ * `buildTerminalErrorChunks` falls back to its own `startSeq = 1` default.
+ * Pure (no I/O) so it's unit-testable without a DBOS/NATS harness.
+ */
+export function terminalErrorStartSeq(err: unknown): number | undefined {
+  if (!(err instanceof Error)) return undefined;
+  const lastAckSeq = (err as Error & WithLastAckSeq).lastAckSeq;
+  return typeof lastAckSeq === "number" ? lastAckSeq + 1 : undefined;
+}
+
+/**
  * Publish the caught failure's terminal (error chunk + `{done}`) to the run's
  * subject, via the SAME `StreamBuffer` surface `ingestRun` uses on the clean
  * path (`publishRawChunk` + `publishDone`). Returns without throwing when the
  * error-chunk publish itself reports failure (JetStream unavailable) — there
  * is nothing more this function can durably do; the caller logs and moves on
  * (see `hostedHarnessWorkflowFn`'s catch).
+ *
+ * Exported (only) for `hosted-harness-workflow.test.ts` — see `runHostedHarness`'s
+ * doc comment above for why.
  */
-async function publishHostedHarnessFailure(
+export async function publishHostedHarnessFailure(
   input: HostedHarnessInput,
   err: unknown,
 ): Promise<void> {
@@ -267,6 +299,7 @@ async function publishHostedHarnessFailure(
     input.runId,
     input.fenceToken,
     err,
+    terminalErrorStartSeq(err),
   );
   if (!streamBuffer) {
     // No JetStream buffer wired (test mode / NATS down) — mirrors
@@ -298,13 +331,25 @@ async function hostedHarnessWorkflowFn(
 ): Promise<void> {
   try {
     // ONE step (happy path): run the agent loop to completion, streaming to
-    // NATS + publishing {done}. Retriable — hosted/in-process runs have no
-    // external daemon to race, so DBOS can recover them (the queue's
-    // concurrency=1 per threadId still guarantees a single in-flight hosted
-    // run per thread).
+    // NATS + publishing {done}. NOT retriable: an application-level throw
+    // here is a DELIBERATE terminal (T2's pump-swallow fix means mid-stream
+    // `ingestRun` failures now propagate instead of being swallowed), so it
+    // should flow straight to the catch below, which publishes the
+    // fence-scoped error terminal exactly once — no re-run, no splice, no 3×
+    // billing. A DBOS-driven retry-on-throw would instead re-execute the
+    // ENTIRE agent loop up to 3 more times (real LLM cost, delayed
+    // terminal); worse, the fence stays stable across attempts while
+    // `buildAgentSandboxUiStream` restarts its seq counter at 0 each
+    // attempt, so a later attempt's low seqs can collide with the first
+    // attempt's inside JetStream's dedup window (dropped) while the rest
+    // land — splicing two possibly-divergent generations into one projected
+    // message. Pod-crash recovery (the process dying mid-step, not the step
+    // throwing) is a separate concern already covered by the workflow's own
+    // `maxRecoveryAttempts` below — that mechanism doesn't need
+    // `retriesAllowed` here; the two were conflated by the previous comment.
     await DBOS.runStep(() => runHostedHarness(input), {
       name: "runHostedHarness",
-      retriesAllowed: true,
+      retriesAllowed: false,
     });
   } catch (err) {
     // Second step, only reached on failure: publish the fence-scoped error +
@@ -321,11 +366,15 @@ async function hostedHarnessWorkflowFn(
     // Interim note (until Task 3 lands): the gate's `runDispatchSteps` still
     // awaits this child via `enqueueHostedHarness`'s `getResult()`. Before
     // this change, a caught failure rejected the child workflow, so the
-    // gate's `trackMessageFailed` catch (thread-gate-workflow.ts ~544-555)
-    // fired for it. After this change, `getResult()` resolves instead, so
-    // that catch no longer fires for hosted-child failures — `chat_message_
-    // failed` posthog analytics undercounts them until T3 rewires the gate to
-    // read status from the projector fold instead of the child's outcome.
+    // gate's `trackMessageFailed` catch (thread-gate-workflow.ts) fired for
+    // it (mislabeled `error_category: "setup"` even for in-flight failures).
+    // After this change, `getResult()` resolves instead, so that catch no
+    // longer fires for hosted-child failures. The `chat_message_failed`
+    // signal is NOT lost, though: `runProjectorWorkflowBody`'s `recordFailed`
+    // (unified-control-plane T2) is now the sole source, firing once the
+    // consume step folds the in-band error chunk this catch publishes below
+    // — correctly categorized (`kind: "harness"`) and, unlike the old gate
+    // catch, consistent with the desktop topology's failure analytics too.
     await DBOS.runStep(() => publishHostedHarnessFailure(input, err), {
       name: "publishHostedHarnessFailure",
       retriesAllowed: true,

@@ -1,6 +1,19 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { synthesizedErrorMessageId } from "@/api/routes/decopilot/message-ids";
-import { buildTerminalErrorChunks } from "./hosted-harness-workflow";
+import type { WithLastAckSeq } from "@/api/routes/decopilot/ingest-run";
+import type { StudioContext } from "@/core/studio-context";
+import {
+  buildTerminalErrorChunks,
+  type HostedHarnessInput,
+  type HostedHarnessRuntime,
+  publishHostedHarnessFailure,
+  runHostedHarness,
+  type SerializableDispatchRunInput,
+  setHostedHarnessRuntime,
+  terminalErrorStartSeq,
+} from "./hosted-harness-workflow";
 
 describe("buildTerminalErrorChunks", () => {
   test("carries the REAL err.message verbatim — never a masked/generic string", () => {
@@ -75,5 +88,134 @@ describe("buildTerminalErrorChunks", () => {
     );
 
     expect(turnOne.messageId).not.toBe(turnTwo.messageId);
+  });
+});
+
+describe("terminalErrorStartSeq", () => {
+  test("returns undefined for a non-Error thrown value", () => {
+    expect(terminalErrorStartSeq("boom")).toBeUndefined();
+  });
+
+  test("returns undefined when the error carries no lastAckSeq (setup failure, no chunk ever published)", () => {
+    expect(terminalErrorStartSeq(new Error("user membership lost"))).toBe(
+      undefined,
+    );
+  });
+
+  test("returns lastAckSeq + 1 when ingestRun stamped a mid-stream failure", () => {
+    const err = new Error("source failed mid-stream") as Error & WithLastAckSeq;
+    err.lastAckSeq = 2;
+    expect(terminalErrorStartSeq(err)).toBe(3);
+  });
+
+  test("returns 1 (via lastAckSeq=0) when the very first publish failed — nothing was ever confirmed", () => {
+    const err = new Error("publishRawChunk failed") as Error & WithLastAckSeq;
+    err.lastAckSeq = 0;
+    expect(terminalErrorStartSeq(err)).toBe(1);
+  });
+
+  test("end-to-end: feeds buildTerminalErrorChunks to continue the run's seq counter", () => {
+    const err = new Error("source failed mid-stream") as Error & WithLastAckSeq;
+    err.lastAckSeq = 5;
+    const result = buildTerminalErrorChunks(
+      "thread-1",
+      "fence-a",
+      err,
+      terminalErrorStartSeq(err),
+    );
+    expect(result.seq).toBe(6);
+    expect(result.finalSeq).toBe(6);
+  });
+});
+
+// Finding 1 regression: a mid-stream `dispatchRunFn` failure used to run with
+// `retriesAllowed: true` on the `runHostedHarness` DBOS step, so a real
+// application-level throw (which, post-T2's pump-swallow fix, now propagates
+// instead of being swallowed) re-executed the ENTIRE agent loop up to 3 more
+// times — real LLM cost, a delayed terminal, and a risk of the projector
+// splicing two divergent generations into one message (the fence is stable
+// across attempts while the pump's seq counter restarts at 0 each attempt).
+// Fixed by setting `retriesAllowed: false`: an application-level throw is a
+// DELIBERATE terminal that should flow straight to `hostedHarnessWorkflowFn`'s
+// catch, exactly once.
+describe("hostedHarnessWorkflowFn's try/catch contract (Finding 1)", () => {
+  // `hostedHarnessWorkflowFn` itself isn't exported and calls `DBOS.runStep`,
+  // which throws immediately outside a launched DBOS instance
+  // (`ensureDBOSIsLaunched`) — this unit-test tier doesn't stand one up (repo
+  // policy: no DBOS mocks). So this test calls `runHostedHarness` /
+  // `publishHostedHarnessFailure` directly to reconstruct the try/catch body
+  // verbatim, minus the `DBOS.runStep` wrapping. That documents INTENT — "the
+  // dispatch fn runs exactly once, and a caught failure publishes exactly one
+  // fenced terminal" — rather than exercising DBOS's actual retry/recovery
+  // machinery. The "no retry" half of the fix (the actual `retriesAllowed`
+  // config DBOS enforces) is separately verified below by reading the real
+  // registration call site.
+
+  const request = {
+    organizationId: "org-1",
+    userId: "user-1",
+  } as SerializableDispatchRunInput;
+
+  const input: HostedHarnessInput = {
+    runId: "run-1",
+    fenceToken: "fence-1",
+    threadId: "thread-1",
+    request,
+  };
+
+  function runtimeWithDispatchFn(
+    dispatchRunFn: HostedHarnessRuntime["dispatchRunFn"],
+  ) {
+    const streamBuffer = {
+      publishRawChunk: mock(() => Promise.resolve(true)),
+      publishDone: mock(() => Promise.resolve(true)),
+    } as unknown as NonNullable<HostedHarnessRuntime["deps"]["streamBuffer"]>;
+    const rt: HostedHarnessRuntime = {
+      dispatchRunFn,
+      meshContextFactory: async () => null,
+      deps: {
+        runRegistry: {} as HostedHarnessRuntime["deps"]["runRegistry"],
+        cancelBroadcast: {} as HostedHarnessRuntime["deps"]["cancelBroadcast"],
+        streamBuffer,
+      },
+    };
+    setHostedHarnessRuntime(rt);
+    return { streamBuffer };
+  }
+
+  test("a dispatchRunFn that throws mid-run: the catch publishes the fenced terminal, and the dispatch fn ran EXACTLY ONCE", async () => {
+    const boom = new Error("harness exploded mid-stream");
+    const dispatchRunFn = mock(() => Promise.reject(boom));
+    const { streamBuffer } = runtimeWithDispatchFn(dispatchRunFn);
+    const fakeCtx = {} as StudioContext;
+
+    let caught: unknown;
+    try {
+      await runHostedHarness(input, fakeCtx);
+    } catch (err) {
+      caught = err;
+      await publishHostedHarnessFailure(input, err);
+    }
+
+    expect(caught).toBe(boom);
+    expect(dispatchRunFn).toHaveBeenCalledTimes(1);
+    expect(streamBuffer.publishRawChunk).toHaveBeenCalledTimes(1);
+    expect(streamBuffer.publishDone).toHaveBeenCalledTimes(1);
+  });
+
+  test("registers the runHostedHarness step with retriesAllowed: false", () => {
+    // Source-text assertion (same technique as
+    // dbos/workflow-source-guard.test.ts) — DBOS's actual retry-on-throw
+    // behavior can't be exercised without a launched DBOS instance, so this
+    // reads the real registration call site instead of a stand-in.
+    const src = readFileSync(
+      join(import.meta.dir, "hosted-harness-workflow.ts"),
+      "utf8",
+    );
+    const marker = 'name: "runHostedHarness"';
+    const idx = src.indexOf(marker);
+    expect(idx).toBeGreaterThan(-1);
+    const stepConfig = src.slice(idx, idx + 100);
+    expect(stepConfig).toContain("retriesAllowed: false");
   });
 });

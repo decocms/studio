@@ -277,7 +277,7 @@ export class NatsStreamBuffer implements StreamBuffer {
     taskId: string,
     registrySignal: AbortSignal,
     orgId?: string,
-  ): void {
+  ): Promise<void> {
     const js = this.js;
     if (!js) {
       // No JetStream client — every chunk for this run is silently dropped
@@ -286,7 +286,7 @@ export class NatsStreamBuffer implements StreamBuffer {
       console.warn(
         `[Decopilot] pump: JetStream client unavailable for thread ${taskId}; chunks NOT published to NATS`,
       );
-      return;
+      return Promise.resolve();
     }
 
     const tracker = createPublishTracker(taskId, orgId);
@@ -343,10 +343,18 @@ export class NatsStreamBuffer implements StreamBuffer {
       }
     };
 
-    void (async () => {
+    return (async () => {
       const reader = stream.getReader();
       let sinceYield = 0;
       let publishedChunks = 0;
+      // Captured, not swallowed: a mid-stream failure (e.g. the
+      // `buildAgentSandboxUiStream` vessel erroring because `ingestRun` threw)
+      // still publishes the legacy unfenced `{done}` below so any tail
+      // consumer closes cleanly, but the caller (`dispatchRunAndWait`) needs
+      // to learn about the failure too — awaiting the promise this function
+      // now returns surfaces it instead of the caller reading a false
+      // "the tail saw {done}, so the run finished cleanly" signal.
+      let caught: unknown;
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -364,6 +372,7 @@ export class NatsStreamBuffer implements StreamBuffer {
           }
         }
       } catch (err) {
+        caught = err;
         console.warn(
           `[Decopilot] stream pump error for thread ${taskId}:`,
           (err as Error)?.message ?? err,
@@ -383,6 +392,7 @@ export class NatsStreamBuffer implements StreamBuffer {
           );
         }
       }
+      if (caught !== undefined) throw caught;
     })();
   }
 

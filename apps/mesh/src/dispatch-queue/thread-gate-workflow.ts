@@ -464,12 +464,16 @@ async function trackMessageStartedStep(ctx: ThreadGateContext): Promise<void> {
 /**
  * Balances `chat_message_started` when the dispatch step throws *before*
  * `streamText` is set up (model-permission failure, agent not found,
- * thread-ownership check, etc. — see `prepareRun`). In-flight stream
- * errors are already emitted by `streamText.onError` inside `dispatchRunAndWait`,
- * so this only covers the pre-stream gap.
+ * thread-ownership check, etc. — see `prepareRun`). In-flight stream errors
+ * (once `streamText` is running) are NOT emitted here — the durable projector's
+ * `recordFailed` is the sole `chat_message_failed` source for those, fired
+ * once the run's fenced terminal is materialized on the stream (both hosted
+ * and desktop). This step only covers the pre-stream gap: a `dispatchRunAndWait`
+ * throw here means setup failed before any run/stream existed for the
+ * projector to fold, so nothing else will ever emit the balancing event.
  *
- * `error_category: "setup"` keeps these distinguishable from stream-time
- * failures (which use `classifyStreamError`).
+ * `error_category: "setup"` keeps these distinguishable from the projector's
+ * `kind: "harness" | "projection"` categorization of stream-time failures.
  */
 async function trackMessageFailedStep(
   ctx: ThreadGateContext,

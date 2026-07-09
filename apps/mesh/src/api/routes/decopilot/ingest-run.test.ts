@@ -383,4 +383,73 @@ describe("ingestRun done marker", () => {
     expect(done).toEqual([]);
     expect(finishCount).toBe(0);
   });
+
+  test("stamps the highest contiguous published seq onto a mid-stream source throw", async () => {
+    // A caller that must publish its OWN fence-scoped terminal after catching
+    // this (hosted-harness-workflow.ts's publishHostedHarnessFailure) needs to
+    // know how far the log already got so its terminal continues the seq
+    // counter instead of colliding with already-published content chunks.
+    const d = deps();
+    async function* broken() {
+      yield { seq: 1, chunk: { type: "start" } as UIMessageChunk };
+      yield {
+        seq: 2,
+        chunk: { type: "text-start", id: "t" } as UIMessageChunk,
+      };
+      throw new Error("source failed mid-stream");
+    }
+
+    let caught: unknown;
+    try {
+      await ingestRun(
+        { runId: "run_1", fenceToken: "fence_a", chunks: broken() },
+        d.deps,
+      );
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error & { lastAckSeq?: number }).lastAckSeq).toBe(2);
+    // The two chunks that DID publish before the throw are still on the log —
+    // only the {done} marker is withheld.
+    expect(d.published.map((p) => p.msgId)).toEqual([
+      "run_1:fence_a:1",
+      "run_1:fence_a:2",
+    ]);
+    expect(d.done).toEqual([]);
+  });
+
+  test("stamps lastAckSeq=0 when the very first chunk's publish fails (nothing ever confirmed)", async () => {
+    let caught: unknown;
+    try {
+      await ingestRun(
+        {
+          runId: "run_1",
+          fenceToken: "fence_a",
+          chunks: chunks({
+            seq: 1,
+            chunk: { type: "start" } as UIMessageChunk,
+          }),
+        },
+        {
+          streamBuffer: {
+            publishRawChunk: async () => false,
+            publishDone: async () => true,
+          },
+          hooks: {},
+          title: {
+            currentThreadTitle: null,
+            threadId: "run_1",
+            persistTitle: async () => {},
+          },
+        },
+      );
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error & { lastAckSeq?: number }).lastAckSeq).toBe(0);
+  });
 });

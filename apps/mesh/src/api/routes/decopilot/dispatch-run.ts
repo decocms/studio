@@ -13,15 +13,22 @@
  *     completes but its chunks are dropped.
  *
  * Architecture: dispatch-run owns the shared infrastructure (run-registry
- * lifecycle, memory load, JetStream buffering, registry FINISH dispatch,
- * posthog events). The actual streamText loop + tool assembly +
- * system-prompt construction is delegated to a Harness via
- * `localDispatch(harnessId, harnessInput, ctx)`. The three in-tree harnesses
- * (`decopilot`, `claude-code`, `codex`) each produce `UIMessageChunk`
- * streams consumed by the harness kernel (`consumeHarnessStream`) — the
- * ONLY consume-side stream layer. dispatch-run feeds the kernel a lazy
- * chunk source and run-lifecycle hooks (registry STEP_DONE/FINISH, thread
- * status, posthog); the kernel's output stream is the run's uiStream.
+ * liveness bookkeeping, memory load, JetStream buffering, registry
+ * STEP_DONE/FINISH dispatch). Terminal-status DB writes and the
+ * `chat_message_completed` / `chat_message_failed` / usage posthog events are
+ * OWNED BY THE PROJECTOR (`runProjectorWorkflowBody`'s `recordCompleted` /
+ * `recordFailed`), fired once from the run's fenced JetStream log — the same
+ * mechanism for hosted and desktop. This module's `chat_message_started`
+ * (pre-stream) and `chat_message_aborted` (user cancel) posthog events are
+ * the only ones still emitted from here, since neither has a projector
+ * equivalent. The actual streamText loop + tool assembly + system-prompt
+ * construction is delegated to a Harness via `localDispatch(harnessId,
+ * harnessInput, ctx)`. The three in-tree harnesses (`decopilot`,
+ * `claude-code`, `codex`) each produce `UIMessageChunk` streams published to
+ * JetStream via `ingestRun` (see `buildAgentSandboxUiStream`) — the ONLY
+ * consume-side stream layer for the hosted live path. dispatch-run feeds it a
+ * lazy chunk source and run-lifecycle hooks (registry STEP_DONE/FINISH
+ * liveness bookkeeping, thread status SSE).
  */
 
 import type { StudioContext } from "@/core/studio-context";
@@ -69,10 +76,7 @@ import type {
 } from "@decocms/harness/types";
 import { WORKSPACE_CWD_REPO } from "@decocms/harness/workspace-cwd";
 import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
-import {
-  classifyStreamError,
-  stringifyError,
-} from "@decocms/harness/stream-error";
+import { stringifyError } from "@decocms/harness/stream-error";
 import { isCliHarness } from "@decocms/harness/cli-harness";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
@@ -248,12 +252,16 @@ export interface AgentSandboxUiStreamInput {
  *
  * The raw harness chunks are wrapped as `(seq, chunk)` (monotonic counter) and
  * fed through the shared `ingestRun` unit, which publishes each chunk to
- * JetStream with a seq-keyed `Nats-Msg-Id` and drives the live hooks (usage /
- * posthog completion / SSE finish) + title-chunk injection. `ingestRun`
- * neutralizes title/message persistence so the durable projector is the sole
- * writer of parts + status + title. The returned stream yields NOTHING (raw
- * chunks are the NATS source); the pump that drains it still publishes the
- * `{done}` sentinel so tails close.
+ * JetStream with a seq-keyed `Nats-Msg-Id` and drives the live hooks
+ * (run-registry STEP_DONE/FINISH liveness bookkeeping, the abort-only
+ * `chat_message_aborted` posthog event) + title-chunk injection. Completion
+ * / failure analytics and usage recording are NOT driven from here — the
+ * durable projector is the sole source (`recordCompleted`/`recordFailed`),
+ * same as it's the sole writer of parts + status + title. The returned
+ * stream yields NOTHING (raw chunks are the NATS source); the pump that
+ * drains it still publishes the `{done}` sentinel so tails close, and now
+ * propagates a mid-stream `ingestRun` failure to its caller instead of
+ * swallowing it (see `NatsStreamBuffer.pump`).
  */
 export function buildAgentSandboxUiStream(
   input: AgentSandboxUiStreamInput,
@@ -705,7 +713,17 @@ export async function dispatchRunAndWait(
         : null;
 
       if (buffer && tail) {
-        buffer.pump(uiStream, taskId, registrySignal, input.organizationId);
+        const pumpDone = buffer.pump(
+          uiStream,
+          taskId,
+          registrySignal,
+          input.organizationId,
+        );
+        // Pre-arm: if the tail-read loop below throws before we reach the
+        // await, pumpDone's rejection must not become an unhandled
+        // rejection — the pre-armed no-op catch marks it handled while
+        // `await pumpDone` below still rejects for the normal path.
+        void pumpDone.catch(() => {});
         const reader = tail.getReader();
         try {
           while (true) {
@@ -715,6 +733,17 @@ export async function dispatchRunAndWait(
         } finally {
           reader.releaseLock();
         }
+        // The tail closes on ANY `{done}` marker — including the legacy
+        // UNFENCED sentinel `pump()` publishes in its `finally` even after a
+        // mid-stream failure (so a live tail never hangs). That marker alone
+        // would make this function return as if the run finished cleanly.
+        // `pumpDone` is what actually carries the failure (pump() re-throws
+        // whatever it caught from `uiStream`, i.e. `ingestRun`'s propagated
+        // error) — by the time the tail sees a done marker, `pump()`'s own
+        // try/catch/finally has already run (publishing that very marker is
+        // downstream of it), so this await settles immediately and surfaces
+        // a mid-stream ingest failure the tail's close alone would swallow.
+        await pumpDone;
       } else {
         // Fallback: no JetStream tail available — drain uiStream directly.
         // This still executes the hosted producer path; when the streamBuffer
@@ -1671,25 +1700,14 @@ async function prepareRun(
                 return;
               }
               console.error("[decopilot] stream error:", stringifyError(error));
-              posthog.capture({
-                distinctId: input.userId,
-                event: "chat_message_failed",
-                groups: { organization: input.organizationId },
-                properties: {
-                  organization_id: input.organizationId,
-                  thread_id: mem.thread.id,
-                  agent_id: input.agent.id,
-                  model_id: models.thinking.id,
-                  mode: input.mode,
-                  duration_ms: Date.now() - streamStartAt,
-                  error_category: classifyStreamError(error),
-                  error_message:
-                    error instanceof Error
-                      ? error.message
-                      : stringifyError(error),
-                  is_resume: input.isResume ?? false,
-                },
-              });
+              // Failure analytics (`chat_message_failed`) are emitted by the
+              // projector's `recordFailed`, same as the completion event above —
+              // this hook used to double-capture it here. The projector fires
+              // once the run's fenced terminal (in-band error chunk +
+              // `{done}`) is durably materialized, which happens for every
+              // caught failure now that `dispatchRunAndWait` propagates a
+              // mid-stream ingest error instead of swallowing it (see
+              // `hosted-harness-workflow.ts`'s catch).
 
               runRegistry
                 .execute({
