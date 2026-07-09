@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import {
   canPublishDirectly,
   combinePublishDiffs,
+  countGitChanges,
   hasGitLocalWork,
   hasLocalWorkToPush,
   hasUnpublishedWork,
   isDecoOnlyDiff,
   PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
+  readGitHeadBranch,
   shouldUseBaseDiff,
   stripGeneratedFilesFromDiff,
   type GitDiffResult,
@@ -201,6 +203,54 @@ describe("hasGitLocalWork", () => {
     expect(hasGitLocalWork({ ...cleanStatus, ahead: 2, unpushed: 2 })).toBe(
       false,
     );
+  });
+});
+
+describe("countGitChanges", () => {
+  test("0 for null", () => {
+    expect(countGitChanges(null)).toBe(0);
+  });
+
+  test("0 for a clean tree", () => {
+    expect(countGitChanges(cleanStatus)).toBe(0);
+  });
+
+  test("sums modified, created, deleted, not_added, and renamed", () => {
+    expect(
+      countGitChanges({
+        ...cleanStatus,
+        modified: ["a.ts"],
+        created: ["b.ts", "c.ts"],
+        deleted: ["d.ts"],
+        not_added: ["e.ts"],
+        renamed: [{ from: "f.ts", to: "g.ts" }],
+      }),
+    ).toBe(6);
+  });
+
+  test("ignores staged and conflicted (already-indexed, not working-tree edits)", () => {
+    expect(
+      countGitChanges({
+        ...cleanStatus,
+        staged: ["a.ts"],
+        conflicted: ["b.ts"],
+      }),
+    ).toBe(0);
+  });
+});
+
+describe("readGitHeadBranch", () => {
+  test("null for null and undefined", () => {
+    expect(readGitHeadBranch(null)).toBeNull();
+    expect(readGitHeadBranch(undefined)).toBeNull();
+  });
+
+  test("returns the current branch name", () => {
+    expect(readGitHeadBranch(cleanStatus)).toBe("feat/foo");
+  });
+
+  test("null on detached HEAD", () => {
+    expect(readGitHeadBranch({ ...cleanStatus, current: null })).toBeNull();
   });
 });
 
