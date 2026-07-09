@@ -450,6 +450,62 @@ describe("runProjectorWorkflowBody", () => {
     expect(purgeCalls).toHaveLength(0);
   });
 
+  test("missing run row → skip, no runtime calls, projectFn never invoked", async () => {
+    const { rt, calls } = makeRuntime();
+    rt.resolveRun = async () => null;
+    let projectFnCalled = false;
+    const projectFn = makeProjectFn({});
+    await runProjectorWorkflowBody(input, rt, async () => {
+      projectFnCalled = true;
+      return projectFn();
+    });
+
+    expect(projectFnCalled).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("stale fence (runFenceToken differs from input) → skip, no runtime calls", async () => {
+    const { rt, calls } = makeRuntime();
+    rt.resolveRun = async () => ({
+      orgId: "org_1",
+      createdBy: "user_1",
+      version: 2,
+      status: "in_progress",
+      runFenceToken: "fence_newer",
+      title: null,
+    });
+    let projectFnCalled = false;
+    const projectFn = makeProjectFn({});
+    await runProjectorWorkflowBody(input, rt, async () => {
+      projectFnCalled = true;
+      return projectFn();
+    });
+
+    expect(projectFnCalled).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("legacy v1 run (version !== 2) → skip, no runtime calls", async () => {
+    const { rt, calls } = makeRuntime();
+    rt.resolveRun = async () => ({
+      orgId: "org_1",
+      createdBy: "user_1",
+      version: 1,
+      status: "in_progress",
+      runFenceToken: "fence_a",
+      title: null,
+    });
+    let projectFnCalled = false;
+    const projectFn = makeProjectFn({});
+    await runProjectorWorkflowBody(input, rt, async () => {
+      projectFnCalled = true;
+      return projectFn();
+    });
+
+    expect(projectFnCalled).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
   test("forwards input.messageId to projectFn (queue ordering plumb)", async () => {
     // Guards the plumb from thread-gate-workflow → consumeRunProjection →
     // runProjectorWorkflowBody → projectFn. This asserts up to the projectFn
