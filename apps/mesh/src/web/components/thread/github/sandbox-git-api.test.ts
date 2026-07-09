@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   canPublishDirectly,
+  combinePublishDiffs,
   hasGitLocalWork,
   hasLocalWorkToPush,
   hasUnpublishedWork,
   isDecoOnlyDiff,
-  PUBLISH_MIXED_WORK_TOOLTIP,
   PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
   shouldUseBaseDiff,
   stripGeneratedFilesFromDiff,
@@ -253,45 +253,64 @@ describe("canPublishDirectly", () => {
     diffs: { "routes/index.tsx": { from: "a", to: "b" } },
   };
 
-  test("allows a deco-only working-tree diff with no commits ahead", () => {
-    const gate = canPublishDirectly(
-      { ...cleanStatus, modified: [".deco/blocks/home.json"] },
-      decoDiff,
-    );
+  test("allows a deco-only payload", () => {
+    const gate = canPublishDirectly(decoDiff);
     expect(gate.allowed).toBe(true);
     expect(gate.reason).toBeNull();
   });
 
-  test("allows deco-only committed work on a clean tree", () => {
-    const gate = canPublishDirectly(
-      { ...cleanStatus, aheadOfBase: 1 },
-      decoDiff,
-    );
-    expect(gate.allowed).toBe(true);
-  });
-
-  test("blocks code changes with the submit-for-review reason", () => {
-    const gate = canPublishDirectly(
-      { ...cleanStatus, modified: ["routes/index.tsx"] },
-      codeDiff,
-    );
+  test("blocks a payload containing code", () => {
+    const gate = canPublishDirectly(codeDiff);
     expect(gate.allowed).toBe(false);
     expect(gate.reason).toBe(PUBLISH_REQUIRES_SUBMIT_TOOLTIP);
   });
 
-  // The safety regression this guards: a deco-only working-tree diff on top of
-  // an unreviewed code commit ahead of base must NOT publish directly — the
-  // gate can't see the committed code, so it must refuse the mixed payload.
-  test("blocks a deco working-tree edit sitting on a commit ahead of base", () => {
-    const gate = canPublishDirectly(
-      { ...cleanStatus, modified: [".deco/blocks/home.json"], aheadOfBase: 1 },
-      decoDiff,
-    );
-    expect(gate.allowed).toBe(false);
-    expect(gate.reason).toBe(PUBLISH_MIXED_WORK_TOOLTIP);
+  test("blocks an empty diff", () => {
+    expect(canPublishDirectly({ diffs: {} }).allowed).toBe(false);
+  });
+});
+
+describe("combinePublishDiffs (full publish payload = committed ∪ working)", () => {
+  const committedDeco: GitDiffResult = {
+    mergeBaseSha: "abc",
+    diffs: { ".deco/a.json": { from: "{}", to: "{}" } },
+  };
+  const workingDeco: GitDiffResult = {
+    diffs: { ".deco/b.json": { from: null, to: "{}" } },
+  };
+
+  test("unions committed and working-tree paths, keeps mergeBaseSha", () => {
+    const combined = combinePublishDiffs(committedDeco, workingDeco);
+    expect(Object.keys(combined.diffs).sort()).toEqual([
+      ".deco/a.json",
+      ".deco/b.json",
+    ]);
+    expect(combined.mergeBaseSha).toBe("abc");
   });
 
-  test("blocks an empty diff", () => {
-    expect(canPublishDirectly(cleanStatus, { diffs: {} }).allowed).toBe(false);
+  test("handles null inputs", () => {
+    expect(combinePublishDiffs(null, null).diffs).toEqual({});
+  });
+
+  // The case users hit: an uncommitted deco edit on top of a committed deco
+  // change publishes directly, because the whole payload is deco-only.
+  test("allows deco committed + deco uncommitted", () => {
+    const gate = canPublishDirectly(
+      combinePublishDiffs(committedDeco, workingDeco),
+    );
+    expect(gate.allowed).toBe(true);
+  });
+
+  // The safety case: an uncommitted deco edit on top of a committed CODE change
+  // must still be blocked — the combined payload exposes the committed code.
+  test("blocks deco uncommitted sitting on committed code", () => {
+    const committedCode: GitDiffResult = {
+      diffs: { "routes/x.tsx": { from: "a", to: "b" } },
+    };
+    const gate = canPublishDirectly(
+      combinePublishDiffs(committedCode, workingDeco),
+    );
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe(PUBLISH_REQUIRES_SUBMIT_TOOLTIP);
   });
 });

@@ -235,9 +235,6 @@ export function isDecoOnlyDiff(
 export const PUBLISH_REQUIRES_SUBMIT_TOOLTIP =
   "Code changes can't be published directly — use Submit for review";
 
-export const PUBLISH_MIXED_WORK_TOOLTIP =
-  "Commit your changes first, or use Submit for review — a mix of committed and uncommitted work can't be published directly";
-
 export async function discardGitFiles(
   orgSlug: string,
   virtualMcpId: string,
@@ -348,24 +345,33 @@ export interface PublishGate {
 }
 
 /**
- * Whether the current changes may be squash-merged straight to base, bypassing
- * review. Publish ships the whole base…HEAD range PLUS the working tree, but a
- * single diff can only represent one of those — so:
- *  - if there are BOTH commits ahead of base AND uncommitted work, the gate
- *    can't see the full payload and code could slip through → refuse;
- *  - otherwise the (single) diff must be deco-only.
+ * Union of the committed base…head diff and the uncommitted working-tree diff —
+ * the full set of changes a direct publish squash-merges into base. Publish
+ * commits the working tree, then squash-merges base…HEAD, so the payload is
+ * both; the daemon can only return one diff at a time, so callers fetch both
+ * and combine here. Working-tree entries win for paths present in both (they
+ * hold the latest, about-to-be-committed content).
+ */
+export function combinePublishDiffs(
+  baseDiff: GitDiffResult | null | undefined,
+  workingDiff: GitDiffResult | null | undefined,
+): GitDiffResult {
+  return {
+    diffs: { ...(baseDiff?.diffs ?? {}), ...(workingDiff?.diffs ?? {}) },
+    ...(baseDiff?.mergeBaseSha ? { mergeBaseSha: baseDiff.mergeBaseSha } : {}),
+  };
+}
+
+/**
+ * Whether the changes may be squash-merged straight to base, bypassing review.
+ * `diff` must be the full publish payload (see `combinePublishDiffs`) so the
+ * gate sees every file — committed and uncommitted. Only deco-only payloads
+ * publish directly; anything with code must go through Submit for review.
  */
 export function canPublishDirectly(
-  status: GitStatus | null | undefined,
   diff: GitDiffResult | null | undefined,
 ): PublishGate {
-  const mixedPayload =
-    (status?.aheadOfBase ?? 0) > 0 && hasGitLocalWork(status);
-  if (mixedPayload) {
-    return { allowed: false, reason: PUBLISH_MIXED_WORK_TOOLTIP };
-  }
-  if (!isDecoOnlyDiff(diff)) {
-    return { allowed: false, reason: PUBLISH_REQUIRES_SUBMIT_TOOLTIP };
-  }
-  return { allowed: true, reason: null };
+  return isDecoOnlyDiff(diff)
+    ? { allowed: true, reason: null }
+    : { allowed: false, reason: PUBLISH_REQUIRES_SUBMIT_TOOLTIP };
 }

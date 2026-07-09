@@ -37,11 +37,13 @@ import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-star
 import { publishToBaseLabel } from "./publish-label.ts";
 import {
   canPublishDirectly,
+  combinePublishDiffs,
   countGitChanges,
   discardGitFiles,
   fetchGitDiff,
   fetchGitStatus,
   fetchSuggestCommitMessage,
+  hasGitLocalWork,
   hasLocalWorkToPush,
   hasUnpublishedWork,
   isSandboxUnreachable,
@@ -167,19 +169,38 @@ function PublishDialogBody({
   const loadStartedRef = useRef(false);
   const reprovisionAttemptedRef = useRef(false);
 
+  const baseDiffOpts = {
+    base: baseBranch,
+    ...(headSha ? { headSha } : {}),
+  };
+
+  // Direct publish squash-merges base…HEAD PLUS the working tree, so show and
+  // gate the union of both — a single daemon diff only returns one. For every
+  // other flow a single diff is the whole story (working tree when dirty, else
+  // base…head), picked by shouldUseBaseDiff.
+  const loadPublishDiff = async (status: GitStatus): Promise<GitDiffResult> => {
+    const baseDiff =
+      (status.aheadOfBase ?? 0) > 0
+        ? await fetchGitDiff(orgSlug, virtualMcpId, branch, baseDiffOpts)
+        : null;
+    const workingDiff = hasGitLocalWork(status)
+      ? await fetchGitDiff(orgSlug, virtualMcpId, branch)
+      : null;
+    return combinePublishDiffs(baseDiff, workingDiff);
+  };
+
   const loadGitState = async () => {
     const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
-    const needsBaseDiff = shouldUseBaseDiff(status, {
-      openPrFromCommits,
-      commitToOpenPr,
-    });
-    const diffOpts = needsBaseDiff
-      ? {
-          base: baseBranch,
-          ...(headSha ? { headSha } : {}),
-        }
-      : undefined;
-    const diff = await fetchGitDiff(orgSlug, virtualMcpId, branch, diffOpts);
+    const diff = isPublishOnly
+      ? await loadPublishDiff(status)
+      : await fetchGitDiff(
+          orgSlug,
+          virtualMcpId,
+          branch,
+          shouldUseBaseDiff(status, { openPrFromCommits, commitToOpenPr })
+            ? baseDiffOpts
+            : undefined,
+        );
     setGitStatus(status);
     setGitDiff(diff);
     setPublishTitle(`Changes from ${status.current ?? branch}`);
@@ -268,7 +289,7 @@ function PublishDialogBody({
     : hasUnpublishedWork(gitStatus, gitDiff);
   const canSubmit =
     !isLoadingGitDiff && (hasLocalUnpublished || openPrFromCommits);
-  const publishGate = canPublishDirectly(gitStatus, gitDiff);
+  const publishGate = canPublishDirectly(gitDiff);
   const canPublish = canSubmit && publishGate.allowed;
   const publishDisabledReason = canSubmit ? publishGate.reason : null;
 
