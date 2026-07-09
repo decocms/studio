@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildSandboxDaemonSpawnCommand,
+  canHotReloadDaemon,
   deriveNodeModulesDir,
   resolveDaemonStdio,
   sandboxDaemonLogPath,
@@ -54,6 +55,37 @@ describe("sandboxDaemonLogPath", () => {
     expect(sandboxDaemonLogPath(workdir)).toBe(
       "/data/sandboxes/h1/tmp/daemon.log",
     );
+  });
+});
+
+describe("canHotReloadDaemon", () => {
+  it("is false when hotReload is not requested, even if paths match", () => {
+    expect(
+      canHotReloadDaemon({
+        daemonExec: "/repo/packages/sandbox/daemon/entry.ts",
+        sourceDaemonPath: "/repo/packages/sandbox/daemon/entry.ts",
+      }),
+    ).toBe(false);
+  });
+
+  it("is false when hotReload is requested but the daemon is a materialized bundle", () => {
+    expect(
+      canHotReloadDaemon({
+        daemonExec: "/tmp/cache/sandbox-daemon-deadbeef.js",
+        sourceDaemonPath: "/repo/packages/sandbox/daemon/entry.ts",
+        hotReload: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("is true when hotReload is requested and paths resolve to the same file, even with a non-normalized path", () => {
+    expect(
+      canHotReloadDaemon({
+        daemonExec: "/repo/packages/sandbox/daemon/../daemon/entry.ts",
+        sourceDaemonPath: "/repo/packages/sandbox/daemon/entry.ts",
+        hotReload: true,
+      }),
+    ).toBe(true);
   });
 });
 
