@@ -103,6 +103,7 @@ import type {
   HarnessStreamTitleOptions,
 } from "./consume-harness-stream";
 import { ingestRun } from "./ingest-run";
+import { withLivenessHeartbeat } from "./with-liveness-heartbeat";
 import {
   checkModelPermission,
   fetchModelPermissions,
@@ -1563,7 +1564,12 @@ async function prepareRun(
             publishRawChunk: async () => false,
             publishDone: async () => false,
           },
-          chunks: dispatchHarnessChunks(),
+          // Heartbeat wraps the RAW harness source, before ingestRun's
+          // seq-wrapper (unified-control-plane T5) — a `data-liveness`
+          // chunk injected during a silent model/tool wait gets a real seq
+          // through the exact same publish path as every other chunk (see
+          // with-liveness-heartbeat.ts's module doc for the full contract).
+          chunks: withLivenessHeartbeat(dispatchHarnessChunks()),
           // Deterministic per turn (runId + fence) so a synthesized error
           // message dedupes across the live write + projector retries while
           // distinct turns of the same thread never collide. See message-ids.ts.
