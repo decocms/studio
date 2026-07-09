@@ -5,6 +5,7 @@ import {
   type PropsWithChildren,
   type RefObject,
 } from "react";
+import { useStickToBottom } from "use-stick-to-bottom";
 import {
   ActiveTaskProvider,
   ChatProvider,
@@ -165,40 +166,99 @@ function ChatMessages() {
     fetchOlderMessages,
   });
 
+  // `initial: false` — the pair-mount logic in pair.tsx owns landing scrolls
+  // (dock-to-top on send, instant land-at-bottom for completed threads,
+  // resumedFromBackground no-yank). The lib must not scroll on mount; it
+  // only takes over once mounted, following growth during streaming.
+  const stick = useStickToBottom({ initial: false });
+  // Merge our own plain ref (read by useTopSentinel for the IntersectionObserver
+  // root + scroll-anchor math) with the library's scrollRef callback, both
+  // targeting the same `data-chat-scroller` element.
+  //
+  // Recreated on every render by design (not memoized): each call detaches
+  // the previous node and reattaches the same one, which is idempotent, so
+  // correctness never depends on the React Compiler memoizing this closure —
+  // it's just a nice-to-have if it does.
+  const setScrollerEl = (node: HTMLDivElement | null) => {
+    scrollRef.current = node;
+    stick.scrollRef(node);
+  };
+
   return (
     <SubtaskRunsProvider messages={messages}>
       <div
-        ref={scrollRef}
+        ref={setScrollerEl}
         data-chat-scroller
-        className="w-full min-w-0 max-w-full overflow-y-auto h-full overflow-x-hidden"
+        // CONSTRAINT: this element's COMPUTED `overflow` shorthand must stay
+        // in {auto, scroll} or use-stick-to-bottom's wheel-escape dies. The
+        // lib's wheel handler walks ancestors testing
+        // `["scroll","auto"].includes(getComputedStyle(el).overflow)` — the
+        // SHORTHAND, not overflow-y alone. `overflow-y-auto` with an unset
+        // overflow-x computes (CSS visible→auto coercion, since the two
+        // longhands differ) to a single `"auto"` shorthand, which passes.
+        // Adding `overflow-x-hidden` HERE would make it `"hidden auto"` and
+        // fail the test, killing wheel-up escape on the primary chat
+        // scroller. That's why horizontal clipping lives on the contentRef
+        // wrapper below instead, not here.
+        className="w-full min-w-0 max-w-full overflow-y-auto h-full [container-type:size]"
         style={{ paddingBottom }}
       >
-        <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
-          <div ref={sentinelRef} aria-hidden className="h-px" />
-          {isFetchingOlder && (
-            <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
-              Loading older messages…
+        {/*
+          Single wrapper around ALL scrollable content so the lib's
+          ResizeObserver (on contentRef) sees growth from both the older
+          pairs AND the streaming last pair. Height is left auto/content-
+          driven (plain block) so it grows/shrinks with content — required
+          for the ResizeObserver to fire on every size change.
+
+          `overflow-x-hidden` carries the horizontal-clipping defense moved
+          off the scroller above (see its comment): this wrapper never
+          scrolls vertically (its height is unconstrained, so content never
+          exceeds it), so its own computed shorthand ("hidden auto") is
+          harmless — it's invisible to the lib's wheel-escape ancestor walk
+          either way.
+
+          `[container-type:size]` above (on the scroller) + `min-h-[100cqh]`
+          below (on the last-pair wrapper) replace the old `min-h-full`:
+          percentage `min-height` only resolves against a DIRECT ancestor
+          with a definite height, but this wrapper's height is intentionally
+          auto/content-driven, breaking that chain. Container query units
+          (`cqh`) resolve against the nearest size-container ancestor
+          (the scroller) regardless of how many auto-height boxes sit in
+          between, so "last pair >= one viewport tall" still holds — the
+          invariant pair.tsx's dock-to-top scroll depends on (docked-at-top
+          == scrolled-to-bottom for short replies). Verified in a live
+          browser: identical scrollHeight/scrollTop math to the pre-refactor
+          single-level min-h-full, with or without the highlight-stack's
+          inline paddingBottom on the scroller.
+        */}
+        <div ref={stick.contentRef} className="overflow-x-hidden">
+          <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
+            <div ref={sentinelRef} aria-hidden className="h-px" />
+            {isFetchingOlder && (
+              <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
+                Loading older messages…
+              </div>
+            )}
+            {messagePairs.slice(0, -1).map((pair, index) => (
+              <MessagePair
+                key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
+                pair={pair}
+                isLastPair={false}
+                status={index === messagePairs.length - 1 ? status : undefined}
+              />
+            ))}
+          </div>
+          {lastMessagePair && (
+            <div className="min-h-[100cqh] min-w-0 max-w-2xl mx-auto w-full">
+              <MessagePair
+                key={`pair-${lastMessagePair.user?.id ?? lastMessagePair.assistant?.id}`}
+                pair={lastMessagePair}
+                isLastPair={true}
+                status={status}
+              />
             </div>
           )}
-          {messagePairs.slice(0, -1).map((pair, index) => (
-            <MessagePair
-              key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
-              pair={pair}
-              isLastPair={false}
-              status={index === messagePairs.length - 1 ? status : undefined}
-            />
-          ))}
         </div>
-        {lastMessagePair && (
-          <div className="min-h-full min-w-0 max-w-2xl mx-auto w-full">
-            <MessagePair
-              key={`pair-${lastMessagePair.user?.id ?? lastMessagePair.assistant?.id}`}
-              pair={lastMessagePair}
-              isLastPair={true}
-              status={status}
-            />
-          </div>
-        )}
       </div>
     </SubtaskRunsProvider>
   );
