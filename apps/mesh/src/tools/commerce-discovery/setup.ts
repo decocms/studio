@@ -41,10 +41,6 @@ const CommerceDiscoverySetupOutputSchema = z.object({
   }),
 });
 
-function isMissingToken(connection: ConnectionEntity): boolean {
-  return !connection.connection_token;
-}
-
 async function rereadConnectionOrThrow(
   ctx: StudioContext,
   connectionId: string,
@@ -125,33 +121,44 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       virtualMcp: false,
     };
 
-    if (connection && isMissingToken(connection)) {
-      const auth = await fetchCommerceDiscoveryAuth({
-        siteUrl: normalized.value,
-        orgId: organization.id,
-        orgName: organization.name,
-        ...claimContact,
-      });
-      if (auth.authorizationToken) {
-        console.log("[commerce-discovery] repairing missing auth token", {
-          orgId: organization.id,
-          siteUrl: normalized.value,
-          connectionId,
-        });
-        connection = await ctx.storage.connections.update(connection.id, {
-          connection_token: auth.authorizationToken,
-        });
-      }
-    }
+    // Claim the CURRENT site for this org, unconditionally, on every setup.
+    //
+    // The claim is Commerce Discovery's master-gated per-(org, site) upgrade —
+    // POST /api/v2/internal/diagnostics/:domain/upgrade — which sets the
+    // diagnostic to private, links the org, and mints a fresh report token.
+    // But the studio-side connection is keyed per ORG
+    // (WellKnownOrgMCPId.COMMERCE_DISCOVERY(organization.id)), not per site.
+    //
+    // Previously the /upgrade was only called when the connection was missing
+    // (or missing its token). So selecting an EXISTING org whose connection
+    // already had a token skipped /upgrade entirely for the new site: the site
+    // was never claimed, and the subsequent /run returned 409 not_upgraded (no
+    // private run ever started). Decouple the two lifecycles: always claim the
+    // site here (upgrade is idempotent per (org, site)), then persist the
+    // freshly-minted token + siteUrl onto the per-org connection so it follows
+    // the site currently being onboarded and always holds the newest token.
+    //
+    // This also keeps us consistent with commerce-discovery#184, which revokes
+    // prior report tokens for the URL on each /upgrade — because we persist the
+    // token returned by THIS upgrade, the connection never holds a revoked one.
+    const auth = await fetchCommerceDiscoveryAuth({
+      siteUrl: normalized.value,
+      orgId: organization.id,
+      orgName: organization.name,
+      ...claimContact,
+    });
 
-    if (!connection) {
-      const auth = await fetchCommerceDiscoveryAuth({
-        siteUrl: normalized.value,
+    if (connection) {
+      console.log("[commerce-discovery] syncing connection to claimed site", {
         orgId: organization.id,
-        orgName: organization.name,
-        ...claimContact,
+        siteUrl: normalized.value,
+        connectionId,
       });
-
+      connection = await ctx.storage.connections.update(connection.id, {
+        connection_token: auth.authorizationToken,
+        metadata: { ...(connection.metadata ?? {}), siteUrl: normalized.value },
+      });
+    } else {
       console.log("[commerce-discovery] creating connection", {
         orgId: organization.id,
         siteUrl: normalized.value,
