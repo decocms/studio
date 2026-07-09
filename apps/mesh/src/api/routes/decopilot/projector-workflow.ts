@@ -3,12 +3,24 @@ import type { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts
 import type { ProjectChunksResult } from "./project-chunks";
 import { projectChunks } from "./project-chunks";
 import { createProjectorChunkStream } from "./projector-chunk-stream";
+import { StreamIdleTimeoutError } from "./nats-chunk-source";
 import { createRunPersistence } from "./run-persistence";
 import { recordPoison } from "./projector-metrics";
 import { ProgressBumpThrottle, tapProgressStream } from "./progress-bump";
 import { resolveThreadStatus } from "./status";
 import { synthesizedErrorMessageId } from "./message-ids";
 import { foldedToUIMessage } from "./projector-seed";
+
+/**
+ * Reason string persisted to `failure_reason` when the run's subject went
+ * silent for the idle window — the wording distinguishes a liveness breach
+ * (nothing published at all) from an actual projection error in the UI and
+ * analytics (`kind: "liveness"` vs `"projection"`). unified-control-plane T4.
+ */
+export function livenessFailureReason(idleTimeoutMs: number): string {
+  const minutes = Math.round(idleTimeoutMs / 60_000);
+  return `liveness: no stream events for ${minutes}m`;
+}
 
 export function shouldSkipProjection(input: {
   status: string;
@@ -31,6 +43,11 @@ export interface ProjectorWorkflowInput {
   /** The turn's request message id — anchors the projected reply's created_at
    *  right after its own user message (queue ordering). */
   messageId?: string;
+  /** Idle window enforced on the live subject tail (unified-control-plane T4).
+   *  Threaded from `ConsumeRunProjectionOptions.idleTimeoutMs` (defaulted
+   *  there to `RUN_IDLE_TIMEOUT_MS`) down to `createProjectorChunkStream`.
+   *  Omitted → no idle enforcement (matches the pre-T4 unbounded behavior). */
+  idleTimeoutMs?: number;
 }
 
 export interface ProjectorRunRow {
@@ -57,7 +74,7 @@ export interface ProjectorWorkflowRuntime {
     runId: string,
     orgId: string,
     reason: string,
-    kind: "harness" | "transport" | "projection",
+    kind: "harness" | "transport" | "projection" | "liveness",
   ): Promise<unknown>;
   persistTitle(runId: string, orgId: string, title: string): Promise<unknown>;
   onTitleUpdated(input: {
@@ -77,7 +94,7 @@ export interface ProjectorWorkflowRuntime {
     orgId: string;
     distinctId: string;
     reason: string;
-    kind: "harness" | "projection";
+    kind: "harness" | "projection" | "liveness";
   }): Promise<void>;
   purgeRun(runId: string, fenceToken: string): Promise<void>;
 }
@@ -133,11 +150,17 @@ export async function projectFromJetStreamStep(
     await rt.messageParts.loadWindow(input.runId, { limit: 500 })
   ).messages.map(foldedToUIMessage);
   const result = await projectChunks({
+    // BOTH liveness enforcement points feed from this one stream: the tap
+    // bumps `last_progress_at` (DB reaper backstop) on every subject event,
+    // and the source's idleTimeoutMs (typed StreamIdleTimeoutError) is the
+    // in-process terminal — so executor heartbeats (data-liveness chunks)
+    // reset both automatically.
     chunkStream: tapProgressStream(
       await createProjectorChunkStream({
         js,
         runId: input.runId,
         fenceToken: input.fenceToken,
+        idleTimeoutMs: input.idleTimeoutMs,
       }),
       input.runId,
       progressThrottle,
@@ -271,25 +294,42 @@ export async function runProjectorWorkflowBody(
     // purging is safe.
     await rt.purgeRun(input.runId, input.fenceToken);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    // A silent subject (StreamIdleTimeoutError, thrown by natsChunkSource —
+    // see nats-chunk-source.ts) is a LIVENESS breach, not a projection bug:
+    // the executor died (or never started) before publishing anything, so
+    // there was nothing to project. Distinguishing it here (unified-control-
+    // plane T4) gives the thread a legible `failure_reason` instead of the
+    // generic (and misleading) "projection" catch-all every other thrown
+    // error still gets.
+    const isLivenessBreach = error instanceof StreamIdleTimeoutError;
+    const reason = isLivenessBreach
+      ? livenessFailureReason((error as StreamIdleTimeoutError).idleTimeoutMs)
+      : error instanceof Error
+        ? error.message
+        : String(error);
+    const kind = isLivenessBreach ? "liveness" : "projection";
     recordPoison(input.runId, orgId);
     const flippedOnError = await rt.markRunFailed(
       input.runId,
       orgId,
-      message,
-      "projection",
+      reason,
+      kind,
     );
     if (flippedOnError) {
       await rt.recordFailed({
         runId: input.runId,
         orgId,
         distinctId,
-        reason: message,
-        kind: "projection",
+        reason,
+        kind,
       });
     }
     // Re-throw so DBOS records the workflow failure (poison run — projection
-    // itself threw after exhausting retries; NOT a harness-error run).
+    // itself threw after exhausting retries; NOT a harness-error run). This
+    // holds for the liveness case too: the consume step genuinely failed to
+    // produce a projection, so DBOS's retry/redelivery bookkeeping still
+    // applies — the ONLY thing T4 changes is the recorded reason/kind, not
+    // the step's success/failure verdict.
     // Do NOT purge here: the DBOS workflow has failed so a potential
     // re-delivery or operator inspection of the JetStream subject is still
     // meaningful.

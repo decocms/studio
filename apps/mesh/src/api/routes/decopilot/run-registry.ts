@@ -31,8 +31,17 @@ const REAP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
  * replaces the old absolute 30-min age cap so legitimate hours-long runs that
  * keep streaming are never killed (A1), while a flapping run that resumes but
  * makes no real progress still trips (A2).
+ *
+ * Exported (unified-control-plane T4): also the ONE idle window the gate-side
+ * consume path (`consume-run-projection.ts` → `natsChunkSource`) enforces on
+ * the live subject tail. The reaper watches `last_progress_at` (DB-level,
+ * cross-pod); the consume-side timer watches the subject directly
+ * (in-process, per-attempt) — two different enforcement points, but they must
+ * agree on the SAME window so neither fires meaningfully earlier/later than
+ * the other for the same stall. See `livenessFailureReason` in
+ * `projector-workflow.ts` for the consume-side terminal this produces.
  */
-const RUN_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+export const RUN_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 /** Events that mark a new inflight run. */
 const INFLIGHT_START_EVENTS = new Set(["RUN_STARTED", "RUN_RESUMED"]);

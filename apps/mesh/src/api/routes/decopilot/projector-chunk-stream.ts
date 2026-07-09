@@ -3,7 +3,6 @@ import { DeliverPolicy, type JetStreamClient } from "@nats-io/jetstream";
 import { DECOPILOT_STREAM_NAME } from "./projector-stream-messages";
 import {
   assertContiguousAndDedup,
-  DEFAULT_IDLE_TIMEOUT_MS,
   fenceFilter,
   natsChunkSource,
   projectorChunkStream,
@@ -24,6 +23,11 @@ export interface ProjectorChunkStreamOptions {
     | Iterable<ProjectorStreamMessage>;
   runId: string;
   fenceToken: string;
+  /** Omit for no idle enforcement (live tail). The projector's production
+   *  caller always supplies `RUN_IDLE_TIMEOUT_MS` (defaulted in
+   *  `consume-run-projection.ts` — see that file's `ConsumeRunProjectionOptions`
+   *  doc) — this module stays agnostic of that constant so it can also back
+   *  the unbounded UI live-tail (`nats-stream-buffer.ts`). */
   idleTimeoutMs?: number;
   /**
    * Cleanup callback wired as the source's `onCancel`. Fires once when the
@@ -49,7 +53,7 @@ export function createProjectorChunkStreamFromMessages(
 ): ReadableStream<UIMessageChunk> {
   const source = natsChunkSource({
     messages: options.messages,
-    idleTimeoutMs: options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+    idleTimeoutMs: options.idleTimeoutMs,
     onCancel: options.onDone,
   });
   const events = source

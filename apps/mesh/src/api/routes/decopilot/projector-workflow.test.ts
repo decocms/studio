@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ProjectChunksResult } from "./project-chunks";
 import {
+  livenessFailureReason,
   runProjectorWorkflowBody,
   shouldSkipProjection,
 } from "./projector-workflow";
@@ -8,6 +9,7 @@ import type {
   ProjectorWorkflowRuntime,
   ProjectorWorkflowInput,
 } from "./projector-workflow";
+import { StreamIdleTimeoutError } from "./nats-chunk-source";
 
 describe("projector workflow helpers", () => {
   test("does not skip terminal runs for the same fence", () => {
@@ -298,6 +300,41 @@ describe("runProjectorWorkflowBody", () => {
     expect(failCall.reason).toBeTruthy();
     const recordFailCall = calls.find((c) => c.kind === "record-fail");
     expect(recordFailCall?.failKind).toBe("projection");
+    expect(recordFailCall?.reason).toBe(failCall.reason);
+    expect(recordFailCall?.runId).toBe("run_1");
+    expect(recordFailCall?.orgId).toBe("org_1");
+    expect(recordFailCall?.distinctId).toBe("user_1");
+  });
+
+  // unified-control-plane T4: a StreamIdleTimeoutError (thrown by
+  // natsChunkSource — nats-chunk-source.ts — when the subject goes silent for
+  // idleTimeoutMs) is a LIVENESS breach, not a projection bug, and must be
+  // recorded distinctly so `failure_reason` reads as a liveness terminal
+  // instead of the generic (and misleading) "projection" catch-all every
+  // other thrown error still gets — see the "projection throw" test above for
+  // the unchanged-baseline comparison.
+  test("silence (StreamIdleTimeoutError) throw → markRunFailed(kind='liveness') with a liveness reason, and workflow re-throws", async () => {
+    const { rt, calls } = makeRuntime();
+    const idleTimeoutMs = 10 * 60_000; // RUN_IDLE_TIMEOUT_MS (10m)
+    const projectFn = async () => {
+      throw new StreamIdleTimeoutError(idleTimeoutMs);
+    };
+
+    await expect(
+      runProjectorWorkflowBody(input, rt, projectFn),
+    ).rejects.toBeInstanceOf(StreamIdleTimeoutError);
+
+    const failCalls = calls.filter((c) => c.kind === "fail");
+    const completeCalls = calls.filter((c) => c.kind === "complete");
+
+    expect(completeCalls).toHaveLength(0);
+    expect(failCalls).toHaveLength(1);
+    const failCall = failCalls[0]!;
+    expect(failCall.failKind).toBe("liveness");
+    expect(failCall.reason).toBe(livenessFailureReason(idleTimeoutMs));
+    expect(failCall.reason).toBe("liveness: no stream events for 10m");
+    const recordFailCall = calls.find((c) => c.kind === "record-fail");
+    expect(recordFailCall?.failKind).toBe("liveness");
     expect(recordFailCall?.reason).toBe(failCall.reason);
     expect(recordFailCall?.runId).toBe("run_1");
     expect(recordFailCall?.orgId).toBe("org_1");
