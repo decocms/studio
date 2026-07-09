@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   bindCommerceDiscoveryResource,
+  CommerceDiscoveryClaimError,
+  commerceDiscoveryClaimMessagePtBr,
   fetchCommerceDiscoveryAuth,
   fetchCommerceDiscoveryConnectionStatus,
   triggerCommerceDiscoveryRun,
@@ -83,6 +85,74 @@ describe("fetchCommerceDiscoveryAuth", () => {
     );
   });
 
+  async function captureClaimError(
+    fetchImpl: () => Promise<Response>,
+    input: Partial<{ siteUrl: string; email: string }> = {},
+  ): Promise<CommerceDiscoveryClaimError> {
+    try {
+      await fetchCommerceDiscoveryAuth(
+        {
+          siteUrl: input.siteUrl ?? "https://example.com",
+          orgId: "org_123",
+          ...(input.email ? { email: input.email } : {}),
+        },
+        {
+          baseUrl: "https://commerce.example.test",
+          apiKey: "master-key",
+          fetchImpl,
+        },
+      );
+    } catch (error) {
+      if (error instanceof CommerceDiscoveryClaimError) return error;
+      throw error;
+    }
+    throw new Error("expected fetchCommerceDiscoveryAuth to reject");
+  }
+
+  test("maps a 403 ownership_unverified to a friendly pt-BR message with email + domain", async () => {
+    const error = await captureClaimError(
+      async () =>
+        Response.json(
+          { error: "ownership_unverified", reason: "domain_mismatch" },
+          { status: 403 },
+        ),
+      { siteUrl: "https://loja.com.br/path", email: "someone@gmail.com" },
+    );
+
+    expect(error.code).toBe("ownership_unverified");
+    expect(error.message).toContain("someone@gmail.com");
+    expect(error.message).toContain("loja.com.br");
+    expect(error.message).toContain("permissão para reivindicar");
+  });
+
+  test("maps a 409 already_claimed_by_other_org to a distinct support message", async () => {
+    const error = await captureClaimError(
+      async () =>
+        Response.json(
+          { error: "already_claimed_by_other_org" },
+          { status: 409 },
+        ),
+      { email: "owner@example.com" },
+    );
+
+    expect(error.code).toBe("already_claimed_by_other_org");
+    expect(error.message).toContain("outra organização");
+    expect(error.message).toContain("suporte");
+    // Must NOT tell the user to just retry.
+    expect(error.message).not.toContain("Tente novamente");
+  });
+
+  test("maps an unrecognized/generic upgrade failure to the generic fallback", async () => {
+    const error = await captureClaimError(async () =>
+      Response.json({ error: "missing_org_id" }, { status: 400 }),
+    );
+
+    expect(error.code).toBe("unknown");
+    expect(error.message).toContain(
+      "Não foi possível configurar o Commerce Discovery",
+    );
+  });
+
   test("rejects upgrade responses without a token", async () => {
     await expect(
       fetchCommerceDiscoveryAuth(
@@ -99,6 +169,48 @@ describe("fetchCommerceDiscoveryAuth", () => {
     ).rejects.toThrow(
       "Commerce Discovery auth response did not include a token.",
     );
+  });
+});
+
+describe("commerceDiscoveryClaimMessagePtBr", () => {
+  test("ownership_unverified interpolates email + domain and guides to a different email / domain alias", () => {
+    const message = commerceDiscoveryClaimMessagePtBr("ownership_unverified", {
+      email: "someone@gmail.com",
+      domain: "loja.com.br",
+    });
+    expect(message).toContain("someone@gmail.com");
+    expect(message).toContain("loja.com.br");
+    expect(message).toContain("e-mail do domínio do site");
+    expect(message).toContain("autorizar seu domínio");
+  });
+
+  test("ownership_unverified degrades gracefully without email/domain", () => {
+    const message = commerceDiscoveryClaimMessagePtBr("ownership_unverified");
+    expect(message).toContain("Este e-mail");
+    expect(message).toContain("este site");
+  });
+
+  test("already_claimed_by_other_org points to support and does NOT suggest retrying", () => {
+    const message = commerceDiscoveryClaimMessagePtBr(
+      "already_claimed_by_other_org",
+    );
+    expect(message).toContain("outra organização");
+    expect(message).toContain("suporte");
+    expect(message).not.toContain("Tente novamente");
+  });
+
+  test("the two main codes produce genuinely different messages", () => {
+    expect(commerceDiscoveryClaimMessagePtBr("ownership_unverified")).not.toBe(
+      commerceDiscoveryClaimMessagePtBr("already_claimed_by_other_org"),
+    );
+  });
+
+  test("unknown falls back to a generic friendly message", () => {
+    const message = commerceDiscoveryClaimMessagePtBr("unknown");
+    expect(message).toContain(
+      "Não foi possível configurar o Commerce Discovery",
+    );
+    expect(message).toContain("Tente novamente");
   });
 });
 
