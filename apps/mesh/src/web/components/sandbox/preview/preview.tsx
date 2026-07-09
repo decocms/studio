@@ -45,6 +45,7 @@ import {
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { withVariantMatcherOverride } from "@/web/components/sections-editor/variant-matcher-override";
 import { parseSections } from "@/web/components/sections-editor/parse-sections";
+import { resolveSectionCandidates } from "./section-candidates";
 import { getPageVariantSectionsAt } from "@/web/components/sections-editor/page-variants";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import {
@@ -133,69 +134,6 @@ const DEVICE_LABELS: Record<PreviewDeviceSize, string> = {
   tablet: "Tablet (768px)",
   desktop: "Desktop",
 };
-
-const LAZY_RESOLVE_TYPE = "website/sections/Rendering/Lazy.tsx";
-
-/**
- * Candidate top-level `data-manifest-key`s a page section can render as, used
- * iframe-side to align the editable run within the DOM. Saved-block refs
- * (globals) resolve to their underlying component. A Lazy returns BOTH its
- * loader key and the inner section's key — the classic runtime keeps the Lazy
- * wrapper at top level, TanStack renders the inner section directly. Multivariate
- * flags render an unpredictable active variant, so they return [] (a wildcard
- * the iframe treats as "matches anything").
- */
-function resolveSectionCandidates(
-  section: { __resolveType?: unknown; section?: unknown; variants?: unknown },
-  decofile: Record<string, unknown>,
-): string[] {
-  let obj: { __resolveType?: unknown; section?: unknown; variants?: unknown } =
-    section;
-  let rt = typeof obj?.__resolveType === "string" ? obj.__resolveType : "";
-  for (let i = 0; rt && i < 5; i++) {
-    const block = decofile[rt];
-    if (block && typeof block === "object" && "__resolveType" in block) {
-      const next = (block as { __resolveType?: unknown }).__resolveType;
-      if (typeof next === "string" && next && next !== rt) {
-        obj = block as typeof obj;
-        rt = next;
-        continue;
-      }
-    }
-    break;
-  }
-  if (!rt) return [];
-  // Multivariate (A/B) renders one of its variants — collect every variant's
-  // possible key so it matches whichever rendered (NOT a blind wildcard, which
-  // could otherwise grab an adjacent framework section).
-  if (rt.includes("flags/multivariate")) {
-    const variants = Array.isArray(obj.variants) ? obj.variants : [];
-    const keys: string[] = [];
-    for (const v of variants) {
-      const value = (v as { value?: unknown })?.value;
-      if (value && typeof value === "object") {
-        for (const k of resolveSectionCandidates(
-          value as { __resolveType?: unknown },
-          decofile,
-        )) {
-          if (!keys.includes(k)) keys.push(k);
-        }
-      }
-    }
-    return keys;
-  }
-  if (rt === LAZY_RESOLVE_TYPE) {
-    const inner =
-      obj.section && typeof obj.section === "object"
-        ? resolveSectionCandidates(
-            obj.section as { __resolveType?: unknown },
-            decofile,
-          )
-        : [];
-    return inner.length ? [rt, ...inner] : [rt];
-  }
-  return [rt];
-}
 
 /**
  * Inline editor for one `:param` token, rendered in place inside the URL

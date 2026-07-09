@@ -88,21 +88,32 @@ export const CMS_EDITOR_SCRIPT = `(function() {
 
   // Candidate manifest keys per editable section, sent by the editor. Each
   // entry is an array of acceptable DOM keys: [] = wildcard (e.g. multivariate,
-  // whose rendered key we can't predict); a Lazy lists both its loader key and
-  // the inner section's key, since the classic runtime keeps the Lazy wrapper
-  // at top level while TanStack renders the inner section directly.
+  // whose rendered key we can't predict); null = renders NOTHING (hidden
+  // section — multivariate whose variants are all gated by never), so the
+  // alignment must not consume a DOM node for it; a Lazy lists both its loader
+  // key and the inner section's key, since the classic runtime keeps the Lazy
+  // wrapper at top level while TanStack renders the inner section directly.
   var sectionCandidates = [];
 
   // Best in-order assignment of editable sections to DOM sections, maximizing
   // key matches (DP / LCS-style). deco injects framework sections (SEO, Theme,
   // Session, …) that may lead, trail, OR interleave with the editable run; this
-  // skips whichever don't match, on any runtime — no hardcoded list.
+  // skips whichever don't match, on any runtime — no hardcoded list. Hidden
+  // sections (null candidates) have no DOM node: only visible entries are
+  // aligned, then scattered back to their decofile positions (null-filled), so
+  // returned indexes still match the decofile array.
   var computeAlignment = function(tops) {
-    var N = sectionCandidates.length, M = tops.length;
-    if (!N || M < N) return tops.slice();
+    var visible = [], k;
+    for (k = 0; k < sectionCandidates.length; k++) {
+      if (sectionCandidates[k] !== null) visible.push(k);
+    }
+    var N = visible.length, M = tops.length;
+    var res = new Array(sectionCandidates.length).fill(null);
+    if (!N) return res;
+    if (M < N) return tops.slice();
     var domKeys = tops.map(function(s) { return s.getAttribute("data-manifest-key"); });
     var match = function(i, j) {
-      var c = sectionCandidates[i];
+      var c = sectionCandidates[visible[i]];
       if (!c || !c.length) return 1;
       return c.indexOf(domKeys[j]) >= 0 ? 1 : 0;
     };
@@ -116,10 +127,9 @@ export const CMS_EDITOR_SCRIPT = `(function() {
         else { dp[i][j] = assign; bt[i][j] = 1; }
       }
     }
-    var res = new Array(N);
     i = N; j = M;
     while (i > 0) {
-      if (bt[i][j] === 1) { res[i - 1] = tops[j - 1]; i--; j--; }
+      if (bt[i][j] === 1) { res[visible[i - 1]] = tops[j - 1]; i--; j--; }
       else { j--; }
     }
     return res;
