@@ -3,6 +3,7 @@ import { OrgAccessGate } from "@/web/components/org-access-gate";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { SidebarReleaseCard } from "@/web/components/release-channel/sidebar-release-card";
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
+import { VersionCheckDialog } from "@/web/components/version-check-dialog";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
@@ -361,6 +362,8 @@ function ShellLayoutContent() {
         open={shortcutsDialogOpen}
         onOpenChange={setShortcutsDialogOpen}
       />
+
+      <VersionCheckDialog />
     </ShellProjectProvider>
   );
 }
