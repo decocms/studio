@@ -105,6 +105,12 @@ export class SetupOrchestrator {
 
   /** Studio retry endpoint → resume from a named step. Fire-and-forget. */
   resumeFrom(step: Step): void {
+    // A retry is explicit intent: clear a dev-script-failure `error` so the
+    // enqueued step isn't silently skipped by stepStart's status gate. `paused`
+    // is deliberately left alone — that's a user stop, not a failure.
+    if (this.deps.getStatus().state === "error") {
+      this.deps.setStatus({ state: "running" });
+    }
     this.enqueueStep(step);
   }
 
@@ -464,6 +470,16 @@ export class SetupOrchestrator {
       this.chunk(
         `[orchestrator] dev already running (${command.source}) — skipping restart\r\n`,
       );
+      // The dev task we would have spawned is already up (same command+cwd),
+      // but a prior failure may have left lifecycle at a terminal phase the
+      // probe refuses to promote from. Reconcile: enter `starting` so the
+      // probe can confirm `running` on its next healthy response. No-op when
+      // the lifecycle already reflects a live server.
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
+      const cur = this.deps.lifecycle.current().phase;
+      if (cur !== "running" && cur !== "starting") {
+        this.deps.lifecycle.transition({ phase: "starting" });
+      }
       return;
     }
     await this.stopDevTask();

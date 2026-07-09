@@ -388,6 +388,9 @@ const execH = makeExecHandler({
   repoDir,
   store,
   taskManager,
+  lifecycle,
+  getStatus: () => currentStatus,
+  setStatus,
 });
 
 const tasksListH = makeTasksListHandler({ taskManager });
