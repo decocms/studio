@@ -11,6 +11,7 @@ import { isLocalMode } from "@/auth/local-mode";
 import { getInternalUrl } from "@/core/server-constants";
 import { getSettings } from "@/settings";
 import { buildAuthConfig, type AuthConfig } from "@/api/routes/auth";
+import pkg from "../../../package.json" with { type: "json" };
 
 const app = new Hono();
 
@@ -18,6 +19,11 @@ const app = new Hono();
  * Public configuration exposed to the UI
  */
 export type PublicConfig = {
+  /**
+   * Deployed server version (apps/mesh/package.json). Compared against the
+   * client's build-time `__MESH_VERSION__` to detect a stale bundle.
+   */
+  version: string;
   /**
    * Theme customization for light and dark modes.
    * Contains CSS variable overrides that will be injected into the document.
@@ -94,6 +100,7 @@ function buildPosthogConfig(): PublicConfig["posthog"] {
  */
 app.get("/", (c) => {
   const config: PublicConfig = {
+    version: pkg.version,
     theme: getThemeConfig(),
     ...(getConfig().logo && { logo: getConfig().logo }),
     // Only expose internalUrl in local mode — production uses the public URL directly
