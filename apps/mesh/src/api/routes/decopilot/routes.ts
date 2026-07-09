@@ -834,13 +834,33 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       });
     });
 
-    // Tear down the hosted-harness child workflow (Task 7b). The in-memory cancel
-    // below (cancelBroadcast + run-registry CANCEL → AbortController) already
-    // stops the running harness loop; this additionally tells DBOS to stop
-    // recovering / retrying the child on pod recycles. Keyed by
-    // `decopilot-hosted:<runId>:<fenceToken>` — read the current fence from the
-    // thread row. Best-effort: cancelling an already-finished/unknown workflow
-    // (e.g. desktop runs, which have no hosted child) must not fail the cancel.
+    // Tear down the hosted-harness child workflow (Task 7b / unified-control-
+    // plane T7). Division of labor vs. the in-memory cancel below
+    // (cancelBroadcast + run-registry CANCEL → AbortController):
+    //   - RUNNING child (already dequeued, `runHostedHarness` step executing):
+    //     `DBOS.cancelWorkflow` (called by `cancelHostedHarness`) is a pure DB
+    //     status flip to CANCELLED — DBOS only checks that flag BEFORE a step
+    //     starts / when recording a step's result, never mid-step (verified
+    //     against @dbos-inc/dbos-sdk 4.21.6's `callStepFunction` — no
+    //     AbortSignal is threaded into an in-flight non-timeout step call). So
+    //     for an already-running child this call does NOT stop the agent loop
+    //     in real time; the run-registry's `abortController.abort()` below
+    //     (wired into the harness kernel call via `registrySignal` in
+    //     dispatch-run.ts) is what actually interrupts it. What this call DOES
+    //     guarantee for a running child: it can never later report SUCCESS,
+    //     and — because the child has `maxRecoveryAttempts: 1000` for
+    //     multi-hour survivability — a pod crash right after Stop can't have
+    //     DBOS's recovery executor resurrect/re-run it on a new pod.
+    //   - ENQUEUED child (started but not yet dequeued by the concurrency=1
+    //     hosted-harness queue partition — no in-memory run/AbortController
+    //     exists yet for the registry cancel to reach): this call flips it
+    //     straight to CANCELLED and clears its queue slot, so it is NEVER
+    //     dequeued/executed — a full, real cancel for that narrow window.
+    // Keyed by `decopilot-hosted:<runId>:<fenceToken>` (`hostedChildWorkflowId`,
+    // the same single source of truth `startHostedHarness` uses) — read the
+    // current fence from the thread row. Best-effort: cancelling an
+    // already-finished/unknown workflow (e.g. desktop runs, which have no
+    // hosted child) must not fail the cancel.
     try {
       const fenceToken = await ctx.storage.threads.getRunFence(taskId);
       if (fenceToken) {

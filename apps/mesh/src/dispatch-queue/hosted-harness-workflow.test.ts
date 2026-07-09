@@ -238,8 +238,11 @@ describe("hostedChildWorkflowId", () => {
     // Source-text assertion: both call sites must read through this helper
     // rather than reconstructing the `decopilot-hosted:` string independently
     // (the exact drift this export exists to prevent — see the module doc
-    // comment; unified-control-plane T7 will add a third call site for
-    // stop-cancellation).
+    // comment). unified-control-plane T7 (stop cancels the live hosted
+    // child) reuses `cancelHostedHarness` from `cancelActiveThreadRun`
+    // (routes.ts's stop path) instead of adding a third direct call site —
+    // see routes.test.ts's "cancelActiveThreadRun (T7...)" describe block
+    // for that regression coverage.
     const src = readFileSync(
       join(import.meta.dir, "hosted-harness-workflow.ts"),
       "utf8",
