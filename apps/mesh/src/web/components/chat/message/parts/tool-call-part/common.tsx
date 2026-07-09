@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowRight, ChevronRight, Check, Copy01 } from "@untitledui/icons";
 import { formatDuration } from "@/web/lib/format-time.ts";
@@ -10,8 +10,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@deco/ui/components/collapsible.tsx";
-import { useAutoScroll } from "@deco/ui/hooks/use-auto-scroll.ts";
 import { useCopy } from "@deco/ui/hooks/use-copy.ts";
+import { useStickToBottom } from "use-stick-to-bottom";
 import { MessageUsageStats } from "../../../usage-stats.tsx";
 import type { UsageStats as UsageStatsType } from "@/web/lib/usage-utils.ts";
 
@@ -74,11 +74,26 @@ export function ToolCallShell({
   const isSubtask = variant === "subtask";
   const effectiveOpen = (forceOpen ?? false) || isExpanded;
 
-  const detailScrollRef = useRef<HTMLDivElement>(null);
-  const { sentinelRef } = useAutoScroll({
-    containerRef: detailScrollRef,
-    enabled: isLoading && effectiveOpen,
-    contentDeps: [detail],
+  // Tool-detail pane auto-follow, independent from the main chat scroller's
+  // useStickToBottom instance. The lib exposes no `enabled` flag, so gating
+  // relies on mount/unmount instead: CollapsibleContent (Radix) unmounts the
+  // pane's DOM entirely when collapsed, which detaches these refs (the lib's
+  // scrollRef/contentRef callbacks clean up their listeners/observer on
+  // `null`) and reattaches them fresh the next time the pane opens.
+  // `initial: isLoading ? "instant" : false`: a pane opened WHILE the tool
+  // is still streaming already holds the full accumulated `detail` text on
+  // mount (it kept updating while unmounted), so land at the bottom
+  // immediately instead of visibly animating down from the top — matches
+  // the old `useAutoScroll({ enabled: isLoading && effectiveOpen })`
+  // behavior. A pane opened AFTER the tool finished must NOT auto-scroll:
+  // `initial: false` leaves it at its natural (top) position instead of
+  // snapping a large finished result to the bottom. The pane mounts fresh
+  // on every open (CollapsibleContent unmounts on close), so `isLoading` is
+  // read at exactly the right moment; a pane already open across the
+  // loading→done transition needs no special handling since `initial` only
+  // applies to the mount-time scroll.
+  const detailStick = useStickToBottom({
+    initial: isLoading ? "instant" : false,
   });
   const logRow = (
     <Collapsible
@@ -183,22 +198,27 @@ export function ToolCallShell({
           ) : detailVariant === "prose" ? (
             <div className="mt-1 mb-1">
               <div
-                ref={detailScrollRef}
+                ref={detailStick.scrollRef}
                 className="max-h-[150px] overflow-y-auto rounded-md bg-muted/30 px-3 py-2"
               >
-                <p className="text-xs text-muted-foreground/70 whitespace-pre-wrap leading-relaxed wrap-break-word">
+                <p
+                  ref={detailStick.contentRef}
+                  className="text-xs text-muted-foreground/70 whitespace-pre-wrap leading-relaxed wrap-break-word"
+                >
                   {detail}
                 </p>
-                <div ref={sentinelRef} className="h-0 shrink-0" />
               </div>
             </div>
           ) : (
             <div className="ml-[20px] pl-3 border-l border-border/30 mt-0.5 pb-1">
               <div
-                ref={detailScrollRef}
+                ref={detailStick.scrollRef}
                 className="flex flex-col max-h-48 overflow-y-auto"
               >
-                <div className="flex items-start justify-between gap-2">
+                <div
+                  ref={detailStick.contentRef}
+                  className="flex items-start justify-between gap-2"
+                >
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <pre className="text-xs font-mono text-muted-foreground/70 whitespace-pre-wrap wrap-break-word">
                       {detail}
@@ -217,7 +237,6 @@ export function ToolCallShell({
                     )}
                   </button>
                 </div>
-                <div ref={sentinelRef} className="h-0 shrink-0" />
               </div>
             </div>
           )}
