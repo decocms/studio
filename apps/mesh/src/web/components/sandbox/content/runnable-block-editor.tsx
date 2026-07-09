@@ -109,7 +109,7 @@ export function RunnableBlockEditor({
     virtualMcpId,
     branch,
   });
-  const run = useRunBlock(previewUrl);
+  const run = useRunBlock({ orgSlug, virtualMcpId, branch });
 
   // useDebouncedSaveBlock CANCELS pending saves on unmount (its documented
   // contract is that leaving callers flush explicitly). This editor unmounts on

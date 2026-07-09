@@ -54,17 +54,30 @@ describe("parseLoaderInvokeRequest", () => {
       payload: { ids: ["149524"] },
     });
   });
+
+  test("keeps sibling fields next to a nested props key", () => {
+    expect(
+      parseLoaderInvokeRequest({
+        __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+        props: { ids: ["149524"] },
+        simulationBehavior: "default",
+      }),
+    ).toEqual({
+      resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+      payload: { props: { ids: ["149524"] }, simulationBehavior: "default" },
+    });
+  });
 });
 
 describe("buildLoaderInvokeUrl", () => {
-  test("encodes resolveType in path", () => {
+  test("keeps the resolveType raw in the path (slashes intact)", () => {
     expect(
       buildLoaderInvokeUrl(
         "https://preview.example.com/",
         "vtex/loaders/intelligentSearch/productList.ts",
       ),
     ).toBe(
-      "https://preview.example.com/deco/invoke/vtex%2Floaders%2FintelligentSearch%2FproductList.ts",
+      "https://preview.example.com/deco/invoke/vtex/loaders/intelligentSearch/productList.ts",
     );
   });
 });
