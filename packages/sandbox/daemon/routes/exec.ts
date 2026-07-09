@@ -1,9 +1,12 @@
 import type { TenantConfigStore } from "../config-store";
 import {
   PACKAGE_MANAGER_DAEMON_CONFIG,
+  WELL_KNOWN_STARTERS,
   buildDevEnv,
   pmRunCommand,
 } from "../constants";
+import type { DaemonStatus } from "../events/types";
+import type { LifecycleManager } from "../lifecycle/manager";
 import type { TaskManager } from "../process/task-manager";
 import { discoverScripts } from "../process/script-discovery";
 import { jsonResponse, parseJsonBody } from "./body-parser";
@@ -16,6 +19,10 @@ export interface ExecDeps {
   repoDir: string;
   store: TenantConfigStore;
   taskManager: TaskManager;
+  /** Lifecycle/status reconciliation when the exec'd script is a dev starter. */
+  lifecycle: LifecycleManager;
+  getStatus: () => DaemonStatus;
+  setStatus: (next: DaemonStatus) => void;
 }
 
 interface ExecBody {
@@ -97,6 +104,28 @@ export function makeExecHandler(deps: ExecDeps) {
       pmConf.runPrefix,
       name,
     );
+
+    // Manually running a dev starter is explicit intent to (re)start the dev
+    // server — the same WELL_KNOWN_STARTERS list whose non-zero exit wedges
+    // status=error / lifecycle=start-failed must also unwedge them, or the
+    // daemon can never report healthy again (the probe refuses to promote
+    // from terminal phases, and stepStart skips while status=error). Only
+    // failure-ish states are touched: a mid-pipeline phase (cloning/
+    // installing/starting) or a live `running` is left alone, and `paused`
+    // (user stop) is respected.
+    if ((WELL_KNOWN_STARTERS as readonly string[]).includes(name)) {
+      if (deps.getStatus().state === "error") {
+        deps.setStatus({ state: "running" });
+      }
+      const phase = deps.lifecycle.current().phase;
+      // Deliberately narrower than stepStart's reconciliation (which also
+      // covers clone-failed/install-failed): a manual dev exec can't repair a
+      // broken clone/install — those wedges have their own resumeFrom retry
+      // endpoints, and pretending `starting` there would lie to the probe.
+      if (phase === "idle" || phase === "start-failed" || phase === "crashed") {
+        deps.lifecycle.transition({ phase: "starting" });
+      }
+    }
 
     const task = await deps.taskManager.spawn({
       command: cmd,

@@ -466,3 +466,264 @@ describe("SetupOrchestrator status transitions", () => {
     }
   });
 });
+
+describe("SetupOrchestrator lifecycle wedge fixes", () => {
+  // Regression: once a dev script exits non-zero, status flips to `error`
+  // and lifecycle to `start-failed` (see "flips status to error" above). With
+  // nothing to clear `error`, stepStart's status gate silently skips every
+  // future `start` step forever — the daemon can never report healthy again.
+  // These two entry points are the only ways out: an explicit studio retry
+  // (resumeFrom) and the orchestrator itself confirming the exact dev
+  // command+cwd is already running (stepStart's already-running branch).
+
+  it("resumeFrom clears an error status before the step enqueues", () => {
+    const { dir, cleanup } = tempRoot();
+    try {
+      const broadcaster = new Broadcaster(1024);
+      const { lifecycle } = makeLifecycleSpy(broadcaster);
+      let status: { state: string; reason?: string } = {
+        state: "error",
+        reason: "dev script exited with code 1",
+      };
+      const statusCalls: Array<{ state: string }> = [];
+
+      const orchestrator = new SetupOrchestrator({
+        bootConfig: { appRoot: dir, repoDir: join(dir, "repo") },
+        store: {
+          read: () => null,
+          hydrate: () => {},
+          applyInternal: async () => ({
+            kind: "applied",
+            before: null,
+            after: {},
+            transition: { kind: "no-op" },
+          }),
+        } as never,
+        taskManager: {
+          spawn: async () => ({ id: "t1" }),
+          killByLogName: () => 0,
+          waitForLogNamesIdle: async () => {},
+          onTaskExit: () => () => {},
+        } as never,
+        setStatus: (next) => {
+          statusCalls.push(next);
+          status = next;
+        },
+        getStatus: () => status,
+        broadcaster,
+        installState: { isInstalledFor: () => false } as never,
+        logsDir: dir,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
+      });
+
+      orchestrator.resumeFrom("start");
+
+      // resumeFrom clears status synchronously, before enqueueStep's
+      // fire-and-forget drain ever gets a chance to read it.
+      expect(statusCalls).toEqual([{ state: "running" }]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("resumeFrom leaves a paused status untouched (not a failure)", () => {
+    const { dir, cleanup } = tempRoot();
+    try {
+      const broadcaster = new Broadcaster(1024);
+      const { lifecycle } = makeLifecycleSpy(broadcaster);
+      const statusCalls: Array<{ state: string }> = [];
+
+      const orchestrator = new SetupOrchestrator({
+        bootConfig: { appRoot: dir, repoDir: join(dir, "repo") },
+        store: {
+          read: () => null,
+          hydrate: () => {},
+          applyInternal: async () => ({
+            kind: "applied",
+            before: null,
+            after: {},
+            transition: { kind: "no-op" },
+          }),
+        } as never,
+        taskManager: {
+          spawn: async () => ({ id: "t1" }),
+          killByLogName: () => 0,
+          waitForLogNamesIdle: async () => {},
+          onTaskExit: () => () => {},
+        } as never,
+        setStatus: (next) => statusCalls.push(next),
+        getStatus: () => ({ state: "paused" as const }),
+        broadcaster,
+        installState: { isInstalledFor: () => false } as never,
+        logsDir: dir,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
+      });
+
+      orchestrator.resumeFrom("start");
+
+      expect(statusCalls).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  async function drain(o: {
+    isRunning: () => boolean;
+    pendingCount: () => number;
+  }) {
+    const deadline = Date.now() + 5_000;
+    while (o.isRunning() || o.pendingCount() > 0) {
+      if (Date.now() > deadline) throw new Error("orchestrator hung");
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+
+  it("stepStart's already-running branch reconciles a start-failed lifecycle to starting", async () => {
+    const { dir, cleanup } = tempRoot();
+    try {
+      const repoDir = join(dir, "repo");
+      mkdirSync(repoDir);
+      writeFileSync(
+        join(repoDir, "deno.json"),
+        JSON.stringify({ tasks: { dev: "echo hi" } }),
+      );
+      const broadcaster = new Broadcaster(1024);
+      const { lifecycle, states } = makeLifecycleSpy(broadcaster);
+
+      const spawns: Array<{ command: string; cwd: string }> = [];
+      let running: { command: string; cwd: string } | null = null;
+
+      const orchestrator = new SetupOrchestrator({
+        bootConfig: { appRoot: dir, repoDir },
+        store: {
+          read: () => ({
+            application: { packageManager: { name: "deno" }, runtime: "deno" },
+          }),
+          hydrate: () => {},
+          applyInternal: async () => ({
+            kind: "applied",
+            before: null,
+            after: {},
+            transition: { kind: "no-op" },
+          }),
+        } as never,
+        taskManager: {
+          spawn: async (s: { command: string; cwd: string }) => {
+            spawns.push({ command: s.command, cwd: s.cwd });
+            return { id: `t${spawns.length}` };
+          },
+          killByLogName: () => 0,
+          waitForLogNamesIdle: async () => {},
+          runningCommandByLogName: () => running,
+          onTaskExit: () => () => {},
+        } as never,
+        setStatus: () => {},
+        getStatus: () => ({ state: "running" as const }),
+        broadcaster,
+        installState: { isInstalledFor: () => true } as never,
+        logsDir: dir,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
+      });
+
+      // 1st start: nothing running → spawns once via the normal path
+      // (lifecycle → starting there too, but that's not what's under test).
+      orchestrator.handle({ kind: "port-change", from: undefined, to: 3000 });
+      await drain(orchestrator);
+      expect(spawns).toHaveLength(1);
+
+      // Simulate the wedge: the dev script crashed (the real onTaskExit
+      // handler would do this), leaving lifecycle at a terminal failure
+      // phase the probe refuses to promote from.
+      lifecycle.transition({ phase: "start-failed", error: "boom" });
+
+      // But the exact same dev command+cwd is (for whatever reason — a
+      // race, a warm-pool reattach) still reported as running by
+      // TaskManager. A 2nd start step must reconcile lifecycle instead of
+      // silently returning.
+      running = spawns[0];
+      orchestrator.handle({ kind: "port-change", from: 3000, to: 8000 });
+      await drain(orchestrator);
+
+      expect(spawns).toHaveLength(1); // still no respawn
+      expect(states.at(-1)).toEqual({ phase: "starting" });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("stepStart's already-running branch is a no-op when lifecycle already reflects running", async () => {
+    const { dir, cleanup } = tempRoot();
+    try {
+      const repoDir = join(dir, "repo");
+      mkdirSync(repoDir);
+      writeFileSync(
+        join(repoDir, "deno.json"),
+        JSON.stringify({ tasks: { dev: "echo hi" } }),
+      );
+      const broadcaster = new Broadcaster(1024);
+      const { lifecycle, states } = makeLifecycleSpy(broadcaster);
+
+      const spawns: Array<{ command: string; cwd: string }> = [];
+      let running: { command: string; cwd: string } | null = null;
+
+      const orchestrator = new SetupOrchestrator({
+        bootConfig: { appRoot: dir, repoDir },
+        store: {
+          read: () => ({
+            application: { packageManager: { name: "deno" }, runtime: "deno" },
+          }),
+          hydrate: () => {},
+          applyInternal: async () => ({
+            kind: "applied",
+            before: null,
+            after: {},
+            transition: { kind: "no-op" },
+          }),
+        } as never,
+        taskManager: {
+          spawn: async (s: { command: string; cwd: string }) => {
+            spawns.push({ command: s.command, cwd: s.cwd });
+            return { id: `t${spawns.length}` };
+          },
+          killByLogName: () => 0,
+          waitForLogNamesIdle: async () => {},
+          runningCommandByLogName: () => running,
+          onTaskExit: () => () => {},
+        } as never,
+        setStatus: () => {},
+        getStatus: () => ({ state: "running" as const }),
+        broadcaster,
+        installState: { isInstalledFor: () => true } as never,
+        logsDir: dir,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
+      });
+
+      // 1st start: nothing running → spawns once.
+      orchestrator.handle({ kind: "port-change", from: undefined, to: 3000 });
+      await drain(orchestrator);
+      expect(spawns).toHaveLength(1);
+
+      // Probe already confirmed the dev server is live.
+      lifecycle.transition({
+        phase: "running",
+        port: 3000,
+        htmlSupport: false,
+      });
+      const statesBefore = states.length;
+
+      running = spawns[0];
+      orchestrator.handle({ kind: "port-change", from: 3000, to: 8000 });
+      await drain(orchestrator);
+
+      expect(spawns).toHaveLength(1); // still no respawn
+      // No new transition beyond the `running` we forced above.
+      expect(states.length).toBe(statesBefore);
+    } finally {
+      cleanup();
+    }
+  });
+});
