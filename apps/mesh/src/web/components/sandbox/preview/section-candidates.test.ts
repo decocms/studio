@@ -117,6 +117,33 @@ describe("resolveSectionCandidates", () => {
     ).toEqual([BANNER, HEADER]);
   });
 
+  it("falls back to the literal key when a saved-block reference is unresolved", () => {
+    expect(
+      resolveSectionCandidates({ __resolveType: "missing-block" }, {}),
+    ).toEqual(["missing-block"]);
+  });
+
+  it("stops resolving a self-referencing saved block instead of looping forever", () => {
+    expect(
+      resolveSectionCandidates(
+        { __resolveType: "self-ref" },
+        { "self-ref": { __resolveType: "self-ref" } },
+      ),
+    ).toEqual(["self-ref"]);
+  });
+
+  it("bounds resolution of a mutually-referencing cycle to 5 hops", () => {
+    expect(
+      resolveSectionCandidates(
+        { __resolveType: "a" },
+        {
+          a: { __resolveType: "b" },
+          b: { __resolveType: "a" },
+        },
+      ),
+    ).toEqual(["b"]);
+  });
+
   it("returns null for a lazy wrapper around a hidden section", () => {
     expect(
       resolveSectionCandidates(
