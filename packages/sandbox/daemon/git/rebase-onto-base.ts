@@ -280,7 +280,11 @@ function forcePushRebasedBranch(
         throw err;
       }
 
-      runGit(repoDir, ["fetch", "origin", branch]);
+      runGit(repoDir, [
+        "fetch",
+        "origin",
+        `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+      ]);
       const refreshed = remoteBranchSha(repoDir, branch);
       if (refreshed) {
         runGit(repoDir, [
@@ -328,7 +332,16 @@ function rebaseOntoBaseInner(
     throw new Error("Cannot rebase from a detached HEAD");
   }
 
-  runGit(repoDir, ["fetch", "-p", "origin", base, branch]);
+  // Explicit refspecs for the same reason as integrateRemoteBranch below:
+  // shallow single-branch clones don't map plain command-line refnames onto
+  // refs/remotes/origin/*, which would leave the force-push lease stale.
+  runGit(repoDir, [
+    "fetch",
+    "-p",
+    "origin",
+    `+refs/heads/${base}:refs/remotes/origin/${base}`,
+    `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+  ]);
   const leaseSha = remoteBranchSha(repoDir, branch);
 
   tryGit(repoDir, [
@@ -406,7 +419,20 @@ function integrateRemoteBranchInner(
 ): { rebased: boolean } {
   assertValidRemoteBranchName(branch);
 
-  if (tryGit(repoDir, ["fetch", "origin", branch]) === null) {
+  // Explicit refspec, not `fetch origin <branch>`: sandbox clones are shallow
+  // single-branch (setup/clone.ts), so their fetch refspec only covers the
+  // branch they were cloned on. For a workspace branch forked locally that's
+  // the *default* branch — a plain fetch would only write FETCH_HEAD, leave
+  // refs/remotes/origin/<branch> missing/stale, and the divergence check below
+  // would report a false "up to date" (the exact non-fast-forward publish
+  // failure this function exists to prevent). Fails when the branch isn't on
+  // origin yet (first publish) — that's the no-op path.
+  const fetched = tryGit(repoDir, [
+    "fetch",
+    "origin",
+    `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+  ]);
+  if (fetched === null) {
     return { rebased: false };
   }
   const remoteSha = remoteBranchSha(repoDir, branch);
