@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { sleep } from "@decocms/std";
 import {
+  buildLivenessChunk,
   HeartbeatEmitter,
   LIVENESS_HEARTBEAT_INTERVAL_MS,
 } from "./liveness-heartbeat";
@@ -150,5 +151,24 @@ describe("HeartbeatEmitter", () => {
     emitter.arm();
     emitter.stop();
     expect(capturedMs).toBe(LIVENESS_HEARTBEAT_INTERVAL_MS);
+  });
+});
+
+describe("buildLivenessChunk", () => {
+  test("shape: data-liveness, transient, carries a timestamp — the single wire-format source of truth for T5 (hosted) and T6 (desktop daemon)", () => {
+    const chunk = buildLivenessChunk(() => 12345);
+    expect(chunk).toEqual({
+      type: "data-liveness",
+      data: { t: 12345 },
+      transient: true,
+    });
+  });
+
+  test("defaults `now` to Date.now", () => {
+    const before = Date.now();
+    const chunk = buildLivenessChunk();
+    const after = Date.now();
+    expect(chunk.data.t).toBeGreaterThanOrEqual(before);
+    expect(chunk.data.t).toBeLessThanOrEqual(after);
   });
 });
