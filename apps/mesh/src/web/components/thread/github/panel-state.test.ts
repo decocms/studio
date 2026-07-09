@@ -288,13 +288,14 @@ describe("selectHeaderButton", () => {
     expect(r.variant).toBe("outline");
   });
 
-  test("dirty working tree → Submit for review", () => {
+  test("dirty working tree → Submit for review + side Publish", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ workingTreeDirty: true }) }),
     );
     expect(r.label).toBe("Submit for review");
     expect(r.action).toBe("create-pr");
     expect(r.disabled).toBeFalsy();
+    expect(r.showPublishSide).toBe(true);
   });
 
   test("unpushed commits ahead of base with no PR → Submit for review", () => {
@@ -303,6 +304,7 @@ describe("selectHeaderButton", () => {
     );
     expect(r.label).toBe("Submit for review");
     expect(r.action).toBe("create-pr");
+    expect(r.showPublishSide).toBe(true);
   });
 
   test("unpushed commits without base divergence and no PR → Submit for review", () => {
@@ -478,6 +480,8 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Publish to production");
     expect(r.action).toBe("merge-split");
     expect(r.variant).toBe("success");
+    // merge-split IS the publish action — no redundant side Publish button.
+    expect(r.showPublishSide).toBeFalsy();
   });
 
   test("PR open + reviews still loading → Publish to production (main base)", () => {

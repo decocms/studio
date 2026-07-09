@@ -235,6 +235,9 @@ export function isDecoOnlyDiff(
 export const PUBLISH_REQUIRES_SUBMIT_TOOLTIP =
   "Code changes can't be published directly — use Submit for review";
 
+export const PUBLISH_MIXED_WORK_TOOLTIP =
+  "Commit your changes first, or use Submit for review — a mix of committed and uncommitted work can't be published directly";
+
 export async function discardGitFiles(
   orgSlug: string,
   virtualMcpId: string,
@@ -319,4 +322,50 @@ export function hasUnpublishedWork(
     hasLocalWorkToPush(status) ||
     (diff != null && Object.keys(diff.diffs).length > 0)
   );
+}
+
+/**
+ * Which diff the publish dialog should show/gate. Uncommitted working-tree
+ * edits aren't in a commit yet, so a base…head diff would come back empty —
+ * show the working-tree diff whenever there's local uncommitted work, and fall
+ * back to base…head only for a clean tree whose commits are already ahead of
+ * base (open-pr-from-commits or direct publish of committed work).
+ */
+export function shouldUseBaseDiff(
+  status: GitStatus | null | undefined,
+  opts: { openPrFromCommits: boolean; commitToOpenPr: boolean },
+): boolean {
+  if (hasGitLocalWork(status)) return false;
+  return (
+    opts.openPrFromCommits ||
+    (!opts.commitToOpenPr && (status?.aheadOfBase ?? 0) > 0)
+  );
+}
+
+export interface PublishGate {
+  allowed: boolean;
+  reason: string | null;
+}
+
+/**
+ * Whether the current changes may be squash-merged straight to base, bypassing
+ * review. Publish ships the whole base…HEAD range PLUS the working tree, but a
+ * single diff can only represent one of those — so:
+ *  - if there are BOTH commits ahead of base AND uncommitted work, the gate
+ *    can't see the full payload and code could slip through → refuse;
+ *  - otherwise the (single) diff must be deco-only.
+ */
+export function canPublishDirectly(
+  status: GitStatus | null | undefined,
+  diff: GitDiffResult | null | undefined,
+): PublishGate {
+  const mixedPayload =
+    (status?.aheadOfBase ?? 0) > 0 && hasGitLocalWork(status);
+  if (mixedPayload) {
+    return { allowed: false, reason: PUBLISH_MIXED_WORK_TOOLTIP };
+  }
+  if (!isDecoOnlyDiff(diff)) {
+    return { allowed: false, reason: PUBLISH_REQUIRES_SUBMIT_TOOLTIP };
+  }
+  return { allowed: true, reason: null };
 }

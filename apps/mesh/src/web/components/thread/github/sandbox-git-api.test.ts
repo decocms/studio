@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  canPublishDirectly,
+  hasGitLocalWork,
   hasLocalWorkToPush,
   hasUnpublishedWork,
   isDecoOnlyDiff,
+  PUBLISH_MIXED_WORK_TOOLTIP,
+  PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
+  shouldUseBaseDiff,
   stripGeneratedFilesFromDiff,
   type GitDiffResult,
   type GitStatus,
@@ -169,5 +174,124 @@ describe("stripGeneratedFilesFromDiff", () => {
     };
     stripGeneratedFilesFromDiff(diff);
     expect(Object.keys(diff.diffs)).toEqual(["blocks.gen.json"]);
+  });
+});
+
+describe("hasGitLocalWork", () => {
+  test("false for null and a clean tree", () => {
+    expect(hasGitLocalWork(null)).toBe(false);
+    expect(hasGitLocalWork(cleanStatus)).toBe(false);
+  });
+
+  test("true for modified working-tree files", () => {
+    expect(hasGitLocalWork({ ...cleanStatus, modified: ["a.ts"] })).toBe(true);
+  });
+
+  test("true for staged files", () => {
+    expect(hasGitLocalWork({ ...cleanStatus, staged: ["a.ts"] })).toBe(true);
+  });
+
+  test("true for conflicted files", () => {
+    expect(hasGitLocalWork({ ...cleanStatus, conflicted: ["a.ts"] })).toBe(
+      true,
+    );
+  });
+
+  test("false when only ahead/unpushed (committed, clean tree)", () => {
+    expect(hasGitLocalWork({ ...cleanStatus, ahead: 2, unpushed: 2 })).toBe(
+      false,
+    );
+  });
+});
+
+describe("shouldUseBaseDiff", () => {
+  const opts = { openPrFromCommits: false, commitToOpenPr: false };
+
+  test("false when the working tree is dirty (show working-tree diff)", () => {
+    expect(
+      shouldUseBaseDiff(
+        { ...cleanStatus, modified: ["a.ts"], aheadOfBase: 3 },
+        opts,
+      ),
+    ).toBe(false);
+  });
+
+  test("true for a clean tree with commits ahead of base", () => {
+    expect(shouldUseBaseDiff({ ...cleanStatus, aheadOfBase: 2 }, opts)).toBe(
+      true,
+    );
+  });
+
+  test("true when opening a PR from existing commits", () => {
+    expect(
+      shouldUseBaseDiff(cleanStatus, {
+        openPrFromCommits: true,
+        commitToOpenPr: false,
+      }),
+    ).toBe(true);
+  });
+
+  test("false when committing to an already-open PR", () => {
+    expect(
+      shouldUseBaseDiff(
+        { ...cleanStatus, aheadOfBase: 2 },
+        { openPrFromCommits: false, commitToOpenPr: true },
+      ),
+    ).toBe(false);
+  });
+
+  test("false for a clean tree with nothing ahead of base", () => {
+    expect(shouldUseBaseDiff(cleanStatus, opts)).toBe(false);
+  });
+});
+
+describe("canPublishDirectly", () => {
+  const decoDiff: GitDiffResult = {
+    diffs: { ".deco/blocks/home.json": { from: "{}", to: "{}" } },
+  };
+  const codeDiff: GitDiffResult = {
+    diffs: { "routes/index.tsx": { from: "a", to: "b" } },
+  };
+
+  test("allows a deco-only working-tree diff with no commits ahead", () => {
+    const gate = canPublishDirectly(
+      { ...cleanStatus, modified: [".deco/blocks/home.json"] },
+      decoDiff,
+    );
+    expect(gate.allowed).toBe(true);
+    expect(gate.reason).toBeNull();
+  });
+
+  test("allows deco-only committed work on a clean tree", () => {
+    const gate = canPublishDirectly(
+      { ...cleanStatus, aheadOfBase: 1 },
+      decoDiff,
+    );
+    expect(gate.allowed).toBe(true);
+  });
+
+  test("blocks code changes with the submit-for-review reason", () => {
+    const gate = canPublishDirectly(
+      { ...cleanStatus, modified: ["routes/index.tsx"] },
+      codeDiff,
+    );
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe(PUBLISH_REQUIRES_SUBMIT_TOOLTIP);
+  });
+
+  // The safety regression this guards: a deco-only working-tree diff on top of
+  // an unreviewed code commit ahead of base must NOT publish directly — the
+  // gate can't see the committed code, so it must refuse the mixed payload.
+  test("blocks a deco working-tree edit sitting on a commit ahead of base", () => {
+    const gate = canPublishDirectly(
+      { ...cleanStatus, modified: [".deco/blocks/home.json"], aheadOfBase: 1 },
+      decoDiff,
+    );
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe(PUBLISH_MIXED_WORK_TOOLTIP);
+  });
+
+  test("blocks an empty diff", () => {
+    expect(canPublishDirectly(cleanStatus, { diffs: {} }).allowed).toBe(false);
   });
 });

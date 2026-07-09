@@ -48,9 +48,10 @@ const LOADING_BRANCH_BUTTON: HeaderButton = {
 };
 
 /**
- * HeaderActions renders a single next-action button for the current branch +
- * PR state. Save changes opens the publish dialog; open-PR and squash-merge
- * call GitHub MCP tools directly. Other actions still send chat prompts.
+ * HeaderActions renders the next-action button for the current branch + PR
+ * state, plus a persistent green "Publish" button beside it while there is
+ * local work not yet merged. Submit-for-review and squash-merge call GitHub
+ * MCP tools directly (via the publish dialog); other actions send chat prompts.
  *
  * Mounted for `attached` and `detached` repos (see resolveGithubAttachment).
  * When attached the button always renders — disabled status pills (Loading…,
@@ -65,8 +66,8 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const chat = useChatStream();
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishDialogIntent, setPublishDialogIntent] = useState<
-    "publish" | "open-pr" | "publish-only"
-  >("publish");
+    "open-pr" | "publish-only"
+  >("open-pr");
   const [githubActionPending, setGithubActionPending] = useState(false);
   const debugKeyRef = useRef("");
 
@@ -261,10 +262,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const onActivate = (action: HeaderButton["action"]) => {
     if (!action || !githubHeadBranch) return;
     switch (action) {
-      case "commit-and-push":
-        setPublishDialogIntent("publish");
-        setPublishOpen(true);
-        return;
       case "create-pr":
         setPublishDialogIntent("open-pr");
         setPublishOpen(true);
@@ -305,15 +302,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
     setPublishOpen(true);
   };
 
-  // A persistent green "Publish" button sits next to the primary button
-  // whenever there's local work not yet in a PR — i.e. the primary button is
-  // "Save changes" (commit-and-push) or "Submit for review" (create-pr). It
-  // opens the publish dialog in publish-only mode (single green button, gated
-  // by isDecoOnlyDiff so code changes still require review). Suppressed once
-  // the primary button IS the publish action (merge-split) to avoid two
-  // publish affordances at once.
-  const showPublishSide =
-    button.action === "commit-and-push" || button.action === "create-pr";
+  // The persistent green "Publish" button (publish-only dialog, single green
+  // button gated by isDecoOnlyDiff so code changes still require review) is
+  // owned by the panel-state descriptor — set on states with local work not
+  // yet merged, and never on merge-split (where the primary button IS publish).
+  const showPublishSide = button.showPublishSide ?? false;
 
   const actionBusy = githubActionPending || isStreaming;
 
@@ -388,7 +381,6 @@ function HeaderButtonRenderer(props: {
   const chatBlocksAction =
     actionBusy &&
     button.action !== "create-pr" &&
-    button.action !== "commit-and-push" &&
     button.action !== "merge-split";
   const disabled =
     Boolean(button.disabled) ||
@@ -435,7 +427,7 @@ function HeaderButtonRenderer(props: {
         </Button>
       </WithTooltip>
       {props.showPublishSide ? (
-        <WithTooltip label="Publish directly to production">
+        <WithTooltip label="Publish directly, skipping review">
           <Button
             size="sm"
             variant="success"
