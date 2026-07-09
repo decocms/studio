@@ -171,10 +171,10 @@ export function selectHeaderButton(
 
   if (ready.workingTreeDirty) {
     return {
-      label: "Save changes",
-      action: "commit-and-push",
+      label: "Submit for review",
+      action: "create-pr",
       variant: "default",
-      tooltip: "Commit and push local changes",
+      tooltip: `Push and open a PR for ${ready.branch} → ${ready.base}`,
     };
   }
 
@@ -196,10 +196,10 @@ export function selectHeaderButton(
       };
     }
     return {
-      label: "Save changes",
-      action: "commit-and-push",
+      label: "Submit for review",
+      action: "create-pr",
       variant: "default",
-      tooltip: "Push local commits",
+      tooltip: `Push local commits to PR #${pr.number}`,
     };
   }
 

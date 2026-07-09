@@ -65,7 +65,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const chat = useChatStream();
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishDialogIntent, setPublishDialogIntent] = useState<
-    "publish" | "open-pr"
+    "publish" | "open-pr" | "publish-only"
   >("publish");
   const [githubActionPending, setGithubActionPending] = useState(false);
   const debugKeyRef = useRef("");
@@ -300,6 +300,21 @@ export function HeaderActions({ virtualMcpId }: Props) {
     }
   };
 
+  const onPublishSide = () => {
+    setPublishDialogIntent("publish-only");
+    setPublishOpen(true);
+  };
+
+  // A persistent green "Publish" button sits next to the primary button
+  // whenever there's local work not yet in a PR — i.e. the primary button is
+  // "Save changes" (commit-and-push) or "Submit for review" (create-pr). It
+  // opens the publish dialog in publish-only mode (single green button, gated
+  // by isDecoOnlyDiff so code changes still require review). Suppressed once
+  // the primary button IS the publish action (merge-split) to avoid two
+  // publish affordances at once.
+  const showPublishSide =
+    button.action === "commit-and-push" || button.action === "create-pr";
+
   const actionBusy = githubActionPending || isStreaming;
 
   return (
@@ -309,6 +324,8 @@ export function HeaderActions({ virtualMcpId }: Props) {
         actionBusy={actionBusy}
         githubActionPending={githubActionPending}
         onActivate={onActivate}
+        showPublishSide={showPublishSide}
+        onPublishSide={onPublishSide}
         prNumber={pr?.number}
         prBase={pr?.base}
         onSquashMerge={handleSquashMerge}
@@ -340,7 +357,13 @@ export function HeaderActions({ virtualMcpId }: Props) {
               ? effectiveBranchMeta.headSha
               : null
           }
-          openPullRequest={pr?.state === "open" ? pr : null}
+          openPullRequest={
+            publishDialogIntent === "publish-only"
+              ? null
+              : pr?.state === "open"
+                ? pr
+                : null
+          }
           onPullRequestChanged={refreshPrState}
           onPublished={switchToFreshBranch}
         />
@@ -354,6 +377,8 @@ function HeaderButtonRenderer(props: {
   actionBusy: boolean;
   githubActionPending: boolean;
   onActivate: (action: HeaderButton["action"]) => void;
+  showPublishSide: boolean;
+  onPublishSide: () => void;
   prNumber?: number;
   prBase?: string;
   onSquashMerge: (pullNumber: number) => void | Promise<void>;
@@ -395,19 +420,33 @@ function HeaderButtonRenderer(props: {
   }
 
   return (
-    <WithTooltip label={tooltipLabel}>
-      <Button
-        size="sm"
-        variant={button.variant}
-        disabled={disabled}
-        onClick={() => {
-          if (button.action) props.onActivate(button.action);
-        }}
-      >
-        {loading ? <Spinner size="xs" variant="default" /> : null}
-        {button.label}
-      </Button>
-    </WithTooltip>
+    <div className="flex items-center gap-2">
+      <WithTooltip label={tooltipLabel}>
+        <Button
+          size="sm"
+          variant={button.variant}
+          disabled={disabled}
+          onClick={() => {
+            if (button.action) props.onActivate(button.action);
+          }}
+        >
+          {loading ? <Spinner size="xs" variant="default" /> : null}
+          {button.label}
+        </Button>
+      </WithTooltip>
+      {props.showPublishSide ? (
+        <WithTooltip label="Publish directly to production">
+          <Button
+            size="sm"
+            variant="success"
+            disabled={props.githubActionPending}
+            onClick={props.onPublishSide}
+          >
+            Publish
+          </Button>
+        </WithTooltip>
+      ) : null}
+    </div>
   );
 }
 
