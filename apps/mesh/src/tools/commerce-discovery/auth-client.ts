@@ -85,6 +85,96 @@ function domainFromSiteUrl(siteUrl: string): string {
   return new URL(siteUrl).hostname;
 }
 
+/**
+ * Structured claim-failure codes returned by Commerce Discovery's
+ * `/upgrade` endpoint. `unknown` is our catch-all for any other error string
+ * (missing_org_id, invalid_domain, …) or a non-structured/network failure.
+ */
+export type CommerceDiscoveryClaimCode =
+  | "ownership_unverified"
+  | "already_claimed_by_other_org"
+  | "unknown";
+
+function isClaimCode(value: unknown): value is CommerceDiscoveryClaimCode {
+  return (
+    value === "ownership_unverified" || value === "already_claimed_by_other_org"
+  );
+}
+
+/**
+ * Context available for interpolating friendly claim-failure messages.
+ * `email` is the logged-in user's email (who tried to claim); `domain` is the
+ * site being claimed. Both may be absent, so the mapper degrades gracefully.
+ */
+export interface CommerceDiscoveryClaimContext {
+  email?: string;
+  domain?: string;
+}
+
+/**
+ * Map a structured claim-failure code to a user-facing pt-BR message with the
+ * RIGHT guidance per failure. Interpolates the email + domain when available.
+ *
+ * This lives at the studio boundary (not the UI) because only the thrown
+ * Error's `.message` string survives the MCP self-tool-call boundary — the
+ * structured `code` does not reach the web app (see `parseSelfToolResult` /
+ * `getToolErrorMessage` in commerce-onboarding.tsx, which only read
+ * `result.content[].text`). Building the friendly string here makes
+ * `error.message` already user-ready in the onboarding banner.
+ */
+export function commerceDiscoveryClaimMessagePtBr(
+  code: CommerceDiscoveryClaimCode,
+  context: CommerceDiscoveryClaimContext = {},
+): string {
+  switch (code) {
+    case "ownership_unverified": {
+      const who = context.email ? `O e-mail ${context.email}` : "Este e-mail";
+      const site = context.domain ? ` ${context.domain}` : " este site";
+      return `${who} não tem permissão para reivindicar${site}. Use um e-mail do domínio do site ou peça ao suporte para autorizar seu domínio.`;
+    }
+    case "already_claimed_by_other_org":
+      return "Este site já pertence a outra organização. Fale com o suporte para transferir o acesso.";
+    case "unknown":
+      return "Não foi possível configurar o Commerce Discovery. Tente novamente ou fale com o suporte.";
+    default: {
+      const _exhaustive: never = code;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * A claim (`/upgrade`) failure carrying the structured `code` parsed from the
+ * response JSON's `error` field. Its `.message` is already the friendly pt-BR
+ * text — the seam chosen because the code cannot cross the MCP tool boundary.
+ */
+export class CommerceDiscoveryClaimError extends Error {
+  readonly code: CommerceDiscoveryClaimCode;
+
+  constructor(
+    code: CommerceDiscoveryClaimCode,
+    context: CommerceDiscoveryClaimContext = {},
+  ) {
+    super(commerceDiscoveryClaimMessagePtBr(code, context));
+    this.name = "CommerceDiscoveryClaimError";
+    this.code = code;
+  }
+}
+
+/** Parse the `error` code from an `/upgrade` failure response body. */
+async function parseClaimErrorCode(
+  response: Response,
+): Promise<CommerceDiscoveryClaimCode> {
+  const text = await response.text().catch(() => "");
+  if (!text) return "unknown";
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown };
+    return isClaimCode(parsed.error) ? parsed.error : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 async function responseErrorMessage(response: Response): Promise<string> {
   const fallback = `Commerce Discovery auth failed with status ${response.status}.`;
   const text = await response.text().catch(() => "");
@@ -131,7 +221,16 @@ export async function fetchCommerceDiscoveryAuth(
   });
 
   if (!response.ok) {
-    throw new Error(await responseErrorMessage(response));
+    // Claim (/upgrade) failures carry a structured `error` code. Because that
+    // code cannot cross the MCP self-tool-call boundary (only the message
+    // string does), we build the friendly pt-BR message HERE, interpolating
+    // the email + domain the client already holds, so the onboarding banner
+    // shows correct per-code guidance verbatim.
+    const code = await parseClaimErrorCode(response);
+    throw new CommerceDiscoveryClaimError(code, {
+      email: input.email,
+      domain,
+    });
   }
 
   const parsed = UpgradeResponseSchema.safeParse(await response.json());
