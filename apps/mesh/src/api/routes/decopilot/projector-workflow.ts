@@ -5,6 +5,7 @@ import { projectChunks } from "./project-chunks";
 import { createProjectorChunkStream } from "./projector-chunk-stream";
 import { createRunPersistence } from "./run-persistence";
 import { recordPoison } from "./projector-metrics";
+import { ProgressBumpThrottle, tapProgressStream } from "./progress-bump";
 import { resolveThreadStatus } from "./status";
 import { synthesizedErrorMessageId } from "./message-ids";
 import { foldedToUIMessage } from "./projector-seed";
@@ -102,6 +103,24 @@ export function getProjectorWorkflowRuntime(): ProjectorWorkflowRuntime {
   return requireRuntime();
 }
 
+/**
+ * Process-wide progress-bump throttle for the projector's live chunk
+ * consumption (Task 9, A1/A2) — the desktop-run liveness heartbeat. Desktop
+ * chunks go daemon → NATS directly (no mesh HTTP hop), so this tap on the
+ * JetStream-sourced chunkStream is the ONLY place a desktop run's progress
+ * gets recorded; without it the reaper's `RUN_IDLE_TIMEOUT_MS` (run-registry.ts)
+ * force-fails any run running longer than ~10 minutes. Module scope (not
+ * per-call) so the per-task last-bump map survives across the multiple
+ * `projectFromJetStreamStep` invocations a thread's runs may see — mirrors
+ * dispatch-run.ts's `progressThrottle`.
+ *
+ * Hosted runs already heartbeat via dispatch-run.ts's own `tapProgress` on
+ * the hosted uiStream; they now ALSO bump here (the projector consumes every
+ * run's chunks, hosted included). Harmless — same `last_progress_at` column,
+ * both throttled independently, so it's at most one extra write per ~3s.
+ */
+const progressThrottle = new ProgressBumpThrottle();
+
 export async function projectFromJetStreamStep(
   input: ProjectorWorkflowInput,
   orgId: string,
@@ -114,11 +133,22 @@ export async function projectFromJetStreamStep(
     await rt.messageParts.loadWindow(input.runId, { limit: 500 })
   ).messages.map(foldedToUIMessage);
   const result = await projectChunks({
-    chunkStream: await createProjectorChunkStream({
-      js,
-      runId: input.runId,
-      fenceToken: input.fenceToken,
-    }),
+    chunkStream: tapProgressStream(
+      await createProjectorChunkStream({
+        js,
+        runId: input.runId,
+        fenceToken: input.fenceToken,
+      }),
+      input.runId,
+      progressThrottle,
+      () => {
+        // Fire-and-forget: never awaited in the chunk path (a slow DB write
+        // must not backpressure projection) and never allowed to fail the
+        // stream (a missed bump is a missed heartbeat, not a projection
+        // error — the reaper simply relies on an older timestamp).
+        void rt.bumpProgress({ runId: input.runId, orgId }).catch(() => {});
+      },
+    ),
     persistence: await createRunPersistence({
       messageParts: rt.messageParts,
       orgId,
