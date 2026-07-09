@@ -1,4 +1,11 @@
-import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "bun:test";
@@ -426,6 +433,39 @@ describe("git routes", () => {
     expect(await res.json()).toEqual({
       error: "Invalid path: ../outside-secret.txt",
     });
+  });
+
+  it("discard restores a modified tracked file to its HEAD content", async () => {
+    const { appRoot, repoDir } = initRepo();
+    writeFileSync(join(repoDir, "README.md"), "changed\n");
+
+    const handler = makeGitDiscardHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/discard", {
+        method: "POST",
+        body: JSON.stringify({ filepaths: ["README.md"] }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(readFileSync(join(repoDir, "README.md"), "utf8")).toBe("hello\n");
+  });
+
+  it("discard deletes an untracked file instead of restoring it", async () => {
+    const { appRoot, repoDir } = initRepo();
+    const untracked = join(repoDir, "scratch.txt");
+    writeFileSync(untracked, "temp\n");
+
+    const handler = makeGitDiscardHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/discard", {
+        method: "POST",
+        body: JSON.stringify({ filepaths: ["scratch.txt"] }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(existsSync(untracked)).toBe(false);
   });
 
   it("rebase rejects invalid base branch names", async () => {
