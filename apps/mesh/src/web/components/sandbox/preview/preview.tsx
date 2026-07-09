@@ -198,8 +198,8 @@ function resolveSectionCandidates(
 }
 
 /**
- * Inline editor for one `:param` token, rendered in place inside the URL
- * label. Grows with its content and commits on Enter/blur.
+ * Inline editor for one `:param` or `*` (catch-all) token, rendered in place
+ * inside the URL label. Grows with its content and commits on Enter/blur.
  */
 function PathParamInput({
   name,
@@ -213,7 +213,8 @@ function PathParamInput({
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
   const cancelledRef = useRef(false);
-  const sizer = draft || `:${name}`;
+  const label = name === "*" ? "*" : `:${name}`;
+  const sizer = draft || label;
   return (
     <>
       <span className="relative inline-flex max-w-64 shrink-0 items-center overflow-hidden">
@@ -228,8 +229,8 @@ function PathParamInput({
         <input
           type="text"
           value={draft}
-          placeholder={`:${name}`}
-          title={`Value for :${name}`}
+          placeholder={label}
+          title={`Value for ${label}`}
           spellCheck={false}
           className="absolute inset-0 rounded-sm bg-violet-500/15 px-1 text-[12px] text-violet-600 outline-none placeholder:text-violet-500/60 focus:bg-violet-500/25 dark:text-violet-400"
           onClick={(e) => e.stopPropagation()}
@@ -758,8 +759,8 @@ export function PreviewContent() {
   })();
 
   // URL-label tokens for path-template pages: host + static path text stay
-  // plain text; each `:param` renders in place as an inline input. Null when
-  // the current path has no params (plain `previewLabel` is used instead).
+  // plain text; each `:param`/`*` renders in place as an inline input. Null
+  // when the current path has no params (plain `previewLabel` is used instead).
   const previewLabelTokens = (() => {
     if (!previewUrl || activeGlobalSection || !currentPageKey) return null;
     if (pathParams.length === 0) return null;
