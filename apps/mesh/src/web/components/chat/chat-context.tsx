@@ -1289,33 +1289,6 @@ export function ActiveTaskProvider({
       metadata: messageMetadata,
     };
 
-    // First message on an untitled thread: derive a fallback title from the
-    // prompt and PERSIST it, so the sidebar isn't stuck on "New chat" and it
-    // survives reloads / store reconciles (a local-only patch gets clobbered
-    // when the run reconciles the thread row from the DB). The server-side
-    // auto-titler only enriches while the stored title is still "New chat", so
-    // persisting supersedes it — an acceptable trade since a readable title
-    // beats "New chat", and titling is unreliable for some harnesses anyway.
-    if (messages.length === 0) {
-      const promptText = parts
-        .map((p) => (p.type === "text" ? (p.text ?? "") : ""))
-        .join(" ")
-        .trim()
-        .replace(/\s+/g, " ");
-      const row = manager.threads.get().find((t) => t.id === taskId);
-      if (promptText && (!row || row.title === "New chat")) {
-        const MAX_TITLE = 60;
-        const fallbackTitle =
-          promptText.length > MAX_TITLE
-            ? `${promptText.slice(0, MAX_TITLE).trimEnd()}…`
-            : promptText;
-        // Fire-and-forget: optimistically patches the local row immediately and
-        // writes through to the DB. Swallow errors — a failed title write must
-        // not block sending the message.
-        void manager.rename(taskId, fallbackTitle).catch(() => {});
-      }
-    }
-
     await dispatchUserMessage(userMessage);
   }
 
