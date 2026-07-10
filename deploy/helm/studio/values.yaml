@@ -364,6 +364,10 @@ clickhouse-cluster:
     # clickhouse.enabled (subchart, default true) controls the CR itself.
     # clickhouse.spec is passed verbatim to ClickHouseCluster.spec — any CRD
     # field can be set here (settings, podTemplate, keeperClusterRef, ...).
+    # WARNING: raising replicas/shards does NOT replicate/distribute the data
+    # by itself — the table DDL must change in lockstep (ReplicatedMergeTree /
+    # Distributed). See "Scaling beyond a single node" in
+    # apps/mesh/src/monitoring/clickhouse-setup.md.
     spec:
       replicas: 1
       shards: 1

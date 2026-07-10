@@ -29,6 +29,10 @@ clickhouse-cluster:
     # here (settings, podTemplate, additionalPorts, ...) and is validated by
     # the operator webhook on apply.
     spec:
+      # WARNING: scaling replicas/shards also requires changing the table DDL
+      # (ReplicatedMergeTree / Distributed) — the CR alone leaves data
+      # unreplicated/undistributed. See "Scaling beyond a single node" in
+      # apps/mesh/src/monitoring/clickhouse-setup.md.
       replicas: 1
       shards: 1
       dataVolumeClaimSpec:
