@@ -36,7 +36,6 @@ import {
 } from "@/web/components/chat/store/hooks";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { GlobalSearchDialog } from "@/web/layouts/tasks-panel/global-search-dialog";
-import { TaskRow } from "@/web/layouts/tasks-panel/task-row";
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
 import {
@@ -60,7 +59,6 @@ import { getLiveDevAgentMaps } from "@/web/lib/agent-capabilities";
 import { removeGroupFromOrder, syncOrdersOnOrgPinToggle } from "./stable-order";
 import { SortableAgentRows } from "./sortable-agent-rows";
 import type { AgentRowProps } from "./agent-row";
-import { TeamThreadsSection } from "./team-threads-section";
 import { MyThreadsSection } from "./my-threads-section";
 import { SidebarSectionHeader } from "./sidebar-section-header";
 import type { SidebarFilters } from "./next-page-offset";
@@ -169,8 +167,8 @@ export function TaskGroupsList({
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("flat");
-  const [myThreadsOpen, setMyThreadsOpen] = useState(true);
   const [agentsOpen, setAgentsOpen] = useState(true);
+  const [showAll, setShowAll] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
   const [localOrderRevision, setLocalOrderRevision] = useState(0);
@@ -246,9 +244,8 @@ export function TaskGroupsList({
   // opens its latest thread).
   const myThreadsAll = mineFiltered(sortedThreads);
   const myThreads = typeFiltered(myThreadsAll);
-  const teamThreads = typeFiltered(
-    sortedThreads.filter((t) => t.created_by && t.created_by !== currentUserId),
-  );
+  const allThreadsFiltered = typeFiltered(sortedThreads);
+  const visibleScopedThreads = showAll ? allThreadsFiltered : myThreads;
 
   const handleArchive = (task: Task) => {
     const wasActive = task.id === activeTaskId;
@@ -310,63 +307,17 @@ export function TaskGroupsList({
     createNewTask(currentAgentId);
   };
 
-  // Click an agent → open its most recent thread; if it has none, start a new
-  // one (which also adds it to the personal sidebar order).
+  // Click an agent → show the agent home (threads list + new chat input).
   // Decopilot is the product home — clicking it navigates to /$org directly.
-  const handleOpenAgent = async (virtualMcpId: string) => {
+  const handleOpenAgent = (virtualMcpId: string) => {
     if (virtualMcpId === decopilotId) {
       closeAfterNavigation();
       navigate({ to: "/$org", params: { org: org.slug } });
       return;
     }
-    const loaded = myThreadsAll.find((t) => t.virtual_mcp_id === virtualMcpId);
-    if (loaded) {
-      track("sidebar_agent_opened", {
-        virtual_mcp_id: virtualMcpId,
-        had_thread: true,
-      });
-      closeAfterNavigation();
-      setTaskId(loaded.id, virtualMcpId);
-      return;
-    }
-
-    // The loaded window is only the first global page — a pinned/persisted
-    // agent may have older personal threads beyond it. Ask the server for its
-    // most recent one before falling back to creating a brand-new thread.
-    let existingId: string | null = null;
-    if (currentUserId) {
-      try {
-        const res = await client.callTool({
-          name: "COLLECTION_THREADS_LIST",
-          arguments: {
-            limit: 1,
-            offset: 0,
-            orderBy: [{ field: ["updated_at"], direction: "desc" }],
-            where: {
-              hidden: false,
-              virtual_mcp_id: virtualMcpId,
-              created_by: currentUserId,
-            },
-          },
-        });
-        const payload = ((res as { structuredContent?: unknown })
-          .structuredContent ?? res) as { items?: Task[] };
-        existingId = payload.items?.[0]?.id ?? null;
-      } catch {
-        // Fall through to a new thread if the lookup fails.
-      }
-    }
-
-    track("sidebar_agent_opened", {
-      virtual_mcp_id: virtualMcpId,
-      had_thread: Boolean(existingId),
-    });
+    track("sidebar_agent_opened", { virtual_mcp_id: virtualMcpId });
     closeAfterNavigation();
-    if (existingId) {
-      setTaskId(existingId, virtualMcpId);
-    } else {
-      navigateToAgent(virtualMcpId);
-    }
+    navigateToAgent(virtualMcpId);
   };
 
   const handleShowSettings = (virtualMcpId: string) => {
@@ -489,167 +440,45 @@ export function TaskGroupsList({
     );
   }
 
-  if (isMobile) {
-    const hasTeamThreads = teamThreads.length > 0;
-    return (
-      <div className="flex flex-col h-full min-h-0">
-        <SyncSidebarAgentGroupsEmpty value={agentGroups.length === 0} />
-        <div className="shrink-0 px-1 h-10 flex items-center justify-between">
-          <div className="flex items-center gap-0.5">
-            <ToolbarIconButton
-              aria-label="Search threads"
-              onClick={() => {
-                track("tasks_panel_search_opened");
-                setSearchEverOpened(true);
-                setSearchOpen(true);
-              }}
-            >
-              <SearchSm size={16} />
-            </ToolbarIconButton>
-            <ToolbarIconButton
-              aria-label={
-                groupBy === "flat" ? "Group by status" : "Show as flat list"
-              }
-              title={groupBy === "flat" ? "Flat list" : "Grouped by status"}
-              onClick={() => {
-                const next: GroupBy = groupBy === "flat" ? "status" : "flat";
-                track("tasks_panel_group_by_changed", { to_value: next });
-                setGroupBy(next);
-              }}
-            >
-              {groupBy === "flat" ? (
-                <Rows01 size={16} />
-              ) : (
-                <Activity size={16} />
-              )}
-            </ToolbarIconButton>
-          </div>
-          <ToolbarIconButton
-            aria-label="New thread"
-            title="New thread"
-            onClick={() => void handleNewThread()}
-          >
-            <Edit05 size={16} />
-          </ToolbarIconButton>
-        </div>
-        <Tabs
-          defaultValue="agents"
-          variant="pill"
-          className="flex flex-col flex-1 min-h-0 gap-0"
-        >
-          <TabsList
-            variant="pill"
-            className="shrink-0 mx-1 mb-2 w-[calc(100%-0.5rem)]"
-          >
-            <TabsTrigger variant="pill" value="agents">
-              Agents
-            </TabsTrigger>
-            <TabsTrigger variant="pill" value="my-threads">
-              My threads
-            </TabsTrigger>
-            {hasTeamThreads && (
-              <TabsTrigger variant="pill" value="team-threads">
-                Team
-              </TabsTrigger>
-            )}
-          </TabsList>
-          <TabsContent
-            value="agents"
-            className="flex-1 min-h-0 mt-1 flex flex-col"
-          >
-            <ScrollFade
-              wrapperClassName="flex-1 min-h-0"
-              className="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-1 h-full"
-            >
-              <SortableAgentRows
-                groups={agentGroups}
-                orderScope={orderScope}
-                decopilotId={decopilotId}
-                orgPinnedIds={orgPinnedIds}
-                onReorder={() => setLocalOrderRevision((n) => n + 1)}
-                renderGroup={buildAgentRowProps}
-              />
-            </ScrollFade>
-          </TabsContent>
-          <TabsContent
-            value="my-threads"
-            className="flex-1 min-h-0 mt-1 flex flex-col"
-          >
-            <ScrollFade
-              wrapperClassName="flex-1 min-h-0"
-              className="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-1 h-full"
-            >
-              <MyThreadsSection
-                threads={myThreads}
-                groupBy={groupBy}
-                activeTaskId={activeTaskId}
-                onSelectTask={handleSelectTask}
-                onArchiveTask={handleArchive}
-                filters={filters}
-                hasMore={hasMore}
-                isFetchingMore={isFetchingMore}
-                onLoadMore={() => void fetchNextPage()}
-              />
-            </ScrollFade>
-          </TabsContent>
-          {hasTeamThreads && (
-            <TabsContent
-              value="team-threads"
-              className="flex-1 min-h-0 mt-1 flex flex-col"
-            >
-              <ScrollFade
-                wrapperClassName="flex-1 min-h-0"
-                className="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-1 h-full"
-              >
-                {teamThreads.slice(0, 8).map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    isActive={activeTaskId === task.id}
-                    onClick={() => handleSelectTask(task)}
-                    showAutomationBadge={Boolean(task.trigger_id)}
-                    showAgentIcon
-                  />
-                ))}
-              </ScrollFade>
-            </TabsContent>
-          )}
-        </Tabs>
-        {searchEverOpened && (
-          <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
-        )}
-      </div>
-    );
-  }
+  const scopeToggle = (
+    <button
+      type="button"
+      onClick={() => setShowAll((v) => !v)}
+      className="text-xs text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-muted"
+    >
+      {showAll ? "Show all" : "Mine"}
+    </button>
+  );
 
-  return (
-    <div className="flex flex-col h-full min-h-0">
-      <SyncSidebarAgentGroupsEmpty value={agentGroups.length === 0} />
-      <div className="shrink-0 px-1 h-10 md:h-7 mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-0.5">
-          <ToolbarIconButton
-            aria-label="Search threads"
-            onClick={() => {
-              track("tasks_panel_search_opened");
-              setSearchEverOpened(true);
-              setSearchOpen(true);
-            }}
-          >
-            <SearchSm size={16} />
-          </ToolbarIconButton>
-          <ToolbarIconButton
-            aria-label={
-              groupBy === "flat" ? "Group by status" : "Show as flat list"
-            }
-            title={groupBy === "flat" ? "Flat list" : "Grouped by status"}
-            onClick={() => {
-              const next: GroupBy = groupBy === "flat" ? "status" : "flat";
-              track("tasks_panel_group_by_changed", { to_value: next });
-              setGroupBy(next);
-            }}
-          >
-            {groupBy === "flat" ? <Rows01 size={16} /> : <Activity size={16} />}
-          </ToolbarIconButton>
+  const toolbar = (mobile: boolean) => (
+    <div
+      className={`shrink-0 px-1 flex items-center justify-between ${mobile ? "h-10" : "h-10 md:h-7 mb-2"}`}
+    >
+      <div className="flex items-center gap-0.5">
+        <ToolbarIconButton
+          aria-label="Search threads"
+          onClick={() => {
+            track("tasks_panel_search_opened");
+            setSearchEverOpened(true);
+            setSearchOpen(true);
+          }}
+        >
+          <SearchSm size={16} />
+        </ToolbarIconButton>
+        <ToolbarIconButton
+          aria-label={
+            groupBy === "flat" ? "Group by status" : "Show as flat list"
+          }
+          title={groupBy === "flat" ? "Flat list" : "Grouped by status"}
+          onClick={() => {
+            const next: GroupBy = groupBy === "flat" ? "status" : "flat";
+            track("tasks_panel_group_by_changed", { to_value: next });
+            setGroupBy(next);
+          }}
+        >
+          {groupBy === "flat" ? <Rows01 size={16} /> : <Activity size={16} />}
+        </ToolbarIconButton>
+        {!mobile && (
           <Popover>
             <PopoverTrigger asChild>
               <ToolbarIconButton aria-label="Filter tasks">
@@ -694,7 +523,10 @@ export function TaskGroupsList({
               </div>
             </PopoverContent>
           </Popover>
-        </div>
+        )}
+      </div>
+      <div className="flex items-center gap-1">
+        {scopeToggle}
         <ToolbarIconButton
           aria-label="New thread"
           title="New thread"
@@ -703,23 +535,59 @@ export function TaskGroupsList({
           <Edit05 size={16} />
         </ToolbarIconButton>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-0.5 -mr-2 pr-2">
-        <SidebarSectionHeader
-          label="Agents"
-          open={agentsOpen}
-          onToggle={() => setAgentsOpen((v) => !v)}
-          count={agentGroups.length}
-          controlsId="sidebar-section-agents"
-          actionSlot={<BrowseAgentsButton compact />}
-        />
-        <div
-          id="sidebar-section-agents"
-          aria-hidden={!agentsOpen}
-          className="grid transition-[grid-template-rows] duration-200 ease-out"
-          style={{ gridTemplateRows: agentsOpen ? "1fr" : "0fr" }}
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <div className="flex flex-col h-full min-h-0">
+        <SyncSidebarAgentGroupsEmpty value={agentGroups.length === 0} />
+        {toolbar(true)}
+        <Tabs
+          defaultValue="threads"
+          variant="pill"
+          className="flex flex-col flex-1 min-h-0 gap-0"
         >
-          <div className="overflow-hidden">
-            <ScrollFade className="flex flex-col gap-0.5 max-h-[35vh] overflow-y-auto overscroll-contain">
+          <TabsList
+            variant="pill"
+            className="shrink-0 mx-1 mb-2 w-[calc(100%-0.5rem)]"
+          >
+            <TabsTrigger variant="pill" value="threads">
+              Threads
+            </TabsTrigger>
+            <TabsTrigger variant="pill" value="agents">
+              Agents
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent
+            value="threads"
+            className="flex-1 min-h-0 mt-1 flex flex-col"
+          >
+            <ScrollFade
+              wrapperClassName="flex-1 min-h-0"
+              className="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-1 h-full"
+            >
+              <MyThreadsSection
+                threads={visibleScopedThreads}
+                groupBy={groupBy}
+                activeTaskId={activeTaskId}
+                onSelectTask={handleSelectTask}
+                onArchiveTask={handleArchive}
+                filters={filters}
+                hasMore={!showAll && hasMore}
+                isFetchingMore={!showAll && isFetchingMore}
+                onLoadMore={() => void fetchNextPage()}
+              />
+            </ScrollFade>
+          </TabsContent>
+          <TabsContent
+            value="agents"
+            className="flex-1 min-h-0 mt-1 flex flex-col"
+          >
+            <ScrollFade
+              wrapperClassName="flex-1 min-h-0"
+              className="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-1 h-full"
+            >
               <SortableAgentRows
                 groups={agentGroups}
                 orderScope={orderScope}
@@ -729,42 +597,64 @@ export function TaskGroupsList({
                 renderGroup={buildAgentRowProps}
               />
             </ScrollFade>
-          </div>
-        </div>
-        <div className="mx-2 my-2 border-b" />
-        <TeamThreadsSection
-          threads={teamThreads}
-          activeTaskId={activeTaskId}
-          onSelectTask={handleSelectTask}
-          onNavigate={closeAfterNavigation}
-        />
-        <SidebarSectionHeader
-          label="My threads"
-          open={myThreadsOpen}
-          onToggle={() => setMyThreadsOpen((v) => !v)}
-          count={myThreads.length}
-          controlsId="sidebar-section-my-threads"
-        />
-        <div
-          id="sidebar-section-my-threads"
-          aria-hidden={!myThreadsOpen}
-          className="grid transition-[grid-template-rows] duration-200 ease-out"
-          style={{ gridTemplateRows: myThreadsOpen ? "1fr" : "0fr" }}
+          </TabsContent>
+        </Tabs>
+        {searchEverOpened && (
+          <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <SyncSidebarAgentGroupsEmpty value={agentGroups.length === 0} />
+      {toolbar(false)}
+      <div className="flex-1 min-h-0 flex flex-col gap-0.5 -mr-2 pr-2">
+        <ScrollFade
+          wrapperClassName="flex-1 min-h-0"
+          className="flex flex-col gap-0.5 overflow-y-auto overscroll-contain h-full"
         >
-          <div className="overflow-hidden">
-            <ScrollFade className="flex flex-col gap-0.5 max-h-[40vh] overflow-y-auto overscroll-contain">
-              <MyThreadsSection
-                threads={myThreads}
-                groupBy={groupBy}
-                activeTaskId={activeTaskId}
-                onSelectTask={handleSelectTask}
-                onArchiveTask={handleArchive}
-                filters={filters}
-                hasMore={hasMore}
-                isFetchingMore={isFetchingMore}
-                onLoadMore={() => void fetchNextPage()}
-              />
-            </ScrollFade>
+          <MyThreadsSection
+            threads={visibleScopedThreads}
+            groupBy={groupBy}
+            activeTaskId={activeTaskId}
+            onSelectTask={handleSelectTask}
+            onArchiveTask={handleArchive}
+            filters={filters}
+            hasMore={!showAll && hasMore}
+            isFetchingMore={!showAll && isFetchingMore}
+            onLoadMore={() => void fetchNextPage()}
+          />
+        </ScrollFade>
+        <div className="shrink-0 mx-2 my-2 border-b" />
+        <div className="shrink-0">
+          <SidebarSectionHeader
+            label="Agents"
+            open={agentsOpen}
+            onToggle={() => setAgentsOpen((v) => !v)}
+            count={agentGroups.length}
+            controlsId="sidebar-section-agents"
+            actionSlot={<BrowseAgentsButton compact />}
+          />
+          <div
+            id="sidebar-section-agents"
+            aria-hidden={!agentsOpen}
+            className="grid transition-[grid-template-rows] duration-200 ease-out"
+            style={{ gridTemplateRows: agentsOpen ? "1fr" : "0fr" }}
+          >
+            <div className="overflow-hidden">
+              <ScrollFade className="flex flex-col gap-0.5 max-h-[35vh] overflow-y-auto overscroll-contain">
+                <SortableAgentRows
+                  groups={agentGroups}
+                  orderScope={orderScope}
+                  decopilotId={decopilotId}
+                  orgPinnedIds={orgPinnedIds}
+                  onReorder={() => setLocalOrderRevision((n) => n + 1)}
+                  renderGroup={buildAgentRowProps}
+                />
+              </ScrollFade>
+            </div>
           </div>
         </div>
       </div>
