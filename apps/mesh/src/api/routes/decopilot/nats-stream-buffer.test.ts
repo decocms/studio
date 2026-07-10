@@ -448,6 +448,84 @@ describe("NatsStreamBuffer", () => {
     });
   });
 
+  describe("pump", () => {
+    function bufferForPump() {
+      const published: Array<{ subj: string; data: Uint8Array }> = [];
+      const mockJs = {
+        publish: mockOf((subj: string, data: Uint8Array) => {
+          published.push({ subj, data });
+          return Promise.resolve({ seq: published.length });
+        }),
+      };
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => mockJs as never,
+      });
+      (buffer as unknown as { js: unknown }).js = mockJs;
+      return { buffer, published };
+    }
+
+    function doneBody(data: Uint8Array): unknown {
+      return JSON.parse(new TextDecoder().decode(data));
+    }
+
+    it("resolves after a clean drain and publishes the unfenced done sentinel", async () => {
+      const { buffer, published } = bufferForPump();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      });
+
+      await expect(
+        buffer.pump(stream, "task-1", new AbortController().signal),
+      ).resolves.toBeUndefined();
+
+      expect(published).toHaveLength(1);
+      expect(doneBody(published[0]!.data)).toEqual({ done: true });
+    });
+
+    it("REJECTS with the stream's error on a mid-stream failure — the old contract silently swallowed this", async () => {
+      // Regression for the "pump-swallow gap" (unified-control-plane T2):
+      // a mid-stream `ingestRun` failure (healthy JetStream) used to vanish
+      // here, so `dispatchRunAndWait` returned as if the run had finished
+      // cleanly and no fenced terminal ever reached the stream.
+      const { buffer, published } = bufferForPump();
+      const boom = new Error("ingest failed mid-stream");
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.error(boom);
+        },
+      });
+
+      await expect(
+        buffer.pump(stream, "task-1", new AbortController().signal),
+      ).rejects.toBe(boom);
+
+      // The safety-net unfenced done sentinel STILL goes out (finally block)
+      // so a live tail closes instead of hanging — only the caller-facing
+      // promise changed, not the wire behavior.
+      expect(published).toHaveLength(1);
+      expect(doneBody(published[0]!.data)).toEqual({ done: true });
+    });
+
+    it("resolves (not rejects) when JetStream is unavailable — nothing to drain", async () => {
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => null,
+        getJetStream: () => null,
+      });
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      });
+
+      await expect(
+        buffer.pump(stream, "task-1", new AbortController().signal),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe("publishRawChunk", () => {
     function bufferWithPublish() {
       const published: Array<{ subj: string; data: Uint8Array }> = [];

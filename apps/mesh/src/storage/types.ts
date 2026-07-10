@@ -993,7 +993,10 @@ export interface ThreadTable {
    */
   failure_reason: string | null;
   /**
-   * Coarse failure category. One of "harness" | "projection" | "transport".
+   * Coarse failure category. One of "harness" | "projection" | "transport" |
+   * "liveness" | "stall" (the last written only by the progress-based reaper,
+   * `run-registry.ts`; "liveness" is the consume-side subject-silence
+   * terminal — see `projector-workflow.ts`'s `livenessFailureReason`).
    * Null for pre-migration rows or runs failed without kind information.
    */
   failure_kind: string | null;

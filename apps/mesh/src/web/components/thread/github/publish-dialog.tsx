@@ -36,19 +36,21 @@ import type { PrSummary } from "./use-pr-data.ts";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { publishToBaseLabel } from "./publish-label.ts";
 import {
+  canPublishDirectly,
+  combinePublishDiffs,
   countGitChanges,
   discardGitFiles,
   fetchGitDiff,
   fetchGitStatus,
   fetchSuggestCommitMessage,
+  hasGitLocalWork,
   hasLocalWorkToPush,
   hasUnpublishedWork,
-  isDecoOnlyDiff,
   isSandboxUnreachable,
   publishGitChanges,
-  PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
   readGitHeadBranch,
   rebaseGitBranch,
+  shouldUseBaseDiff,
   type GitDiffResult,
   type GitStatus,
 } from "./sandbox-git-api.ts";
@@ -64,7 +66,7 @@ class PublishFlowError extends Error {
   }
 }
 
-export type PublishDialogIntent = "publish" | "open-pr";
+export type PublishDialogIntent = "open-pr" | "publish-only";
 
 export interface PublishDialogProps {
   open: boolean;
@@ -79,8 +81,8 @@ export interface PublishDialogProps {
   repo: string;
   previewUrl?: string | null;
   /**
-   * `open-pr` — commits are already on the branch; open a PR from them.
-   * `publish` — commit/push local changes (default).
+   * `open-pr` — push local work and open a PR for review (default).
+   * `publish-only` — direct publish to base; single green Publish button.
    */
   dialogIntent?: PublishDialogIntent;
   /** Branch HEAD for base…head diff when `dialogIntent` is `open-pr`. */
@@ -125,7 +127,7 @@ function PublishDialogBody({
   owner,
   repo,
   previewUrl,
-  dialogIntent = "publish",
+  dialogIntent = "open-pr",
   headSha = null,
   openPullRequest = null,
   onPullRequestChanged,
@@ -147,9 +149,9 @@ function PublishDialogBody({
   const coAuthor = coAuthorFromSessionUser(session?.user);
 
   const commitToOpenPr = openPullRequest?.state === "open";
-  /** Header "Save changes" — commit/push only, no new PR / merge. */
-  const isSaveChangesFlow = dialogIntent === "publish";
   const openPrFromCommits = dialogIntent === "open-pr" && !commitToOpenPr;
+  /** Side "Publish" button — direct publish to base, single green button. */
+  const isPublishOnly = dialogIntent === "publish-only";
 
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
   const [gitDiff, setGitDiff] = useState<GitDiffResult | null>(null);
@@ -159,9 +161,7 @@ function PublishDialogBody({
   const [publishBody, setPublishBody] = useState("");
   const [publishError, setPublishError] = useState<string>();
   const [isSubmittingForReview, setIsSubmittingForReview] = useState(false);
-  const [isSavingChanges, setIsSavingChanges] = useState(false);
   const [submitForReviewError, setSubmitForReviewError] = useState<string>();
-  const [saveChangesError, setSaveChangesError] = useState<string>();
   const [discardAllConfirm, setDiscardAllConfirm] = useState(false);
   const [isDiscardingAll, setIsDiscardingAll] = useState(false);
   const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
@@ -169,17 +169,38 @@ function PublishDialogBody({
   const loadStartedRef = useRef(false);
   const reprovisionAttemptedRef = useRef(false);
 
+  const baseDiffOpts = {
+    base: baseBranch,
+    ...(headSha ? { headSha } : {}),
+  };
+
+  // Direct publish squash-merges base…HEAD PLUS the working tree, so show and
+  // gate the union of both — a single daemon diff only returns one. For every
+  // other flow a single diff is the whole story (working tree when dirty, else
+  // base…head), picked by shouldUseBaseDiff.
+  const loadPublishDiff = async (status: GitStatus): Promise<GitDiffResult> => {
+    const baseDiff =
+      (status.aheadOfBase ?? 0) > 0
+        ? await fetchGitDiff(orgSlug, virtualMcpId, branch, baseDiffOpts)
+        : null;
+    const workingDiff = hasGitLocalWork(status)
+      ? await fetchGitDiff(orgSlug, virtualMcpId, branch)
+      : null;
+    return combinePublishDiffs(baseDiff, workingDiff);
+  };
+
   const loadGitState = async () => {
     const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
-    const needsBaseDiff =
-      openPrFromCommits || (!commitToOpenPr && (status.aheadOfBase ?? 0) > 0);
-    const diffOpts = needsBaseDiff
-      ? {
-          base: baseBranch,
-          ...(headSha ? { headSha } : {}),
-        }
-      : undefined;
-    const diff = await fetchGitDiff(orgSlug, virtualMcpId, branch, diffOpts);
+    const diff = isPublishOnly
+      ? await loadPublishDiff(status)
+      : await fetchGitDiff(
+          orgSlug,
+          virtualMcpId,
+          branch,
+          shouldUseBaseDiff(status, { openPrFromCommits, commitToOpenPr })
+            ? baseDiffOpts
+            : undefined,
+        );
     setGitStatus(status);
     setGitDiff(diff);
     setPublishTitle(`Changes from ${status.current ?? branch}`);
@@ -210,7 +231,6 @@ function PublishDialogBody({
       setPublishTitle("");
       setPublishBody("");
       setSubmitForReviewError(undefined);
-      setSaveChangesError(undefined);
       try {
         await loadGitState();
       } catch (error) {
@@ -268,17 +288,12 @@ function PublishDialogBody({
     ? hasLocalWorkToPush(gitStatus)
     : hasUnpublishedWork(gitStatus, gitDiff);
   const canSubmit =
-    !isLoadingGitDiff &&
-    (isSaveChangesFlow
-      ? hasLocalUnpublished
-      : hasLocalUnpublished || openPrFromCommits);
-  const canPublish = canSubmit && isDecoOnlyDiff(gitDiff);
-  const publishDisabledReason =
-    canSubmit && !isDecoOnlyDiff(gitDiff)
-      ? PUBLISH_REQUIRES_SUBMIT_TOOLTIP
-      : null;
+    !isLoadingGitDiff && (hasLocalUnpublished || openPrFromCommits);
+  const publishGate = canPublishDirectly(gitDiff);
+  const canPublish = canSubmit && publishGate.allowed;
+  const publishDisabledReason = canSubmit ? publishGate.reason : null;
 
-  /** Push + open PR — open-pr dialog, or save dialog with commits vs base. */
+  /** There is committed or uncommitted local work that can be pushed + PR'd. */
   const showSubmitForReviewButton =
     openPrFromCommits || (!commitToOpenPr && (gitStatus?.aheadOfBase ?? 0) > 0);
   const canSubmitForReview =
@@ -290,33 +305,8 @@ function PublishDialogBody({
     [publishTitle.trim(), publishBody.trim()].filter(Boolean).join("\n\n");
 
   const handleOpenChange = (nextOpen: boolean) => {
-    if (isPublishing || isSubmittingForReview || isSavingChanges) return;
+    if (isPublishing || isSubmittingForReview) return;
     onOpenChange(nextOpen);
-  };
-
-  const handleSaveChanges = async () => {
-    setIsSavingChanges(true);
-    setSaveChangesError(undefined);
-    try {
-      const message =
-        commitMessage() ||
-        publishTitle.trim() ||
-        `Changes from ${githubHeadBranch}`;
-      await publishGitChanges(orgSlug, virtualMcpId, branch, message);
-      toast.success(
-        openPullRequest
-          ? `Saved changes to PR #${openPullRequest.number}`
-          : "Changes saved",
-      );
-      handleOpenChange(false);
-      await onPullRequestChanged?.();
-    } catch (error) {
-      setSaveChangesError(
-        error instanceof Error ? error.message : "Failed to save changes",
-      );
-    } finally {
-      setIsSavingChanges(false);
-    }
   };
 
   const handlePublish = async () => {
@@ -504,20 +494,12 @@ function PublishDialogBody({
         <div className="shrink-0 space-y-3 px-6 pt-5 pb-4">
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">
-              {isSaveChangesFlow
-                ? "Save changes"
-                : openPrFromCommits
-                  ? "Submit for review"
-                  : publishLabel}
+              {openPrFromCommits ? "Submit for review" : publishLabel}
             </p>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-green-500" />
               {diffCount} {diffCount === 1 ? "change" : "changes"}{" "}
-              {isSaveChangesFlow
-                ? "to save"
-                : openPrFromCommits
-                  ? "in this PR"
-                  : "to publish"}
+              {openPrFromCommits ? "in this PR" : "to publish"}
             </div>
           </div>
           {discardAllConfirm ? (
@@ -564,7 +546,7 @@ function PublishDialogBody({
                   type="button"
                   className="text-xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
                   onClick={() => setDiscardAllConfirm(true)}
-                  disabled={isPublishing || isDiscardingAll || isSavingChanges}
+                  disabled={isPublishing || isDiscardingAll}
                 >
                   Discard all
                 </button>
@@ -595,8 +577,7 @@ function PublishDialogBody({
                       disabled={
                         isGeneratingSuggestion ||
                         isPublishing ||
-                        isSubmittingForReview ||
-                        isSavingChanges
+                        isSubmittingForReview
                       }
                       onClick={regenerateSuggestion}
                     >
@@ -625,7 +606,6 @@ function PublishDialogBody({
                       disabled={
                         isPublishing ||
                         isSubmittingForReview ||
-                        isSavingChanges ||
                         isGeneratingSuggestion
                       }
                       className="text-sm"
@@ -650,7 +630,6 @@ function PublishDialogBody({
                       disabled={
                         isPublishing ||
                         isSubmittingForReview ||
-                        isSavingChanges ||
                         isGeneratingSuggestion
                       }
                       rows={5}
@@ -659,26 +638,14 @@ function PublishDialogBody({
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Branch: <span className="font-mono">{branch}</span>
-                    {isSaveChangesFlow ? (
-                      <>
-                        {" · "}
-                        <span className="text-foreground/80">
-                          {commitToOpenPr
-                            ? `Commits and pushes to update open PR #${openPullRequest.number}.`
-                            : "Commits and pushes to the branch without opening a pull request."}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        {" → "}
-                        <span className="font-mono">{baseBranch}</span>
-                        {" · "}
-                        <span className="text-foreground/80">
-                          Submit for review keeps changes on the branch;{" "}
-                          {publishLabel} squash-merges into {baseBranch}.
-                        </span>
-                      </>
-                    )}
+                    {" → "}
+                    <span className="font-mono">{baseBranch}</span>
+                    {" · "}
+                    <span className="text-foreground/80">
+                      {isPublishOnly
+                        ? `${publishLabel} squash-merges into ${baseBranch}.`
+                        : `Opens a pull request into ${baseBranch} for review.`}
+                    </span>
                   </p>
                 </div>
               </TabsContent>
@@ -710,106 +677,38 @@ function PublishDialogBody({
         </div>
 
         <div className="shrink-0 border-t px-6 py-3">
-          {isSaveChangesFlow && !showSubmitForReviewButton ? (
+          {isPublishOnly ? (
             <>
-              <Button
-                type="button"
-                className="w-full"
-                onClick={handleSaveChanges}
-                disabled={!canSubmit || isSavingChanges}
-              >
-                {isSavingChanges ? (
-                  <Loading01 className="h-4 w-4 animate-spin" />
-                ) : null}
-                Save changes
-              </Button>
-              {saveChangesError && (
-                <p className="mt-2 text-xs text-destructive">
-                  {saveChangesError}
-                </p>
-              )}
-            </>
-          ) : isSaveChangesFlow ? (
-            <>
-              <div className="flex items-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={handleSaveChanges}
-                  disabled={
-                    !canSubmit || isSavingChanges || isSubmittingForReview
-                  }
-                >
-                  {isSavingChanges ? (
-                    <Loading01 className="h-4 w-4 animate-spin" />
-                  ) : null}
-                  Save changes
-                </Button>
-                <Button
-                  type="button"
-                  className="flex-1"
-                  onClick={handleSubmitForReview}
-                  disabled={
-                    !canSubmitForReview ||
-                    isSubmittingForReview ||
-                    isSavingChanges
-                  }
-                >
-                  {isSubmittingForReview ? (
-                    <Loading01 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <GitBranch01 className="h-4 w-4" />
-                  )}
-                  Submit for review
-                </Button>
-              </div>
-              {saveChangesError && (
-                <p className="mt-2 text-xs text-destructive">
-                  {saveChangesError}
-                </p>
-              )}
-              {submitForReviewError && (
-                <p className="mt-2 text-xs text-destructive">
-                  {submitForReviewError}
-                </p>
+              <PublishButton
+                label={publishLabel}
+                canPublish={canPublish}
+                disabledReason={publishDisabledReason}
+                isPublishing={isPublishing}
+                onPublish={handlePublish}
+              />
+              {publishError && (
+                <p className="mt-2 text-xs text-destructive">{publishError}</p>
               )}
             </>
           ) : (
             <>
-              <div className="flex items-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={handleSubmitForReview}
-                  disabled={
-                    !canSubmitForReview || isSubmittingForReview || isPublishing
-                  }
-                >
-                  {isSubmittingForReview ? (
-                    <Loading01 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <GitBranch01 className="h-4 w-4" />
-                  )}
-                  Submit for review
-                </Button>
-                <PublishButton
-                  label={publishLabel}
-                  canPublish={canPublish}
-                  disabledReason={publishDisabledReason}
-                  isPublishing={isPublishing}
-                  isSubmittingForReview={isSubmittingForReview}
-                  onPublish={handlePublish}
-                />
-              </div>
+              <Button
+                type="button"
+                className="w-full"
+                onClick={handleSubmitForReview}
+                disabled={!canSubmitForReview || isSubmittingForReview}
+              >
+                {isSubmittingForReview ? (
+                  <Loading01 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <GitBranch01 className="h-4 w-4" />
+                )}
+                Submit for review
+              </Button>
               {submitForReviewError && (
                 <p className="mt-2 text-xs text-destructive">
                   {submitForReviewError}
                 </p>
-              )}
-              {publishError && (
-                <p className="mt-2 text-xs text-destructive">{publishError}</p>
               )}
             </>
           )}
@@ -824,23 +723,21 @@ function PublishButton({
   canPublish,
   disabledReason,
   isPublishing,
-  isSubmittingForReview,
   onPublish,
 }: {
   label: string;
   canPublish: boolean;
   disabledReason: string | null;
   isPublishing: boolean;
-  isSubmittingForReview: boolean;
   onPublish: () => void;
 }) {
   const button = (
     <Button
       type="button"
       variant="success"
-      className="flex-1"
+      className="w-full"
       onClick={onPublish}
-      disabled={!canPublish || isPublishing || isSubmittingForReview}
+      disabled={!canPublish || isPublishing}
     >
       {isPublishing ? <Loading01 className="h-4 w-4 animate-spin" /> : null}
       {label}
@@ -853,7 +750,7 @@ function PublishButton({
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="flex flex-1">{button}</span>
+          <span className="flex w-full">{button}</span>
         </TooltipTrigger>
         <TooltipContent>{disabledReason}</TooltipContent>
       </Tooltip>

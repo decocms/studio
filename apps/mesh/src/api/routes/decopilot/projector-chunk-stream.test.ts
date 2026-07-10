@@ -1,6 +1,8 @@
 import type { UIMessageChunk } from "ai";
 import { describe, expect, test } from "bun:test";
+import { sleep } from "@decocms/std";
 import { createProjectorChunkStreamFromMessages } from "./projector-chunk-stream";
+import { StreamIdleTimeoutError } from "./nats-chunk-source";
 
 const enc = new TextEncoder();
 
@@ -148,5 +150,87 @@ describe("createProjectorChunkStreamFromMessages", () => {
     expect(await readAll(stream)).toEqual([
       { type: "text-delta", id: "t", delta: "hello" },
     ]);
+  });
+
+  // unified-control-plane T4: silence on the subject (no events of ANY kind —
+  // not just "no done/finish") is the only signal an executor died before/
+  // without publishing, now that nothing awaits the child directly (T1-T3).
+  // These characterize the liveness-breach signal this module produces and
+  // confirm it is a rolling per-message window, not a single stream-wide
+  // deadline — the mechanism `runProjectorWorkflowBody` (projector-workflow.ts)
+  // relies on to tell a true liveness breach apart from a real projection bug.
+  describe("liveness: idle-timeout as a first-class silence terminal", () => {
+    test("a fully silent source trips StreamIdleTimeoutError after idleTimeoutMs", async () => {
+      async function* silent(): AsyncIterable<Msg> {
+        await new Promise<never>(() => {}); // mimics a dead executor: never yields
+      }
+      const stream = createProjectorChunkStreamFromMessages({
+        messages: silent(),
+        runId: "run_1",
+        fenceToken: "fence_a",
+        idleTimeoutMs: 15,
+      });
+
+      let caught: unknown;
+      try {
+        await readAll(stream);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(StreamIdleTimeoutError);
+      expect((caught as StreamIdleTimeoutError).idleTimeoutMs).toBe(15);
+      expect((caught as Error).message).toContain(
+        "producer produced no output before timeout",
+      );
+    });
+
+    test("any event resets the idle window — gaps under idleTimeoutMs never trip it, even though the total elapsed time exceeds it", async () => {
+      // 3 gaps of 20ms (60ms total) against a 50ms idle window: a single
+      // stream-wide deadline would have errored at 50ms; a per-message
+      // rolling window (the actual implementation) never sees a gap wider
+      // than 20ms and completes cleanly. The middle chunk stands in for a
+      // future T5/T6 `data-liveness` heartbeat — any chunk type resets the
+      // window identically, there is no special-casing by type.
+      async function* trickle(): AsyncIterable<Msg> {
+        await sleep(20);
+        yield msg("run_1:fence_a:1", { p: { type: "start" } });
+        await sleep(20);
+        yield msg("run_1:fence_a:2", {
+          p: { type: "data-liveness", data: {} },
+        });
+        await sleep(20);
+        yield msg("run_1:fence_a:3", { p: { type: "finish" } });
+      }
+      const stream = createProjectorChunkStreamFromMessages({
+        messages: trickle(),
+        runId: "run_1",
+        fenceToken: "fence_a",
+        idleTimeoutMs: 50,
+      });
+
+      const out = await readAll(stream);
+      expect(out.map((c) => c.type)).toEqual([
+        "start",
+        "data-liveness",
+        "finish",
+      ]);
+    });
+
+    test("omitting idleTimeoutMs disables idle enforcement (live-tail semantics)", async () => {
+      // No idle timer at all when idleTimeoutMs is omitted — the UI live-tail
+      // (nats-stream-buffer.ts) relies on exactly this to stay open across
+      // silent gaps that span whole runs.
+      async function* delayedFinish(): AsyncIterable<Msg> {
+        await sleep(30);
+        yield msg("run_1:fence_a:1", { p: { type: "finish" } });
+      }
+      const stream = createProjectorChunkStreamFromMessages({
+        messages: delayedFinish(),
+        runId: "run_1",
+        fenceToken: "fence_a",
+      });
+
+      expect((await readAll(stream)).map((c) => c.type)).toEqual(["finish"]);
+    });
   });
 });

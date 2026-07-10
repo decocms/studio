@@ -280,7 +280,7 @@ export function countGitChanges(status: GitStatus | null): number {
 }
 
 /** True when the working tree or index has uncommitted work. */
-function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
+export function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
   if (!status) return false;
   return (
     countGitChanges(status) > 0 ||
@@ -319,4 +319,59 @@ export function hasUnpublishedWork(
     hasLocalWorkToPush(status) ||
     (diff != null && Object.keys(diff.diffs).length > 0)
   );
+}
+
+/**
+ * Which diff the publish dialog should show/gate. Uncommitted working-tree
+ * edits aren't in a commit yet, so a base…head diff would come back empty —
+ * show the working-tree diff whenever there's local uncommitted work, and fall
+ * back to base…head only for a clean tree whose commits are already ahead of
+ * base (open-pr-from-commits or direct publish of committed work).
+ */
+export function shouldUseBaseDiff(
+  status: GitStatus | null | undefined,
+  opts: { openPrFromCommits: boolean; commitToOpenPr: boolean },
+): boolean {
+  if (hasGitLocalWork(status)) return false;
+  return (
+    opts.openPrFromCommits ||
+    (!opts.commitToOpenPr && (status?.aheadOfBase ?? 0) > 0)
+  );
+}
+
+export interface PublishGate {
+  allowed: boolean;
+  reason: string | null;
+}
+
+/**
+ * Union of the committed base…head diff and the uncommitted working-tree diff —
+ * the full set of changes a direct publish squash-merges into base. Publish
+ * commits the working tree, then squash-merges base…HEAD, so the payload is
+ * both; the daemon can only return one diff at a time, so callers fetch both
+ * and combine here. Working-tree entries win for paths present in both (they
+ * hold the latest, about-to-be-committed content).
+ */
+export function combinePublishDiffs(
+  baseDiff: GitDiffResult | null | undefined,
+  workingDiff: GitDiffResult | null | undefined,
+): GitDiffResult {
+  return {
+    diffs: { ...(baseDiff?.diffs ?? {}), ...(workingDiff?.diffs ?? {}) },
+    ...(baseDiff?.mergeBaseSha ? { mergeBaseSha: baseDiff.mergeBaseSha } : {}),
+  };
+}
+
+/**
+ * Whether the changes may be squash-merged straight to base, bypassing review.
+ * `diff` must be the full publish payload (see `combinePublishDiffs`) so the
+ * gate sees every file — committed and uncommitted. Only deco-only payloads
+ * publish directly; anything with code must go through Submit for review.
+ */
+export function canPublishDirectly(
+  diff: GitDiffResult | null | undefined,
+): PublishGate {
+  return isDecoOnlyDiff(diff)
+    ? { allowed: true, reason: null }
+    : { allowed: false, reason: PUBLISH_REQUIRES_SUBMIT_TOOLTIP };
 }

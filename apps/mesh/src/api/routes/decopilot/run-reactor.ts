@@ -52,7 +52,12 @@ async function handleTerminalStatus(
   // DB status write intentionally removed: the consume step (consume-run-projection.ts)
   // is now the sole writer for completed/requires_action. The live reactor only emits
   // SSE for instant UX — the durable projector workflow owns the terminal DB transition.
-  // (RUN_FAILED is exempt: failed runs skip the projector path and keep their write below.)
+  // (RUN_FAILED below still writes directly, but the projector path now runs
+  // unconditionally for both topologies too — so for stream-driven failures that write
+  // RACES the projector's `markRunFailed` on the same terminal state. The write here
+  // remains the sole DB terminal only for desktop pre-publish setup failures
+  // (`failPreparedRun`) and for reaped/cancelled/ghost force-fails, which never reach
+  // the projector. See the T3 report's follow-up for the race.)
   sseHub.emit(
     orgId,
     createDecopilotThreadStatusEvent(taskId, status, {

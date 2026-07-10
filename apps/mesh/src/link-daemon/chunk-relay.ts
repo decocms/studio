@@ -36,8 +36,31 @@
  * - Aborting `signal` tears everything down: the sandbox SSE source is
  *   cancelled, in-flight/queued POST attempts stop, and the relay rejects
  *   with the abort reason.
+ *
+ * LIVENESS HEARTBEATS (unified-control-plane T6, mirrors T5's hosted-executor
+ * wrapper `apps/mesh/src/api/routes/decopilot/with-liveness-heartbeat.ts`):
+ * while the pump below is actively pulling from the sandbox SSE, a
+ * `HeartbeatEmitter` (`@decocms/harness/liveness-heartbeat` — the SAME
+ * scheduler class T5 uses) injects a synthetic `data-liveness` relay line
+ * through `pushLine` whenever `livenessHeartbeatMs` (default 30s) elapses
+ * with no real `DispatchSSEEvent` — a long tool call or model wait on the
+ * desktop harness with no incremental output. Because it goes through
+ * `pushLine`, it consumes a REAL seq and is appended to the durable outbox
+ * exactly like any other line, so it rides the same
+ * dedup/resend/rolling-truncation contract and — critically — resets the
+ * projector's per-pull idle window on the consume side
+ * (`natsChunkSource`, unified-control-plane T4) just like any other message
+ * on the run subject. See the `pumpPromise` wiring below for arm/stop
+ * semantics. Version-skew note: an already-deployed daemon predating this
+ * change never emits these — the cluster's `RUN_IDLE_TIMEOUT_MS` (10
+ * minutes) is UNCHANGED here; this task only adds emission, not a threshold
+ * change (see `packages/harness/src/liveness-heartbeat.ts` module doc).
  */
 import { retry, RetryError, sleep } from "@decocms/std";
+import {
+  buildLivenessChunk,
+  HeartbeatEmitter,
+} from "@decocms/harness/liveness-heartbeat";
 import { parseDispatchSSEEvents } from "../harnesses/parse-dispatch-sse";
 import type { DispatchSSEEvent } from "../links/protocol";
 import type { RelayLine } from "../links/protocol/relay";
@@ -126,6 +149,18 @@ export interface RelayDispatchSSEAsChunkStreamInput {
    * tests override with a tiny value.
    */
   heartbeatMs?: number;
+  /**
+   * Liveness heartbeat interval (ms) — UNRELATED to `heartbeatMs` above
+   * (that one is a transport-level blank-line keepalive that never becomes a
+   * relay line). This one controls the `HeartbeatEmitter` silence window
+   * (see the module doc's "LIVENESS HEARTBEATS" section): when the SANDBOX
+   * SSE source itself goes silent this long, a REAL seq-numbered
+   * `data-liveness` relay line is injected. Defaults to
+   * `LIVENESS_HEARTBEAT_INTERVAL_MS` (30s, from
+   * `@decocms/harness/liveness-heartbeat`); tests override with a tiny value
+   * the same way the existing `heartbeatMs` tests do.
+   */
+  livenessHeartbeatMs?: number;
 }
 
 const encoder = new TextEncoder();
@@ -203,17 +238,44 @@ export async function relayDispatchSSEAsChunkStream(
   // ── Pump: sandbox SSE → buffered relay lines ─────────────────────────────
   // Runs independently of POST health so the buffer keeps absorbing the
   // sandbox stream while the cluster connection is down.
+  //
+  // Liveness heartbeat (see module doc "LIVENESS HEARTBEATS"): armed before
+  // the loop starts (silence before the very first chunk counts too),
+  // re-armed on every real event (a chunk/error/done arriving resets the
+  // silence window), and stopped in `finally` on EVERY pump exit — normal
+  // completion, a thrown error, or cancellation via `internal.signal` — so
+  // it can never fire once the dispatch is no longer live. A heartbeat
+  // firing calls `pushLine`, which assigns it the next real wire seq exactly
+  // like any other event.
+  // Failure-mode note: if a heartbeat's pushLine throws (e.g. the outbox's
+  // MAX_OUTBOX_BYTES overflow cap), the emitter swallows it and permanently
+  // stops for this run — liveness heartbeats silently end, but REAL content
+  // hitting the same cap still fails the pump loudly, so the swallow can
+  // never mask a genuine overflow. Bounded, accepted (heartbeat lines are
+  // tiny relative to content).
+  const heartbeat = new HeartbeatEmitter({
+    intervalMs: input.livenessHeartbeatMs,
+    emit: () => {
+      pushLine({ type: "ui-message-chunk", chunk: buildLivenessChunk() });
+    },
+  });
   const pumpPromise = (async () => {
     let sawDone = false;
-    for await (const event of parseDispatchSSEEvents(input.dispatchBody, {
-      signal: internal.signal,
-    })) {
-      pushLine(event);
-      if (event.type === "done") sawDone = true;
+    try {
+      heartbeat.arm();
+      for await (const event of parseDispatchSSEEvents(input.dispatchBody, {
+        signal: internal.signal,
+      })) {
+        pushLine(event);
+        if (event.type === "done") sawDone = true;
+        heartbeat.arm();
+      }
+      if (!sawDone) pushLine({ type: "done" });
+      pumpDone = true;
+      signalChange();
+    } finally {
+      heartbeat.stop();
     }
-    if (!sawDone) pushLine({ type: "done" });
-    pumpDone = true;
-    signalChange();
   })().catch((err: unknown) => {
     pumpError =
       err ?? new Error(`[chunk-relay] runId=${input.runId}: chunk pump failed`);

@@ -43,6 +43,12 @@ describe("page-path-utils", () => {
     expect(extractPathParams("/v/:123")).toEqual(["123"]);
   });
 
+  it("extractPathParams treats `*` as a catch-all param", () => {
+    expect(extractPathParams("/*")).toEqual(["*"]);
+    expect(extractPathParams("/c/:category/*")).toEqual(["category", "*"]);
+    expect(extractPathParams("/*/x/*")).toEqual(["*"]);
+  });
+
   it("splitPathTemplate interleaves text and param tokens", () => {
     expect(splitPathTemplate("/inspira-novo/blog/:slug")).toEqual([
       { type: "text", text: "/inspira-novo/blog/" },
@@ -57,6 +63,19 @@ describe("page-path-utils", () => {
     ]);
     expect(splitPathTemplate("/about")).toEqual([
       { type: "text", text: "/about" },
+    ]);
+  });
+
+  it("splitPathTemplate emits a param token for `*`", () => {
+    expect(splitPathTemplate("/*")).toEqual([
+      { type: "text", text: "/" },
+      { type: "param", name: "*" },
+    ]);
+    expect(splitPathTemplate("/c/:category/*")).toEqual([
+      { type: "text", text: "/c/" },
+      { type: "param", name: "category" },
+      { type: "text", text: "/" },
+      { type: "param", name: "*" },
     ]);
   });
 
@@ -78,5 +97,23 @@ describe("page-path-utils", () => {
     expect(fillPathTemplate("/:org/:repo", { org: "deco" })).toBe(
       "/deco/:repo",
     );
+  });
+
+  it("fillPathTemplate fills `*` keeping `/` separators, encoding segments", () => {
+    expect(fillPathTemplate("/*", { "*": "category/shoes" })).toBe(
+      "/category/shoes",
+    );
+    expect(fillPathTemplate("/*", { "*": "sapatos femininos" })).toBe(
+      "/sapatos%20femininos",
+    );
+    // Leading/doubled slashes in the typed value are dropped.
+    expect(fillPathTemplate("/*", { "*": "/category//shoes/" })).toBe(
+      "/category/shoes",
+    );
+    expect(fillPathTemplate("/*", { "*": "/" })).toBe("/*");
+    expect(fillPathTemplate("/*", {})).toBe("/*");
+    expect(
+      fillPathTemplate("/c/:category/*", { category: "roupas", "*": "a/b" }),
+    ).toBe("/c/roupas/a/b");
   });
 });

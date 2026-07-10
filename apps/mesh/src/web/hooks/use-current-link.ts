@@ -20,9 +20,19 @@ export interface CurrentLink {
 
 const OFFLINE: CurrentLink = { online: false, capabilities: [], ready: false };
 
-export function useCurrentLink(): CurrentLink {
+export interface UseCurrentLinkOptions {
+  /**
+   * Poll faster while something is actively watching for a state change
+   * (e.g. the "waiting for desktop" connect dialog). Everyone else gets the
+   * slow, passive-display cadence.
+   */
+  fast?: boolean;
+}
+
+export function useCurrentLink(options?: UseCurrentLinkOptions): CurrentLink {
   const { org } = useProjectContext();
   const studio = useStudioTools();
+  const fast = options?.fast ?? false;
 
   const { data } = useQuery<CurrentLink>({
     queryKey: KEYS.currentLink(org.id),
@@ -33,8 +43,8 @@ export function useCurrentLink(): CurrentLink {
       > | null;
       return link ? { ...link, ready: true } : { ...OFFLINE, ready: true };
     },
-    staleTime: 4_000,
-    refetchInterval: 5_000,
+    staleTime: fast ? 1_000 : 10_000,
+    refetchInterval: fast ? 2_000 : 15_000,
     refetchOnWindowFocus: true,
   });
 

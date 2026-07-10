@@ -59,7 +59,7 @@ export function ConnectDesktopDialog({
   open,
   onOpenChange,
 }: ConnectDesktopDialogProps) {
-  const link = useCurrentLink();
+  const link = useCurrentLink({ fast: open });
   const [copied, setCopied] = useState(false);
   const desktopName = link.hostname ?? link.machineId ?? "Your desktop";
 
