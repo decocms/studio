@@ -1,5 +1,51 @@
 import { describe, test, expect } from "bun:test";
-import { generateClientCode } from "./codegen.js";
+import { generateClientCode, toolSchemaFiles } from "./codegen.js";
+
+describe("toolSchemaFiles", () => {
+  test("emits one JSON file per tool with name, description and schemas", () => {
+    const files = toolSchemaFiles([
+      {
+        name: "SEND_EMAIL",
+        description: "Send an email",
+        inputSchema: {
+          type: "object",
+          properties: { to: { type: "string" } },
+          required: ["to"],
+        },
+        outputSchema: {
+          type: "object",
+          properties: { id: { type: "string" } },
+          required: ["id"],
+        },
+      },
+    ]);
+
+    expect(files).toHaveLength(1);
+    expect(files[0].filename).toBe("SEND_EMAIL.json");
+    const parsed = JSON.parse(files[0].content);
+    expect(parsed.name).toBe("SEND_EMAIL");
+    expect(parsed.description).toBe("Send an email");
+    expect(parsed.inputSchema.properties.to.type).toBe("string");
+    expect(parsed.outputSchema.properties.id.type).toBe("string");
+  });
+
+  test("omits outputSchema key when absent", () => {
+    const files = toolSchemaFiles([
+      { name: "PING", inputSchema: { type: "object", properties: {} } },
+    ]);
+    const parsed = JSON.parse(files[0].content);
+    expect("outputSchema" in parsed).toBe(false);
+  });
+
+  test("sanitizes unsafe characters in the filename", () => {
+    const files = toolSchemaFiles([
+      { name: "a/b:c", inputSchema: { type: "object" } },
+    ]);
+    expect(files[0].filename).toBe("a_b_c.json");
+    // The original name is preserved inside the file.
+    expect(JSON.parse(files[0].content).name).toBe("a/b:c");
+  });
+});
 
 describe("generateClientCode", () => {
   test("generates Tools interface with input and output types", async () => {
