@@ -1,3 +1,4 @@
+import { sleep } from "@decocms/std";
 import type { Kysely } from "kysely";
 import {
   foldParts,
@@ -6,10 +7,33 @@ import {
 } from "./fold-parts";
 import type { Database, ThreadMessage } from "./types";
 
+// Last-resort circuit breaker only — legitimate tool output (a large file
+// read, a big stdout capture) is stored in full. A single part this size
+// (>50MB serialized) is almost certainly a runaway/erroneous payload, not
+// real content worth keeping.
+const MAX_PART_PAYLOAD_BYTES = 50_000_000;
+
+// A synchronous loop over many/large parts' JSON.stringify calls can block
+// the event loop long enough to starve health probes and stall the whole
+// worker — this has happened in production. Yield back to the event loop
+// every few parts instead of doing the whole batch in one synchronous pass.
+const SERIALIZE_YIELD_EVERY = 25;
+
+export function serializePayload(payload: unknown): string {
+  const serialized = JSON.stringify(payload);
+  const bytes = Buffer.byteLength(serialized, "utf8");
+  if (bytes <= MAX_PART_PAYLOAD_BYTES) return serialized;
+  return JSON.stringify({
+    truncated: true,
+    reason: "payload exceeds max stored size",
+    originalBytes: bytes,
+  });
+}
+
 export class SqlThreadMessagePartStorage {
   constructor(private db: Kysely<Database>) {}
 
-  private serializeParts(parts: ThreadMessagePart[]): {
+  private async serializeParts(parts: ThreadMessagePart[]): Promise<{
     rows: Array<{
       id: string;
       seq: number;
@@ -25,7 +49,7 @@ export class SqlThreadMessagePartStorage {
       created_at: string;
     }>;
     partsById: Map<string, ThreadMessagePart>;
-  } {
+  }> {
     const seen = new Set<string>();
     const rows: Array<{
       id: string;
@@ -42,7 +66,8 @@ export class SqlThreadMessagePartStorage {
       created_at: string;
     }> = [];
     const partsById = new Map<string, ThreadMessagePart>();
-    for (const p of parts) {
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]!;
       if (seen.has(p.id)) continue; // can't affect same row twice in one INSERT
       seen.add(p.id);
       partsById.set(p.id, p);
@@ -55,11 +80,12 @@ export class SqlThreadMessagePartStorage {
         message_id: p.message_id,
         role: p.role,
         kind: p.kind,
-        payload: JSON.stringify(p.payload),
+        payload: serializePayload(p.payload),
         payload_ref: p.payload_ref ?? null,
-        metadata: p.metadata != null ? JSON.stringify(p.metadata) : null,
+        metadata: p.metadata != null ? serializePayload(p.metadata) : null,
         created_at: p.created_at,
       });
+      if ((i + 1) % SERIALIZE_YIELD_EVERY === 0) await sleep(0);
     }
     return { rows, partsById };
   }
@@ -67,7 +93,7 @@ export class SqlThreadMessagePartStorage {
   /** Idempotent append; rows are immutable (ON CONFLICT (id) DO NOTHING). */
   async appendParts(parts: ThreadMessagePart[]): Promise<ThreadMessagePart[]> {
     if (parts.length === 0) return [];
-    const { rows, partsById } = this.serializeParts(parts);
+    const { rows, partsById } = await this.serializeParts(parts);
     const inserted = await this.db
       .insertInto("thread_message_parts")
       .values(rows)
@@ -90,7 +116,7 @@ export class SqlThreadMessagePartStorage {
     messageId: string,
     parts: ThreadMessagePart[],
   ): Promise<ThreadMessagePart[]> {
-    const { rows } = this.serializeParts(parts);
+    const { rows } = await this.serializeParts(parts);
     await this.db.transaction().execute(async (trx) => {
       const existing = await trx
         .selectFrom("thread_message_parts")
