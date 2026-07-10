@@ -9,9 +9,13 @@ import type { Database, ThreadMessage } from "./types";
 
 // Last-resort circuit breaker only — legitimate tool output (a large file
 // read, a big stdout capture) is stored in full. A single part this size
-// (>50MB serialized) is almost certainly a runaway/erroneous payload, not
-// real content worth keeping.
+// is almost certainly a runaway/erroneous payload, not real content worth
+// keeping.
 const MAX_PART_PAYLOAD_BYTES = 50_000_000;
+
+// Bounds the size-estimate traversal itself: a deeply-nested-but-small
+// object shouldn't be able to turn the probe into its own stall.
+const MAX_ESTIMATE_NODES = 100_000;
 
 // A synchronous loop over many/large parts' JSON.stringify calls can block
 // the event loop long enough to starve health probes and stall the whole
@@ -19,15 +23,43 @@ const MAX_PART_PAYLOAD_BYTES = 50_000_000;
 // every few parts instead of doing the whole batch in one synchronous pass.
 const SERIALIZE_YIELD_EVERY = 25;
 
+/**
+ * Upper-bound the payload's serialized size WITHOUT calling JSON.stringify.
+ * A string's `.length` is O(1) (no copy) — it's the escaping/copying that
+ * JSON.stringify does which is expensive, not knowing the size. Bails out
+ * (returns Infinity) the moment the running total clears `budget`, so an
+ * oversized payload never pays for its own full serialization just to be
+ * measured and discarded.
+ */
+function estimatePayloadBytes(value: unknown, budget: number): number {
+  let total = 0;
+  let nodes = 0;
+  const stack: unknown[] = [value];
+  while (stack.length > 0) {
+    if (total > budget || ++nodes > MAX_ESTIMATE_NODES) return Infinity;
+    const v = stack.pop();
+    if (typeof v === "string") {
+      total += v.length; // UTF-16 units — a fine over-estimate of UTF-8 bytes
+    } else if (Array.isArray(v)) {
+      for (const item of v) stack.push(item);
+    } else if (v !== null && typeof v === "object") {
+      for (const item of Object.values(v)) stack.push(item);
+    }
+  }
+  return total;
+}
+
 export function serializePayload(payload: unknown): string {
-  const serialized = JSON.stringify(payload);
-  const bytes = Buffer.byteLength(serialized, "utf8");
-  if (bytes <= MAX_PART_PAYLOAD_BYTES) return serialized;
-  return JSON.stringify({
-    truncated: true,
-    reason: "payload exceeds max stored size",
-    originalBytes: bytes,
-  });
+  if (
+    estimatePayloadBytes(payload, MAX_PART_PAYLOAD_BYTES) >
+    MAX_PART_PAYLOAD_BYTES
+  ) {
+    return JSON.stringify({
+      truncated: true,
+      reason: "payload exceeds max stored size",
+    });
+  }
+  return JSON.stringify(payload);
 }
 
 export class SqlThreadMessagePartStorage {

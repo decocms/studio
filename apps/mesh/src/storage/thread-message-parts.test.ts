@@ -12,13 +12,19 @@ describe("serializePayload", () => {
     expect(serializePayload(big)).toBe(JSON.stringify(big));
   });
 
-  it("only circuit-breaks truly pathological payload sizes", () => {
+  it("circuit-breaks a single oversized string without stringifying it", () => {
     const pathological = {
       type: "tool-result",
       output: "x".repeat(60_000_000),
     };
     const out = JSON.parse(serializePayload(pathological));
     expect(out.truncated).toBe(true);
-    expect(out.originalBytes).toBeGreaterThan(50_000_000);
+  });
+
+  it("circuit-breaks many small strings that sum past the cap", () => {
+    const chunks = Array.from({ length: 1000 }, () => "x".repeat(60_000));
+    const pathological = { type: "tool-result", output: chunks }; // 60MB total
+    const out = JSON.parse(serializePayload(pathological));
+    expect(out.truncated).toBe(true);
   });
 });
