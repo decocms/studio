@@ -414,6 +414,17 @@ export class SetupOrchestrator {
       return false;
     }
     this.markInstallSucceeded(config);
+    // Install scripts (postinstall/prepare — lefthook, husky, etc.) can
+    // overwrite .git/hooks/pre-push; reinstall so branch protection survives.
+    if (config.repoDir) {
+      try {
+        installProtectedBranchHook(config.repoDir);
+      } catch (e) {
+        this.chunk(
+          `\r\n[orchestrator] warning: could not reinstall protected-branch hook: ${(e as Error).message}\r\n`,
+        );
+      }
+    }
     // Don't publish the golden yet — defer to publishPendingGolden(), which
     // the probe's `running` transition calls once the dev server is confirmed
     // healthy. Publishing only from a boot that actually came up prevents a
