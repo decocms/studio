@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { resolveSchema, type LiveMeta } from "./resolve-schema";
+import {
+  inferSchemaFromValue,
+  isFreeformPropsSchema,
+  resolveSchema,
+  type LiveMeta,
+} from "./resolve-schema";
 
 function metaWithSchema(blockSchema: Record<string, unknown>): LiveMeta {
   return {
@@ -1223,5 +1228,115 @@ describe("resolveSchema – #/root block-registry refs (recursive matchers)", ()
       ?.matchers?.items;
     expect(items?.type).toBe("object");
     expect(items?.anyOfRefs ?? []).toHaveLength(0);
+  });
+});
+
+describe("isFreeformPropsSchema – tanstack commerce stub detection", () => {
+  const VTEX_PDP = "vtex/loaders/intelligentSearch/productDetailsPage.ts";
+  const meta: LiveMeta = {
+    manifest: {
+      blocks: {
+        loaders: {
+          [VTEX_PDP]: { $ref: "#/definitions/VtexStub" },
+          "vtex/loaders/openApi.ts": { $ref: "#/definitions/OpenStub" },
+          "site/loaders/CheckStock.ts": { $ref: "#/definitions/CheckStock" },
+          "site/loaders/denoNoProps.ts": { $ref: "#/definitions/DenoNoProps" },
+        },
+      },
+    },
+    schema: {
+      definitions: {
+        // The shape tanstack's composeMeta actually emits for commerce/vtex
+        // stubs: `additionalProperties` is dropped, only the self-referential
+        // __resolveType enum survives.
+        VtexStub: {
+          title: VTEX_PDP,
+          type: "object",
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: [VTEX_PDP],
+              default: VTEX_PDP,
+            },
+          },
+        },
+        // Future-proofing: a stub that keeps `additionalProperties: true`.
+        OpenStub: {
+          type: "object",
+          additionalProperties: true,
+          properties: { __resolveType: { type: "string" } },
+        },
+        CheckStock: {
+          type: "object",
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: ["site/loaders/CheckStock.ts"],
+            },
+            ids: { type: "array", items: { type: "string" } },
+          },
+        },
+        // Deno-style propless def: no __resolveType embedded in props.
+        DenoNoProps: { type: "object" },
+      },
+    },
+  };
+
+  test("flags the tanstack __resolveType-only registry stub", () => {
+    expect(isFreeformPropsSchema(VTEX_PDP, meta)).toBe(true);
+  });
+
+  test("flags additionalProperties stubs with no declared props", () => {
+    expect(isFreeformPropsSchema("vtex/loaders/openApi.ts", meta)).toBe(true);
+  });
+
+  test("a schema with real props is not freeform", () => {
+    expect(isFreeformPropsSchema("site/loaders/CheckStock.ts", meta)).toBe(
+      false,
+    );
+    // Sanity: the real schema resolves a form.
+    expect(
+      resolveSchema("site/loaders/CheckStock.ts", meta)?.properties?.ids?.type,
+    ).toBe("array");
+  });
+
+  test("a deno-style propless def is not freeform", () => {
+    expect(isFreeformPropsSchema("site/loaders/denoNoProps.ts", meta)).toBe(
+      false,
+    );
+  });
+});
+
+describe("inferSchemaFromValue – form from saved props", () => {
+  test("infers primitive, array, and nested object fields", () => {
+    const schema = inferSchemaFromValue({
+      __resolveType: "vtex/loaders/legacy/productListingPage.ts",
+      sort: "OrderByPriceDESC",
+      count: 16,
+      hideUnavailable: true,
+      ids: ["149524", "149525"],
+      nested: { term: "gel", deep: { n: 1 } },
+    });
+    expect(schema?.type).toBe("object");
+    const props = schema?.properties ?? {};
+    // __resolveType is plumbing, never a form field.
+    expect(props.__resolveType).toBeUndefined();
+    expect(props.sort?.type).toBe("string");
+    expect(props.count?.type).toBe("number");
+    expect(props.hideUnavailable?.type).toBe("boolean");
+    expect(props.ids?.type).toBe("array");
+    expect(props.ids?.items?.type).toBe("string");
+    expect(props.nested?.type).toBe("object");
+    expect(props.nested?.properties?.term?.type).toBe("string");
+    expect(props.nested?.properties?.deep?.properties?.n?.type).toBe("number");
+  });
+
+  test("null values degrade to string fields; empty value yields no schema", () => {
+    expect(inferSchemaFromValue({ fq: null })?.properties?.fq?.type).toBe(
+      "string",
+    );
+    expect(inferSchemaFromValue({})).toBeNull();
+    expect(inferSchemaFromValue({ __resolveType: "x" })).toBeNull();
   });
 });

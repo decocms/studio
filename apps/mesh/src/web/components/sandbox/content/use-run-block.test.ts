@@ -1,10 +1,32 @@
 import { describe, expect, it } from "bun:test";
-import { buildInvokeRunUrl } from "./use-run-block";
+import { buildInvokeRunUrl, buildPreviewInvokePath } from "./use-run-block";
 
 const NOW_MS = 1_751_500_000_000;
 
+describe("buildPreviewInvokePath", () => {
+  it("builds the org-scoped mesh proxy path", () => {
+    expect(
+      buildPreviewInvokePath({
+        orgSlug: "acme",
+        virtualMcpId: "vm-1",
+        branch: "main",
+      }),
+    ).toBe("/api/acme/sandbox/vm-1/main/preview-invoke");
+  });
+
+  it("encodes slashes in virtualMcpId and branch", () => {
+    expect(
+      buildPreviewInvokePath({
+        orgSlug: "acme",
+        virtualMcpId: "vm/one",
+        branch: "feature/local-preview",
+      }),
+    ).toBe("/api/acme/sandbox/vm%2Fone/feature%2Flocal-preview/preview-invoke");
+  });
+});
+
 describe("buildInvokeRunUrl", () => {
-  it("keeps the resolveType raw in the path (slashes intact)", () => {
+  it("targets /deco/invoke with the resolveType raw in the path (slashes intact)", () => {
     const url = new URL(
       buildInvokeRunUrl(
         "http://handle.localhost:6000",
@@ -14,7 +36,7 @@ describe("buildInvokeRunUrl", () => {
       ),
     );
     expect(url.pathname).toBe(
-      "/live/invoke/vtex/loaders/intelligentSearch/productList.ts",
+      "/deco/invoke/vtex/loaders/intelligentSearch/productList.ts",
     );
     expect(url.origin).toBe("http://handle.localhost:6000");
   });

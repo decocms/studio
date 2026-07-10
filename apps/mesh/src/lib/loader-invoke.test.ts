@@ -72,18 +72,32 @@ describe("parseLoaderInvokeRequest", () => {
       payload: { props: ["not", "an", "object"] },
     });
   });
+
+  it("keeps sibling fields next to a nested props key", () => {
+    const result = parseLoaderInvokeRequest({
+      __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+      props: { ids: ["149524"] },
+      simulationBehavior: "default",
+    });
+    expect(result).toEqual({
+      resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+      payload: { props: { ids: ["149524"] }, simulationBehavior: "default" },
+    });
+  });
 });
 
 describe("buildLoaderInvokeUrl", () => {
-  it("joins base url and resolveType", () => {
+  // The resolveType stays RAW in the path (slashes intact) — the deco runtime
+  // routes /deco/invoke/* on the un-decoded path, so a %2F-encoded key 404s.
+  it("joins base url and resolveType with slashes intact", () => {
     expect(
       buildLoaderInvokeUrl("https://preview.example.com", "loaders/foo.ts"),
-    ).toBe("https://preview.example.com/deco/invoke/loaders%2Ffoo.ts");
+    ).toBe("https://preview.example.com/deco/invoke/loaders/foo.ts");
   });
 
   it("strips trailing slashes from the base url", () => {
     expect(
       buildLoaderInvokeUrl("https://preview.example.com///", "loaders/foo.ts"),
-    ).toBe("https://preview.example.com/deco/invoke/loaders%2Ffoo.ts");
+    ).toBe("https://preview.example.com/deco/invoke/loaders/foo.ts");
   });
 });
