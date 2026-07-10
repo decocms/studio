@@ -1,3 +1,4 @@
+import { sleep } from "@decocms/std";
 import type { Kysely } from "kysely";
 import {
   foldParts,
@@ -6,10 +7,65 @@ import {
 } from "./fold-parts";
 import type { Database, ThreadMessage } from "./types";
 
+// Last-resort circuit breaker only — legitimate tool output (a large file
+// read, a big stdout capture) is stored in full. A single part this size
+// is almost certainly a runaway/erroneous payload, not real content worth
+// keeping.
+const MAX_PART_PAYLOAD_BYTES = 50_000_000;
+
+// Bounds the size-estimate traversal itself: a deeply-nested-but-small
+// object shouldn't be able to turn the probe into its own stall.
+const MAX_ESTIMATE_NODES = 100_000;
+
+// A synchronous loop over many/large parts' JSON.stringify calls can block
+// the event loop long enough to starve health probes and stall the whole
+// worker — this has happened in production. Yield back to the event loop
+// every few parts instead of doing the whole batch in one synchronous pass.
+const SERIALIZE_YIELD_EVERY = 25;
+
+/**
+ * Upper-bound the payload's serialized size WITHOUT calling JSON.stringify.
+ * A string's `.length` is O(1) (no copy) — it's the escaping/copying that
+ * JSON.stringify does which is expensive, not knowing the size. Bails out
+ * (returns Infinity) the moment the running total clears `budget`, so an
+ * oversized payload never pays for its own full serialization just to be
+ * measured and discarded.
+ */
+function estimatePayloadBytes(value: unknown, budget: number): number {
+  let total = 0;
+  let nodes = 0;
+  const stack: unknown[] = [value];
+  while (stack.length > 0) {
+    if (total > budget || ++nodes > MAX_ESTIMATE_NODES) return Infinity;
+    const v = stack.pop();
+    if (typeof v === "string") {
+      total += v.length; // UTF-16 units — a fine over-estimate of UTF-8 bytes
+    } else if (Array.isArray(v)) {
+      for (const item of v) stack.push(item);
+    } else if (v !== null && typeof v === "object") {
+      for (const item of Object.values(v)) stack.push(item);
+    }
+  }
+  return total;
+}
+
+export function serializePayload(payload: unknown): string {
+  if (
+    estimatePayloadBytes(payload, MAX_PART_PAYLOAD_BYTES) >
+    MAX_PART_PAYLOAD_BYTES
+  ) {
+    return JSON.stringify({
+      truncated: true,
+      reason: "payload exceeds max stored size",
+    });
+  }
+  return JSON.stringify(payload);
+}
+
 export class SqlThreadMessagePartStorage {
   constructor(private db: Kysely<Database>) {}
 
-  private serializeParts(parts: ThreadMessagePart[]): {
+  private async serializeParts(parts: ThreadMessagePart[]): Promise<{
     rows: Array<{
       id: string;
       seq: number;
@@ -25,7 +81,7 @@ export class SqlThreadMessagePartStorage {
       created_at: string;
     }>;
     partsById: Map<string, ThreadMessagePart>;
-  } {
+  }> {
     const seen = new Set<string>();
     const rows: Array<{
       id: string;
@@ -42,7 +98,8 @@ export class SqlThreadMessagePartStorage {
       created_at: string;
     }> = [];
     const partsById = new Map<string, ThreadMessagePart>();
-    for (const p of parts) {
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]!;
       if (seen.has(p.id)) continue; // can't affect same row twice in one INSERT
       seen.add(p.id);
       partsById.set(p.id, p);
@@ -55,11 +112,12 @@ export class SqlThreadMessagePartStorage {
         message_id: p.message_id,
         role: p.role,
         kind: p.kind,
-        payload: JSON.stringify(p.payload),
+        payload: serializePayload(p.payload),
         payload_ref: p.payload_ref ?? null,
-        metadata: p.metadata != null ? JSON.stringify(p.metadata) : null,
+        metadata: p.metadata != null ? serializePayload(p.metadata) : null,
         created_at: p.created_at,
       });
+      if ((i + 1) % SERIALIZE_YIELD_EVERY === 0) await sleep(0);
     }
     return { rows, partsById };
   }
@@ -67,7 +125,7 @@ export class SqlThreadMessagePartStorage {
   /** Idempotent append; rows are immutable (ON CONFLICT (id) DO NOTHING). */
   async appendParts(parts: ThreadMessagePart[]): Promise<ThreadMessagePart[]> {
     if (parts.length === 0) return [];
-    const { rows, partsById } = this.serializeParts(parts);
+    const { rows, partsById } = await this.serializeParts(parts);
     const inserted = await this.db
       .insertInto("thread_message_parts")
       .values(rows)
@@ -90,7 +148,7 @@ export class SqlThreadMessagePartStorage {
     messageId: string,
     parts: ThreadMessagePart[],
   ): Promise<ThreadMessagePart[]> {
-    const { rows } = this.serializeParts(parts);
+    const { rows } = await this.serializeParts(parts);
     await this.db.transaction().execute(async (trx) => {
       const existing = await trx
         .selectFrom("thread_message_parts")
