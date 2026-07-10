@@ -75,7 +75,7 @@ describe("VirtualMCPStorage.findById (Decopilot)", () => {
   test("returns the synthesized decopilot entity with NO aggregated connections", async () => {
     const decopilot = await storage.findById(getDecopilotId(orgId), orgId);
     expect(decopilot).not.toBeNull();
-    expect(decopilot?.title).toBe("Decopilot");
+    expect(decopilot?.title).toBe("Home");
     expect(decopilot?.connections).toEqual([]);
   });
 });

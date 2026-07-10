@@ -98,7 +98,7 @@ function getServerSnapshot(): null {
  * a plain browser tab can enter fullscreen (F11 / macOS fullscreen) without
  * being an installed PWA, which would give a false positive.
  */
-export function isStandalone(): boolean {
+function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
   const displayModeMedia =
     typeof window.matchMedia === "function" &&

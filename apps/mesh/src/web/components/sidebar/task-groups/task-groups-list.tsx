@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { ScrollFade } from "./scroll-fade";
 import {
   Activity,
@@ -452,7 +453,10 @@ export function TaskGroupsList({
 
   const toolbar = (mobile: boolean) => (
     <div
-      className={`shrink-0 px-1 flex items-center justify-between ${mobile ? "h-10" : "h-10 md:h-7 mb-2"}`}
+      className={cn(
+        "shrink-0 px-1 flex items-center justify-between",
+        mobile ? "h-10" : "h-10 md:h-7 mb-2",
+      )}
     >
       <div className="flex items-center gap-0.5">
         <ToolbarIconButton
