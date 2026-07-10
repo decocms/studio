@@ -286,6 +286,30 @@ warmPool:
   enabled: false
   size: 0
 
+  # Optional: scale `size` dynamically via a HorizontalPodAutoscaler
+  # targeting the SandboxWarmPool's native scale subresource (kubectl scale
+  # works too — this just automates it). Off by default; has no effect
+  # unless warmPool.enabled is also true. See templates/sandbox-warmpool-hpa.yaml.
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    # Required when enabled=true — no default metric ships (see
+    # sandbox-warmpool-hpa.yaml for why). Raw autoscaling/v2 `metrics` entries,
+    # e.g.:
+    # metrics:
+    #   - type: External
+    #     external:
+    #       metric:
+    #         name: sandbox_pending_claims
+    #       target:
+    #         type: AverageValue
+    #         averageValue: "2"
+    metrics: []
+    # Optional autoscaling/v2 `behavior` block (scale-up/down stabilization
+    # windows, policies). Left empty = cluster defaults.
+    behavior: {}
+
 # ── preview URL gateway (optional) ─────────────────────────────────────
 # Wildcard preview-URL ingress. Renders an Istio Gateway (HTTPS, terminates
 # `*.<domain>`) + a cert-manager Certificate. Per-claim HTTPRoutes are NOT
