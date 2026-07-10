@@ -146,6 +146,28 @@ atomic and gives a pointer to the right install command.
 {{- end }}
 {{- end }}
 
+{{/*
+Validate warmPool.autoscaling before rendering the HPA. Two failure modes
+worth catching at template time rather than letting the API server reject
+(or silently no-op) them:
+  - autoscaling.enabled with warmPool.enabled=false: there's no
+    SandboxWarmPool object for the HPA to target.
+  - autoscaling.enabled with an empty metrics list: an HPA with no metrics
+    can't compute a desired replica count, so it would just sit idle at
+    minReplicas forever — this chart ships no default metric (see
+    sandbox-warmpool-hpa.yaml), so the operator must supply one.
+*/}}
+{{- define "sandbox-env.validateWarmPoolAutoscaling" -}}
+{{- if .Values.warmPool.autoscaling.enabled }}
+{{- if not .Values.warmPool.enabled }}
+{{- fail "sandbox-env: warmPool.autoscaling.enabled=true requires warmPool.enabled=true (there's no SandboxWarmPool to scale otherwise)." -}}
+{{- end }}
+{{- if eq (len .Values.warmPool.autoscaling.metrics) 0 }}
+{{- fail "sandbox-env: warmPool.autoscaling.enabled=true requires at least one entry in warmPool.autoscaling.metrics — this chart ships no default metric. See values.yaml for an example External-metric entry." -}}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{- define "sandbox-env.housekeeperName" -}}
 {{- printf "sandbox-housekeeper-%s" (include "sandbox-env.envName" .) -}}
 {{- end }}
