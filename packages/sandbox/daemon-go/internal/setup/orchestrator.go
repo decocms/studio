@@ -1,0 +1,564 @@
+package setup
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"github.com/decocms/studio/sandbox-daemon/internal/config"
+	"github.com/decocms/studio/sandbox-daemon/internal/events"
+	"github.com/decocms/studio/sandbox-daemon/internal/gitx"
+	"github.com/decocms/studio/sandbox-daemon/internal/lifecycle"
+	"github.com/decocms/studio/sandbox-daemon/internal/paths"
+	"github.com/decocms/studio/sandbox-daemon/internal/proc"
+)
+
+type Step string
+
+const (
+	StepClone   Step = "clone"
+	StepInstall Step = "install"
+	StepStart   Step = "start"
+)
+
+var stepRank = map[Step]int{StepClone: 3, StepInstall: 2, StepStart: 1}
+
+const installLogMaxBytes = 10 * 1024 * 1024
+
+type orchestratorBroadcaster interface {
+	BroadcastChunk(source, data string, opts ...events.ChunkOpts)
+	Emit(name string, payload any)
+}
+
+type OrchestratorDeps struct {
+	AppRoot      string
+	RepoDir      string
+	LogsDir      string
+	Store        *config.Store
+	TaskManager  *proc.TaskManager
+	SetStatus    func(next events.DaemonStatus)
+	GetStatus    func() events.DaemonStatus
+	Broadcaster  orchestratorBroadcaster
+	InstallState *InstallState
+	Lifecycle    *lifecycle.Manager
+	BranchStatus *gitx.BranchStatusMonitor
+}
+
+type Orchestrator struct {
+	deps OrchestratorDeps
+
+	mu                sync.Mutex
+	queue             []Step
+	running           bool
+	currentBranchHead string
+	latestScripts     []string
+	hasScripts        bool
+}
+
+func NewOrchestrator(deps OrchestratorDeps) *Orchestrator {
+	o := &Orchestrator{deps: deps}
+	deps.TaskManager.OnTaskExit(func(s proc.TaskSummary) {
+		if s.LogName == "" || !proc.IsWellKnownStarter(s.LogName) {
+			return
+		}
+		if s.Intentional {
+			return
+		}
+		if s.ExitCode == nil || *s.ExitCode == 0 {
+			return
+		}
+		reason := fmt.Sprintf("dev script exited with code %d", *s.ExitCode)
+		o.chunk("\r\n[orchestrator] " + reason + "\r\n")
+		o.deps.SetStatus(events.DaemonStatus{State: "error", Reason: reason})
+		if o.deps.Lifecycle.Current().Phase != events.PhaseStartFailed {
+			o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStartFailed, Error: reason})
+		}
+	})
+	return o
+}
+
+func (o *Orchestrator) ResumeFrom(step Step) {
+	if o.deps.GetStatus().State == "error" {
+		o.deps.SetStatus(events.DaemonStatus{State: "running"})
+	}
+	o.enqueue(step)
+}
+
+func (o *Orchestrator) Handle(t config.Transition) {
+	if t.Kind == config.KindGitCredentialRefresh {
+		o.syncGitRemoteCredentials(t.CloneUrl)
+		return
+	}
+	step, ok := transitionToStep(t)
+	if !ok {
+		return
+	}
+	o.enqueue(step)
+}
+
+func (o *Orchestrator) IsRunning() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.running
+}
+
+func (o *Orchestrator) PendingCount() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return len(o.queue)
+}
+
+func (o *Orchestrator) DiscoveredScripts() ([]string, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.latestScripts, o.hasScripts
+}
+
+// PublishPendingGolden is the golden-cache publish hook, called once the
+// probe confirms the dev server healthy. Golden cache is deferred in the Go
+// daemon: no-op.
+func (o *Orchestrator) PublishPendingGolden() {}
+
+func (o *Orchestrator) enqueue(step Step) {
+	o.mu.Lock()
+	rank := stepRank[step]
+	for _, q := range o.queue {
+		if stepRank[q] >= rank {
+			o.mu.Unlock()
+			return
+		}
+	}
+	kept := o.queue[:0]
+	for _, q := range o.queue {
+		if stepRank[q] >= rank {
+			kept = append(kept, q)
+		}
+	}
+	o.queue = append(kept, step)
+	shouldDrain := !o.running
+	if shouldDrain {
+		o.running = true
+	}
+	o.mu.Unlock()
+	if shouldDrain {
+		go o.drain()
+	}
+}
+
+func (o *Orchestrator) drain() {
+	for {
+		o.mu.Lock()
+		if len(o.queue) == 0 {
+			o.running = false
+			o.mu.Unlock()
+			return
+		}
+		step := o.queue[0]
+		o.queue = o.queue[1:]
+		o.mu.Unlock()
+
+		o.chunk(fmt.Sprintf("[orchestrator] running step: %s\r\n", step))
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					o.chunk(fmt.Sprintf("\r\n[orchestrator] step %s crashed: %v\r\n", step, r))
+				}
+			}()
+			o.runStep(step)
+		}()
+	}
+}
+
+func (o *Orchestrator) runStep(step Step) {
+	switch step {
+	case StepClone:
+		o.stopDevTask()
+		if !o.stepClone() {
+			return
+		}
+		if !o.stepInstall() {
+			return
+		}
+		o.stepStart()
+	case StepInstall:
+		o.stopDevTask()
+		if !o.stepInstall() {
+			return
+		}
+		o.stepStart()
+	case StepStart:
+		o.stepStart()
+	}
+}
+
+func (o *Orchestrator) chunk(data string) {
+	o.deps.Broadcaster.BroadcastChunk("setup", data)
+}
+
+func (o *Orchestrator) rawChunk(data string) {
+	o.deps.Broadcaster.BroadcastChunk("setup", data, events.ChunkOpts{Tee: false})
+}
+
+func (o *Orchestrator) stepClone() bool {
+	cfg := o.deps.Store.Read()
+	if cfg == nil {
+		return false
+	}
+	cloneUrl := cfg.CloneUrl()
+
+	if cloneUrl != "" && paths.HasGitRepo(o.deps.RepoDir) {
+		o.syncGitRemoteCredentials(cloneUrl)
+	}
+
+	if cloneUrl != "" && !paths.HasGitRepo(o.deps.RepoDir) {
+		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseCloning})
+		cloneLogPath := paths.AppLogPath(o.deps.LogsDir, "clone")
+		os.Remove(cloneLogPath)
+		cloneTee := proc.NewLogTee(cloneLogPath, installLogMaxBytes)
+		result := SpawnClone(CloneDeps{
+			RepoDir:  o.deps.RepoDir,
+			CloneUrl: cloneUrl,
+			Branch:   cfg.Branch(),
+			OnChunk: func(data string) {
+				o.rawChunk(data)
+				cloneTee.Write(data)
+			},
+		})
+		cloneTee.Close()
+		if result.Code != 0 {
+			errMsg := fmt.Sprintf("exit %d", result.Code)
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] clone failed (%s)\r\n", errMsg))
+			o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseCloneFailed, Error: errMsg})
+			return false
+		}
+		if result.FetchBase != nil {
+			go func() {
+				defer func() { recover() }()
+				result.FetchBase(func(data string) { o.rawChunk(data) })
+				o.deps.BranchStatus.Refresh()
+			}()
+		}
+	} else if cloneUrl != "" {
+		branch := cfg.Branch()
+		if branch != "" && !config.IsSyntheticBranch(branch) {
+			o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseCheckingOut, To: branch})
+			if err := o.checkoutBranch(branch); err != nil {
+				o.chunk(fmt.Sprintf("\r\n[orchestrator] checkout failed: %s\r\n", err.Error()))
+				o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseCloneFailed, Error: err.Error()})
+				return false
+			}
+		} else {
+			o.chunk("[orchestrator] repo already cloned\r\n")
+		}
+	}
+
+	o.gitSetup(cfg)
+	o.fillApplicationDefaults()
+	o.deps.BranchStatus.Refresh()
+	return true
+}
+
+func (o *Orchestrator) stepInstall() bool {
+	cfg := o.deps.Store.Read()
+	if cfg == nil {
+		return false
+	}
+	if o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
+		o.broadcastDiscoveredScripts(cfg)
+		return true
+	}
+	pm := cfg.PmName()
+	if pm == "" {
+		return true
+	}
+
+	o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstalling})
+	o.chunk("[orchestrator] installing dependencies\r\n")
+
+	installLogPath := paths.AppLogPath(o.deps.LogsDir, "install")
+	os.Remove(installLogPath)
+	installTee := proc.NewLogTee(installLogPath, installLogMaxBytes)
+	code, ran := SpawnInstall(cfg, o.deps.RepoDir, cfg.Env, func(data string) {
+		o.rawChunk(data)
+		installTee.Write(data)
+	})
+	installTee.Close()
+	if !ran {
+		o.markInstallSucceeded(cfg)
+		return true
+	}
+	if code != 0 {
+		errMsg := fmt.Sprintf("exit %d", code)
+		o.chunk(fmt.Sprintf("\r\n[orchestrator] install failed (%s)\r\n", errMsg))
+		o.deps.InstallState.Mark(Fingerprint(cfg, o.branchHead()), false)
+		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstallFailed, Error: errMsg})
+		return false
+	}
+	o.markInstallSucceeded(cfg)
+	return true
+}
+
+func (o *Orchestrator) stepStart() {
+	cfg := o.deps.Store.Read()
+	if cfg == nil {
+		return
+	}
+	if status := o.deps.GetStatus(); status.State != "running" {
+		o.chunk(fmt.Sprintf("\r\n[orchestrator] skipping start: status=%s (resume to retry)\r\n", status.State))
+		return
+	}
+	if !o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
+		o.chunk("\r\n[orchestrator] skipping start: install fingerprint mismatch\r\n")
+		return
+	}
+	command, ok := o.buildStartCommand(cfg)
+	if !ok {
+		reason := o.diagnoseNoStartCommand(cfg)
+		o.chunk(reason)
+		flat := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(reason, "\r", " "), "\n", " "))
+		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStartFailed, Error: flat})
+		return
+	}
+
+	if runningCmd, runningCwd, found := o.deps.TaskManager.RunningCommandByLogName(command.Source); found &&
+		runningCmd == command.Cmd && runningCwd == command.Cwd {
+		o.chunk(fmt.Sprintf("[orchestrator] dev already running (%s) — skipping restart\r\n", command.Source))
+		cur := o.deps.Lifecycle.Current().Phase
+		if cur != events.PhaseRunning && cur != events.PhaseStarting {
+			o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStarting})
+		}
+		return
+	}
+	o.stopDevTask()
+	o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseStarting})
+	overrides := map[string]string{}
+	for k, v := range DenoCacheEnv(cfg, o.deps.RepoDir) {
+		overrides[k] = v
+	}
+	for k, v := range cfg.Env {
+		overrides[k] = v
+	}
+	o.deps.TaskManager.Spawn(proc.TaskSpec{
+		Command:          command.Cmd,
+		Cwd:              command.Cwd,
+		Env:              BuildDevEnv(cfg, overrides),
+		Label:            command.Label,
+		Mode:             "pty",
+		LogName:          command.Source,
+		ReplaceByLogName: true,
+	})
+}
+
+type startCommand struct {
+	Cmd    string
+	Cwd    string
+	Label  string
+	Source string
+}
+
+func (o *Orchestrator) buildStartCommand(cfg *config.Enriched) (startCommand, bool) {
+	pm := cfg.PmName()
+	if pm == "" {
+		return startCommand{}, false
+	}
+	pmConf, ok := PackageManagers[pm]
+	if !ok {
+		return startCommand{}, false
+	}
+	cwd := paths.ResolvePmRoot(o.deps.RepoDir, cfg.PmPath())
+	scripts := proc.DiscoverScripts(cwd, pm)
+	starter := ""
+	for _, s := range proc.WellKnownStarters {
+		for _, have := range scripts {
+			if s == have {
+				starter = s
+				break
+			}
+		}
+		if starter != "" {
+			break
+		}
+	}
+	if starter == "" {
+		return startCommand{}, false
+	}
+	rc := PmRunCommand(cfg.RuntimePathPrefix, cwd, pmConf.RunPrefix, starter)
+	return startCommand{Cmd: rc.Cmd, Cwd: cwd, Label: rc.Label, Source: starter}, true
+}
+
+func (o *Orchestrator) diagnoseNoStartCommand(cfg *config.Enriched) string {
+	pm := cfg.PmName()
+	if pm == "" {
+		return "\r\n[orchestrator] skipping start: no package manager configured — update the VM config to enable a dev server\r\n"
+	}
+	pmConf := PackageManagers[pm]
+	cwd := paths.ResolvePmRoot(o.deps.RepoDir, cfg.PmPath())
+	scripts := proc.DiscoverScripts(cwd, pm)
+	if len(scripts) == 0 {
+		hasManifest := false
+		for _, m := range pmConf.Manifests {
+			if _, err := os.Stat(filepath.Join(cwd, m)); err == nil {
+				hasManifest = true
+				break
+			}
+		}
+		if !hasManifest {
+			return fmt.Sprintf("\r\n[orchestrator] skipping start: no package manifest (%s) found at %s — update the VM config if a dev server should run\r\n", joinOr(pmConf.Manifests), cwd)
+		}
+		return fmt.Sprintf("\r\n[orchestrator] skipping start: no scripts defined in %s/package.json — update the VM config if a dev server should run\r\n", cwd)
+	}
+	return fmt.Sprintf("\r\n[orchestrator] skipping start: no 'dev' or 'start' script found (available: %s) — update the VM config to set the correct start script\r\n", strings.Join(scripts, ", "))
+}
+
+func (o *Orchestrator) stopDevTask() {
+	for _, starter := range proc.WellKnownStarters {
+		o.deps.TaskManager.KillByLogName(starter, true, 15) // SIGTERM
+	}
+	o.deps.TaskManager.WaitForLogNamesIdle(proc.WellKnownStarters)
+}
+
+func (o *Orchestrator) gitSetup(cfg *config.Enriched) {
+	if cfg.Git != nil && cfg.Git.Identity != nil &&
+		cfg.Git.Identity.UserName != nil && cfg.Git.Identity.UserEmail != nil {
+		if err := gitx.ConfigureGitIdentity(o.deps.RepoDir, *cfg.Git.Identity.UserName, *cfg.Git.Identity.UserEmail); err != nil {
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: git identity setup failed: %s\r\n", err.Error()))
+		}
+	}
+	if err := gitx.InstallProtectedBranchHook(o.deps.RepoDir); err != nil {
+		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not install protected-branch hook: %s\r\n", err.Error()))
+	}
+	branch := cfg.Branch()
+	if branch != "" && !config.IsSyntheticBranch(branch) {
+		o.chunk(fmt.Sprintf("[orchestrator] checking out branch: %s\r\n", branch))
+		if err := o.checkoutBranch(branch); err != nil {
+			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: branch checkout failed: %s\r\n", err.Error()))
+		}
+	}
+	o.refreshBranchHead()
+}
+
+func (o *Orchestrator) checkoutBranch(branch string) error {
+	repoDir := o.deps.RepoDir
+	gc := fmt.Sprintf("GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true git -c safe.directory='*' -c credential.helper= -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10 -C %s", repoDir)
+	return gitx.CheckoutBranch(gitx.CheckoutBranchParams{
+		RepoDir: repoDir,
+		Branch:  branch,
+		Gc:      gc,
+		RunStep: func(cmd string) int {
+			o.rawChunk("$ " + cmd + "\r\n")
+			return SpawnStep(cmd, func(data string) { o.rawChunk(data) }, nil)
+		},
+		Log: func(message string) { o.chunk(message) },
+	})
+}
+
+func (o *Orchestrator) fillApplicationDefaults() {
+	diskCfg, _ := config.ReadDiskConfig(o.deps.RepoDir)
+
+	o.deps.Store.ApplyInternal(func(current *config.TenantConfig) *config.Patch {
+		var cur *config.Application
+		if current != nil {
+			cur = current.Application
+		}
+		var diskApp *config.Application
+		if diskCfg != nil {
+			diskApp = diskCfg.Application
+		}
+
+		detected := Autodetect(o.deps.RepoDir)
+
+		patchApp := &config.Application{}
+		changed := false
+
+		curPmName := ""
+		if cur != nil && cur.PackageManager != nil && cur.PackageManager.Name != nil {
+			curPmName = *cur.PackageManager.Name
+		}
+		if curPmName == "" {
+			if diskApp != nil && diskApp.PackageManager != nil && diskApp.PackageManager.Name != nil {
+				patchApp.PackageManager = diskApp.PackageManager
+			} else {
+				patchApp.PackageManager = &config.PackageManagerConfig{Name: config.Str(detected.PackageManager)}
+			}
+			changed = true
+		}
+		curRuntime := ""
+		if cur != nil && cur.Runtime != nil {
+			curRuntime = *cur.Runtime
+		}
+		if curRuntime == "" {
+			if diskApp != nil && diskApp.Runtime != nil {
+				patchApp.Runtime = diskApp.Runtime
+			} else {
+				patchApp.Runtime = config.Str(detected.Runtime)
+			}
+			changed = true
+		}
+		if (cur == nil || cur.Port == nil) && diskApp != nil && diskApp.Port != nil {
+			patchApp.Port = diskApp.Port
+			changed = true
+		}
+		if !changed {
+			return nil
+		}
+		return &config.Patch{Application: patchApp}
+	})
+}
+
+func (o *Orchestrator) markInstallSucceeded(cfg *config.Enriched) {
+	o.deps.InstallState.Mark(Fingerprint(cfg, o.branchHead()), true)
+	o.broadcastDiscoveredScripts(cfg)
+}
+
+func (o *Orchestrator) broadcastDiscoveredScripts(cfg *config.Enriched) {
+	cwd := paths.ResolvePmRoot(o.deps.RepoDir, cfg.PmPath())
+	scripts := proc.DiscoverScripts(cwd, cfg.PmName())
+	o.mu.Lock()
+	o.latestScripts = scripts
+	o.hasScripts = true
+	o.mu.Unlock()
+	o.deps.Broadcaster.Emit("scripts", map[string]any{"scripts": scripts})
+}
+
+func (o *Orchestrator) refreshBranchHead() {
+	head := ""
+	if paths.HasGitRepo(o.deps.RepoDir) {
+		if out, ok := gitx.Try([]string{"rev-parse", "HEAD"}, gitx.RunOpts{Cwd: o.deps.RepoDir}); ok {
+			head = out
+		}
+	}
+	o.mu.Lock()
+	o.currentBranchHead = head
+	o.mu.Unlock()
+}
+
+func (o *Orchestrator) branchHead() string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.currentBranchHead
+}
+
+func (o *Orchestrator) syncGitRemoteCredentials(cloneUrl string) {
+	if !paths.HasGitRepo(o.deps.RepoDir) {
+		return
+	}
+	if err := gitx.SyncOriginRemote(o.deps.RepoDir, cloneUrl); err != nil {
+		o.chunk(fmt.Sprintf("\r\n[orchestrator] failed to sync origin credentials: %s\r\n", err.Error()))
+		return
+	}
+	o.chunk("[orchestrator] synced origin credentials\r\n")
+}
+
+func transitionToStep(t config.Transition) (Step, bool) {
+	switch t.Kind {
+	case config.KindBootstrap, config.KindBranchChange:
+		return StepClone, true
+	case config.KindRuntimeChange, config.KindPmChange:
+		return StepInstall, true
+	case config.KindPortChange:
+		return StepStart, true
+	}
+	return "", false
+}
