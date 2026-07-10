@@ -58,6 +58,12 @@ export function createMeshClient<T extends ToolMap>(
 
   return new Proxy({} as MeshClient<T>, {
     get(_target, toolName: string) {
+      // Without this, `await createMeshClient(...)` treats the proxy as a
+      // thenable (since `.then` resolves to a function), calls it as
+      // `then(resolve, reject)`, and — since that call is really a tool
+      // invocation that never touches `resolve`/`reject` — the await hangs
+      // forever instead of resolving to the client.
+      if (toolName === "then") return undefined;
       if (toolName === "close") {
         return async () => {
           if (connectPromise) {

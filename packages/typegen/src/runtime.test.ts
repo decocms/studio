@@ -123,6 +123,16 @@ describe("createMeshClient", () => {
     expect(mockConnect).toHaveBeenCalledTimes(2);
   });
 
+  test("is not treated as a thenable (await would otherwise hang forever)", () => {
+    type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
+    const client = createMeshClient<Tools>(
+      { mcpId: "vmc_test", apiKey: "sk" },
+      deps,
+    );
+
+    expect(client.then).toBeUndefined();
+  });
+
   test("builds URL with correct mcpId and baseUrl", async () => {
     type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
 
