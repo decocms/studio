@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Suspense, lazy } from "react";
+import { useState, useRef, useEffect, Suspense, lazy, Fragment } from "react";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
@@ -89,6 +89,13 @@ import {
   type LastPreviewPage,
 } from "./last-preview-page";
 import { derivePhaseProgress } from "./derive-phase-progress";
+import {
+  detectPickerKind,
+  PICKER_LOADER_RESOLVE_TYPE,
+  type PathParamPickerKind,
+} from "./path-param-picker";
+import { PathParamPickerButton } from "./path-param-picker-button";
+import { isManifestRunnableResolveType } from "@/web/components/sandbox/content/runnable-catalog";
 import { track } from "@/web/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
 
@@ -343,6 +350,28 @@ export function PreviewContent() {
   const pathParamValues =
     (currentPageKey ? pathParamsByPage[currentPageKey] : undefined) ?? {};
   const resolvedPath = fillPathTemplate(currentPath, pathParamValues);
+
+  // Special selectors for path params: PDP-style params get a product picker,
+  // the PLP catch-all a category picker — only when the running site's
+  // manifest actually has the VTEX loader the picker invokes.
+  const pathParamPickerKinds: Record<string, PathParamPickerKind> = {};
+  if (devServerReady && previewUrl && meta) {
+    for (const name of pathParams) {
+      const kind = detectPickerKind(currentPath, name);
+      if (
+        kind &&
+        isManifestRunnableResolveType(
+          meta,
+          PICKER_LOADER_RESOLVE_TYPE[kind],
+          "loaders",
+        )
+      ) {
+        pathParamPickerKinds[name] = kind;
+      }
+    }
+  }
+  const pickerSandboxKey =
+    virtualMcpId && branch ? `${org.slug}/${virtualMcpId}/${branch}` : "";
 
   // Per-section metadata for the CMS hover overlay, aligned by index with the
   // iframe's top-level section list. `label`: ONLY global (saved block)
@@ -920,27 +949,48 @@ export function PreviewContent() {
                       )}
                       {previewLabelTokens ? (
                         <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-left text-[12px] text-foreground/88">
-                          {previewLabelTokens.map((token, i) =>
-                            token.type === "text" ? (
-                              <span
-                                key={`text-${i}`}
-                                className={cn(
-                                  i === 0 ? "min-w-0 truncate" : "shrink-0",
-                                )}
-                              >
-                                {token.text}
-                              </span>
-                            ) : (
-                              <PathParamInput
-                                key={`${currentPageKey}:${token.name}`}
-                                name={token.name}
-                                value={pathParamValues[token.name] ?? ""}
-                                onCommit={(value) =>
-                                  setPathParamValue(token.name, value)
-                                }
-                              />
-                            ),
-                          )}
+                          {previewLabelTokens.map((token, i) => {
+                            if (token.type === "text") {
+                              return (
+                                <span
+                                  key={`text-${i}`}
+                                  className={cn(
+                                    i === 0 ? "min-w-0 truncate" : "shrink-0",
+                                  )}
+                                >
+                                  {token.text}
+                                </span>
+                              );
+                            }
+                            const pickerKind = pathParamPickerKinds[token.name];
+                            return (
+                              <Fragment key={`${currentPageKey}:${token.name}`}>
+                                {/* Keyed by the committed value so an external
+                                    commit (picker) remounts the chip's draft. */}
+                                <PathParamInput
+                                  key={pathParamValues[token.name] ?? ""}
+                                  name={token.name}
+                                  value={pathParamValues[token.name] ?? ""}
+                                  onCommit={(value) =>
+                                    setPathParamValue(token.name, value)
+                                  }
+                                />
+                                {pickerKind &&
+                                  previewUrl &&
+                                  pickerSandboxKey && (
+                                    <PathParamPickerButton
+                                      kind={pickerKind}
+                                      paramName={token.name}
+                                      previewUrl={previewUrl}
+                                      sandboxKey={pickerSandboxKey}
+                                      onPick={(value) =>
+                                        setPathParamValue(token.name, value)
+                                      }
+                                    />
+                                  )}
+                              </Fragment>
+                            );
+                          })}
                         </span>
                       ) : (
                         <span className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground/88">
