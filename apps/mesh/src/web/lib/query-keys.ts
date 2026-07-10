@@ -437,6 +437,12 @@ export const KEYS = {
   // Domain lookup (for onboarding — scoped by email domain)
   domainLookup: (domain: string) => ["domain-lookup", domain] as const,
 
+  // Deployment admin dashboard (instance-level, not org-scoped)
+  deploymentAdminMe: () => ["deployment-admin", "me"] as const,
+  deploymentAdminUsers: (search: string) =>
+    ["deployment-admin", "users", search] as const,
+  deploymentAdminOrgs: () => ["deployment-admin", "orgs"] as const,
+
   // Brand context (scoped by organization)
   brandContext: (organizationId: string) =>
     ["brand-context", organizationId] as const,

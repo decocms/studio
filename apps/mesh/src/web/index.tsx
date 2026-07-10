@@ -99,6 +99,45 @@ const oauthCallbackAiProviderRoute = createRoute({
 });
 
 // ============================================
+// DEPLOYMENT ADMIN DASHBOARD (instance-level, not org-scoped)
+// ============================================
+
+// Mounted at `/_admin`, not `/admin`: org slugs match `^[a-z0-9-]+$` (no
+// underscore), so this instance-level route can never shadow a real org's
+// `/$org` surface. A bare `/admin` would (and `admin` is a live slug).
+const adminLayout = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/_admin",
+  component: lazyRouteComponent(() => import("./routes/admin/layout.tsx")),
+});
+
+const adminIndexRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/",
+  beforeLoad: () => {
+    throw redirect({ to: "/_admin/users" });
+  },
+});
+
+const adminUsersRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/users",
+  component: lazyRouteComponent(() => import("./routes/admin/users.tsx")),
+});
+
+const adminOrgsRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/orgs",
+  component: lazyRouteComponent(() => import("./routes/admin/orgs.tsx")),
+});
+
+const adminLayoutWithChildren = adminLayout.addChildren([
+  adminIndexRoute,
+  adminUsersRoute,
+  adminOrgsRoute,
+]);
+
+// ============================================
 // SHELL LAYOUT (authenticated wrapper)
 // ============================================
 
@@ -571,6 +610,7 @@ const shellRouteTree = shellLayout.addChildren([
 
 const routeTree = rootRoute.addChildren([
   shellRouteTree,
+  adminLayoutWithChildren,
   onboardingRoute,
   commerceOnboardingRoute,
   loginRoute,

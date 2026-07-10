@@ -17,6 +17,7 @@ import {
 } from "../../auth";
 import { getDb } from "../../database";
 import { ensureUserOrganization } from "../../auth/ensure-user-organization";
+import { isAlreadyMemberError } from "../../auth/is-already-member-error";
 import { extractBrandFromDomain } from "../../auth/extract-brand";
 import { isDiscoverableDomainRecord } from "../../auth/org-assurance-policy";
 import {
@@ -493,9 +494,7 @@ app.post("/domain-join", async (c) => {
         },
       } as any);
     } catch (addError) {
-      const msg =
-        addError instanceof Error ? addError.message.toLowerCase() : "";
-      if (!msg.includes("already a member")) {
+      if (!isAlreadyMemberError(addError)) {
         console.error("[Auth] Domain join addMember failed:", addError);
         return c.json(
           { success: false, error: "Failed to join organization" },

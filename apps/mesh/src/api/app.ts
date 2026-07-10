@@ -48,6 +48,7 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
+import { createAdminRoutes } from "./routes/admin";
 import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
@@ -1226,6 +1227,22 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom", authRoutes);
 
+  // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
+  // external callers. Every deployment-admin action goes through /api/_admin/*
+  // (which calls auth.api.* in-process), so the only admin-plugin endpoint the
+  // browser legitimately hits directly is stop-impersonating (needs no admin
+  // permission). Leaving the rest reachable would let any id pushed into
+  // deploymentAdminUserIds (see @/auth) call set-role / set-user-password /
+  // ban-user etc. directly — a permanent, restart-surviving escalation past the
+  // DEPLOYMENT_ADMIN_EMAILS allowlist. 404 (not 403) so the surface isn't
+  // advertised.
+  app.all("/api/auth/admin/*", async (c, next) => {
+    if (c.req.path === "/api/auth/admin/stop-impersonating") {
+      return await next();
+    }
+    return c.json({ error: "Not Found", path: c.req.path }, 404);
+  });
+
   // All Better Auth routes (OAuth, session management, etc.)
   app.all("/api/auth/*", async (c) => {
     return await auth.handler(c.req.raw);
@@ -2005,6 +2022,13 @@ export async function createApp(options: CreateAppOptions = {}) {
   // resolve their own org and bypass `resolveOrgFromPath`).
   app.post("/api/:org/registry/publish-request", publishRequestHandler);
   app.all("/api/:org/registry/*", publicMCPHandler);
+
+  // Deployment admin dashboard. Static segment — must register before the
+  // `:org` catch-all below, same trick as the registry mounts above. The `_`
+  // prefix keeps it out of the org-slug namespace: slugs match `^[a-z0-9-]+$`
+  // (no underscore), so `_admin` can never collide with a real org — unlike a
+  // bare `admin`, which is a legal slug and would be shadowed here.
+  app.route("/api/_admin", createAdminRoutes());
 
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup

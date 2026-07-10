@@ -1,4 +1,5 @@
 import { sql, type Kysely, type Transaction } from "kysely";
+import { isAlreadyMemberError } from "./is-already-member-error";
 import { isOrgArchived } from "../core/org-archived";
 import { OrganizationDomainStorage } from "../storage/organization-domains";
 import type { Database, OrganizationDomain } from "../storage/types";
@@ -399,8 +400,7 @@ async function addMemberIdempotent(
       body: { userId, role: "user", organizationId },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message.toLowerCase() : "";
-    if (!message.includes("already a member")) {
+    if (!isAlreadyMemberError(error)) {
       throw error;
     }
   }

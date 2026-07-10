@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
+import { isAlreadyMemberError } from "../../auth/is-already-member-error";
 import {
   getUserId,
   requireAuth,
@@ -117,8 +118,7 @@ export const ORGANIZATION_JOIN_REQUEST_APPROVE = defineTool({
         role: ["user"],
       });
     } catch (error) {
-      const msg = error instanceof Error ? error.message.toLowerCase() : "";
-      if (!msg.includes("already a member")) {
+      if (!isAlreadyMemberError(error)) {
         throw error;
       }
     }

@@ -27,6 +27,8 @@ export interface Settings {
   localMode: boolean;
   disableRateLimit: boolean;
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
+  /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */
+  deploymentAdminEmails: string[];
 
   // Observability
   // HTTP URL of the ClickHouse instance holding the OTel-native `otel_logs`

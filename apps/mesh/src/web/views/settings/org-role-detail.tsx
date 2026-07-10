@@ -10,6 +10,7 @@ import { useMembers } from "@/web/hooks/use-members";
 import { type OrganizationRole } from "@/web/hooks/use-organization-roles";
 import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { KEYS } from "@/web/lib/query-keys";
+import { getInitials } from "@/web/lib/get-initials";
 import { track } from "@/web/lib/posthog-client";
 import {
   useConnections,
@@ -142,16 +143,6 @@ const roleFormSchema = z.object({
 });
 
 type RoleFormData = z.infer<typeof roleFormSchema>;
-
-function getInitials(name: string | undefined | null): string {
-  if (!name) return "?";
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-}
 
 // ============================================================================
 // Organization Permissions Tab

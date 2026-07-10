@@ -32,6 +32,7 @@ import {
   SearchMd,
   Settings02,
   Shield01,
+  ShieldTick,
   Sun,
   Users03,
   VolumeMax,
@@ -46,6 +47,7 @@ import { track } from "@/web/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/web/lib/query-persist";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
 import { usePreferences, type ThemeMode } from "@/web/hooks/use-preferences.ts";
+import { useDeploymentAdmin } from "@/web/hooks/use-deployment-admin";
 import { toast } from "@deco/ui/components/sonner.js";
 
 function getOrgColorStyle(name: string): {
@@ -99,6 +101,8 @@ interface MenuItem {
   onClick?: () => void;
   href?: string;
   external?: boolean;
+  /** Extra classes for a visually distinct item (e.g. admin / impersonation actions). */
+  className?: string;
 }
 
 function MenuItemButton({
@@ -108,8 +112,10 @@ function MenuItemButton({
   item: MenuItem;
   onClose: () => void;
 }) {
-  const baseClass =
-    "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-left w-full transition-colors text-foreground/80 hover:bg-sidebar-accent hover:text-foreground";
+  const baseClass = cn(
+    "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-left w-full transition-colors text-foreground/80 hover:bg-sidebar-accent hover:text-foreground",
+    item.className,
+  );
 
   if (item.href) {
     return (
@@ -247,12 +253,22 @@ function OrganizationsPanel({
   );
 }
 
+function ImpersonatingPill() {
+  return (
+    <span className="shrink-0 inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+      Impersonating
+    </span>
+  );
+}
+
 /** Shared content rendered inside popover (desktop) or drawer (mobile) */
 function AccountPopoverContent({
   user,
   userImage,
   menuItems,
   signOutItem,
+  stopImpersonatingItem,
+  isImpersonating,
   themeOptions,
   preferences,
   setPreferences,
@@ -267,6 +283,8 @@ function AccountPopoverContent({
   userImage?: string;
   menuItems: MenuItem[];
   signOutItem: MenuItem;
+  stopImpersonatingItem: MenuItem | null;
+  isImpersonating: boolean;
   themeOptions: { value: ThemeMode; icon: React.ReactNode; label: string }[];
   preferences: ReturnType<typeof usePreferences>[0];
   setPreferences: ReturnType<typeof usePreferences>[1];
@@ -291,9 +309,12 @@ function AccountPopoverContent({
             className="shrink-0"
           />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">
-              {user?.name ?? "User"}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium truncate">
+                {user?.name ?? "User"}
+              </p>
+              {isImpersonating && <ImpersonatingPill />}
+            </div>
             <p className="text-xs text-muted-foreground truncate">
               {user?.email}
             </p>
@@ -339,6 +360,9 @@ function AccountPopoverContent({
             {menuItems.map((item) => (
               <MenuItemButton key={item.key} item={item} onClose={close} />
             ))}
+            {stopImpersonatingItem && (
+              <MenuItemButton item={stopImpersonatingItem} onClose={close} />
+            )}
             <MenuItemButton item={signOutItem} onClose={close} />
           </nav>
         </div>
@@ -414,9 +438,12 @@ function AccountPopoverContent({
             className="shrink-0"
           />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">
-              {user?.name ?? "User"}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium truncate">
+                {user?.name ?? "User"}
+              </p>
+              {isImpersonating && <ImpersonatingPill />}
+            </div>
             <p className="text-xs text-muted-foreground truncate">
               {user?.email}
             </p>
@@ -450,6 +477,9 @@ function AccountPopoverContent({
           {menuItems.map((item) => (
             <MenuItemButton key={item.key} item={item} onClose={close} />
           ))}
+          {stopImpersonatingItem && (
+            <MenuItemButton item={stopImpersonatingItem} onClose={close} />
+          )}
           <MenuItemButton item={signOutItem} onClose={close} />
         </nav>
 
@@ -531,12 +561,16 @@ export function AccountPopover() {
   const orgParam = orgMatch?.params.org;
   const [preferences, setPreferences] = usePreferences();
   const isMobile = useIsMobile();
+  const { isAdmin: isDeploymentAdmin } = useDeploymentAdmin();
 
   const [open, setOpen] = useState(false);
   const [creatingOrg, setCreatingOrg] = useState(false);
 
   const user = session?.user;
   const userImage = (user as { image?: string } | undefined)?.image;
+  const isImpersonating = !!(
+    session?.session as { impersonatedBy?: string } | undefined
+  )?.impersonatedBy;
 
   const handleSelectOrg = (orgSlug: string) => {
     setOpen(false);
@@ -614,6 +648,17 @@ export function AccountPopover() {
       href: "https://decocms.com",
       external: true,
     },
+    ...(isDeploymentAdmin
+      ? [
+          {
+            key: "admin-dashboard",
+            label: "Admin Dashboard",
+            icon: <ShieldTick size={16} />,
+            onClick: () => navigate({ to: "/_admin" }),
+            className: "text-amber-700 dark:text-amber-400",
+          } satisfies MenuItem,
+        ]
+      : []),
   ];
 
   const signOutItem: MenuItem = {
@@ -626,6 +671,29 @@ export function AccountPopover() {
       authClient.signOut();
     },
   };
+
+  // Direct client call — safe anywhere: stopImpersonating needs no admin
+  // permission, only the impersonatedBy session + signed admin_session
+  // cookie. Must NOT go through /api/_admin (the impersonated user isn't an
+  // allowlisted admin). The better-auth client returns { error } instead of
+  // throwing, so redirect only on success — otherwise a failed stop would
+  // silently reload the admin still impersonating.
+  const stopImpersonatingItem: MenuItem | null = isImpersonating
+    ? {
+        key: "stop-impersonating",
+        label: "Stop impersonation",
+        icon: <LogOut01 size={16} />,
+        onClick: async () => {
+          const { error } = await authClient.admin.stopImpersonating();
+          if (error) {
+            toast.error(error.message || "Failed to stop impersonation");
+            return;
+          }
+          window.location.href = "/";
+        },
+        className: "text-amber-700 dark:text-amber-400",
+      }
+    : null;
 
   const themeOptions: {
     value: ThemeMode;
@@ -642,6 +710,8 @@ export function AccountPopover() {
     userImage,
     menuItems,
     signOutItem,
+    stopImpersonatingItem,
+    isImpersonating,
     themeOptions,
     preferences,
     setPreferences,
@@ -663,7 +733,10 @@ export function AccountPopover() {
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className={cn(
+              "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+              isImpersonating && "border-2 border-dashed border-amber-500",
+            )}
           >
             <div
               className="shrink-0 size-5 rounded-md flex items-center justify-center border border-border/50 overflow-hidden"
@@ -697,7 +770,10 @@ export function AccountPopover() {
           <PopoverTrigger asChild>
             <SidebarMenuButton
               tooltip={currentOrg?.name ?? "Account"}
-              className="rounded-md"
+              className={cn(
+                "rounded-md",
+                isImpersonating && "border-2 border-dashed border-amber-500",
+              )}
             >
               <div
                 className="shrink-0 size-6 rounded-md flex items-center justify-center border border-border/50 overflow-hidden"

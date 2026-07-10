@@ -105,6 +105,27 @@ const scopes = Object.values(getToolsByCategory())
   .map((tool) => tool.map((t) => `self:${t.name}`))
   .flat();
 
+/**
+ * Deployment admin user IDs, resolved lazily from `deploymentAdminEmails` by
+ * the `/api/_admin/*` middleware (apps/mesh/src/api/routes/admin.ts) on each
+ * verified admin's first request. Better Auth's admin plugin shallow-spreads
+ * the options object it's given at plugin-init time, so `adminUserIds` below
+ * keeps a reference to THIS array — `hasPermission` (better-auth 1.4.22,
+ * plugins/admin/has-permission.mjs) reads `options.adminUserIds.includes(id)`
+ * at call time, so pushing here is visible immediately. Push-only and
+ * per-process: it rebuilds empty on every restart, so revocation (removing an
+ * email from config) is exactly as fresh as a restart. Re-verify this note on
+ * any better-auth upgrade that touches the admin plugin's options handling.
+ *
+ * IMPORTANT: this makes the id a full admin for the ENTIRE admin plugin, so the
+ * raw `/api/auth/admin/*` HTTP surface (set-role, set-user-password, ...) is
+ * fenced off in app.ts — everything the dashboard needs goes through the
+ * curated `/api/_admin/*` routes, which call `auth.api.*` in-process and
+ * re-check the email allowlist on every request. Without that fence a pushed id
+ * could mint a persistent, restart-surviving admin via set-role.
+ */
+export const deploymentAdminUserIds: string[] = [];
+
 export const authConfig = getConfig().auth;
 
 let sendInvitationEmail: OrganizationOptions["sendInvitationEmail"] = undefined;
@@ -286,6 +307,7 @@ const plugins = [
       ...systemDefaultRoles,
       owner: systemAdminAc,
     },
+    adminUserIds: deploymentAdminUserIds,
   }),
 
   // OpenAPI plugin for API documentation

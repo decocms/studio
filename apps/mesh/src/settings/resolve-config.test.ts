@@ -79,3 +79,22 @@ describe("resolveConfig NATS tunnel settings", () => {
     },
   );
 });
+
+describe("resolveConfig deployment admin emails", () => {
+  it("defaults to an empty list when unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.deploymentAdminEmails).toEqual([]);
+  });
+
+  it("normalizes case, whitespace, and trailing commas", () => {
+    const result = resolveConfig(flags, {
+      DEPLOYMENT_ADMIN_EMAILS: " Alice@Example.com, bob@example.com ,,",
+    });
+
+    expect(result.settings.deploymentAdminEmails).toEqual([
+      "alice@example.com",
+      "bob@example.com",
+    ]);
+  });
+});
