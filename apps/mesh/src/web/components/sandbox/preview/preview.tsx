@@ -61,9 +61,7 @@ import {
   extractPathParams,
   fillPathTemplate,
   normalizePagePath,
-  splitPathTemplate,
   validatePagePath,
-  type PathToken,
 } from "@/web/components/sections-editor/page-path-utils";
 import { decoBlockFileViewPath } from "@/web/components/sections-editor/deco-block-key";
 import { findLivePageResolveType } from "@/web/components/sections-editor/section-catalog";
@@ -698,27 +696,6 @@ export function PreviewContent() {
     }
   })();
 
-  // URL-label tokens for path-template pages: host + static path text stay
-  // plain text; each `:param`/`*` renders in place as an inline input. Null
-  // when the current path has no params (plain `previewLabel` is used instead).
-  const previewLabelTokens = (() => {
-    if (!previewUrl || activeGlobalSection || !currentPageKey) return null;
-    if (pathParams.length === 0) return null;
-    try {
-      const host = new URL(previewUrl).host;
-      const tokens = splitPathTemplate(currentPath);
-      const first = tokens[0];
-      return first?.type === "text"
-        ? ([
-            { type: "text", text: `${host}${first.text}` },
-            ...tokens.slice(1),
-          ] satisfies PathToken[])
-        : ([{ type: "text", text: host }, ...tokens] satisfies PathToken[]);
-    } catch {
-      return null;
-    }
-  })();
-
   const navigatePreviewToPage = (page: PageEntry) => {
     // The iframe loads the template with any stored param values filled in.
     const params = pathParamsByPage[page.key] ?? {};
@@ -963,46 +940,32 @@ export function PreviewContent() {
                             Global
                           </span>
                         )}
-                        {previewLabelTokens ? (
-                          <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-left text-[12px] text-foreground/88">
-                            {previewLabelTokens.map((token, i) =>
-                              token.type === "text" ? (
-                                <span
-                                  key={`text-${i}`}
-                                  className={cn(
-                                    i === 0 ? "min-w-0 truncate" : "shrink-0",
-                                  )}
-                                >
-                                  {token.text}
-                                </span>
-                              ) : (
-                                <PathParamInput
-                                  key={`${currentPageKey}:${token.name}`}
-                                  name={token.name}
-                                  value={pathParamValues[token.name] ?? ""}
-                                  onCommit={(value) =>
-                                    setPathParamValue(token.name, value)
-                                  }
-                                />
-                              ),
-                            )}
-                          </span>
-                        ) : (
-                          <span className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground/88">
-                            {previewLabel}
+                        {/* Page name in focus (no raw URL). Path-template
+                            pages still expose their `:param`/`*` inputs. */}
+                        <span className="min-w-0 shrink truncate text-left text-[13px] font-medium text-foreground">
+                          {currentPageName ?? previewLabel}
+                        </span>
+                        {!activeGlobalSection && pathParams.length > 0 && (
+                          <span className="flex min-w-0 items-center gap-1 text-[12px] text-muted-foreground">
+                            {pathParams.map((name) => (
+                              <PathParamInput
+                                key={`${currentPageKey}:${name}`}
+                                name={name}
+                                value={pathParamValues[name] ?? ""}
+                                onCommit={(value) =>
+                                  setPathParamValue(name, value)
+                                }
+                              />
+                            ))}
                           </span>
                         )}
                       </div>
                       <button
                         type="button"
-                        className="flex h-full shrink-0 items-center gap-1 pl-1 pr-2"
+                        className="flex h-full shrink-0 items-center pl-1 pr-2"
                         onClick={() => setPagesOpen((prev) => !prev)}
+                        aria-label="Choose page"
                       >
-                        {currentPageName && !activeGlobalSection && (
-                          <span className="shrink-0 text-[12px] text-muted-foreground">
-                            {currentPageName}
-                          </span>
-                        )}
                         <ChevronDown
                           size={12}
                           className={cn(
