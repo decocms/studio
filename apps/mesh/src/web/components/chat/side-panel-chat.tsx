@@ -6,7 +6,7 @@ import { ErrorBoundary } from "../error-boundary";
 import { Chat } from "./index";
 import { useChatStream } from "./context";
 import { ChatContextPanel } from "./context-panel";
-import { CenteredComposer } from "./centered-composer";
+import { AgentHome } from "./agent-home";
 import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
@@ -66,11 +66,7 @@ function ChatPanelContent() {
         )}
       >
         {isChatEmpty ? (
-          <Chat.Main>
-            <CenteredComposer
-              onOpenContextPanel={() => setActivePanel("context")}
-            />
-          </Chat.Main>
+          <AgentHome onOpenContextPanel={() => setActivePanel("context")} />
         ) : (
           <>
             {/* @container: the files panel floats in the right gutter on
