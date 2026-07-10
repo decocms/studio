@@ -19,6 +19,7 @@ import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
 import { DeckTab } from "./deck-tab";
 import { LibraryFileTab } from "./library-file-tab";
+import { LibraryTab } from "./library-tab";
 import { MainPanelLoading } from "./main-panel-loading";
 import {
   isLegacySettingsTab,
@@ -79,6 +80,9 @@ function TabBody({
   }
   if (activeTab === "content") {
     return <ContentTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "files") {
+    return <LibraryTab />;
   }
   if (automationTabParsed) {
     return <AutomationTab tabId={activeTab} />;

@@ -15,6 +15,18 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Prevent iOS from zooming on input focus */
+  input,
+  select,
+  textarea {
+    font-size: max(1rem, 16px);
+  }
+  /* Larger base text on mobile — text-sm (0.875rem) → ~16px instead of 14px */
+  @media (max-width: 768px) {
+    html {
+      font-size: 18.3px;
+    }
+  }
   svg {
     stroke-width: 1.75;
   }

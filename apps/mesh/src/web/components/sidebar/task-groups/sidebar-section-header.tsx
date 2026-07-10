@@ -32,7 +32,7 @@ export function SidebarSectionHeader({
         aria-expanded={open}
         aria-controls={controlsId}
         onClick={onToggle}
-        className="flex flex-1 min-w-0 items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80 hover:text-foreground transition-colors focus-visible:outline-none"
+        className="flex flex-1 min-w-0 items-center gap-1 text-sm font-medium text-muted-foreground/80 hover:text-foreground transition-colors focus-visible:outline-none"
       >
         {open ? (
           <ChevronDown size={12} className="shrink-0" />
@@ -48,7 +48,7 @@ export function SidebarSectionHeader({
         <button
           type="button"
           onClick={action.onClick}
-          className="shrink-0 flex items-center gap-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 hover:text-foreground opacity-0 group-hover/section:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-none"
+          className="shrink-0 flex items-center gap-0.5 text-sm font-medium text-muted-foreground/60 hover:text-foreground opacity-0 group-hover/section:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-none"
         >
           {action.label}
           {action.icon}
