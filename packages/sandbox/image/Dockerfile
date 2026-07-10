@@ -1,7 +1,7 @@
 # Build: docker build -t studio-sandbox:local -f packages/sandbox/image/Dockerfile packages/sandbox
 FROM oven/bun:1.3.14-debian
 
-ARG NODE_MAJOR=22
+ARG NODE_MAJOR=26
 ARG DENO_VERSION=v1.46.3
 
 # `locales` + generated `en_US.UTF-8` is load-bearing: repos using
