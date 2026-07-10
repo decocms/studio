@@ -80,7 +80,6 @@ export default function OrgShellLayout() {
                       <Toolbar.Nav />
                     </span>
                     <Toolbar.TogglesSlot />
-                    <LinkedDesktopIndicator />
                   </Toolbar.LeftColumn>
                   <Toolbar.CenterSlot />
                   <Toolbar.RightColumn>

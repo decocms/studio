@@ -28,6 +28,7 @@ import { ChevronLeft, ChevronRight } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
+import { isStandalone } from "@/web/lib/pwa-install";
 
 type ToolbarCtx = {
   togglesEl: HTMLDivElement | null;
@@ -120,6 +121,10 @@ function ToolbarRightColumn({ children }: { children?: ReactNode }) {
 }
 
 function ToolbarNav() {
+  // The back/forward controls only make sense in the installed PWA, which has
+  // no browser chrome of its own. In a regular browser tab the native
+  // back/forward controls already exist, so we render nothing there.
+  if (!isStandalone()) return null;
   return (
     <>
       <ToolbarIconButton
