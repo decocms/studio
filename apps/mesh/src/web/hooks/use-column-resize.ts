@@ -1,9 +1,9 @@
 import { useRef, useState, type PointerEvent } from "react";
 
 /** Shared min / max / default widths for the app's drag-resizable side columns. */
-export const COLUMN_MIN_WIDTH = 240;
-export const COLUMN_MAX_WIDTH = 640;
-export const COLUMN_DEFAULT_WIDTH = 384;
+const COLUMN_MIN_WIDTH = 240;
+const COLUMN_MAX_WIDTH = 640;
+const COLUMN_DEFAULT_WIDTH = 384;
 
 export interface ColumnResize {
   width: number;
