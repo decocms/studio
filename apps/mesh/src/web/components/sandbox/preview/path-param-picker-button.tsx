@@ -10,10 +10,11 @@ import {
   CommandList,
 } from "@deco/ui/components/command.tsx";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@deco/ui/components/popover.tsx";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@deco/ui/components/dialog.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -59,8 +60,8 @@ async function fetchPickerOptions(
 }
 
 /**
- * Search-icon button beside a path-param chip: opens a popover listing real
- * store entities (VTEX products for PDP params, categories for the PLP
+ * Search-icon button beside a path-param chip: opens a centered modal listing
+ * real store entities (VTEX products for PDP params, categories for the PLP
  * catch-all); picking one commits the param value via `onPick`.
  */
 export function PathParamPickerButton({
@@ -80,6 +81,15 @@ export function PathParamPickerButton({
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      setSearch("");
+      setDebouncedSearch("");
+    }
+  };
 
   const handleSearchChange = (next: string) => {
     setSearch(next);
@@ -111,80 +121,101 @@ export function PathParamPickerButton({
   const paramLabel = paramName === "*" ? "*" : `:${paramName}`;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            {/* The URL-bar container toggles the pages dropdown on click, so
-                the trigger (and popover content) must not let clicks bubble. */}
-            <button
-              type="button"
-              aria-label={`Pick a ${noun} for ${paramLabel}`}
-              className="ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <SearchSm size={11} />
-            </button>
-          </PopoverTrigger>
+          {/* The URL-bar container toggles the pages dropdown on click, so
+              the trigger must not let clicks bubble. */}
+          <button
+            type="button"
+            aria-label={`Pick a ${noun} for ${paramLabel}`}
+            className="ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(true);
+            }}
+          >
+            <SearchSm size={11} />
+          </button>
         </TooltipTrigger>
         <TooltipContent>Pick a {noun}</TooltipContent>
       </Tooltip>
-      <PopoverContent
-        className="w-72 p-0"
-        align="start"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Command shouldFilter={false}>
-          <CommandInput
-            placeholder={
-              kind === "product" ? "Search products..." : "Search categories..."
-            }
-            className="h-9"
-            value={search}
-            onValueChange={handleSearchChange}
-          />
-          <CommandList>
-            <CommandEmpty>
-              {query.isLoading
-                ? "Loading..."
-                : query.isError
-                  ? "Couldn't load — is the dev server running?"
-                  : "No results."}
-            </CommandEmpty>
-            <CommandGroup>
-              {options.map((opt) => (
-                <CommandItem
-                  key={opt.value}
-                  value={opt.value}
-                  onSelect={() => {
-                    onPick(opt.value);
-                    setOpen(false);
-                  }}
-                >
-                  <span className="flex min-w-0 flex-1 items-center gap-2">
-                    {opt.image && (
-                      <img
-                        src={opt.image}
-                        alt=""
-                        referrerPolicy="no-referrer"
-                        className="h-8 w-8 shrink-0 rounded object-cover"
-                      />
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="flex h-[85svh] flex-col gap-0 overflow-hidden p-0 sm:h-[520px] sm:max-w-[560px]">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Pick a {noun}</DialogTitle>
+          </DialogHeader>
+          <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
+            <SearchSm size={16} className="shrink-0 text-foreground" />
+            <span className="text-sm font-medium text-foreground">
+              Pick a {noun} for{" "}
+              <span className="rounded-sm bg-violet-500/15 px-1 py-0.5 font-mono text-[12px] text-violet-600 dark:text-violet-400">
+                {paramLabel}
+              </span>
+            </span>
+          </div>
+          <Command shouldFilter={false} className="min-h-0 flex-1">
+            <CommandInput
+              autoFocus
+              placeholder={
+                kind === "product"
+                  ? "Search products..."
+                  : "Search categories..."
+              }
+              value={search}
+              onValueChange={handleSearchChange}
+            />
+            <CommandList className="max-h-none flex-1">
+              <CommandEmpty>
+                {query.isLoading
+                  ? "Loading..."
+                  : query.isError
+                    ? "Couldn't load — is the dev server running?"
+                    : "No results."}
+              </CommandEmpty>
+              <CommandGroup>
+                {options.map((opt) => (
+                  <CommandItem
+                    key={opt.value}
+                    value={opt.value}
+                    className="gap-3 py-2"
+                    onSelect={() => {
+                      onPick(opt.value);
+                      handleOpenChange(false);
+                    }}
+                  >
+                    {kind === "product" && (
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
+                        {opt.image ? (
+                          <img
+                            src={opt.image}
+                            alt=""
+                            referrerPolicy="no-referrer"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <SearchSm
+                            size={14}
+                            className="text-muted-foreground"
+                          />
+                        )}
+                      </span>
                     )}
-                    <span className="min-w-0">
-                      <span className="block truncate">{opt.label}</span>
-                      {kind === "category" && opt.value !== opt.label && (
-                        <span className="block truncate text-xs text-muted-foreground">
-                          /{opt.value}
-                        </span>
-                      )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm">
+                        {opt.label}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        /{kind === "product" ? `${opt.value}/p` : opt.value}
+                      </span>
                     </span>
-                  </span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
