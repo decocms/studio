@@ -177,8 +177,13 @@ export function TaskGroupsList({
   const orderRevision = localOrderRevision + contextOrderRevision;
   const orderScope = { orgId: org.id, userId: sidebarUserId };
 
-  // Member scope is now structural (Team vs My sections), so per-group/per-status
-  // server pagination stays scoped to the current user via `member: "mine"`.
+  // `filters` drives the per-status / per-group server pagination (status mode),
+  // where `member: "mine"` scopes the query to the current user. The flat list,
+  // by contrast, paginates the shared org-wide thread store and filters to the
+  // active scope (My/All) client-side — so in "My" mode a "Show more" can page
+  // in teammate-only rows that get filtered out.
+  // ponytail: proper per-scope flat pagination needs a store fetch that accepts
+  // a created_by filter; deferred as a follow-up.
   const filters: SidebarFilters = {
     type: typeFilter,
     member: "mine",
@@ -225,10 +230,10 @@ export function TaskGroupsList({
     (g) => g.virtualMcpId !== TOOL_CALL_RUNS_GROUP_KEY,
   );
 
+  // Until the session resolves, `currentUserId` is undefined — render nothing
+  // rather than leaking every member's threads into the "My threads" list.
   const mineFiltered = (threads: Task[]) =>
-    currentUserId
-      ? threads.filter((t) => t.created_by === currentUserId)
-      : threads;
+    currentUserId ? threads.filter((t) => t.created_by === currentUserId) : [];
 
   const typeFiltered = (threads: Task[]) => {
     if (typeFilter === "automation") {
@@ -249,6 +254,12 @@ export function TaskGroupsList({
   const visibleScopedThreads = showAll ? allThreadsFiltered : myThreads;
 
   const handleArchive = (task: Task) => {
+    // Archiving hides a thread org-wide, so it must be owner-only — the UI
+    // withholds the affordance on teammates' rows, but guard here too in case
+    // a caller ever wires it up without that check.
+    if (currentUserId && task.created_by && task.created_by !== currentUserId) {
+      return;
+    }
     const wasActive = task.id === activeTaskId;
     hide(task.id);
     if (!wasActive) return;
@@ -447,7 +458,7 @@ export function TaskGroupsList({
       onClick={() => setShowAll((v) => !v)}
       className="text-xs text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-muted"
     >
-      {showAll ? "Show all" : "Mine"}
+      {showAll ? "All" : "Mine"}
     </button>
   );
 
@@ -578,8 +589,8 @@ export function TaskGroupsList({
                 onSelectTask={handleSelectTask}
                 onArchiveTask={handleArchive}
                 filters={filters}
-                hasMore={!showAll && hasMore}
-                isFetchingMore={!showAll && isFetchingMore}
+                hasMore={hasMore}
+                isFetchingMore={isFetchingMore}
                 onLoadMore={() => void fetchNextPage()}
               />
             </ScrollFade>
@@ -626,8 +637,8 @@ export function TaskGroupsList({
             onSelectTask={handleSelectTask}
             onArchiveTask={handleArchive}
             filters={filters}
-            hasMore={!showAll && hasMore}
-            isFetchingMore={!showAll && isFetchingMore}
+            hasMore={hasMore}
+            isFetchingMore={isFetchingMore}
             onLoadMore={() => void fetchNextPage()}
           />
         </ScrollFade>

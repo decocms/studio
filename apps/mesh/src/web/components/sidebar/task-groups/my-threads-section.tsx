@@ -62,7 +62,11 @@ export function MyThreadsSection({
           task={task}
           isActive={activeTaskId === task.id}
           onClick={() => onSelectTask(task)}
-          onArchive={() => onArchiveTask(task)}
+          onArchive={
+            task.created_by === filters.currentUserId
+              ? () => onArchiveTask(task)
+              : undefined
+          }
           showAutomationBadge={Boolean(task.trigger_id)}
           showAgentIcon
         />

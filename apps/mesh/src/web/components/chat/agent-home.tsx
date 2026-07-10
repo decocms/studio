@@ -34,7 +34,9 @@ export function AgentHome({
       (t) =>
         !t.hidden &&
         t.virtual_mcp_id === agent.id &&
-        (!currentUserId || t.created_by === currentUserId),
+        // Owner-scoped; empty until the session resolves rather than leaking
+        // every member's threads.
+        t.created_by === currentUserId,
     )
     .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""));
 
