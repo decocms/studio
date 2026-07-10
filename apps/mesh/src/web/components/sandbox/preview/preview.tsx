@@ -58,9 +58,9 @@ import {
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
 import {
-  extractPathParams,
   fillPathTemplate,
   normalizePagePath,
+  splitPathTemplate,
   validatePagePath,
 } from "@/web/components/sections-editor/page-path-utils";
 import { decoBlockFileViewPath } from "@/web/components/sections-editor/deco-block-key";
@@ -340,7 +340,6 @@ export function PreviewContent() {
   // Path templates: pages like `/blog/:slug` expose inline inputs in the URL
   // bar. `currentPath` keeps the template (so the page stays matched); the
   // iframe navigates to the template with the user's values filled in.
-  const pathParams = extractPathParams(currentPath);
   const pathParamValues =
     (currentPageKey ? pathParamsByPage[currentPageKey] : undefined) ?? {};
   const resolvedPath = fillPathTemplate(currentPath, pathParamValues);
@@ -940,23 +939,35 @@ export function PreviewContent() {
                             Global
                           </span>
                         )}
-                        {/* Page name in focus (no raw URL). Path-template
-                            pages still expose their `:param`/`*` inputs. */}
-                        <span className="min-w-0 shrink truncate text-left text-[13px] font-medium text-foreground">
+                        {/* Page name in focus, followed by the route path.
+                            Path-template segments (`:param`/`*`) stay editable
+                            inputs; plain paths render as muted text. */}
+                        <span className="shrink-0 text-[13px] font-medium text-foreground">
                           {currentPageName ?? previewLabel}
                         </span>
-                        {!activeGlobalSection && pathParams.length > 0 && (
-                          <span className="flex min-w-0 items-center gap-1 text-[12px] text-muted-foreground">
-                            {pathParams.map((name) => (
-                              <PathParamInput
-                                key={`${currentPageKey}:${name}`}
-                                name={name}
-                                value={pathParamValues[name] ?? ""}
-                                onCommit={(value) =>
-                                  setPathParamValue(name, value)
-                                }
-                              />
-                            ))}
+                        {!activeGlobalSection && currentPath && (
+                          <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
+                            {splitPathTemplate(currentPath).map((token, i) =>
+                              token.type === "text" ? (
+                                <span
+                                  key={`text-${i}`}
+                                  className={cn(
+                                    i === 0 ? "min-w-0 truncate" : "shrink-0",
+                                  )}
+                                >
+                                  {token.text}
+                                </span>
+                              ) : (
+                                <PathParamInput
+                                  key={`${currentPageKey}:${token.name}`}
+                                  name={token.name}
+                                  value={pathParamValues[token.name] ?? ""}
+                                  onCommit={(value) =>
+                                    setPathParamValue(token.name, value)
+                                  }
+                                />
+                              ),
+                            )}
                           </span>
                         )}
                       </div>
