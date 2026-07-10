@@ -84,15 +84,30 @@ export const KEYS = {
     ] as const,
   commerceDiscoveryCompanionGscSites: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "companion-gsc-sites", orgId, connectionId] as const,
-  // GitHub repo picker: the org's accessible repos (listed via the companion
-  // connection) plus the currently-selected repo (from Commerce Discovery state).
+  // GitHub repo picker: repos matching a server-side search (empty = default
+  // page) for the companion connection. Keyed by query so each search term is
+  // cached independently.
   commerceDiscoveryCompanionGithubRepos: (
+    orgId: string,
+    connectionId: string,
+    query: string,
+  ) =>
+    [
+      "commerce-discovery",
+      "companion-github-repos",
+      orgId,
+      connectionId,
+      query,
+    ] as const,
+  // The repo currently selected on the Commerce Discovery connection
+  // (github_repo), read once for prefill — independent of the search query.
+  commerceDiscoveryCompanionGithubSelected: (
     orgId: string,
     connectionId: string,
   ) =>
     [
       "commerce-discovery",
-      "companion-github-repos",
+      "companion-github-selected",
       orgId,
       connectionId,
     ] as const,
