@@ -22,6 +22,13 @@ import { useChatPanelWidth } from "@/web/hooks/use-chat-panel-width";
 import { computeChatMainSizes } from "@/web/hooks/use-layout-state";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { MainPanelWithDrawer } from "@/web/layouts/main-panel-tabs/main-panel-with-drawer";
+import {
+  SectionsPanelProvider,
+  useSectionsPanel,
+} from "@/web/components/sandbox/preview/sections-panel-context";
+
+const CMS_MIN_WIDTH = 240;
+const CMS_MAX_WIDTH = 640;
 
 function PersistentChatPanel({
   children,
@@ -73,7 +80,15 @@ export interface ChatMainPanelGroupProps {
   chatContent?: React.ReactNode;
 }
 
-export function ChatMainPanelGroup({
+export function ChatMainPanelGroup(props: ChatMainPanelGroupProps) {
+  return (
+    <SectionsPanelProvider>
+      <ChatMainPanelGroupInner {...props} />
+    </SectionsPanelProvider>
+  );
+}
+
+function ChatMainPanelGroupInner({
   virtualMcpId,
   taskId,
   chatOpen,
@@ -83,6 +98,15 @@ export function ChatMainPanelGroup({
   const sizes = computeChatMainSizes(chatOpen, mainOpen);
   const [chatPanelWidth, setChatPanelWidth] = useChatPanelWidth();
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
+
+  // CMS (Sections editor) column — lives between the chat and preview panels
+  // when the preview opens it. The preview owns the open/width state via the
+  // SectionsPanelContext; we render its column + drag divider here so it gets
+  // its own card, and expose `setSlotEl` as the editor's portal target.
+  const sections = useSectionsPanel();
+  const cmsResizingRef = useRef(false);
+  const cmsResizeStartXRef = useRef(0);
+  const cmsResizeStartWidthRef = useRef(0);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — syncs panel layout from URL-derived state; imperative DOM API has no React 19 alternative
   useEffect(() => {
@@ -127,20 +151,65 @@ export function ChatMainPanelGroup({
         collapsedSize={0}
         minSize={20}
       >
-        <div className="h-full p-0.5 pt-0.25">
-          <div
-            className={cn(
-              "flex flex-col h-full min-h-0 bg-background overflow-hidden",
-              "card-shadow",
-              "transition-[border-radius] duration-200 ease-[var(--ease-out-quart)]",
-              "rounded-[0.75rem]",
-            )}
-          >
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <MainPanelWithDrawer
-                taskId={taskId}
-                virtualMcpId={virtualMcpId}
+        <div className="h-full flex min-w-0">
+          {sections?.open && (
+            <>
+              {/* CMS column — same card treatment as the chat panel (own
+                  padding gutter so the shadow renders). The preview portals
+                  its Sections editor into the card via `setSlotEl`. */}
+              <div
+                className="h-full shrink-0"
+                style={{ width: sections.width }}
+              >
+                <div className="h-full p-0.5 pt-0.25">
+                  <div
+                    ref={sections.setSlotEl}
+                    className="h-full bg-background rounded-[0.75rem] overflow-hidden card-shadow"
+                  />
+                </div>
+              </div>
+              <div
+                className="w-1 shrink-0 cursor-col-resize rounded bg-transparent hover:bg-border transition-colors"
+                onPointerDown={(e) => {
+                  cmsResizingRef.current = true;
+                  cmsResizeStartXRef.current = e.clientX;
+                  cmsResizeStartWidthRef.current = sections.width;
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                }}
+                onPointerMove={(e) => {
+                  if (!cmsResizingRef.current) return;
+                  const delta = e.clientX - cmsResizeStartXRef.current;
+                  sections.setWidth(
+                    Math.max(
+                      CMS_MIN_WIDTH,
+                      Math.min(
+                        CMS_MAX_WIDTH,
+                        cmsResizeStartWidthRef.current + delta,
+                      ),
+                    ),
+                  );
+                }}
+                onPointerUp={() => {
+                  cmsResizingRef.current = false;
+                }}
               />
+            </>
+          )}
+          <div className="h-full flex-1 min-w-0 p-0.5 pt-0.25">
+            <div
+              className={cn(
+                "flex flex-col h-full min-h-0 bg-background overflow-hidden",
+                "card-shadow",
+                "transition-[border-radius] duration-200 ease-[var(--ease-out-quart)]",
+                "rounded-[0.75rem]",
+              )}
+            >
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <MainPanelWithDrawer
+                  taskId={taskId}
+                  virtualMcpId={virtualMcpId}
+                />
+              </div>
             </div>
           </div>
         </div>
