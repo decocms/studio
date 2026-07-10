@@ -919,7 +919,7 @@ export function PreviewContent() {
       {daemonReady &&
         (previewState.kind === "iframe" ||
           (viewMode === "code" && Boolean(repoDir))) && (
-          <div className="flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
+          <div className="relative flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
             {/* Groups 2+3 only render when the iframe is live — they read
               `previewState.previewUrl` and steer the iframe directly. */}
             {previewState.kind === "iframe" && (
@@ -1151,96 +1151,99 @@ export function PreviewContent() {
                       Open in new tab
                     </TooltipContent>
                   </Tooltip>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <DotsHorizontal size={14} />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44">
-                      <DropdownMenuItem onClick={handleHardReload}>
-                        Hard Reload
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleCopyUrl}>
-                        Copy Current URL
-                      </DropdownMenuItem>
-                      {decofile && meta && (
-                        <>
-                          <DropdownMenuSeparator />
-                          {currentPageKey && (
+                  {/* more actions — pinned to the right of the header,
+                      outside the centered address bar. */}
+                  <div className="absolute inset-y-0 right-3 flex items-center md:right-4">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <DotsHorizontal size={14} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuItem onClick={handleHardReload}>
+                          Hard Reload
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleCopyUrl}>
+                          Copy Current URL
+                        </DropdownMenuItem>
+                        {decofile && meta && (
+                          <>
+                            <DropdownMenuSeparator />
+                            {currentPageKey && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setCmsInitialEditSeo(true);
+                                  handleViewModeChange("cms");
+                                }}
+                              >
+                                <CreditCardSearch size={14} />
+                                Edit SEO
+                              </DropdownMenuItem>
+                            )}
+                            {currentPageKey && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  try {
+                                    setCodeFilePath(
+                                      decoBlockFileViewPath(currentPageKey),
+                                    );
+                                    handleViewModeChange("code");
+                                  } catch {
+                                    toast.error("Invalid page block key");
+                                  }
+                                }}
+                              >
+                                <Code01 size={14} />
+                                View JSON
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
-                              onClick={() => {
-                                setCmsInitialEditSeo(true);
-                                handleViewModeChange("cms");
-                              }}
+                              onClick={() => setSiteSeoOpen(true)}
                             >
                               <CreditCardSearch size={14} />
-                              Edit SEO
+                              Site SEO
                             </DropdownMenuItem>
-                          )}
-                          {currentPageKey && (
+                          </>
+                        )}
+                        {repoDir && (
+                          <>
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => {
-                                try {
-                                  setCodeFilePath(
-                                    decoBlockFileViewPath(currentPageKey),
-                                  );
-                                  handleViewModeChange("code");
-                                } catch {
-                                  toast.error("Invalid page block key");
-                                }
-                              }}
+                              onClick={() =>
+                                window.open(
+                                  `vscode://file${repoDir}?windowId=_blank`,
+                                )
+                              }
                             >
-                              <Code01 size={14} />
-                              View JSON
+                              <img
+                                src={VSCODE_ICON_URL}
+                                alt="VSCode"
+                                width={14}
+                                height={14}
+                              />
+                              Open in VSCode
                             </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            onClick={() => setSiteSeoOpen(true)}
-                          >
-                            <CreditCardSearch size={14} />
-                            Site SEO
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                      {repoDir && (
-                        <>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() =>
-                              window.open(
-                                `vscode://file${repoDir}?windowId=_blank`,
-                              )
-                            }
-                          >
-                            <img
-                              src={VSCODE_ICON_URL}
-                              alt="VSCode"
-                              width={14}
-                              height={14}
-                            />
-                            Open in VSCode
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() =>
-                              window.open(
-                                `cursor://file${repoDir}?windowId=_blank`,
-                              )
-                            }
-                          >
-                            <img
-                              src={CURSOR_ICON_URL}
-                              alt="Cursor"
-                              width={14}
-                              height={14}
-                            />
-                            Open in Cursor
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                window.open(
+                                  `cursor://file${repoDir}?windowId=_blank`,
+                                )
+                              }
+                            >
+                              <img
+                                src={CURSOR_ICON_URL}
+                                alt="Cursor"
+                                width={14}
+                                height={14}
+                              />
+                              Open in Cursor
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               </div>
             )}
