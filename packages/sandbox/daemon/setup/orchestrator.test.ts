@@ -1,9 +1,16 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Broadcaster } from "../events/broadcast";
 import type { BranchStatusMonitor } from "../git/branch-status";
+import { installProtectedBranchHook } from "../git/protect-branch";
 import { LifecycleManager } from "../lifecycle/manager";
 import type { LifecycleState } from "../events/types";
 import { SetupOrchestrator } from "./orchestrator";
@@ -726,4 +733,75 @@ describe("SetupOrchestrator lifecycle wedge fixes", () => {
       cleanup();
     }
   });
+});
+
+describe("SetupOrchestrator install-step branch protection", () => {
+  // A repo's own postinstall/prepare script (lefthook, husky, ...) can
+  // overwrite .git/hooks/pre-push during `bun install`, silently dropping the
+  // hook that blocks pushing to main/master from a sandbox. stepInstall must
+  // reinstall it after a real install runs.
+  it("reinstalls the pre-push hook after an install script clobbers it", async () => {
+    const { dir, cleanup } = tempRoot();
+    try {
+      const repoDir = join(dir, "repo");
+      mkdirSync(repoDir);
+      installProtectedBranchHook(repoDir);
+      const hookPath = join(repoDir, ".git", "hooks", "pre-push");
+
+      // A separate script file avoids shell/JSON quoting entirely.
+      writeFileSync(
+        join(repoDir, "clobber-hook.js"),
+        `require("fs").writeFileSync(${JSON.stringify(hookPath)}, "#!/bin/sh\\nexit 0\\n")`,
+      );
+      writeFileSync(
+        join(repoDir, "package.json"),
+        JSON.stringify({
+          name: "sandbox-fixture",
+          scripts: { postinstall: "node clobber-hook.js" },
+        }),
+      );
+
+      const broadcaster = new Broadcaster(1024);
+      const orchestrator = new SetupOrchestrator({
+        bootConfig: { appRoot: dir, repoDir },
+        store: {
+          read: () => ({
+            application: { packageManager: { name: "bun" } },
+            runtimePathPrefix: "",
+          }),
+        } as never,
+        taskManager: {
+          spawn: async () => ({ id: "t1" }),
+          killByLogName: () => 0,
+          waitForLogNamesIdle: async () => {},
+          onTaskExit: () => () => {},
+        } as never,
+        setStatus: () => {},
+        getStatus: () => ({ state: "running" as const }),
+        broadcaster,
+        installState: { isInstalledFor: () => false, mark: () => {} } as never,
+        logsDir: dir,
+        lifecycle: new LifecycleManager({ broadcaster }),
+        branchStatus: makeMonitorStub(),
+      });
+
+      orchestrator.handle({
+        kind: "pm-change",
+        from: undefined,
+        to: { name: "bun" },
+      });
+
+      const deadline = Date.now() + 15_000;
+      while (orchestrator.isRunning() || orchestrator.pendingCount() > 0) {
+        if (Date.now() > deadline) throw new Error("orchestrator hung");
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      expect(readFileSync(hookPath, "utf-8")).toContain(
+        "not allowed from a sandbox",
+      );
+    } finally {
+      cleanup();
+    }
+  }, 20_000);
 });
