@@ -144,6 +144,48 @@ export function parseLibraryFileTabId(
   }
 }
 
+export interface LibrarySkillTabParsed {
+  path: string;
+}
+
+export function formatLibrarySkillTabId(path: string): string {
+  return `library-skill:${encodeURIComponent(path)}`;
+}
+
+export function parseLibrarySkillTabId(
+  tabId: string | undefined,
+): LibrarySkillTabParsed | null {
+  if (!tabId || !tabId.startsWith("library-skill:")) return null;
+  const encoded = tabId.slice("library-skill:".length);
+  if (!encoded) return null;
+  try {
+    return { path: decodeURIComponent(encoded) };
+  } catch {
+    return null;
+  }
+}
+
+export interface LibraryBrandTabParsed {
+  path: string;
+}
+
+export function formatLibraryBrandTabId(path: string): string {
+  return `library-brand:${encodeURIComponent(path)}`;
+}
+
+export function parseLibraryBrandTabId(
+  tabId: string | undefined,
+): LibraryBrandTabParsed | null {
+  if (!tabId || !tabId.startsWith("library-brand:")) return null;
+  const encoded = tabId.slice("library-brand:".length);
+  if (!encoded) return null;
+  try {
+    return { path: decodeURIComponent(encoded) };
+  } catch {
+    return null;
+  }
+}
+
 export const FIXED_SYSTEM_TABS = [
   "settings",
   "automations",
@@ -169,7 +211,9 @@ export function isPerThreadTab(tabId: string): boolean {
     tabId.startsWith("automation:") ||
     tabId.startsWith("file:") ||
     tabId.startsWith("deck:") ||
-    tabId.startsWith("library-file:")
+    tabId.startsWith("library-file:") ||
+    tabId.startsWith("library-skill:") ||
+    tabId.startsWith("library-brand:")
   );
 }
 
