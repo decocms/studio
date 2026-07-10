@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { SearchSm } from "@untitledui/icons";
+import { ArrowRight, SearchSm } from "@untitledui/icons";
 import {
   Command,
   CommandEmpty,
@@ -15,11 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
 import { KEYS } from "@/web/lib/query-keys";
 import {
   categoryOptionsFromPayload,
@@ -60,35 +55,42 @@ async function fetchPickerOptions(
 }
 
 /**
- * Search-icon button beside a path-param chip: opens a centered modal listing
- * real store entities (VTEX products for PDP params, categories for the PLP
- * catch-all); picking one commits the param value via `onPick`.
+ * Path-param chip whose click opens a centered picker modal: search real
+ * store entities (VTEX products for PDP params, categories for the PLP
+ * catch-all) or commit the typed text as a free-form value. Replaces the
+ * inline input for params that have a picker; committing goes through
+ * `onCommit`, the same flow free typing uses elsewhere.
  */
-export function PathParamPickerButton({
+export function PathParamPickerChip({
   kind,
   paramName,
+  value,
   previewUrl,
   sandboxKey,
-  onPick,
+  onCommit,
 }: {
   kind: PathParamPickerKind;
   paramName: string;
+  value: string;
   previewUrl: string;
   sandboxKey: string;
-  onPick: (value: string) => void;
+  onCommit: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const noun = kind === "product" ? "product" : "category";
+  const paramLabel = paramName === "*" ? "*" : `:${paramName}`;
+
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
-    if (!next) {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      setSearch("");
-      setDebouncedSearch("");
-    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    // Opening seeds the search with the current value so editing an existing
+    // slug is one click; closing resets so a reopen starts clean.
+    setSearch(next ? value : "");
+    setDebouncedSearch(next ? value : "");
   };
 
   const handleSearchChange = (next: string) => {
@@ -97,6 +99,11 @@ export function PathParamPickerButton({
     debounceRef.current = setTimeout(() => {
       setDebouncedSearch(next);
     }, 300);
+  };
+
+  const commit = (next: string) => {
+    onCommit(next);
+    handleOpenChange(false);
   };
 
   // The category tree is term-independent (fetched once, filtered locally),
@@ -117,33 +124,30 @@ export function PathParamPickerButton({
       ? (query.data ?? [])
       : filterPickerOptions(query.data ?? [], search);
 
-  const noun = kind === "product" ? "product" : "category";
-  const paramLabel = paramName === "*" ? "*" : `:${paramName}`;
+  const rawTerm = search.trim();
+  const rawPath = kind === "product" ? `/${rawTerm}/p` : `/${rawTerm}`;
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {/* The URL-bar container toggles the pages dropdown on click, so
-              the trigger must not let clicks bubble. */}
-          <button
-            type="button"
-            aria-label={`Pick a ${noun} for ${paramLabel}`}
-            className="ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(true);
-            }}
-          >
-            <SearchSm size={11} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Pick a {noun}</TooltipContent>
-      </Tooltip>
+      {/* The URL-bar container toggles the pages dropdown on click, so the
+          chip must not let clicks bubble. */}
+      <button
+        type="button"
+        title={`Value for ${paramLabel} — click to pick a ${noun}`}
+        className="max-w-64 shrink-0 cursor-pointer truncate rounded-sm bg-violet-500/15 px-1 py-0.5 text-[12px] text-violet-600 hover:bg-violet-500/25 dark:text-violet-400"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleOpenChange(true);
+        }}
+      >
+        {value || paramLabel}
+      </button>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="flex h-[85svh] flex-col gap-0 overflow-hidden p-0 sm:h-[520px] sm:max-w-[560px]">
           <DialogHeader className="sr-only">
-            <DialogTitle>Pick a {noun}</DialogTitle>
+            <DialogTitle>
+              Pick a {noun} or enter a value for {paramLabel}
+            </DialogTitle>
           </DialogHeader>
           <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
             <SearchSm size={16} className="shrink-0 text-foreground" />
@@ -159,8 +163,8 @@ export function PathParamPickerButton({
               autoFocus
               placeholder={
                 kind === "product"
-                  ? "Search products..."
-                  : "Search categories..."
+                  ? "Search products or enter a slug..."
+                  : "Search categories or enter a path..."
               }
               value={search}
               onValueChange={handleSearchChange}
@@ -173,16 +177,34 @@ export function PathParamPickerButton({
                     ? "Couldn't load — is the dev server running?"
                     : "No results."}
               </CommandEmpty>
+              {rawTerm && (
+                <CommandGroup>
+                  <CommandItem
+                    value={`__raw__:${rawTerm}`}
+                    className="gap-3 py-2"
+                    onSelect={() => commit(rawTerm)}
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-dashed border-border bg-muted">
+                      <ArrowRight size={14} className="text-muted-foreground" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm">
+                        Use &ldquo;{rawTerm}&rdquo; as {paramLabel}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {rawPath}
+                      </span>
+                    </span>
+                  </CommandItem>
+                </CommandGroup>
+              )}
               <CommandGroup>
                 {options.map((opt) => (
                   <CommandItem
                     key={opt.value}
                     value={opt.value}
                     className="gap-3 py-2"
-                    onSelect={() => {
-                      onPick(opt.value);
-                      handleOpenChange(false);
-                    }}
+                    onSelect={() => commit(opt.value)}
                   >
                     {kind === "product" && (
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">

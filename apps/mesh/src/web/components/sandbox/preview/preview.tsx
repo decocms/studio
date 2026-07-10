@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Suspense, lazy, Fragment } from "react";
+import { useState, useRef, useEffect, Suspense, lazy } from "react";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
@@ -94,7 +94,7 @@ import {
   PICKER_LOADER_RESOLVE_TYPE,
   type PathParamPickerKind,
 } from "./path-param-picker";
-import { PathParamPickerButton } from "./path-param-picker-button";
+import { PathParamPickerChip } from "./path-param-picker-chip";
 import { isManifestRunnableResolveType } from "@/web/components/sandbox/content/runnable-catalog";
 import { track } from "@/web/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
@@ -963,32 +963,33 @@ export function PreviewContent() {
                               );
                             }
                             const pickerKind = pathParamPickerKinds[token.name];
-                            return (
-                              <Fragment key={`${currentPageKey}:${token.name}`}>
-                                {/* Keyed by the committed value so an external
-                                    commit (picker) remounts the chip's draft. */}
-                                <PathParamInput
-                                  key={pathParamValues[token.name] ?? ""}
-                                  name={token.name}
+                            // Params with a picker render as a chip that opens
+                            // the modal (search or free-form value); the rest
+                            // keep the inline input.
+                            if (pickerKind && previewUrl && pickerSandboxKey) {
+                              return (
+                                <PathParamPickerChip
+                                  key={`${currentPageKey}:${token.name}`}
+                                  kind={pickerKind}
+                                  paramName={token.name}
                                   value={pathParamValues[token.name] ?? ""}
+                                  previewUrl={previewUrl}
+                                  sandboxKey={pickerSandboxKey}
                                   onCommit={(value) =>
                                     setPathParamValue(token.name, value)
                                   }
                                 />
-                                {pickerKind &&
-                                  previewUrl &&
-                                  pickerSandboxKey && (
-                                    <PathParamPickerButton
-                                      kind={pickerKind}
-                                      paramName={token.name}
-                                      previewUrl={previewUrl}
-                                      sandboxKey={pickerSandboxKey}
-                                      onPick={(value) =>
-                                        setPathParamValue(token.name, value)
-                                      }
-                                    />
-                                  )}
-                              </Fragment>
+                              );
+                            }
+                            return (
+                              <PathParamInput
+                                key={`${currentPageKey}:${token.name}`}
+                                name={token.name}
+                                value={pathParamValues[token.name] ?? ""}
+                                onCommit={(value) =>
+                                  setPathParamValue(token.name, value)
+                                }
+                              />
                             );
                           })}
                         </span>
