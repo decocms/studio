@@ -1,4 +1,3 @@
-import { Plus } from "@untitledui/icons";
 import type { DraggableAttributes } from "@dnd-kit/core";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
@@ -81,26 +80,11 @@ export function AgentRow({
     >
       <AgentAvatar icon={entity?.icon ?? null} name={title} size="2xs" />
       <span className="flex-1 truncate">{title}</span>
-      <div className="shrink-0 grid [grid-template-areas:'slot'] items-center justify-items-center">
-        {typeof threadCount === "number" && threadCount > 0 && (
-          <span className="[grid-area:slot] size-7 flex items-center justify-center text-xs text-muted-foreground tabular-nums transition-opacity group-hover/group:opacity-0">
-            {threadCount}
-          </span>
-        )}
-        <button
-          type="button"
-          aria-label="New thread with this agent"
-          // Keep the pointerdown from reaching the sortable row's drag sensor.
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onNewTask(virtualMcpId);
-          }}
-          className="[grid-area:slot] size-7 flex items-center justify-center rounded-md opacity-0 group-hover/group:opacity-100 focus-visible:opacity-100 transition-opacity text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-        >
-          <Plus size={14} />
-        </button>
-      </div>
+      {typeof threadCount === "number" && threadCount > 0 && (
+        <span className="shrink-0 size-7 flex items-center justify-center text-xs text-muted-foreground tabular-nums">
+          {threadCount}
+        </span>
+      )}
     </div>
   );
 

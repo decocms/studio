@@ -12,6 +12,7 @@ export function SidebarSectionHeader({
   onToggle,
   count,
   action,
+  actionSlot,
   controlsId,
 }: {
   label: string;
@@ -19,6 +20,8 @@ export function SidebarSectionHeader({
   onToggle: () => void;
   count?: number;
   action?: { label: string; icon?: ReactNode; onClick: () => void };
+  /** Arbitrary always-visible trailing control (e.g. a browse-agents "+"). */
+  actionSlot?: ReactNode;
   /** id of the collapsible content panel this header toggles (a11y). */
   controlsId?: string;
 }) {
@@ -51,6 +54,7 @@ export function SidebarSectionHeader({
           {action.icon}
         </button>
       )}
+      {actionSlot}
     </div>
   );
 }

@@ -1,5 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { Activity, FilterLines, Rows01, SearchSm } from "@untitledui/icons";
+import {
+  Activity,
+  Edit05,
+  FilterLines,
+  Rows01,
+  SearchSm,
+} from "@untitledui/icons";
 import {
   Popover,
   PopoverContent,
@@ -259,6 +265,39 @@ export function TaskGroupsList({
     createNewTask(virtualMcpId);
   };
 
+  // New thread: always target the currently selected agent (the active
+  // thread's agent, else decopilot). To avoid piling up empties, focus an
+  // existing empty "New chat" for that agent (verified to have no messages)
+  // instead of spawning another.
+  const handleNewThread = async () => {
+    const currentAgentId = activeAgentId ?? decopilotId;
+    track("sidebar_new_thread_clicked", { virtual_mcp_id: currentAgentId });
+    const candidate = myThreadsAll.find(
+      (t) => t.virtual_mcp_id === currentAgentId && t.title === "New chat",
+    );
+    if (candidate) {
+      let isEmpty = false;
+      try {
+        const res = await client.callTool({
+          name: "COLLECTION_THREAD_MESSAGES_LIST",
+          arguments: { thread_id: candidate.id, limit: 1, offset: 0 },
+        });
+        const payload = ((res as { structuredContent?: unknown })
+          .structuredContent ?? res) as { items?: unknown[] };
+        isEmpty = (payload.items?.length ?? 0) === 0;
+      } catch {
+        // On lookup failure, fall through and create a fresh thread.
+      }
+      if (isEmpty) {
+        closeAfterNavigation();
+        setTaskId(candidate.id, currentAgentId);
+        return;
+      }
+    }
+    closeAfterNavigation();
+    createNewTask(currentAgentId);
+  };
+
   // Click an agent → open its most recent thread; if it has none, start a new
   // one (which also adds it to the personal sidebar order).
   const handleOpenAgent = async (virtualMcpId: string) => {
@@ -502,7 +541,13 @@ export function TaskGroupsList({
             </PopoverContent>
           </Popover>
         </div>
-        <BrowseAgentsButton compact />
+        <ToolbarIconButton
+          aria-label="New thread"
+          title="New thread"
+          onClick={() => void handleNewThread()}
+        >
+          <Edit05 size={16} />
+        </ToolbarIconButton>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-0.5 -mr-2 pr-2">
         <TeamThreadsSection
@@ -543,6 +588,7 @@ export function TaskGroupsList({
           onToggle={() => setAgentsOpen((v) => !v)}
           count={agentGroups.length}
           controlsId="sidebar-section-agents"
+          actionSlot={<BrowseAgentsButton compact />}
         />
         {agentsOpen && (
           <div id="sidebar-section-agents" className="flex flex-col gap-0.5">
