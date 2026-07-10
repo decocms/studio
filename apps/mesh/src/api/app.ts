@@ -68,6 +68,7 @@ import {
   resolveLinkBearer,
 } from "./routes/decopilot/link-bearer-auth";
 import { createLinkSessionRoutes } from "./routes/links/session";
+import { provisionCompanionMcps } from "./routes/companion-provision";
 import { createVmEventsRoutes } from "./routes/vm-events";
 import {
   createDecoSitesOrgRoutes,
@@ -1874,6 +1875,26 @@ export async function createApp(options: CreateAppOptions = {}) {
       );
       return c.json(null);
     }
+  });
+
+  // POST /api/companion/provision — the companion desktop app exchanges its
+  // `deco link` bearer for the set of MCP entries to write into the local
+  // Claude/Codex config. Same dual-auth identity as /api/links/me; the heavy
+  // lifting (org list + per-org key mint) is server-side because the link
+  // bearer can't drive management tools itself. See companion-provision.ts.
+  app.post("/api/companion/provision", async (c) => {
+    const authHeader = c.req.header("authorization") ?? "";
+    const match = /^Bearer\s+(.+)$/i.exec(authHeader);
+    if (!match) return c.json({ error: "unauthorized" }, 401);
+    const token = (match[1] ?? "").trim();
+    const userSub = await resolveLinkBearer(
+      token,
+      auth.api as unknown as LinkBearerAuthApi,
+    );
+    if (!userSub) return c.json({ error: "unauthorized" }, 401);
+    const studioUrl = new URL(c.req.url).origin;
+    const orgs = await provisionCompanionMcps(userSub, studioUrl);
+    return c.json({ studioUrl, orgs });
   });
 
   // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs).
