@@ -1,6 +1,24 @@
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { APIError } from "better-auth/api";
+
+/**
+ * A better-auth / better-call APIError, matched by SHAPE not `instanceof`.
+ * better-call is present in several copies (better-auth bundles its own), so the
+ * APIError class thrown by the auth plugins isn't identical to one we'd import —
+ * `instanceof` silently misses and the error 500s. An Error carrying a numeric
+ * 4xx/5xx `statusCode` is the reliable discriminator.
+ */
+function asApiError(
+  err: unknown,
+): { statusCode: number; body?: { message?: string; code?: string } } | null {
+  if (!(err instanceof Error)) return null;
+  const code = (err as { statusCode?: unknown }).statusCode;
+  if (typeof code !== "number" || code < 400 || code >= 600) return null;
+  return err as unknown as {
+    statusCode: number;
+    body?: { message?: string; code?: string };
+  };
+}
 
 /**
  * Global API error handler (wired via `app.onError`).
@@ -12,11 +30,11 @@ import { APIError } from "better-auth/api";
  * thread-outputs that `throw new HTTPException(401|404|...)` silently returned
  * 500.
  *
- * Better Auth / better-call `APIError`s likewise carry an intended status +
- * body. Routes that call `auth.api.*` in-process (e.g. the deployment-admin
- * addMember on a bad orgId) let these propagate; honoring `statusCode` turns
- * them into the right 4xx instead of a misleading 500. Only `message`/`code`
- * are forwarded — never `body.cause`, which can hold internals.
+ * Better Auth `APIError`s likewise carry an intended status + body. Routes that
+ * call `auth.api.*` in-process (e.g. the deployment-admin addMember on a bad
+ * orgId) let these propagate; honoring `statusCode` turns them into the right
+ * 4xx instead of a misleading 500. Only `message`/`code` are forwarded — never
+ * `body.cause`, which can hold internals.
  *
  * Anything else is a genuine unexpected failure → logged + 500.
  */
@@ -25,11 +43,12 @@ export function handleApiError(err: unknown, c: Context): Response {
     return err.getResponse();
   }
 
-  if (err instanceof APIError) {
-    const body = (err.body ?? {}) as { message?: string; code?: string };
+  const apiErr = asApiError(err);
+  if (apiErr) {
+    const body = apiErr.body ?? {};
     return Response.json(
-      { error: body.message ?? err.message, code: body.code },
-      { status: err.statusCode || 500 },
+      { error: body.message ?? (err as Error).message, code: body.code },
+      { status: apiErr.statusCode },
     );
   }
 
