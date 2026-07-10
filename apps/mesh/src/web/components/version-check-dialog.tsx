@@ -49,7 +49,9 @@ export function VersionCheckDialog() {
   const { data: serverVersion, dataUpdatedAt } = useQuery({
     queryKey: KEYS.appVersionCheck(),
     queryFn: async () => {
-      const response = await fetch("/api/config");
+      // The server sends Cache-Control: no-store, but force it client-side
+      // too — this poll is worthless if any layer serves a cached response.
+      const response = await fetch("/api/config", { cache: "no-store" });
       const { config }: { config: PublicConfig } = await response.json();
       return config.version;
     },
