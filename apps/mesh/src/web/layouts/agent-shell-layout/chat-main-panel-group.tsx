@@ -23,12 +23,10 @@ import { computeChatMainSizes } from "@/web/hooks/use-layout-state";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { MainPanelWithDrawer } from "@/web/layouts/main-panel-tabs/main-panel-with-drawer";
 import {
-  SectionsPanelProvider,
-  useSectionsPanel,
-} from "@/web/components/sandbox/preview/sections-panel-context";
-
-const CMS_MIN_WIDTH = 240;
-const CMS_MAX_WIDTH = 640;
+  SecondaryPanelProvider,
+  useSecondaryPanel,
+} from "@/web/layouts/agent-shell-layout/secondary-panel-context";
+import { useColumnResize } from "@/web/hooks/use-column-resize";
 
 function PersistentChatPanel({
   children,
@@ -82,9 +80,9 @@ export interface ChatMainPanelGroupProps {
 
 export function ChatMainPanelGroup(props: ChatMainPanelGroupProps) {
   return (
-    <SectionsPanelProvider>
+    <SecondaryPanelProvider>
       <ChatMainPanelGroupInner {...props} />
-    </SectionsPanelProvider>
+    </SecondaryPanelProvider>
   );
 }
 
@@ -99,14 +97,12 @@ function ChatMainPanelGroupInner({
   const [chatPanelWidth, setChatPanelWidth] = useChatPanelWidth();
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
 
-  // CMS (Sections editor) column — lives between the chat and preview panels
-  // when the preview opens it. The preview owns the open/width state via the
-  // SectionsPanelContext; we render its column + drag divider here so it gets
-  // its own card, and expose `setSlotEl` as the editor's portal target.
-  const sections = useSectionsPanel();
-  const cmsResizingRef = useRef(false);
-  const cmsResizeStartXRef = useRef(0);
-  const cmsResizeStartWidthRef = useRef(0);
+  // Secondary column (the preview's Sections editor today) — lives between the
+  // chat and main panels when a feature opens it. The consumer owns the `open`
+  // flag + portals its content into `slotEl`; the column chrome (card, width,
+  // drag divider) is owned here so it gets its own card.
+  const secondary = useSecondaryPanel();
+  const { width: secondaryWidth, dividerProps } = useColumnResize();
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — syncs panel layout from URL-derived state; imperative DOM API has no React 19 alternative
   useEffect(() => {
@@ -152,46 +148,25 @@ function ChatMainPanelGroupInner({
         minSize={20}
       >
         <div className="h-full flex min-w-0">
-          {sections?.open && (
+          {secondary?.open && (
             <>
-              {/* CMS column — same card treatment as the chat panel (own
-                  padding gutter so the shadow renders). The preview portals
-                  its Sections editor into the card via `setSlotEl`. */}
+              {/* Secondary column — same card treatment as the chat panel (own
+                  padding gutter so the shadow renders). The consumer portals
+                  its content into the card via `setSlotEl`. */}
               <div
                 className="h-full shrink-0"
-                style={{ width: sections.width }}
+                style={{ width: secondaryWidth }}
               >
                 <div className="h-full p-0.5 pt-0.25">
                   <div
-                    ref={sections.setSlotEl}
+                    ref={secondary.setSlotEl}
                     className="h-full bg-background rounded-[0.75rem] overflow-hidden card-shadow"
                   />
                 </div>
               </div>
               <div
                 className="w-1 shrink-0 cursor-col-resize rounded bg-transparent hover:bg-border transition-colors"
-                onPointerDown={(e) => {
-                  cmsResizingRef.current = true;
-                  cmsResizeStartXRef.current = e.clientX;
-                  cmsResizeStartWidthRef.current = sections.width;
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                }}
-                onPointerMove={(e) => {
-                  if (!cmsResizingRef.current) return;
-                  const delta = e.clientX - cmsResizeStartXRef.current;
-                  sections.setWidth(
-                    Math.max(
-                      CMS_MIN_WIDTH,
-                      Math.min(
-                        CMS_MAX_WIDTH,
-                        cmsResizeStartWidthRef.current + delta,
-                      ),
-                    ),
-                  );
-                }}
-                onPointerUp={() => {
-                  cmsResizingRef.current = false;
-                }}
+                {...dividerProps}
               />
             </>
           )}

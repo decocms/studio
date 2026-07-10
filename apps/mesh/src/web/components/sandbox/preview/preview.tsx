@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
-import { useSectionsPanel } from "@/web/components/sandbox/preview/sections-panel-context";
+import { useSecondaryPanel } from "@/web/layouts/agent-shell-layout/secondary-panel-context";
+import { useColumnResize } from "@/web/hooks/use-column-resize";
 import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -226,17 +227,14 @@ export function PreviewContent() {
     useState<VisualEditorPayload | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Sections editor panel. On desktop it is portaled into its own resizable
-  // column beside the preview (SectionsPanelContext); when no provider is
-  // present (e.g. mobile) it falls back to rendering inline below.
-  const sectionsPanel = useSectionsPanel();
-  const setSectionsPanelOpen = sectionsPanel?.setOpen;
+  // Sections editor panel. On desktop it is portaled into a shared secondary
+  // column beside the preview (SecondaryPanelContext); when no provider is
+  // present (e.g. mobile) it falls back to rendering inline below, using its
+  // own drag-resizable width.
+  const secondaryPanel = useSecondaryPanel();
+  const setSecondaryOpen = secondaryPanel?.setOpen;
   const sectionsOpen = viewMode === "cms";
-
-  // Reset the shared CMS column when the preview unmounts (tab switch) so the
-  // panel group doesn't leave an empty column behind.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- lifecycle cleanup for cross-component panel state
-  useEffect(() => () => setSectionsPanelOpen?.(false), [setSectionsPanelOpen]);
+  const inlineResize = useColumnResize();
   const [cmsSelectedSectionIndex, setCmsSelectedSectionIndex] = useState<
     number | null
   >(null);
@@ -245,10 +243,6 @@ export function PreviewContent() {
   const [variantOverrideParams, setVariantOverrideParams] = useState<
     string[] | null
   >(null);
-  const [panelWidth, setPanelWidth] = useState(384);
-  const isResizingRef = useRef(false);
-  const resizeStartXRef = useRef(0);
-  const resizeStartWidthRef = useRef(0);
   // Tracks the last focused element outside the iframe so we can restore it
   // when the iframe reload steals focus.
   const focusBeforeIframeRef = useRef<HTMLElement | null>(null);
@@ -617,8 +611,6 @@ export function PreviewContent() {
   const handleViewModeChange = (mode: PreviewViewMode) => {
     const prev = viewMode;
     setViewMode(mode);
-    // Drive the shared CMS column open/closed alongside the view mode.
-    setSectionsPanelOpen?.(mode === "cms");
     setVisualElement(null);
     // Leaving code mode clears the "View JSON" deep-link so re-entering code
     // mode later opens the file tree, not the previously-viewed page JSON.
@@ -829,6 +821,17 @@ export function PreviewContent() {
     previewState.kind === "iframe" && hasEditableDecoContent(decofile, meta);
   const toggleViewMode = (mode: PreviewViewMode) =>
     handleViewModeChange(viewMode === mode ? "preview" : mode);
+
+  // Keep the shared secondary column in sync with whether the Sections editor
+  // can actually render — not just `viewMode`. This closes the column (and
+  // frees the toggle) if the dev server drops while in CMS mode, and resets it
+  // when the preview unmounts (tab switch) so no empty column is left behind.
+  const showSectionsColumn = sectionsOpen && canSectionsEdit;
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs cross-component panel state; no React 19 alternative for unmount cleanup
+  useEffect(() => {
+    setSecondaryOpen?.(showSectionsColumn);
+    return () => setSecondaryOpen?.(false);
+  }, [showSectionsColumn, setSecondaryOpen]);
 
   // The Sections editor. Rendered into its own column beside the preview via
   // portal (desktop) or inline as a fallback (mobile — no panel provider).
@@ -1296,44 +1299,26 @@ export function PreviewContent() {
           </div>
         )}
 
-      {/* Desktop: portal the Sections editor into its dedicated column
+      {/* Desktop: portal the Sections editor into the shared secondary column
           beside the preview ([Chat | CMS | Preview]). */}
-      {sectionsPanel?.slotEl && sectionsEditorEl
-        ? createPortal(sectionsEditorEl, sectionsPanel.slotEl)
+      {secondaryPanel?.slotEl && sectionsEditorEl
+        ? createPortal(sectionsEditorEl, secondaryPanel.slotEl)
         : null}
 
       <div className="flex-1 flex overflow-hidden">
         {/* Fallback: no panel provider (e.g. mobile) — render the editor as an
             inline, drag-resizable left column inside the preview. */}
-        {!sectionsPanel && sectionsEditorEl && (
+        {!secondaryPanel && sectionsEditorEl && (
           <>
             <div
               className="shrink-0 border-r overflow-hidden"
-              style={{ width: panelWidth }}
+              style={{ width: inlineResize.width }}
             >
               {sectionsEditorEl}
             </div>
             <div
               className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-border transition-colors"
-              onPointerDown={(e) => {
-                isResizingRef.current = true;
-                resizeStartXRef.current = e.clientX;
-                resizeStartWidthRef.current = panelWidth;
-                e.currentTarget.setPointerCapture(e.pointerId);
-              }}
-              onPointerMove={(e) => {
-                if (!isResizingRef.current) return;
-                const delta = e.clientX - resizeStartXRef.current;
-                setPanelWidth(
-                  Math.max(
-                    240,
-                    Math.min(640, resizeStartWidthRef.current + delta),
-                  ),
-                );
-              }}
-              onPointerUp={() => {
-                isResizingRef.current = false;
-              }}
+              {...inlineResize.dividerProps}
             />
           </>
         )}
