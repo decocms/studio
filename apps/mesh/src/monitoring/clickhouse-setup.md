@@ -36,6 +36,11 @@ keeps other applications' logs out.
 2. An `otel_logs` table being populated by the collector with Studio's log
    records (i.e. the app is deployed and emitting `studio.monitoring.*`).
 
+The order is deliberate: deploy first, view last. The exporter creates
+`otel_logs` on first write, and Step 1 verifies the schema it actually created.
+Until Step 2 runs, the monitoring dashboard errors out querying the missing
+view — expected and harmless, it recovers as soon as the view exists.
+
 ## Step 1 — verify the `otel_logs` schema
 
 The DDL below assumes the **standard OpenTelemetry ClickHouse exporter** schema:
@@ -123,6 +128,31 @@ The dashboard depends on these aliased columns existing on the view:
 | `user_agent`      | `LogAttributes['studio.monitoring.user_agent']`              |                                |
 | `virtual_mcp_id`  | `LogAttributes['studio.monitoring.virtual_mcp_id']`          |                                |
 | `properties`      | `LogAttributes['studio.monitoring.properties']`              | JSON string                    |
+
+## Scaling beyond a single node (replicas / shards)
+
+Everything above assumes a single node: `otel_logs` as created by the
+OTel collector's ClickHouse exporter (`create_schema: true`) is a plain
+`MergeTree`, which is exactly right for one node — and **only** for one node.
+Scaling the cluster topology (e.g. `ClickHouseCluster.spec.replicas` / `shards`
+in the Helm chart) does NOT scale the tables; the DDL must change in lockstep,
+or the extra nodes silently hold divergent/partial data:
+
+- **N replicas** → the table engine must be `ReplicatedMergeTree` (the
+  `Replicated*` variant of whatever engine you use), which coordinates through
+  Keeper. With a plain `MergeTree`, each replica keeps its own independent
+  copy — writes land on one node and are never replicated, so you get
+  divergent nodes, not high availability.
+- **N shards** → additionally, writes and reads must go through a
+  `Distributed` table over the shard-local tables. Without it, each shard only
+  holds and sees its own slice, and queries against a single node return
+  partial results.
+
+For any multi-node topology: set the exporter's `create_schema: false`, create
+`otel_logs` by hand with the appropriate `Replicated*` engine (and a
+`Distributed` wrapper when sharding, pointing the exporter at it), then create
+the view as in Step 2. The view itself is engine-agnostic — it just needs its
+`FROM` to target whatever table sees all the data.
 
 ## Performance (optional, recommended at scale)
 

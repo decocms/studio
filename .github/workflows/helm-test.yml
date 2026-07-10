@@ -142,3 +142,13 @@ jobs:
           helm template deco-studio deploy/helm/studio \
             --set database.url=postgresql://ci:ci@postgres.example.com:5432/studio \
             > /dev/null
+
+      # -n deco-studio matches the watchNamespaces pin in the example values;
+      # the chart's namespace validation fails the render otherwise.
+      - name: Render (in-cluster ClickHouse example)
+        run: |
+          helm template deco-studio deploy/helm/studio \
+            -n deco-studio \
+            --set database.url=postgresql://ci:ci@postgres.example.com:5432/studio \
+            -f deploy/helm/studio/examples/values-clickhouse.yaml \
+            > /dev/null
