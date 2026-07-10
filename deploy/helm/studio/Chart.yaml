@@ -2,7 +2,7 @@ apiVersion: v2
 name: chart-deco-studio
 description: Helm chart for deco Studio — supports inline secrets, external secretName, and AWS Secrets Manager via ExternalSecret
 type: application
-version: 0.11.2
+version: 0.12.0
 appVersion: "latest"
 
 dependencies:
@@ -14,3 +14,15 @@ dependencies:
     version: "0.147.2"
     repository: "https://open-telemetry.github.io/opentelemetry-helm-charts"
     condition: otel.collector.enabled
+  # Official ClickHouse operator + a ClickHouseCluster/KeeperCluster CR wrapper.
+  # Keep both pinned to the SAME version (upstream compatibility guarantee).
+  - name: clickhouse-operator-helm
+    alias: clickhouse-operator
+    version: "0.0.6"
+    repository: "oci://ghcr.io/clickhouse"
+    condition: clickhouse-operator.enabled
+  - name: clickhouse-cluster-helm
+    alias: clickhouse-cluster
+    version: "0.0.6"
+    repository: "oci://ghcr.io/clickhouse"
+    condition: clickhouse-cluster.enabled

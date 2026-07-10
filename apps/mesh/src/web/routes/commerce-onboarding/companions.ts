@@ -31,4 +31,9 @@ export const COMMERCE_COMPANION_MCPS: Record<string, CompanionCopy> = {
     area: "Busca",
     headline: "O tráfego de busca que você deixa na mesa.",
   },
+  github: {
+    registryAppId: "deco/mcp-github",
+    area: "Engenharia",
+    headline: "A saúde da entrega de código por trás da sua loja.",
+  },
 };

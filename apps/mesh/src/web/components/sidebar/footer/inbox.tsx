@@ -23,6 +23,7 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { track } from "@/web/lib/posthog-client";
 import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item";
 import { JoinRequestItem } from "@/web/components/sidebar/footer/join-request-item";
@@ -291,6 +292,11 @@ export function SidebarInboxFooter() {
         <SidebarTopActions />
         <SidebarMenu>
           <SidebarMenuItem>
+            <div className="flex justify-center">
+              <LinkedDesktopIndicator />
+            </div>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
             <ConnectionsFullButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -319,6 +325,7 @@ export function SidebarInboxFooter() {
         </div>
         <SettingsIconButton />
         <InboxIconButton />
+        <LinkedDesktopIndicator />
         <ConnectionsIconButton />
         <SidebarTopActionsInline />
       </div>

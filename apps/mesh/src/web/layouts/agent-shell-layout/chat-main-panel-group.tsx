@@ -22,6 +22,11 @@ import { useChatPanelWidth } from "@/web/hooks/use-chat-panel-width";
 import { computeChatMainSizes } from "@/web/hooks/use-layout-state";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { MainPanelWithDrawer } from "@/web/layouts/main-panel-tabs/main-panel-with-drawer";
+import {
+  SecondaryPanelProvider,
+  useSecondaryPanel,
+} from "@/web/layouts/agent-shell-layout/secondary-panel-context";
+import { useColumnResize } from "@/web/hooks/use-column-resize";
 
 function PersistentChatPanel({
   children,
@@ -73,7 +78,15 @@ export interface ChatMainPanelGroupProps {
   chatContent?: React.ReactNode;
 }
 
-export function ChatMainPanelGroup({
+export function ChatMainPanelGroup(props: ChatMainPanelGroupProps) {
+  return (
+    <SecondaryPanelProvider>
+      <ChatMainPanelGroupInner {...props} />
+    </SecondaryPanelProvider>
+  );
+}
+
+function ChatMainPanelGroupInner({
   virtualMcpId,
   taskId,
   chatOpen,
@@ -83,6 +96,13 @@ export function ChatMainPanelGroup({
   const sizes = computeChatMainSizes(chatOpen, mainOpen);
   const [chatPanelWidth, setChatPanelWidth] = useChatPanelWidth();
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
+
+  // Secondary column (the preview's Sections editor today) — lives between the
+  // chat and main panels when a feature opens it. The consumer owns the `open`
+  // flag + portals its content into `slotEl`; the column chrome (card, width,
+  // drag divider) is owned here so it gets its own card.
+  const secondary = useSecondaryPanel();
+  const { width: secondaryWidth, dividerProps } = useColumnResize();
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — syncs panel layout from URL-derived state; imperative DOM API has no React 19 alternative
   useEffect(() => {
@@ -127,20 +147,44 @@ export function ChatMainPanelGroup({
         collapsedSize={0}
         minSize={20}
       >
-        <div className="h-full p-0.5 pt-0.25">
-          <div
-            className={cn(
-              "flex flex-col h-full min-h-0 bg-background overflow-hidden",
-              "card-shadow",
-              "transition-[border-radius] duration-200 ease-[var(--ease-out-quart)]",
-              "rounded-[0.75rem]",
-            )}
-          >
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <MainPanelWithDrawer
-                taskId={taskId}
-                virtualMcpId={virtualMcpId}
+        <div className="h-full flex min-w-0">
+          {secondary?.open && (
+            <>
+              {/* Secondary column — same card treatment as the chat panel (own
+                  padding gutter so the shadow renders). The consumer portals
+                  its content into the card via `setSlotEl`. */}
+              <div
+                className="h-full shrink-0"
+                style={{ width: secondaryWidth }}
+              >
+                <div className="h-full p-0.5 pt-0.25">
+                  <div
+                    ref={secondary.setSlotEl}
+                    className="h-full bg-background rounded-[0.75rem] overflow-hidden card-shadow"
+                  />
+                </div>
+              </div>
+              <div
+                className="w-1 shrink-0 cursor-col-resize rounded bg-transparent hover:bg-border transition-colors"
+                {...dividerProps}
               />
+            </>
+          )}
+          <div className="h-full flex-1 min-w-0 p-0.5 pt-0.25">
+            <div
+              className={cn(
+                "flex flex-col h-full min-h-0 bg-background overflow-hidden",
+                "card-shadow",
+                "transition-[border-radius] duration-200 ease-[var(--ease-out-quart)]",
+                "rounded-[0.75rem]",
+              )}
+            >
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <MainPanelWithDrawer
+                  taskId={taskId}
+                  virtualMcpId={virtualMcpId}
+                />
+              </div>
             </div>
           </div>
         </div>

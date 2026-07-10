@@ -1005,6 +1005,94 @@ export function resolveSchema(
   };
 }
 
+/**
+ * Whether a block's schema is a "freeform props" stub — the block DOES take
+ * props but doesn't publish their schema, so `resolveSchema()` returns null.
+ * Tanstack's `registerCommerceLoaders` registers every commerce/vtex loader
+ * and action with a `{ additionalProperties: true }` props schema, and its
+ * meta composer drops `additionalProperties` on the way out — the emitted def
+ * is just `{ properties: { __resolveType: { enum: [<key>] } } }`. Detect both
+ * shapes so the runnable editor can offer the raw JSON editor instead of
+ * claiming the block takes no input. Deno/fresh defs never embed a
+ * self-referential `__resolveType` in a block's props schema, so this is a
+ * no-op there.
+ */
+export function isFreeformPropsSchema(
+  resolveType: string,
+  meta: LiveMeta,
+): boolean {
+  const globalSchema = meta.schema ?? {};
+  const blockSchema = lookupManifestBlockSchema(resolveType, meta);
+  const defs = (globalSchema.$defs ?? globalSchema.definitions ?? {}) as Record<
+    string,
+    RawSchema
+  >;
+  const resolved =
+    typeof blockSchema.$ref === "string"
+      ? (defs[blockSchema.$ref.split("/").pop() ?? ""] ?? {})
+      : blockSchema;
+
+  const props = (resolved.properties as Record<string, RawSchema>) ?? {};
+  const hasVisibleProps = Object.keys(props).some(
+    (key) => !key.startsWith("__"),
+  );
+  if (hasVisibleProps) return false;
+
+  if (resolved.additionalProperties === true) return true;
+
+  // Tanstack registry-stub signature: the only property is the block's own
+  // `__resolveType` enum.
+  const resolveTypeProp = props.__resolveType;
+  return (
+    !!resolveTypeProp &&
+    Array.isArray(resolveTypeProp.enum) &&
+    resolveTypeProp.enum[0] === resolveType
+  );
+}
+
+/**
+ * Best-effort schema inferred from a concrete props value. Used by the
+ * runnable editor when a block doesn't publish its props schema (tanstack
+ * commerce/vtex registry stubs — see {@link isFreeformPropsSchema}) but a
+ * saved block carries values: a typed form built from those values beats a
+ * raw JSON dead-end. Only shapes present in the value are inferable; enums,
+ * formats, and optional fields the value doesn't carry are unknowable.
+ */
+export function inferSchemaFromValue(
+  value: Record<string, unknown>,
+): SchemaProperty | null {
+  const inferOne = (v: unknown): SchemaProperty => {
+    switch (typeof v) {
+      case "number":
+        return { type: "number" };
+      case "boolean":
+        return { type: "boolean" };
+      case "object": {
+        if (v === null) return { type: "string" };
+        if (Array.isArray(v)) {
+          return { type: "array", items: inferOne(v[0]) };
+        }
+        const nested: Record<string, SchemaProperty> = {};
+        for (const [key, item] of Object.entries(v)) {
+          if (key.startsWith("__")) continue;
+          nested[key] = inferOne(item);
+        }
+        return { type: "object", properties: nested };
+      }
+      default:
+        return { type: "string" };
+    }
+  };
+
+  const properties: Record<string, SchemaProperty> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (key.startsWith("__")) continue;
+    properties[key] = inferOne(item);
+  }
+  if (Object.keys(properties).length === 0) return null;
+  return { type: "object", properties };
+}
+
 export interface BlockSchemaMetadata {
   title?: string;
   description?: string;

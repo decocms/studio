@@ -114,6 +114,44 @@ describe("runnable-catalog", () => {
     ]);
   });
 
+  it("collapses tanstack bare/suffixed alias pairs onto the suffixed key", () => {
+    // Tanstack manifests register `X` (invoke alias, __resolveType-only stub)
+    // AND `X.ts` (real module, carries the generated props schema).
+    const tanstackMeta: LiveMeta = {
+      manifest: {
+        blocks: {
+          loaders: {
+            "site/loaders/CheckStock": { $ref: "#/definitions/StubB64" },
+            "site/loaders/CheckStock.ts": { $ref: "#/definitions/RealB64" },
+            "site/loaders/List/Sections": { $ref: "#/definitions/StubB64" },
+            "site/loaders/List/Sections.tsx": { $ref: "#/definitions/RealB64" },
+            // Bare-only key (no suffixed twin) must stay listed.
+            "vtex/actions/cart/updateItems": { $ref: "#/definitions/StubB64" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          // Tanstack defs title themselves with their own key.
+          StubB64: { title: "site/loaders/CheckStock" },
+          RealB64: { title: "site/loaders/CheckStock.ts" },
+        },
+      },
+    };
+
+    const loaders = listAvailableRunnables(tanstackMeta, "loaders");
+    expect(loaders.map((l) => l.resolveType).sort()).toEqual([
+      "site/loaders/CheckStock.ts",
+      "site/loaders/List/Sections.tsx",
+      "vtex/actions/cart/updateItems",
+    ]);
+    // Self-referential def titles fall back to the resolveType label.
+    expect(
+      loaders.find((l) => l.resolveType === "site/loaders/CheckStock.ts")
+        ?.title,
+    ).toBe("CheckStock");
+  });
+
   it("listSavedRunnables picks decofile blocks of the matching kind", () => {
     const decofile: Record<string, unknown> = {
       MyProducts: {

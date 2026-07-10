@@ -88,14 +88,27 @@ function getServerSnapshot(): null {
   return null;
 }
 
-function isStandalone(): boolean {
+/**
+ * True when the app is running as an installed PWA rather than a regular
+ * browser tab. Covers the installed display modes this app uses (`standalone`
+ * for mobile, `window-controls-overlay` for the desktop title-bar shell) plus
+ * iOS's legacy `navigator.standalone`.
+ *
+ * We deliberately do NOT match `(display-mode: fullscreen)` or `minimal-ui`:
+ * a plain browser tab can enter fullscreen (F11 / macOS fullscreen) without
+ * being an installed PWA, which would give a false positive.
+ */
+export function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
-  const standaloneMedia =
+  const displayModeMedia =
     typeof window.matchMedia === "function" &&
-    window.matchMedia("(display-mode: standalone)").matches;
+    [
+      "(display-mode: standalone)",
+      "(display-mode: window-controls-overlay)",
+    ].some((query) => window.matchMedia(query).matches);
   const iosStandalone =
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
-  return standaloneMedia || iosStandalone;
+  return displayModeMedia || iosStandalone;
 }
 
 function isIos(): boolean {
