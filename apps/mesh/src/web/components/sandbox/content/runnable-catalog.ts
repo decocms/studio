@@ -59,6 +59,19 @@ export function isManifestRunnableResolveType(
 }
 
 /**
+ * Tanstack manifests register most modules twice: a bare invoke-by-key alias
+ * (`site/loaders/CheckStock`) plus the real module path
+ * (`site/loaders/CheckStock.ts`). Only the suffixed entry carries the
+ * generated props schema — the bare alias resolves to a `__resolveType`-only
+ * stub — so the catalog drops it when its suffixed twin exists. Deno/fresh
+ * manifests only ever list suffixed keys, making this a no-op there.
+ */
+function hasSuffixedAlias(resolveType: string, allKeys: Set<string>): boolean {
+  if (/\.tsx?$/.test(resolveType)) return false;
+  return allKeys.has(`${resolveType}.ts`) || allKeys.has(`${resolveType}.tsx`);
+}
+
+/**
  * Available (manifest) loaders/actions for the given kind. Skips preview stubs
  * and blocks the site marks hidden (deco `@ignore` / `hide` — the same signal
  * the section catalog respects), mirroring how admin keeps internal blocks out
@@ -71,22 +84,26 @@ export function listAvailableRunnables(
 ): RunnableEntry[] {
   const blocks = meta.manifest?.blocks ?? {};
   const entries: RunnableEntry[] = [];
-  const seen = new Set<string>();
 
+  const allKeys = new Set<string>();
   for (const [blockType, blockMap] of Object.entries(blocks)) {
     if (!blockType.includes(kind)) continue;
-    for (const resolveType of Object.keys(blockMap)) {
-      if (resolveType.toLowerCase().includes("preview")) continue;
-      if (HIDDEN_RUNNABLE_GROUPS.has(runnableGroupKey(resolveType))) continue;
-      if (seen.has(resolveType)) continue;
-      seen.add(resolveType);
-      const metadata = resolveBlockSchemaMetadata(resolveType, meta);
-      if (metadata.hidden) continue;
-      entries.push({
-        resolveType,
-        title: metadata.title ?? labelFromResolveType(resolveType),
-      });
-    }
+    for (const resolveType of Object.keys(blockMap)) allKeys.add(resolveType);
+  }
+
+  for (const resolveType of allKeys) {
+    if (resolveType.toLowerCase().includes("preview")) continue;
+    if (HIDDEN_RUNNABLE_GROUPS.has(runnableGroupKey(resolveType))) continue;
+    if (hasSuffixedAlias(resolveType, allKeys)) continue;
+    const metadata = resolveBlockSchemaMetadata(resolveType, meta);
+    if (metadata.hidden) continue;
+    // Tanstack block defs title themselves with their own key — treat that as
+    // "no title" so the list shows `CheckStock`, not the full module path.
+    const title =
+      metadata.title && metadata.title !== resolveType
+        ? metadata.title
+        : labelFromResolveType(resolveType);
+    entries.push({ resolveType, title });
   }
 
   return entries.sort((a, b) => a.title.localeCompare(b.title));

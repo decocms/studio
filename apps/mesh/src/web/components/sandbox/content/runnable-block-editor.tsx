@@ -24,6 +24,8 @@ import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { MonacoCodeEditor } from "@/web/components/monaco-editor";
 import { SchemaForm } from "@/web/components/sections-editor/schema-form";
 import {
+  inferSchemaFromValue,
+  isFreeformPropsSchema,
   resolveSchema,
   type LiveMeta,
 } from "@/web/components/sections-editor/resolve-schema";
@@ -89,6 +91,18 @@ export function RunnableBlockEditor({
       ? (inset.entity.metadata?.siteSlug ?? null)
       : null;
 
+  // Tanstack registers commerce/vtex blocks with a freeform props stub (no
+  // declared fields) — the block DOES take props, but the site doesn't publish
+  // their schema. When a saved block carries values, infer a basic form from
+  // them; otherwise the empty state points at the JSON editor toggle.
+  const resolvedSchema = resolveSchema(target.resolveType, meta);
+  const freeformProps =
+    !resolvedSchema && isFreeformPropsSchema(target.resolveType, meta);
+  const inferredSchema = freeformProps
+    ? inferSchemaFromValue(initialValue)
+    : null;
+  const schema = resolvedSchema ?? inferredSchema;
+
   const [formValue, setFormValue] =
     useState<Record<string, unknown>>(initialValue);
   const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
@@ -124,7 +138,6 @@ export function RunnableBlockEditor({
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps
   }, []);
 
-  const schema = resolveSchema(target.resolveType, meta);
   const singular = runnableSingular(kind);
   const typeLabel =
     target.resolveType
@@ -330,6 +343,13 @@ export function RunnableBlockEditor({
           <ScrollArea className="h-full [&_[data-slot=scroll-area-viewport]>div]:!block">
             <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
               <div className="mx-auto max-w-2xl">
+                {inferredSchema && schema === inferredSchema && (
+                  <p className="mb-3 rounded-md bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
+                    This {singular} doesn't publish a props schema — fields
+                    below are inferred from its saved values. Use the JSON
+                    editor to add props not shown here.
+                  </p>
+                )}
                 {schema ? (
                   <SchemaForm
                     key={formResetKey}
@@ -346,8 +366,9 @@ export function RunnableBlockEditor({
                   />
                 ) : (
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                    This {singular} takes no configurable input. Run it to see
-                    its output.
+                    {freeformProps
+                      ? `This ${singular} doesn't publish a props schema. Edit its props as JSON, then run it.`
+                      : `This ${singular} takes no configurable input. Run it to see its output.`}
                   </div>
                 )}
               </div>
