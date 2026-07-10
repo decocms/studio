@@ -36,9 +36,8 @@ import {
   SidebarTriggerButton,
 } from "@/web/layouts/shell-controls";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
+import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
-
-const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
 
 function RouteFallback() {
   return <ShellRouteLoading />;
@@ -47,7 +46,7 @@ function RouteFallback() {
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
-    SIDEBAR_OPEN_STORAGE_KEY,
+    LOCALSTORAGE_KEYS.sidebarOpen(),
     false,
   );
   const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
