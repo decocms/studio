@@ -213,7 +213,7 @@ test.describe("/api/_admin/*", () => {
     await targetCtx.dispose();
   });
 
-  test("impersonate validates input: missing 400, unknown 404, re-impersonate 403", async ({
+  test("impersonate validates input: missing 400, unknown 404, re-impersonate rejected", async ({
     playwright,
   }) => {
     const adminCtx = await newApiContext(playwright);
@@ -230,9 +230,11 @@ test.describe("/api/_admin/*", () => {
     });
     expect(unknown.status()).toBe(404);
 
-    // Impersonate a normal user, then try again: the middleware rejects the
-    // second call (the session is now the non-allowlisted target) before the
-    // 409 guard is ever reached — this is the contract a real admin hits.
+    // Impersonate a normal user, then try again: requireDeploymentAdmin rejects
+    // the second call because the session is now the target — 401 if the target
+    // is unverified (fresh e2e signups are), 403 if verified-but-not-allowlisted.
+    // Either way the middleware blocks it before the 409 guard, and it's never
+    // allowed through (200) — that's the invariant that matters.
     const targetCtx = await newApiContext(playwright);
     const target = await signUpViaApi(targetCtx);
     const first = await adminCtx.post("/api/_admin/impersonate", {
@@ -242,7 +244,7 @@ test.describe("/api/_admin/*", () => {
     const second = await adminCtx.post("/api/_admin/impersonate", {
       data: { userId: target.userId },
     });
-    expect(second.status()).toBe(403);
+    expect([401, 403]).toContain(second.status());
 
     await adminCtx.post("/api/auth/admin/stop-impersonating");
     await adminCtx.dispose();
