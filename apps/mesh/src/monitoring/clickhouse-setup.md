@@ -36,6 +36,11 @@ keeps other applications' logs out.
 2. An `otel_logs` table being populated by the collector with Studio's log
    records (i.e. the app is deployed and emitting `studio.monitoring.*`).
 
+The order is deliberate: deploy first, view last. The exporter creates
+`otel_logs` on first write, and Step 1 verifies the schema it actually created.
+Until Step 2 runs, the monitoring dashboard errors out querying the missing
+view — expected and harmless, it recovers as soon as the view exists.
+
 ## Step 1 — verify the `otel_logs` schema
 
 The DDL below assumes the **standard OpenTelemetry ClickHouse exporter** schema:
