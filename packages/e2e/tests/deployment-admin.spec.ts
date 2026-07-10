@@ -356,7 +356,13 @@ test.describe("/api/_admin/*", () => {
   test("a verified admin sees the dashboard in a browser", async ({
     browser,
   }) => {
-    const ctx = await browser.newContext({ baseURL: getE2EAppOrigin() });
+    const baseURL = getE2EAppOrigin();
+    // Origin header so the sign-in POST clears Better Auth's CSRF guard — same
+    // reason newApiContext sets it for standalone API contexts.
+    const ctx = await browser.newContext({
+      baseURL,
+      extraHTTPHeaders: { Origin: baseURL },
+    });
     const page = await ctx.newPage();
     const admin = await ensureDeploymentAdmin(page.context().request);
     await verifyDeploymentAdmin(db, admin.userId);
