@@ -923,14 +923,15 @@ export function PreviewContent() {
             {/* Groups 2+3 only render when the iframe is live — they read
               `previewState.previewUrl` and steer the iframe directly. */}
             {previewState.kind === "iframe" && (
-              <>
-                {/* Group 2: nav + url (hidden in code mode) */}
-                <div
-                  className={cn(
-                    "flex min-w-0 flex-1 items-center gap-0.5 ml-2",
-                    viewMode === "code" && "hidden",
-                  )}
-                >
+              <div
+                className={cn(
+                  "flex w-full items-center justify-center",
+                  viewMode === "code" && "hidden",
+                )}
+              >
+                {/* Centered address bar (max 500px):
+                    reload · URL · open in new tab · more actions. */}
+                <div className="flex w-full max-w-[500px] items-center gap-0.5">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -948,7 +949,7 @@ export function PreviewContent() {
                     ref={pagesContainerRef}
                     className="relative min-w-0 flex-1"
                   >
-                    <div className="flex h-8 w-full min-w-0 items-center rounded-md bg-background transition-colors duration-200 hover:bg-accent">
+                    <div className="flex h-8 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
                       {/* Not a <button>: path-template pages render `:param`
                         inputs inline, and inputs can't nest inside a button.
                         Keyboard toggling stays on the chevron button. */}
@@ -1131,15 +1132,8 @@ export function PreviewContent() {
                       </div>
                     )}
                   </div>
-                </div>
 
-                {/* Group 3: open in new tab + more actions (hidden in code mode) */}
-                <div
-                  className={cn(
-                    "flex shrink-0 items-center gap-0.5",
-                    viewMode === "code" && "hidden",
-                  )}
-                >
+                  {/* open in new tab · more actions */}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -1248,7 +1242,7 @@ export function PreviewContent() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-              </>
+              </div>
             )}
 
             {/* IDE buttons — visible only in code mode, right-aligned */}
