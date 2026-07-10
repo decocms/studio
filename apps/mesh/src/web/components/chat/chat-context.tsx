@@ -1289,6 +1289,33 @@ export function ActiveTaskProvider({
       metadata: messageMetadata,
     };
 
+    // First message on an untitled thread: show a fallback title derived from
+    // the prompt immediately, so the sidebar isn't stuck on "New chat" (and if
+    // the server-side auto-titler never lands — e.g. some harnesses — we still
+    // have something readable). This is a LOCAL patch only: the persisted title
+    // stays "New chat", so the auto-titler still runs and later enriches it via
+    // a `data-thread-title` chunk (which overwrites this locally).
+    if (messages.length === 0) {
+      const promptText = parts
+        .map((p) => (p.type === "text" ? (p.text ?? "") : ""))
+        .join(" ")
+        .trim()
+        .replace(/\s+/g, " ");
+      const row = manager.threads.get().find((t) => t.id === taskId);
+      if (promptText && (!row || row.title === "New chat")) {
+        const MAX_TITLE = 60;
+        const fallbackTitle =
+          promptText.length > MAX_TITLE
+            ? `${promptText.slice(0, MAX_TITLE).trimEnd()}…`
+            : promptText;
+        manager.patchThread({
+          id: taskId,
+          title: fallbackTitle,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+
     await dispatchUserMessage(userMessage);
   }
 
