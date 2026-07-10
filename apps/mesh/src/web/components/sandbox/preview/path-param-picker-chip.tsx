@@ -19,25 +19,25 @@ import { KEYS } from "@/web/lib/query-keys";
 import {
   categoryOptionsFromPayload,
   filterPickerOptions,
-  pickerLoaderRequest,
+  mergePickerOptions,
+  pickerLoaderRequests,
   productOptionsFromPayload,
   type PathParamOption,
   type PathParamPickerKind,
+  type PickerLoaderRequest,
 } from "./path-param-picker";
 
 const PICKER_FETCH_TIMEOUT_MS = 10_000;
 
 /**
- * Invoke the kind's loader straight at the preview origin — same pattern as
- * the sections editor's dynamic-options field. The resolveType goes in the
- * path with slashes intact (that's the shape the deco runtime routes).
+ * Invoke a loader straight at the preview origin — same pattern as the
+ * sections editor's dynamic-options field. The resolveType goes in the path
+ * with slashes intact (that's the shape the deco runtime routes).
  */
-async function fetchPickerOptions(
+async function invokeLoader(
   previewUrl: string,
-  kind: PathParamPickerKind,
-  term: string,
-): Promise<PathParamOption[]> {
-  const { resolveType, props } = pickerLoaderRequest(kind, term);
+  { resolveType, props }: PickerLoaderRequest,
+): Promise<unknown> {
   const base = previewUrl.replace(/\/+$/, "");
   const res = await fetch(`${base}/deco/invoke/${resolveType}`, {
     method: "POST",
@@ -46,12 +46,43 @@ async function fetchPickerOptions(
     signal: AbortSignal.timeout(PICKER_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
-    throw new Error(`Failed to fetch ${kind} options: ${res.status}`);
+    throw new Error(`Failed to fetch options: ${res.status}`);
   }
-  const data = await res.json();
-  return kind === "product"
-    ? productOptionsFromPayload(data)
-    : categoryOptionsFromPayload(data);
+  return res.json();
+}
+
+/**
+ * A term can fan out to several loader calls (e.g. product ids + name query);
+ * they run in parallel and merge in order, deduped. Partial failures are
+ * tolerated as long as at least one call succeeds.
+ */
+async function fetchPickerOptions(
+  previewUrl: string,
+  kind: PathParamPickerKind,
+  term: string,
+): Promise<PathParamOption[]> {
+  const requests = pickerLoaderRequests(kind, term);
+  const settled = await Promise.allSettled(
+    requests.map((request) => invokeLoader(previewUrl, request)),
+  );
+  const payloads = settled
+    .filter(
+      (s): s is PromiseFulfilledResult<unknown> => s.status === "fulfilled",
+    )
+    .map((s) => s.value);
+  if (payloads.length === 0) {
+    const failed = settled.find(
+      (s): s is PromiseRejectedResult => s.status === "rejected",
+    );
+    throw failed ? failed.reason : new Error("Failed to fetch options");
+  }
+  return mergePickerOptions(
+    payloads.map((payload) =>
+      kind === "product"
+        ? productOptionsFromPayload(payload)
+        : categoryOptionsFromPayload(payload),
+    ),
+  );
 }
 
 /**
@@ -143,7 +174,13 @@ export function PathParamPickerChip({
         {value || paramLabel}
       </button>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="flex h-[85svh] flex-col gap-0 overflow-hidden p-0 sm:h-[520px] sm:max-w-[560px]">
+        <DialogContent
+          className="flex h-[85svh] flex-col gap-0 overflow-hidden p-0 sm:h-[520px] sm:max-w-[560px]"
+          // The dialog portals to <body>, but React synthetic events still
+          // bubble through the COMPONENT tree — up to the URL-bar container,
+          // whose click toggles the pages dropdown. Keep clicks inside.
+          onClick={(e) => e.stopPropagation()}
+        >
           <DialogHeader className="sr-only">
             <DialogTitle>
               Pick a {noun} or enter a value for {paramLabel}

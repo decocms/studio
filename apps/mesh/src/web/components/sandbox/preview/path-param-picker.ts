@@ -47,21 +47,59 @@ export function detectPickerKind(
     : null;
 }
 
+export interface PickerLoaderRequest {
+  resolveType: string;
+  props: Record<string, unknown>;
+}
+
 /**
- * Loader call for a kind. Products search server-side per term; the category
- * tree is fetched once (term-independent) and filtered client-side.
+ * Loader calls for a kind and search term — results are merged in order.
+ *
+ * Products search server-side and must match by name, id, and slug:
+ * intelligent search's `query` only matches names, so a numeric term also
+ * tries `ids` (the same productList variant the blog blocks use), and a
+ * slug-like term (hyphenated, no spaces) is de-hyphenated so its words match
+ * the product name. The category tree is fetched once (term-independent) and
+ * filtered client-side.
  */
-export function pickerLoaderRequest(
+export function pickerLoaderRequests(
   kind: PathParamPickerKind,
   term: string,
-): { resolveType: string; props: Record<string, unknown> } {
-  if (kind === "product") {
-    return {
-      resolveType: PICKER_LOADER_RESOLVE_TYPE.product,
-      props: { query: term, count: 10 },
-    };
+): PickerLoaderRequest[] {
+  if (kind === "category") {
+    return [{ resolveType: PICKER_LOADER_RESOLVE_TYPE.category, props: {} }];
   }
-  return { resolveType: PICKER_LOADER_RESOLVE_TYPE.category, props: {} };
+  const trimmed = term.trim();
+  const requests: PickerLoaderRequest[] = [];
+  if (/^\d+$/.test(trimmed)) {
+    requests.push({
+      resolveType: PICKER_LOADER_RESOLVE_TYPE.product,
+      props: { ids: [trimmed] },
+    });
+  }
+  const slugLike = trimmed.includes("-") && !/\s/.test(trimmed);
+  const query = slugLike ? trimmed.replace(/-+/g, " ") : trimmed;
+  requests.push({
+    resolveType: PICKER_LOADER_RESOLVE_TYPE.product,
+    props: { query, count: 10 },
+  });
+  return requests;
+}
+
+/** Merge option lists in order, dropping later duplicates by value. */
+export function mergePickerOptions(
+  lists: PathParamOption[][],
+): PathParamOption[] {
+  const seen = new Set<string>();
+  const merged: PathParamOption[] = [];
+  for (const options of lists) {
+    for (const option of options) {
+      if (seen.has(option.value)) continue;
+      seen.add(option.value);
+      merged.push(option);
+    }
+  }
+  return merged;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

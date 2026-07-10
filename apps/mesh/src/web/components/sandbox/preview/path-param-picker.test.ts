@@ -3,7 +3,8 @@ import {
   categoryOptionsFromPayload,
   detectPickerKind,
   filterPickerOptions,
-  pickerLoaderRequest,
+  mergePickerOptions,
+  pickerLoaderRequests,
   productOptionsFromPayload,
   productSlugFromUrl,
 } from "./path-param-picker";
@@ -38,19 +39,66 @@ describe("detectPickerKind", () => {
   });
 });
 
-describe("pickerLoaderRequest", () => {
-  test("product searches server-side with the term", () => {
-    expect(pickerLoaderRequest("product", "tee")).toEqual({
-      resolveType: "vtex/loaders/intelligentSearch/productList.ts",
-      props: { query: "tee", count: 10 },
-    });
+describe("pickerLoaderRequests", () => {
+  const PRODUCT_LOADER = "vtex/loaders/intelligentSearch/productList.ts";
+
+  test("plain product term is a single name query", () => {
+    expect(pickerLoaderRequests("product", "torrada integral")).toEqual([
+      {
+        resolveType: PRODUCT_LOADER,
+        props: { query: "torrada integral", count: 10 },
+      },
+    ]);
+  });
+
+  test("numeric term also tries product ids, ids first", () => {
+    expect(pickerLoaderRequests("product", "123")).toEqual([
+      { resolveType: PRODUCT_LOADER, props: { ids: ["123"] } },
+      { resolveType: PRODUCT_LOADER, props: { query: "123", count: 10 } },
+    ]);
+  });
+
+  test("slug-like term is de-hyphenated so its words match the name", () => {
+    expect(pickerLoaderRequests("product", "torrada-multigraos-142g")).toEqual([
+      {
+        resolveType: PRODUCT_LOADER,
+        props: { query: "torrada multigraos 142g", count: 10 },
+      },
+    ]);
+  });
+
+  test("hyphenated term with spaces is kept as typed", () => {
+    expect(pickerLoaderRequests("product", "kit caixa-presente")).toEqual([
+      {
+        resolveType: PRODUCT_LOADER,
+        props: { query: "kit caixa-presente", count: 10 },
+      },
+    ]);
   });
 
   test("category fetches the whole tree, term-independent", () => {
-    expect(pickerLoaderRequest("category", "hats")).toEqual({
-      resolveType: "vtex/loaders/categories/tree.ts",
-      props: {},
-    });
+    expect(pickerLoaderRequests("category", "hats")).toEqual([
+      { resolveType: "vtex/loaders/categories/tree.ts", props: {} },
+    ]);
+  });
+});
+
+describe("mergePickerOptions", () => {
+  test("merges in order and drops later duplicates by value", () => {
+    const byId = [{ value: "tv-4k", label: "TV 4K (by id)" }];
+    const byQuery = [
+      { value: "tv-4k", label: "TV 4K" },
+      { value: "tv-8k", label: "TV 8K" },
+    ];
+    expect(mergePickerOptions([byId, byQuery])).toEqual([
+      { value: "tv-4k", label: "TV 4K (by id)" },
+      { value: "tv-8k", label: "TV 8K" },
+    ]);
+  });
+
+  test("empty lists merge to empty", () => {
+    expect(mergePickerOptions([])).toEqual([]);
+    expect(mergePickerOptions([[], []])).toEqual([]);
   });
 });
 
