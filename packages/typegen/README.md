@@ -15,9 +15,12 @@ bunx @decocms/typegen --mcp <virtual-mcp-id> --key <api-key> --output client.ts
 | Flag | Env var | Default |
 |------|---------|---------|
 | `--mcp` | — | **required** |
-| `--key` | `MESH_API_KEY` | — |
-| `--url` | `MESH_BASE_URL` | `https://studio.decocms.com` |
+| `--key` | `STUDIO_API_KEY` | — |
+| `--url` | `STUDIO_BASE_URL` | `https://studio.decocms.com` |
 | `--output` | — | `client.ts` |
+
+> The legacy `MESH_API_KEY` / `MESH_BASE_URL` env vars are still honored as a
+> fallback, so existing setups keep working.
 
 ### 2. Use the generated client
 
@@ -36,8 +39,8 @@ export interface Tools {
 
 export const client = createMeshClient<Tools>({
   mcpId: "vmc_abc123",
-  apiKey: process.env.MESH_API_KEY,
-  baseUrl: process.env.MESH_BASE_URL,
+  apiKey: process.env.STUDIO_API_KEY ?? process.env.MESH_API_KEY,
+  baseUrl: process.env.STUDIO_BASE_URL ?? process.env.MESH_BASE_URL,
 });
 ```
 
@@ -58,7 +61,7 @@ import { createMeshClient } from "@decocms/typegen";
 
 const client = createMeshClient<Tools>({
   mcpId: "vmc_abc123",   // Virtual MCP ID
-  apiKey: "sk_...",      // Falls back to process.env.MESH_API_KEY
+  apiKey: "sk_...",      // Falls back to process.env.STUDIO_API_KEY
   baseUrl: "https://...", // Falls back to https://studio.decocms.com
 });
 ```

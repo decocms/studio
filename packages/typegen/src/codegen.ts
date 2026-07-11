@@ -202,8 +202,8 @@ ${toolsInterface}
 
 export const client = createMeshClient<Tools>({
   mcpId: "${mcpId}",
-  apiKey: process.env.MESH_API_KEY,
-  baseUrl: process.env.MESH_BASE_URL,
+  apiKey: process.env.STUDIO_API_KEY ?? process.env.MESH_API_KEY,
+  baseUrl: process.env.STUDIO_BASE_URL ?? process.env.MESH_BASE_URL,
 });
 `;
 
