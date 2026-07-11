@@ -144,4 +144,13 @@ describe("computeDrawerStatus", () => {
       computeDrawerStatus({ kind: "iframe", previewUrl: "https://x" }),
     ).toBe("running");
   });
+
+  test("errored → errored", () => {
+    expect(
+      computeDrawerStatus({
+        kind: "errored",
+        error: { code: null, message: "boom" },
+      }),
+    ).toBe("errored");
+  });
 });

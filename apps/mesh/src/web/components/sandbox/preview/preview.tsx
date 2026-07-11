@@ -1319,6 +1319,17 @@ export function PreviewContent() {
             </div>
           )}
 
+          {previewState.kind === "errored" && (
+            <div className="absolute inset-0 z-30">
+              <SandboxStateCard
+                kind="errored"
+                error={previewState.error}
+                onRetry={lifecycle.retry}
+                connectionsHref={`/${org.slug}/settings/connections`}
+              />
+            </div>
+          )}
+
           {effectiveViewMode === "visual" && !visualElement && (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
               <CursorClick01 size={12} />

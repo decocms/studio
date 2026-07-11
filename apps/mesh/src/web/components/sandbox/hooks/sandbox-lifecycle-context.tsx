@@ -76,6 +76,8 @@ export function computeDrawerStatus(state: PreviewState): DrawerStatus {
       return "running";
     case "starting":
       return "starting";
+    case "errored":
+      return "errored";
   }
 }
 
@@ -101,6 +103,7 @@ import {
 } from "./use-sandbox-start";
 import { useSandboxEvents } from "./use-sandbox-events";
 import { computePreviewState } from "@/web/components/sandbox/preview/preview-state";
+import { decodeSandboxStartError } from "@/shared/sandbox-start-errors";
 
 export interface SandboxLifecycleValue {
   branch: string | null;
@@ -201,10 +204,15 @@ export function SandboxLifecycleProvider({
     !!branch &&
     sandboxUserStop.isStopped(virtualMcpId, branch);
   const appPaused = events.status.state === "paused";
+  const startError =
+    startVm.isError && startVm.error
+      ? decodeSandboxStartError(startVm.error.message)
+      : null;
   const previewState = computePreviewState({
     previewUrl,
     appPaused,
     userStopped,
+    startError,
   });
   const status = computeDrawerStatus(previewState);
 

@@ -22,6 +22,10 @@ import {
   RECONNECT_ERROR,
 } from "../oauth/token-refresh";
 import { getRepoScope } from "./github-repo-scope";
+import {
+  encodeSandboxStartError,
+  SANDBOX_START_ERROR_CODES,
+} from "./sandbox-start-errors";
 
 export interface GitHubCloneInfo {
   cloneUrl: string;
@@ -83,9 +87,12 @@ export async function buildCloneInfo(
   });
   if (!tokenResult.accessToken) {
     throw new Error(
-      tokenResult.state === "refresh_failed"
-        ? RECONNECT_ERROR
-        : "No GitHub token found. Ensure the mcp-github connection is authenticated.",
+      encodeSandboxStartError(
+        SANDBOX_START_ERROR_CODES.githubNotAuthenticated,
+        tokenResult.state === "refresh_failed"
+          ? RECONNECT_ERROR
+          : "No GitHub token found. Ensure the mcp-github connection is authenticated.",
+      ),
     );
   }
 
