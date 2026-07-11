@@ -1,6 +1,7 @@
 import type { ComponentType, SVGProps } from "react";
 import {
   Edit05,
+  Folder,
   GitBranch01,
   Globe01,
   LayoutAlt04,
@@ -22,7 +23,8 @@ export type SystemTabId =
   | "automations"
   | "preview"
   | "content"
-  | "git";
+  | "git"
+  | "files";
 
 export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   settings: LayoutAlt04,
@@ -30,6 +32,7 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   preview: Globe01,
   content: Edit05,
   git: GitBranch01,
+  files: Folder,
 };
 
 type ConnectionLike = { id: string; icon: string | null };

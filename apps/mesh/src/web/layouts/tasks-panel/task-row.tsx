@@ -27,7 +27,9 @@ export function TaskRow({
   task: Task;
   isActive: boolean;
   onClick: () => void;
-  onArchive: () => void;
+  /** Omit to render a read-only row with no archive affordance (e.g. another
+   *  member's thread, where archiving would hide it org-wide). */
+  onArchive?: () => void;
   showAutomationBadge?: boolean;
   /** Render the originating agent's icon on the left of the row. */
   showAgentIcon?: boolean;
@@ -127,7 +129,12 @@ export function TaskRow({
       <div className="shrink-0 grid [grid-template-areas:'slot'] items-center justify-items-center">
         {!hideStatusIdle && (
           <span
-            className="[grid-area:slot] flex size-7 items-center justify-center pointer-events-none transition-opacity group-hover/row:opacity-0"
+            className={cn(
+              "[grid-area:slot] flex size-7 items-center justify-center pointer-events-none transition-opacity",
+              // Only fade the status icon on hover when there's an archive
+              // button to reveal underneath it.
+              onArchive && "group-hover/row:opacity-0",
+            )}
             aria-label={config.label}
           >
             <StatusIcon
@@ -139,22 +146,24 @@ export function TaskRow({
             />
           </span>
         )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label="Archive task"
-              onClick={(e) => {
-                e.stopPropagation();
-                onArchive();
-              }}
-              className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto transition-opacity flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              <Archive size={14} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right">Archive</TooltipContent>
-        </Tooltip>
+        {onArchive && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="Archive task"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onArchive();
+                }}
+                className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto transition-opacity flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                <Archive size={14} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Archive</TooltipContent>
+          </Tooltip>
+        )}
       </div>
     </div>
   );

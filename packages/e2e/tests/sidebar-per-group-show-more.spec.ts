@@ -1,26 +1,26 @@
 /**
- * E2E happy-path test for the sidebar per-group "Show more" feature.
+ * E2E happy-path test for the sidebar "My threads" Show more pager.
+ *
+ * The sidebar no longer nests threads under expandable per-agent groups — the
+ * current user's threads render as a single flat "My threads" list with one
+ * global "Show more" button (backed by the thread store's paged fetch).
  *
  * Scenario:
  *   1. Create a fresh user + org (via authedPage fixture).
- *   2. Seed a dedicated virtual MCP (agent) and 15 threads against it via
- *      the self MCP API — so the sidebar will have a single non-decopilot
- *      group that overflows the 10-task initial page.
- *   3. Navigate to the org home page where the sidebar renders.
- *   4. Expand the agent group (it starts collapsed because it's not decopilot
- *      and there's no active task in it).
- *   5. Assert ≤ 10 task rows are visible inside the group.
- *   6. Assert a "Show more" button (aria-label="Show more tasks") is present.
- *   7. Click "Show more" and assert the row count grows to ≥ 15.
- *   8. Assert the "Show more" button is hidden once all tasks are loaded
- *      (button is only shown when hasMore is true).
+ *   2. Seed a dedicated virtual MCP (agent) and 15 threads against it via the
+ *      self MCP API — the store's initial page is 10, so the list overflows.
+ *   3. Navigate to the org home page where the sidebar renders and open it.
+ *   4. Assert ≤ 10 seeded rows are visible initially.
+ *   5. Assert a "Show more" button (aria-label="Show more tasks") is present.
+ *   6. Click "Show more" and assert the seeded row count grows to 15.
+ *   7. Assert the "Show more" button is hidden once all threads are loaded.
  */
 
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { addSidebarPersonalAgentOrderInitScriptForSlug } from "../fixtures/sidebar-order";
 import { expect, test } from "../fixtures/test";
 
-test.describe("Sidebar per-group Show more", () => {
+test.describe("Sidebar My threads Show more", () => {
   test("shows 10 tasks initially and loads all 15 after clicking Show more", async ({
     authedPage,
   }) => {
@@ -50,13 +50,12 @@ test.describe("Sidebar per-group Show more", () => {
 
     // -------------------------------------------------------------------------
     // 2. Seed 15 threads against the new agent.
-    //    The ThreadManagerStore's initial page is 10, so the sidebar will
-    //    display 10 rows and show the "Show more" button.
+    //    The ThreadManagerStore's initial page is 10, so the list will show 10
+    //    rows and a "Show more" button.
     // -------------------------------------------------------------------------
     const TOTAL_THREADS = 15;
-    // Parallelize to keep setup well under the test budget on CI. The
-    // ordering of threads in the sidebar comes from `updated_at desc` on
-    // the server, not the creation sequence here.
+    // Parallelize to keep setup well under the test budget on CI. Ordering in
+    // the sidebar comes from `updated_at desc` on the server, not this loop.
     await Promise.all(
       Array.from({ length: TOTAL_THREADS }, (_, i) =>
         callSelfMcpTool(request, orgSlug, "COLLECTION_THREADS_CREATE", {
@@ -69,9 +68,10 @@ test.describe("Sidebar per-group Show more", () => {
     );
 
     // -------------------------------------------------------------------------
-    // 3. Navigate to the org home page — the sidebar loads here.
-    //    Seed personal sidebar order so the agent group is listed (threads
-    //    alone no longer auto-add agents to the sidebar).
+    // 3. Navigate to the org home page — the sidebar loads here. Seeding the
+    //    personal order isn't required for "My threads" (which lists all of the
+    //    user's threads regardless of agent membership), but keeps the Agents
+    //    section populated and mirrors real usage.
     // -------------------------------------------------------------------------
     await addSidebarPersonalAgentOrderInitScriptForSlug(
       page,
@@ -87,78 +87,43 @@ test.describe("Sidebar per-group Show more", () => {
     // -------------------------------------------------------------------------
     // 4. Open the sidebar.
     //    Fresh users start with the sidebar collapsed (localStorage key
-    //    `sidebar.open` defaults to false). Collapsed mode renders
-    //    `CollapsedGroupPopover` rather than `[role=button][aria-expanded]`
-    //    group headers, so we toggle it open first.
+    //    `sidebar.open` defaults to false). Collapsed mode renders the agent
+    //    rail rather than the flat "My threads" list, so toggle it open first.
     // -------------------------------------------------------------------------
     const toggleSidebar = page.getByRole("button", { name: "Toggle sidebar" });
     await toggleSidebar.waitFor({ state: "visible", timeout: 15_000 });
     await toggleSidebar.click();
 
     // -------------------------------------------------------------------------
-    // 5. Expand the agent group.
-    //    Group headers are `<div role="button" aria-expanded>` containers.
-    //    Wait for any group header to appear first — that proves the sidebar
-    //    Suspense (incl. COLLECTION_VIRTUAL_MCP_LIST) has resolved — then
-    //    locate ours by visible text. Using `hasText` avoids accessibility
-    //    name composition pitfalls (nested avatar img alt + nested "New task"
-    //    button inside the same role=button container).
+    // 5. Assert ≤ 10 seeded rows initially visible.
+    //    "My threads" is open by default and mixes agents, so scope the count
+    //    to our seeded titles — that isolates the assertion from any unrelated
+    //    thread (e.g. a decopilot welcome thread) in the fresh org.
     // -------------------------------------------------------------------------
-
-    const anyGroupHeader = page.locator('[role="button"][aria-expanded]');
-    await anyGroupHeader.first().waitFor({ state: "visible", timeout: 30_000 });
-
-    const groupHeader = anyGroupHeader.filter({ hasText: agentTitle }).first();
-    await groupHeader.waitFor({ state: "visible", timeout: 30_000 });
-
-    // Expand the group if it is currently collapsed.
-    const isExpanded = await groupHeader.getAttribute("aria-expanded");
-    if (isExpanded !== "true") {
-      await groupHeader.click();
-    }
-
-    // -------------------------------------------------------------------------
-    // 5. Assert ≤ 10 task rows initially visible inside the group.
-    //    TaskRow elements have data-task-id and role="button". We scope the
-    //    query inside the agent group's container, which is the next sibling
-    //    rendered after the header expands.
-    // -------------------------------------------------------------------------
-
-    // The task rows share the DOM with the group header. Wait for at least one
-    // to appear before counting.
-    await page
+    const seededRows = page
       .locator("[data-task-id]")
-      .first()
-      .waitFor({ state: "visible", timeout: 10_000 });
+      .filter({ hasText: "Show-more test task" });
+    await seededRows.first().waitFor({ state: "visible", timeout: 30_000 });
 
-    const taskRows = page.locator("[data-task-id]");
-    const initialCount = await taskRows.count();
+    const initialCount = await seededRows.count();
     expect(initialCount).toBeGreaterThanOrEqual(1);
     expect(initialCount).toBeLessThanOrEqual(10);
 
     // -------------------------------------------------------------------------
-    // 6. Assert the "Show more" button is visible inside the sidebar.
+    // 6. Assert the "Show more" button is visible, then click it.
     // -------------------------------------------------------------------------
     const showMoreButton = page.getByRole("button", {
       name: "Show more tasks",
     });
     await expect(showMoreButton).toBeVisible({ timeout: 5_000 });
 
-    // -------------------------------------------------------------------------
-    // 7. Click "Show more" and wait for the row count to grow to ≥ 15.
-    // -------------------------------------------------------------------------
     await showMoreButton.click();
 
-    // Wait for the store to merge the second page — task rows will update.
-    await expect(taskRows).toHaveCount(TOTAL_THREADS, { timeout: 10_000 });
-    const afterCount = await taskRows.count();
-    expect(afterCount).toBeGreaterThanOrEqual(TOTAL_THREADS);
-
     // -------------------------------------------------------------------------
-    // 8. Assert the "Show more" button is hidden — all tasks are now loaded
-    //    (5 < PAGE_SIZE=10 means hasMore became false), so the button
-    //    should no longer be rendered.
+    // 7. All 15 seeded rows load, and the button disappears once the store has
+    //    no more pages (total threads < 2 * PAGE_SIZE).
     // -------------------------------------------------------------------------
+    await expect(seededRows).toHaveCount(TOTAL_THREADS, { timeout: 10_000 });
     await expect(showMoreButton).toBeHidden();
 
     // Verify the user info is consistent (guards against fixture wiring bugs).
