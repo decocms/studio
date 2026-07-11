@@ -56,6 +56,8 @@ import type {
 import { metrics, trace } from "@opentelemetry/api";
 import { makeEventsHandler } from "./routes/events-stream";
 import { makeExecHandler } from "./routes/exec";
+import { makeToolsSyncHandler } from "./routes/tools";
+import { syncToolCatalog } from "./tools-catalog";
 import {
   makeReadHandler,
   makeWriteHandler,
@@ -359,6 +361,7 @@ const fsDeps = {
   },
 };
 const readH = makeReadHandler(fsDeps);
+const toolsSyncH = makeToolsSyncHandler(fsDeps);
 const writeH = makeWriteHandler(fsDeps);
 const unlinkH = makeUnlinkHandler(fsDeps);
 const mkdirH = makeMkdirHandler(fsDeps);
@@ -624,6 +627,7 @@ const fsH: Record<string, (req: Request) => Response | Promise<Response>> = {
   "/write_from_url": writeFromUrlH,
   "/upload_to_url": uploadToUrlH,
   "/bash": bashH,
+  "/tools/sync": toolsSyncH,
 };
 
 const gitH: Record<string, (req: Request) => Response | Promise<Response>> = {
@@ -667,6 +671,11 @@ async function vmRouteH(
       lookupHarness: lookupDispatchHarness,
       allowedHosts: bootConfig.offloadAllowedHosts,
       allowSameHostDev: bootConfig.offloadAllowSameHostDev,
+      onDispatchMcp: (mcp) => {
+        void syncToolCatalog(mcp, { appRoot, repoDir }).catch((err) => {
+          console.error("[tools] catalog sync failed", err);
+        });
+      },
     });
   }
   if (method === "DELETE" && vmPath.startsWith("/runs/")) {
