@@ -182,16 +182,17 @@ test.describe("companion provisioning", () => {
     expect(key2, "second key minted").toBeTruthy();
     expect(key2, "re-provision mints a fresh key").not.toBe(key1);
 
-    // key1 is revoked → no longer authenticates (401); key2 works.
+    // key1 is revoked → no longer authorized (a deleted key is rejected as an
+    // invalid principal: 401 or, on this org-scoped route, 403 — never a 2xx).
     const ctx2 = await newApiContext(playwright);
     const revoked = await ctx2.post(
       `/api/${owner.orgSlug}/tools/MONITORING_STATS`,
       { headers: bearer(key1!), data: {} },
     );
     expect(
-      revoked.status(),
+      [401, 403],
       `revoked key1 must be rejected, got ${revoked.status()}`,
-    ).toBe(401);
+    ).toContain(revoked.status());
     const stillWorks = await ctx2.post(
       `/api/${owner.orgSlug}/tools/MONITORING_STATS`,
       { headers: bearer(key2!), data: {} },
