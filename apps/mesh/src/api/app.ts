@@ -1892,9 +1892,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       auth.api as unknown as LinkBearerAuthApi,
     );
     if (!userSub) return c.json({ error: "unauthorized" }, 401);
-    const studioUrl = new URL(c.req.url).origin;
-    const orgs = await provisionCompanionMcps(userSub, studioUrl);
-    return c.json({ studioUrl, orgs });
+    // Externally reachable URL (the app writes it into ~/.claude.json and calls
+    // back from the user's desktop) — the request origin can be an internal
+    // proxy hostname, so use the configured public URL.
+    const studioUrl = getPublicUrl();
+    const { orgs, skipped } = await provisionCompanionMcps(userSub, studioUrl);
+    return c.json({ studioUrl, orgs, skipped });
   });
 
   // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs).

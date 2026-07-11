@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   bridgeAvailable,
   getStatus,
@@ -11,17 +11,21 @@ export default function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ProvisionResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    bridgeAvailable() ? null : "Native bridge not available",
+  );
 
-  useEffect(() => {
-    if (!bridgeAvailable()) {
-      setError("Native bridge not available");
-      return;
+  // ponytail: run-once mount fetch without useEffect (banned repo-wide). A lazy
+  // useState initializer fires exactly once on first render; there's no cleanup
+  // to schedule, so an effect buys nothing here.
+  useState(() => {
+    if (bridgeAvailable()) {
+      getStatus()
+        .then(setStatus)
+        .catch((e) => setError(String(e)));
     }
-    getStatus()
-      .then(setStatus)
-      .catch((e) => setError(String(e)));
-  }, []);
+    return null;
+  });
 
   async function onSync() {
     setBusy(true);

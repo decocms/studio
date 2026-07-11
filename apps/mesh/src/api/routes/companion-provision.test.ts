@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { companionMcpUrl } from "./companion-provision";
+import { companionMcpUrl, isAdminRole } from "./companion-provision";
 
 describe("companionMcpUrl", () => {
   it("builds the Decopilot virtual-MCP URL for an org", () => {
@@ -22,5 +22,27 @@ describe("companionMcpUrl", () => {
     ).toBe(
       "https://studio.decocms.com/api/my-team/mcp/virtual-mcp/decopilot_org_abc",
     );
+  });
+});
+
+describe("isAdminRole", () => {
+  it("grants for built-in admin roles", () => {
+    expect(isAdminRole("owner")).toBe(true);
+    expect(isAdminRole("admin")).toBe(true);
+  });
+
+  it("denies the plain member role and custom roles", () => {
+    expect(isAdminRole("user")).toBe(false);
+    expect(isAdminRole("billing-viewer")).toBe(false);
+  });
+
+  it("grants when any of several roles is admin", () => {
+    expect(isAdminRole("user,admin")).toBe(true);
+    expect(isAdminRole("billing-viewer, owner")).toBe(true);
+  });
+
+  it("denies empty / missing role (safe default)", () => {
+    expect(isAdminRole(null)).toBe(false);
+    expect(isAdminRole("")).toBe(false);
   });
 });
