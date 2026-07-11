@@ -796,6 +796,12 @@ export const VirtualMCPUpdateDataSchema = z.object({
     .array(VirtualMCPConnectionInputSchema)
     .optional()
     .describe("New connections (replaces existing)"),
+  prompts: z
+    .array(AgentKickstartPromptSchema)
+    .optional()
+    .describe(
+      "Replace the agent's kickstart prompts with this full set. Omit to leave them unchanged; pass an empty array to remove all. Each becomes a clickable conversation starter (icebreaker).",
+    ),
 });
 
 export type VirtualMCPUpdateData = z.infer<typeof VirtualMCPUpdateDataSchema>;

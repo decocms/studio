@@ -37,9 +37,27 @@ function localName(index: number, title: string): string {
 }
 
 /**
- * Seed an agent's kickstart prompts. One JSON file per prompt under
- * `agent-prompts/<agentId>/`. Best-effort per file: a failed write is logged
- * and skipped rather than failing the whole agent creation.
+ * Delete every seeded prompt for an agent (the whole `agent-prompts/<agentId>/`
+ * subtree). Best-effort: logs and swallows storage errors. Never throws.
+ */
+export async function deleteAgentPrompts(
+  orgFs: OrgFs,
+  agentId: string,
+  actor: string,
+): Promise<void> {
+  try {
+    await orgFs.delete(AGENT_PROMPTS_VOLUME, dir(agentId), { actor });
+  } catch (err) {
+    console.error("[agent-prompts] failed to delete prompts", { agentId, err });
+  }
+}
+
+/**
+ * (Re)seed an agent's kickstart prompts. Idempotent: clears the agent's
+ * existing prompt dir first, then writes one JSON file per prompt under
+ * `agent-prompts/<agentId>/`. So editing = pass the new full set, and passing
+ * `[]` clears all. Best-effort per file: a failed write is logged and skipped
+ * rather than failing the whole operation.
  */
 export async function writeAgentPrompts(
   orgFs: OrgFs,
@@ -48,6 +66,7 @@ export async function writeAgentPrompts(
   prompts: AgentKickstartPrompt[],
 ): Promise<void> {
   const base = dir(agentId);
+  await deleteAgentPrompts(orgFs, agentId, actor);
   await Promise.all(
     prompts.slice(0, MAX_PROMPTS).map(async (p, i) => {
       const name = localName(i, p.title);
