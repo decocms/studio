@@ -625,6 +625,27 @@ export const VirtualMCPEntitySchema = z.object({
 export type VirtualMCPEntity = z.infer<typeof VirtualMCPEntitySchema>;
 
 /**
+ * A kickstart prompt seeded on an agent at creation time. Persisted to org-fs
+ * (not on the agent row) and surfaced as a native MCP prompt on the agent's
+ * gateway — so it shows up as an icebreaker, on the org home, and via `/`
+ * mentions, exactly like a prompt exposed by a connected MCP.
+ */
+export const AgentKickstartPromptSchema = z.object({
+  title: z.string().min(1).max(120).describe("Short label shown on the chip"),
+  description: z
+    .string()
+    .max(280)
+    .optional()
+    .describe("One-line subtitle shown under the title"),
+  text: z
+    .string()
+    .min(1)
+    .describe("The message sent to the agent when the prompt is clicked"),
+});
+
+export type AgentKickstartPrompt = z.infer<typeof AgentKickstartPromptSchema>;
+
+/**
  * Input schema for creating virtual MCPs
  */
 export const VirtualMCPCreateDataSchema = z.object({
@@ -696,6 +717,12 @@ export const VirtualMCPCreateDataSchema = z.object({
     .array(VirtualMCPConnectionInputSchema)
     .describe(
       "Connections to include/exclude (can be empty for exclusion mode)",
+    ),
+  prompts: z
+    .array(AgentKickstartPromptSchema)
+    .optional()
+    .describe(
+      "Optional kickstart prompts to seed on the agent. Each becomes a clickable conversation starter (icebreaker) on the agent. Author them from the agent's role and the tools it will have so they're coherent and immediately useful.",
     ),
 });
 
