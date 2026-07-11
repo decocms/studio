@@ -52,4 +52,32 @@ describe("installProtectedBranchHook", () => {
       rmSync(repoDir, { recursive: true, force: true });
     }
   });
+
+  it("also blocks pushes to the repo's actual default branch when it isn't main/master", async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), "protect-branch-"));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: repoDir });
+      execFileSync(
+        "git",
+        [
+          "symbolic-ref",
+          "refs/remotes/origin/HEAD",
+          "refs/remotes/origin/release",
+        ],
+        { cwd: repoDir },
+      );
+
+      await installProtectedBranchHook(repoDir);
+      const hookPath = join(repoDir, ".git", "hooks", "pre-push");
+
+      const release = runHook(hookPath, "refs/heads/release");
+      expect(release.status).not.toBe(0);
+      expect(release.stderr).toContain("not allowed from a sandbox");
+
+      const feature = runHook(hookPath, "refs/heads/feature/x");
+      expect(feature.status).toBe(0);
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
 });
