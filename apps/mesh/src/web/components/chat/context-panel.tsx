@@ -336,7 +336,7 @@ export function ChatContextPanel({
     ? formatModelId(selectedModel.modelId)
     : "—";
 
-  const agentTitle = selectedVirtualMcp?.title ?? "Home";
+  const agentTitle = selectedVirtualMcp?.title ?? "Decopilot";
 
   const allStats: StatItem[] = [
     { label: "Session", value: activeTask?.title ?? "New chat" },
