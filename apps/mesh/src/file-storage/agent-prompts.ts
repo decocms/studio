@@ -12,7 +12,7 @@ import { slugify } from "@decocms/mcp-utils/aggregate";
 import type { AgentKickstartPrompt } from "@decocms/mesh-sdk/types";
 import type { OrgFs } from "./org-fs";
 
-export const AGENT_PROMPTS_VOLUME = "agent-prompts";
+const AGENT_PROMPTS_VOLUME = "agent-prompts";
 
 /** Backstop so a pathological agent can't make the gateway read forever. */
 const MAX_PROMPTS = 20;
