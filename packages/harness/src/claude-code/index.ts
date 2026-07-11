@@ -161,14 +161,17 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         const titleHandle = needsTitle
           ? genTitle({
               abortSignal: input.signal,
-              model: createClaudeCodeModel(
-                resolveClaudeCodeModelId("claude-code:haiku"),
-                {
-                  toolApprovalLevel: "readonly",
-                  isPlanMode: true,
-                  cwd,
-                },
-              ),
+              models: [
+                () =>
+                  createClaudeCodeModel(
+                    resolveClaudeCodeModelId("claude-code:haiku"),
+                    {
+                      toolApprovalLevel: "readonly",
+                      isPlanMode: true,
+                      cwd,
+                    },
+                  ),
+              ],
               userMessage: extractUserText(messages),
             })
           : null;

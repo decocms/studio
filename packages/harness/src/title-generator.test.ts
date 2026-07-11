@@ -56,10 +56,65 @@ function makeHangingModel(): LanguageModelV3 {
   } as unknown as LanguageModelV3;
 }
 
+/** A model that returns a fixed title object via doGenerate. */
+function makeSucceedingModel(title: string): LanguageModelV3 {
+  return {
+    specificationVersion: "v3",
+    provider: "test",
+    modelId: "ok",
+    doGenerate: async () => ({
+      content: [{ type: "text", text: JSON.stringify({ title }) }],
+      finishReason: "stop",
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      warnings: [],
+    }),
+    doStream: async () => {
+      throw new Error("no stream");
+    },
+  } as unknown as LanguageModelV3;
+}
+
+describe("genTitle model fallback chain", () => {
+  test("rotates to the next model when the first keeps failing", async () => {
+    const handle = genTitle({
+      models: [
+        () => makeFailingModel(new Error("first boom")),
+        () => makeSucceedingModel("Second model title"),
+      ],
+      userMessage: "does not matter",
+    });
+    const result = await handle.promise;
+    expect(result).toBe("Second model title");
+  });
+
+  test("a factory that throws at build time fails only its attempt, then rotates", async () => {
+    const handle = genTitle({
+      models: [
+        () => {
+          throw new Error("provider has no aiSdk"); // unbuildable slot
+        },
+        () => makeSucceedingModel("Built by the second slot"),
+      ],
+      userMessage: "does not matter",
+    });
+    const result = await handle.promise;
+    expect(result).toBe("Built by the second slot");
+  });
+
+  test("empty model list falls back to clamped user message (never a broken title)", async () => {
+    const handle = genTitle({
+      models: [],
+      userMessage: "Fix the login button on mobile devices please",
+    });
+    const result = await handle.promise;
+    expect(result).toBe("Fix the login button on mobile d");
+  });
+});
+
 describe("genTitle fallback", () => {
   test("self-timeout (slow/hung model) falls back to clamped user message, not null", async () => {
     const handle = genTitle({
-      model: makeHangingModel(),
+      models: [() => makeHangingModel()],
       userMessage: "Build a complex dashboard app",
       timeoutMs: 10, // tiny self-timeout; no parent abort, no finish()
     });
@@ -72,7 +127,7 @@ describe("genTitle fallback", () => {
     const abortController = new AbortController();
     const handle = genTitle({
       abortSignal: abortController.signal,
-      model: makeFailingModel(new Error("provider boom")),
+      models: [() => makeFailingModel(new Error("provider boom"))],
       userMessage: "Fix the login button on mobile devices please",
     });
     handle.finish();
@@ -85,7 +140,7 @@ describe("genTitle fallback", () => {
     const abortController = new AbortController();
     const handle = genTitle({
       abortSignal: abortController.signal,
-      model: makeFailingModel(new Error("boom")),
+      models: [() => makeFailingModel(new Error("boom"))],
       userMessage: "  hi  ",
     });
     handle.finish();
@@ -97,7 +152,7 @@ describe("genTitle fallback", () => {
     const abortController = new AbortController();
     const handle = genTitle({
       abortSignal: abortController.signal,
-      model: makeFailingModel(new Error("boom")),
+      models: [() => makeFailingModel(new Error("boom"))],
       userMessage: "01234567890123456789012345678901",
     });
     handle.finish();
@@ -109,7 +164,7 @@ describe("genTitle fallback", () => {
     const abortController = new AbortController();
     const handle = genTitle({
       abortSignal: abortController.signal,
-      model: makeFailingModel(new Error("boom")),
+      models: [() => makeFailingModel(new Error("boom"))],
       userMessage: "",
     });
     handle.finish();
@@ -121,7 +176,7 @@ describe("genTitle fallback", () => {
     const abortController = new AbortController();
     const handle = genTitle({
       abortSignal: abortController.signal,
-      model: makeFailingModel(new Error("boom")),
+      models: [() => makeFailingModel(new Error("boom"))],
       userMessage: "!?!?.....",
     });
     handle.finish();
@@ -136,7 +191,7 @@ describe("genTitle fallback", () => {
     // instead of throwing `addEventListener of undefined`.
     const handle = genTitle({
       abortSignal: undefined,
-      model: makeFailingModel(new Error("boom")),
+      models: [() => makeFailingModel(new Error("boom"))],
       userMessage: "Fix the login button on mobile devices please",
     });
     handle.finish();
@@ -149,9 +204,12 @@ describe("genTitle fallback", () => {
     abortController.abort();
     const handle = genTitle({
       abortSignal: abortController.signal,
-      model: makeFailingModel(
-        Object.assign(new Error("aborted"), { name: "AbortError" }),
-      ),
+      models: [
+        () =>
+          makeFailingModel(
+            Object.assign(new Error("aborted"), { name: "AbortError" }),
+          ),
+      ],
       userMessage: "anything at all",
     });
     handle.finish();
