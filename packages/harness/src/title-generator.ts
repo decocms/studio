@@ -76,31 +76,6 @@ export function genTitle(config: {
 
   const titleAbortController = new AbortController();
 
-  // Abort title generation if parent stream is aborted. `abortSignal` is
-  // optional-at-runtime: on the desktop/pull path the serialized wire input
-  // omits the (non-serializable) AbortSignal, and a caller may legitimately
-  // have nothing to tie lifetime to. Guard so a missing signal degrades to "no
-  // parent abort wiring" instead of throwing `addEventListener of undefined`.
-  const onParentAbort = () => titleAbortController.abort();
-  abortSignal?.addEventListener("abort", onParentAbort, { once: true });
-
-  let graceTimeoutId: ReturnType<typeof setTimeout> | undefined;
-
-  // Self-timeout: cap title generation so a slow/hung title model falls back to
-  // the clamped user message promptly (≈ right after submit) instead of only
-  // resolving when the main stream ends. Fires regardless of stream lifetime.
-  const selfTimeoutId = setTimeout(() => {
-    titleAbortController.abort();
-  }, timeoutMs);
-
-  // Called when the main LLM stream finishes — gives the title a grace
-  // period to complete, then aborts so onFinish doesn't hang.
-  const finish = () => {
-    graceTimeoutId = setTimeout(() => {
-      titleAbortController.abort();
-    }, POST_STREAM_GRACE_MS);
-  };
-
   // Fallback used when the LLM call errors or produces unusable output.
   // Spec: take the literal first 32 characters of the user message, trim,
   // and fall through to "New chat" if there's no usable letter/digit.
@@ -112,7 +87,53 @@ export function genTitle(config: {
     return hasUsableText(candidate) ? candidate : "New chat";
   })();
 
-  const promise = (async (): Promise<string | null> => {
+  // Guaranteed-settlement latch. The timers/parent-abort below only *signal* an
+  // abort on `titleAbortController`; whether the in-flight `generateObject`
+  // actually rejects depends on the provider honoring that signal — and `retry`
+  // observes the abort only *between* attempts, never during an in-flight call.
+  // A hung title app-server that ignores the signal would otherwise leave the
+  // returned promise pending forever, hanging the parent run's drain loop (which
+  // gates stream completion on the title settling). Racing the generation against
+  // this latch caps settlement at the timeout regardless of provider behavior.
+  // ponytail: the ignored in-flight request leaks until it settles or the process
+  // exits — acceptable; the alternative is hanging the whole run.
+  let settleLatch!: (v: string | null) => void;
+  const latch = new Promise<string | null>((resolve) => {
+    settleLatch = resolve;
+  });
+
+  // Abort title generation if parent stream is aborted. `abortSignal` is
+  // optional-at-runtime: on the desktop/pull path the serialized wire input
+  // omits the (non-serializable) AbortSignal, and a caller may legitimately
+  // have nothing to tie lifetime to. Guard so a missing signal degrades to "no
+  // parent abort wiring" instead of throwing `addEventListener of undefined`.
+  // Cancelled run → resolve the latch with null so no title is emitted.
+  const onParentAbort = () => {
+    titleAbortController.abort();
+    settleLatch(null);
+  };
+  abortSignal?.addEventListener("abort", onParentAbort, { once: true });
+
+  let graceTimeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  // Self-timeout: cap title generation so a slow/hung title model falls back to
+  // the clamped user message promptly (≈ right after submit) instead of only
+  // resolving when the main stream ends. Fires regardless of stream lifetime.
+  const selfTimeoutId = setTimeout(() => {
+    titleAbortController.abort();
+    settleLatch(fallbackTitle);
+  }, timeoutMs);
+
+  // Called when the main LLM stream finishes — gives the title a grace
+  // period to complete, then aborts so onFinish doesn't hang.
+  const finish = () => {
+    graceTimeoutId = setTimeout(() => {
+      titleAbortController.abort();
+      settleLatch(fallbackTitle);
+    }, POST_STREAM_GRACE_MS);
+  };
+
+  const genPromise = (async (): Promise<string | null> => {
     // No model to try → deterministic fallback, never a broken title.
     if (models.length === 0) return fallbackTitle;
     try {
@@ -185,6 +206,11 @@ export function genTitle(config: {
       abortSignal?.removeEventListener("abort", onParentAbort);
     }
   })();
+
+  // Whichever settles first wins. `genPromise` never rejects (it catches every
+  // failure and returns a value), so racing it against the latch can only ever
+  // resolve — never leave an unhandled rejection dangling.
+  const promise = Promise.race([genPromise, latch]);
 
   return { promise, finish };
 }
