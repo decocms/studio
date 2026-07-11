@@ -8,7 +8,12 @@ import { z } from "zod";
 import { getRepoScope } from "@/shared/github-repo-scope";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/studio-context";
+import {
+  getUserId,
+  requireAuth,
+  requireOrganization,
+} from "../../core/studio-context";
+import { deleteAgentPrompts } from "../../file-storage/agent-prompts";
 import { VirtualMCPEntitySchema } from "./schema";
 
 /**
@@ -62,6 +67,11 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
     // connection row itself is NOT removed by this (it's a separate, non-VIRTUAL
     // connection), so its token is still readable below.
     await ctx.storage.virtualMcps.delete(input.id);
+
+    // Drop the agent's seeded kickstart prompts from org-fs (best-effort).
+    if (ctx.orgFs) {
+      await deleteAgentPrompts(ctx.orgFs, input.id, getUserId(ctx) ?? "system");
+    }
 
     // Tear down the per-agent repo-scoped mcp-github child connection (if any).
     // Best-effort: the agent is already deleted, so a cleanup hiccup must not
