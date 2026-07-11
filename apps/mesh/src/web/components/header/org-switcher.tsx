@@ -1,0 +1,223 @@
+/**
+ * Org switcher — shared building blocks for switching the active organization.
+ *
+ * Extracted from `account-popover.tsx` so the same list UI backs both the
+ * sidebar-footer account popover and the toolbar breadcrumb (see
+ * `shell-breadcrumb.tsx`). The org list is fetched lazily inside
+ * `OrganizationsPanel`, so mounting a closed switcher costs nothing.
+ */
+import { type ReactNode, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@deco/ui/components/popover.tsx";
+import { Check, Plus, SearchMd, XClose } from "@untitledui/icons";
+import { cn } from "@deco/ui/lib/utils.ts";
+import { useActiveOrganizations } from "@/web/lib/auth-client";
+import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
+
+export function getOrgColorStyle(name: string): {
+  backgroundColor: string;
+  color: string;
+} {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = Math.abs(hash) % 360;
+  return {
+    backgroundColor: `hsl(${h} 55% 70%)`,
+    color: `hsl(${h} 55% 20%)`,
+  };
+}
+
+export function OrgIcon({
+  org,
+  size = "sm",
+}: {
+  org: { name: string; logo?: string | null };
+  size?: "xs" | "sm";
+}) {
+  const sizeClass = size === "xs" ? "size-5" : "size-6";
+  const textClass = size === "xs" ? "text-[9px]" : "text-xs";
+
+  return (
+    <div
+      className={cn(
+        sizeClass,
+        "shrink-0 rounded-md flex items-center justify-center border border-border/50 overflow-hidden",
+      )}
+      style={org.logo ? undefined : getOrgColorStyle(org.name)}
+    >
+      {org.logo ? (
+        <img src={org.logo} alt="" className="size-full object-cover" />
+      ) : (
+        <span className={cn("font-semibold leading-none", textClass)}>
+          {org.name.slice(0, 2).toUpperCase()}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function OrganizationsPanel({
+  orgParam,
+  onSelectOrg,
+  onCreateOrg,
+}: {
+  orgParam?: string;
+  onSelectOrg: (slug: string) => void;
+  onCreateOrg: () => void;
+}) {
+  // Fetched here, not in the parent: this panel only mounts inside the open
+  // popover/drawer, so the (potentially large) organization.list call is
+  // deferred until the switcher is actually opened — it no longer fires on
+  // every page load.
+  const { data: organizations } = useActiveOrganizations();
+  const sortedOrgs = [...(organizations ?? [])].sort((a, b) => {
+    if (a.slug === orgParam) return -1;
+    if (b.slug === orgParam) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const q = query.toLowerCase();
+  const filtered = q
+    ? sortedOrgs.filter(
+        (o) =>
+          o.name.toLowerCase().includes(q) || o.slug.toLowerCase().includes(q),
+      )
+    : sortedOrgs;
+
+  const iconBtnClass =
+    "flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors";
+
+  function toggleSearch() {
+    if (searchOpen) setQuery("");
+    setSearchOpen((prev) => !prev);
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between px-4 py-3">
+        {searchOpen ? (
+          <input
+            autoFocus
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && toggleSearch()}
+            placeholder="Search organizations..."
+            className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+          />
+        ) : (
+          <span className="text-sm font-medium text-muted-foreground/60">
+            Your Organizations
+          </span>
+        )}
+        <div className="flex items-center gap-1 shrink-0">
+          <button type="button" onClick={toggleSearch} className={iconBtnClass}>
+            {searchOpen ? <XClose size={16} /> : <SearchMd size={16} />}
+          </button>
+          <button type="button" onClick={onCreateOrg} className={iconBtnClass}>
+            <Plus size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto p-1.5 flex flex-col gap-1">
+        {filtered.length === 0 && (
+          <p className="px-3 py-4 text-sm text-muted-foreground/60 text-center">
+            {query
+              ? `No organizations match "${query}"`
+              : "No organizations available"}
+          </p>
+        )}
+        {filtered.map((org) => (
+          <button
+            key={org.id}
+            type="button"
+            onClick={() => onSelectOrg(org.slug)}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left w-full transition-colors",
+              org.slug === orgParam
+                ? "bg-accent text-accent-foreground"
+                : "text-foreground hover:bg-accent/50",
+            )}
+          >
+            <OrgIcon org={org} size="sm" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{org.name}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {org.slug}
+              </p>
+            </div>
+            {org.slug === orgParam && (
+              <Check
+                size={14}
+                className="ml-auto text-muted-foreground shrink-0"
+              />
+            )}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Self-contained org switcher popover: renders `trigger` and, on open, the
+ * organization list. Selecting an org navigates to `/$org`; the "+" affordance
+ * opens the create-organization dialog. Used by the toolbar breadcrumb.
+ */
+export function OrgSwitcherPopover({
+  trigger,
+  orgParam,
+  align = "start",
+  side = "bottom",
+}: {
+  trigger: ReactNode;
+  orgParam?: string;
+  align?: "start" | "center" | "end";
+  side?: "top" | "right" | "bottom" | "left";
+}) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [creatingOrg, setCreatingOrg] = useState(false);
+
+  return (
+    <>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+        <PopoverContent
+          side={side}
+          align={align}
+          sideOffset={8}
+          collisionPadding={16}
+          className="w-[300px] p-0 flex flex-col max-h-[440px]"
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
+          <OrganizationsPanel
+            key={String(open)}
+            orgParam={orgParam}
+            onSelectOrg={(slug) => {
+              setOpen(false);
+              navigate({ to: "/$org", params: { org: slug } });
+            }}
+            onCreateOrg={() => {
+              setOpen(false);
+              setCreatingOrg(true);
+            }}
+          />
+        </PopoverContent>
+      </Popover>
+      <CreateOrganizationDialog
+        open={creatingOrg}
+        onOpenChange={setCreatingOrg}
+      />
+    </>
+  );
+}
