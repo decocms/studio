@@ -668,23 +668,25 @@ export function TaskGroupsList({
             controlsId="sidebar-section-agents"
             actionSlot={
               <>
-                <ToolbarIconButton
-                  aria-label={
-                    agentView === "list"
-                      ? "Switch to grid view"
-                      : "Switch to list view"
-                  }
-                  title={agentView === "list" ? "Grid view" : "List view"}
-                  onClick={() =>
-                    setAgentView((v) => (v === "list" ? "grid" : "list"))
-                  }
-                >
-                  {agentView === "list" ? (
-                    <Grid01 className="size-4" />
-                  ) : (
-                    <List className="size-4" />
-                  )}
-                </ToolbarIconButton>
+                {agentsOpen && (
+                  <ToolbarIconButton
+                    aria-label={
+                      agentView === "list"
+                        ? "Switch to grid view"
+                        : "Switch to list view"
+                    }
+                    title={agentView === "list" ? "Grid view" : "List view"}
+                    onClick={() =>
+                      setAgentView((v) => (v === "list" ? "grid" : "list"))
+                    }
+                  >
+                    {agentView === "list" ? (
+                      <Grid01 className="size-4" />
+                    ) : (
+                      <List className="size-4" />
+                    )}
+                  </ToolbarIconButton>
+                )}
                 <BrowseAgentsButton compact />
               </>
             }
