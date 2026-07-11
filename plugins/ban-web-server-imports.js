@@ -10,46 +10,24 @@
  * to the server's internal file layout.
  *
  * Rule: files under `apps/mesh/src/web/` may not make a **value** import (or
- * re-export, or dynamic import) from a `@/<server-tree>/…` specifier. `import
- * type` / `import { type X }` are allowed. The fix is to import it `type`-only,
- * or move the shared value (schema, constant, pure helper) into a frontend-safe
- * location (`@/web`, `@/mcp-apps`, `@/lib`, `@/shared`) or into `@decocms/mesh-sdk`.
+ * re-export, or dynamic import) that resolves into an `apps/mesh/src/<tree>`
+ * OTHER than the frontend-safe trees below. This is an ALLOWLIST — a new
+ * server-only tree is guarded by default (fails closed) instead of leaking until
+ * someone remembers to blocklist it. `import type` / `import { type X }` are
+ * allowed. Both `@/…` alias imports and `../…` relative climbs are checked. The
+ * fix is to import it `type`-only, or move the shared value (schema, constant,
+ * pure helper) into a frontend-safe tree or into `@decocms/mesh-sdk`.
  *
  * Companion to `ban-cross-tree-imports.js` (which guards packages/ ↛ apps/mesh)
  * and `ban-e2e-app-imports.js` (which guards the e2e black-box wall).
  */
 
-// Second path segment of `@/<tree>/…` that is server-only. Anything not listed
-// (web, mcp-apps, lib, shared, hooks, …) is treated as frontend-safe.
-const SERVER_ONLY_TREES = new Set([
-  "storage",
-  "core",
-  "api",
-  "tools",
-  "auth",
-  "services",
-  "mcp-clients",
-  "event-bus",
-  "automations",
-  "dispatch-queue",
-  "object-storage",
-  "file-storage",
-  "monitoring",
-  "observability",
-  "database",
-  "dbos",
-  "nats",
-  "vault",
-  "encryption",
-  "oauth",
-  "link-daemon",
-  "harnesses",
-  "ai-providers",
-  "commerce-discovery",
-  "sandbox",
-  "settings",
-  "links",
-]);
+// Trees under apps/mesh/src that the browser bundle may value-import from.
+// Everything else (storage, core, api, tools, auth, ai-providers, cli, …) is
+// server-only by default.
+const FRONTEND_SAFE_TREES = new Set(["web", "mcp-apps", "lib", "shared"]);
+
+const SRC_MARKER = "/apps/mesh/src/";
 
 function inWebTree(filename) {
   return (
@@ -58,11 +36,42 @@ function inWebTree(filename) {
   );
 }
 
-// `@/<tree>/…` → returns the server-only tree name, or null.
-function serverTreeOf(spec) {
-  if (typeof spec !== "string" || !spec.startsWith("@/")) return null;
-  const tree = spec.slice(2).split("/")[0];
-  return SERVER_ONLY_TREES.has(tree) ? tree : null;
+// Test files never ship in the browser bundle, so their imports are outside
+// this rule's bundle/secret boundary (a web unit test may pull `@/test` helpers).
+function isTestFile(filename) {
+  return /\.test\.[cm]?[jt]sx?$/.test(filename);
+}
+
+// Resolve `../` / `./` segments of a relative spec against the importing file.
+function resolveRelative(fromFile, spec) {
+  const parts = fromFile.split("/");
+  parts.pop(); // drop the filename → containing directory
+  for (const seg of spec.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") parts.pop();
+    else parts.push(seg);
+  }
+  return parts.join("/");
+}
+
+// Returns the server-only `apps/mesh/src/<tree>` a specifier resolves into, or
+// null if it stays in a frontend-safe tree / points outside apps/mesh/src (bare
+// or workspace specifier).
+function serverTreeOf(spec, filename) {
+  if (typeof spec !== "string") return null;
+  let resolved;
+  if (spec.startsWith("@/")) {
+    resolved = `${SRC_MARKER}${spec.slice(2)}`;
+  } else if (spec.startsWith(".")) {
+    resolved = resolveRelative(filename, spec);
+  } else {
+    return null; // bare / workspace-package specifier
+  }
+  const i = resolved.indexOf(SRC_MARKER);
+  if (i === -1) return null;
+  const tree = resolved.slice(i + SRC_MARKER.length).split("/")[0];
+  if (!tree) return null;
+  return FRONTEND_SAFE_TREES.has(tree) ? null : tree;
 }
 
 // True when the whole statement is type-only (erased at build → safe).
@@ -83,20 +92,20 @@ function isTypeOnly(node) {
 const banWebServerImportsRule = {
   create(context) {
     const filename = context.filename ?? "";
-    if (!inWebTree(filename)) return {};
+    if (!inWebTree(filename) || isTestFile(filename)) return {};
 
     const check = (node, { dynamic = false } = {}) => {
       const src = node?.source;
       if (!src || src.type !== "Literal" || typeof src.value !== "string")
         return;
-      const tree = serverTreeOf(src.value);
+      const tree = serverTreeOf(src.value, filename);
       if (!tree) return;
       if (!dynamic && isTypeOnly(node)) return;
 
       context.report({
         node: src,
         message:
-          `Web ↔ server boundary: "${src.value}" is a VALUE import from the server-only "@/${tree}" tree. ` +
+          `Web ↔ server boundary: "${src.value}" is a VALUE import from the server-only "${tree}" tree. ` +
           `The frontend is a separate bundle — it may import types (use \`import type\`) but not runtime code, ` +
           `which risks pulling server deps/secrets into the browser. Move the shared value into @/web, @/mcp-apps, ` +
           `@/lib, @/shared or @decocms/mesh-sdk, or import it type-only.`,

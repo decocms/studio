@@ -106,12 +106,40 @@ describe("ban-web-server-imports", () => {
     expect((await lint(f)).length).toBe(0);
   });
 
-  test("ignores relative and workspace-package imports", async () => {
+  test("ignores in-tree relative and workspace-package imports", async () => {
     const f = fixture(
       "apps/mesh/src/web/i.ts",
       `import { a } from "./sibling";\nimport { useProjectContext } from "@decocms/mesh-sdk";\n` +
         `export const x = [a, useProjectContext];\n`,
     );
     expect((await lint(f)).length).toBe(0);
+  });
+
+  // Allowlist means any not-explicitly-safe tree is guarded by default. `cli`
+  // is server-only but was not in the old blocklist — it must be caught now.
+  test("bans a value import from an unlisted server tree (cli)", async () => {
+    const f = fixture(
+      "apps/mesh/src/web/j.ts",
+      `import { run } from "@/cli/cli-store";\nexport const x = run;\n`,
+    );
+    expect((await lint(f)).length).toBe(1);
+  });
+
+  // Web test files never ship in the browser bundle → outside this rule.
+  test("ignores web test files (not bundled)", async () => {
+    const f = fixture(
+      "apps/mesh/src/web/x.test.ts",
+      `import { render } from "@/test/render";\nexport const x = render;\n`,
+    );
+    expect((await lint(f)).length).toBe(0);
+  });
+
+  // Relative climbs out of web/ into a server tree bypass the `@/` prefix.
+  test("bans a relative climb out of web into a server tree", async () => {
+    const f = fixture(
+      "apps/mesh/src/web/components/k.ts",
+      `import { db } from "../../storage/types";\nexport const x = db;\n`,
+    );
+    expect((await lint(f)).length).toBe(1);
   });
 });
