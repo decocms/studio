@@ -2,25 +2,21 @@ import { describe, expect, it } from "bun:test";
 import { companionMcpUrl, isAdminRole } from "./companion-provision";
 
 describe("companionMcpUrl", () => {
-  it("builds the Decopilot virtual-MCP URL for an org", () => {
-    expect(
-      companionMcpUrl("https://studio.decocms.com", "acme", "org_123"),
-    ).toBe(
-      "https://studio.decocms.com/api/acme/mcp/virtual-mcp/decopilot_org_123",
+  it("builds the org self/management MCP URL", () => {
+    expect(companionMcpUrl("https://studio.decocms.com", "acme")).toBe(
+      "https://studio.decocms.com/api/acme/mcp/self",
     );
   });
 
   it("honors a non-default studio origin (self-hosted / dev)", () => {
-    expect(companionMcpUrl("http://localhost:3000", "acme", "org_123")).toBe(
-      "http://localhost:3000/api/acme/mcp/virtual-mcp/decopilot_org_123",
+    expect(companionMcpUrl("http://localhost:3000", "acme")).toBe(
+      "http://localhost:3000/api/acme/mcp/self",
     );
   });
 
   it("preserves the org slug verbatim in the path", () => {
-    expect(
-      companionMcpUrl("https://studio.decocms.com", "my-team", "org_abc"),
-    ).toBe(
-      "https://studio.decocms.com/api/my-team/mcp/virtual-mcp/decopilot_org_abc",
+    expect(companionMcpUrl("https://studio.decocms.com", "my-team")).toBe(
+      "https://studio.decocms.com/api/my-team/mcp/self",
     );
   });
 });

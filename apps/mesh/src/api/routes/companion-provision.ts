@@ -11,21 +11,26 @@
  * mints one API key per org, returning the exact `{url, key}` the app writes
  * into `~/.claude.json` under `mcpServers`.
  *
- * Key SCOPE — why `{ "*": ["*"] }` and why only for admins:
- * Tool calls behind this endpoint are gated per *serving connection id*
- * (AuthTransport.authorizeToolCall builds a fresh AccessControl keyed on the
- * connection actually serving the tool). What that endpoint surfaces at runtime
- * — the caller's dev/sandbox connection, and/or the org's `self` MCP — is not
- * knowable when the key is minted, so no connection- or `self`-scoped allowlist
- * reliably authorizes it. Only the wildcard resource does (the same reason
- * `dispatch-run` and `dev-link-session` mint `{ "*": ["*"] }`). But a wildcard
- * key is a flat capability that ignores the owner's role, so handing one to a
- * non-admin member would let them call every admin tool on that org — a
- * persistent privilege escalation (guarded by apikey-scope-enforcement e2e).
- * We therefore only mint for orgs where the caller is owner/admin (the wildcard
- * grants nothing their role doesn't already grant) and SKIP the rest, reporting
- * them so the app can explain why. Member support needs a role-carrying
- * credential and is deliberately out of scope here.
+ * TARGET — the org's self/management MCP, not Decopilot:
+ * The URL points at `/api/<slug>/mcp/self` (`createSelfRoutes` — "the MCP for
+ * the CMS API", the org's own default `@deco/management-mcp` connection). That
+ * is the endpoint that actually exposes the org's tools to an MCP client. The
+ * Decopilot virtual-MCP (`/mcp/virtual-mcp/decopilot_<orgId>`) is a pure
+ * orchestrator with `connections: []` (see `storage/virtual.ts` findById), so
+ * an external client connecting there gets an EMPTY tool list — it drives runs,
+ * it is not a tool surface.
+ *
+ * Key SCOPE — `{ self: ["*"] }`, and why only for admins:
+ * Self-MCP tools are authorized against the `"self"` resource key (the default
+ * `connectionId` for management tools). `{ self: ["*"] }` is exactly the scope
+ * the org's own default self-connection is minted with (see `seedOrgDb`,
+ * auth/org.ts). But an API key is a flat capability that ignores the owner's
+ * role, so a wildcard-over-`self` key handed to a non-admin member would let
+ * them call every admin tool on that org — a persistent privilege escalation
+ * (guarded by apikey-scope-enforcement e2e). We therefore only mint for orgs
+ * where the caller is owner/admin (the scope grants nothing their role doesn't
+ * already grant) and SKIP the rest, reporting them so the app can explain why.
+ * Member support needs a role-carrying credential and is out of scope here.
  *
  * The key mint mirrors `seedOrgDb` (auth/org.ts) and `dev-link-session.ts`:
  * `auth.api.createApiKey` with a `userId` and NO headers is a server-side call
@@ -35,7 +40,7 @@
  * *session* user — unusable from this session-less path.
  */
 import { getDb } from "@/database";
-import { getDecopilotId } from "@decocms/mesh-sdk";
+import { SELF_MCP_ALIAS_ID } from "@decocms/mesh-sdk";
 import { auth } from "../../auth";
 import { ADMIN_ROLES } from "../../auth/roles";
 import { isOrgArchived } from "../../core/org-archived";
@@ -47,7 +52,7 @@ export interface CompanionOrgMcp {
   slug: string;
   /** Human-facing org name. */
   name: string;
-  /** Decopilot virtual-MCP URL for this org. */
+  /** Org self/management MCP URL for this org. */
   url: string;
   /** Scoped API key for the Authorization header (returned only once). */
   key: string;
@@ -67,18 +72,12 @@ export interface CompanionProvisionResult {
 }
 
 /**
- * The Decopilot virtual-MCP URL for an org. Pure/deterministic — the app
- * writes this as the `url` of the `deco-<slug>` server entry.
+ * The org self/management MCP URL. Pure/deterministic — the app writes this as
+ * the `url` of the `deco-<slug>` server entry. `/mcp/self` (SELF_MCP_ALIAS_ID)
+ * is the org-scoped management MCP that exposes the org's tools.
  */
-export function companionMcpUrl(
-  studioUrl: string,
-  orgSlug: string,
-  orgId: string,
-): string {
-  return new URL(
-    `/api/${orgSlug}/mcp/virtual-mcp/${getDecopilotId(orgId)}`,
-    studioUrl,
-  ).href;
+export function companionMcpUrl(studioUrl: string, orgSlug: string): string {
+  return new URL(`/api/${orgSlug}/mcp/${SELF_MCP_ALIAS_ID}`, studioUrl).href;
 }
 
 /** 90 days — long enough to survive normal use; re-minted on re-provision. */
@@ -184,10 +183,11 @@ export async function provisionCompanionMcps(
         body: {
           name: companionKeyName(org.slug),
           userId,
-          // Wildcard is the only scope that reliably authorizes whatever the
-          // endpoint surfaces at runtime; safe here because the caller is
-          // owner/admin (see module header).
-          permissions: { "*": ["*"] },
+          // Full access to the org's self/management MCP (tools keyed on the
+          // `"self"` resource) — same scope as the org's own default
+          // self-connection. Safe here because the caller is owner/admin (see
+          // module header).
+          permissions: { self: ["*"] },
           expiresIn: COMPANION_KEY_EXPIRES_IN,
           rateLimitEnabled: false,
           metadata: {
@@ -202,7 +202,7 @@ export async function provisionCompanionMcps(
         id: org.id,
         slug: org.slug,
         name: org.name,
-        url: companionMcpUrl(studioUrl, org.slug, org.id),
+        url: companionMcpUrl(studioUrl, org.slug),
         key,
       });
     } catch (err) {

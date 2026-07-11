@@ -111,9 +111,7 @@ test.describe("companion provisioning", () => {
 
     const orgA = body.orgs.find((o) => o.slug === owner.orgSlug);
     expect(orgA, "orgA provisioned for its owner").toBeTruthy();
-    expect(orgA!.url).toContain(
-      `/api/${owner.orgSlug}/mcp/virtual-mcp/decopilot_`,
-    );
+    expect(orgA!.url).toContain(`/api/${owner.orgSlug}/mcp/self`);
     expect(orgA!.key, "companion key returned").toBeTruthy();
     expect(
       body.skipped.some((s) => s.slug === owner.orgSlug),
