@@ -175,7 +175,7 @@ export const codexHarnessFactory: HarnessFactory = {
                   });
                 const handle = genTitle({
                   abortSignal: input.signal,
-                  model: titleModel,
+                  models: [() => titleModel],
                   userMessage: extractUserText(messages),
                 });
                 const closed = handle.promise.finally(() =>
