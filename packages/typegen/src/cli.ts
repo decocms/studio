@@ -28,8 +28,13 @@ function parseArgs(argv: string[]): {
 
   return {
     mcpId,
-    apiKey: get("--key") ?? process.env.MESH_API_KEY,
-    baseUrl: get("--url") ?? process.env.MESH_BASE_URL ?? DEFAULT_BASE_URL,
+    apiKey:
+      get("--key") ?? process.env.STUDIO_API_KEY ?? process.env.MESH_API_KEY,
+    baseUrl:
+      get("--url") ??
+      process.env.STUDIO_BASE_URL ??
+      process.env.MESH_BASE_URL ??
+      DEFAULT_BASE_URL,
     output: get("--output") ?? "client.ts",
   };
 }
