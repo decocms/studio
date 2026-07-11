@@ -6,6 +6,8 @@ import {
   Activity,
   Edit05,
   FilterLines,
+  Grid01,
+  List,
   Rows01,
   SearchSm,
 } from "@untitledui/icons";
@@ -60,6 +62,7 @@ import {
 import { getLiveDevAgentMaps } from "@/web/lib/agent-capabilities";
 import { removeGroupFromOrder, syncOrdersOnOrgPinToggle } from "./stable-order";
 import { SortableAgentRows } from "./sortable-agent-rows";
+import { AgentIconGrid } from "./agent-icon-grid";
 import type { AgentRowProps } from "./agent-row";
 import { MyThreadsSection } from "./my-threads-section";
 import { SidebarSectionHeader } from "./sidebar-section-header";
@@ -170,6 +173,10 @@ export function TaskGroupsList({
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("flat");
   const [agentsOpen, setAgentsOpen] = useState(true);
+  const [agentView, setAgentView] = useLocalStorage<"list" | "grid">(
+    "sidebar-agents-view",
+    "list",
+  );
   const [showAll, setShowAll] = useLocalStorage<boolean>(
     "sidebar-threads-scope-all",
     false,
@@ -647,31 +654,64 @@ export function TaskGroupsList({
           />
         </ScrollFade>
         <div className="shrink-0 mx-2 my-2 border-b" />
-        <div className="shrink-0">
+        <div
+          className={cn(
+            "flex flex-col min-h-0",
+            agentsOpen ? "basis-[35%] shrink-0" : "shrink-0",
+          )}
+        >
           <SidebarSectionHeader
             label="Agents"
             open={agentsOpen}
             onToggle={() => setAgentsOpen((v) => !v)}
             count={agentGroups.length}
             controlsId="sidebar-section-agents"
-            actionSlot={<BrowseAgentsButton compact />}
+            actionSlot={
+              <>
+                <ToolbarIconButton
+                  aria-label={
+                    agentView === "list"
+                      ? "Switch to grid view"
+                      : "Switch to list view"
+                  }
+                  title={agentView === "list" ? "Grid view" : "List view"}
+                  onClick={() =>
+                    setAgentView((v) => (v === "list" ? "grid" : "list"))
+                  }
+                >
+                  {agentView === "list" ? (
+                    <Grid01 className="size-4" />
+                  ) : (
+                    <List className="size-4" />
+                  )}
+                </ToolbarIconButton>
+                <BrowseAgentsButton compact />
+              </>
+            }
           />
           <div
             id="sidebar-section-agents"
             aria-hidden={!agentsOpen}
-            className="grid transition-[grid-template-rows] duration-200 ease-out"
+            className="grid min-h-0 transition-[grid-template-rows] duration-200 ease-out"
             style={{ gridTemplateRows: agentsOpen ? "1fr" : "0fr" }}
           >
-            <div className="overflow-hidden">
-              <ScrollFade className="flex flex-col gap-0.5 max-h-[35vh] overflow-y-auto overscroll-contain">
-                <SortableAgentRows
-                  groups={agentGroups}
-                  orderScope={orderScope}
-                  decopilotId={decopilotId}
-                  orgPinnedIds={orgPinnedIds}
-                  onReorder={() => setLocalOrderRevision((n) => n + 1)}
-                  renderGroup={buildAgentRowProps}
-                />
+            <div className="overflow-hidden min-h-0">
+              <ScrollFade className="flex flex-col gap-0.5 h-full overflow-y-auto overscroll-contain">
+                {agentView === "grid" ? (
+                  <AgentIconGrid
+                    groups={agentGroups}
+                    renderGroup={buildAgentRowProps}
+                  />
+                ) : (
+                  <SortableAgentRows
+                    groups={agentGroups}
+                    orderScope={orderScope}
+                    decopilotId={decopilotId}
+                    orgPinnedIds={orgPinnedIds}
+                    onReorder={() => setLocalOrderRevision((n) => n + 1)}
+                    renderGroup={buildAgentRowProps}
+                  />
+                )}
               </ScrollFade>
             </div>
           </div>
