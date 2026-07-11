@@ -17,8 +17,7 @@ import * as z from "zod";
 import "../../index.css";
 
 import { listOrganizationsCached } from "@/web/lib/auth-client";
-import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
-import { readLastLocation, saveLastLocation } from "@/web/lib/last-location";
+import { saveLastLocation } from "@/web/lib/last-location";
 import { initPwaInstallCapture } from "@/web/lib/pwa-install";
 
 const rootRoute = createRootRoute({
@@ -122,64 +121,26 @@ const shellLayout = createRoute({
   component: lazyRouteComponent(() => import("./layouts/shell-layout.tsx")),
 });
 
-// Home route (landing, redirects to last or only org)
+// Home route — the cross-org "MY deco" aggregate: every thread you own across
+// every org, sorted by what needs you next. This is the center of your work; it
+// no longer auto-redirects into your last org (that's one click away via the
+// breadcrumb / by opening any card). We only bounce brand-new users with zero
+// orgs to onboarding.
 const homeRoute = createRoute({
-  getParentRoute: () => shellLayout,
+  getParentRoute: () => rootRoute,
   path: "/",
   beforeLoad: async () => {
-    // Restore where the user last was. lastLocation is recorded on every
-    // org-scoped navigation (orgLayout writes the org; the thread route adds
-    // the taskId), so it's always current — including after an in-app org
-    // switch, which the queryFn-driven lastOrgSlug can miss when the new org
-    // is already cached. Reads are synchronous so cold entry stays instant. A
-    // stale org/thread self-heals: OrgAccessGate clears it and bounces back to
-    // "/", and an unknown taskId is re-fetched/created by useEnsureTask.
-    const lastLocation = readLastLocation();
-    if (lastLocation?.taskId) {
-      throw redirect({
-        to: "/$org/$taskId",
-        params: { org: lastLocation.org, taskId: lastLocation.taskId },
-        search: lastLocation.virtualmcpid
-          ? { virtualmcpid: lastLocation.virtualmcpid }
-          : {},
-      });
-    }
-    if (lastLocation) {
-      throw redirect({ to: "/$org", params: { org: lastLocation.org } });
-    }
-
-    // Fast path: redirect returning users immediately from the cached slug,
-    // WITHOUT awaiting the org-list network call. This is what keeps a cold
-    // load from blocking on a round-trip (the previous blank/white screen).
-    // The org layout validates membership via getFullOrganization, and a stale
-    // slug self-heals in OrgAccessGate (clears the slug + bounces back to "/").
-    const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
-    if (lastOrgSlug) {
-      throw redirect({
-        to: "/$org",
-        params: { org: lastOrgSlug },
-      });
-    }
-
-    // No cached slug — fetch the list (cached) to pick a destination.
+    // Only redirect users who have NO orgs at all. The list is cached (30s), so
+    // returning users don't pay a round-trip here; the home's own
+    // useActiveOrganizations reads the same data. A transient failure returns
+    // no data → we fall through and render the home (which handles the empty
+    // state) rather than misfiring onboarding.
     const { data: orgs } = await listOrganizationsCached();
-
-    // If the list call failed, skip redirect logic to avoid a misfire on a
-    // transient API failure. Archived orgs are already filtered by the helper.
-    if (!orgs) return;
-
-    // Redirect to first available org (every user gets a default org on signup)
-    const firstOrg = orgs[0];
-    if (firstOrg) {
-      throw redirect({
-        to: "/$org",
-        params: { org: firstOrg.slug },
-      });
+    if (orgs && orgs.length === 0) {
+      throw redirect({ to: "/onboarding" });
     }
-
-    // No orgs at all — send to onboarding
-    throw redirect({ to: "/onboarding" });
   },
+  component: lazyRouteComponent(() => import("./layouts/my-deco/index.tsx")),
 });
 
 // Onboarding route (for users with no orgs)
@@ -578,12 +539,10 @@ const orgLayoutWithChildren = orgLayout.addChildren([
   orgInstallRoute,
 ]);
 
-const shellRouteTree = shellLayout.addChildren([
-  homeRoute,
-  orgLayoutWithChildren,
-]);
+const shellRouteTree = shellLayout.addChildren([orgLayoutWithChildren]);
 
 const routeTree = rootRoute.addChildren([
+  homeRoute,
   shellRouteTree,
   onboardingRoute,
   commerceOnboardingRoute,

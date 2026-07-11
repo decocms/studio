@@ -23,6 +23,15 @@ export const KEYS = {
   // Organizations list
   organizations: () => ["organizations"] as const,
 
+  // Current user's threads within a single org — one entry per org, fanned out
+  // by the cross-org "MY deco" home (see hooks/use-my-threads).
+  myThreads: (orgId: string) => ["my-threads", orgId] as const,
+
+  // AI analysis for a single thread (cross-org home cards). Keyed by thread id
+  // + updated_at so a new message invalidates the cached summary.
+  threadAnalysis: (threadId: string, updatedAt: string) =>
+    ["thread-analysis", threadId, updatedAt] as const,
+
   // Organization members (scoped by org)
   members: (locator: ProjectLocator) => [locator, "members"] as const,
 
