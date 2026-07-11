@@ -1,20 +1,23 @@
 /**
- * Topbar "LINK" button + one-click "Connect to Claude" modal.
+ * Topbar "Link" button + one-command "Connect to Claude" modal.
  *
  * The org's unified MCP endpoint (`/api/<slug>/mcp`) already exposes every
  * connection enabled in the org — the library filesystem, your agents, and any
- * MCP tool — behind OAuth 2.1. So "connecting Claude" is just handing Claude
- * that one URL. This dialog does exactly that with a single primary action:
- *   • Claude Code  → copy the `claude mcp add …` one-liner (paste in a terminal)
- *   • Claude Desktop / claude.ai → copy the URL to add as a custom connector
+ * MCP tool. So "connecting Claude" is just handing Claude that one URL plus a
+ * credential. The primary path here is designed to "just work" with ZERO
+ * interactive auth: we mint a scoped API key and embed it in the
+ * `claude mcp add … --header "Authorization: Bearer <key>"` command, so Claude
+ * Code connects on the first request — no `/mcp`, no browser login.
  *
- * The full Connect settings page (Cursor, Codex, API keys, key management)
- * stays reachable via the footer link for power users.
+ * Claude Desktop / claude.ai can't take a custom header, so those still use the
+ * URL + OAuth connector flow. The full Connect settings page (Cursor, Codex,
+ * OAuth, key management) stays reachable via the footer link.
  */
 
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { Alert, AlertDescription } from "@deco/ui/components/alert.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Dialog,
@@ -26,6 +29,7 @@ import {
 import { useCopy } from "@deco/ui/hooks/use-copy.ts";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import {
+  AlertTriangle,
   ArrowRight,
   Check,
   Copy01,
@@ -35,7 +39,11 @@ import {
   Zap,
 } from "@untitledui/icons";
 import { track } from "@/web/lib/posthog-client";
-import { claudeCodeCommand, mcpUrl } from "@/web/components/connect/mcp-url";
+import {
+  claudeCodeCommandWithKey,
+  mcpUrl,
+} from "@/web/components/connect/mcp-url";
+import { useCreateApiKey } from "@/web/hooks/use-api-keys";
 
 const CAPABILITIES = [
   "Browse and edit your Library files",
@@ -43,13 +51,44 @@ const CAPABILITIES = [
   "Enable and call any MCP tool in this org",
 ];
 
+const KEY_NAME_PREFIX = "Connect: ";
+
+function hostnameLabel(): string {
+  if (typeof window === "undefined") return "unknown host";
+  return window.location.hostname;
+}
+
 function ConnectDialogBody({ onClose }: { onClose: () => void }) {
   const { org } = useProjectContext();
   const url = mcpUrl(org.slug);
-  const command = claudeCodeCommand(org.slug);
 
+  const createKey = useCreateApiKey();
+  const [command, setCommand] = useState<string | null>(null);
   const commandCopy = useCopy();
   const urlCopy = useCopy();
+
+  const handleGenerate = () => {
+    createKey.mutate(
+      {
+        name: `${KEY_NAME_PREFIX}Claude Code on ${hostnameLabel()}`,
+        permissions: { "*": ["*"] },
+      },
+      {
+        onSuccess: (key) => {
+          const cmd = claudeCodeCommandWithKey(org.slug, key.key);
+          setCommand(cmd);
+          track("connect_studio_generate", { target: "claude-code" });
+          // Best-effort auto-copy so it's truly one click; the visible copy
+          // button is the reliable fallback if the browser blocks it.
+          navigator.clipboard?.writeText(cmd).then(
+            () => toast.success("Command copied — paste it in your terminal"),
+            () => toast.success("Command ready — copy it below"),
+          );
+        },
+        onError: (err) => toast.error(err.message),
+      },
+    );
+  };
 
   return (
     <>
@@ -74,27 +113,57 @@ function ConnectDialogBody({ onClose }: { onClose: () => void }) {
         ))}
       </ul>
 
-      {/* Claude Code — the true one-click: copy, paste, done. */}
+      {/* Claude Code — one command, no login. We mint a scoped token and embed
+          it so `claude mcp add` connects on the first request. */}
       <div className="rounded-lg border border-border p-3 flex flex-col gap-2.5">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Terminal size={15} className="text-muted-foreground" />
           Claude Code
         </div>
-        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2">
-          <code className="text-xs flex-1 truncate font-mono">{command}</code>
-        </div>
-        <Button
-          size="sm"
-          className="gap-1.5 self-start"
-          onClick={() => {
-            commandCopy.handleCopy(command);
-            track("connect_studio_copy", { target: "claude-code" });
-            toast.success("Command copied — paste it in your terminal");
-          }}
-        >
-          {commandCopy.copied ? <Check size={14} /> : <Copy01 size={14} />}
-          {commandCopy.copied ? "Copied" : "Copy connect command"}
-        </Button>
+
+        {command ? (
+          <>
+            <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
+              <code className="text-xs break-all font-mono">{command}</code>
+            </div>
+            <Button
+              size="sm"
+              className="gap-1.5 self-start"
+              onClick={() => {
+                commandCopy.handleCopy(command);
+                track("connect_studio_copy", { target: "claude-code" });
+                toast.success("Command copied — paste it in your terminal");
+              }}
+            >
+              {commandCopy.copied ? <Check size={14} /> : <Copy01 size={14} />}
+              {commandCopy.copied ? "Copied" : "Copy command"}
+            </Button>
+            <Alert variant="warning" className="text-xs">
+              <AlertTriangle />
+              <AlertDescription>
+                Runs with no login step — the command embeds a full-access token
+                for this org. Treat it like a password; revoke it any time in
+                Settings → Connect.
+              </AlertDescription>
+            </Alert>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">
+              One command, no browser login. We'll mint a scoped access token
+              and embed it so Claude Code connects instantly.
+            </p>
+            <Button
+              size="sm"
+              className="gap-1.5 self-start"
+              disabled={createKey.isPending}
+              onClick={handleGenerate}
+            >
+              <Terminal size={14} />
+              {createKey.isPending ? "Generating…" : "Generate connect command"}
+            </Button>
+          </>
+        )}
       </div>
 
       {/* Claude Desktop / claude.ai — paste the URL as a custom connector. */}
@@ -158,7 +227,7 @@ export function ConnectLinkButton() {
         }}
       >
         <Link01 size={14} />
-        LINK
+        Link
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md gap-4">

@@ -17,10 +17,15 @@ export function mcpUrl(orgSlug: string): string {
 }
 
 /**
- * One-liner that adds this org to Claude Code over OAuth. Pasting it into a
- * terminal is the closest thing to a one-click "connect to Claude" — the
- * browser opens on first use to sign in, then every tool in the org is live.
+ * One-liner that adds this org to Claude Code with a pre-minted bearer token
+ * baked in as an `Authorization` header. Unlike the OAuth variant this needs
+ * NO `/mcp` step and NO browser login — Claude Code sends the token on the
+ * first request and every tool is live immediately. The token is a real
+ * credential, so this command should be treated like a password.
  */
-export function claudeCodeCommand(orgSlug: string): string {
-  return `claude mcp add --transport http --scope user ${CONNECT_SERVER_NAME} ${mcpUrl(orgSlug)}`;
+export function claudeCodeCommandWithKey(
+  orgSlug: string,
+  apiKey: string,
+): string {
+  return `claude mcp add --transport http --scope user ${CONNECT_SERVER_NAME} ${mcpUrl(orgSlug)} --header "Authorization: Bearer ${apiKey}"`;
 }
