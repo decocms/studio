@@ -21,6 +21,7 @@ import type { DemoChatState } from "./director-stores";
 
 const noop = () => {};
 const asyncNoop = async () => {};
+const asyncFalse = async () => false;
 
 export function DemoChatStreamProvider({
   store,
@@ -46,6 +47,11 @@ export function DemoChatStreamProvider({
     hasMoreOlder: false,
     isFetchingOlder: false,
     fetchOlderMessages: asyncNoop,
+    // Scripted stream is read-only: no queued-message editing, no local removal,
+    // and nothing is ever in flight. Added to satisfy the live-stream contract.
+    editQueuedMessage: asyncFalse,
+    removeLocalMessage: noop,
+    isSendInFlight: () => false,
   };
 
   return (
