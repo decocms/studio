@@ -99,11 +99,13 @@ export function projectorChunkStream(
         }
         lastSeq = ev.seq ?? lastSeq;
         controller.enqueue(ev.chunk);
-        if (ev.chunk.type === "finish") {
-          await reader.cancel();
-          release();
-          controller.close();
-        }
+        // Terminate only on the fenced `done` marker, never on the assistant
+        // `finish` chunk. Background title generation emits its transient
+        // `data-title-result` chunk AFTER `finish` on fast runs; the producer
+        // gives it a seq and the fenced done's `finalSeq` covers it. Closing at
+        // `finish` raced (and dropped) that title, leaving the thread on "New
+        // chat". The idle-timeout (StreamIdleTimeoutError) is the backstop for a
+        // producer that dies before publishing its done.
         return;
       }
     },
