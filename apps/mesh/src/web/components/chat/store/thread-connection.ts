@@ -952,6 +952,15 @@ export class ThreadConnection {
       this.chunkBuffer.push(chunk);
       return;
     }
+    // A user prompt mirrored onto the run stream (see server
+    // `user-message-stream.ts`). Intercept BEFORE the assistant fold — the AI
+    // SDK reassembler hardcodes `role:"assistant"` — and upsert it by id so the
+    // author's optimistic copy dedupes while other viewers get it live.
+    if ((chunk as { type?: unknown }).type === "data-user-message") {
+      const message = (chunk as { data?: UIMessage }).data;
+      if (message) this.applyLocalMessage(message);
+      return;
+    }
     const isRunStatusControl = isRunStatusControlChunk(chunk);
     const runStatusStage = parseRunStatusStageChunk(chunk);
     if (this.waitingForNewRun) {

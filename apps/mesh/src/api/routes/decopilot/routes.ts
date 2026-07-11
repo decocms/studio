@@ -45,6 +45,7 @@ import {
   publishRunStatusStage,
   shouldPublishClusterRunStatus,
 } from "./run-status-stage";
+import { publishUserMessage } from "./user-message-stream";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import { resolveDispatchTarget } from "../../../links/resolve-dispatch-target";
 import {
@@ -746,6 +747,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         })
       ) {
         await emitter.emitRequestMessage(persistedRequestMessage);
+        // Mirror the prompt onto the run stream so OTHER viewers of a shared
+        // thread render it live, not only after a DB refetch. Best-effort and
+        // published before the run's assistant chunks so it sorts first.
+        await publishUserMessage(streamBuffer, taskId, persistedRequestMessage);
       }
 
       const serializableRequest = buildDurableDispatchInput(input, {
