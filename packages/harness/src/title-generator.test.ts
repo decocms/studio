@@ -56,6 +56,23 @@ function makeHangingModel(): LanguageModelV3 {
   } as unknown as LanguageModelV3;
 }
 
+/** A model whose doGenerate never settles and IGNORES the abort signal —
+ *  simulates a hung title app-server that black-holes the request. Without the
+ *  settlement latch, `retry` (which only observes the signal between attempts)
+ *  awaits this forever and genTitle's promise never resolves, hanging the parent
+ *  run's drain loop. The latch must cap settlement at the timeout regardless. */
+function makeUnabortableModel(): LanguageModelV3 {
+  return {
+    specificationVersion: "v3",
+    provider: "test",
+    modelId: "test",
+    doGenerate: () => new Promise(() => {}), // never resolves, ignores abort
+    doStream: async () => {
+      throw new Error("no stream");
+    },
+  } as unknown as LanguageModelV3;
+}
+
 /** A model that returns a fixed title object via doGenerate. */
 function makeSucceedingModel(title: string): LanguageModelV3 {
   return {
@@ -121,6 +138,20 @@ describe("genTitle fallback", () => {
     const result = await handle.promise;
     // First 32 chars of "Build a complex dashboard app".
     expect(result).toBe("Build a complex dashboard app");
+  });
+
+  test("provider that IGNORES the abort signal still settles to the fallback (does not hang)", async () => {
+    // Regression: the self-timeout only *signals* an abort; `retry` awaits the
+    // in-flight call and can't observe the signal mid-attempt. A provider that
+    // black-holes the request would leave the promise pending forever and hang
+    // the parent run's drain loop. The settlement latch must resolve it anyway.
+    const handle = genTitle({
+      models: [() => makeUnabortableModel()],
+      userMessage: "Ship the unabortable fix",
+      timeoutMs: 10,
+    });
+    const result = await handle.promise;
+    expect(result).toBe("Ship the unabortable fix");
   });
 
   test("when the LLM throws, falls back to userMessage.slice(0, 32).trim()", async () => {
