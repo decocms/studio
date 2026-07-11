@@ -17,6 +17,7 @@ import { AccountMenu } from "@/web/layouts/my-deco/account-menu";
 import { OrgIcon } from "@/web/components/header/org-switcher";
 import { useMyThreads, type MyThreadOrg } from "@/web/hooks/use-my-threads";
 import { ThreadCard } from "./thread-card";
+import { HomeComposer } from "./home-composer";
 
 function OrgChip({
   label,
@@ -104,8 +105,8 @@ function MyDecoContent() {
             </p>
           </div>
 
-          {/* Org filter chips */}
-          {orgs.length > 1 && (
+          {/* Org filter chips — only once there's something to filter */}
+          {orgs.length > 1 && threads.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               <OrgChip
                 label="All"
@@ -144,12 +145,14 @@ function MyDecoContent() {
               ))}
             </div>
           ) : visible.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-16 text-center">
-              <p className="text-sm font-medium">No threads yet</p>
-              <p className="text-sm text-muted-foreground max-w-sm">
-                Start a conversation in any of your organizations and it'll show
-                up here as a card you can track.
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                Nothing moving yet — start a conversation and it'll show up here
+                as a card you can track.
               </p>
+              <HomeComposer
+                orgs={orgFilter ? orgs.filter((o) => o.id === orgFilter) : orgs}
+              />
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
