@@ -29,7 +29,7 @@ function buildExtensions(placeholderRef: React.RefObject<string | undefined>) {
     Placeholder.configure({
       placeholder: () =>
         placeholderRef.current ??
-        "Ask anything, / for prompts, @ for agents & resources...",
+        "Ask anything, / for prompts & skills, @ for agents & resources...",
       showOnlyWhenEditable: false,
     }),
     MentionNode,
