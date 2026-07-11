@@ -56,7 +56,11 @@ export function AgentHome({
             {agent.title}
           </span>
         </div>
+      </div>
 
+      {/* docked input */}
+      <Chat.Footer>
+        <Chat.IceBreakers className="pb-3" />
         {/* thread list — mt-auto pushes it to the bottom of the scroll area */}
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
           <div className="mt-auto w-full max-w-2xl mx-auto px-2 pb-2 flex flex-col gap-0.5">
@@ -71,10 +75,6 @@ export function AgentHome({
             ))}
           </div>
         </div>
-      </div>
-
-      {/* docked input */}
-      <Chat.Footer>
         <div
           data-chat-above-row="true"
           className="@container/chat-bottom pb-1 flex justify-start gap-1"
