@@ -1,5 +1,15 @@
-import { describe, expect, test } from "bun:test";
-import { toolCatalogFiles } from "./tools-catalog";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  CATALOG_DIR,
+  makeCatalogSync,
+  type McpEndpoint,
+  toolCatalogFiles,
+  writeToolCatalog,
+} from "./tools-catalog";
 
 describe("toolCatalogFiles", () => {
   test("emits one JSON file per tool with name, description and schemas", () => {
@@ -45,5 +55,93 @@ describe("toolCatalogFiles", () => {
     expect(files[0].filename).toBe("conn_.._SEND.json");
     expect(files[0].filename).not.toContain("/");
     expect(JSON.parse(files[0].content).name).toBe("conn/../SEND");
+  });
+
+  test("disambiguates distinct tools that sanitize to the same filename", () => {
+    const files = toolCatalogFiles([
+      { name: "a/b", inputSchema: { type: "object" } },
+      { name: "a_b", inputSchema: { type: "object" } },
+    ]);
+    // Both sanitize to `a_b` — neither may be silently dropped.
+    expect(files.map((f) => f.filename)).toEqual(["a_b.json", "a_b-2.json"]);
+    expect(JSON.parse(files[0].content).name).toBe("a/b");
+    expect(JSON.parse(files[1].content).name).toBe("a_b");
+  });
+});
+
+describe("writeToolCatalog", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "catalog-"));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  const opts = () => ({ appRoot: root, repoDir: root });
+  const dir = () => join(root, CATALOG_DIR);
+
+  test("writes one file per tool and returns the names", async () => {
+    const res = await writeToolCatalog(
+      [{ name: "LIST", inputSchema: { type: "object" } }],
+      opts(),
+    );
+    expect(res).toEqual({ count: 1, tools: ["LIST"] });
+    expect(existsSync(join(dir(), "LIST.json"))).toBe(true);
+  });
+
+  test("prunes stale *.json from a previous sync, keeps other files", async () => {
+    await writeToolCatalog(
+      [
+        { name: "OLD", inputSchema: { type: "object" } },
+        { name: "KEEP", inputSchema: { type: "object" } },
+      ],
+      opts(),
+    );
+    // A non-catalog file must survive the prune.
+    writeFileSync(join(dir(), "README.md"), "hi");
+
+    await writeToolCatalog([{ name: "KEEP", inputSchema: {} }], opts());
+
+    const left = (await readdir(dir())).sort();
+    expect(left).toEqual(["KEEP.json", "README.md"]);
+  });
+});
+
+describe("makeCatalogSync", () => {
+  const mcp: McpEndpoint = { url: "http://x/mcp", headers: {} };
+
+  test("coalesces while in flight, then respects the min interval", async () => {
+    let calls = 0;
+    let release: () => void = () => {};
+    let clock = 1000;
+    const sync = makeCatalogSync(
+      { appRoot: "/", repoDir: "/", minIntervalMs: 100 },
+      {
+        now: () => clock,
+        sync: () => {
+          calls++;
+          return new Promise<void>((r) => {
+            release = r;
+          });
+        },
+      },
+    );
+
+    sync(mcp);
+    sync(mcp); // in-flight → coalesced
+    expect(calls).toBe(1);
+
+    release();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    clock += 50; // within the interval → skipped
+    sync(mcp);
+    expect(calls).toBe(1);
+
+    clock += 100; // past the interval → runs again
+    sync(mcp);
+    expect(calls).toBe(2);
   });
 });

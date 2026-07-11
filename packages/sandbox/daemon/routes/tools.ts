@@ -1,16 +1,21 @@
-import { type McpEndpoint, syncToolCatalog } from "../tools-catalog";
+import {
+  fetchToolCatalog,
+  type McpEndpoint,
+  writeToolCatalog,
+} from "../tools-catalog";
 import { jsonResponse, parseJsonBody } from "./body-parser";
 
 export interface ToolsDeps {
   appRoot: string;
   repoDir: string;
-  onWorkingTreeWrite?: (filePath: string) => void;
 }
 
 /**
  * POST /_sandbox/tools/sync — body `{ url, headers }` (the run's Virtual MCP
  * endpoint). Lists its tools and writes a JSON Schema catalog under
- * `<repo>/.deco/tools/`. Idempotent; overwrites. Returns `{ count, tools }`.
+ * `<repo>/.deco/tools/`. Idempotent; overwrites and prunes stale files.
+ * Returns `{ count, tools }`. 502 when the endpoint is unreachable/errors,
+ * 500 when the local write fails.
  */
 export function makeToolsSyncHandler(deps: ToolsDeps) {
   return async (req: Request): Promise<Response> => {
@@ -35,17 +40,31 @@ export function makeToolsSyncHandler(deps: ToolsDeps) {
       );
     }
 
+    const endpoint = {
+      url: mcp.url,
+      headers: mcp.headers as Record<string, string>,
+    };
+
+    let tools: Awaited<ReturnType<typeof fetchToolCatalog>>;
     try {
-      const result = await syncToolCatalog(
-        { url: mcp.url, headers: mcp.headers as Record<string, string> },
-        { appRoot: deps.appRoot, repoDir: deps.repoDir },
-      );
-      deps.onWorkingTreeWrite?.(".deco/tools");
-      return jsonResponse(result);
+      tools = await fetchToolCatalog(endpoint);
     } catch (err) {
       return jsonResponse(
         { error: err instanceof Error ? err.message : String(err) },
         502,
+      );
+    }
+
+    try {
+      const result = await writeToolCatalog(tools, {
+        appRoot: deps.appRoot,
+        repoDir: deps.repoDir,
+      });
+      return jsonResponse(result);
+    } catch (err) {
+      return jsonResponse(
+        { error: err instanceof Error ? err.message : String(err) },
+        500,
       );
     }
   };

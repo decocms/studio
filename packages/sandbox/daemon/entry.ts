@@ -57,7 +57,7 @@ import { metrics, trace } from "@opentelemetry/api";
 import { makeEventsHandler } from "./routes/events-stream";
 import { makeExecHandler } from "./routes/exec";
 import { makeToolsSyncHandler } from "./routes/tools";
-import { syncToolCatalog } from "./tools-catalog";
+import { makeCatalogSync } from "./tools-catalog";
 import {
   makeReadHandler,
   makeWriteHandler,
@@ -362,6 +362,9 @@ const fsDeps = {
 };
 const readH = makeReadHandler(fsDeps);
 const toolsSyncH = makeToolsSyncHandler(fsDeps);
+// Coalesced, min-interval catalog sync for the fire-and-forget dispatch hook —
+// re-syncing on every run would be wasted work + a write race.
+const catalogSync = makeCatalogSync({ appRoot, repoDir });
 const writeH = makeWriteHandler(fsDeps);
 const unlinkH = makeUnlinkHandler(fsDeps);
 const mkdirH = makeMkdirHandler(fsDeps);
@@ -671,11 +674,7 @@ async function vmRouteH(
       lookupHarness: lookupDispatchHarness,
       allowedHosts: bootConfig.offloadAllowedHosts,
       allowSameHostDev: bootConfig.offloadAllowSameHostDev,
-      onDispatchMcp: (mcp) => {
-        void syncToolCatalog(mcp, { appRoot, repoDir }).catch((err) => {
-          console.error("[tools] catalog sync failed", err);
-        });
-      },
+      onDispatchMcp: catalogSync,
     });
   }
   if (method === "DELETE" && vmPath.startsWith("/runs/")) {
