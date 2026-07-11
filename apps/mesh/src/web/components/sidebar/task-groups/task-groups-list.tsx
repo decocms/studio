@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { ScrollFade } from "./scroll-fade";
 import {
   Activity,
@@ -169,7 +170,10 @@ export function TaskGroupsList({
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("flat");
   const [agentsOpen, setAgentsOpen] = useState(true);
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useLocalStorage<boolean>(
+    "sidebar-threads-scope-all",
+    false,
+  );
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
   const [localOrderRevision, setLocalOrderRevision] = useState(0);
