@@ -1,6 +1,7 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { useCopy } from "@deco/ui/hooks/use-copy.ts";
 import { Check, Copy01 } from "@untitledui/icons";
+import { connectServerName } from "@/web/components/connect/mcp-url";
 
 export type ConnectClient =
   | "claude-code"
@@ -10,8 +11,6 @@ export type ConnectClient =
   | "raw";
 
 export type ConnectMode = "oauth" | "api-key";
-
-const SERVER_NAME = "studio";
 
 interface SnippetBlock {
   language: string;
@@ -32,17 +31,18 @@ function buildSnippet({
   apiKey?: string;
 }): SnippetBlock {
   const key = apiKey ?? "<paste-your-api-key>";
+  const serverName = connectServerName();
 
   if (client === "claude-code") {
     if (mode === "oauth") {
       return {
         language: "bash",
-        code: `claude mcp add --transport http --scope user ${SERVER_NAME} ${url}`,
+        code: `claude mcp add --transport http --scope user ${serverName} ${url}`,
       };
     }
     return {
       language: "bash",
-      code: `claude mcp add --transport http --scope user ${SERVER_NAME} ${url} \\\n  --header "Authorization: Bearer ${key}"`,
+      code: `claude mcp add --transport http --scope user ${serverName} ${url} \\\n  --header "Authorization: Bearer ${key}"`,
     };
   }
 
@@ -54,12 +54,12 @@ function buildSnippet({
     return {
       language: "json",
       pathHint: "~/.cursor/mcp.json",
-      code: JSON.stringify({ mcpServers: { [SERVER_NAME]: server } }, null, 2),
+      code: JSON.stringify({ mcpServers: { [serverName]: server } }, null, 2),
     };
   }
 
   if (client === "codex") {
-    const lines = [`[mcp_servers.${SERVER_NAME}]`, `url = "${url}"`];
+    const lines = [`[mcp_servers.${serverName}]`, `url = "${url}"`];
     if (mode === "api-key") {
       lines.push(`http_headers = { "Authorization" = "Bearer ${key}" }`);
     }
@@ -78,7 +78,7 @@ function buildSnippet({
     return {
       language: "json",
       pathHint: "claude_desktop_config.json",
-      code: JSON.stringify({ mcpServers: { [SERVER_NAME]: server } }, null, 2),
+      code: JSON.stringify({ mcpServers: { [serverName]: server } }, null, 2),
     };
   }
 
