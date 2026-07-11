@@ -25,6 +25,7 @@ import {
   type ConnectClient,
   InstallSnippet,
 } from "@/web/components/connect/install-snippet";
+import { mcpUrl } from "@/web/components/connect/mcp-url";
 import {
   useApiKeysList,
   useCreateApiKey,
@@ -48,14 +49,6 @@ function clientLabel(id: ConnectClient): string {
 function hostnameLabel(): string {
   if (typeof window === "undefined") return "unknown";
   return window.location.hostname;
-}
-
-function mcpUrl(orgSlug: string): string {
-  const origin =
-    typeof window === "undefined"
-      ? "http://localhost:3000"
-      : window.location.origin;
-  return `${origin}/api/${orgSlug}/mcp`;
 }
 
 function CopyInline({ text }: { text: string }) {
@@ -246,7 +239,10 @@ export function OrgConnectPage() {
     );
   };
 
-  const oauthMetadataUrl = `${url.replace(/\/api\/.*$/, "")}/.well-known/oauth-protected-resource`;
+  // Protected-resource metadata is served at the aggregate MCP endpoint itself
+  // (`/api/:org/mcp/.well-known/oauth-protected-resource`), not the origin root
+  // — that's the path clients discover from the 401 WWW-Authenticate header.
+  const oauthMetadataUrl = `${url}/.well-known/oauth-protected-resource`;
 
   return (
     <Page>
