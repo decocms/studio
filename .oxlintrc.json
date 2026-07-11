@@ -8,7 +8,8 @@
     "./plugins/ban-direct-auth-client-organization.js",
     "./plugins/ban-ref-current-assignment.js",
     "./plugins/ban-cross-tree-imports.js",
-    "./plugins/ban-e2e-app-imports.js"
+    "./plugins/ban-e2e-app-imports.js",
+    "./plugins/ban-web-server-imports.js"
   ],
   "ignorePatterns": ["apps/docs/*"],
   "rules": {
@@ -24,7 +25,8 @@
     "ban-direct-auth-client-organization/ban-direct-auth-client-organization": "error",
     "ban-ref-current-assignment/ban-ref-current-assignment": "error",
     "ban-cross-tree-imports/ban-cross-tree-imports": "warn",
-    "ban-e2e-app-imports/ban-e2e-app-imports": "error"
+    "ban-e2e-app-imports/ban-e2e-app-imports": "error",
+    "ban-web-server-imports/ban-web-server-imports": "warn"
   },
   "plugins": ["react"]
 }
