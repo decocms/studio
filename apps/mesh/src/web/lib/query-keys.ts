@@ -11,10 +11,6 @@ export const KEYS = {
   // Public config (no auth required)
   publicConfig: () => ["publicConfig"] as const,
 
-  // Polled separately from publicConfig (which is cached forever) to detect
-  // a deployed version newer than the client's own build.
-  appVersionCheck: () => ["appVersionCheck"] as const,
-
   // Auth-related queries
   session: () => ["session"] as const,
 
