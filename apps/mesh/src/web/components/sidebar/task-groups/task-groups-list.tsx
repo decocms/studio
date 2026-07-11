@@ -698,7 +698,10 @@ export function TaskGroupsList({
             style={{ gridTemplateRows: agentsOpen ? "1fr" : "0fr" }}
           >
             <div className="overflow-hidden min-h-0">
-              <ScrollFade className="flex flex-col gap-0.5 h-full overflow-y-auto overscroll-contain">
+              <ScrollFade
+                wrapperClassName="h-full min-h-0"
+                className="flex flex-col gap-0.5 h-full overflow-y-auto overscroll-contain"
+              >
                 {agentView === "grid" ? (
                   <AgentIconGrid
                     groups={agentGroups}
