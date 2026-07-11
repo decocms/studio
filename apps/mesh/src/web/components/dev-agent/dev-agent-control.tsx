@@ -6,10 +6,10 @@
  * agent settings (see DevAgentSetup), not here.
  */
 
-import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useProjectContext, useVirtualMCPs } from "@decocms/mesh-sdk";
+import { useVirtualMCPs } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import { useChatNavigation } from "@/web/components/chat/hooks/use-chat-navigation";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
 import { findDevPartner } from "@/web/lib/agent-capabilities";
 
@@ -19,8 +19,7 @@ export function DevAgentControl({
   virtualMcp: VirtualMCPEntity;
 }) {
   const allAgents = useVirtualMCPs();
-  const { org } = useProjectContext();
-  const navigate = useNavigate();
+  const { navigateToTask } = useChatNavigation();
   const { create } = useThreadActions();
 
   const partner = findDevPartner(virtualMcp, allAgents);
@@ -28,7 +27,8 @@ export function DevAgentControl({
 
   const isDev = partner.mode === "dev";
 
-  /** Open a fresh task on the paired counterpart. */
+  /** Open a fresh task on the paired counterpart. `navigateToTask` carries
+   *  `?main`/`?chat`, so a same-id tab stays selected across the flip. */
   const goToAgent = async (agentId: string) => {
     const taskId = crypto.randomUUID();
     try {
@@ -37,11 +37,7 @@ export function DevAgentControl({
       // The action already toasted; navigate anyway so the route loader's
       // ensure-fallback retries the thread create.
     }
-    navigate({
-      to: "/$org/$taskId",
-      params: { org: org.slug, taskId },
-      search: { virtualmcpid: agentId },
-    });
+    navigateToTask(taskId, { virtualMcpId: agentId });
   };
 
   const segment = (label: string, active: boolean) => (
