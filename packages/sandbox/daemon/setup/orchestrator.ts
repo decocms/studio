@@ -418,7 +418,7 @@ export class SetupOrchestrator {
     // overwrite .git/hooks/pre-push; reinstall so branch protection survives.
     if (config.repoDir) {
       try {
-        installProtectedBranchHook(config.repoDir);
+        await installProtectedBranchHook(config.repoDir);
       } catch (e) {
         this.chunk(
           `\r\n[orchestrator] warning: could not reinstall protected-branch hook: ${(e as Error).message}\r\n`,
@@ -610,7 +610,7 @@ export class SetupOrchestrator {
     }
     if (config.repoDir) {
       try {
-        installProtectedBranchHook(config.repoDir);
+        await installProtectedBranchHook(config.repoDir);
       } catch (e) {
         this.chunk(
           `\r\n[orchestrator] warning: could not install protected-branch hook: ${(e as Error).message}\r\n`,
