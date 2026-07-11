@@ -150,12 +150,14 @@ export function usePwaInstall(): PwaInstall {
     ios: isIos(),
     promptInstall: async () => {
       if (!deferredPrompt) return "unavailable";
-      await deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      if (choice.outcome === "accepted") {
-        deferredPrompt = null;
-        emit();
-      }
+      const promptEvent = deferredPrompt;
+      await promptEvent.prompt();
+      const choice = await promptEvent.userChoice;
+      // The event fires only once — whether accepted or dismissed, it can't
+      // be reused, so it must be dropped either way or the button would look
+      // clickable but silently do nothing on a second try.
+      deferredPrompt = null;
+      emit();
       return choice.outcome;
     },
   };
