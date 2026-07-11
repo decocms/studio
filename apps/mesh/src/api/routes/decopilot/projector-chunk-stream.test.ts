@@ -75,7 +75,12 @@ describe("createProjectorChunkStreamFromMessages", () => {
     ]);
   });
 
-  test("ignores legacy unfenced done and closes on the AI SDK finish chunk", async () => {
+  test("ignores legacy unfenced done and runs past finish to the fenced done", async () => {
+    // Background title generation emits a transient `data-title-result` chunk
+    // AFTER the assistant `finish` chunk on fast runs. The projector must keep
+    // reading to the fenced `done` (whose finalSeq covers it) rather than
+    // closing at `finish` — otherwise the title is dropped and the thread stays
+    // on "New chat".
     const stream = createProjectorChunkStreamFromMessages({
       messages: [
         msg("run_1:fence_a:1", { p: { type: "start" } }),
@@ -95,8 +100,9 @@ describe("createProjectorChunkStreamFromMessages", () => {
           p: { type: "finish", finishReason: "stop" },
         }),
         msg("run_1:fence_a:8", {
-          p: { type: "text-delta", id: "late", delta: "ignored" },
+          p: { type: "data-title-result", data: { title: "Late title" } },
         }),
+        msg("run_1:fence_a:done:8", { done: true, finalSeq: 8 }),
       ],
       runId: "run_1",
       fenceToken: "fence_a",
@@ -110,6 +116,7 @@ describe("createProjectorChunkStreamFromMessages", () => {
       "text-delta",
       "text-end",
       "finish",
+      "data-title-result",
     ]);
   });
 
@@ -200,6 +207,7 @@ describe("createProjectorChunkStreamFromMessages", () => {
         });
         await sleep(20);
         yield msg("run_1:fence_a:3", { p: { type: "finish" } });
+        yield msg("run_1:fence_a:done:3", { done: true, finalSeq: 3 });
       }
       const stream = createProjectorChunkStreamFromMessages({
         messages: trickle(),
@@ -223,6 +231,7 @@ describe("createProjectorChunkStreamFromMessages", () => {
       async function* delayedFinish(): AsyncIterable<Msg> {
         await sleep(30);
         yield msg("run_1:fence_a:1", { p: { type: "finish" } });
+        yield msg("run_1:fence_a:done:1", { done: true, finalSeq: 1 });
       }
       const stream = createProjectorChunkStreamFromMessages({
         messages: delayedFinish(),
