@@ -97,6 +97,7 @@ import {
   publishRunStatusStage,
   shouldPublishClusterRunStatus,
 } from "./run-status-stage";
+import { publishUserMessage } from "./user-message-stream";
 import type {
   HarnessStreamConsumerHooks,
   HarnessStreamTitleOptions,
@@ -1275,6 +1276,20 @@ async function prepareRun(
             });
         }
       }
+    }
+
+    // Mirror the user prompt onto the run stream AFTER the purge above (which
+    // clears the previous run) so it survives the whole run — a viewer who
+    // JOINS mid-run replays it via `deliverPolicy: "all"`, not only viewers
+    // already connected at POST time. Best-effort and published before the
+    // run's assistant chunks so it sorts first. Uses the persisted message
+    // shape so the live chunk and a later DB refetch reconcile by id, no swap.
+    if (materializedRequestMessage) {
+      await publishUserMessage(
+        streamBuffer,
+        mem.thread.id,
+        materializedRequestMessage as UIMessage,
+      );
     }
 
     const pendingOps: Promise<void>[] = [];
