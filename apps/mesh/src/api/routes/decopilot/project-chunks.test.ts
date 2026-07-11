@@ -448,7 +448,11 @@ describe("projectChunks", () => {
       chunks: (async function* () {
         yield {
           type: "data-user-message",
-          data: { id: "u-1", role: "user", parts: [{ type: "text", text: "hi" }] },
+          data: {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "hi" }],
+          },
         } as unknown as UIMessageChunk;
         yield { type: "start", messageId: "m-1" } as UIMessageChunk;
         yield { type: "text-start", id: "txt" } as UIMessageChunk;

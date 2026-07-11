@@ -24,7 +24,9 @@ describe("buildUserMessageChunk", () => {
 
 describe("isUserMessageControlChunk", () => {
   test("matches the control chunk and nothing else", () => {
-    expect(isUserMessageControlChunk(buildUserMessageChunk(MESSAGE))).toBe(true);
+    expect(isUserMessageControlChunk(buildUserMessageChunk(MESSAGE))).toBe(
+      true,
+    );
     expect(isUserMessageControlChunk({ type: "data-run-status" })).toBe(false);
     expect(isUserMessageControlChunk({ type: "text-delta" })).toBe(false);
     expect(isUserMessageControlChunk(null)).toBe(false);
