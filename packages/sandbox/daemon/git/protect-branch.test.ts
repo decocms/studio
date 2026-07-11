@@ -22,10 +22,10 @@ function runHook(
 }
 
 describe("installProtectedBranchHook", () => {
-  it("installs an executable pre-push hook", () => {
+  it("installs an executable pre-push hook", async () => {
     const repoDir = mkdtempSync(join(tmpdir(), "protect-branch-"));
     try {
-      installProtectedBranchHook(repoDir);
+      await installProtectedBranchHook(repoDir);
       const hookPath = join(repoDir, ".git", "hooks", "pre-push");
       expect(statSync(hookPath).mode & 0o777).toBe(0o755);
     } finally {
@@ -33,10 +33,10 @@ describe("installProtectedBranchHook", () => {
     }
   });
 
-  it("blocks pushes to main/master and allows other branches", () => {
+  it("blocks pushes to main/master and allows other branches", async () => {
     const repoDir = mkdtempSync(join(tmpdir(), "protect-branch-"));
     try {
-      installProtectedBranchHook(repoDir);
+      await installProtectedBranchHook(repoDir);
       const hookPath = join(repoDir, ".git", "hooks", "pre-push");
 
       const main = runHook(hookPath, "refs/heads/main");

@@ -745,7 +745,7 @@ describe("SetupOrchestrator install-step branch protection", () => {
     try {
       const repoDir = join(dir, "repo");
       mkdirSync(repoDir);
-      installProtectedBranchHook(repoDir);
+      await installProtectedBranchHook(repoDir);
       const hookPath = join(repoDir, ".git", "hooks", "pre-push");
 
       // A separate script file avoids shell/JSON quoting entirely.

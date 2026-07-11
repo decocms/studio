@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const HOOK = `#!/bin/sh
@@ -14,10 +14,14 @@ done
 exit 0
 `;
 
-export function installProtectedBranchHook(repoDir: string): void {
+// Sync fs here would block the daemon's single event loop long enough to
+// miss a health probe (CONTRIBUTING.md rule #4) — use the async variants.
+export async function installProtectedBranchHook(
+  repoDir: string,
+): Promise<void> {
   const hooksDir = join(repoDir, ".git", "hooks");
-  mkdirSync(hooksDir, { recursive: true });
+  await mkdir(hooksDir, { recursive: true });
   const hookPath = join(hooksDir, "pre-push");
-  writeFileSync(hookPath, HOOK, { encoding: "utf-8" });
-  chmodSync(hookPath, 0o755);
+  await writeFile(hookPath, HOOK, { encoding: "utf-8" });
+  await chmod(hookPath, 0o755);
 }
