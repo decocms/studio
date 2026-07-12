@@ -10,10 +10,9 @@ import { AgentHome } from "./agent-home";
 import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
-import { hasLocalCliHarness } from "@/web/lib/agent-capabilities";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
-import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
+import { agentModeNeedsCloudProvider, useAgentMode } from "./use-agent-mode";
 
 // ---------- Panel content ----------
 
@@ -23,12 +22,13 @@ function ChatPanelContent() {
   const { isChatEmpty } = useChatStream();
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
-  const link = useCurrentLink();
+  const agentMode = useAgentMode();
 
-  // No cloud provider key needed when an online desktop CLI harness
-  // (Claude Code / Codex) can back the chat instead.
+  // Only Decopilot needs a cloud provider key; Claude Code / Codex bring their
+  // own inference. Show the provider picker when the selected runtime is
+  // Decopilot and the org has no keys — otherwise it'd fail with "no model".
   const showProviderEmptyState =
-    allKeys.length === 0 && !hasLocalCliHarness(link);
+    allKeys.length === 0 && agentModeNeedsCloudProvider(agentMode);
 
   if (showProviderEmptyState) {
     return (

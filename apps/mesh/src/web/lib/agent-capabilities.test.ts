@@ -4,7 +4,7 @@ import {
   agentHasClonableSource,
   agentHasConnectedGithub,
   agentShowsGithubHeaderActions,
-  hasLocalCliHarness,
+  defaultAgentOption,
 } from "./agent-capabilities";
 
 describe("agentHasClonableSource", () => {
@@ -165,7 +165,7 @@ describe("agentShowsGithubHeaderActions", () => {
   });
 });
 
-describe("hasLocalCliHarness", () => {
+describe("defaultAgentOption", () => {
   const link = (overrides: Partial<CurrentLink> = {}): CurrentLink => ({
     online: false,
     capabilities: [],
@@ -173,35 +173,52 @@ describe("hasLocalCliHarness", () => {
     ...overrides,
   });
 
-  it("returns false when the link is offline", () => {
-    expect(hasLocalCliHarness(link({ online: false }))).toBe(false);
+  it("returns null when cloud provider keys exist (SaaS default → cloud)", () => {
     expect(
-      hasLocalCliHarness(
+      defaultAgentOption(
+        true,
+        link({ online: true, capabilities: ["claude-code"] }),
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null with no keys when the link is offline", () => {
+    expect(
+      defaultAgentOption(
+        false,
         link({ online: false, capabilities: ["claude-code"] }),
       ),
-    ).toBe(false);
+    ).toBeNull();
   });
 
-  it("returns false when online but no CLI harness is reported", () => {
-    expect(hasLocalCliHarness(link({ online: true }))).toBe(false);
+  it("returns null with no keys when online but no CLI harness is reported", () => {
+    expect(defaultAgentOption(false, link({ online: true }))).toBeNull();
     expect(
-      hasLocalCliHarness(
+      defaultAgentOption(
+        false,
         link({ online: true, capabilities: ["decopilot-sandbox"] }),
       ),
-    ).toBe(false);
+    ).toBeNull();
   });
 
-  it("returns true when online with claude-code or codex", () => {
+  it("falls back to a local CLI (Claude Code first) with no keys", () => {
     expect(
-      hasLocalCliHarness(link({ online: true, capabilities: ["claude-code"] })),
-    ).toBe(true);
-    expect(
-      hasLocalCliHarness(link({ online: true, capabilities: ["codex"] })),
-    ).toBe(true);
-    expect(
-      hasLocalCliHarness(
-        link({ online: true, capabilities: ["claude-code", "codex"] }),
+      defaultAgentOption(
+        false,
+        link({ online: true, capabilities: ["claude-code"] }),
       ),
-    ).toBe(true);
+    ).toBe("claude-code-desktop");
+    expect(
+      defaultAgentOption(
+        false,
+        link({ online: true, capabilities: ["codex"] }),
+      ),
+    ).toBe("codex-desktop");
+    expect(
+      defaultAgentOption(
+        false,
+        link({ online: true, capabilities: ["codex", "claude-code"] }),
+      ),
+    ).toBe("claude-code-desktop");
   });
 });

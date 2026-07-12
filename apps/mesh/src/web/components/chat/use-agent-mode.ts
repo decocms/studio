@@ -35,6 +35,15 @@ export function agentOptionFromMode(mode: AgentMode): AgentOption {
   return MODE_TO_OPTION[mode];
 }
 
+/**
+ * Whether a runtime needs a cloud AI provider key to run. Decopilot (cloud or
+ * local sandbox) calls models through the org's provider keys, so it can't run
+ * without one. Claude Code / Codex bring their own inference, so they never do.
+ */
+export function agentModeNeedsCloudProvider(mode: AgentMode): boolean {
+  return mode === "cloud-decopilot" || mode === "local-decopilot";
+}
+
 export function agentModeFromOption(option: AgentOption | null): AgentMode {
   if (option === null) return "cloud-decopilot";
   return OPTION_TO_MODE[option];

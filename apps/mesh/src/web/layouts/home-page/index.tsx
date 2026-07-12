@@ -24,11 +24,13 @@ import {
   aiProviderKeysQueryOptions,
   useAiProviderKeys,
 } from "@/web/hooks/collections/use-ai-providers";
-import { useCurrentLink } from "@/web/hooks/use-current-link";
+import {
+  agentModeNeedsCloudProvider,
+  useAgentMode,
+} from "@/web/components/chat/use-agent-mode";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { homeNextActionsQueryOptions } from "@/web/hooks/use-home-next-actions";
 import { organizationSettingsQueryOptions } from "@/web/hooks/use-organization-settings";
-import { hasLocalCliHarness } from "@/web/lib/agent-capabilities";
 import { authClient } from "@/web/lib/auth-client";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { HomeBackground } from "./background";
@@ -37,7 +39,7 @@ export function HomePage() {
   const { data: session } = authClient.useSession();
   const { org } = useProjectContext();
   const isMobile = useIsMobile();
-  const link = useCurrentLink();
+  const agentMode = useAgentMode();
   const { selectedVirtualMcp } = useChatPrefs();
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const displayAgent = selectedVirtualMcp ?? defaultAgent;
@@ -74,11 +76,13 @@ export function HomePage() {
   } = useDecoCredits();
   const { hasVisibleTiles } = useHomeGridStats(org.slug);
 
-  // Skip the no-provider empty state whenever a local CLI harness (Claude Code
-  // / Codex) is available — those bring their own inference, so the org doesn't
-  // need a cloud provider key to start chatting.
+  // Show the no-provider empty state only when the SELECTED runtime actually
+  // needs a cloud provider key and none is configured. Decopilot (cloud/local)
+  // calls models through the org's keys, so with zero keys it'd fail with a
+  // "no model for tier" error — surface the provider picker instead. Claude
+  // Code / Codex bring their own inference, so they start chatting immediately.
   const showProviderEmptyState =
-    allKeys.length === 0 && !hasLocalCliHarness(link);
+    allKeys.length === 0 && agentModeNeedsCloudProvider(agentMode);
 
   if (showProviderEmptyState) {
     return (

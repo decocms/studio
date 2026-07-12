@@ -114,20 +114,6 @@ export function findDevPartner(
 }
 
 /**
- * True when the user's link daemon is online AND exposes at least one
- * CLI harness (Claude Code or Codex) that a clonable agent's chat can
- * route through. Lets the chat skip the no-provider empty state when
- * the user has a local CLI to fall back on.
- */
-export function hasLocalCliHarness(link: CurrentLink): boolean {
-  if (!link.online) return false;
-  return (
-    link.capabilities.includes("claude-code") ||
-    link.capabilities.includes("codex")
-  );
-}
-
-/**
  * Runtime the chat defaults to when the user hasn't explicitly picked one
  * (`pendingAgentOption === null`).
  *
