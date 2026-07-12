@@ -40,11 +40,6 @@ import { authClient } from "@/web/lib/auth-client";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { track } from "@/web/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/web/lib/query-persist";
-import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
-import {
-  getOrgColorStyle,
-  OrganizationsPanel,
-} from "@/web/components/header/org-switcher";
 import { usePreferences, type ThemeMode } from "@/web/hooks/use-preferences.ts";
 import { toast } from "@deco/ui/components/sonner.js";
 
@@ -106,12 +101,8 @@ function AccountPopoverContent({
   themeOptions,
   preferences,
   setPreferences,
-  orgParam,
-  onSelectOrg,
-  onCreateOrg,
   close,
   isMobile,
-  open,
 }: {
   user: { id?: string; name?: string; email?: string } | undefined;
   userImage?: string;
@@ -120,12 +111,8 @@ function AccountPopoverContent({
   themeOptions: { value: ThemeMode; icon: React.ReactNode; label: string }[];
   preferences: ReturnType<typeof usePreferences>[0];
   setPreferences: ReturnType<typeof usePreferences>[1];
-  orgParam?: string;
-  onSelectOrg: (slug: string) => void;
-  onCreateOrg: () => void;
   close: () => void;
   isMobile: boolean;
-  open: boolean;
 }) {
   if (isMobile) {
     // Mobile: single-column scrollable layout
@@ -174,16 +161,6 @@ function AccountPopoverContent({
 
         {/* Scrollable content */}
         <div className="flex-1 min-h-0 overflow-y-auto">
-          {/* Org switcher */}
-          <div className="border-b border-border pb-2">
-            <OrganizationsPanel
-              key={String(open)}
-              orgParam={orgParam}
-              onSelectOrg={onSelectOrg}
-              onCreateOrg={onCreateOrg}
-            />
-          </div>
-
           {/* Menu items */}
           <nav className="flex flex-col px-2 pt-2 pb-2 gap-0.5">
             {menuItems.map((item) => (
@@ -249,11 +226,10 @@ function AccountPopoverContent({
     );
   }
 
-  // Desktop: two-column layout
+  // Desktop: single-column account menu (org switching lives in the breadcrumb)
   return (
-    <div className="flex min-h-[380px] w-full overflow-hidden">
-      {/* Left panel */}
-      <div className="w-60 shrink-0 flex flex-col border-r border-border bg-sidebar/75">
+    <div className="flex w-full flex-col overflow-hidden">
+      <div className="flex flex-col">
         {/* User info */}
         <div className="flex items-center gap-3 px-4 py-3 mx-1 mt-1">
           <Avatar
@@ -356,25 +332,15 @@ function AccountPopoverContent({
           </div>
         </div>
       </div>
-
-      {/* Right panel - org selector */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-        <OrganizationsPanel
-          key={String(open)}
-          orgParam={orgParam}
-          onSelectOrg={onSelectOrg}
-          onCreateOrg={onCreateOrg}
-        />
-      </div>
     </div>
   );
 }
 
 export function AccountPopover() {
   const { data: session } = authClient.useSession();
-  // Current org comes from the already-loaded shell context (name + logo) so
-  // the trigger paints without fetching organization.list. The full list is
-  // fetched lazily inside OrganizationsPanel when the switcher opens.
+  // Org context is still read for the "Add to Home Screen" (per-org install) and
+  // Preferences deep-links — but org *switching* now lives in the toolbar
+  // breadcrumb, so this popover is account-only.
   const { org: currentOrg } = useProjectContext();
   const navigate = useNavigate();
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
@@ -383,18 +349,9 @@ export function AccountPopover() {
   const isMobile = useIsMobile();
 
   const [open, setOpen] = useState(false);
-  const [creatingOrg, setCreatingOrg] = useState(false);
 
   const user = session?.user;
   const userImage = (user as { image?: string } | undefined)?.image;
-
-  const handleSelectOrg = (orgSlug: string) => {
-    setOpen(false);
-    navigate({
-      to: "/$org",
-      params: { org: orgSlug },
-    });
-  };
 
   const close = () => setOpen(false);
 
@@ -495,15 +452,8 @@ export function AccountPopover() {
     themeOptions,
     preferences,
     setPreferences,
-    orgParam,
-    onSelectOrg: handleSelectOrg,
-    onCreateOrg: () => {
-      setOpen(false);
-      setCreatingOrg(true);
-    },
     close,
     isMobile,
-    open,
   };
 
   return (
@@ -515,27 +465,14 @@ export function AccountPopover() {
             onClick={() => setOpen(true)}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
-            <div
-              className="shrink-0 size-5 rounded-md flex items-center justify-center border border-border/50 overflow-hidden"
-              style={
-                currentOrg?.logo
-                  ? undefined
-                  : getOrgColorStyle(currentOrg?.name ?? "")
-              }
-            >
-              {currentOrg?.logo ? (
-                <img
-                  src={currentOrg.logo}
-                  alt=""
-                  className="size-full object-cover"
-                />
-              ) : (
-                <span className="font-semibold leading-none text-[8px]">
-                  {(currentOrg?.name ?? "?").slice(0, 2).toUpperCase()}
-                </span>
-              )}
-            </div>
-            <span className="truncate">{currentOrg?.name ?? "Account"}</span>
+            <Avatar
+              url={userImage}
+              fallback={user?.name ?? "U"}
+              shape="circle"
+              size="2xs"
+              className="shrink-0"
+            />
+            <span className="truncate">{user?.name ?? "Account"}</span>
           </button>
           <DrawerContent className="h-[80dvh] p-0">
             <DrawerTitle className="sr-only">Account</DrawerTitle>
@@ -546,30 +483,17 @@ export function AccountPopover() {
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <SidebarMenuButton
-              tooltip={currentOrg?.name ?? "Account"}
+              tooltip={user?.name ?? "Account"}
               className="rounded-md"
             >
-              <div
-                className="shrink-0 size-6 rounded-md flex items-center justify-center border border-border/50 overflow-hidden"
-                style={
-                  currentOrg?.logo
-                    ? undefined
-                    : getOrgColorStyle(currentOrg?.name ?? "")
-                }
-              >
-                {currentOrg?.logo ? (
-                  <img
-                    src={currentOrg.logo}
-                    alt=""
-                    className="size-full object-cover"
-                  />
-                ) : (
-                  <span className="font-semibold leading-none text-[9px]">
-                    {(currentOrg?.name ?? "?").slice(0, 2).toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <span className="truncate">{currentOrg?.name ?? "Account"}</span>
+              <Avatar
+                url={userImage}
+                fallback={user?.name ?? "U"}
+                shape="circle"
+                size="xs"
+                className="shrink-0"
+              />
+              <span className="truncate">{user?.name ?? "Account"}</span>
             </SidebarMenuButton>
           </PopoverTrigger>
 
@@ -578,18 +502,13 @@ export function AccountPopover() {
             align="end"
             sideOffset={18}
             collisionPadding={16}
-            className="w-[520px] p-0 flex max-h-[520px]"
+            className="w-[280px] p-0 flex flex-col max-h-[520px]"
             onCloseAutoFocus={(e) => e.preventDefault()}
           >
             <AccountPopoverContent {...sharedProps} />
           </PopoverContent>
         </Popover>
       )}
-
-      <CreateOrganizationDialog
-        open={creatingOrg}
-        onOpenChange={setCreatingOrg}
-      />
     </>
   );
 }

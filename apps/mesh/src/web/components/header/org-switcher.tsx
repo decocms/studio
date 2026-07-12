@@ -62,7 +62,7 @@ export function OrgIcon({
   );
 }
 
-export function OrganizationsPanel({
+function OrganizationsPanel({
   orgParam,
   onSelectOrg,
   onCreateOrg,
