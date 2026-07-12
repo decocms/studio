@@ -1,5 +1,6 @@
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import type { CurrentLink } from "@/web/hooks/use-current-link";
+import type { AgentOption } from "@/web/components/chat/pills/agent-options";
 import { resolveGithubAttachment } from "./github-repo";
 
 /**
@@ -124,4 +125,27 @@ export function hasLocalCliHarness(link: CurrentLink): boolean {
     link.capabilities.includes("claude-code") ||
     link.capabilities.includes("codex")
   );
+}
+
+/**
+ * Runtime the chat defaults to when the user hasn't explicitly picked one
+ * (`pendingAgentOption === null`).
+ *
+ * SaaS: a cloud provider key is present → `null`, which the picker renders as
+ * cloud Decopilot and the server resolves with the org's default model.
+ *
+ * Zero provider keys: a cloud Decopilot default can't run (no model to call),
+ * so fall back to a linked local CLI harness — Claude Code first, then Codex —
+ * which brings its own inference. Returns `null` when neither is available (the
+ * no-provider empty state covers that case).
+ */
+export function defaultAgentOption(
+  hasCloudProviderKeys: boolean,
+  link: CurrentLink,
+): AgentOption | null {
+  if (hasCloudProviderKeys) return null;
+  if (!link.online) return null;
+  if (link.capabilities.includes("claude-code")) return "claude-code-desktop";
+  if (link.capabilities.includes("codex")) return "codex-desktop";
+  return null;
 }

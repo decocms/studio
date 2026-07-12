@@ -29,7 +29,6 @@ import { useSidebarResize } from "@/web/hooks/use-sidebar-resize";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
 import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
-import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import {
   MobileSidebarSheet,
@@ -63,7 +62,7 @@ export default function OrgShellLayout() {
                   <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto_auto] items-center gap-2">
                     <Toolbar.LogoLink />
                     <SidebarTriggerButton />
-                    <LinkedDesktopIndicator />
+                    <Toolbar.HarnessPicker />
                     <div aria-hidden className="min-w-0" />
                     <Toolbar.TogglesSlot />
                     <Toolbar.TabsSlot className="min-w-0 justify-self-end" />
@@ -76,6 +75,7 @@ export default function OrgShellLayout() {
                   <Toolbar.LeftColumn>
                     <Toolbar.LogoLink />
                     <SidebarTriggerButton />
+                    <Toolbar.HarnessPicker />
                     <Toolbar.TogglesSlot />
                   </Toolbar.LeftColumn>
                   <Toolbar.CenterSlot />

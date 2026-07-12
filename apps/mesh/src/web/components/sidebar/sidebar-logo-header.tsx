@@ -3,6 +3,7 @@ import { SidebarHeader } from "@deco/ui/components/sidebar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { LayoutLeft } from "@untitledui/icons";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { HarnessPicker } from "./harness-picker";
 
 interface SidebarLogoHeaderProps {
   /** Collapse / close the sidebar. */
@@ -62,6 +63,7 @@ export function SidebarLogoHeader({
       <ToolbarIconButton onClick={onToggle} aria-label="Toggle sidebar">
         <LayoutLeft size={16} />
       </ToolbarIconButton>
+      <HarnessPicker />
     </SidebarHeader>
   );
 }

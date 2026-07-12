@@ -13,54 +13,20 @@ mock.module("../../thread/github/branch-picker", () => ({
 
 import { ChatModeRowPure } from "./chat-mode-row";
 import { BranchPill } from "./branch-pill";
-import { ModePickerPure } from "./mode-picker";
 
 describe("ChatModeRowPure", () => {
-  it("returns null when both pills are null", () => {
-    const { container } = render(
-      <ChatModeRowPure branchPill={null} modePicker={null} />,
-    );
+  it("returns null when branchPill is null", () => {
+    const { container } = render(<ChatModeRowPure branchPill={null} />);
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders only the BranchPill when ModePicker is null", () => {
-    const { getByTestId, queryByTestId } = render(
-      <ChatModeRowPure
-        branchPill={<span data-testid="branch-pill">branch</span>}
-        modePicker={null}
-      />,
-    );
-    expect(getByTestId("branch-pill")).toBeInTheDocument();
-    expect(queryByTestId("mode-picker")).toBeNull();
-  });
-
-  it("renders only the ModePicker when BranchPill is null", () => {
-    const { getByTestId, queryByTestId } = render(
-      <ChatModeRowPure
-        branchPill={null}
-        modePicker={<span data-testid="mode-picker">mode</span>}
-      />,
-    );
-    expect(getByTestId("mode-picker")).toBeInTheDocument();
-    expect(queryByTestId("branch-pill")).toBeNull();
-  });
-
-  it("renders both pills, ModePicker before BranchPill", () => {
+  it("renders the BranchPill when provided", () => {
     const { getByTestId } = render(
       <ChatModeRowPure
         branchPill={<span data-testid="branch-pill">branch</span>}
-        modePicker={<span data-testid="mode-picker">mode</span>}
       />,
     );
-    const branch = getByTestId("branch-pill");
-    const mode = getByTestId("mode-picker");
-    expect(branch).toBeInTheDocument();
-    expect(mode).toBeInTheDocument();
-    // Harness (ModePicker) reads first so the user sees:
-    // "using [Cloud] on branch [main]" left-to-right.
-    expect(
-      mode.compareDocumentPosition(branch) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(getByTestId("branch-pill")).toBeInTheDocument();
   });
 });
 
@@ -91,40 +57,5 @@ describe("BranchPill", () => {
       <BranchPill {...BRANCH_PILL_PROPS} locked={false} />,
     );
     expect(getByRole("button")).toBeInTheDocument();
-  });
-});
-
-describe("ChatModeRow integration", () => {
-  it("renders both pills as non-interactive when locked=true", () => {
-    const { getByTestId, queryAllByRole } = render(
-      <ChatModeRowPure
-        branchPill={
-          <BranchPill {...BRANCH_PILL_PROPS} locked={true} value="main" />
-        }
-        modePicker={
-          <ModePickerPure
-            mode="cloud-decopilot"
-            availability={{
-              agentSandbox: true,
-              userDesktop: false,
-              claudeCode: false,
-              codex: false,
-            }}
-            locked={true}
-            onSelect={mock(() => {})}
-          />
-        }
-      />,
-    );
-
-    // Both locked elements are present
-    expect(getByTestId("branch-picker-locked")).toBeInTheDocument();
-    expect(getByTestId("mode-picker-locked")).toBeInTheDocument();
-
-    // No interactive (enabled) buttons should be present
-    const buttons = queryAllByRole("button");
-    for (const btn of buttons) {
-      expect(btn).toBeDisabled();
-    }
   });
 });

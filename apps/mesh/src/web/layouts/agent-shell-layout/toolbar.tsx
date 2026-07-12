@@ -26,6 +26,7 @@ import { createPortal } from "react-dom";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
+import { HarnessPicker } from "@/web/components/sidebar/harness-picker";
 
 type ToolbarCtx = {
   togglesEl: HTMLDivElement | null;
@@ -227,12 +228,23 @@ function ToolbarRight({ children }: { children: ReactNode }) {
   return createPortal(children, rightEl);
 }
 
+function ToolbarHarnessPicker() {
+  return (
+    <Suspense fallback={<span className="wco-no-drag shrink-0 pl-1" />}>
+      <span className="pl-1">
+        <HarnessPicker />
+      </span>
+    </Suspense>
+  );
+}
+
 Toolbar.Provider = ToolbarProviderImpl;
 Toolbar.Header = ToolbarHeader;
 Toolbar.LeftColumn = ToolbarLeftColumn;
 Toolbar.RightColumn = ToolbarRightColumn;
 Toolbar.Logo = ToolbarLogo;
 Toolbar.LogoLink = ToolbarLogoLink;
+Toolbar.HarnessPicker = ToolbarHarnessPicker;
 Toolbar.CenterSlot = ToolbarCenterSlot;
 Toolbar.Center = ToolbarCenter;
 Toolbar.TabsSlot = ToolbarTabsSlot;

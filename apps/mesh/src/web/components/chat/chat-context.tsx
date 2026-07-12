@@ -48,6 +48,8 @@ import {
   agentOptionFor,
   type AgentOption,
 } from "./pills/agent-options";
+import { useCurrentLink } from "../../hooks/use-current-link";
+import { defaultAgentOption } from "../../lib/agent-capabilities";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import {
   isDeepResearchModel,
@@ -602,10 +604,15 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
         )
       : null;
 
-  // Preserve the user's selected runtime exactly. Presence/capability probes are
-  // advisory only; dispatch should surface the real backend error if the choice
-  // cannot run.
-  const selectedAgentOption = pendingAgentOption;
+  // Preserve the user's explicit selection exactly. Presence/capability probes
+  // are advisory only; dispatch should surface the real backend error if the
+  // choice cannot run. When the user hasn't picked (`null`), resolve a smart
+  // default: with no cloud provider keys, a cloud Decopilot default can't run,
+  // so fall back to a linked local CLI harness (Claude Code / Codex) when one
+  // is available. SaaS (keys present) keeps the cloud default.
+  const link = useCurrentLink();
+  const selectedAgentOption =
+    pendingAgentOption ?? defaultAgentOption(keys.length > 0, link);
 
   // When the thread is locked, the agent option is dictated by the persisted
   // (harness, sandbox) pair — period. Otherwise, fall through to the user's

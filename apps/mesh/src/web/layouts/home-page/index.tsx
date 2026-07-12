@@ -3,7 +3,6 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-  useVirtualMCP,
   virtualMcpItemQueryOptions,
 } from "@decocms/mesh-sdk";
 import { useQuery, useSuspenseQueries } from "@tanstack/react-query";
@@ -29,10 +28,7 @@ import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { homeNextActionsQueryOptions } from "@/web/hooks/use-home-next-actions";
 import { organizationSettingsQueryOptions } from "@/web/hooks/use-organization-settings";
-import {
-  agentHasClonableSource,
-  hasLocalCliHarness,
-} from "@/web/lib/agent-capabilities";
+import { hasLocalCliHarness } from "@/web/lib/agent-capabilities";
 import { authClient } from "@/web/lib/auth-client";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { HomeBackground } from "./background";
@@ -69,7 +65,6 @@ export function HomePage() {
   });
 
   const allKeys = useAiProviderKeys();
-  const fullVm = useVirtualMCP(displayAgent.id);
   const {
     hasDecoKey,
     isZeroBalance,
@@ -79,9 +74,11 @@ export function HomePage() {
   } = useDecoCredits();
   const { hasVisibleTiles } = useHomeGridStats(org.slug);
 
-  const isClonableAgent = agentHasClonableSource(fullVm?.metadata);
+  // Skip the no-provider empty state whenever a local CLI harness (Claude Code
+  // / Codex) is available — those bring their own inference, so the org doesn't
+  // need a cloud provider key to start chatting.
   const showProviderEmptyState =
-    allKeys.length === 0 && !(isClonableAgent && hasLocalCliHarness(link));
+    allKeys.length === 0 && !hasLocalCliHarness(link);
 
   if (showProviderEmptyState) {
     return (
