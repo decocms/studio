@@ -13,7 +13,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
-import { Check, Plus, SearchMd, XClose } from "@untitledui/icons";
+import { Check, Plus, SearchMd } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useActiveOrganizations } from "@/web/lib/auth-client";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
@@ -82,7 +82,6 @@ function OrganizationsPanel({
     return a.name.localeCompare(b.name);
   });
 
-  const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
 
   const q = query.toLowerCase();
@@ -96,37 +95,24 @@ function OrganizationsPanel({
   const iconBtnClass =
     "flex items-center justify-center size-7 rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors";
 
-  function toggleSearch() {
-    if (searchOpen) setQuery("");
-    setSearchOpen((prev) => !prev);
-  }
-
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-3">
-        {searchOpen ? (
-          <input
-            autoFocus
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && toggleSearch()}
-            placeholder="Search organizations..."
-            className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
-          />
-        ) : (
-          <span className="text-sm font-medium text-muted-foreground/60">
-            Your Organizations
-          </span>
-        )}
-        <div className="flex items-center gap-1 shrink-0">
-          <button type="button" onClick={toggleSearch} className={iconBtnClass}>
-            {searchOpen ? <XClose size={16} /> : <SearchMd size={16} />}
-          </button>
-          <button type="button" onClick={onCreateOrg} className={iconBtnClass}>
-            <Plus size={16} />
-          </button>
-        </div>
+      {/* Search is always live and focused on open — start typing to filter. */}
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/50">
+        <SearchMd size={16} className="shrink-0 text-muted-foreground/60" />
+        <input
+          data-org-switcher-search
+          autoFocus
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Escape" && query && setQuery("")}
+          placeholder="Search organizations..."
+          className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+        />
+        <button type="button" onClick={onCreateOrg} className={iconBtnClass}>
+          <Plus size={16} />
+        </button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-1.5 flex flex-col gap-1">
         {filtered.length === 0 && (
@@ -198,6 +184,14 @@ export function OrgSwitcherPopover({
           sideOffset={8}
           collisionPadding={16}
           className="w-[300px] p-0 flex flex-col max-h-[440px]"
+          // Land focus on the search field (not the content wrapper) so typing
+          // filters immediately.
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            (e.currentTarget as HTMLElement)
+              ?.querySelector<HTMLInputElement>("[data-org-switcher-search]")
+              ?.focus();
+          }}
           onCloseAutoFocus={(e) => e.preventDefault()}
         >
           <OrganizationsPanel
