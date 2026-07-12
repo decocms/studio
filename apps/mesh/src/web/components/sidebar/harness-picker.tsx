@@ -61,19 +61,38 @@ const ALL_CIRCLES: CircleDef[] = [
   },
 ];
 
+// Horizontal distance between adjacent stacked circles (px). Circle is 16px
+// (size-4); a 10px step leaves a 6px overlap, matching the old `-ml-1.5`.
+const STACK_STEP_PX = 10;
+
 function StackedIcons({ mode }: { mode: AgentMode }) {
   const activeKey = activeHarnessKey(mode);
-  const rest = ALL_CIRCLES.filter((c) => c.key !== activeKey);
-  const active = ALL_CIRCLES.find((c) => c.key === activeKey)!;
-  const ordered = [...rest, active];
+  // Slot order: inactive circles first (in their stable order), the active one
+  // last so it sits rightmost and frontmost. DOM order stays fixed
+  // (ALL_CIRCLES) — only each circle's translateX/z-index changes — so a CSS
+  // transition animates the rearrange without a layout library.
+  const slotOrder = [
+    ...ALL_CIRCLES.filter((c) => c.key !== activeKey).map((c) => c.key),
+    activeKey,
+  ];
 
   return (
-    <span className="flex items-center shrink-0">
-      {ordered.map((circle, i) => (
-        <span key={circle.key} className={cn(i > 0 && "-ml-1.5")}>
-          {circle.node}
-        </span>
-      ))}
+    <span className="relative shrink-0 h-4 w-9">
+      {ALL_CIRCLES.map((circle) => {
+        const slot = slotOrder.indexOf(circle.key);
+        return (
+          <span
+            key={circle.key}
+            className="absolute left-0 top-0 transition-transform duration-300 ease-in-out motion-reduce:transition-none"
+            style={{
+              transform: `translateX(${slot * STACK_STEP_PX}px)`,
+              zIndex: slot,
+            }}
+          >
+            {circle.node}
+          </span>
+        );
+      })}
     </span>
   );
 }
