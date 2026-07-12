@@ -152,7 +152,7 @@ export function TaskGroupsList({
     fetchNextPage,
   } = useThreads();
   const visibleThreads = allThreads.filter((thread) => !thread.hidden);
-  const { hide } = useThreadActions();
+  const { hide, setAgent } = useThreadActions();
 
   const navigate = useNavigate();
   const navigateToAgent = useNavigateToAgent();
@@ -361,6 +361,9 @@ export function TaskGroupsList({
       const active = allThreads.find((t) => t.id === activeTaskId);
       if (active?.title === "New chat" && (await isThreadEmpty(activeTaskId))) {
         closeAfterNavigation();
+        // Re-point the row at the new agent (icon follows) and swap the
+        // recipient — same thread, no new empty chat.
+        void setAgent(activeTaskId, virtualMcpId);
         setTaskId(activeTaskId, virtualMcpId);
         return;
       }

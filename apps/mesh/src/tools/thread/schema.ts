@@ -151,6 +151,12 @@ export const ThreadUpdateDataSchema = z.object({
     "Full replacement of the thread's metadata object",
   ),
   branch: z.string().nullish().describe("New git branch for this thread"),
+  virtual_mcp_id: z
+    .string()
+    .optional()
+    .describe(
+      "Re-point the thread at a different agent. Only meaningful for an unsent thread (changing the recipient of a new chat); the UI restricts it accordingly.",
+    ),
 });
 
 export type ThreadUpdateData = z.infer<typeof ThreadUpdateDataSchema>;

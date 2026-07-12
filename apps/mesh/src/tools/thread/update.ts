@@ -101,6 +101,10 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
       updateData.branch = data.branch;
     }
 
+    if (data.virtual_mcp_id !== undefined) {
+      updateData.virtual_mcp_id = data.virtual_mcp_id;
+    }
+
     const thread = await ctx.storage.threads.update(id, updateData);
 
     // Fire chat_archived / chat_unarchived when the hidden flag flips. Only
