@@ -32,7 +32,12 @@ import {
   useVirtualMCPActions,
   useVirtualMCPs,
 } from "@decocms/mesh-sdk";
-import { useNavigate, useParams, useRouterState } from "@tanstack/react-router";
+import {
+  useNavigate,
+  useParams,
+  useRouterState,
+  useSearch,
+} from "@tanstack/react-router";
 import { authClient } from "@/web/lib/auth-client";
 import {
   useThreadActions,
@@ -155,13 +160,19 @@ export function TaskGroupsList({
   const params = useParams({ strict: false }) as {
     taskId?: string;
   };
+  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
   const isOnHome = pathname === `/${org.slug}` || pathname === `/${org.slug}/`;
   const activeTaskId = params.taskId ?? null;
+  // The recipient is the URL's `virtualmcpid` (what the composer sends to),
+  // falling back to the thread row's agent. Preferring the param keeps the
+  // active-agent highlight in sync when a new chat is retargeted in place.
   const activeAgentId =
-    allThreads.find((t) => t.id === activeTaskId)?.virtual_mcp_id ?? null;
+    search.virtualmcpid ??
+    allThreads.find((t) => t.id === activeTaskId)?.virtual_mcp_id ??
+    null;
   const closeAfterNavigation = () => {
     onNavigate?.();
   };
@@ -297,6 +308,22 @@ export function TaskGroupsList({
     createNewTask(virtualMcpId);
   };
 
+  // Verify a thread has no messages (an unsent "New chat"), so we can reuse it
+  // instead of spawning another empty one. Failure → treat as non-empty.
+  const isThreadEmpty = async (threadId: string): Promise<boolean> => {
+    try {
+      const res = await client.callTool({
+        name: "COLLECTION_THREAD_MESSAGES_LIST",
+        arguments: { thread_id: threadId, limit: 1, offset: 0 },
+      });
+      const payload = ((res as { structuredContent?: unknown })
+        .structuredContent ?? res) as { items?: unknown[] };
+      return (payload.items?.length ?? 0) === 0;
+    } catch {
+      return false;
+    }
+  };
+
   // New thread: always target the currently selected agent (the active
   // thread's agent, else decopilot). To avoid piling up empties, focus an
   // existing empty "New chat" for that agent (verified to have no messages)
@@ -307,38 +334,38 @@ export function TaskGroupsList({
     const candidate = myThreadsAll.find(
       (t) => t.virtual_mcp_id === currentAgentId && t.title === "New chat",
     );
-    if (candidate) {
-      let isEmpty = false;
-      try {
-        const res = await client.callTool({
-          name: "COLLECTION_THREAD_MESSAGES_LIST",
-          arguments: { thread_id: candidate.id, limit: 1, offset: 0 },
-        });
-        const payload = ((res as { structuredContent?: unknown })
-          .structuredContent ?? res) as { items?: unknown[] };
-        isEmpty = (payload.items?.length ?? 0) === 0;
-      } catch {
-        // On lookup failure, fall through and create a fresh thread.
-      }
-      if (isEmpty) {
-        closeAfterNavigation();
-        setTaskId(candidate.id, currentAgentId);
-        return;
-      }
+    if (candidate && (await isThreadEmpty(candidate.id))) {
+      closeAfterNavigation();
+      setTaskId(candidate.id, currentAgentId);
+      return;
     }
     closeAfterNavigation();
     createNewTask(currentAgentId);
   };
 
-  // Click an agent → show the agent home (threads list + new chat input).
+  // Click an agent. There is only ever ONE new chat: if you're already sitting
+  // in an empty "New chat", clicking a different agent just re-points that chat
+  // at the new recipient (same thread, swap the agent) instead of spawning yet
+  // another empty thread. Otherwise it starts the one new chat with that agent.
   // Decopilot is the product home — clicking it navigates to /$org directly.
-  const handleOpenAgent = (virtualMcpId: string) => {
+  const handleOpenAgent = async (virtualMcpId: string) => {
     if (virtualMcpId === decopilotId) {
       closeAfterNavigation();
       navigate({ to: "/$org", params: { org: org.slug } });
       return;
     }
     track("sidebar_agent_opened", { virtual_mcp_id: virtualMcpId });
+
+    // Retarget the current empty new chat in place.
+    if (activeTaskId && activeAgentId !== virtualMcpId) {
+      const active = allThreads.find((t) => t.id === activeTaskId);
+      if (active?.title === "New chat" && (await isThreadEmpty(activeTaskId))) {
+        closeAfterNavigation();
+        setTaskId(activeTaskId, virtualMcpId);
+        return;
+      }
+    }
+
     closeAfterNavigation();
     navigateToAgent(virtualMcpId);
   };
