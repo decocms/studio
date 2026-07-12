@@ -68,6 +68,21 @@ export function shouldSelfHeal(args: ShouldSelfHealArgs): boolean {
   );
 }
 
+/** Shared SANDBOX_START arg-builder so every call site (auto-start,
+ *  self-heal, user-driven start/retry/resume) scopes provisioning to the
+ *  locked provider kind identically — a caller that omits it can get
+ *  provisioned on the wrong provider. */
+export function buildSandboxStartArgs(
+  virtualMcpId: string,
+  branch: string | null,
+  sandboxProviderKind: SandboxProviderKind | null,
+): SandboxStartArgs {
+  const args: SandboxStartArgs = { virtualMcpId };
+  if (branch) args.branch = branch;
+  if (sandboxProviderKind) args.sandboxProviderKind = sandboxProviderKind;
+  return args;
+}
+
 export function computeDrawerStatus(state: PreviewState): DrawerStatus {
   switch (state.kind) {
     case "suspended":
@@ -239,9 +254,11 @@ export function SandboxLifecycleProvider({
   useEffect(() => {
     if (!autoStartEligible || !virtualMcpId) return;
     autoStartAttemptedForBranchRef.current.add(autoStartDedupKey);
-    const args: SandboxStartArgs = { virtualMcpId };
-    if (branch) args.branch = branch;
-    if (sandboxProviderKind) args.sandboxProviderKind = sandboxProviderKind;
+    const args = buildSandboxStartArgs(
+      virtualMcpId,
+      branch,
+      sandboxProviderKind,
+    );
     startVmMutate(args, {
       onSuccess: (data) => {
         if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
@@ -276,9 +293,11 @@ export function SandboxLifecycleProvider({
     if (!selfHealEligible || !deadVmId || !virtualMcpId) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record dead handle to dedup repeat 404s
     reprovisionedForVmIdRef.current = deadVmId;
-    const args: SandboxStartArgs = { virtualMcpId };
-    if (branch) args.branch = branch;
-    if (sandboxProviderKind) args.sandboxProviderKind = sandboxProviderKind;
+    const args = buildSandboxStartArgs(
+      virtualMcpId,
+      branch,
+      sandboxProviderKind,
+    );
     startVmMutate(args, {
       onSuccess: (data) => {
         if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
@@ -300,8 +319,11 @@ export function SandboxLifecycleProvider({
   // User-driven actions.
   const start = () => {
     if (!virtualMcpId) return;
-    const args: SandboxStartArgs = { virtualMcpId };
-    if (branch) args.branch = branch;
+    const args = buildSandboxStartArgs(
+      virtualMcpId,
+      branch,
+      sandboxProviderKind,
+    );
     startVmMutate(args, {
       onSuccess: (data) => {
         if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
