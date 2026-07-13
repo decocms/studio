@@ -325,7 +325,7 @@ export async function bindCommerceDiscoveryResource(
  * { triggered: false } rather than thrown, so the UI can still open the report.
  */
 export async function triggerCommerceDiscoveryRun(
-  input: { siteUrl: string; orgId: string },
+  input: { siteUrl: string; orgId: string; githubRepo?: string },
   options: CommerceDiscoveryAuthOptions = {},
 ): Promise<{ triggered: boolean; reason?: string }> {
   const baseUrl = resolveBaseUrl(options);
@@ -342,7 +342,13 @@ export async function triggerCommerceDiscoveryRun(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ org_id: input.orgId }),
+    // github_repo (optional) is the repo the client picked in the GitHub
+    // companion. Commerce Discovery threads it to the enriched-agent hand-off so
+    // repo-audit targets the right repo; absent ⇒ GitHub not connected.
+    body: JSON.stringify({
+      org_id: input.orgId,
+      ...(input.githubRepo ? { github_repo: input.githubRepo } : {}),
+    }),
   });
 
   if (response.status === 409) {
