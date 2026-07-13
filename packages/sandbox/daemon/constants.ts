@@ -1,5 +1,4 @@
 import { IFRAME_BOOTSTRAP_SCRIPT, WELL_KNOWN_STARTERS } from "../shared";
-import { withPathDirs } from "./process/structured-command";
 
 export { WELL_KNOWN_STARTERS };
 
@@ -106,8 +105,7 @@ export function pmRunCommand(
   cwd: string,
   runPrefix: string,
   script: string,
-  pathDirs: readonly string[],
-): { cmd: string; cwd: string; env: Record<string, string>; label: string } {
+): { cmd: string; cwd: string; label: string } {
   const cmd = `${runPrefix} ${script}`;
-  return { cmd, cwd, env: withPathDirs(pathDirs), label: `$ ${cmd}` };
+  return { cmd, cwd, label: `$ ${cmd}` };
 }

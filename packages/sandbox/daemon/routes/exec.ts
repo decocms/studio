@@ -98,20 +98,19 @@ export function makeExecHandler(deps: ExecDeps) {
     // a blocking response opt in via mode: "await".
     const mode: ExecMode = body.mode === "await" ? "await" : "background";
 
-    const { cmd, label } = pmRunCommand(
-      cwd,
-      pmConf.runPrefix,
-      name,
-      config.runtimePathDirs,
-    );
+    const { cmd, label } = pmRunCommand(cwd, pmConf.runPrefix, name);
     // Runtime PATH dirs must win the PATH key specifically, but merge
     // *after* config.env/body.env so a user-supplied PATH gets prepended to
     // (not replaced) rather than the whole runtime PATH being clobbered by
     // it — mirrors the old shell chain's `export PATH=/opt/bun/bin:$PATH`.
+    // When no user PATH override exists, fall back to the daemon's own PATH
+    // so the prepend never replaces the effective PATH outright.
     const merged = buildDevEnv(config, { ...config.env, ...body.env });
     const env = {
       ...merged,
-      ...withPathDirs(config.runtimePathDirs, merged),
+      ...withPathDirs(config.runtimePathDirs, {
+        PATH: merged.PATH ?? process.env.PATH,
+      }),
     };
 
     // Manually running a dev starter is explicit intent to (re)start the dev

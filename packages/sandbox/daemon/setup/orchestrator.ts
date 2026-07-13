@@ -504,8 +504,9 @@ export class SetupOrchestrator {
     // dev servers (no-op for other PMs); layered under config.env so a
     // user-supplied DENO_DIR still wins. Runtime PATH dirs are prepended
     // last, over whatever PATH falls out of that merge (a user override
-    // included) rather than getting replaced by it — command.env's own PATH
-    // prepend (computed against the daemon's PATH) is superseded here.
+    // included) rather than getting replaced by it; when the merge carries
+    // no PATH, fall back to the daemon's own PATH so the prepend never
+    // replaces the effective PATH outright.
     const merged = buildDevEnv(config, {
       ...denoCacheEnv(config),
       ...config.env,
@@ -515,7 +516,9 @@ export class SetupOrchestrator {
       cwd: command.cwd,
       env: {
         ...merged,
-        ...withPathDirs(config.runtimePathDirs, merged),
+        ...withPathDirs(config.runtimePathDirs, {
+          PATH: merged.PATH ?? process.env.PATH,
+        }),
       },
       label: command.label,
       mode: "pty",
@@ -597,7 +600,6 @@ export class SetupOrchestrator {
   private buildStartCommand(config: Config): {
     cmd: string;
     cwd: string;
-    env: Record<string, string>;
     label: string;
     source: string;
   } | null {
@@ -613,7 +615,7 @@ export class SetupOrchestrator {
     const starter = WELL_KNOWN_STARTERS.find((s) => scripts.includes(s));
     if (!starter) return null;
     return {
-      ...pmRunCommand(cwd, pmConf.runPrefix, starter, config.runtimePathDirs),
+      ...pmRunCommand(cwd, pmConf.runPrefix, starter),
       source: starter,
     };
   }

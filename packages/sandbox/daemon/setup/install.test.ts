@@ -205,6 +205,22 @@ describe("installSteps", () => {
     expect(steps?.install.env?.PATH?.startsWith("/opt/bun/bin")).toBe(true);
   });
 
+  test("no user PATH → runtime dirs prepended to basePath, never replacing it", () => {
+    const steps = installSteps({
+      pm: "bun",
+      installRoot: "/repo/apps/site",
+      runtimePathDirs: ["/opt/bun/bin"],
+      cacheEnv: null,
+      userEnv: { FOO: "1" },
+      basePath: "/usr/bin",
+    });
+    // The prepend must fall back to the base PATH when the user env carries
+    // none — a bare PATH of only the runtime dirs would strip coreutils/git
+    // from every spawned step.
+    expect(steps?.install.env?.PATH).toBe(`/opt/bun/bin${delimiter}/usr/bin`);
+    expect(steps?.install.env?.PATH?.endsWith("/usr/bin")).toBe(true);
+  });
+
   test("user-supplied PATH is prepended-to, not replaced", () => {
     const steps = installSteps({
       pm: "bun",
