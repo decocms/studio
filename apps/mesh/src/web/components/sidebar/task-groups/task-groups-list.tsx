@@ -6,6 +6,7 @@ import {
   Activity,
   Edit05,
   FilterLines,
+  LayoutLeft,
   Rows01,
   SearchSm,
   User01,
@@ -242,7 +243,7 @@ export function TaskGroupsList({
     createNewTask(currentAgentId);
   };
 
-  const { state: sidebarState, isMobile } = useSidebar();
+  const { state: sidebarState, isMobile, toggleSidebar } = useSidebar();
 
   const isCollapsed = sidebarState === "collapsed" && !isMobile;
 
@@ -256,9 +257,16 @@ export function TaskGroupsList({
       (id === decopilotId ? decopilot : undefined);
     return (
       <SidebarMenu className="min-h-0 items-center gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {/* Toggle first, then new thread, then the threads themselves. */}
+        {/* Toggle first, then new thread, then the threads themselves. All
+            SidebarMenuButtons so they share one height/alignment. */}
         <SidebarMenuItem className="flex justify-center">
-          <SidebarTriggerButton />
+          <SidebarMenuButton
+            tooltip="Toggle sidebar"
+            className="justify-center"
+            onClick={toggleSidebar}
+          >
+            <LayoutLeft size={16} />
+          </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem className="flex justify-center">
           <SidebarMenuButton
