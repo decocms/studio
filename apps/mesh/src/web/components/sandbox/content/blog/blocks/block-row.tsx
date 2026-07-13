@@ -3,6 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@deco/ui/lib/utils.js";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
+import type { SandboxConfig } from "@/web/components/sections-editor/fields/field-props";
 import { BlockEditor, type RawBlock } from "./block-registry";
 
 /**
@@ -22,6 +23,7 @@ export function BlockRow({
   onChange,
   onDelete,
   onDuplicate,
+  sandbox,
 }: {
   id: string;
   block: RawBlock;
@@ -29,6 +31,7 @@ export function BlockRow({
   onChange: (next: RawBlock) => void;
   onDelete: () => void;
   onDuplicate: () => void;
+  sandbox?: SandboxConfig | null;
 }) {
   const {
     attributes,
@@ -78,7 +81,12 @@ export function BlockRow({
           <Trash01 size={14} />
         </button>
       </div>
-      <BlockEditor block={block} meta={meta} onChange={onChange} />
+      <BlockEditor
+        block={block}
+        meta={meta}
+        onChange={onChange}
+        sandbox={sandbox}
+      />
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
+import type { SandboxConfig } from "@/web/components/sections-editor/fields/field-props";
 import { discoverBlogBlockTypes } from "./blog-data";
 import { InsertBlockDivider } from "./block-picker";
 import { BlockRow } from "./blocks/block-row";
@@ -37,11 +38,13 @@ export function BlockDocument({
   onChange,
   meta,
   emptyMessage = "No content yet. Use ⊕ to add your first block.",
+  sandbox,
 }: {
   value: RawBlock[];
   onChange: (next: RawBlock[]) => void;
   meta: LiveMeta;
   emptyMessage?: string;
+  sandbox?: SandboxConfig | null;
 }) {
   const blockTypes = discoverBlogBlockTypes(meta);
 
@@ -132,6 +135,7 @@ export function BlockDocument({
                 onChange={(v) => updateAt(index, v)}
                 onDelete={() => removeAt(index)}
                 onDuplicate={() => duplicateAt(index)}
+                sandbox={sandbox}
               />
               <InsertBlockDivider
                 blockTypes={blockTypes}

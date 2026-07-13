@@ -21,6 +21,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
+import type { SandboxConfig } from "@/web/components/sections-editor/fields/field-props";
 import {
   buildBlogBlock,
   getBlogPayload,
@@ -93,6 +94,13 @@ export function CategoryEditor({
     category,
     previewBaseUrl,
   });
+
+  const sandbox: SandboxConfig = {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    previewUrl: previewBaseUrl ?? undefined,
+  };
 
   // The slug input is a free-text draft, committed only on blur — its
   // keystrokes must not autosave (each would churn every post via the
@@ -254,6 +262,7 @@ export function CategoryEditor({
                 onChange={(next) => setField("sections", next)}
                 meta={meta}
                 emptyMessage="This category has no content yet. Use ⊕ to add your first block."
+                sandbox={sandbox}
               />
             </CollapsibleSection>
 

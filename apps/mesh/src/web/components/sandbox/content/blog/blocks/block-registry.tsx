@@ -3,6 +3,7 @@ import {
   resolveSchema,
   type LiveMeta,
 } from "@/web/components/sections-editor/resolve-schema";
+import type { SandboxConfig } from "@/web/components/sections-editor/fields/field-props";
 import { RichTextBlock } from "./rich-text-block";
 import { CodeBlock, HeadingBlock, ListBlock, QuoteBlock } from "./plain-blocks";
 import {
@@ -44,10 +45,12 @@ export function BlockEditor({
   block,
   meta,
   onChange,
+  sandbox,
 }: {
   block: RawBlock;
   meta: LiveMeta;
   onChange: (next: RawBlock) => void;
+  sandbox?: SandboxConfig | null;
 }) {
   const resolveType = block.__resolveType ?? "";
   const componentName = blockComponentName(resolveType);
@@ -176,13 +179,21 @@ export function BlockEditor({
         );
       case "ProductCard":
         return isBlogAppBlockResolveType(resolveType) ? (
-          <AppProductCardBlock block={block} onChange={onChange} />
+          <AppProductCardBlock
+            block={block}
+            onChange={onChange}
+            sandbox={sandbox}
+          />
         ) : (
           <ProductCardBlock block={block} onChange={onChange} />
         );
       case "ProductShelf":
         return isBlogAppBlockResolveType(resolveType) ? (
-          <AppProductShelfBlock block={block} onChange={onChange} />
+          <AppProductShelfBlock
+            block={block}
+            onChange={onChange}
+            sandbox={sandbox}
+          />
         ) : (
           <ProductShelfBlock block={block} onChange={onChange} />
         );

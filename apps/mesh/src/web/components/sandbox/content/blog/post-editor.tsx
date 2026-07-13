@@ -12,6 +12,7 @@ import {
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { ImageField } from "@/web/components/sections-editor/fields/image-field";
 import { StringField } from "@/web/components/sections-editor/fields/string-field";
+import type { SandboxConfig } from "@/web/components/sections-editor/fields/field-props";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { buildBlogBlock, getBlogPayload, listBlogPayloads } from "./blog-data";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
@@ -78,6 +79,13 @@ export function PostEditor({
     previewBaseUrl,
   });
 
+  const sandbox: SandboxConfig = {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    previewUrl: previewBaseUrl ?? undefined,
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
@@ -138,6 +146,7 @@ export function PostEditor({
                   onChange={(next) => setField("sections", next)}
                   meta={meta}
                   emptyMessage="This post has no content yet. Use ⊕ to add your first block."
+                  sandbox={sandbox}
                 />
               </div>
             </TabsContent>
