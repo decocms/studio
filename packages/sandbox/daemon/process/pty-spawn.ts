@@ -30,6 +30,21 @@
 import fs from "node:fs";
 import { spawn as nodeSpawn } from "node:child_process";
 import { spawn as ptySpawn } from "node-pty";
+import {
+  isStructuredCommand,
+  type StructuredCommand,
+} from "./structured-command";
+
+/** Thrown when no shell can run a string command on this platform. */
+export class ShellNotFoundError extends Error {
+  constructor() {
+    super(
+      "POSIX shell (sh) not found — string commands need a shell. " +
+        "On Windows: install Git for Windows (ships bash) or run the daemon under WSL2.",
+    );
+    this.name = "ShellNotFoundError";
+  }
+}
 
 export interface PtyHandle {
   /** OS process id of the spawned child. */
@@ -43,18 +58,24 @@ export interface PtyHandle {
 }
 
 export interface PtySpawnOpts {
-  /** Shell command. Runs as `sh -c <cmd>`. */
-  cmd: string;
+  /** Shell command (runs via a resolved shell) OR a shell-free argv spawn. */
+  cmd: string | StructuredCommand;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  /** Drop privileges to this uid (Linux only; ignored on macOS). */
+  /** Drop privileges to this uid (Linux only; ignored on macOS/win32). */
   uid?: number;
-  /** Drop privileges to this gid (Linux only; ignored on macOS). */
   gid?: number;
-  /** Defaults to 120. */
   cols?: number;
-  /** Defaults to 30. */
   rows?: number;
+}
+
+function ptyArgv(cmd: string | StructuredCommand): [string, string[]] {
+  if (isStructuredCommand(cmd)) return [cmd.argv[0], [...cmd.argv.slice(1)]];
+  // String command → needs a shell. win32 has no `sh`; ConPTY would throw
+  // the unhelpful "File not found: " (empty resolved path). Fail legibly
+  // until Task 7 wires resolveShell() here.
+  if (process.platform === "win32") throw new ShellNotFoundError();
+  return ["sh", ["-c", cmd]];
 }
 
 export function spawnPty(opts: PtySpawnOpts): PtyHandle {
@@ -70,17 +91,27 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
     }
   }
 
+  const structured = isStructuredCommand(opts.cmd) ? opts.cmd : undefined;
   const spawnOpts: Parameters<typeof ptySpawn>[2] = {
     name: "xterm-256color",
     cols: opts.cols ?? 120,
     rows: opts.rows ?? 30,
-    cwd: opts.cwd ?? process.cwd(),
-    env: { TERM: "xterm-256color", ...baseEnv, ...overrideEnv },
+    cwd: opts.cwd ?? structured?.cwd ?? process.cwd(),
+    env: {
+      TERM: "xterm-256color",
+      ...baseEnv,
+      ...structured?.env,
+      ...overrideEnv,
+    },
   };
-  if (typeof opts.uid === "number")
-    (spawnOpts as Record<string, unknown>).uid = opts.uid;
-  if (typeof opts.gid === "number")
-    (spawnOpts as Record<string, unknown>).gid = opts.gid;
+  // uid/gid: Linux-only concept. Setting them on win32 throws in libuv; on
+  // macOS a non-root daemon can't setuid anyway. Gate hard.
+  if (process.platform === "linux") {
+    if (typeof opts.uid === "number")
+      (spawnOpts as Record<string, unknown>).uid = opts.uid;
+    if (typeof opts.gid === "number")
+      (spawnOpts as Record<string, unknown>).gid = opts.gid;
+  }
 
   // forkpty(3) can fail transiently in CI containers under PTY pressure
   // (concurrent test files allocating PTYs faster than the kernel reaps them).
@@ -90,7 +121,8 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      raw = ptySpawn("sh", ["-c", opts.cmd], spawnOpts);
+      const [file, args] = ptyArgv(opts.cmd);
+      raw = ptySpawn(file, args, spawnOpts);
       lastErr = undefined;
       break;
     } catch (err) {
@@ -240,14 +272,25 @@ function spawnFallback(opts: PtySpawnOpts): PtyHandle {
     }
   }
 
+  const structured = isStructuredCommand(opts.cmd) ? opts.cmd : undefined;
   const spawnOpts: Parameters<typeof nodeSpawn>[2] = {
-    cwd: opts.cwd ?? process.cwd(),
-    env: { TERM: "xterm-256color", ...baseEnv, ...overrideEnv },
-    ...(typeof opts.uid === "number" ? { uid: opts.uid } : {}),
-    ...(typeof opts.gid === "number" ? { gid: opts.gid } : {}),
+    cwd: opts.cwd ?? structured?.cwd ?? process.cwd(),
+    env: {
+      TERM: "xterm-256color",
+      ...baseEnv,
+      ...structured?.env,
+      ...overrideEnv,
+    },
+    ...(process.platform === "linux" && typeof opts.uid === "number"
+      ? { uid: opts.uid }
+      : {}),
+    ...(process.platform === "linux" && typeof opts.gid === "number"
+      ? { gid: opts.gid }
+      : {}),
   };
 
-  const child = nodeSpawn("sh", ["-c", opts.cmd], spawnOpts);
+  const [file, args] = ptyArgv(opts.cmd);
+  const child = nodeSpawn(file, args, spawnOpts);
   const dataListeners: Array<(data: string) => void> = [];
   const exitListeners: Array<(exitCode: number) => void> = [];
 
