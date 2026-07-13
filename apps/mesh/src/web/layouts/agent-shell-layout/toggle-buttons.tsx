@@ -36,7 +36,9 @@ export function ToggleButtons({
       aria-pressed={chatOpen}
       aria-label="Chat"
       className={cn(
-        "wco-no-drag inline-flex h-10 md:h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm transition-colors",
+        // Chat shares the toggles portal with the preview view-mode buttons
+        // (sections / code) — force it to the far right regardless of mount order.
+        "order-last wco-no-drag inline-flex h-10 md:h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50",
         chatOpen
           ? "bg-sidebar-accent text-sidebar-foreground"

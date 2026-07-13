@@ -25,6 +25,7 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from "@deco/ui/components/breadcrumb.tsx";
+import { useSidebar } from "@deco/ui/components/sidebar.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
@@ -95,6 +96,8 @@ function AgentCrumb({
 
 export function ShellBreadcrumb() {
   const { org } = useProjectContext();
+  const { state } = useSidebar();
+  const sidebarCollapsed = state === "collapsed";
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as {
     org?: string;
@@ -140,8 +143,9 @@ export function ShellBreadcrumb() {
   return (
     <Breadcrumb className="wco-no-drag">
       <BreadcrumbList className="flex-nowrap">
-        {/* deco → org home */}
-        <BreadcrumbItem>
+        {/* deco logo + org switcher — one unit, no separator between them. The
+            org part collapses away (logo only) when the sidebar is closed. */}
+        <BreadcrumbItem className="gap-0.5">
           <Link
             to="/$org"
             params={{ org: org.slug }}
@@ -151,27 +155,23 @@ export function ShellBreadcrumb() {
           >
             <Toolbar.Logo />
           </Link>
-        </BreadcrumbItem>
-
-        <BreadcrumbSeparator />
-
-        {/* org → switcher popover */}
-        <BreadcrumbItem>
-          <OrgSwitcherPopover
-            orgParam={org.slug}
-            trigger={
-              <button type="button" className={crumbBtnClass}>
-                <OrgIcon org={org} size="xs" />
-                <span className="truncate font-medium max-w-[10rem]">
-                  {org.name}
-                </span>
-                <ChevronDown
-                  size={14}
-                  className="shrink-0 text-muted-foreground opacity-70"
-                />
-              </button>
-            }
-          />
+          {!sidebarCollapsed && (
+            <OrgSwitcherPopover
+              orgParam={org.slug}
+              trigger={
+                <button type="button" className={crumbBtnClass}>
+                  <OrgIcon org={org} size="xs" />
+                  <span className="truncate font-medium max-w-[10rem]">
+                    {org.name}
+                  </span>
+                  <ChevronDown
+                    size={14}
+                    className="shrink-0 text-muted-foreground opacity-70"
+                  />
+                </button>
+              }
+            />
+          )}
         </BreadcrumbItem>
 
         <BreadcrumbSeparator />

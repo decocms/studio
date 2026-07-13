@@ -132,41 +132,10 @@ function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
 
 function AgentGridItem({
   agent,
-  onClick,
-}: {
-  agent: VirtualMCPEntity;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group"
-    >
-      <AgentAvatar
-        icon={agent.icon}
-        name={agent.title}
-        size="md"
-        className="transition-transform group-hover:scale-105"
-      />
-      <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground line-clamp-2 w-full">
-        {agent.title}
-      </span>
-    </button>
-  );
-}
-
-/** Row form of an agent — used by the breadcrumb scope picker (list mode). */
-function AgentListRow({
-  title,
-  description,
-  icon,
   selected,
   onClick,
 }: {
-  title: string;
-  description?: string | null;
-  icon?: string | null;
+  agent: VirtualMCPEntity;
   selected?: boolean;
   onClick: () => void;
 }) {
@@ -175,22 +144,26 @@ function AgentListRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left w-full transition-colors",
-        selected ? "bg-accent" : "hover:bg-accent/60",
+        "flex flex-col items-center gap-2 p-3 rounded-xl transition-colors cursor-pointer group",
+        selected ? "bg-accent" : "hover:bg-accent",
       )}
     >
-      <AgentAvatar icon={icon} name={title} size="sm" className="shrink-0" />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{title}</p>
-        {description && (
-          <p className="text-xs text-muted-foreground truncate">
-            {description}
-          </p>
+      <div className="relative">
+        <AgentAvatar
+          icon={agent.icon}
+          name={agent.title}
+          size="md"
+          className="transition-transform group-hover:scale-105"
+        />
+        {selected && (
+          <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full border border-border bg-background">
+            <Check size={10} className="text-foreground" />
+          </span>
         )}
       </div>
-      {selected && (
-        <Check size={14} className="shrink-0 text-muted-foreground" />
-      )}
+      <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground line-clamp-2 w-full">
+        {agent.title}
+      </span>
     </button>
   );
 }
@@ -206,8 +179,8 @@ function PinAgentPopoverContent({
   onOpenImportDeco: () => void;
   onOpenGithubImport: () => void;
   /** When provided (breadcrumb scope picker), selecting an agent sets the
-   * sidebar scope instead of opening a new task; `null` = all agents. Renders
-   * an ordered list of rows (Decopilot first) rather than the create grid. */
+   * sidebar scope instead of opening a new task; `null` = all agents. The grid
+   * then leads with a Decopilot tile ("all threads") and marks the active one. */
   onSelectAgent?: (id: string | null) => void;
   /** The currently-scoped agent, for the check mark (picker mode). */
   selectedAgentId?: string | null;
@@ -268,57 +241,6 @@ function PinAgentPopoverContent({
     setSearch("");
     navigateToNewTask(agent.id);
   };
-
-  // Scope-picker mode (breadcrumb): an ordered list of rows, Decopilot first.
-  if (onSelectAgent) {
-    return (
-      <div className="flex flex-col max-h-[min(560px,80dvh)]">
-        <CollectionSearch
-          value={search}
-          onChange={setSearch}
-          placeholder="Search agents..."
-        />
-        <div className="overflow-y-auto flex-1 min-h-0 p-1.5 flex flex-col gap-0.5">
-          {showDecopilot && decopilotAgent && (
-            <AgentListRow
-              title={decopilotAgent.title}
-              description="All threads, every agent"
-              icon={decopilotAgent.icon}
-              selected={
-                !selectedAgentId || selectedAgentId === decopilotAgent.id
-              }
-              onClick={selectAll}
-            />
-          )}
-          {userAgents.map((agent) => (
-            <AgentListRow
-              key={agent.id}
-              title={agent.title}
-              description={agent.description}
-              icon={agent.icon}
-              selected={selectedAgentId === agent.id}
-              onClick={() => handleSelect(agent)}
-            />
-          ))}
-          {userAgents.length === 0 && !showDecopilot && (
-            <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
-              {search ? "No agents found" : "No agents yet"}
-            </div>
-          )}
-        </div>
-        <div className="border-t border-border px-3 py-2.5">
-          <Link
-            to="/$org/settings/agents"
-            params={{ org: org.slug }}
-            onClick={() => onClose()}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center"
-          >
-            See all agents
-          </Link>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col max-h-[min(640px,80dvh)]">
@@ -418,10 +340,24 @@ function PinAgentPopoverContent({
             </button>
           )}
 
+          {/* Scope-picker mode: Decopilot = all threads, every agent. */}
+          {onSelectAgent && showDecopilot && decopilotAgent && (
+            <AgentGridItem
+              agent={decopilotAgent}
+              selected={
+                !selectedAgentId || selectedAgentId === decopilotAgent.id
+              }
+              onClick={selectAll}
+            />
+          )}
+
           {userAgents.map((agent) => (
             <AgentGridItem
               key={agent.id}
               agent={agent}
+              selected={
+                onSelectAgent ? selectedAgentId === agent.id : undefined
+              }
               onClick={() => handleSelect(agent)}
             />
           ))}
