@@ -131,9 +131,12 @@ export interface InstallDeps {
  * best-effort `corepack enable` (mirrors the old `(corepack enable
  * 2>/dev/null || true)`), then the package manager's install argv. Env
  * precedence (later wins): the download-prompt suppression, then the
- * runtime PATH dirs, then the per-repo cache env, then user-supplied env —
- * so an explicit `BUN_INSTALL_CACHE_DIR` in `userEnv` wins over the derived
- * cache dir, matching the prior shell-string behavior.
+ * per-repo cache env, then user-supplied env — so an explicit
+ * `BUN_INSTALL_CACHE_DIR` in `userEnv` wins over the derived cache dir.
+ * `PATH` is the one exception: the runtime dirs are prepended *over*
+ * whatever `PATH` falls out of that merge (a user override included), the
+ * same way the old shell chain's `export PATH=/opt/bun/bin:$PATH` prepended
+ * onto the effective PATH rather than getting replaced by it.
  *
  * Returns null when the package manager has no install step (e.g. deno,
  * which fetches deps lazily on first `deno task`) — caller treats null as
@@ -149,11 +152,14 @@ export function installSteps(p: {
 }): { corepack: StructuredCommand; install: StructuredCommand } | null {
   const pmConfig = PACKAGE_MANAGER_DAEMON_CONFIG[p.pm];
   if (!pmConfig?.installArgv) return null;
-  const env: Record<string, string> = {
+  const merged: Record<string, string> = {
     COREPACK_ENABLE_DOWNLOAD_PROMPT: "0",
-    ...withPathDirs(p.runtimePathDirs, { PATH: p.basePath }),
     ...(p.cacheEnv ?? {}),
     ...(p.userEnv ?? {}),
+  };
+  const env: Record<string, string> = {
+    ...merged,
+    ...withPathDirs(p.runtimePathDirs, { PATH: merged.PATH ?? p.basePath }),
   };
   return {
     corepack: { argv: ["corepack", "enable"], env },

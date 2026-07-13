@@ -148,6 +148,18 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
     if ((lastErr as Error).message?.includes("posix_spawnp")) {
       return spawnFallback(opts);
     }
+    // ConPTY's "File not found" is bare — no executable name — when a
+    // structured command's argv[0] (e.g. `git`) isn't on PATH. That was the
+    // original dead-end for customers: name the culprit and point at a fix.
+    if (
+      process.platform === "win32" &&
+      /File not found/i.test((lastErr as Error).message ?? "")
+    ) {
+      throw new Error(
+        `"${file}" not found on PATH — the daemon needs it to run this step. ` +
+          `Install Git for Windows (https://gitforwindows.org) or run the daemon under WSL2.`,
+      );
+    }
     throw lastErr;
   }
 

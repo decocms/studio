@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { afterAll, describe, expect, it, test } from "bun:test";
 import {
   denoCacheEnv,
@@ -203,6 +203,23 @@ describe("installSteps", () => {
       FOO: "1",
     });
     expect(steps?.install.env?.PATH?.startsWith("/opt/bun/bin")).toBe(true);
+  });
+
+  test("user-supplied PATH is prepended-to, not replaced", () => {
+    const steps = installSteps({
+      pm: "bun",
+      installRoot: "/repo/apps/site",
+      runtimePathDirs: ["/opt/bun/bin"],
+      cacheEnv: null,
+      userEnv: { PATH: "/custom/bin" },
+      basePath: "/usr/bin",
+    });
+    // Runtime PATH dirs win the PATH key specifically, prepended onto the
+    // user's PATH override rather than the whole PATH getting replaced by
+    // it — every other user env key still wins outright.
+    expect(steps?.install.env?.PATH).toBe(
+      `/opt/bun/bin${delimiter}/custom/bin`,
+    );
   });
 
   test("deno → null (no install step)", () => {

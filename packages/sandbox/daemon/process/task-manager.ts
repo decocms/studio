@@ -457,13 +457,17 @@ export class TaskManager {
   }
 
   private startPipe(task: TaskInternal): void {
+    const isWin32 = process.platform === "win32";
     const opts: Parameters<typeof nodeSpawn>[2] = {
       cwd: task.spec.cwd,
       stdio: ["ignore", "pipe", "pipe"],
       env: task.spec.env,
-      detached: true,
+      // POSIX: detached so `-pgid` below can signal the whole process
+      // group. win32 has no process groups — `detached: true` there
+      // instead allocates the child a new console, which we don't want.
+      detached: !isWin32,
     };
-    const shell = process.platform === "win32" ? resolveShell("bash") : "bash";
+    const shell = isWin32 ? resolveShell("bash") : "bash";
     const child: ChildProcess = nodeSpawn(
       shell,
       ["-c", task.spec.command],
@@ -474,6 +478,24 @@ export class TaskManager {
 
     const killGroup = (signal: NodeJS.Signals) => {
       if (task.pgid === undefined) return;
+      if (isWin32) {
+        // No POSIX process groups and no distinct signal semantics on
+        // win32 — any signal here means "terminate". `taskkill /T` walks
+        // the whole child tree (bash -c's descendants included). Fire and
+        // forget: the process may already be gone, and there's no group
+        // fallback to retry with.
+        try {
+          nodeSpawn("taskkill", ["/pid", String(task.pgid), "/T", "/F"]).on(
+            "error",
+            () => {
+              /* taskkill itself failed to spawn — nothing more we can do */
+            },
+          );
+        } catch {
+          /* taskkill not spawnable */
+        }
+        return;
+      }
       try {
         process.kill(-task.pgid, signal);
       } catch {

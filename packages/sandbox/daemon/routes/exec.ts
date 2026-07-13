@@ -9,6 +9,7 @@ import type { DaemonStatus } from "../events/types";
 import type { LifecycleManager } from "../lifecycle/manager";
 import type { TaskManager } from "../process/task-manager";
 import { discoverScripts } from "../process/script-discovery";
+import { withPathDirs } from "../process/structured-command";
 import { jsonResponse, parseJsonBody } from "./body-parser";
 import { awaitTaskResponse } from "./tasks";
 
@@ -97,14 +98,20 @@ export function makeExecHandler(deps: ExecDeps) {
     // a blocking response opt in via mode: "await".
     const mode: ExecMode = body.mode === "await" ? "await" : "background";
 
-    const {
-      cmd,
-      label,
-      env: pmEnv,
-    } = pmRunCommand(cwd, pmConf.runPrefix, name, config.runtimePathDirs);
+    const { cmd, label } = pmRunCommand(
+      cwd,
+      pmConf.runPrefix,
+      name,
+      config.runtimePathDirs,
+    );
+    // Runtime PATH dirs must win the PATH key specifically, but merge
+    // *after* config.env/body.env so a user-supplied PATH gets prepended to
+    // (not replaced) rather than the whole runtime PATH being clobbered by
+    // it — mirrors the old shell chain's `export PATH=/opt/bun/bin:$PATH`.
+    const merged = buildDevEnv(config, { ...config.env, ...body.env });
     const env = {
-      ...pmEnv,
-      ...buildDevEnv(config, { ...config.env, ...body.env }),
+      ...merged,
+      ...withPathDirs(config.runtimePathDirs, merged),
     };
 
     // Manually running a dev starter is explicit intent to (re)start the dev

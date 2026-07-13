@@ -23,6 +23,7 @@ import type { LifecycleManager } from "../lifecycle/manager";
 import { LogTee } from "../process/log-tee";
 import { appLogPath, hasGitRepo, resolvePmRoot } from "../paths";
 import { discoverScripts } from "../process/script-discovery";
+import { withPathDirs } from "../process/structured-command";
 import type { Application, Config } from "../types";
 import { materializeAskpass } from "./askpass";
 import { autodetectApplication } from "./autodetect";
@@ -499,17 +500,22 @@ export class SetupOrchestrator {
     }
     await this.stopDevTask();
     this.deps.lifecycle.transition({ phase: "starting" });
+    // denoCacheEnv points DENO_DIR at the per-repo node-local cache for deno
+    // dev servers (no-op for other PMs); layered under config.env so a
+    // user-supplied DENO_DIR still wins. Runtime PATH dirs are prepended
+    // last, over whatever PATH falls out of that merge (a user override
+    // included) rather than getting replaced by it — command.env's own PATH
+    // prepend (computed against the daemon's PATH) is superseded here.
+    const merged = buildDevEnv(config, {
+      ...denoCacheEnv(config),
+      ...config.env,
+    });
     await this.deps.taskManager.spawn({
       command: command.cmd,
       cwd: command.cwd,
-      // command.env carries the runtime PATH prepend (pmRunCommand); spread
-      // first so buildDevEnv's HOST/PORT/user overrides win. denoCacheEnv
-      // points DENO_DIR at the per-repo node-local cache for deno dev
-      // servers (no-op for other PMs); layered under config.env so a
-      // user-supplied DENO_DIR still wins.
       env: {
-        ...command.env,
-        ...buildDevEnv(config, { ...denoCacheEnv(config), ...config.env }),
+        ...merged,
+        ...withPathDirs(config.runtimePathDirs, merged),
       },
       label: command.label,
       mode: "pty",
