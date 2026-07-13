@@ -68,27 +68,6 @@ export function getDevAgentIds(
 }
 
 /**
- * Live↔dev agent id maps derived from each dev agent's `metadata.liveAgentId`:
- * - `devToLive`: dev agent id → its live agent id.
- * - `liveToDev`: live agent id → its dev agent id (the Develop toggle target).
- * Used to fold a dev agent's sidebar thread group into its live counterpart.
- */
-export function getLiveDevAgentMaps(
-  agents: VirtualMCPEntity[] | null | undefined,
-): { liveToDev: Map<string, string>; devToLive: Map<string, string> } {
-  const liveToDev = new Map<string, string>();
-  const devToLive = new Map<string, string>();
-  for (const a of agents ?? []) {
-    const liveId = a.metadata?.liveAgentId;
-    if (typeof liveId === "string" && liveId) {
-      devToLive.set(a.id, liveId);
-      liveToDev.set(liveId, a.id);
-    }
-  }
-  return { liveToDev, devToLive };
-}
-
-/**
  * Resolve the Develop/Live partner of an agent from the loaded agent list.
  * - `mode: "dev"` when this agent IS a dev agent (`metadata.liveAgentId` set) —
  *   the partner is its live counterpart.

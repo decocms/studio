@@ -33,6 +33,7 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { CollectionSearch } from "@deco/ui/components/collection-search.tsx";
 import { Check, Globe02, Plus } from "@untitledui/icons";
 import {
+  getWellKnownDecopilotVirtualMCP,
   isDecopilot,
   useProjectContext,
   useVirtualMCPs,
@@ -238,10 +239,10 @@ function PinAgentPopoverContent({
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
 
   // Decopilot — the "all threads / every agent" option in scope-picker mode.
-  const decopilotAgent = agents.find((s) => isDecopilot(s.id));
+  // The well-known agent isn't in the collection list, so build it directly.
+  const decopilotAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const showDecopilot =
-    decopilotAgent &&
-    (!search || decopilotAgent.title.toLowerCase().includes(lowerSearch));
+    !search || decopilotAgent.title.toLowerCase().includes(lowerSearch);
 
   const selectAll = () => {
     onSelectAgent?.(null);
@@ -613,14 +614,6 @@ function PinAgentPopover({
     </>
   );
 }
-
-/**
- * BrowseAgentsButton — the "+" sidebar button that opens the Browse Agents
- * popover (desktop) / drawer (mobile). Re-exported from this module so other
- * sidebar surfaces can mount the trigger without depending on the full agents
- * list. Same component as PinAgentPopover.
- */
-export { PinAgentPopover as BrowseAgentsButton };
 
 /**
  * AgentScopePicker — the agent drawer, used from the toolbar breadcrumb as a
