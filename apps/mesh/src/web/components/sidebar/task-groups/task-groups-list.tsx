@@ -52,7 +52,10 @@ type TypeFilter = "all" | "manual" | "automation";
 type GroupBy = "flat" | "status";
 
 /** Toolbar icon button with the shared dark tooltip (matches the collapsed
- * rail's SidebarMenuButton tooltip). `active` gives the pressed/highlighted look. */
+ * rail's SidebarMenuButton tooltip). `active` gives the pressed/highlighted look.
+ *
+ * Open state is driven purely by hover/focus (not Radix's defaults) so a click
+ * doesn't dismiss the tooltip while the pointer is still over the button. */
 function ToolbarTooltipButton({
   label,
   onClick,
@@ -64,12 +67,17 @@ function ToolbarTooltipButton({
   active?: boolean;
   children: ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <Tooltip>
+    <Tooltip open={open}>
       <TooltipTrigger asChild>
         <ToolbarIconButton
           aria-label={label}
           onClick={onClick}
+          onPointerEnter={() => setOpen(true)}
+          onPointerLeave={() => setOpen(false)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
           className={cn(active && "bg-sidebar-accent text-foreground")}
         >
           {children}
