@@ -4,10 +4,10 @@
  *
  * - **deco**  — the product logo, links to `/` (the cross-org "MY deco" home).
  * - **org**   — the active organization; opens the org switcher popover.
- * - **agent** — the active agent, always shown (Decopilot by default). Opens the
- *   agent picker (the drawer the sidebar used to host); selecting an agent
- *   scopes the sidebar thread list to it, Decopilot = all threads. Inside a
- *   thread it snaps to that thread's agent.
+ * - **agent** — the active agent, always shown (Decopilot by default). The
+ *   avatar opens the agent's home; the label opens the agent picker. Inside a
+ *   thread it snaps to that thread's agent. The sidebar always lists every
+ *   thread regardless of the active agent.
  *
  * Renders inside `Toolbar.LeftColumn` — see `org-shell-layout`.
  */
@@ -44,26 +44,52 @@ const crumbBtnClass =
   "wco-no-drag inline-flex items-center gap-1.5 min-w-0 rounded-md px-1.5 py-1 text-sm text-foreground hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 
 /**
- * Agent crumb contents — resolves the active agent (thread's agent when inside a
- * thread, else the sidebar scope, else Decopilot). Suspends on the vMCP fetch,
- * so it's wrapped in its own boundary and never blocks the rest of the toolbar.
+ * Agent crumb — resolves the active agent (thread's agent when inside a thread,
+ * else Decopilot). The avatar navigates to the agent's home (its empty "New
+ * chat", or a fresh one); the label + chevron open the agent picker. Suspends on
+ * the vMCP fetch, so it's wrapped in its own boundary and never blocks the toolbar.
  */
-function AgentCrumbLabel({ agentId }: { agentId: string }) {
+function AgentCrumb({
+  agentId,
+  onOpenHome,
+  onPick,
+}: {
+  agentId: string;
+  onOpenHome: () => void;
+  onPick: (id: string | null) => void;
+}) {
   const entity = useVirtualMCP(agentId);
   const title = entity?.title ?? "Decopilot";
   return (
-    <>
-      <AgentAvatar
-        icon={(entity?.icon as string | null) ?? null}
-        name={title}
-        size="2xs"
+    <div className="flex items-center gap-0.5">
+      <button
+        type="button"
+        onClick={onOpenHome}
+        aria-label={`Open ${title} home`}
+        className="wco-no-drag flex items-center shrink-0 rounded-md p-1 hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <AgentAvatar
+          icon={(entity?.icon as string | null) ?? null}
+          name={title}
+          size="2xs"
+        />
+      </button>
+      <AgentScopePicker
+        side="bottom"
+        align="start"
+        selectedAgentId={agentId}
+        onSelectAgent={onPick}
+        trigger={
+          <button type="button" className={crumbBtnClass}>
+            <span className="truncate font-medium max-w-[10rem]">{title}</span>
+            <ChevronDown
+              size={14}
+              className="shrink-0 text-muted-foreground opacity-70"
+            />
+          </button>
+        }
       />
-      <span className="truncate font-medium max-w-[10rem]">{title}</span>
-      <ChevronDown
-        size={14}
-        className="shrink-0 text-muted-foreground opacity-70"
-      />
-    </>
+    </div>
   );
 }
 
@@ -94,9 +120,15 @@ export function ShellBreadcrumb() {
     }
     // Open the agent's existing empty "New chat" if it has one, else start one.
     // Either way you land in a chat with that agent and the sidebar scopes to
-    // it — one new chat per agent, no pile-up.
+    // it — one new chat per agent, no pile-up. A thread that has already run
+    // (failed / completed / expired / requires_action) isn't a fresh home even
+    // though it keeps the "New chat" title — skip it so a fresh chat opens.
     const existing = threads.find(
-      (t) => !t.hidden && t.virtual_mcp_id === id && t.title === "New chat",
+      (t) =>
+        !t.hidden &&
+        t.virtual_mcp_id === id &&
+        t.title === "New chat" &&
+        (!t.status || t.status === "in_progress"),
     );
     if (existing) {
       setTaskId(existing.id, id);
@@ -108,12 +140,13 @@ export function ShellBreadcrumb() {
   return (
     <Breadcrumb className="wco-no-drag">
       <BreadcrumbList className="flex-nowrap">
-        {/* deco → MY deco home */}
+        {/* deco → org home */}
         <BreadcrumbItem>
           <Link
-            to="/"
-            aria-label="MY deco — all your threads"
-            title="MY deco"
+            to="/$org"
+            params={{ org: org.slug }}
+            aria-label="Organization home"
+            title="Home"
             className="wco-no-drag flex items-center shrink-0 cursor-pointer rounded-md px-1 hover:bg-accent/60 transition-colors"
           >
             <Toolbar.Logo />
@@ -143,25 +176,19 @@ export function ShellBreadcrumb() {
 
         <BreadcrumbSeparator />
 
-        {/* agent → scope picker (Decopilot = all threads) */}
+        {/* agent → avatar opens the agent home, label opens the picker */}
         <BreadcrumbItem>
-          <AgentScopePicker
-            side="bottom"
-            align="start"
-            selectedAgentId={activeAgentId}
-            onSelectAgent={handlePickAgent}
-            trigger={
-              <button type="button" className={crumbBtnClass}>
-                <Suspense
-                  fallback={
-                    <span className="h-4 w-16 rounded bg-muted animate-pulse" />
-                  }
-                >
-                  <AgentCrumbLabel agentId={activeAgentId} />
-                </Suspense>
-              </button>
+          <Suspense
+            fallback={
+              <span className="h-4 w-24 rounded bg-muted animate-pulse" />
             }
-          />
+          >
+            <AgentCrumb
+              agentId={activeAgentId}
+              onOpenHome={() => handlePickAgent(activeAgentId)}
+              onPick={handlePickAgent}
+            />
+          </Suspense>
         </BreadcrumbItem>
       </BreadcrumbList>
     </Breadcrumb>

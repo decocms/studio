@@ -9,9 +9,6 @@ import {
   LayoutLeft,
   Rows01,
   SearchSm,
-  User01,
-  Users01,
-  Zap,
 } from "@untitledui/icons";
 import {
   Tooltip,
@@ -19,6 +16,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@deco/ui/components/popover.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@deco/ui/components/toggle-group.tsx";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -85,6 +91,43 @@ function ToolbarTooltipButton({
       </TooltipTrigger>
       <TooltipContent side="bottom">{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/** One labelled segmented control (View / Type / Scope) in the filter popover. */
+function FilterRow<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: T;
+  onChange: (value: T) => void;
+  options: { value: T; label: string; icon?: ReactNode }[];
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <ToggleGroup
+        type="single"
+        size="sm"
+        value={value}
+        onValueChange={(v) => v && onChange(v as T)}
+        className="gap-0.5 rounded-lg border border-border bg-muted/50 p-0.5"
+      >
+        {options.map((opt) => (
+          <ToggleGroupItem
+            key={opt.value}
+            value={opt.value}
+            className="h-6 gap-1.5 rounded-md border border-transparent px-2 text-xs font-medium text-muted-foreground hover:bg-transparent data-[state=on]:border-border data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+          >
+            {opt.icon}
+            {opt.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </div>
   );
 }
 
@@ -179,15 +222,10 @@ export function TaskGroupsList({
   const myThreadsAll = mineFiltered(sortedThreads);
   const myThreads = typeFiltered(myThreadsAll);
   const allThreadsFiltered = typeFiltered(sortedThreads);
-  const memberScoped = showAll ? allThreadsFiltered : myThreads;
-
-  // Agent scope is URL-driven: inside a thread the sidebar shows that thread's
-  // agent's threads; on the org home it shows everything. Decopilot = all.
-  const filterAgentId = activeTaskId ? activeAgentId : null;
-  const visibleScopedThreads =
-    filterAgentId && filterAgentId !== decopilotId
-      ? memberScoped.filter((t) => t.virtual_mcp_id === filterAgentId)
-      : memberScoped;
+  // The sidebar always shows every thread (subject to the type/scope/view
+  // filters) regardless of which agent is open — the agent's own filtered
+  // threads live on its home view.
+  const visibleScopedThreads = showAll ? allThreadsFiltered : myThreads;
 
   const handleArchive = (task: Task) => {
     // Archiving hides a thread org-wide, so it must be owner-only — the UI
@@ -306,12 +344,65 @@ export function TaskGroupsList({
     );
   }
 
-  // Two-state toggle: all tasks ↔ only automations.
-  const toggleAutomations = () => {
-    const next: TypeFilter = typeFilter === "automation" ? "all" : "automation";
-    track("tasks_panel_filter_changed", { to_value: next });
-    setTypeFilter(next);
-  };
+  const filtersActive =
+    groupBy !== "flat" || typeFilter !== "all" || showAll === true;
+
+  const filterPopover = (
+    <Popover>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <ToolbarIconButton
+              aria-label="Filter threads"
+              active={filtersActive}
+            >
+              <FilterLines size={16} />
+              {filtersActive && (
+                <span className="absolute right-1 top-1 size-1.5 rounded-full bg-primary ring-2 ring-sidebar" />
+              )}
+            </ToolbarIconButton>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Filter threads</TooltipContent>
+      </Tooltip>
+      <PopoverContent align="start" className="w-64 flex flex-col gap-3 p-3">
+        <FilterRow
+          label="View"
+          value={groupBy}
+          onChange={(v) => {
+            track("tasks_panel_group_by_changed", { to_value: v });
+            setGroupBy(v);
+          }}
+          options={[
+            { value: "flat", label: "List", icon: <Rows01 size={13} /> },
+            { value: "status", label: "Status", icon: <Activity size={13} /> },
+          ]}
+        />
+        <FilterRow
+          label="Type"
+          value={typeFilter}
+          onChange={(v) => {
+            track("tasks_panel_filter_changed", { to_value: v });
+            setTypeFilter(v);
+          }}
+          options={[
+            { value: "all", label: "All" },
+            { value: "manual", label: "Chats" },
+            { value: "automation", label: "Auto" },
+          ]}
+        />
+        <FilterRow
+          label="Scope"
+          value={showAll ? "team" : "mine"}
+          onChange={(v) => setShowAll(v === "team")}
+          options={[
+            { value: "mine", label: "Mine" },
+            { value: "team", label: "Team" },
+          ]}
+        />
+      </PopoverContent>
+    </Popover>
+  );
 
   const toolbar = (mobile: boolean) => (
     <TooltipProvider delayDuration={300}>
@@ -321,43 +412,10 @@ export function TaskGroupsList({
           mobile ? "h-10" : "h-10 md:h-7 mb-2",
         )}
       >
-        {/* Left: toggle + view filters. */}
+        {/* Left: toggle + filter popover. */}
         <div className="flex items-center gap-0.5">
           {!mobile && <SidebarTriggerButton />}
-          {/* Tooltip reflects the current view mode. */}
-          <ToolbarTooltipButton
-            label={groupBy === "flat" ? "Show all threads" : "Group by status"}
-            active={groupBy === "status"}
-            onClick={() => {
-              const next: GroupBy = groupBy === "flat" ? "status" : "flat";
-              track("tasks_panel_group_by_changed", { to_value: next });
-              setGroupBy(next);
-            }}
-          >
-            {groupBy === "flat" ? <Rows01 size={16} /> : <Activity size={16} />}
-          </ToolbarTooltipButton>
-          {!mobile && (
-            <ToolbarTooltipButton
-              label={
-                typeFilter === "automation" ? "Only Automations" : "All tasks"
-              }
-              active={typeFilter === "automation"}
-              onClick={toggleAutomations}
-            >
-              {typeFilter === "automation" ? (
-                <Zap size={16} />
-              ) : (
-                <FilterLines size={16} />
-              )}
-            </ToolbarTooltipButton>
-          )}
-          <ToolbarTooltipButton
-            label={showAll ? "Show Team Threads" : "Show My Threads"}
-            active={showAll}
-            onClick={() => setShowAll((v) => !v)}
-          >
-            {showAll ? <Users01 size={16} /> : <User01 size={16} />}
-          </ToolbarTooltipButton>
+          {filterPopover}
         </div>
         {/* Right: search + new thread. */}
         <div className="flex items-center gap-0.5">
@@ -400,6 +458,7 @@ export function TaskGroupsList({
             hasMore={hasMore}
             isFetchingMore={isFetchingMore}
             onLoadMore={() => void fetchNextPage()}
+            filtersActive={filtersActive}
           />
         </ScrollFade>
         {searchEverOpened && (
@@ -427,6 +486,7 @@ export function TaskGroupsList({
             hasMore={hasMore}
             isFetchingMore={isFetchingMore}
             onLoadMore={() => void fetchNextPage()}
+            filtersActive={filtersActive}
           />
         </ScrollFade>
       </div>

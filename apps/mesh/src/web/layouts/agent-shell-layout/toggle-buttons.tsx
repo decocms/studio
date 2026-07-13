@@ -1,10 +1,5 @@
 import { MessageCircle01 } from "@untitledui/icons";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { track } from "@/web/lib/posthog-client";
 
 export interface ToggleButtonsProps {
@@ -27,26 +22,29 @@ export function ToggleButtons({
   disableChatToggle = false,
 }: ToggleButtonsProps) {
   return (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <ToolbarIconButton
-          onClick={() => {
-            if (disableChatToggle) return;
-            track("agent_toolbar_toggled", {
-              button: "chat",
-              next_state: !chatOpen ? "open" : "closed",
-            });
-            toggleChat();
-          }}
-          disabled={disableChatToggle}
-          aria-pressed={chatOpen}
-          aria-label="Chat"
-          active={chatOpen}
-        >
-          <MessageCircle01 size={16} />
-        </ToolbarIconButton>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">Chat</TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      onClick={() => {
+        if (disableChatToggle) return;
+        track("agent_toolbar_toggled", {
+          button: "chat",
+          next_state: !chatOpen ? "open" : "closed",
+        });
+        toggleChat();
+      }}
+      disabled={disableChatToggle}
+      aria-pressed={chatOpen}
+      aria-label="Chat"
+      className={cn(
+        "wco-no-drag inline-flex h-10 md:h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50",
+        chatOpen
+          ? "bg-sidebar-accent text-sidebar-foreground"
+          : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+      )}
+    >
+      <MessageCircle01 size={16} />
+      <span>Chat</span>
+    </button>
   );
 }

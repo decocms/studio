@@ -76,7 +76,6 @@ export default function OrgShellLayout() {
                 <Toolbar.Header>
                   <Toolbar.LeftColumn>
                     <ShellBreadcrumb />
-                    <Toolbar.TogglesSlot />
                   </Toolbar.LeftColumn>
                   <Toolbar.CenterSlot />
                   <Toolbar.RightColumn>
@@ -84,6 +83,7 @@ export default function OrgShellLayout() {
                       <Toolbar.TabsSlot />
                     </div>
                     <Toolbar.RightSlot />
+                    <Toolbar.TogglesSlot />
                   </Toolbar.RightColumn>
                 </Toolbar.Header>
               )}
