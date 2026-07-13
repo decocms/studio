@@ -138,6 +138,23 @@ test.describe("/api/_admin/*", () => {
     await ctx.dispose();
   });
 
+  test("an UNVERIFIED non-allowlisted user gets a plain 403, not the verification hint", async ({
+    playwright,
+  }) => {
+    // Pins the check ORDER in requireDeploymentAdmin: allowlist before
+    // emailVerified. Swapped, a random unverified signup would get the 401
+    // email_not_verified hint — leaking "this email would be an admin if
+    // verified" semantics to anyone. The verified variant above can't catch
+    // that; both orderings return 403 for it.
+    const ctx = await newApiContext(playwright);
+    await signUpViaApi(ctx); // fresh signups are unverified
+    const res = await ctx.get("/api/_admin/me");
+    expect(res.status()).toBe(403);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).not.toBe("email_not_verified");
+    await ctx.dispose();
+  });
+
   test("the raw better-auth admin surface is fenced off", async ({
     playwright,
   }) => {
@@ -248,7 +265,19 @@ test.describe("/api/_admin/*", () => {
     const body = (await res.json()) as {
       users: Array<{ id: string; email: string }>;
     };
-    expect(body.users.some((u) => u.id === target.userId)).toBe(true);
+    const targetRow = body.users.find((u) => u.id === target.userId);
+    expect(targetRow).toBeTruthy();
+    // Pin the wire contract: the handler projects to exactly these fields so
+    // admin-plugin columns (role, banned, banReason, ...) never leak. A
+    // regression to raw better-auth passthrough must fail here.
+    expect(Object.keys(targetRow as object).sort()).toEqual([
+      "createdAt",
+      "email",
+      "emailVerified",
+      "id",
+      "image",
+      "name",
+    ]);
 
     // The search merges an email probe and a NAME probe (better-auth searches
     // one field per call) — prove the name half works. Test names are unique
