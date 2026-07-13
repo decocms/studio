@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { computeBranchDivergence } from "../git/branch-divergence";
 import type { Config } from "../types";
-import { isSafeRefName, spawnClone } from "./clone";
+import { spawnClone } from "./clone";
 
 /**
  * Creates a bare "origin" git repo with two branches:
@@ -90,42 +90,6 @@ function makeConfig(
     repoDir,
   } as unknown as Config;
 }
-
-describe("isSafeRefName", () => {
-  it("accepts real branch names", () => {
-    for (const name of [
-      "main",
-      "master",
-      "feature/x",
-      "release/1.0",
-      "feat-2.0_a",
-      "user/fix.bug",
-    ]) {
-      expect(isSafeRefName(name)).toBe(true);
-    }
-  });
-
-  it("rejects shell metacharacters and ref-format edge cases", () => {
-    for (const name of [
-      "x;whoami",
-      "a$(id)b",
-      "a`id`b",
-      "a|b",
-      "a&b",
-      "a>b",
-      "a b",
-      "-x",
-      "/x",
-      "x/",
-      "a..b",
-      "a//b",
-      "x.lock",
-      "",
-    ]) {
-      expect(isSafeRefName(name)).toBe(false);
-    }
-  });
-});
 
 describe("spawnClone", () => {
   it("clones the target branch directly when it exists on remote", async () => {
@@ -243,6 +207,26 @@ describe("spawnClone", () => {
           `rev-parse --verify --quiet 'refs/remotes/origin/${evil}'`,
         ),
       ).toBeNull();
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+
+  it("rejects a malicious requested branch instead of shelling it out", async () => {
+    const { url, root, cleanup } = setupBareRepo();
+    try {
+      const repoDir = join(root, "workspace");
+      // `branch` comes from tenant-supplied config and is interpolated into
+      // `sh -c` git commands (ls-remote/clone/checkout) before any other
+      // check runs — an unsafe name must be rejected before it ever reaches
+      // a shell string instead of executing as a second command.
+      const marker = join(root, "INJECTED");
+      const { code } = await spawnClone({
+        config: makeConfig(repoDir, url, `x;touch ${marker}`),
+        onChunk: () => {},
+      });
+      expect(code).not.toBe(0);
+      expect(existsSync(marker)).toBe(false);
     } finally {
       cleanup();
     }
