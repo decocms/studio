@@ -2,8 +2,13 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "bun:test";
-import { denoCacheEnv, depsCacheEnv, resolveCloneUrl } from "./install";
+import { afterAll, describe, expect, it, test } from "bun:test";
+import {
+  denoCacheEnv,
+  depsCacheEnv,
+  installSteps,
+  resolveCloneUrl,
+} from "./install";
 import type { Config } from "../types";
 
 function configWith(cloneUrl?: string, pm?: string): Config {
@@ -176,5 +181,40 @@ describe("denoCacheEnv", () => {
       "/deps-cache",
     );
     expect(a?.DENO_DIR).toBe(b?.DENO_DIR);
+  });
+});
+
+describe("installSteps", () => {
+  test("bun repo → corepack(best-effort) then bun install with cwd + env", () => {
+    const steps = installSteps({
+      pm: "bun",
+      installRoot: "/repo/apps/site",
+      runtimePathDirs: ["/opt/bun/bin"],
+      cacheEnv: { BUN_INSTALL_CACHE_DIR: "/cache/bun/abc" },
+      userEnv: { FOO: "1" },
+      basePath: "/usr/bin",
+    });
+    expect(steps?.corepack.argv).toEqual(["corepack", "enable"]);
+    expect(steps?.install.argv).toEqual(["bun", "install"]);
+    expect(steps?.install.cwd).toBe("/repo/apps/site");
+    expect(steps?.install.env).toMatchObject({
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0",
+      BUN_INSTALL_CACHE_DIR: "/cache/bun/abc",
+      FOO: "1",
+    });
+    expect(steps?.install.env?.PATH?.startsWith("/opt/bun/bin")).toBe(true);
+  });
+
+  test("deno → null (no install step)", () => {
+    expect(
+      installSteps({
+        pm: "deno",
+        installRoot: "/r",
+        runtimePathDirs: [],
+        cacheEnv: null,
+        userEnv: undefined,
+        basePath: "/usr/bin",
+      }),
+    ).toBeNull();
   });
 });

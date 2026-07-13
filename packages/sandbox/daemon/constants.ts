@@ -55,25 +55,29 @@ export const BOOTSTRAP_SCRIPT = IFRAME_BOOTSTRAP_SCRIPT;
 // different things across Deno 1.x vs 2.x — both wrong here).
 export const PACKAGE_MANAGER_DAEMON_CONFIG: Record<
   string,
-  { install?: string; runPrefix: string; manifests: readonly string[] }
+  {
+    installArgv?: readonly string[];
+    runPrefix: string;
+    manifests: readonly string[];
+  }
 > = {
   npm: {
-    install: "npm install",
+    installArgv: ["npm", "install"],
     runPrefix: "npm run",
     manifests: ["package.json"],
   },
   pnpm: {
-    install: "pnpm install",
+    installArgv: ["pnpm", "install"],
     runPrefix: "pnpm run",
     manifests: ["package.json"],
   },
   yarn: {
-    install: "yarn install",
+    installArgv: ["yarn", "install"],
     runPrefix: "yarn run",
     manifests: ["package.json"],
   },
   bun: {
-    install: "bun install",
+    installArgv: ["bun", "install"],
     runPrefix: "bun run",
     manifests: ["package.json"],
   },
