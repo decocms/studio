@@ -603,7 +603,16 @@ function VolumeView({
   );
 }
 
-function LibraryPage() {
+export function LibraryPage({
+  onOpenFile: onOpenFileOverride,
+  onOpenSkill: onOpenSkillOverride,
+  onOpenBrand: onOpenBrandOverride,
+}: {
+  /** Override file-open behaviour (e.g. open as a panel tab instead of ?preview=). */
+  onOpenFile?: (previewPath: string) => void;
+  onOpenSkill?: (skillPath: string) => void;
+  onOpenBrand?: (brandPath: string) => void;
+} = {}) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -644,10 +653,15 @@ function LibraryPage() {
         [kind]: value,
       }),
     });
-  const onOpenFile = (previewPath: string) =>
-    openPreview("preview", previewPath);
-  const onOpenSkill = (skillPath: string) => openPreview("skill", skillPath);
-  const onOpenBrand = (brandPath: string) => openPreview("brand", brandPath);
+  const onOpenFile =
+    onOpenFileOverride ??
+    ((previewPath: string) => openPreview("preview", previewPath));
+  const onOpenSkill =
+    onOpenSkillOverride ??
+    ((skillPath: string) => openPreview("skill", skillPath));
+  const onOpenBrand =
+    onOpenBrandOverride ??
+    ((brandPath: string) => openPreview("brand", brandPath));
 
   // Global file search — cross-volume, so it lives above the browse
   // location and stays visible while inside any folder.

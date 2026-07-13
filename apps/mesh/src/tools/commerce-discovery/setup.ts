@@ -103,13 +103,25 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
     const virtualMcpId = getCommerceDiscoveryAgentId(organization.id);
 
     // Claim contact forwarded on /upgrade: Commerce Discovery emails this
-    // address when the run completes (the "generating" screen's promise),
-    // linking back to this workspace's onboarding report.
+    // address when the run completes (the "generating" screen's promise). The
+    // "diagnóstico completo" CTA must land on the report app view — NOT the
+    // /commerce-onboarding page. Build the exact URL the onboarding "open report"
+    // button navigates to (commerce-onboarding.tsx): /$org/$taskId with the vMCP
+    // selected and its report view pinned open. connectionId + virtualMcpId are
+    // deterministic per org, so the URL is fully known here at /upgrade time.
+    //   main="app:<connectionId>:<toolName>" — pinned-view tab grammar
+    //   (web/layouts/main-panel-tabs/tab-id.ts:formatPinnedViewTabId).
+    //   chat=0 keeps the chat panel closed (report-first), matching the button.
+    const reportSearch = new URLSearchParams({
+      virtualmcpid: virtualMcpId,
+      main: `app:${connectionId}:${REPORT_TOOL_NAME}`,
+      chat: "0",
+    });
     const claimContact = {
       email: ctx.auth.user?.email,
-      reportUrl: `${ctx.baseUrl}/commerce-onboarding?org=${encodeURIComponent(
+      reportUrl: `${ctx.baseUrl}/${encodeURIComponent(
         organization.slug ?? organization.id,
-      )}&siteUrl=${encodeURIComponent(normalized.value)}`,
+      )}/${crypto.randomUUID()}?${reportSearch.toString()}`,
     };
 
     let connection = await ctx.storage.connections.findById(

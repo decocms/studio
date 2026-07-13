@@ -103,7 +103,11 @@ import {
 } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { SandboxStateCard } from "@/web/components/sandbox/preview/state-card";
 import { derivePhaseProgress } from "@/web/components/sandbox/preview/derive-phase-progress";
-import { computePreviewState } from "@/web/components/sandbox/preview/preview-state";
+import {
+  computePreviewState,
+  type SandboxStartError,
+} from "@/web/components/sandbox/preview/preview-state";
+import { decodeSandboxStartError } from "@/shared/sandbox-start-errors";
 import {
   buildDuplicatePage,
   buildEmptyPage,
@@ -319,6 +323,10 @@ export function ContentBrowser() {
     previewUrl,
     appPaused: vmEvents.status.state === "paused",
     userStopped,
+    startError:
+      startVm.isError && startVm.error
+        ? decodeSandboxStartError(startVm.error.message)
+        : null,
   });
 
   if (sandboxState.kind !== "iframe") {
@@ -328,6 +336,7 @@ export function ContentBrowser() {
         claimPhase={vmEvents.phase}
         lifecycle={vmEvents.lifecycle}
         onStart={triggerStart}
+        connectionsHref={`/${org.slug}/settings/connections`}
       />
     );
   }
@@ -2730,11 +2739,16 @@ function SandboxStateRenderer({
   claimPhase,
   lifecycle,
   onStart,
+  connectionsHref,
 }: {
-  state: { kind: "starting" } | { kind: "suspended" };
+  state:
+    | { kind: "starting" }
+    | { kind: "suspended" }
+    | { kind: "errored"; error: SandboxStartError };
   claimPhase: ReturnType<typeof useSandboxEvents>["phase"];
   lifecycle: ReturnType<typeof useSandboxEvents>["lifecycle"];
   onStart: () => void;
+  connectionsHref?: string;
 }) {
   switch (state.kind) {
     case "starting":
@@ -2747,6 +2761,15 @@ function SandboxStateRenderer({
       );
     case "suspended":
       return <SandboxStateCard kind="suspended" onResume={onStart} />;
+    case "errored":
+      return (
+        <SandboxStateCard
+          kind="errored"
+          error={state.error}
+          onRetry={onStart}
+          connectionsHref={connectionsHref}
+        />
+      );
   }
 }
 

@@ -474,9 +474,6 @@ export default function SettingsLayout() {
             <Toolbar.LeftColumn>
               <Toolbar.LogoLink />
               {isMobile && <SidebarTriggerButton />}
-              <span className="hidden md:contents">
-                <Toolbar.Nav />
-              </span>
             </Toolbar.LeftColumn>
             <Toolbar.CenterSlot />
             <Toolbar.RightColumn>

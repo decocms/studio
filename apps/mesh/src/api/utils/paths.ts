@@ -14,6 +14,10 @@ export const SYSTEM_PATHS = {
   HEALTH_LIVE: "/health/live",
   HEALTH_READY: "/health/ready",
   METRICS: "/metrics",
+  // Cluster-internal only: no Service/Gateway routes to it (worker pods have
+  // neither), so it only answers on the pod's own port — for a KEDA
+  // metrics-api trigger or similar in-cluster poller.
+  DBOS_QUEUE_DEPTH_PREFIX: "/dbos-queue-depth/",
 } as const;
 
 /** Path prefixes for different route types (internal use only) */
@@ -45,7 +49,8 @@ function isSystemPath(path: string): boolean {
     path === SYSTEM_PATHS.HEALTH_LIVE ||
     path === SYSTEM_PATHS.HEALTH_READY ||
     path === SYSTEM_PATHS.METRICS ||
-    path.startsWith(PATH_PREFIXES.WELL_KNOWN)
+    path.startsWith(PATH_PREFIXES.WELL_KNOWN) ||
+    path.startsWith(SYSTEM_PATHS.DBOS_QUEUE_DEPTH_PREFIX)
   );
 }
 

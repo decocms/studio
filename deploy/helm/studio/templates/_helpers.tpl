@@ -282,6 +282,55 @@ Validates public NATS tunnel cluster-creds mount configuration.
 {{- end }}
 
 {{/*
+Whether the clickhouse-cluster subchart renders a ClickHouseCluster CR.
+*/}}
+{{- define "chart-deco-studio.clickhouseEnabled" -}}
+{{- $cl := index .Values "clickhouse-cluster" | default dict -}}
+{{- if and (dig "enabled" false $cl) (dig "clickhouse" "enabled" true $cl) -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{/*
+Name of the ClickHouseCluster CR the clickhouse-cluster subchart renders.
+Mirrors its clickhouse-cluster.clickhouse.name helper (meta.name, else
+release-scoped fullname) so CLICKHOUSE_URL can point at the operator-managed
+Service (<cr-name>-clickhouse-headless).
+*/}}
+{{- define "chart-deco-studio.clickhouseCrName" -}}
+{{- $cl := index .Values "clickhouse-cluster" | default dict -}}
+{{- $meta := dig "clickhouse" "meta" "name" "" $cl -}}
+{{- if $meta -}}
+{{- $meta | trunc 63 | trimSuffix "-" -}}
+{{- else if contains "clickhouse-cluster" .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-clickhouse-cluster" .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Validates the embedded ClickHouse operator/cluster configuration. The upstream
+operator chart only takes a static namespace list (no tpl), so scoping to the
+install namespace can't be derived — enforce it here, where the release
+namespace is known.
+*/}}
+{{- define "chart-deco-studio.validateClickhouse" -}}
+{{- $op := index .Values "clickhouse-operator" | default dict -}}
+{{- if dig "enabled" false $op }}
+{{- $watch := dig "controller" "watchNamespaces" (list) $op -}}
+{{- if not $watch }}
+{{- fail (printf "chart-deco-studio: set clickhouse-operator.controller.watchNamespaces=[%s] (this release's namespace) so the embedded operator only watches Studio's namespace. For a cluster-wide operator, install clickhouse-operator-helm separately and enable only clickhouse-cluster." .Release.Namespace) -}}
+{{- end }}
+{{- if and (eq (include "chart-deco-studio.clickhouseEnabled" .) "true") (not (has .Release.Namespace $watch)) }}
+{{- fail (printf "chart-deco-studio: clickhouse-operator.controller.watchNamespaces=%v does not include %q — the operator would never reconcile the ClickHouseCluster CR this chart renders." $watch .Release.Namespace) -}}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Formats OTEL headers map as key=value,key2=value2 format.
 */}}
 {{- define "chart-deco-studio.otelHeaders" -}}

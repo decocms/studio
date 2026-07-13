@@ -184,6 +184,49 @@ describe("chunk handling", () => {
     expect(msgs.at(-1)?.id).toBe("m-1");
   });
 
+  test("in-flight reply sorts after its user turn despite a client-ahead clock skew", async () => {
+    // The optimistic user row is stamped with the CLIENT clock; the streamed
+    // reply arrives carrying a SERVER-clock `metadata.created_at`. If the
+    // client is ahead of the server, the reply's timestamp predates the user's
+    // and it would sort AHEAD of its own turn — pairing then shows "No response
+    // was generated" on the turn that triggered the run. Regression guard.
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-skew", { client: null });
+    await new Promise((r) => setTimeout(r, 20));
+
+    await conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "u-2",
+          role: "user",
+          parts: [{ type: "text", text: "hi" }],
+        },
+      },
+      baseOpts,
+    );
+
+    // Server run-start metadata 5s in the PAST relative to the just-stamped
+    // client user row — simulates a client clock running ahead of the server.
+    const serverStart = new Date(Date.now() - 5_000).toISOString();
+    stream.enqueue({
+      type: "start",
+      messageId: "m-2",
+      messageMetadata: { created_at: serverStart },
+    });
+    stream.enqueue({ type: "text-start", id: "p-2" });
+    stream.enqueue({ type: "text-delta", id: "p-2", delta: "fresh" });
+    stream.enqueue({ type: "text-end", id: "p-2" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["u-2", "m-2"]);
+  });
+
   test("observer.onFinish fires once per run", async () => {
     const stream = controllableStream();
     globalThis.fetch = makeFetchMock({

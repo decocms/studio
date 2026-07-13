@@ -4,6 +4,7 @@ import {
   breadcrumbPathForActiveField,
   breadcrumbsForHeaderClick,
   buildArrayDrillDownBreadcrumb,
+  consumedBreadcrumbPrefix,
   fieldDisplayLabel,
   findBreadcrumbLabelIndex,
   isArrayDrillDownField,
@@ -311,6 +312,40 @@ describe("breadcrumbPathForActiveField", () => {
   });
 });
 
+describe("consumedBreadcrumbPrefix", () => {
+  test("returns the crumbs dropped from the front", () => {
+    expect(consumedBreadcrumbPrefix(["Banner", "Banner"], ["Banner"])).toEqual([
+      "Banner",
+    ]);
+  });
+
+  test("is empty when nothing was consumed", () => {
+    expect(consumedBreadcrumbPrefix(["Hello"], ["Hello"])).toEqual([]);
+    expect(consumedBreadcrumbPrefix([], [])).toEqual([]);
+  });
+
+  test("round-trips: prefix + relative trail reconstructs the full trail", () => {
+    const full = ["Banner", "Banner"];
+    const relative = breadcrumbPathForActiveField(
+      "banner",
+      {
+        title: "Banner",
+        type: "array",
+        items: { type: "object" },
+      } as SchemaProperty,
+      full,
+    );
+    // A child editing its own crumb reports the updated RELATIVE trail…
+    const childReported = ["Banner Sale"];
+    // …and re-prepending the consumed prefix must preserve the ancestor crumb,
+    // not collapse it (the array-label == item-label focus-loss bug).
+    expect([
+      ...consumedBreadcrumbPrefix(full, relative),
+      ...childReported,
+    ]).toEqual(["Banner", "Banner Sale"]);
+  });
+});
+
 describe("resolveArrayItemSelection", () => {
   const itemSchema = {
     type: "object",
@@ -344,6 +379,64 @@ describe("resolveArrayItemSelection", () => {
         itemSchema,
       ),
     ).toEqual({ index: 0, innerPath: ["Button"] });
+  });
+
+  test("selects item when its label equals the array label (alt-driven label)", () => {
+    // Array "Banner" whose single item is also labelled "Banner" (its label
+    // comes from `alt`). As long as the consumed prefix is preserved, the
+    // relative trail keeps the item crumb and resolution finds it.
+    const bannerItems = [{ alt: "Banner Sale" }];
+    const bannerSchema = {
+      type: "object",
+      properties: { alt: { type: "string", title: "Alt" } },
+    } as SchemaProperty;
+    expect(
+      resolveArrayItemSelection(
+        "Banner",
+        ["Banner Sale"],
+        bannerItems,
+        bannerSchema,
+        0,
+      ),
+    ).toEqual({ index: 0, innerPath: [] });
+  });
+
+  describe("duplicate labels (preferredIndex)", () => {
+    // Two items resolve to the same crumb — e.g. after Duplicate, or while
+    // editing a label field (alt/name/title) to a value a sibling already uses.
+    const dupItems = [{ title: "Hello" }, { title: "Hello" }];
+
+    test("without preferredIndex, first matching item wins", () => {
+      expect(
+        resolveArrayItemSelection("Cards", ["Hello"], dupItems, itemSchema),
+      ).toEqual({ index: 0, innerPath: [] });
+    });
+
+    test("keeps the opened item when its label collides with an earlier sibling", () => {
+      // Editing item 1 whose label just became equal to item 0's — selection
+      // must stay on 1, not snap back to 0 (the focus-loss bug).
+      expect(
+        resolveArrayItemSelection("Cards", ["Hello"], dupItems, itemSchema, 1),
+      ).toEqual({ index: 1, innerPath: [] });
+    });
+
+    test("ignores a preferredIndex whose label no longer matches the crumb", () => {
+      expect(
+        resolveArrayItemSelection(
+          "Cards",
+          ["Women's"],
+          items,
+          itemSchema,
+          0, // preferred item 0 is "Men's" — doesn't match, fall back to search
+        ),
+      ).toEqual({ index: 1, innerPath: [] });
+    });
+
+    test("ignores an out-of-range preferredIndex", () => {
+      expect(
+        resolveArrayItemSelection("Cards", ["Hello"], dupItems, itemSchema, 5),
+      ).toEqual({ index: 0, innerPath: [] });
+    });
   });
 });
 

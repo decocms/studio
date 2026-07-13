@@ -48,6 +48,8 @@ import { makeTitleResultChunk } from "../title-chunk";
 import { shouldGenerateTitle } from "../title-merge";
 import { createLanguageModel } from "./mesh-provider";
 import { genTitle } from "../title-generator";
+import { extractUserText } from "../cli-message-prep";
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { ChatMessage, HarnessStreamInput, ModelSelection } from "../types";
 import type {
   AssembledEngineHandle,
@@ -311,17 +313,36 @@ export async function* runDecopilotStream(
     currentThreadTitle: extras.currentThreadTitle,
     kind: extras.kind,
   });
-  const userMessageText = JSON.stringify(processedMessages[0]?.content ?? "");
+  // Extract the user-visible text (NOT the JSON-stringified parts array — that
+  // would leak `[{"type":"text",...}]` into the fallback title).
+  const userMessageText = extractUserText(processedMessages);
+  // Ordered fallback chain, fast/cheap first: a per-run title override, then
+  // fast → smart → thinking. Lazy factories: models are built only when
+  // genTitle actually tries them, and only when a title is needed — so a slot
+  // whose provider can't build a model just fails that attempt (rotating to
+  // the next / clean fallback) instead of crashing the whole run stream.
+  const titleModelChain = ((): Array<() => LanguageModelV3> => {
+    if (!needsTitle) return [];
+    const seen = new Set<string>();
+    const chain: Array<() => LanguageModelV3> = [];
+    const push = (
+      prov: MeshProvider,
+      sel: ModelSelection | null | undefined,
+    ) => {
+      if (!sel || seen.has(sel.id)) return;
+      seen.add(sel.id);
+      chain.push(() => createLanguageModel(prov, sel) as never);
+    };
+    push(titleProvider ?? provider, titleModel);
+    push(provider, input.models.fast);
+    push(provider, input.models.smart);
+    push(provider, input.models.thinking);
+    return chain;
+  })();
   const titleHandle = needsTitle
     ? genTitle({
         abortSignal: registrySignal,
-        model: createLanguageModel(
-          titleProvider ?? provider,
-          titleModel ??
-            input.models.fast ??
-            input.models.smart ??
-            input.models.thinking,
-        ) as never,
+        models: titleModelChain,
         userMessage: userMessageText,
       })
     : null;

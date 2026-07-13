@@ -796,6 +796,12 @@ import {
   setBackgroundToolRuntime,
 } from "@/harnesses/decopilot/background-tool-workflow";
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
+const DBOS_QUEUE_NAMES = new Set([
+  AUTOMATIONS_QUEUE,
+  THREAD_GATE_QUEUE,
+  HOSTED_HARNESS_QUEUE,
+  BACKGROUND_TOOLS_QUEUE,
+]);
 const getHandleOAuthProtectedResourceMetadata = () =>
   oAuthProtectedResourceMetadata(auth);
 const getHandleOAuthDiscoveryMetadata = () => oAuthDiscoveryMetadata(auth);
@@ -873,10 +879,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       init: async () => {},
       // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
       // `execute` actually runs to completion. Nothing is buffered;
-      // `createTailStream` returns null so /stream surfaces a 204 / 503
-      // to the client when NATS isn't available.
+      // `createTailStream` returns null so `dispatchRunAndWait` never takes
+      // the tail-wait branch that calls `pump()` — this stub only exists to
+      // satisfy the `StreamBuffer` interface (`disableNats` mode has no
+      // durable subject to race, so there's nothing to propagate here).
       pump: (stream: ReadableStream) => {
-        void (async () => {
+        return (async () => {
           const reader = stream.getReader();
           try {
             while (true) {
@@ -1210,6 +1218,22 @@ export async function createApp(options: CreateAppOptions = {}) {
       console.error("Failed to collect metrics:", error);
       return c.text("# Error collecting metrics", 500);
     }
+  });
+
+  // Backlog size (ENQUEUED count) for one DBOS queue, e.g. for a KEDA
+  // metrics-api trigger: `{ "queue_length": <n> }`. Restricted to the
+  // queues we actually register — DBOS.listQueuedWorkflows would happily
+  // query a made-up name and just return an empty list.
+  app.get(`${SYSTEM_PATHS.DBOS_QUEUE_DEPTH_PREFIX}:queueName`, async (c) => {
+    const queueName = c.req.param("queueName");
+    if (!DBOS_QUEUE_NAMES.has(queueName)) {
+      return c.json({ error: `Unknown queue: ${queueName}` }, 404);
+    }
+    const queued = await DBOS.listQueuedWorkflows({
+      queueName,
+      status: "ENQUEUED",
+    });
+    return c.json({ queue_length: queued.length });
   });
 
   // ============================================================================

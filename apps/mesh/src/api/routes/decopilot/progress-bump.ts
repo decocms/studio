@@ -47,14 +47,15 @@ export class ProgressBumpThrottle {
  * Tap a chunk stream so each chunk drives a THROTTLED `onBump()` call. Pure
  * pass-through: every chunk is forwarded unchanged; `onBump` is a
  * fire-and-forget side effect that must never block or fail the stream —
- * callers should swallow their own errors (see projector-workflow.ts and
- * dispatch-run.ts's `tapProgress`, which this mirrors for the
- * `ReadableStream`-shaped `chunkStream` used by project-chunks.ts).
+ * callers should swallow their own errors (see projector-workflow.ts, which
+ * drives this for the `ReadableStream`-shaped `chunkStream` used by
+ * project-chunks.ts).
  *
- * This is the desktop-run liveness heartbeat: desktop chunks go daemon → NATS
- * directly, so the projector's live chunk consumption is the only mesh
- * component that ever sees them — see the reaper's `RUN_IDLE_TIMEOUT_MS` in
- * run-registry.ts.
+ * This is the run's liveness heartbeat for BOTH topologies: desktop chunks
+ * go daemon → NATS directly, so the projector's live chunk consumption is
+ * the only mesh component that ever sees them; hosted runs are also
+ * live-tailed by the projector post-unification, so this one tap covers
+ * both — see the reaper's `RUN_IDLE_TIMEOUT_MS` in run-registry.ts.
  */
 export function tapProgressStream<T>(
   stream: ReadableStream<T>,

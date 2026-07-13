@@ -10,17 +10,9 @@
  * (info/exclude is local-only, unlike .gitignore). Never throws.
  */
 
-import {
-  appendFile,
-  lstat,
-  mkdir,
-  readFile,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { lstat, symlink } from "node:fs/promises";
 import { join } from "node:path";
-
-const EXCLUDE_LINE = "/org";
+import { ensureGitExclude } from "../git-exclude";
 
 export async function ensureRepoOrgLink(
   repoDir: string,
@@ -37,22 +29,9 @@ export async function ensureRepoOrgLink(
     } else {
       await symlink("../org", link);
     }
-    // Keep the link out of version control (no-op without a .git dir — the
-    // hook re-runs on every tool call, so the exclude lands once one exists).
-    const gitDir = join(repoDir, ".git");
-    const gitStat = await lstat(gitDir).catch(() => null);
-    if (!gitStat?.isDirectory()) return;
-    const excludePath = join(gitDir, "info", "exclude");
-    const existing = await readFile(excludePath, "utf8").catch(() => null);
-    if (existing === null) {
-      // Template-less clones (libgit2/JGit, bare templates) lack
-      // info/exclude; without it the shutdown `git add -A` would commit the
-      // link onto the user's branch.
-      await mkdir(join(gitDir, "info"), { recursive: true });
-      await writeFile(excludePath, `${EXCLUDE_LINE}\n`);
-    } else if (!existing.split("\n").includes(EXCLUDE_LINE)) {
-      await appendFile(excludePath, `${EXCLUDE_LINE}\n`);
-    }
+    // Keep the link out of version control so the shutdown `git add -A` never
+    // commits it to user branches.
+    await ensureGitExclude(repoDir, "/org");
   } catch (err) {
     log("repo org link failed", err);
   }

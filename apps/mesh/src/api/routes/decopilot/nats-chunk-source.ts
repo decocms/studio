@@ -3,7 +3,23 @@ import type { UIMessageChunk } from "ai";
 import { sleep } from "@decocms/std";
 import type { DecodedEvent, RawMsg } from "@decocms/harness/run-stream-codec";
 
-export const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
+/**
+ * Thrown by `natsChunkSource` when a pull produces no message within
+ * `idleTimeoutMs` — the subject went silent. Distinguishable via `instanceof`
+ * from any other error a downstream stage (decode/fence/dedup, persistence)
+ * might throw, so a caller can tell a TRUE liveness breach (nothing published
+ * at all) apart from a genuine projection failure (unified-control-plane T4:
+ * see `runProjectorWorkflowBody`'s catch in `projector-workflow.ts`, which
+ * maps this to `markRunFailed(kind: "liveness")` instead of `"projection"`).
+ * Carries the window that elapsed so the caller can render it (e.g. "no
+ * stream events for 10m") without threading the value through twice.
+ */
+export class StreamIdleTimeoutError extends Error {
+  constructor(public readonly idleTimeoutMs: number) {
+    super("producer produced no output before timeout");
+    this.name = "StreamIdleTimeoutError";
+  }
+}
 
 export function fenceFilter(
   runId: string,
@@ -83,11 +99,13 @@ export function projectorChunkStream(
         }
         lastSeq = ev.seq ?? lastSeq;
         controller.enqueue(ev.chunk);
-        if (ev.chunk.type === "finish") {
-          await reader.cancel();
-          release();
-          controller.close();
-        }
+        // Terminate only on the fenced `done` marker, never on the assistant
+        // `finish` chunk. Background title generation emits its transient
+        // `data-title-result` chunk AFTER `finish` on fast runs; the producer
+        // gives it a seq and the fenced done's `finalSeq` covers it. Closing at
+        // `finish` raced (and dropped) that title, leaving the thread on "New
+        // chat". The idle-timeout (StreamIdleTimeoutError) is the backstop for a
+        // producer that dies before publishing its done.
         return;
       }
     },
@@ -115,9 +133,18 @@ function iteratorFor<T>(
 /**
  * Shared NATS source: turns an iterable of raw run-stream messages into a
  * pull-based `ReadableStream<RawMsg>`. `idleTimeoutMs` (projector only) errors
- * the stream when a pull produces no message within the window; omit it for the
- * live tail, which stays open across silent gaps. `onCancel` (e.g. `sub.stop`)
- * fires once on cancel.
+ * the stream with `StreamIdleTimeoutError` when a pull produces no message
+ * within the window; omit it for the live tail, which stays open across
+ * silent gaps. `onCancel` (e.g. `sub.stop`) fires once on cancel.
+ *
+ * The idle window is per-PULL, not a single deadline for the whole stream:
+ * each `pull()` call below races a fresh `iterator.next()` against a fresh
+ * `sleep(idleTimeoutMs)`, and any message — a UI chunk, a status chunk, a
+ * future `data-liveness` heartbeat, literally anything the ReadableStream
+ * machinery hands back from `iterator.next()` — resolves that race and the
+ * NEXT `pull()` starts a brand-new window. So "no events of any kind for
+ * idleTimeoutMs" is exactly what trips this, not "no events since stream
+ * start" (unified-control-plane T4).
  */
 export function natsChunkSource(opts: {
   messages: AsyncIterable<RawMsg> | Iterable<RawMsg>;
@@ -154,9 +181,7 @@ export function natsChunkSource(opts: {
         .catch(() => "cancelled" as const);
       const result = await Promise.race([next, idle]);
       if (result === "idle") {
-        controller.error(
-          new Error("producer produced no output before timeout"),
-        );
+        controller.error(new StreamIdleTimeoutError(idleTimeoutMs));
         return;
       }
       if (result === "cancelled") return; // idle lost the race; loop again on next pull

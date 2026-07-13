@@ -297,6 +297,63 @@ describe("relayDispatchSSEAsChunkStream", () => {
     ]);
   }, 2000);
 
+  it("injects a seq-numbered data-liveness relay line during a silent dispatch gap (T6 liveness heartbeat)", async () => {
+    // Unlike the newline keepalive above, this heartbeat is a REAL relay
+    // line: it must consume the relay's own seq counter (the same one every
+    // ui-message-chunk/error/done event uses) so it rides the identical
+    // dedup/outbox contract and can reset the projector's idle window.
+    const sse = pushableSSEBody();
+    const heartbeatSeen = Promise.withResolvers<RelayLine>();
+    const lines: RelayLine[] = [];
+
+    const relayPromise = relayDispatchSSEAsChunkStream({
+      dispatchBody: sse.body,
+      runId: "run_hb_live",
+      // Tiny interval so the idle gap below trips a liveness heartbeat
+      // deterministically without waiting the real 30s production default.
+      livenessHeartbeatMs: 5,
+      post: async (body): Promise<RelayPostResult> => {
+        if (typeof body === "string") throw new Error("expected a stream");
+        for await (const line of ndjsonLines(body)) {
+          lines.push(line);
+          const chunk =
+            line.event.type === "ui-message-chunk"
+              ? (line.event.chunk as { type?: string } | undefined)
+              : undefined;
+          if (chunk?.type === "data-liveness") heartbeatSeen.resolve(line);
+        }
+        return { ok: true, lastSeq: lines.at(-1)?.seq ?? 0 };
+      },
+    });
+
+    // One real chunk, then stay idle so the pump's silence trips a
+    // liveness heartbeat.
+    sse.push(CHUNK_A);
+    const heartbeatLine = await heartbeatSeen.promise;
+    // The heartbeat consumed the NEXT real seq after CHUNK_A (seq 1) — not a
+    // side channel and not seq 1 again.
+    expect(heartbeatLine.seq).toBe(2);
+    expect(heartbeatLine.event).toEqual({
+      type: "ui-message-chunk",
+      chunk: {
+        type: "data-liveness",
+        data: { t: expect.any(Number) },
+        transient: true,
+      },
+    });
+
+    sse.push(DONE);
+    sse.close();
+    await relayPromise;
+
+    // Seqs are strictly increasing and the pump stops heartbeating once the
+    // dispatch ends: `done` is the terminal line, not followed by more
+    // heartbeats.
+    const seqs = lines.map((l) => l.seq);
+    expect(seqs).toEqual(seqs.map((_, i) => i + 1));
+    expect(lines.at(-1)!.event).toEqual(DONE);
+  }, 2000);
+
   it("reconnects after a dropped POST and resends the full buffered prefix", async () => {
     const sse = pushableSSEBody();
     const attempts: { fromSeq: number; lines: RelayLine[] }[] = [];

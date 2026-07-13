@@ -1,4 +1,5 @@
 import { gitSync } from "./git-sync";
+import { assertValidRemoteBranchName } from "./ref-name";
 
 /** Default branch pointed to by `origin/HEAD`, falling back to `main`. */
 export function resolveRemoteDefaultBranch(repoDir: string): string {
@@ -88,6 +89,12 @@ export async function spawnCheckoutBranch(
     }
 
     const defaultBranch = resolveRemoteDefaultBranch(repoDir);
+    // `defaultBranch` comes from the remote's own `origin/HEAD` symref (set by
+    // whoever controls that remote) and is interpolated into `sh -c` git
+    // commands below — git permits shell metacharacters (`;`, `$(…)`,
+    // backticks, …) in ref names, so an unvalidated value here is a command
+    // injection vector. Reject before it ever reaches a shell string.
+    assertValidRemoteBranchName(defaultBranch);
     log(
       `[orchestrator] branch '${branch}' not on remote; creating from default branch '${defaultBranch}'\r\n`,
     );

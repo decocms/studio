@@ -31,8 +31,32 @@ const REAP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
  * replaces the old absolute 30-min age cap so legitimate hours-long runs that
  * keep streaming are never killed (A1), while a flapping run that resumes but
  * makes no real progress still trips (A2).
+ *
+ * Exported (unified-control-plane T4): also the ONE idle window the gate-side
+ * consume path (`consume-run-projection.ts` → `natsChunkSource`) enforces on
+ * the live subject tail. The reaper watches `last_progress_at` (DB-level,
+ * cross-pod); the consume-side timer watches the subject directly
+ * (in-process, per-attempt) — two different enforcement points, but they must
+ * agree on the SAME window so neither fires meaningfully earlier/later than
+ * the other for the same stall. See `livenessFailureReason` in
+ * `projector-workflow.ts` for the consume-side terminal this produces.
+ *
+ * unified-control-plane T9: env-overridable so CI can prove the
+ * liveness-terminal path (executor dies mid-run → thread reaches `failed`
+ * with a "liveness" reason) without an e2e test waiting 10 real minutes.
+ * Read ONCE at module load — this is a fixed, process-wide knob, never a
+ * per-request parameter (same idiom as this directory's other module-level
+ * `process.env` trace flags, e.g. `dispatch-run.ts`'s `FINISH_TRACE`). Unset
+ * (every non-e2e environment, including production) keeps the 10-minute
+ * default unchanged. `packages/e2e/playwright.config.ts` sets
+ * `RUN_IDLE_TIMEOUT_MS` on the e2e webServer process only.
  */
-const RUN_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const RUN_IDLE_TIMEOUT_MS_OVERRIDE = Number(process.env.RUN_IDLE_TIMEOUT_MS);
+export const RUN_IDLE_TIMEOUT_MS =
+  Number.isFinite(RUN_IDLE_TIMEOUT_MS_OVERRIDE) &&
+  RUN_IDLE_TIMEOUT_MS_OVERRIDE > 0
+    ? RUN_IDLE_TIMEOUT_MS_OVERRIDE
+    : 10 * 60 * 1000; // 10 minutes
 
 /** Events that mark a new inflight run. */
 const INFLIGHT_START_EVENTS = new Set(["RUN_STARTED", "RUN_RESUMED"]);

@@ -61,6 +61,14 @@ export interface DispatchDeps {
   /** Dev escape hatch: allow `http://` loopback offload refs (same-host
    *  MinIO). false in production. */
   allowSameHostDev: boolean;
+  /** Fire-and-forget hook called with the run's MCP endpoint right after the
+   *  input is parsed. The daemon uses it to materialize the tool catalog into
+   *  the workspace so agents can script against tools from disk. Must not
+   *  throw or block; omitted in tests. */
+  onDispatchMcp?: (mcp: {
+    url: string;
+    headers: Record<string, string>;
+  }) => void;
 }
 
 export interface CancelDeps {
@@ -302,6 +310,9 @@ export async function handleDispatchRequest(
         // (spec: "Harness Input Contract" Q4 — containment by construction).
         const rebasedInput = rebaseHarnessInput(input);
 
+        // Materialize the org tool catalog into the workspace (best-effort).
+        if (rebasedInput.mcp?.url) deps.onDispatchMcp?.(rebasedInput.mcp);
+
         // 3. Tombstone check — a cancel may have landed first. Surface it as a
         //    terminal error rather than starting a doomed harness.
         const tombstoneExpiry = tombstones.get(runId);
@@ -383,6 +394,9 @@ export async function handleDispatchRequest(
   // Rebase the symbolic workspace cwd fields onto this daemon's sandbox root
   // (spec: "Harness Input Contract" Q4 — containment by construction).
   const rebasedInput = rebaseHarnessInput(input);
+
+  // Materialize the org tool catalog into the workspace (best-effort).
+  if (rebasedInput.mcp?.url) deps.onDispatchMcp?.(rebasedInput.mcp);
 
   // Tombstone check — a cancel landed before this dispatch did. Decline
   // and let the cluster surface a clear cancellation instead of starting

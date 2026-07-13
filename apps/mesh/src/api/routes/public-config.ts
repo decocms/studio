@@ -118,6 +118,13 @@ app.get("/", (c) => {
     },
   };
 
+  // No explicit Cache-Control previously meant browser/intermediary caching
+  // was left to default heuristics. version-check-dialog.tsx polls this on
+  // a timer specifically to detect drift — a cached response would return
+  // the same stale value forever, defeating the poll and (via a hard
+  // refresh clearing that cache) making a stuck dialog look like it only
+  // "fixes itself" after Cmd+Shift+R.
+  c.header("Cache-Control", "no-store");
   return c.json({ success: true, config });
 });
 

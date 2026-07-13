@@ -25,6 +25,8 @@ export {
   type VirtualMCPCreateData,
   type VirtualMCPUpdateData,
   type VirtualMCPConnection,
+  AgentKickstartPromptSchema,
+  type AgentKickstartPrompt,
   type KnowledgeFile,
   type VirtualMcpUILayout,
   type VirtualMcpUILayoutTab,

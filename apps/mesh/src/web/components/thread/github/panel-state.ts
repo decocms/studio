@@ -35,7 +35,6 @@ function idleClaimCopy(kind: ClaimPhase["kind"]): string | undefined {
 export type HeaderButton = {
   label: string;
   action?:
-    | "commit-and-push"
     | "create-pr"
     | "reopen"
     | "rebase"
@@ -47,6 +46,13 @@ export type HeaderButton = {
   loading?: boolean;
   variant: "default" | "outline" | "success" | "special";
   tooltip?: string;
+  /**
+   * When true, the header renders a persistent green "Publish" button beside
+   * the primary button (direct publish-to-base for deco-only changes). Set on
+   * the states with local work not yet merged, so the state machine — not the
+   * renderer — owns this affordance.
+   */
+  showPublishSide?: boolean;
   meta?: {
     failingChecks?: string[];
   };
@@ -171,10 +177,11 @@ export function selectHeaderButton(
 
   if (ready.workingTreeDirty) {
     return {
-      label: "Save changes",
-      action: "commit-and-push",
+      label: "Submit for review",
+      action: "create-pr",
       variant: "default",
-      tooltip: "Commit and push local changes",
+      tooltip: `Push and open a PR for ${ready.branch} → ${ready.base}`,
+      showPublishSide: true,
     };
   }
 
@@ -193,17 +200,19 @@ export function selectHeaderButton(
         action: "create-pr",
         variant: "default",
         tooltip: `Push and open a PR for ${ready.branch} → ${ready.base}`,
+        showPublishSide: true,
       };
     }
     return {
-      label: "Save changes",
-      action: "commit-and-push",
+      label: "Submit for review",
+      action: "create-pr",
       variant: "default",
-      tooltip: "Push local commits",
+      tooltip: `Push local commits to PR #${pr.number}`,
+      showPublishSide: true,
     };
   }
 
-  // Fall-through debug: why not Save changes?
+  // Fall-through debug: why no local work to submit?
   saveChangesDebug("no local work — checking PR/sync state", {
     workingTreeDirty: ready.workingTreeDirty,
     unpushed: ready.unpushed,
@@ -230,6 +239,7 @@ export function selectHeaderButton(
         action: "create-pr",
         variant: "special",
         tooltip: "Open a new PR with the latest commits",
+        showPublishSide: true,
       };
     }
     return {
@@ -255,6 +265,7 @@ export function selectHeaderButton(
         action: "create-pr",
         variant: "default",
         tooltip: `Open a PR for ${ready.branch} → ${ready.base}`,
+        showPublishSide: true,
       };
     }
 

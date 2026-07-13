@@ -10,21 +10,37 @@
  * connection-refused page when the link is down) is the displayed state.
  */
 
+import type { SandboxStartErrorCode } from "@/shared/sandbox-start-errors";
+
+export interface SandboxStartError {
+  code: SandboxStartErrorCode | null;
+  message: string;
+}
+
 export interface PreviewStateInput {
   previewUrl: string | null;
   /** Daemon reported its app as paused. */
   appPaused: boolean;
   /** User explicitly stopped the sandbox. */
   userStopped: boolean;
+  /** SANDBOX_START rejected (e.g. GitHub not authenticated) with no VM yet. */
+  startError: SandboxStartError | null;
 }
 
 export type PreviewState =
   | { kind: "starting" }
   | { kind: "suspended" }
+  | { kind: "errored"; error: SandboxStartError }
   | { kind: "iframe"; previewUrl: string };
 
 export function computePreviewState(input: PreviewStateInput): PreviewState {
   if (input.appPaused || input.userStopped) return { kind: "suspended" };
+  // A start error with no live VM is terminal: show it instead of spinning
+  // on the booting overlay forever. Once a previewUrl exists the running
+  // sandbox wins (a failed restart shouldn't blank a working preview).
+  if (input.startError && !input.previewUrl) {
+    return { kind: "errored", error: input.startError };
+  }
   if (!input.previewUrl) return { kind: "starting" };
   return { kind: "iframe", previewUrl: input.previewUrl };
 }

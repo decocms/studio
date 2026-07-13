@@ -312,6 +312,7 @@ export function useMainPanelTabs(ctx: {
     systemTabs.push({ id: "settings", title: "Settings" });
   }
   systemTabs.push({ id: "automations", title: "Automations" });
+  systemTabs.push({ id: "files", title: "Library" });
 
   // Merge pinned views + per-task expanded tools into a single list keyed
   // by the pinned-view tab id. Pinned views win on dedupe so the

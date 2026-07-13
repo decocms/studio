@@ -48,9 +48,10 @@ const LOADING_BRANCH_BUTTON: HeaderButton = {
 };
 
 /**
- * HeaderActions renders a single next-action button for the current branch +
- * PR state. Save changes opens the publish dialog; open-PR and squash-merge
- * call GitHub MCP tools directly. Other actions still send chat prompts.
+ * HeaderActions renders the next-action button for the current branch + PR
+ * state, plus a persistent green "Publish" button beside it while there is
+ * local work not yet merged. Submit-for-review and squash-merge call GitHub
+ * MCP tools directly (via the publish dialog); other actions send chat prompts.
  *
  * Mounted for `attached` and `detached` repos (see resolveGithubAttachment).
  * When attached the button always renders — disabled status pills (Loading…,
@@ -65,8 +66,8 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const chat = useChatStream();
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishDialogIntent, setPublishDialogIntent] = useState<
-    "publish" | "open-pr"
-  >("publish");
+    "open-pr" | "publish-only"
+  >("open-pr");
   const [githubActionPending, setGithubActionPending] = useState(false);
   const debugKeyRef = useRef("");
 
@@ -261,10 +262,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const onActivate = (action: HeaderButton["action"]) => {
     if (!action || !githubHeadBranch) return;
     switch (action) {
-      case "commit-and-push":
-        setPublishDialogIntent("publish");
-        setPublishOpen(true);
-        return;
       case "create-pr":
         setPublishDialogIntent("open-pr");
         setPublishOpen(true);
@@ -300,6 +297,17 @@ export function HeaderActions({ virtualMcpId }: Props) {
     }
   };
 
+  const onPublishSide = () => {
+    setPublishDialogIntent("publish-only");
+    setPublishOpen(true);
+  };
+
+  // The persistent green "Publish" button (publish-only dialog, single green
+  // button gated by isDecoOnlyDiff so code changes still require review) is
+  // owned by the panel-state descriptor — set on states with local work not
+  // yet merged, and never on merge-split (where the primary button IS publish).
+  const showPublishSide = button.showPublishSide ?? false;
+
   const actionBusy = githubActionPending || isStreaming;
 
   return (
@@ -309,6 +317,8 @@ export function HeaderActions({ virtualMcpId }: Props) {
         actionBusy={actionBusy}
         githubActionPending={githubActionPending}
         onActivate={onActivate}
+        showPublishSide={showPublishSide}
+        onPublishSide={onPublishSide}
         prNumber={pr?.number}
         prBase={pr?.base}
         onSquashMerge={handleSquashMerge}
@@ -340,7 +350,13 @@ export function HeaderActions({ virtualMcpId }: Props) {
               ? effectiveBranchMeta.headSha
               : null
           }
-          openPullRequest={pr?.state === "open" ? pr : null}
+          openPullRequest={
+            publishDialogIntent === "publish-only"
+              ? null
+              : pr?.state === "open"
+                ? pr
+                : null
+          }
           onPullRequestChanged={refreshPrState}
           onPublished={switchToFreshBranch}
         />
@@ -354,6 +370,8 @@ function HeaderButtonRenderer(props: {
   actionBusy: boolean;
   githubActionPending: boolean;
   onActivate: (action: HeaderButton["action"]) => void;
+  showPublishSide: boolean;
+  onPublishSide: () => void;
   prNumber?: number;
   prBase?: string;
   onSquashMerge: (pullNumber: number) => void | Promise<void>;
@@ -363,7 +381,6 @@ function HeaderButtonRenderer(props: {
   const chatBlocksAction =
     actionBusy &&
     button.action !== "create-pr" &&
-    button.action !== "commit-and-push" &&
     button.action !== "merge-split";
   const disabled =
     Boolean(button.disabled) ||
@@ -395,19 +412,33 @@ function HeaderButtonRenderer(props: {
   }
 
   return (
-    <WithTooltip label={tooltipLabel}>
-      <Button
-        size="sm"
-        variant={button.variant}
-        disabled={disabled}
-        onClick={() => {
-          if (button.action) props.onActivate(button.action);
-        }}
-      >
-        {loading ? <Spinner size="xs" variant="default" /> : null}
-        {button.label}
-      </Button>
-    </WithTooltip>
+    <div className="flex items-center gap-2">
+      <WithTooltip label={tooltipLabel}>
+        <Button
+          size="sm"
+          variant={button.variant}
+          disabled={disabled}
+          onClick={() => {
+            if (button.action) props.onActivate(button.action);
+          }}
+        >
+          {loading ? <Spinner size="xs" variant="default" /> : null}
+          {button.label}
+        </Button>
+      </WithTooltip>
+      {props.showPublishSide ? (
+        <WithTooltip label="Publish directly, skipping review">
+          <Button
+            size="sm"
+            variant="success"
+            disabled={props.githubActionPending}
+            onClick={props.onPublishSide}
+          >
+            Publish
+          </Button>
+        </WithTooltip>
+      ) : null}
+    </div>
   );
 }
 

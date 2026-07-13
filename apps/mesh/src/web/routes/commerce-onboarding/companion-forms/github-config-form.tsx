@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   Form,
   FormControl,
@@ -34,9 +35,21 @@ interface GithubSearchRepo {
   updated_at?: string;
 }
 
+/** Per-account search_repositories timeout — a hung/slow account is treated as a
+ *  failure (surfaced to the user) rather than blocking the picker forever. */
+const SEARCH_TIMEOUT_MS = 15_000;
+
 /** A plausible "owner/name" so we can offer any repo as a manual fallback even
  *  when the search index doesn't surface it. */
 const OWNER_NAME_RE = /^[\w.-]+\/[\w.-]+$/;
+
+interface RepoSearchResult {
+  repos: string[];
+  /** Installations whose search call failed (error/timeout/unparseable). */
+  failed: number;
+  /** Total installations searched. */
+  total: number;
+}
 
 /**
  * Search repos across the user's GitHub App installations. The GitHub search
@@ -44,54 +57,73 @@ const OWNER_NAME_RE = /^[\w.-]+\/[\w.-]+$/;
  * page-1 listing silently drops most repos of a large org (e.g. deco-sites has
  * 600+). Passing the typed query as an `in:name` filter is what makes an
  * arbitrary repo findable — this is the fix for repos that never appeared.
+ *
+ * Each account is searched independently (allSettled) and per-call timed out, so
+ * one slow/failing account doesn't blank the whole picker. The count of failed
+ * accounts is returned so the UI can WARN instead of implying "no repos exist"
+ * when the search actually errored or timed out.
  */
 async function searchRepos(
   selfCallTool: (req: {
     name: string;
     arguments: Record<string, unknown>;
   }) => Promise<unknown>,
-  companionCallTool: (req: {
-    name: string;
-    arguments: Record<string, unknown>;
-  }) => Promise<unknown>,
+  companionClient: Client,
   connectionId: string,
   query: string,
-): Promise<string[]> {
+): Promise<RepoSearchResult> {
   const { installations } = await fetchGithubInstallations(
     selfCallTool,
     connectionId,
   );
   const term = query.trim();
-  const perAccount = await Promise.all(
+  const settled = await Promise.allSettled(
     installations.map(async (inst) => {
       const qualifier = inst.type === "User" ? "user" : "org";
       const q = term
         ? `${qualifier}:${inst.login} ${term} in:name`
         : `${qualifier}:${inst.login}`;
-      const result = await companionCallTool({
-        name: "search_repositories",
-        arguments: { query: q, page: 1, perPage: 50 },
-      });
-      const content = (result as { content?: Array<{ text?: string }> })
-        .content?.[0]?.text;
-      if (!content) return [] as GithubSearchRepo[];
-      try {
-        const parsed = JSON.parse(content) as { items?: GithubSearchRepo[] };
-        return parsed.items ?? [];
-      } catch {
-        return [] as GithubSearchRepo[];
+      const result = await companionClient.callTool(
+        {
+          name: "search_repositories",
+          arguments: { query: q, page: 1, perPage: 50 },
+        },
+        undefined,
+        { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) },
+      );
+      const typed = result as {
+        isError?: boolean;
+        content?: Array<{ text?: string }>;
+      };
+      const content = typed.content?.[0]?.text;
+      // A tool-level error carries text but is NOT a valid payload — surface it
+      // as a failure instead of parsing it into an empty list.
+      if (typed.isError) {
+        throw new Error(content ?? "search_repositories failed");
       }
+      if (!content) throw new Error("empty search_repositories response");
+      const parsed = JSON.parse(content) as { items?: GithubSearchRepo[] };
+      return parsed.items ?? [];
     }),
   );
+
   const byName = new Map<string, GithubSearchRepo>();
-  for (const repo of perAccount.flat()) {
-    if (repo.full_name && !byName.has(repo.full_name)) {
-      byName.set(repo.full_name, repo);
+  let failed = 0;
+  for (const outcome of settled) {
+    if (outcome.status === "rejected") {
+      failed += 1;
+      continue;
+    }
+    for (const repo of outcome.value) {
+      if (repo.full_name && !byName.has(repo.full_name)) {
+        byName.set(repo.full_name, repo);
+      }
     }
   }
-  return Array.from(byName.values())
+  const repos = Array.from(byName.values())
     .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
     .map((repo) => repo.full_name);
+  return { repos, failed, total: installations.length };
 }
 
 export function GitHubConfigForm({
@@ -141,7 +173,7 @@ export function GitHubConfigForm({
     queryFn: () =>
       searchRepos(
         (req) => selfClient.callTool(req),
-        (req) => companionClient.callTool(req),
+        companionClient,
         connectionId,
         debouncedSearch,
       ),
@@ -200,7 +232,9 @@ export function GitHubConfigForm({
     form.setValue("githubRepo", selectedRepo);
   }
 
-  const results = reposQuery.data ?? [];
+  const results = reposQuery.data?.repos ?? [];
+  const failedAccounts = reposQuery.data?.failed ?? 0;
+  const totalAccounts = reposQuery.data?.total ?? 0;
   const trimmed = debouncedSearch.trim();
   // Guarantee any repo is selectable: if the search yields nothing but the term
   // is a valid owner/name, offer it directly (and always keep the currently
@@ -212,6 +246,18 @@ export function GitHubConfigForm({
   if (selectedRepo && !options.includes(selectedRepo)) {
     options.push(selectedRepo);
   }
+
+  // A partial failure (some accounts errored/timed out) may hide real repos; a
+  // total failure means the list is empty because the search broke, not because
+  // there are no repos. Warn in both cases instead of showing a silent empty.
+  const allAccountsFailed =
+    totalAccounts > 0 && failedAccounts === totalAccounts;
+  const searchWarning =
+    reposQuery.isError || allAccountsFailed
+      ? "Não foi possível buscar os repositórios (erro ou tempo esgotado). Tente novamente ou digite o repositório no formato owner/nome."
+      : failedAccounts > 0
+        ? "Parte da busca falhou — alguns repositórios podem não ter aparecido. Tente novamente ou digite owner/nome."
+        : null;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -235,40 +281,47 @@ export function GitHubConfigForm({
         <div className="flex min-h-[160px] items-center justify-center">
           <LoadingIndicator label="Carregando repositórios..." />
         </div>
-      ) : reposQuery.isError ? (
-        <p className="text-sm text-destructive">
-          Não foi possível carregar os repositórios do GitHub.
-        </p>
-      ) : options.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Nenhum repositório encontrado. Digite o nome do repositório
-          (owner/nome) para buscar.
-        </p>
       ) : (
-        <Form {...form}>
-          <FormField
-            control={form.control}
-            name="githubRepo"
-            render={({ field }) => (
-              <FormItem>
-                <FormControl>
-                  <SelectableList
-                    options={options.map((fullName) => ({
-                      value: fullName,
-                      label: fullName,
-                    }))}
-                    value={field.value}
-                    onChange={field.onChange}
-                    disabled={isPending}
-                    ariaLabel="Repositório"
-                    hideSearch
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </Form>
+        <>
+          {searchWarning && (
+            <p role="alert" className="text-sm text-destructive">
+              {searchWarning}
+            </p>
+          )}
+          {options.length === 0 ? (
+            !searchWarning && (
+              <p className="text-sm text-muted-foreground">
+                Nenhum repositório encontrado. Digite o nome do repositório
+                (owner/nome) para buscar.
+              </p>
+            )
+          ) : (
+            <Form {...form}>
+              <FormField
+                control={form.control}
+                name="githubRepo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <SelectableList
+                        options={options.map((fullName) => ({
+                          value: fullName,
+                          label: fullName,
+                        }))}
+                        value={field.value}
+                        onChange={field.onChange}
+                        disabled={isPending}
+                        ariaLabel="Repositório"
+                        hideSearch
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </Form>
+          )}
+        </>
       )}
 
       {saveMutation.error && (

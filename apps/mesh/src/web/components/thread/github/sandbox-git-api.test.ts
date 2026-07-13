@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  canPublishDirectly,
+  combinePublishDiffs,
+  hasGitLocalWork,
   hasLocalWorkToPush,
   hasUnpublishedWork,
   isDecoOnlyDiff,
+  PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
+  shouldUseBaseDiff,
   stripGeneratedFilesFromDiff,
   type GitDiffResult,
   type GitStatus,
@@ -169,5 +174,143 @@ describe("stripGeneratedFilesFromDiff", () => {
     };
     stripGeneratedFilesFromDiff(diff);
     expect(Object.keys(diff.diffs)).toEqual(["blocks.gen.json"]);
+  });
+});
+
+describe("hasGitLocalWork", () => {
+  test("false for null and a clean tree", () => {
+    expect(hasGitLocalWork(null)).toBe(false);
+    expect(hasGitLocalWork(cleanStatus)).toBe(false);
+  });
+
+  test("true for modified working-tree files", () => {
+    expect(hasGitLocalWork({ ...cleanStatus, modified: ["a.ts"] })).toBe(true);
+  });
+
+  test("true for staged files", () => {
+    expect(hasGitLocalWork({ ...cleanStatus, staged: ["a.ts"] })).toBe(true);
+  });
+
+  test("true for conflicted files", () => {
+    expect(hasGitLocalWork({ ...cleanStatus, conflicted: ["a.ts"] })).toBe(
+      true,
+    );
+  });
+
+  test("false when only ahead/unpushed (committed, clean tree)", () => {
+    expect(hasGitLocalWork({ ...cleanStatus, ahead: 2, unpushed: 2 })).toBe(
+      false,
+    );
+  });
+});
+
+describe("shouldUseBaseDiff", () => {
+  const opts = { openPrFromCommits: false, commitToOpenPr: false };
+
+  test("false when the working tree is dirty (show working-tree diff)", () => {
+    expect(
+      shouldUseBaseDiff(
+        { ...cleanStatus, modified: ["a.ts"], aheadOfBase: 3 },
+        opts,
+      ),
+    ).toBe(false);
+  });
+
+  test("true for a clean tree with commits ahead of base", () => {
+    expect(shouldUseBaseDiff({ ...cleanStatus, aheadOfBase: 2 }, opts)).toBe(
+      true,
+    );
+  });
+
+  test("true when opening a PR from existing commits", () => {
+    expect(
+      shouldUseBaseDiff(cleanStatus, {
+        openPrFromCommits: true,
+        commitToOpenPr: false,
+      }),
+    ).toBe(true);
+  });
+
+  test("false when committing to an already-open PR", () => {
+    expect(
+      shouldUseBaseDiff(
+        { ...cleanStatus, aheadOfBase: 2 },
+        { openPrFromCommits: false, commitToOpenPr: true },
+      ),
+    ).toBe(false);
+  });
+
+  test("false for a clean tree with nothing ahead of base", () => {
+    expect(shouldUseBaseDiff(cleanStatus, opts)).toBe(false);
+  });
+});
+
+describe("canPublishDirectly", () => {
+  const decoDiff: GitDiffResult = {
+    diffs: { ".deco/blocks/home.json": { from: "{}", to: "{}" } },
+  };
+  const codeDiff: GitDiffResult = {
+    diffs: { "routes/index.tsx": { from: "a", to: "b" } },
+  };
+
+  test("allows a deco-only payload", () => {
+    const gate = canPublishDirectly(decoDiff);
+    expect(gate.allowed).toBe(true);
+    expect(gate.reason).toBeNull();
+  });
+
+  test("blocks a payload containing code", () => {
+    const gate = canPublishDirectly(codeDiff);
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe(PUBLISH_REQUIRES_SUBMIT_TOOLTIP);
+  });
+
+  test("blocks an empty diff", () => {
+    expect(canPublishDirectly({ diffs: {} }).allowed).toBe(false);
+  });
+});
+
+describe("combinePublishDiffs (full publish payload = committed ∪ working)", () => {
+  const committedDeco: GitDiffResult = {
+    mergeBaseSha: "abc",
+    diffs: { ".deco/a.json": { from: "{}", to: "{}" } },
+  };
+  const workingDeco: GitDiffResult = {
+    diffs: { ".deco/b.json": { from: null, to: "{}" } },
+  };
+
+  test("unions committed and working-tree paths, keeps mergeBaseSha", () => {
+    const combined = combinePublishDiffs(committedDeco, workingDeco);
+    expect(Object.keys(combined.diffs).sort()).toEqual([
+      ".deco/a.json",
+      ".deco/b.json",
+    ]);
+    expect(combined.mergeBaseSha).toBe("abc");
+  });
+
+  test("handles null inputs", () => {
+    expect(combinePublishDiffs(null, null).diffs).toEqual({});
+  });
+
+  // The case users hit: an uncommitted deco edit on top of a committed deco
+  // change publishes directly, because the whole payload is deco-only.
+  test("allows deco committed + deco uncommitted", () => {
+    const gate = canPublishDirectly(
+      combinePublishDiffs(committedDeco, workingDeco),
+    );
+    expect(gate.allowed).toBe(true);
+  });
+
+  // The safety case: an uncommitted deco edit on top of a committed CODE change
+  // must still be blocked — the combined payload exposes the committed code.
+  test("blocks deco uncommitted sitting on committed code", () => {
+    const committedCode: GitDiffResult = {
+      diffs: { "routes/x.tsx": { from: "a", to: "b" } },
+    };
+    const gate = canPublishDirectly(
+      combinePublishDiffs(committedCode, workingDeco),
+    );
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe(PUBLISH_REQUIRES_SUBMIT_TOOLTIP);
   });
 });
