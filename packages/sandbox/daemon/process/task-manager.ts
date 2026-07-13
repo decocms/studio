@@ -458,6 +458,23 @@ export class TaskManager {
 
   private startPipe(task: TaskInternal): void {
     const isWin32 = process.platform === "win32";
+    let shell: string;
+    try {
+      shell = isWin32 ? resolveShell("bash") : "bash";
+    } catch (e) {
+      // resolveShell throws synchronously (ShellNotFoundError) when no
+      // usable shell can be found — mirror startPty's catch shape so the
+      // failure finalizes this task instead of propagating into the route
+      // handler (which would otherwise see an uncaught exception).
+      const msg = `spawn error: ${(e as Error).message}\n`;
+      task.stderr.append(msg);
+      task.tee.write(msg);
+      this.fanOut(task, { stream: "stderr", data: msg });
+      queueMicrotask(() =>
+        this.finalize(task, { exitCode: -1, timedOut: false }),
+      );
+      return;
+    }
     const opts: Parameters<typeof nodeSpawn>[2] = {
       cwd: task.spec.cwd,
       stdio: ["ignore", "pipe", "pipe"],
@@ -467,7 +484,6 @@ export class TaskManager {
       // instead allocates the child a new console, which we don't want.
       detached: !isWin32,
     };
-    const shell = isWin32 ? resolveShell("bash") : "bash";
     const child: ChildProcess = nodeSpawn(
       shell,
       ["-c", task.spec.command],

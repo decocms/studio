@@ -62,7 +62,24 @@ export interface PtySpawnOpts {
 }
 
 function ptyArgv(cmd: string | StructuredCommand): [string, string[]] {
-  if (isStructuredCommand(cmd)) return [cmd.argv[0], [...cmd.argv.slice(1)]];
+  if (isStructuredCommand(cmd)) {
+    const [exe, ...rest] = cmd.argv;
+    // win32: a bare command name (e.g. "git") is the same shape that made
+    // resolveShell() necessary for bash below — node-pty's ConPTY spawn
+    // doesn't reliably resolve it via PATH, so structured commands (git
+    // clone/fetch/checkout, …) can hit a spurious "File not found" even
+    // when the real executable IS on PATH. Resolve up front via Bun.which
+    // (same pattern already used for rclone in org-fs/sidecar-main.ts) so
+    // PATH search happens in a context known to work; fall back to the
+    // bare name — preserving today's behavior, including the legible
+    // "<exe> not found on PATH" error below — when Bun.which can't find it
+    // either.
+    if (process.platform === "win32") {
+      const resolved = Bun.which(exe);
+      if (resolved) return [resolved, rest];
+    }
+    return [exe, rest];
+  }
   // String command → needs a shell. win32 has no `sh`; resolveShell finds
   // Git Bash (or throws ShellNotFoundError legibly if it can't).
   if (process.platform === "win32") {

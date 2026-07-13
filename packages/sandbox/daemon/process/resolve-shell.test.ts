@@ -40,4 +40,38 @@ describe("resolveShell", () => {
       }),
     ).toThrow(ShellNotFoundError);
   });
+
+  test("win32 resolves Git Bash from a mingw64-shaped git install (3 ancestor levels)", () => {
+    expect(
+      resolveShell("bash", {
+        platform: "win32",
+        env: {},
+        exists: (p) => p === "C:\\Git\\bin\\bash.exe",
+        whichGit: () => "C:\\Git\\mingw64\\bin\\git.exe",
+      }),
+    ).toBe("C:\\Git\\bin\\bash.exe");
+  });
+
+  test("win32 tries every line of a multi-match `where git` output", () => {
+    expect(
+      resolveShell("bash", {
+        platform: "win32",
+        env: {},
+        exists: (p) => p === "C:\\Program Files\\Git\\bin\\bash.exe",
+        whichGit: () =>
+          "C:\\Users\\runner\\scoop\\shims\\git.exe\r\nC:\\Program Files\\Git\\cmd\\git.exe\r\n",
+      }),
+    ).toBe("C:\\Program Files\\Git\\bin\\bash.exe");
+  });
+
+  test("win32 falls back to the well-known default install path as a last resort", () => {
+    expect(
+      resolveShell("bash", {
+        platform: "win32",
+        env: {},
+        exists: (p) => p === "C:\\Program Files\\Git\\bin\\bash.exe",
+        whichGit: () => null,
+      }),
+    ).toBe("C:\\Program Files\\Git\\bin\\bash.exe");
+  });
 });
