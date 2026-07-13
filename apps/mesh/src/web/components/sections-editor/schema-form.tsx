@@ -23,6 +23,7 @@ import {
 } from "./page-variants";
 import {
   breadcrumbPathForActiveField,
+  consumedBreadcrumbPrefix,
   fieldDisplayLabel,
   resolveActiveFieldKey,
 } from "./schema-form-breadcrumb";
@@ -394,6 +395,24 @@ export function SchemaForm({
     activeKey && activeSchema
       ? breadcrumbPathForActiveField(activeKey, activeSchema, breadcrumbPath)
       : breadcrumbPath;
+  // `breadcrumbPathForActiveField` hands the active field a breadcrumb RELATIVE
+  // to itself (the crumbs it consumed are dropped from the front). The child
+  // reports changes through `onBreadcrumbChange`, which writes the GLOBAL trail,
+  // so we must re-prepend the crumbs we consumed — otherwise a child that
+  // rebuilds the trail (e.g. ArrayField.updateItem syncing an item's label as
+  // you type) drops the ancestor crumbs. That silent prefix loss is usually
+  // masked by label re-matching, but breaks when a consumed crumb equals the
+  // child's own crumb (e.g. an array labelled "Banner" whose only item is also
+  // labelled "Banner" because its label comes from `alt`): editing the label
+  // then collapses the trail and kicks you back to the list.
+  const consumedPrefix = consumedBreadcrumbPrefix(
+    breadcrumbPath,
+    fieldBreadcrumbPath,
+  );
+  const fieldOnBreadcrumbChange =
+    consumedPrefix.length > 0 && onBreadcrumbChange
+      ? (next: string[]) => onBreadcrumbChange([...consumedPrefix, ...next])
+      : onBreadcrumbChange;
   return (
     <div className="min-w-0 space-y-6">
       {visibleKeys.map((key) => {
@@ -409,7 +428,7 @@ export function SchemaForm({
           path: fieldPath,
           label,
           breadcrumbPath: fieldBreadcrumbPath,
-          onBreadcrumbChange,
+          onBreadcrumbChange: fieldOnBreadcrumbChange,
           meta,
           decofile,
           onSaveReferencedBlock,
