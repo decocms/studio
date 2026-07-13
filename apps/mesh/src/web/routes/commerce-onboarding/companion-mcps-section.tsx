@@ -121,9 +121,14 @@ function CompanionMcpsSectionContent({
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
   const normalizedSite = siteUrl ? normalizeCommerceSiteUrl(siteUrl) : null;
-  const siteHost = normalizedSite?.ok
-    ? new URL(normalizedSite.value).hostname
-    : undefined;
+  let siteHost: string | undefined;
+  if (normalizedSite?.ok) {
+    try {
+      siteHost = new URL(normalizedSite.value).hostname;
+    } catch {
+      siteHost = undefined;
+    }
+  }
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
