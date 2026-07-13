@@ -29,6 +29,7 @@ import { autodetectApplication } from "./autodetect";
 import { type CloneResult, spawnClone } from "./clone";
 import { emitInstalledDeps } from "./dep-metrics";
 import { publishGolden, pruneGoldens, tryRestoreGolden } from "./golden-cache";
+import { gitBaseArgv, gitStepEnv } from "./git-command";
 import { configureGitIdentity } from "./identity";
 import { denoCacheEnv, spawnInstall } from "./install";
 import { spawnSetupStep } from "./spawn-step";
@@ -677,13 +678,20 @@ export class SetupOrchestrator {
     const repoDir = this.deps.bootConfig.repoDir;
     if (!repoDir) return;
     const onChunk = (_src: "setup", data: string) => this.rawChunk(data);
-    const gc = `GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true git -c safe.directory='*' -c credential.helper= -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10 -C ${repoDir}`;
-
+    const askpassPath = await materializeAskpass(this.deps.logsDir);
+    const runGit = (args: readonly string[]) =>
+      spawnSetupStep(
+        {
+          argv: [...gitBaseArgv(), ...args],
+          env: gitStepEnv(askpassPath),
+          cwd: repoDir,
+        },
+        onChunk,
+      );
     await spawnCheckoutBranch({
       repoDir,
       branch,
-      gc,
-      runStep: (cmd) => spawnSetupStep(cmd, onChunk),
+      runGit,
       log: (message) => this.chunk(message),
     });
   }
