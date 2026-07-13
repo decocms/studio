@@ -92,6 +92,9 @@ export function buildCodexDefaultSettings(options?: CodexModelOptions) {
 
 /** Map composite model IDs to SDK model names. */
 const CODEX_SDK_MODELS: Record<string, string> = {
+  "codex:gpt-5.6-sol": "gpt-5.6-sol",
+  "codex:gpt-5.6-terra": "gpt-5.6-terra",
+  "codex:gpt-5.6-luna": "gpt-5.6-luna",
   "codex:gpt-5.5": "gpt-5.5",
   "codex:gpt-5.4": "gpt-5.4",
   "codex:gpt-5.4-mini": "gpt-5.4-mini",
