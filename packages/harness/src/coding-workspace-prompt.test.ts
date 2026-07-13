@@ -100,6 +100,23 @@ describe("buildCodingWorkspacePrompt", () => {
     );
   });
 
+  test("includes Deco CMS content rules regardless of workspace input", () => {
+    for (const input of [
+      undefined,
+      { workspaceKind: "local" as const },
+      {
+        repo: { owner: "deco", name: "site", connectedGithub: true },
+        workspaceKind: "github" as const,
+      },
+    ]) {
+      const prompt = buildCodingWorkspacePrompt(input);
+      expect(prompt).toContain(".deco/blocks/<encoded-key>.json");
+      expect(prompt).toContain("NEVER edit generated artifacts");
+      expect(prompt).toContain("blocks.gen.json");
+      expect(prompt).toContain("AGENTS.md");
+    }
+  });
+
   test("does not include Decopilot-only tool vocabulary", () => {
     const prompt = buildCodingWorkspacePrompt({
       repo: {
