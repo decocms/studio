@@ -57,4 +57,10 @@ jobs:
         # unset so the suite spawns the bundle built above via its own default
         # (`bun packages/sandbox/daemon/dist/daemon.js`) — the same contract
         # the POSIX job uses, just resolved via `bun` on PATH here too.
+        #
+        # shell: bash (Git Bash, preinstalled on windows-latest) — the default
+        # pwsh does NOT expand the `daemon*` glob, so bun received the literal
+        # pattern, matched zero files, and exited 1 (first-run triage). Bash
+        # expands it exactly like the ubuntu job.
+        shell: bash
         run: bun test packages/sandbox/daemon/daemon*.e2e.test.ts
