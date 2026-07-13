@@ -178,12 +178,19 @@ export function AnyOfField({
   // both label and key, so resolution still works.
   const outerCrumb = label ?? (path.includes(".") ? path.split(".")[0]! : path);
   const safeBreadcrumbPath = breadcrumbPath ?? [];
-  const nestedBreadcrumbPath =
-    isModuleLoaderUnion && safeBreadcrumbPath[0] === outerCrumb
-      ? safeBreadcrumbPath.slice(1)
-      : safeBreadcrumbPath;
+  // Strip our own crumb only when it's actually at the head. The parent
+  // SchemaForm may have already consumed it (via breadcrumbPathForActiveField)
+  // and now re-prepends it for us (via consumedBreadcrumbPrefix). Re-prepend
+  // SYMMETRICALLY — add the crumb back only when we stripped it here; otherwise
+  // the parent's re-prepend would double it (["Página de Listagem", "Página de
+  // Listagem", …]) when this loader union is the active narrowed field.
+  const strippedOwnCrumb =
+    isModuleLoaderUnion && safeBreadcrumbPath[0] === outerCrumb;
+  const nestedBreadcrumbPath = strippedOwnCrumb
+    ? safeBreadcrumbPath.slice(1)
+    : safeBreadcrumbPath;
   const nestedOnBreadcrumbChange: ((p: string[]) => void) | undefined =
-    isModuleLoaderUnion
+    strippedOwnCrumb
       ? (newPath) => {
           onBreadcrumbChange?.([outerCrumb, ...newPath]);
         }
