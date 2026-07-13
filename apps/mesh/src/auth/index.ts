@@ -124,7 +124,7 @@ const scopes = Object.values(getToolsByCategory())
  * re-check the email allowlist on every request. Without that fence a pushed id
  * could mint a persistent, restart-surviving admin via set-role.
  */
-export const deploymentAdminUserIds: string[] = [];
+const deploymentAdminUserIds: string[] = [];
 
 /**
  * Register a verified, allowlisted operator's id for the raw admin-plugin
