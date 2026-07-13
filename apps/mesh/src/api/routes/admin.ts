@@ -123,14 +123,16 @@ async function requireDeploymentAdmin(
   if (!user) {
     return c.json({ error: "Unauthorized" }, 401);
   }
-  if (!user.emailVerified) {
-    // Distinct code so the operator knows to verify their email, not that
-    // they're missing from the allowlist.
-    return c.json({ error: "email_not_verified" }, 401);
-  }
   const email = user.email?.toLowerCase();
   if (!email || !getSettings().deploymentAdminEmails.includes(email)) {
     return c.json({ error: "Forbidden" }, 403);
+  }
+  if (!user.emailVerified) {
+    // Allowlisted but unverified: distinct code so the operator knows to
+    // verify their email, not that they're missing from the allowlist.
+    // Checked AFTER the allowlist so a random (typically unverified) signup
+    // gets the plain 403, not a misleading "verify your email" hint.
+    return c.json({ error: "email_not_verified" }, 401);
   }
   grantDeploymentAdmin(user.id);
   return next();
