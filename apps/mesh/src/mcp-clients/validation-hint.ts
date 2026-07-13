@@ -60,9 +60,8 @@ export function enrichInvalidParams(
   if (!toolName) return err;
 
   const hint = buildValidationHint(toolName, schema, args);
-  return new McpError(
-    ErrorCode.InvalidParams,
-    `${err.message}\n\n${hint}`,
-    err.data,
-  );
+  // McpError's constructor re-adds the "MCP error <code>: " prefix, so strip
+  // the one already on err.message to avoid a doubled header.
+  const raw = err.message.replace(/^MCP error -?\d+: /, "");
+  return new McpError(ErrorCode.InvalidParams, `${raw}\n\n${hint}`, err.data);
 }

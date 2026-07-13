@@ -44,6 +44,8 @@ describe("enrichInvalidParams", () => {
     expect((enriched as McpError).message).toContain(
       "Missing required: startDate",
     );
+    // The SDK prefix must appear exactly once, not doubled.
+    expect((enriched as McpError).message).not.toContain("-32602: MCP error");
   });
 
   it("passes through non-InvalidParams errors untouched", () => {
