@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeCommerceSiteUrl } from "./site-url.ts";
+import {
+  isConnectionClaimedForSite,
+  normalizeCommerceSiteUrl,
+} from "./site-url.ts";
 
 describe("normalizeCommerceSiteUrl", () => {
   test("adds https to bare hostnames", () => {
@@ -98,5 +101,38 @@ describe("normalizeCommerceSiteUrl", () => {
         error: "Enter a valid website URL.",
       });
     }
+  });
+});
+
+describe("isConnectionClaimedForSite", () => {
+  test("trusts an existing claim when no site is requested (returning session)", () => {
+    expect(isConnectionClaimedForSite("", "https://a.com")).toBe(true);
+    expect(isConnectionClaimedForSite("   ", undefined)).toBe(true);
+  });
+
+  test("matches when the requested site equals the claimed site", () => {
+    expect(
+      isConnectionClaimedForSite("https://a.com/path", "https://a.com"),
+    ).toBe(true);
+  });
+
+  test("does not match when the requested site differs from the claimed site", () => {
+    expect(isConnectionClaimedForSite("https://b.com", "https://a.com")).toBe(
+      false,
+    );
+  });
+
+  test("does not match when nothing is claimed yet", () => {
+    expect(isConnectionClaimedForSite("https://a.com", undefined)).toBe(false);
+  });
+
+  test("a malformed non-empty request is NOT treated like an empty one", () => {
+    // Regression: both "" and "not-a-url" fail normalizeCommerceSiteUrl, but
+    // only the empty case should bypass the site-match check — otherwise a
+    // garbled ?siteUrl param would silently reuse whatever site the
+    // connection happens to already be claimed for.
+    expect(isConnectionClaimedForSite("not-a-url", "https://a.com")).toBe(
+      false,
+    );
   });
 });
