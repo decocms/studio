@@ -22,11 +22,15 @@ export function useConnectCompanion({
   org,
   userId,
   cdConnectionId,
+  domain,
+  siteUrl,
 }: {
   selfClient: Client;
   org: CompanionOrg;
   userId: string;
   cdConnectionId: string;
+  domain?: string;
+  siteUrl?: string;
 }) {
   const queryClient = useQueryClient();
   const [connectingFieldKey, setConnectingFieldKey] = useState<string | null>(
@@ -54,6 +58,8 @@ export function useConnectCompanion({
       app_name: card.title,
       field_key: card.fieldKey,
       organization_id: org.id,
+      domain,
+      site_url: siteUrl,
     };
     track("commerce_onboarding_companion_connect_clicked", basePayload);
     try {

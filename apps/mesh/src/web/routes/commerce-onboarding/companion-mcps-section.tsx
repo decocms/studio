@@ -1,3 +1,4 @@
+import { normalizeCommerceSiteUrl } from "@/commerce-discovery/site-url";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { ScrollReveal } from "@/web/components/scroll-reveal";
 import { authClient } from "@/web/lib/auth-client";
@@ -119,6 +120,10 @@ function CompanionMcpsSectionContent({
 }) {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
+  const normalizedSite = siteUrl ? normalizeCommerceSiteUrl(siteUrl) : null;
+  const siteHost = normalizedSite?.ok
+    ? new URL(normalizedSite.value).hostname
+    : undefined;
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -140,6 +145,8 @@ function CompanionMcpsSectionContent({
     org,
     userId,
     cdConnectionId,
+    domain: siteHost,
+    siteUrl,
   });
   const [autoOpenConfigFieldKey, setAutoOpenConfigFieldKey] = useState<
     string | null
