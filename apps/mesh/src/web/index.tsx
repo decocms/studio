@@ -276,10 +276,16 @@ const unifiedChatRoute = createRoute({
 });
 
 // Org index renders the home landing page (single-panel + HomePage), no
-// agent shell.
+// agent shell. `main` opens a side panel over the home (e.g. "files" = the
+// Library) without leaving `/$org`, mirroring the thread's main-panel tabs.
+const orgIndexSearchSchema = z.object({
+  main: z.string().optional(),
+});
+
 const orgIndexRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/",
+  validateSearch: orgIndexSearchSchema,
   component: lazyRouteComponent(() => import("./layouts/org-home/index.tsx")),
 });
 

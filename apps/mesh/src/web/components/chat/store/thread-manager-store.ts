@@ -178,6 +178,12 @@ export class ThreadManagerStore {
     return this.optimisticUpdate(id, { branch });
   }
 
+  /** Re-point an (unsent) thread at a different agent — updates the row's
+   * virtual_mcp_id so the sidebar icon follows the selected agent. */
+  setAgent(id: string, virtualMcpId: string): Promise<void> {
+    return this.optimisticUpdate(id, { virtual_mcp_id: virtualMcpId });
+  }
+
   /**
    * Local-only patch: apply a partial Task patch in-place. No server round-trip.
    * Used for live signals that don't flow through `/watch` (e.g. titles emitted

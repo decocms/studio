@@ -17,14 +17,12 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { ArrowLeft, Inbox01, Settings02, ZapSquare } from "@untitledui/icons";
+import { ArrowLeft, Inbox01, Settings02 } from "@untitledui/icons";
 import { useState, type ReactNode } from "react";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
-import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
-import { track } from "@/web/lib/posthog-client";
 import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item";
 import { JoinRequestItem } from "@/web/components/sidebar/footer/join-request-item";
 import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
@@ -182,64 +180,6 @@ function InboxIconButton() {
   );
 }
 
-function ConnectionsFullButton() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <SidebarMenuButton
-        tooltip="Connections"
-        onClick={() => {
-          track("connections_dialog_opened", {
-            source: "sidebar_footer",
-            mode: "browse",
-          });
-          setOpen(true);
-        }}
-      >
-        <ZapSquare />
-        <span>Connections</span>
-      </SidebarMenuButton>
-      <AddConnectionDialog
-        mode="browse"
-        open={open}
-        onOpenChange={setOpen}
-        defaultTab="all"
-      />
-    </>
-  );
-}
-
-function ConnectionsIconButton() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          <ToolbarIconButton
-            aria-label="Connections"
-            onClick={() => {
-              track("connections_dialog_opened", {
-                source: "sidebar_footer",
-                mode: "browse",
-              });
-              setOpen(true);
-            }}
-          >
-            <ZapSquare className="size-4" />
-          </ToolbarIconButton>
-        </TooltipTrigger>
-        <TooltipContent side="top">Connections</TooltipContent>
-      </Tooltip>
-      <AddConnectionDialog
-        mode="browse"
-        open={open}
-        onOpenChange={setOpen}
-        defaultTab="all"
-      />
-    </>
-  );
-}
-
 function SettingsFullButton() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
@@ -297,9 +237,6 @@ export function SidebarInboxFooter() {
             </div>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <ConnectionsFullButton />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
             <InboxFullButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -326,7 +263,6 @@ export function SidebarInboxFooter() {
         <SettingsIconButton />
         <InboxIconButton />
         <LinkedDesktopIndicator />
-        <ConnectionsIconButton />
         <SidebarTopActionsInline />
       </div>
     </SidebarFooter>

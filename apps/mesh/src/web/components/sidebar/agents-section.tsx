@@ -31,8 +31,9 @@ import {
 } from "@deco/ui/components/drawer.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { CollectionSearch } from "@deco/ui/components/collection-search.tsx";
-import { Globe02, Plus } from "@untitledui/icons";
+import { Check, Globe02, Plus } from "@untitledui/icons";
 import {
+  getWellKnownDecopilotVirtualMCP,
   isDecopilot,
   useProjectContext,
   useVirtualMCPs,
@@ -131,23 +132,35 @@ function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
 
 function AgentGridItem({
   agent,
+  selected,
   onClick,
 }: {
   agent: VirtualMCPEntity;
+  selected?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group"
+      className={cn(
+        "flex flex-col items-center gap-2 p-3 rounded-xl transition-colors cursor-pointer group",
+        selected ? "bg-accent" : "hover:bg-accent",
+      )}
     >
-      <AgentAvatar
-        icon={agent.icon}
-        name={agent.title}
-        size="md"
-        className="transition-transform group-hover:scale-105"
-      />
+      <div className="relative">
+        <AgentAvatar
+          icon={agent.icon}
+          name={agent.title}
+          size="md"
+          className="transition-transform group-hover:scale-105"
+        />
+        {selected && (
+          <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full border border-border bg-background">
+            <Check size={10} className="text-foreground" />
+          </span>
+        )}
+      </div>
       <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground line-clamp-2 w-full">
         {agent.title}
       </span>
@@ -159,10 +172,18 @@ function PinAgentPopoverContent({
   onClose,
   onOpenImportDeco,
   onOpenGithubImport,
+  onSelectAgent,
+  selectedAgentId,
 }: {
   onClose: () => void;
   onOpenImportDeco: () => void;
   onOpenGithubImport: () => void;
+  /** When provided (breadcrumb scope picker), selecting an agent sets the
+   * sidebar scope instead of opening a new task; `null` = all agents. The grid
+   * then leads with a Decopilot tile ("all threads") and marks the active one. */
+  onSelectAgent?: (id: string | null) => void;
+  /** The currently-scoped agent, for the check mark (picker mode). */
+  selectedAgentId?: string | null;
 }) {
   const [search, setSearch] = useState("");
   const allAgents = useVirtualMCPs();
@@ -190,7 +211,26 @@ function PinAgentPopoverContent({
     .filter((s) => !devAgentIds.has(s.id))
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
 
+  // Decopilot — the "all threads / every agent" option in scope-picker mode.
+  // The well-known agent isn't in the collection list, so build it directly.
+  const decopilotAgent = getWellKnownDecopilotVirtualMCP(org.id);
+  const showDecopilot =
+    !search || decopilotAgent.title.toLowerCase().includes(lowerSearch);
+
+  const selectAll = () => {
+    onSelectAgent?.(null);
+    onClose();
+    setSearch("");
+  };
+
   const handleSelect = (agent: VirtualMCPEntity) => {
+    // Scope-picker mode (breadcrumb): set the sidebar filter, don't open a task.
+    if (onSelectAgent) {
+      onSelectAgent(agent.id);
+      onClose();
+      setSearch("");
+      return;
+    }
     appendAgentToPersonalOrder(
       { orgId: org.id, userId: sidebarUserId },
       agent.id,
@@ -300,10 +340,24 @@ function PinAgentPopoverContent({
             </button>
           )}
 
+          {/* Scope-picker mode: Decopilot = all threads, every agent. */}
+          {onSelectAgent && showDecopilot && decopilotAgent && (
+            <AgentGridItem
+              agent={decopilotAgent}
+              selected={
+                !selectedAgentId || selectedAgentId === decopilotAgent.id
+              }
+              onClick={selectAll}
+            />
+          )}
+
           {userAgents.map((agent) => (
             <AgentGridItem
               key={agent.id}
               agent={agent}
+              selected={
+                onSelectAgent ? selectedAgentId === agent.id : undefined
+              }
               onClick={() => handleSelect(agent)}
             />
           ))}
@@ -331,7 +385,23 @@ function PinAgentPopoverContent({
   );
 }
 
-function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
+function PinAgentPopover({
+  compact = false,
+  trigger,
+  onSelectAgent,
+  selectedAgentId,
+  side = "right",
+  align = "start",
+}: {
+  compact?: boolean;
+  /** Custom trigger (e.g. the breadcrumb agent crumb); defaults to the "+" btn. */
+  trigger?: ReactElement;
+  /** Scope-picker mode: set the sidebar agent filter instead of opening a task. */
+  onSelectAgent?: (id: string | null) => void;
+  selectedAgentId?: string | null;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
+} = {}) {
   const [open, setOpen] = useState(false);
   const [importDecoOpen, setImportDecoOpen] = useState(false);
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
@@ -367,6 +437,8 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
           setGithubPickerOpen(true);
           handleClose();
         }}
+        onSelectAgent={onSelectAgent}
+        selectedAgentId={selectedAgentId}
       />
     </Suspense>
   );
@@ -375,7 +447,15 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
     <>
       {isMobile ? (
         <>
-          {compact ? (
+          {trigger ? (
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="contents"
+            >
+              {trigger}
+            </button>
+          ) : compact ? (
             wrapEmptyHint(
               <ToolbarIconButton
                 aria-label="Browse agents"
@@ -422,7 +502,9 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
             setOpen(next);
           }}
         >
-          {compact ? (
+          {trigger ? (
+            <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+          ) : compact ? (
             wrapEmptyHint(
               <PopoverTrigger asChild>
                 <ToolbarIconButton
@@ -450,8 +532,8 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
           )}
           <PopoverContent
             className="w-[380px] p-0 overflow-hidden"
-            side="right"
-            align="start"
+            side={side}
+            align={align}
           >
             {popoverContent}
           </PopoverContent>
@@ -470,9 +552,8 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
 }
 
 /**
- * BrowseAgentsButton — the "+" sidebar button that opens the Browse Agents
- * popover (desktop) / drawer (mobile). Re-exported from this module so other
- * sidebar surfaces can mount the trigger without depending on the full agents
- * list. Same component as PinAgentPopover.
+ * AgentScopePicker — the agent drawer, used from the toolbar breadcrumb as a
+ * scope selector (ordered list of rows, Decopilot first). Pass a `trigger` (the
+ * agent crumb) and `onSelectAgent`/`selectedAgentId`; `null` = all agents.
  */
-export { PinAgentPopover as BrowseAgentsButton };
+export { PinAgentPopover as AgentScopePicker };
