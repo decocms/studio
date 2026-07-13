@@ -46,4 +46,19 @@ describe("resolveClaudeCodeModelId", () => {
     });
     expect(resolveClaudeCodeModelId(entry!.modelId)).toBe("claude-sonnet-5");
   });
+
+  it("maps Codex desktop tiers to the GPT-5.6 default trio", () => {
+    expect(resolveAgentTier("codex", "thinking")).toEqual({
+      modelId: "codex:gpt-5.6-sol",
+      label: "GPT-5.6 Sol",
+    });
+    expect(resolveAgentTier("codex", "smart")).toEqual({
+      modelId: "codex:gpt-5.6-terra",
+      label: "GPT-5.6 Terra",
+    });
+    expect(resolveAgentTier("codex", "fast")).toEqual({
+      modelId: "codex:gpt-5.6-luna",
+      label: "GPT-5.6 Luna",
+    });
+  });
 });
