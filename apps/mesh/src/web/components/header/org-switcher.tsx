@@ -33,7 +33,7 @@ function getOrgColorStyle(name: string): {
   };
 }
 
-export function OrgIcon({
+function OrgIcon({
   org,
   size = "sm",
 }: {
