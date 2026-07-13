@@ -56,6 +56,42 @@ describe("applySandboxEvent", () => {
     expect(m.get("a")?.previewUrl).toBe("http://a.localhost:5174");
   });
 
+  it("carries projectName/branch/sandboxPath from a spawning event", () => {
+    const m = applySandboxEvent(empty(), {
+      handle: "agent-1-feat/x",
+      phase: "spawning",
+      projectName: "studio",
+      branch: "feat/x",
+      sandboxPath: "/tmp/deco/sandboxes/agent-1-feat/x",
+    });
+    expect(m.get("agent-1-feat/x")).toEqual(
+      expect.objectContaining({
+        status: "spawning",
+        projectName: "studio",
+        branch: "feat/x",
+        sandboxPath: "/tmp/deco/sandboxes/agent-1-feat/x",
+      }),
+    );
+  });
+
+  it("retains metadata across a follow-up event that omits it", () => {
+    let m = applySandboxEvent(empty(), {
+      handle: "a",
+      phase: "spawning",
+      projectName: "studio",
+      branch: "feat/x",
+    });
+    m = applySandboxEvent(m, { handle: "a", phase: "ready", port: 7 });
+    expect(m.get("a")).toEqual(
+      expect.objectContaining({
+        status: "ready",
+        port: 7,
+        projectName: "studio",
+        branch: "feat/x",
+      }),
+    );
+  });
+
   it("records the error on failure and retains the row", () => {
     let m = applySandboxEvent(empty(), { handle: "a", phase: "spawning" });
     m = applySandboxEvent(m, {
