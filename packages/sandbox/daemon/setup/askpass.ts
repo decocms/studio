@@ -1,4 +1,4 @@
-import { chmod, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export function askpassSpec(platform: NodeJS.Platform): {
@@ -19,6 +19,11 @@ export function askpassSpec(platform: NodeJS.Platform): {
 export async function materializeAskpass(dir: string): Promise<string> {
   const spec = askpassSpec(process.platform);
   const path = join(dir, spec.filename);
+  // Clone is the FIRST setup step — logsDir may not exist yet on a fresh
+  // boot (nothing else has written a log there at that point), so create it
+  // rather than assuming a LogTee beat us to it. Caught by the daemon e2e
+  // suite: writeFile ENOENT'd and every clone failed.
+  await mkdir(dir, { recursive: true });
   await writeFile(path, spec.content, "utf8");
   if (process.platform !== "win32") await chmod(path, 0o755);
   return path;
