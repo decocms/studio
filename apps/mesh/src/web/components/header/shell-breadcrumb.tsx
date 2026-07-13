@@ -1,16 +1,23 @@
 /**
- * Shell breadcrumb — primary org navigation in the toolbar: `deco › org › agent`.
+ * Shell breadcrumb — primary org/agent navigation in the toolbar:
+ * `deco › org › agent`.
  *
- * - **deco** — the product logo, links to `/` (the cross-org "MY deco" home).
- * - **org**  — the active organization; clicking opens the org switcher popover.
- * - **agent**— the current agent, shown only inside an agent/thread route.
+ * - **deco**  — the product logo, links to `/` (the cross-org "MY deco" home).
+ * - **org**   — the active organization; opens the org switcher popover.
+ * - **agent** — the active agent, always shown (Decopilot by default). Opens the
+ *   agent picker (the drawer the sidebar used to host); selecting an agent
+ *   scopes the sidebar thread list to it, Decopilot = all threads. Inside a
+ *   thread it snaps to that thread's agent.
  *
- * This replaces the sidebar-footer popover as the place you switch orgs (the
- * footer popover now carries account/settings only). Renders inside
- * `Toolbar.LeftColumn` — see `org-shell-layout`.
+ * Renders inside `Toolbar.LeftColumn` — see `org-shell-layout`.
  */
 import { Suspense } from "react";
-import { Link, useParams, useSearch } from "@tanstack/react-router";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "@tanstack/react-router";
 import { ChevronDown } from "@untitledui/icons";
 import {
   Breadcrumb,
@@ -18,53 +25,72 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from "@deco/ui/components/breadcrumb.tsx";
-import { useProjectContext, useVirtualMCP } from "@decocms/mesh-sdk";
+import {
+  getWellKnownDecopilotVirtualMCP,
+  useProjectContext,
+  useVirtualMCP,
+} from "@decocms/mesh-sdk";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import {
   OrgIcon,
   OrgSwitcherPopover,
 } from "@/web/components/header/org-switcher";
+import { AgentScopePicker } from "@/web/components/sidebar/agents-section";
+import { useAgentScope } from "@/web/components/sidebar/agent-scope-context";
 
 const crumbBtnClass =
   "wco-no-drag inline-flex items-center gap-1.5 min-w-0 rounded-md px-1.5 py-1 text-sm text-foreground hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 
 /**
- * Trailing agent crumb — resolves the agent entity from `?virtualmcpid` (the
- * same source the agent shell reads). Suspends on the collection fetch, so it's
- * wrapped in its own boundary and never blocks the rest of the toolbar.
+ * Agent crumb contents — resolves the active agent (thread's agent when inside a
+ * thread, else the sidebar scope, else Decopilot). Suspends on the vMCP fetch,
+ * so it's wrapped in its own boundary and never blocks the rest of the toolbar.
  */
-function AgentCrumb() {
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
-  const entity = useVirtualMCP(search.virtualmcpid ?? null);
-  // No explicit agent selected (default decopilot) → no crumb; the breadcrumb
-  // stays `deco › org` on a bare chat.
-  if (!entity) return null;
-  const title = entity.title ?? "Agent";
+function AgentCrumbLabel({ agentId }: { agentId: string }) {
+  const entity = useVirtualMCP(agentId);
+  const title = entity?.title ?? "Decopilot";
   return (
     <>
-      <BreadcrumbSeparator />
-      <BreadcrumbItem>
-        <span className="inline-flex items-center gap-1.5 min-w-0 px-1.5 py-1">
-          <AgentAvatar
-            icon={(entity.icon as string | null) ?? null}
-            name={title}
-            size="2xs"
-          />
-          <span className="truncate font-medium">{title}</span>
-        </span>
-      </BreadcrumbItem>
+      <AgentAvatar
+        icon={(entity?.icon as string | null) ?? null}
+        name={title}
+        size="2xs"
+      />
+      <span className="truncate font-medium max-w-[10rem]">{title}</span>
+      <ChevronDown
+        size={14}
+        className="shrink-0 text-muted-foreground opacity-70"
+      />
     </>
   );
 }
 
 export function ShellBreadcrumb() {
   const { org } = useProjectContext();
+  const navigate = useNavigate();
   const params = useParams({ strict: false }) as {
     org?: string;
     taskId?: string;
   };
-  const isAgentRoute = Boolean(params.taskId);
+  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
+  const { scopeAgentId, setScopeAgentId } = useAgentScope();
+
+  const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  // Inside a thread the crumb shows that thread's agent; on the home it shows
+  // the picked scope (Decopilot when none).
+  const activeAgentId = params.taskId
+    ? (search.virtualmcpid ?? decopilotId)
+    : (scopeAgentId ?? decopilotId);
+
+  const handlePickAgent = (id: string | null) => {
+    setScopeAgentId(id);
+    // Picking an agent scopes the list to it — leave any open thread so the
+    // filtered home list is what you see.
+    if (params.taskId) {
+      navigate({ to: "/$org", params: { org: org.slug } });
+    }
+  };
 
   return (
     <Breadcrumb className="wco-no-drag">
@@ -102,12 +128,28 @@ export function ShellBreadcrumb() {
           />
         </BreadcrumbItem>
 
-        {/* agent → only inside a thread */}
-        {isAgentRoute && (
-          <Suspense fallback={null}>
-            <AgentCrumb />
-          </Suspense>
-        )}
+        <BreadcrumbSeparator />
+
+        {/* agent → scope picker (Decopilot = all threads) */}
+        <BreadcrumbItem>
+          <AgentScopePicker
+            side="bottom"
+            align="start"
+            selectedAgentId={activeAgentId}
+            onSelectAgent={handlePickAgent}
+            trigger={
+              <button type="button" className={crumbBtnClass}>
+                <Suspense
+                  fallback={
+                    <span className="h-4 w-16 rounded bg-muted animate-pulse" />
+                  }
+                >
+                  <AgentCrumbLabel agentId={activeAgentId} />
+                </Suspense>
+              </button>
+            }
+          />
+        </BreadcrumbItem>
       </BreadcrumbList>
     </Breadcrumb>
   );

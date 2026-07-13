@@ -6,7 +6,7 @@ import {
   SidebarGroupContent,
   SidebarMenu,
 } from "@deco/ui/components/sidebar.tsx";
-import { BrowseAgentsButton } from "@/web/components/sidebar/browse-agents-button";
+import { NewThreadRailButton } from "@/web/components/sidebar/new-thread-rail-button";
 
 export function useProjectSidebarItems(): SidebarSection[] {
   const { org: _org } = useProjectContext();
@@ -23,7 +23,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
         <SidebarGroup className="pt-0 pr-0 pb-0 pl-0">
           <SidebarGroupContent>
             <SidebarMenu className="gap-1.5">
-              <BrowseAgentsButton />
+              <NewThreadRailButton />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

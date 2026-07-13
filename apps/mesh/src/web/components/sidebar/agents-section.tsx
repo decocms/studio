@@ -31,7 +31,7 @@ import {
 } from "@deco/ui/components/drawer.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { CollectionSearch } from "@deco/ui/components/collection-search.tsx";
-import { Globe02, Plus } from "@untitledui/icons";
+import { Check, Globe02, Plus } from "@untitledui/icons";
 import {
   isDecopilot,
   useProjectContext,
@@ -155,14 +155,61 @@ function AgentGridItem({
   );
 }
 
+/** Row form of an agent — used by the breadcrumb scope picker (list mode). */
+function AgentListRow({
+  title,
+  description,
+  icon,
+  selected,
+  onClick,
+}: {
+  title: string;
+  description?: string | null;
+  icon?: string | null;
+  selected?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left w-full transition-colors",
+        selected ? "bg-accent" : "hover:bg-accent/60",
+      )}
+    >
+      <AgentAvatar icon={icon} name={title} size="sm" className="shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{title}</p>
+        {description && (
+          <p className="text-xs text-muted-foreground truncate">
+            {description}
+          </p>
+        )}
+      </div>
+      {selected && (
+        <Check size={14} className="shrink-0 text-muted-foreground" />
+      )}
+    </button>
+  );
+}
+
 function PinAgentPopoverContent({
   onClose,
   onOpenImportDeco,
   onOpenGithubImport,
+  onSelectAgent,
+  selectedAgentId,
 }: {
   onClose: () => void;
   onOpenImportDeco: () => void;
   onOpenGithubImport: () => void;
+  /** When provided (breadcrumb scope picker), selecting an agent sets the
+   * sidebar scope instead of opening a new task; `null` = all agents. Renders
+   * an ordered list of rows (Decopilot first) rather than the create grid. */
+  onSelectAgent?: (id: string | null) => void;
+  /** The currently-scoped agent, for the check mark (picker mode). */
+  selectedAgentId?: string | null;
 }) {
   const [search, setSearch] = useState("");
   const allAgents = useVirtualMCPs();
@@ -190,7 +237,26 @@ function PinAgentPopoverContent({
     .filter((s) => !devAgentIds.has(s.id))
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
 
+  // Decopilot — the "all threads / every agent" option in scope-picker mode.
+  const decopilotAgent = agents.find((s) => isDecopilot(s.id));
+  const showDecopilot =
+    decopilotAgent &&
+    (!search || decopilotAgent.title.toLowerCase().includes(lowerSearch));
+
+  const selectAll = () => {
+    onSelectAgent?.(null);
+    onClose();
+    setSearch("");
+  };
+
   const handleSelect = (agent: VirtualMCPEntity) => {
+    // Scope-picker mode (breadcrumb): set the sidebar filter, don't open a task.
+    if (onSelectAgent) {
+      onSelectAgent(agent.id);
+      onClose();
+      setSearch("");
+      return;
+    }
     appendAgentToPersonalOrder(
       { orgId: org.id, userId: sidebarUserId },
       agent.id,
@@ -201,6 +267,57 @@ function PinAgentPopoverContent({
     setSearch("");
     navigateToNewTask(agent.id);
   };
+
+  // Scope-picker mode (breadcrumb): an ordered list of rows, Decopilot first.
+  if (onSelectAgent) {
+    return (
+      <div className="flex flex-col max-h-[min(560px,80dvh)]">
+        <CollectionSearch
+          value={search}
+          onChange={setSearch}
+          placeholder="Search agents..."
+        />
+        <div className="overflow-y-auto flex-1 min-h-0 p-1.5 flex flex-col gap-0.5">
+          {showDecopilot && decopilotAgent && (
+            <AgentListRow
+              title={decopilotAgent.title}
+              description="All threads, every agent"
+              icon={decopilotAgent.icon}
+              selected={
+                !selectedAgentId || selectedAgentId === decopilotAgent.id
+              }
+              onClick={selectAll}
+            />
+          )}
+          {userAgents.map((agent) => (
+            <AgentListRow
+              key={agent.id}
+              title={agent.title}
+              description={agent.description}
+              icon={agent.icon}
+              selected={selectedAgentId === agent.id}
+              onClick={() => handleSelect(agent)}
+            />
+          ))}
+          {userAgents.length === 0 && !showDecopilot && (
+            <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
+              {search ? "No agents found" : "No agents yet"}
+            </div>
+          )}
+        </div>
+        <div className="border-t border-border px-3 py-2.5">
+          <Link
+            to="/$org/settings/agents"
+            params={{ org: org.slug }}
+            onClick={() => onClose()}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center"
+          >
+            See all agents
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col max-h-[min(640px,80dvh)]">
@@ -331,7 +448,23 @@ function PinAgentPopoverContent({
   );
 }
 
-function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
+function PinAgentPopover({
+  compact = false,
+  trigger,
+  onSelectAgent,
+  selectedAgentId,
+  side = "right",
+  align = "start",
+}: {
+  compact?: boolean;
+  /** Custom trigger (e.g. the breadcrumb agent crumb); defaults to the "+" btn. */
+  trigger?: ReactElement;
+  /** Scope-picker mode: set the sidebar agent filter instead of opening a task. */
+  onSelectAgent?: (id: string | null) => void;
+  selectedAgentId?: string | null;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
+} = {}) {
   const [open, setOpen] = useState(false);
   const [importDecoOpen, setImportDecoOpen] = useState(false);
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
@@ -367,6 +500,8 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
           setGithubPickerOpen(true);
           handleClose();
         }}
+        onSelectAgent={onSelectAgent}
+        selectedAgentId={selectedAgentId}
       />
     </Suspense>
   );
@@ -375,7 +510,15 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
     <>
       {isMobile ? (
         <>
-          {compact ? (
+          {trigger ? (
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="contents"
+            >
+              {trigger}
+            </button>
+          ) : compact ? (
             wrapEmptyHint(
               <ToolbarIconButton
                 aria-label="Browse agents"
@@ -422,7 +565,9 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
             setOpen(next);
           }}
         >
-          {compact ? (
+          {trigger ? (
+            <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+          ) : compact ? (
             wrapEmptyHint(
               <PopoverTrigger asChild>
                 <ToolbarIconButton
@@ -450,8 +595,8 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
           )}
           <PopoverContent
             className="w-[380px] p-0 overflow-hidden"
-            side="right"
-            align="start"
+            side={side}
+            align={align}
           >
             {popoverContent}
           </PopoverContent>
@@ -476,3 +621,10 @@ function PinAgentPopover({ compact = false }: { compact?: boolean } = {}) {
  * list. Same component as PinAgentPopover.
  */
 export { PinAgentPopover as BrowseAgentsButton };
+
+/**
+ * AgentScopePicker — the agent drawer, used from the toolbar breadcrumb as a
+ * scope selector (ordered list of rows, Decopilot first). Pass a `trigger` (the
+ * agent crumb) and `onSelectAgent`/`selectedAgentId`; `null` = all agents.
+ */
+export { PinAgentPopover as AgentScopePicker };
