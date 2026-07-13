@@ -98,12 +98,25 @@ const DECOPILOT_TIER_DESCRIPTIONS: Record<ChatTier, string> = {
 export function resolveTierSubtitle(
   mode: AgentMode,
   tier: ChatTier,
+  /** Org `simple_mode.cli` override title for this harness/tier, when set. */
+  overrideTitle?: string | null,
 ): string | null {
   if (mode === "local-claude-code") {
-    return resolveAgentTier("claude-code", tier)?.label ?? null;
+    return (
+      overrideTitle ?? resolveAgentTier("claude-code", tier)?.label ?? null
+    );
   }
   if (mode === "local-codex") {
-    return resolveAgentTier("codex", tier)?.label ?? null;
+    return overrideTitle ?? resolveAgentTier("codex", tier)?.label ?? null;
   }
   return DECOPILOT_TIER_DESCRIPTIONS[tier];
+}
+
+/** Maps a chat mode to the CLI harness whose tier overrides apply, or null. */
+export function cliHarnessForMode(
+  mode: AgentMode,
+): "claude-code" | "codex" | null {
+  if (mode === "local-claude-code") return "claude-code";
+  if (mode === "local-codex") return "codex";
+  return null;
 }

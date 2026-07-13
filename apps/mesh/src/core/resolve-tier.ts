@@ -1,5 +1,10 @@
 import type { StudioContext } from "@/core/studio-context";
-import type { SimpleModeTier } from "@/tools/organization/schema";
+import type { ChatTier, SimpleModeTier } from "@/tools/organization/schema";
+import {
+  resolveAgentTier,
+  type AgentTierEntry,
+} from "@/ai-providers/agent-tiers";
+import type { CliHarnessId } from "@/storage/types";
 import {
   pickSimpleModeDefaults,
   type AiProviderKey,
@@ -178,6 +183,43 @@ export async function resolveSpecificModel(
     modelId,
     modelMeta: metaFromCatalogEntry(catalog, modelId),
   };
+}
+
+/**
+ * Resolve the model a local CLI harness (Claude Code / Codex) should run for a
+ * chat tier. Prefers the org's `simple_mode.cli` override, falling back to the
+ * hardcoded default in `resolveAgentTier`. Reads settings best-effort — a
+ * missing org, missing override, or a read failure all fall through to the
+ * default, so dispatch never fails on the CLI path.
+ */
+export async function resolveCliTier(
+  ctx: StudioContext,
+  harnessId: CliHarnessId,
+  tier: ChatTier,
+): Promise<AgentTierEntry> {
+  const fallback = resolveAgentTier(harnessId, tier);
+  if (!fallback) {
+    // Unreachable — resolveAgentTier is total over CLI harness × ChatTier.
+    throw new Error(
+      `No model mapping for harness "${harnessId}" tier "${tier}"`,
+    );
+  }
+
+  const orgId = ctx.organization?.id;
+  if (!orgId) return fallback;
+
+  try {
+    const settings = await ctx.storage.organizationSettings.get(orgId);
+    const slot = settings?.simple_mode?.cli?.[harnessId]?.[tier] ?? null;
+    if (!slot) return fallback;
+    return { modelId: slot.modelId, label: slot.title ?? slot.modelId };
+  } catch (err) {
+    console.warn(
+      `[resolveCliTier] override lookup failed for "${harnessId}"/"${tier}":`,
+      err,
+    );
+    return fallback;
+  }
 }
 
 export async function tryResolveTier(

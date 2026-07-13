@@ -9,6 +9,7 @@ import {
   useAiProviders,
 } from "@/web/hooks/collections/use-ai-providers";
 import { SimpleModeSection } from "./simple-mode-section";
+import { LocalModelsSection } from "./local-models-section";
 import { DecoCreditsHero } from "./deco-credits-hero";
 import { DecoNudgeCard } from "./deco-nudge-card";
 import { ConnectedProvidersSection } from "./connected-providers-section";
@@ -45,6 +46,9 @@ function OrgAiProvidersContent() {
           onSelect={setPendingProvider}
           onShowAll={() => setConnectOpen(true)}
         />
+        {/* Local CLI runtimes work without a cloud provider, so their tier
+            config is available even on the empty provider state. */}
+        <LocalModelsSection />
         <ConnectProviderDialog
           open={pendingProvider !== null || connectOpen}
           onOpenChange={(o) => {
@@ -64,6 +68,7 @@ function OrgAiProvidersContent() {
       <Suspense fallback={<Skeleton className="h-16 w-full" />}>
         <SimpleModeSection />
       </Suspense>
+      <LocalModelsSection />
       {hasDeco ? <DecoCreditsHero /> : <DecoNudgeCard />}
       <ConnectedProvidersSection onConnectClick={() => setConnectOpen(true)} />
       <ConnectProviderDialog open={connectOpen} onOpenChange={setConnectOpen} />

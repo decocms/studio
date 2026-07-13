@@ -145,8 +145,23 @@ export type SimpleModeTier =
   | "web_search"
   | "deep_research";
 
+/** Keyless slot for local CLI harnesses — the credential is desktop-side. */
+export interface CliModelSlot {
+  modelId: string;
+  title?: string;
+}
+
+export type CliHarnessId = "claude-code" | "codex";
+
+export interface CliTierConfig {
+  fast: CliModelSlot | null;
+  smart: CliModelSlot | null;
+  thinking: CliModelSlot | null;
+}
+
 export interface SimpleModeConfig {
   tiers: Record<SimpleModeTier, SimpleModeModelSlot | null>;
+  cli?: Partial<Record<CliHarnessId, CliTierConfig>>;
 }
 
 export interface DefaultHomeAgentsConfig {

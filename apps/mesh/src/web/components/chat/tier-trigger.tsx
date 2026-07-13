@@ -20,11 +20,13 @@ import {
 } from "@untitledui/icons";
 import type { ChatTier } from "@/tools/organization/schema";
 import {
+  cliHarnessForMode,
   resolveTierSubtitle,
   useAgentMode,
   useChatTier,
   useSetChatTier,
 } from "./use-agent-mode";
+import { useSimpleMode } from "@/web/hooks/use-organization-settings";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
 const TIER_LABELS: Record<ChatTier, string> = {
@@ -160,9 +162,15 @@ export function TierTrigger() {
   const tier = useChatTier();
   const setTier = useSetChatTier();
   const mode = useAgentMode();
+  const simpleMode = useSimpleMode();
 
-  const subtitleFor = (t: ChatTier): string | null =>
-    resolveTierSubtitle(mode, t);
+  const harness = cliHarnessForMode(mode);
+  const subtitleFor = (t: ChatTier): string | null => {
+    const overrideTitle = harness
+      ? (simpleMode.cli?.[harness]?.[t]?.title ?? null)
+      : null;
+    return resolveTierSubtitle(mode, t, overrideTitle);
+  };
 
   return (
     <TierTriggerPure

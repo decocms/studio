@@ -9,10 +9,10 @@ import { createHash } from "node:crypto";
 import type { StudioContext } from "@/core/studio-context";
 import {
   TierUnavailableError,
+  resolveCliTier,
   resolveTier,
   tryResolveTier,
 } from "@/core/resolve-tier";
-import { resolveAgentTier } from "@/ai-providers/agent-tiers";
 import type { ChatTier, SimpleModeTier } from "@/tools/organization/schema";
 import { posthog } from "@/posthog";
 import { consumeStream, createUIMessageStreamResponse } from "ai";
@@ -226,14 +226,9 @@ async function resolvePerRequestModels(
       tier === "fast" || tier === "smart" || tier === "thinking"
         ? tier
         : "smart";
-    const entry = resolveAgentTier(harnessId, chatTier);
-    if (!entry) {
-      // Should be unreachable — resolveAgentTier returns non-null for
-      // both supported CLI harnesses and every ChatTier value.
-      throw new Error(
-        `No model mapping for harness "${harnessId}" tier "${chatTier}"`,
-      );
-    }
+    // Prefer the org's `simple_mode.cli` override; falls back to the hardcoded
+    // default when unset.
+    const entry = await resolveCliTier(ctx, harnessId, chatTier);
     return {
       credentialId: `desktop:${harnessId}`,
       thinking: {

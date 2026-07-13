@@ -65,6 +65,27 @@ export const ChatTierSchema = z.enum(["fast", "smart", "thinking"]);
 
 export type ChatTier = z.infer<typeof ChatTierSchema>;
 
+/**
+ * Keyless model slot for local CLI harnesses (Claude Code / Codex). Unlike the
+ * cloud `ModelSlotSchema`, there is no `keyId` — the credential lives on the
+ * user's desktop link, not in an `ai_provider_keys` row.
+ */
+const CliModelSlotSchema = z
+  .object({
+    modelId: z.string(),
+    title: z.string().optional(),
+  })
+  .nullable();
+
+/** Per-harness fast/smart/thinking override for a local CLI runtime. */
+export const CliTierConfigSchema = z.object({
+  fast: CliModelSlotSchema,
+  smart: CliModelSlotSchema,
+  thinking: CliModelSlotSchema,
+});
+
+export type CliTierConfig = z.infer<typeof CliTierConfigSchema>;
+
 export const SimpleModeConfigSchema = z.object({
   tiers: z.object({
     fast: ModelSlotSchema,
@@ -74,6 +95,19 @@ export const SimpleModeConfigSchema = z.object({
     web_search: ModelSlotSchema,
     deep_research: ModelSlotSchema,
   }),
+  /**
+   * Optional per-harness tier→model overrides for local CLI runtimes. Absent
+   * (or a missing harness/tier) falls back to the hardcoded default in
+   * `resolveAgentTier`. Lives in the same JSON blob as `tiers` so no migration
+   * is needed.
+   */
+  cli: z
+    .object({
+      "claude-code": CliTierConfigSchema,
+      codex: CliTierConfigSchema,
+    })
+    .partial()
+    .optional(),
 });
 
 export type SimpleModeConfig = z.infer<typeof SimpleModeConfigSchema>;

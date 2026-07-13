@@ -1,6 +1,11 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { StudioContext } from "@/core/studio-context";
-import { resolveTier, TierUnavailableError } from "./resolve-tier";
+import type { SimpleModeConfig } from "@/storage/types";
+import {
+  resolveCliTier,
+  resolveTier,
+  TierUnavailableError,
+} from "./resolve-tier";
 
 interface ProviderKeyFixture {
   id: string;
@@ -175,5 +180,97 @@ describe("resolveTier", () => {
     const result = await resolveTier(ctx, "smart");
     expect(result.credentialId).toBe("k_live");
     expect(result.modelId).toBe("claude-sonnet-4-6");
+  });
+});
+
+function makeCliCtx(opts: {
+  simpleMode?: SimpleModeConfig | null;
+  orgId?: string | null;
+  getThrows?: boolean;
+}): StudioContext {
+  return {
+    organization:
+      opts.orgId === null ? undefined : { id: opts.orgId ?? "org_1" },
+    storage: {
+      organizationSettings: {
+        get: mock(() =>
+          opts.getThrows
+            ? Promise.reject(new Error("boom"))
+            : Promise.resolve(
+                opts.simpleMode ? { simple_mode: opts.simpleMode } : null,
+              ),
+        ),
+      },
+    },
+  } as unknown as StudioContext;
+}
+
+describe("resolveCliTier", () => {
+  it("returns the hardcoded default when no override is set", async () => {
+    const ctx = makeCliCtx({ simpleMode: null });
+    const entry = await resolveCliTier(ctx, "claude-code", "smart");
+    expect(entry.modelId).toBe("claude-code:sonnet");
+    expect(entry.label).toBe("Sonnet 5");
+  });
+
+  it("prefers the org override when present", async () => {
+    const ctx = makeCliCtx({
+      simpleMode: {
+        tiers: {
+          fast: null,
+          smart: null,
+          thinking: null,
+          image: null,
+          web_search: null,
+          deep_research: null,
+        },
+        cli: {
+          "claude-code": {
+            fast: null,
+            smart: { modelId: "claude-code:opus-1m", title: "Opus 4.8 1M" },
+            thinking: null,
+          },
+        },
+      },
+    });
+    const entry = await resolveCliTier(ctx, "claude-code", "smart");
+    expect(entry.modelId).toBe("claude-code:opus-1m");
+    expect(entry.label).toBe("Opus 4.8 1M");
+  });
+
+  it("falls back to default for a tier the override does not set", async () => {
+    const ctx = makeCliCtx({
+      simpleMode: {
+        tiers: {
+          fast: null,
+          smart: null,
+          thinking: null,
+          image: null,
+          web_search: null,
+          deep_research: null,
+        },
+        cli: {
+          codex: {
+            fast: { modelId: "codex:gpt-5.5", title: "GPT-5.5" },
+            smart: null,
+            thinking: null,
+          },
+        },
+      },
+    });
+    const entry = await resolveCliTier(ctx, "codex", "smart");
+    expect(entry.modelId).toBe("codex:gpt-5.4");
+  });
+
+  it("returns the default when there is no organization in context", async () => {
+    const ctx = makeCliCtx({ orgId: null });
+    const entry = await resolveCliTier(ctx, "codex", "fast");
+    expect(entry.modelId).toBe("codex:gpt-5.4-mini");
+  });
+
+  it("returns the default when the settings read fails", async () => {
+    const ctx = makeCliCtx({ getThrows: true });
+    const entry = await resolveCliTier(ctx, "claude-code", "thinking");
+    expect(entry.modelId).toBe("claude-code:opus-1m");
   });
 });

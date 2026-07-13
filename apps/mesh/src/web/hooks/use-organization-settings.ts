@@ -21,8 +21,23 @@ export interface ModelSlot {
   title?: string;
 }
 
+/** Keyless slot for local CLI harnesses (credential lives on the desktop). */
+export interface CliModelSlot {
+  modelId: string;
+  title?: string;
+}
+
+export type CliHarnessId = "claude-code" | "codex";
+
+export interface CliTierConfig {
+  fast: CliModelSlot | null;
+  smart: CliModelSlot | null;
+  thinking: CliModelSlot | null;
+}
+
 export interface SimpleModeConfig {
   tiers: Record<SimpleModeTier, ModelSlot | null>;
+  cli?: Partial<Record<CliHarnessId, CliTierConfig>>;
 }
 
 export interface RegistryConfig {
@@ -195,6 +210,7 @@ function normalizeSimpleMode(cfg: SimpleModeConfig | null): SimpleModeConfig {
       web_search: cfg.tiers.web_search ?? null,
       deep_research: cfg.tiers.deep_research ?? null,
     },
+    ...(cfg.cli ? { cli: cfg.cli } : {}),
   };
 }
 
