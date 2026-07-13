@@ -6,30 +6,53 @@ import {
 import { readFormValue } from "../harness/ct-utils";
 
 /**
- * Regression guard + visual evidence for the studio PR #4302 fix: the
- * deco-cms/blog app's ProductCard/ProductShelf editors must route through
- * the shared `DynamicOptionsField` (searchable combobox hitting the
- * `productsByTerm` loader), not a raw text input for the `platform:kind:id`
- * ref. Network calls are mocked at the `/deco/invoke/...` boundary so this
- * runs without a live sandbox VM or commerce integration.
+ * Regression guard for the studio PR #4302 fix: the deco-cms/blog app's
+ * ProductCard/ProductShelf editors must route through the shared
+ * `DynamicOptionsField` (searchable combobox hitting the `productsByTerm`
+ * loader), not a raw text input for the `platform:kind:id` ref.
+ *
+ * The mocked `/deco/invoke/...` responses below mirror the real shape
+ * `blog/utils/productResolver.ts#toOption` produces for each commerce
+ * platform (`{ value: "<platform>:<kind>:<id>", label: "<name> - <price>",
+ * image: "<platform CDN url>" }`), formatted like `getProductPrices`
+ * (Intl.NumberFormat "pt-BR"/BRL) actually renders them — VTEX is the
+ * platform `detectPlatform` probes first and the one every site in
+ * production currently runs on.
  */
-const PRODUCT_OPTIONS = [
+const VTEX_OPTIONS = [
   {
     value: "vtex:product:151331",
     label: "Caixa Bauducco Wafer Deli 100g - R$ 8,90",
-    image: "https://picsum.photos/seed/bauducco/80",
+    image:
+      "https://acmestore.vteximg.com.br/arquivos/ids/151331-500-500/bauducco-wafer-deli-100g.jpg",
   },
   {
     value: "vtex:product:151332",
-    label: "Chocolate Lacta 90g - R$ 6,50",
-    image: "https://picsum.photos/seed/lacta/80",
+    label: "Chocolate Lacta ao Leite 90g - R$ 6,50",
+    image:
+      "https://acmestore.vteximg.com.br/arquivos/ids/151332-500-500/lacta-ao-leite-90g.jpg",
   },
 ];
 
-async function mockProductsByTerm(page: import("@playwright/test").Page) {
+// A Shopify-detected site returns `shopify:handle:<slug>` refs instead of
+// VTEX's `vtex:product:<id>` — the picker must stay platform-agnostic, since
+// AppProductCardBlock/AppProductShelfBlock only ever consume the resolved
+// `{ value, label, image }` shape, never the ref format itself.
+const SHOPIFY_OPTIONS = [
+  {
+    value: "shopify:handle:tenis-runner-pro",
+    label: "Tênis Runner Pro - R$ 349,90",
+    image: "https://cdn.shopify.com/s/files/1/0001/products/runner-pro.jpg",
+  },
+];
+
+async function mockProductsByTerm(
+  page: import("@playwright/test").Page,
+  options: unknown[],
+) {
   await page.route(
     "**/deco/invoke/blog/loaders/options/productsByTerm.ts",
-    (route) => route.fulfill({ json: PRODUCT_OPTIONS }),
+    (route) => route.fulfill({ json: options }),
   );
 }
 
@@ -37,7 +60,7 @@ test("ProductCard renders the searchable product picker, not a text input", asyn
   mount,
   page,
 }) => {
-  await mockProductsByTerm(page);
+  await mockProductsByTerm(page, VTEX_OPTIONS);
   const component = await mount(<AppProductCardBlockHarness />);
 
   // No raw <input> for the product ref — a combobox trigger instead.
@@ -52,17 +75,13 @@ test("ProductCard renders the searchable product picker, not a text input", asyn
   await expect(page.getByRole("option", { name: /Lacta/ })).toBeVisible();
   // Product thumbnails render inside the option list.
   await expect(page.locator('[role="option"] img')).toHaveCount(2);
-
-  await page.screenshot({
-    path: "ct/__screenshots__/product-card-picker-open.png",
-  });
 });
 
-test("selecting a product persists the platform:kind:id ref", async ({
+test("selecting a VTEX product persists the platform:kind:id ref", async ({
   mount,
   page,
 }) => {
-  await mockProductsByTerm(page);
+  await mockProductsByTerm(page, VTEX_OPTIONS);
   const component = await mount(<AppProductCardBlockHarness />);
 
   await component.getByRole("combobox").click();
@@ -71,17 +90,29 @@ test("selecting a product persists the platform:kind:id ref", async ({
   await expect(component.getByRole("combobox")).toContainText("Bauducco");
   const value = await readFormValue(component);
   expect(value).toMatchObject({ product: "vtex:product:151331" });
-
-  await page.screenshot({
-    path: "ct/__screenshots__/product-card-selected.png",
-  });
 });
 
-test("ProductShelf renders one picker per product reference", async ({
+test("selecting a Shopify product persists its shopify:handle ref (platform-agnostic UI)", async ({
   mount,
   page,
 }) => {
-  await mockProductsByTerm(page);
+  await mockProductsByTerm(page, SHOPIFY_OPTIONS);
+  const component = await mount(<AppProductCardBlockHarness />);
+
+  await component.getByRole("combobox").click();
+  await page.getByRole("option", { name: /Runner Pro/ }).click();
+
+  const value = await readFormValue(component);
+  expect(value).toMatchObject({
+    product: "shopify:handle:tenis-runner-pro",
+  });
+});
+
+test("ProductShelf renders one picker per product reference and resolves each", async ({
+  mount,
+  page,
+}) => {
+  await mockProductsByTerm(page, VTEX_OPTIONS);
   const component = await mount(
     <AppProductShelfBlockHarness
       initialProducts={["vtex:product:151331", ""]}
@@ -98,7 +129,17 @@ test("ProductShelf renders one picker per product reference", async ({
   await combos.nth(0).click();
   await expect(page.getByRole("option", { name: /Bauducco/ })).toBeVisible();
 
-  await page.screenshot({
-    path: "ct/__screenshots__/product-shelf-pickers.png",
+  // Adding a second product and picking it appends to the string[] ref list.
+  await page.keyboard.press("Escape");
+  await component
+    .getByRole("button", { name: "Add product reference" })
+    .click();
+  await expect(combos).toHaveCount(3);
+  await combos.nth(2).click();
+  await page.getByRole("option", { name: /Lacta/ }).click();
+
+  const value = await readFormValue(component);
+  expect(value).toMatchObject({
+    products: ["vtex:product:151331", "", "vtex:product:151332"],
   });
 });
