@@ -23,7 +23,7 @@ export interface MentionAttrs<T = unknown> {
   /** Character that triggered the mention ("/" prompts+resources, "@" agents) */
   char?: "/" | "@";
   /** Discriminator for "/" mentions; "@" mentions are always agents. */
-  kind?: "prompt" | "resource";
+  kind?: "prompt" | "resource" | "skill";
   /** Argument values the user typed in PromptArgsDialog. Only meaningful for prompt mentions. */
   args?: Record<string, string>;
 }
@@ -93,7 +93,9 @@ function MentionNodeView(props: NodeViewProps) {
   const isAgent = char === "@";
   // Clickable when editable AND it's a "/" mention that's either a known
   // prompt or a legacy chip without `kind` (we'll re-verify in the handler).
-  const isClickable = view.editable && char === "/" && kind !== "resource";
+  // Resources and skills have no edit dialog — their chip is inert.
+  const isClickable =
+    view.editable && char === "/" && (kind === "prompt" || kind == null);
 
   const handleClick = (e: React.MouseEvent) => {
     if (!isClickable) return;

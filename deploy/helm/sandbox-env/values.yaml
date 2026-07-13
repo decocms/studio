@@ -40,7 +40,7 @@ image:
   # instead of silently moving with `:latest`. Bump in lockstep with
   # packages/sandbox/package.json — release-studio-sandbox.yaml tags
   # images using that version. NEVER set this to "latest" in prod.
-  tag: "1.6.1"
+  tag: "1.12.0"
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
 
@@ -230,6 +230,48 @@ orgFs:
 # dev server start) on staging before merging an override.
 readOnlyRootFilesystem: true
 
+# ── node-local dependency cache ────────────────────────────────────────
+# Shares bun's download/extract cache across all sandbox pods on a node
+# via a hostPath mount, so a warm `bun install` skips the registry
+# fetch + tarball extract (measured on kind: cold ~6s → warm ~3.4s).
+# Only bun reads BUN_INSTALL_CACHE_DIR — npm/pnpm/yarn/deno installs are
+# unaffected.
+#
+# bun links into node_modules with its default backend: on a reflink- or
+# hardlink-capable filesystem that node_modules shares with the cache the
+# install is near-instant; otherwise (e.g. a hostPath on a different mount
+# than /app) it falls back to copyfile — still saving the download + extract.
+#
+# The daemon keys the cache per-repo under this root (DEPS_CACHE_ROOT →
+# BUN_INSTALL_CACHE_DIR=<root>/bun/<repo-hash>), so different repos never
+# share cache entries — the sole cross-repo isolation boundary, since bun
+# does NOT re-verify cache content on install (a tampered cached file is
+# installed as-is). Same-cloneUrl sandboxes share a cache: one trust domain
+# for private repos (sandbox access implies repo write); still cross-tenant
+# for a repo reachable by multiple orgs (public/template) — key by org if
+# that matters. Do NOT widen to a shared cache without making it read-only
+# to tenant pods.
+depsCache:
+  enabled: false
+  # Node path backing the cache. Created root-owned by kubelet
+  # (DirectoryOrCreate); the chown init container below hands it to the
+  # sandbox uid. WARNING: hostPath has no sizeLimit and the sandbox runs
+  # untrusted code as its owner — a runaway/malicious pod can fill the
+  # node disk and trigger DiskPressure evictions of co-located tenants.
+  # Growth is currently unreaped; only enable on nodes you're willing to
+  # let accrue package cache until the node is recycled.
+  hostPath: /var/cache/studio-sandbox-deps
+  # Golden node_modules reflink cache (opt-in, off by default). On a hit,
+  # `cp --reflink=always` a per-(repo,lockfile) golden into the repo — a CoW
+  # clone that's near-instant and skips `bun install` entirely; on a miss,
+  # install then publish the result. Requires the golden dir and /app to
+  # share a reflink-capable filesystem (true on the prod instance-store xfs;
+  # NOT on kind's overlay bind-mounts, where it falls back to a normal
+  # install). Separate switch from `enabled` because it touches the boot
+  # install path — leave off until validated on the target nodes. Adds the
+  # same unreaped-growth caveat as above (a golden ≈ a full node_modules).
+  golden: false
+
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:
   # Optional: supply an explicit token so CI can pass the same value to
@@ -243,6 +285,30 @@ warmPool:
   # the full resources.requests above.
   enabled: false
   size: 0
+
+  # Optional: scale `size` dynamically via a HorizontalPodAutoscaler
+  # targeting the SandboxWarmPool's native scale subresource (kubectl scale
+  # works too — this just automates it). Off by default; has no effect
+  # unless warmPool.enabled is also true. See templates/sandbox-warmpool-hpa.yaml.
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    # Required when enabled=true — no default metric ships (see
+    # sandbox-warmpool-hpa.yaml for why). Raw autoscaling/v2 `metrics` entries,
+    # e.g.:
+    # metrics:
+    #   - type: External
+    #     external:
+    #       metric:
+    #         name: sandbox_pending_claims
+    #       target:
+    #         type: AverageValue
+    #         averageValue: "2"
+    metrics: []
+    # Optional autoscaling/v2 `behavior` block (scale-up/down stabilization
+    # windows, policies). Left empty = cluster defaults.
+    behavior: {}
 
 # ── preview URL gateway (optional) ─────────────────────────────────────
 # Wildcard preview-URL ingress. Renders an Istio Gateway (HTTPS, terminates

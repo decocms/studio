@@ -86,6 +86,16 @@ export function MapField({ schema, value, onChange, path, label }: FieldProps) {
   const initialRef = useRef(parseValue(value));
   const [error, setError] = useState<string | null>(null);
 
+  // React re-runs a ref callback (running its cleanup, then re-invoking it) only
+  // when the callback's identity changes. An inline callback gets a fresh
+  // identity every render, so each re-render our own onChange triggers while the
+  // user drags or resizes the circle would tear the map down and rebuild it —
+  // reloading tiles and dropping the in-progress gesture, which reads as
+  // flickering. Pin the first callback in a ref so the map is created exactly
+  // once and only disposed on genuine unmount.
+  const setNodeRef =
+    useRef<(node: HTMLDivElement | null) => (() => void) | void>(null);
+
   const setNode = (node: HTMLDivElement | null) => {
     if (!node || !apiKey) return;
     const state: {
@@ -176,6 +186,9 @@ export function MapField({ schema, value, onChange, path, label }: FieldProps) {
     };
   };
 
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-time init pins a stable ref callback so the map isn't recreated each render
+  if (!setNodeRef.current) setNodeRef.current = setNode;
+
   return (
     <div className="space-y-2">
       <div className="space-y-0.5">
@@ -198,7 +211,8 @@ export function MapField({ schema, value, onChange, path, label }: FieldProps) {
         </div>
       ) : (
         <div
-          ref={setNode}
+          // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- reading the pinned stable ref callback; intentionally identity-stable so the map isn't torn down on re-render
+          ref={setNodeRef.current}
           id={path}
           className="h-72 w-full rounded-md border border-border/60"
         />

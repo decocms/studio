@@ -1,5 +1,3 @@
-import type { BranchMeta } from "@decocms/sandbox/shared";
-
 export interface GitStatusFile {
   path: string;
   index: string;
@@ -130,18 +128,43 @@ export async function fetchGitDiff(
   return parseJson<GitDiffResult>(res);
 }
 
+/**
+ * Drop auto-generated files (Tailwind CSS output, `blocks.gen.json`) from a
+ * diff before sending it to `suggest-commit`. Their full-content `from`/`to`
+ * bodies can be megabytes on their own and blew past the endpoint's 512KB body
+ * limit (413). They carry no signal for an LLM commit message either — the
+ * server backfills the diff from the daemon when the client omits it, so a
+ * fully-stripped diff still yields a suggestion.
+ */
+export function stripGeneratedFilesFromDiff(
+  diff: GitDiffResult,
+): GitDiffResult {
+  const diffs: Record<string, GitDiffEntry> = {};
+  for (const [path, entry] of Object.entries(diff.diffs)) {
+    if (isBlocksGenJsonPath(path) || isTailwindCssPath(path)) continue;
+    diffs[path] = entry;
+  }
+  return { ...diff, diffs };
+}
+
 export async function fetchSuggestCommitMessage(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
   payload?: { status: GitStatus; diff: GitDiffResult },
 ): Promise<CommitSuggestion> {
+  const body = payload
+    ? {
+        status: payload.status,
+        diff: stripGeneratedFilesFromDiff(payload.diff),
+      }
+    : {};
   const res = await sandboxFetch(
     buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "suggest-commit"),
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload ?? {}),
+      body: JSON.stringify(body),
     },
   );
   return parseJson<CommitSuggestion>(res);
@@ -257,7 +280,7 @@ export function countGitChanges(status: GitStatus | null): number {
 }
 
 /** True when the working tree or index has uncommitted work. */
-function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
+export function hasGitLocalWork(status: GitStatus | null | undefined): boolean {
   if (!status) return false;
   return (
     countGitChanges(status) > 0 ||
@@ -299,65 +322,56 @@ export function hasUnpublishedWork(
 }
 
 /**
- * Merge live `/git/status` into SSE `BranchMeta`. The status endpoint is
- * always fresh; branch SSE can lag when the daemon watcher misses a save.
+ * Which diff the publish dialog should show/gate. Uncommitted working-tree
+ * edits aren't in a commit yet, so a base…head diff would come back empty —
+ * show the working-tree diff whenever there's local uncommitted work, and fall
+ * back to base…head only for a clean tree whose commits are already ahead of
+ * base (open-pr-from-commits or direct publish of committed work).
  */
-function gitStatusUnpushed(gitStatus: GitStatus): number {
-  return Math.max(gitStatus.unpushed ?? 0, gitStatus.ahead);
+export function shouldUseBaseDiff(
+  status: GitStatus | null | undefined,
+  opts: { openPrFromCommits: boolean; commitToOpenPr: boolean },
+): boolean {
+  if (hasGitLocalWork(status)) return false;
+  return (
+    opts.openPrFromCommits ||
+    (!opts.commitToOpenPr && (status?.aheadOfBase ?? 0) > 0)
+  );
 }
 
-function gitStatusAheadOfBase(gitStatus: GitStatus): number {
-  return gitStatus.aheadOfBase ?? 0;
+export interface PublishGate {
+  allowed: boolean;
+  reason: string | null;
 }
 
-function gitStatusBehindBase(gitStatus: GitStatus): number {
-  return gitStatus.behindBase ?? 0;
-}
-
-export function mergeBranchMetaWithGitStatus(
-  branchMeta: BranchMeta,
-  gitStatus: GitStatus | undefined,
-): BranchMeta {
-  if (!gitStatus) return branchMeta;
-
-  const gitDirty = hasGitLocalWork(gitStatus);
-  const branchName = readGitHeadBranch(gitStatus);
-  const unpushed = gitStatusUnpushed(gitStatus);
-  const aheadOfBase = gitStatusAheadOfBase(gitStatus);
-  const behindBase = gitStatusBehindBase(gitStatus);
-  const base = gitStatus.base ?? "main";
-  const headSha = gitStatus.headSha ?? "";
-
-  if (branchMeta.kind === "ready") {
-    return {
-      ...branchMeta,
-      branch: branchName ?? branchMeta.branch,
-      base: gitStatus.base ?? branchMeta.base,
-      workingTreeDirty: gitDirty,
-      unpushed: Math.max(branchMeta.unpushed, unpushed),
-      aheadOfBase: Math.max(branchMeta.aheadOfBase, aheadOfBase),
-      behindBase:
-        gitStatus.behindBase !== undefined
-          ? Math.max(branchMeta.behindBase, behindBase)
-          : branchMeta.behindBase,
-      headSha: headSha || branchMeta.headSha,
-    };
-  }
-
-  // SSE still unknown — only promote when git reports actionable divergence,
-  // not merely because `git status` can read the checked-out branch name.
-  if (!gitDirty && aheadOfBase === 0 && unpushed === 0) {
-    return branchMeta;
-  }
-
+/**
+ * Union of the committed base…head diff and the uncommitted working-tree diff —
+ * the full set of changes a direct publish squash-merges into base. Publish
+ * commits the working tree, then squash-merges base…HEAD, so the payload is
+ * both; the daemon can only return one diff at a time, so callers fetch both
+ * and combine here. Working-tree entries win for paths present in both (they
+ * hold the latest, about-to-be-committed content).
+ */
+export function combinePublishDiffs(
+  baseDiff: GitDiffResult | null | undefined,
+  workingDiff: GitDiffResult | null | undefined,
+): GitDiffResult {
   return {
-    kind: "ready",
-    branch: branchName ?? "",
-    base,
-    workingTreeDirty: gitDirty,
-    unpushed,
-    aheadOfBase,
-    behindBase,
-    headSha,
+    diffs: { ...(baseDiff?.diffs ?? {}), ...(workingDiff?.diffs ?? {}) },
+    ...(baseDiff?.mergeBaseSha ? { mergeBaseSha: baseDiff.mergeBaseSha } : {}),
   };
+}
+
+/**
+ * Whether the changes may be squash-merged straight to base, bypassing review.
+ * `diff` must be the full publish payload (see `combinePublishDiffs`) so the
+ * gate sees every file — committed and uncommitted. Only deco-only payloads
+ * publish directly; anything with code must go through Submit for review.
+ */
+export function canPublishDirectly(
+  diff: GitDiffResult | null | undefined,
+): PublishGate {
+  return isDecoOnlyDiff(diff)
+    ? { allowed: true, reason: null }
+    : { allowed: false, reason: PUBLISH_REQUIRES_SUBMIT_TOOLTIP };
 }

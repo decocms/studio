@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { resolveSchema, type LiveMeta } from "./resolve-schema";
+import {
+  inferSchemaFromValue,
+  isFreeformPropsSchema,
+  resolveSchema,
+  type LiveMeta,
+} from "./resolve-schema";
 
 function metaWithSchema(blockSchema: Record<string, unknown>): LiveMeta {
   return {
@@ -1113,5 +1118,225 @@ describe("resolveSchema – allOf is an intersection, never an inline-union", ()
     expect(toggle?.inlineUnionBranches?.[0]?.discriminators).toEqual({
       enabled: true,
     });
+  });
+});
+
+describe("resolveSchema – #/root block-registry refs (recursive matchers)", () => {
+  // Mirrors the /live/_meta shape for the Multi matcher: its `matchers: Matcher[]`
+  // field chains $ref → [Matcher] → Matcher → matchers → #/root/matchers, the
+  // union of every matcher implementation plus saved matcher blocks. Before the
+  // fix, resolveRef only understood #/definitions/… so #/root/matchers resolved
+  // to {} and each array item rendered as an empty object (blank "Item 1").
+  function matcherMeta(): LiveMeta {
+    return {
+      manifest: {
+        blocks: {
+          matchers: {
+            "website/matchers/multi.ts": { $ref: "#/definitions/MultiDef" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          MultiDef: {
+            title: "Multi",
+            allOf: [{ $ref: "#/definitions/MultiProps" }],
+            properties: {
+              __resolveType: { enum: ["website/matchers/multi.ts"] },
+            },
+          },
+          MultiProps: {
+            type: "object",
+            required: ["op", "matchers"],
+            properties: {
+              op: { type: "string" },
+              matchers: { $ref: "#/definitions/MatcherArr", title: "Matchers" },
+            },
+          },
+          MatcherArr: {
+            type: "array",
+            items: { $ref: "#/definitions/MatcherRef" },
+            title: "[Matcher]",
+          },
+          MatcherRef: { $ref: "#/definitions/MatcherUnion", title: "Matcher" },
+          MatcherUnion: { $ref: "#/root/matchers", title: "matchers" },
+          Cookie: {
+            title: "Cookie",
+            properties: {
+              __resolveType: { enum: ["website/matchers/cookie.ts"] },
+              name: { type: "string", title: "Name" },
+            },
+          },
+          Resolvable: {},
+        },
+        root: {
+          matchers: {
+            title: "matchers",
+            anyOf: [
+              // fallback saved-block ref, carries no __resolveType — skipped
+              { $ref: "#/definitions/Resolvable" },
+              // built-in module matcher, referenced by $ref
+              { $ref: "#/definitions/Cookie" },
+              // recursion: Multi can nest itself — must not loop forever
+              { $ref: "#/definitions/MultiDef" },
+              // saved matcher block, inlined with a __resolveType enum
+              {
+                title: "#website/matchers/device.ts@Desktop",
+                properties: { __resolveType: { enum: ["Desktop"] } },
+              },
+            ],
+          },
+        },
+      },
+    };
+  }
+
+  test("resolves the nested Matcher array item into a block-ref picker", () => {
+    const items = resolveSchema("website/matchers/multi.ts", matcherMeta())
+      ?.properties?.matchers?.items;
+
+    expect(items?.type).toBe("block-ref");
+    const rts = items?.anyOfRefs?.map((r) => r.resolveType) ?? [];
+    // inline saved block + built-in module matcher + recursive self, in one union
+    expect(rts).toContain("Desktop");
+    expect(rts).toContain("website/matchers/cookie.ts");
+    expect(rts).toContain("website/matchers/multi.ts");
+    // the bare Resolvable fallback (no __resolveType) is not offered as an option
+    expect(rts).not.toContain("Resolvable");
+  });
+
+  test("Resolvable placeholder ($ref branch with no __resolveType enum) is excluded from the picker", () => {
+    // deco-start emits root.matchers as all-$ref branches: Resolvable first,
+    // then concrete matchers. Resolvable has no __resolveType.enum so its `rt`
+    // falls back to the bare ref key ("Resolvable", no "/") — it must be skipped.
+    const it = resolveSchema("website/matchers/multi.ts", matcherMeta())
+      ?.properties?.matchers?.items;
+    const rts = it?.anyOfRefs?.map((r) => r.resolveType) ?? [];
+    expect(rts).not.toContain("Resolvable");
+    expect(rts.length).toBeGreaterThan(0);
+  });
+
+  test("without #/root handling the item would resolve empty (regression guard)", () => {
+    // A #/root ref that does not exist must degrade to {} (empty object), never
+    // throw — matching the old missing-key behavior for unknown registries.
+    const meta = matcherMeta();
+    (meta.schema.root as Record<string, unknown>).matchers = {
+      $ref: "#/root/doesNotExist",
+      title: "matchers",
+    };
+    const items = resolveSchema("website/matchers/multi.ts", meta)?.properties
+      ?.matchers?.items;
+    expect(items?.type).toBe("object");
+    expect(items?.anyOfRefs ?? []).toHaveLength(0);
+  });
+});
+
+describe("isFreeformPropsSchema – tanstack commerce stub detection", () => {
+  const VTEX_PDP = "vtex/loaders/intelligentSearch/productDetailsPage.ts";
+  const meta: LiveMeta = {
+    manifest: {
+      blocks: {
+        loaders: {
+          [VTEX_PDP]: { $ref: "#/definitions/VtexStub" },
+          "vtex/loaders/openApi.ts": { $ref: "#/definitions/OpenStub" },
+          "site/loaders/CheckStock.ts": { $ref: "#/definitions/CheckStock" },
+          "site/loaders/denoNoProps.ts": { $ref: "#/definitions/DenoNoProps" },
+        },
+      },
+    },
+    schema: {
+      definitions: {
+        // The shape tanstack's composeMeta actually emits for commerce/vtex
+        // stubs: `additionalProperties` is dropped, only the self-referential
+        // __resolveType enum survives.
+        VtexStub: {
+          title: VTEX_PDP,
+          type: "object",
+          required: ["__resolveType"],
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: [VTEX_PDP],
+              default: VTEX_PDP,
+            },
+          },
+        },
+        // Future-proofing: a stub that keeps `additionalProperties: true`.
+        OpenStub: {
+          type: "object",
+          additionalProperties: true,
+          properties: { __resolveType: { type: "string" } },
+        },
+        CheckStock: {
+          type: "object",
+          properties: {
+            __resolveType: {
+              type: "string",
+              enum: ["site/loaders/CheckStock.ts"],
+            },
+            ids: { type: "array", items: { type: "string" } },
+          },
+        },
+        // Deno-style propless def: no __resolveType embedded in props.
+        DenoNoProps: { type: "object" },
+      },
+    },
+  };
+
+  test("flags the tanstack __resolveType-only registry stub", () => {
+    expect(isFreeformPropsSchema(VTEX_PDP, meta)).toBe(true);
+  });
+
+  test("flags additionalProperties stubs with no declared props", () => {
+    expect(isFreeformPropsSchema("vtex/loaders/openApi.ts", meta)).toBe(true);
+  });
+
+  test("a schema with real props is not freeform", () => {
+    expect(isFreeformPropsSchema("site/loaders/CheckStock.ts", meta)).toBe(
+      false,
+    );
+    // Sanity: the real schema resolves a form.
+    expect(
+      resolveSchema("site/loaders/CheckStock.ts", meta)?.properties?.ids?.type,
+    ).toBe("array");
+  });
+
+  test("a deno-style propless def is not freeform", () => {
+    expect(isFreeformPropsSchema("site/loaders/denoNoProps.ts", meta)).toBe(
+      false,
+    );
+  });
+});
+
+describe("inferSchemaFromValue – form from saved props", () => {
+  test("infers primitive, array, and nested object fields", () => {
+    const schema = inferSchemaFromValue({
+      __resolveType: "vtex/loaders/legacy/productListingPage.ts",
+      sort: "OrderByPriceDESC",
+      count: 16,
+      hideUnavailable: true,
+      ids: ["149524", "149525"],
+      nested: { term: "gel", deep: { n: 1 } },
+    });
+    expect(schema?.type).toBe("object");
+    const props = schema?.properties ?? {};
+    // __resolveType is plumbing, never a form field.
+    expect(props.__resolveType).toBeUndefined();
+    expect(props.sort?.type).toBe("string");
+    expect(props.count?.type).toBe("number");
+    expect(props.hideUnavailable?.type).toBe("boolean");
+    expect(props.ids?.type).toBe("array");
+    expect(props.ids?.items?.type).toBe("string");
+    expect(props.nested?.type).toBe("object");
+    expect(props.nested?.properties?.term?.type).toBe("string");
+    expect(props.nested?.properties?.deep?.properties?.n?.type).toBe("number");
+  });
+
+  test("null values degrade to string fields; empty value yields no schema", () => {
+    expect(inferSchemaFromValue({ fq: null })?.properties?.fq?.type).toBe(
+      "string",
+    );
+    expect(inferSchemaFromValue({})).toBeNull();
+    expect(inferSchemaFromValue({ __resolveType: "x" })).toBeNull();
   });
 });

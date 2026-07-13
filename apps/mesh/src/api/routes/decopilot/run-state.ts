@@ -67,6 +67,8 @@ export type RunCommand =
       runConfig?: Record<string, unknown>;
       /** Pod claiming this run. */
       podId?: string;
+      /** The user message this turn executes — rides the in_progress thread-status event so the queue tray can flip exactly this item into the body at dispatch. */
+      messageId?: string;
     }
   | {
       type: "RESUME";
@@ -114,6 +116,8 @@ export type RunEvent =
       abortController: AbortController;
       runConfig?: Record<string, unknown>;
       podId?: string;
+      /** The user message this turn executes — rides the in_progress thread-status event so the queue tray can flip exactly this item into the body at dispatch. */
+      messageId?: string;
     }
   | {
       type: "RUN_RESUMED";

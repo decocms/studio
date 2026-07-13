@@ -16,6 +16,7 @@ export function SelectableList({
   disabled,
   ariaLabel,
   searchPlaceholder = "Buscar...",
+  hideSearch = false,
 }: {
   options: SelectableOption[];
   value: string;
@@ -25,6 +26,9 @@ export function SelectableList({
   // variant must supply one rather than shipping an unlabeled picker.
   ariaLabel: string;
   searchPlaceholder?: string;
+  // Hide the built-in client-side search box when the caller drives filtering
+  // itself (e.g. a server-side repo search). Options are then rendered as-is.
+  hideSearch?: boolean;
 }): ReactElement {
   const [query, setQuery] = useState("");
 
@@ -82,21 +86,23 @@ export function SelectableList({
 
   return (
     <div className="space-y-2">
-      <div className="relative">
-        <SearchSm
-          size={16}
-          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          disabled={disabled}
-          placeholder={searchPlaceholder}
-          aria-label={`Buscar ${ariaLabel}`}
-          className="h-8 pl-8"
-        />
-      </div>
+      {hideSearch ? null : (
+        <div className="relative">
+          <SearchSm
+            size={16}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            disabled={disabled}
+            placeholder={searchPlaceholder}
+            aria-label={`Buscar ${ariaLabel}`}
+            className="h-8 pl-8"
+          />
+        </div>
+      )}
 
       <div
         role="radiogroup"

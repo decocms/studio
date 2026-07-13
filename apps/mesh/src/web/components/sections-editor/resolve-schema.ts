@@ -268,7 +268,19 @@ export function resolveSchema(
     unknown
   >;
 
+  // deco "block registry" unions live under `#/root/<blockType>` (matchers,
+  // sections, loaders, …) — the anyOf of every implementation plus saved
+  // blocks. These are siblings of `definitions`, so the last-segment lookup
+  // below misses them (`#/root/matchers` → `matchers`, absent from defs → {}).
+  // Recursive block-ref fields (e.g. Multi's `matchers: Matcher[]`) chain into
+  // one of these, so without this branch they resolve to an empty object and
+  // the field renders blank.
+  const root = (globalSchema.root ?? {}) as Record<string, unknown>;
   const resolveRef = (ref: string): RawSchema => {
+    if (ref.startsWith("#/root/")) {
+      const rootKey = ref.slice("#/root/".length);
+      return (root[rootKey] as RawSchema | undefined) ?? {};
+    }
     const key = ref.split("/").pop() ?? "";
     return (defs[key] as RawSchema | undefined) ?? {};
   };
@@ -573,7 +585,7 @@ export function resolveSchema(
         }
 
         if (loaderBranches.length > 0) {
-          const anyOfRefs = loaderBranches.map((branch) => {
+          const loaderRefs = loaderBranches.map((branch) => {
             const rtSchema = (branch.properties as RawSchema | undefined)
               ?.__resolveType as RawSchema | undefined;
             const rtEnum = (rtSchema?.enum ?? []) as unknown[];
@@ -591,6 +603,59 @@ export function resolveSchema(
               schema: eagerBranchSchema(branch, depth + 1, nonNull.length),
             };
           });
+
+          // Block-registry unions (`#/root/matchers`, etc.) mix inline loader
+          // branches (saved blocks) with `$ref` branches (the built-in module
+          // types). Fold those `$ref` branches in too, otherwise selecting a
+          // Multi matcher only offers saved matchers, not `cookie`/`device`/…
+          // The `Resolvable` fallback ref (no `__resolveType`) is skipped.
+          const refBranchRefs: SchemaAnyOfRef[] = [];
+          for (const branch of nonNull) {
+            if (loaderBranches.includes(branch)) continue;
+            if (typeof branch.$ref !== "string") continue;
+            const def = resolveRef(branch.$ref);
+            let rt: string | undefined;
+            const rtProp = (def.properties as RawSchema | undefined)
+              ?.__resolveType as RawSchema | undefined;
+            if (
+              Array.isArray(rtProp?.enum) &&
+              typeof rtProp.enum[0] === "string"
+            ) {
+              rt = rtProp.enum[0];
+            }
+            if (!rt && Array.isArray(def.allOf)) {
+              for (const part of def.allOf as RawSchema[]) {
+                const e = (
+                  (part.properties as RawSchema | undefined)?.__resolveType as
+                    | RawSchema
+                    | undefined
+                )?.enum;
+                if (Array.isArray(e) && typeof e[0] === "string") {
+                  rt = e[0];
+                  break;
+                }
+              }
+            }
+            if (!rt) continue;
+            refBranchRefs.push({
+              resolveType: rt,
+              title:
+                typeof def.title === "string" && !def.title.startsWith("#")
+                  ? def.title
+                  : labelFromResolveType(rt),
+              description:
+                typeof def.description === "string"
+                  ? def.description
+                  : undefined,
+              schema: eagerBranchSchema(def, depth + 1, nonNull.length),
+            });
+          }
+
+          const seenRt = new Set(loaderRefs.map((r) => r.resolveType));
+          const anyOfRefs = [
+            ...loaderRefs,
+            ...refBranchRefs.filter((r) => !seenRt.has(r.resolveType)),
+          ];
 
           // Preserve the non-loader (plain data) branch so multivariate
           // field rendering can use it instead of the circular block-ref.
@@ -709,6 +774,10 @@ export function resolveSchema(
               rt = (branch.$ref as string).split("/").pop() ?? "";
             }
             const discriminatorValue = typeDiscriminatorFromBranch(branch);
+            // Skip the `Resolvable` placeholder: it has no `__resolveType.enum`
+            // so `rt` degrades to the bare ref key (no `/`). All real module
+            // blocks (matchers, loaders, sections) contain `/` in their path.
+            if (!discriminatorValue && !rt.includes("/")) continue;
             anyOfRefs.push({
               resolveType: discriminatorValue ?? rt,
               title:
@@ -936,11 +1005,101 @@ export function resolveSchema(
   };
 }
 
+/**
+ * Whether a block's schema is a "freeform props" stub — the block DOES take
+ * props but doesn't publish their schema, so `resolveSchema()` returns null.
+ * Tanstack's `registerCommerceLoaders` registers every commerce/vtex loader
+ * and action with a `{ additionalProperties: true }` props schema, and its
+ * meta composer drops `additionalProperties` on the way out — the emitted def
+ * is just `{ properties: { __resolveType: { enum: [<key>] } } }`. Detect both
+ * shapes so the runnable editor can offer the raw JSON editor instead of
+ * claiming the block takes no input. Deno/fresh defs never embed a
+ * self-referential `__resolveType` in a block's props schema, so this is a
+ * no-op there.
+ */
+export function isFreeformPropsSchema(
+  resolveType: string,
+  meta: LiveMeta,
+): boolean {
+  const globalSchema = meta.schema ?? {};
+  const blockSchema = lookupManifestBlockSchema(resolveType, meta);
+  const defs = (globalSchema.$defs ?? globalSchema.definitions ?? {}) as Record<
+    string,
+    RawSchema
+  >;
+  const resolved =
+    typeof blockSchema.$ref === "string"
+      ? (defs[blockSchema.$ref.split("/").pop() ?? ""] ?? {})
+      : blockSchema;
+
+  const props = (resolved.properties as Record<string, RawSchema>) ?? {};
+  const hasVisibleProps = Object.keys(props).some(
+    (key) => !key.startsWith("__"),
+  );
+  if (hasVisibleProps) return false;
+
+  if (resolved.additionalProperties === true) return true;
+
+  // Tanstack registry-stub signature: the only property is the block's own
+  // `__resolveType` enum.
+  const resolveTypeProp = props.__resolveType;
+  return (
+    !!resolveTypeProp &&
+    Array.isArray(resolveTypeProp.enum) &&
+    resolveTypeProp.enum[0] === resolveType
+  );
+}
+
+/**
+ * Best-effort schema inferred from a concrete props value. Used by the
+ * runnable editor when a block doesn't publish its props schema (tanstack
+ * commerce/vtex registry stubs — see {@link isFreeformPropsSchema}) but a
+ * saved block carries values: a typed form built from those values beats a
+ * raw JSON dead-end. Only shapes present in the value are inferable; enums,
+ * formats, and optional fields the value doesn't carry are unknowable.
+ */
+export function inferSchemaFromValue(
+  value: Record<string, unknown>,
+): SchemaProperty | null {
+  const inferOne = (v: unknown): SchemaProperty => {
+    switch (typeof v) {
+      case "number":
+        return { type: "number" };
+      case "boolean":
+        return { type: "boolean" };
+      case "object": {
+        if (v === null) return { type: "string" };
+        if (Array.isArray(v)) {
+          return { type: "array", items: inferOne(v[0]) };
+        }
+        const nested: Record<string, SchemaProperty> = {};
+        for (const [key, item] of Object.entries(v)) {
+          if (key.startsWith("__")) continue;
+          nested[key] = inferOne(item);
+        }
+        return { type: "object", properties: nested };
+      }
+      default:
+        return { type: "string" };
+    }
+  };
+
+  const properties: Record<string, SchemaProperty> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (key.startsWith("__")) continue;
+    properties[key] = inferOne(item);
+  }
+  if (Object.keys(properties).length === 0) return null;
+  return { type: "object", properties };
+}
+
 export interface BlockSchemaMetadata {
   title?: string;
   description?: string;
   icon?: string;
   logo?: string;
+  /** Block marked hidden from pickers (deco `@ignore` / `hide` convention). */
+  hidden?: boolean;
 }
 
 /**
@@ -967,6 +1126,14 @@ export function resolveBlockSchemaMetadata(
 
   const icon = (resolved as { icon?: string }).icon;
   const logo = (resolved as { logo?: string }).logo;
+  const flags = resolved as {
+    hide?: unknown;
+    ignore?: unknown;
+    unlisted?: unknown;
+  };
+  const truthy = (v: unknown) => v === true || v === "true";
+  const hidden =
+    truthy(flags.hide) || truthy(flags.ignore) || truthy(flags.unlisted);
 
   return {
     title: typeof resolved.title === "string" ? resolved.title : undefined,
@@ -976,5 +1143,6 @@ export function resolveBlockSchemaMetadata(
         : undefined,
     icon: typeof icon === "string" ? icon : undefined,
     logo: typeof logo === "string" ? logo : undefined,
+    hidden: hidden || undefined,
   };
 }

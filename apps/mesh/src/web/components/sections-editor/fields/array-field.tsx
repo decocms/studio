@@ -18,7 +18,15 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DotsGrid, DotsHorizontal, Plus, Trash01 } from "@untitledui/icons";
+import {
+  Copy01,
+  DotsGrid,
+  DotsHorizontal,
+  Eye,
+  EyeOff,
+  Plus,
+  Trash01,
+} from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -27,8 +35,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { getArrayItemImageSrc, getArrayItemLabel } from "../array-item-display";
+import {
+  arrayItemDisplayValue,
+  hideArrayItem,
+  isArrayItemHidden,
+  showArrayItem,
+} from "../array-item-hidden";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import {
   buildArrayDrillDownBreadcrumb,
@@ -155,13 +174,19 @@ function SortableArrayRow({
   sortableId,
   labelText,
   imageSrc,
+  hidden,
+  onToggleHidden,
   onOpen,
+  onDuplicate,
   onRemove,
 }: {
   sortableId: string;
   labelText: string;
   imageSrc?: string;
+  hidden?: boolean;
+  onToggleHidden?: () => void;
   onOpen: () => void;
+  onDuplicate: () => void;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -207,7 +232,42 @@ function SortableArrayRow({
           className="h-12 max-w-[100px] shrink-0 rounded object-cover"
         />
       )}
-      <span className="min-w-0 flex-1 truncate text-sm">{labelText}</span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-sm",
+          hidden && "line-through opacity-50",
+        )}
+      >
+        {labelText}
+      </span>
+      {onToggleHidden && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={hidden ? "Show item" : "Hide item"}
+              className={cn(
+                "size-6 shrink-0",
+                hidden
+                  ? "opacity-100"
+                  : "opacity-0 transition-opacity group-hover:opacity-100",
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleHidden();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {hidden ? "Show item" : "Hide item"}
+          </TooltipContent>
+        </Tooltip>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -223,6 +283,10 @@ function SortableArrayRow({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={onDuplicate}>
+            <Copy01 size={14} />
+            Duplicate
+          </DropdownMenuItem>
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={onRemove}
@@ -257,13 +321,41 @@ export function ArrayField({
   const itemSchema = schema.items;
   const arrayFieldKey = arrayFieldKeyFromPath(path);
   const usesSectionPicker = isSectionArrayField(schema, arrayFieldKey);
+  // Only plain object arrays (banners, links, …) get the hide toggle. Section
+  // pickers have their own hide flow, and primitive arrays can't be wrapped.
+  const canHideItems = !usesSectionPicker && itemSchema?.type === "object";
+  // Index of the item the user has explicitly opened. Array items are addressed
+  // in the breadcrumb by their mutable, non-unique display label, so this lets
+  // selection stay on the opened row even when its label collides with another
+  // item's (e.g. after Duplicate, or while typing a name/alt another item uses).
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
   const selection = resolveArrayItemSelection(
     label,
     breadcrumbPath,
     items,
     itemSchema,
+    openIndex,
   );
   const selectedIndex = selection?.index ?? null;
+
+  // Keep the tracked index in step with the breadcrumb: forget it once the
+  // breadcrumb no longer opens an item here, and adopt the resolved index when
+  // navigation opened an item some other way (header/breadcrumb click, deep link).
+  //
+  // This set-state-during-render reconciliation converges in one extra render
+  // because `resolveArrayItemSelection` returns `preferredIndex` only when that
+  // item still matches the winning crumb: adopting the resolved index yields a
+  // fixed point on the next render (no oscillation). `openIndex` is a raw index
+  // (not tied to the stable `entries` ids), which is safe only because every
+  // index-shifting mutation (reorder, duplicate, remove) is reachable exclusively
+  // from the list view below — where `selection` is null and `openIndex` has
+  // already been forced back to null.
+  if (selection === null) {
+    if (openIndex !== null) setOpenIndex(null);
+  } else if (selection.index !== openIndex) {
+    setOpenIndex(selection.index);
+  }
 
   const [entries, setEntries] = useState<ArrayEntry[]>(() =>
     createArrayEntries(items.length),
@@ -277,17 +369,19 @@ export function ArrayField({
     setPrevListKey(path);
     setPrevItemCount(items.length);
     setEntries(createArrayEntries(items.length));
+    setOpenIndex(null);
   } else if (prevItemCount !== items.length) {
     setPrevItemCount(items.length);
     setEntries((current) => resizeArrayEntries(current, items.length));
   }
 
   const itemLabel = (item: unknown, index: number) =>
-    getArrayItemLabel(item, index, itemSchema);
+    getArrayItemLabel(arrayItemDisplayValue(item), index, itemSchema);
 
   const openItem = (index: number) => {
     if (suppressClickRef.current) return;
     const labelText = itemLabel(items[index], index);
+    setOpenIndex(index);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
     );
@@ -297,6 +391,7 @@ export function ArrayField({
     const next = [...items, item];
     onChange(next);
     const nextIndex = next.length - 1;
+    setOpenIndex(nextIndex);
     const labelText = getArrayItemLabel(item, nextIndex, itemSchema);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
@@ -328,6 +423,7 @@ export function ArrayField({
     const next = [...items, defaultVal];
     onChange(next);
     const nextIndex = next.length - 1;
+    setOpenIndex(nextIndex);
     const labelText = getArrayItemLabel(defaultVal, nextIndex, itemSchema);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
@@ -350,6 +446,29 @@ export function ArrayField({
     addItem();
   };
 
+  const duplicateItem = (index: number) => {
+    const original = items[index];
+    const copy =
+      typeof structuredClone === "function"
+        ? structuredClone(original)
+        : JSON.parse(JSON.stringify(original ?? null));
+    const next = [
+      ...items.slice(0, index + 1),
+      copy,
+      ...items.slice(index + 1),
+    ];
+    onChange(next);
+  };
+
+  const toggleItemHidden = (index: number) => {
+    const item = items[index];
+    const next = [...items];
+    next[index] = isArrayItemHidden(item)
+      ? showArrayItem(item)
+      : hideArrayItem(item);
+    onChange(next);
+  };
+
   const removeItem = (index: number) => {
     onChange(items.filter((_, i) => i !== index));
     if (selectedIndex === index) {
@@ -363,7 +482,8 @@ export function ArrayField({
 
   const updateItem = (index: number, val: unknown) => {
     const next = [...items];
-    next[index] = val;
+    // Preserve the hidden wrapper when editing a hidden item's inner value.
+    next[index] = isArrayItemHidden(items[index]) ? hideArrayItem(val) : val;
     onChange(next);
 
     // When editing the currently selected item, the display label may change
@@ -429,11 +549,11 @@ export function ArrayField({
       : null;
   const activeImage =
     activeEntry != null && activeItem !== undefined
-      ? getArrayItemImageSrc(activeItem, itemSchema)
+      ? getArrayItemImageSrc(arrayItemDisplayValue(activeItem), itemSchema)
       : undefined;
 
   if (selectedIndex !== null && selectedIndex < items.length) {
-    const item = items[selectedIndex];
+    const item = arrayItemDisplayValue(items[selectedIndex]);
     const editorSchema = itemEditorSchema(
       item,
       itemSchema,
@@ -541,14 +661,24 @@ export function ArrayField({
                   const item = items[entry.index];
                   if (item === undefined) return null;
                   const labelText = itemLabel(item, entry.index);
-                  const imageSrc = getArrayItemImageSrc(item, itemSchema);
+                  const imageSrc = getArrayItemImageSrc(
+                    arrayItemDisplayValue(item),
+                    itemSchema,
+                  );
                   return (
                     <SortableArrayRow
                       key={entry.id}
                       sortableId={entry.id}
                       labelText={labelText}
                       imageSrc={imageSrc}
+                      hidden={isArrayItemHidden(item)}
+                      onToggleHidden={
+                        canHideItems
+                          ? () => toggleItemHidden(entry.index)
+                          : undefined
+                      }
                       onOpen={() => openItem(entry.index)}
+                      onDuplicate={() => duplicateItem(entry.index)}
                       onRemove={() => removeItem(entry.index)}
                     />
                   );

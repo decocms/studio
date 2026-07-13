@@ -6,6 +6,7 @@ export const PROVIDER_IDS = [
   "deco",
   "anthropic",
   "openrouter",
+  "llmapi",
   "google",
   "claude-code",
   "codex",

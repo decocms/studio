@@ -8,6 +8,7 @@ import {
   resolveRemoteDefaultBranch,
   spawnCheckoutBranch,
 } from "./checkout-branch";
+import { InvalidRemoteBranchNameError } from "./ref-name";
 
 function setupBareRepo(): { url: string; root: string; cleanup: () => void } {
   const root = mkdtempSync(join(tmpdir(), "checkout-branch-"));
@@ -121,6 +122,57 @@ describe("spawnCheckoutBranch", () => {
       });
 
       expect(existsSync(join(repoDir, "local.txt"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+
+  it("rejects a malicious origin/HEAD default branch instead of shelling it out", async () => {
+    const { url, root, cleanup } = setupBareRepo();
+    try {
+      const repoDir = cloneWorkspace(url, root);
+      // A repo's default branch name is remote-controlled: whoever owns
+      // `origin` can point origin/HEAD anywhere. Git's ref-format rules allow
+      // shell metacharacters in ref names, so an attacker-named default
+      // branch would otherwise get interpolated straight into `sh -c`.
+      execSync(
+        `git -C ${repoDir} symbolic-ref refs/remotes/origin/HEAD 'refs/heads/pwn;touch\${IFS}${root}/INJECTED'`,
+      );
+
+      await expect(
+        spawnCheckoutBranch({
+          repoDir,
+          branch: "does-not-exist-anywhere",
+          gc: `git -C ${repoDir}`,
+          runStep: (cmd) => spawnSetupStep(cmd, () => {}),
+          log: () => {},
+        }),
+      ).rejects.toThrow(InvalidRemoteBranchNameError);
+
+      expect(existsSync(join(root, "INJECTED"))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+
+  it("rejects a malicious requested branch instead of shelling it out", async () => {
+    const { url, root, cleanup } = setupBareRepo();
+    try {
+      const repoDir = cloneWorkspace(url, root);
+      // `branch` comes from the sandbox's git config and is interpolated
+      // into `sh -c` git commands (ls-remote/fetch/checkout) — same
+      // injection vector as origin/HEAD, just from a different source.
+      await expect(
+        spawnCheckoutBranch({
+          repoDir,
+          branch: `pwn;touch\${IFS}${root}/INJECTED`,
+          gc: `git -C ${repoDir}`,
+          runStep: (cmd) => spawnSetupStep(cmd, () => {}),
+          log: () => {},
+        }),
+      ).rejects.toThrow(InvalidRemoteBranchNameError);
+
+      expect(existsSync(join(root, "INJECTED"))).toBe(false);
     } finally {
       cleanup();
     }

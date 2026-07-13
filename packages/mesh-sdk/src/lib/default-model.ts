@@ -26,6 +26,7 @@ export const DEFAULT_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
       "anthropic/claude-haiku",
       "anthropic/claude",
     ],
+    llmapi: ["claude-sonnet-4-6", "claude-sonnet", "gpt-5.1"],
     google: ["gemini-3-flash"],
     "claude-code": [
       "claude-code:sonnet",
@@ -48,6 +49,7 @@ export const FAST_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
     "google/gemini-3-flash",
   ],
   deco: ["qwen/qwen3.5-flash", "anthropic/claude-haiku"],
+  llmapi: ["claude-haiku-4-5", "claude-haiku", "gpt-4o-mini"],
   google: ["gemini-2.5-flash", "gemini-3-flash"],
   "claude-code": ["claude-code:haiku", "claude-code:sonnet"],
   codex: ["codex:gpt-5.4-mini"],
@@ -79,6 +81,7 @@ export const SMART_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
     "anthropic/claude-sonnet",
     "anthropic/claude",
   ],
+  llmapi: ["claude-sonnet-4-6", "claude-sonnet"],
   google: ["gemini-3-pro", "gemini-3-flash"],
   "claude-code": ["claude-code:sonnet"],
   codex: ["codex:gpt-5.4"],
@@ -113,6 +116,7 @@ export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
       // Fable suspended by US government directive (2026-06-13)
       "anthropic/claude-fable",
     ],
+    llmapi: ["claude-opus-4-8", "claude-opus", "claude-sonnet-4-6"],
     google: ["gemini-3-pro"],
     "claude-code": [
       "claude-code:opus-1m",
@@ -129,6 +133,7 @@ export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
 export const IMAGE_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
   openrouter: ["openai/gpt-image-1", "google/gemini-2.0-flash-image"],
   deco: ["openai/gpt-image-1", "google/gemini-2.0-flash-image"],
+  llmapi: ["gemini-2.5-flash-image", "gpt-image-1"],
   google: ["gemini-2.0-flash-image"],
 };
 

@@ -132,6 +132,38 @@ describe("OrgFs service (integration)", () => {
     expect(capped.map((e) => e.path)).toEqual(["old.txt", "newest.md"]);
   });
 
+  it("searchWithEffectivePublic matches path substrings, escapes LIKE metacharacters, resolves inherited public", async () => {
+    await fs.write("skills", "reports/Q1-Sales.md", "1", { actor: ACTOR });
+    await fs.write("outputs", "thread-1/sales_deck.html", "2", {
+      actor: ACTOR,
+    });
+    await fs.write("skills", "notes.txt", "3", { actor: ACTOR });
+    await fs.write("skills", "gone-sales.txt", "x", { actor: ACTOR });
+    await fs.delete("skills", "gone-sales.txt", { actor: ACTOR });
+    await fs.setReadPublic("skills", "reports", true, { actor: ACTOR });
+
+    // Case-insensitive, newest first, no tombstones; folder publish inherits.
+    const hits = await fs.searchWithEffectivePublic("sales", 10);
+    expect(hits.map((e) => [e.volume, e.path, e.effectivePublic])).toEqual([
+      ["outputs", "thread-1/sales_deck.html", false],
+      ["skills", "reports/Q1-Sales.md", true],
+    ]);
+
+    // `_` is a literal, not a single-char wildcard ("Sales." must not match).
+    expect(
+      (await fs.searchWithEffectivePublic("sales_", 10)).map((e) => e.path),
+    ).toEqual(["thread-1/sales_deck.html"]);
+    expect(await fs.searchWithEffectivePublic("%", 10)).toEqual([]);
+
+    // Volume narrowing (the public-sets pseudo-org passes its set volumes).
+    expect(
+      (await fs.searchWithEffectivePublic("sales", 10, ["outputs"])).map(
+        (e) => e.path,
+      ),
+    ).toEqual(["thread-1/sales_deck.html"]);
+    expect(await fs.searchWithEffectivePublic("sales", 10, [])).toEqual([]);
+  });
+
   it("filesExist batch-probes live files only", async () => {
     await fs.write("skills", "seo/SKILL.md", "skill", { actor: ACTOR });
     await fs.mkdir("skills", "plain", { actor: ACTOR });

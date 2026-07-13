@@ -91,8 +91,17 @@ spec:
             periodSeconds: 5
           lifecycle:
             preStop:
+              # `nginx -s quit` closes the listen socket and drains open
+              # keep-alive connections immediately, so a pod mid-rollout stops
+              # serving its (stale) baked SPA build right away instead of
+              # continuing to answer normally for the whole grace window. The
+              # sleep after gives that drain time to finish before kubelet's
+              # SIGTERM lands and force-kills it mid-shutdown.
               exec:
-                command: ["sleep", "{{ .Values.nginx.preStopSleepSeconds | default 15 }}"]
+                command:
+                  - /bin/sh
+                  - -c
+                  - "nginx -s quit; sleep {{ .Values.nginx.preStopSleepSeconds | default 15 }}"
           {{- with .Values.nginx.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

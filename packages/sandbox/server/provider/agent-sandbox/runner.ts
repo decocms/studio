@@ -50,6 +50,7 @@ import {
   applyPreviewPattern,
   buildConfigPayload,
   computeHandle as composeBranchHandle,
+  gitCredentialRefreshPatch,
   withSandboxLock,
 } from "../shared";
 import type { RunnerStateStore, RunnerStateStoreOps } from "../state-store";
@@ -945,7 +946,12 @@ export class AgentSandboxProvider implements SandboxProvider {
       const persisted = await ops.get(id, RUNNER_KIND);
       if (persisted) {
         const rec = await this.rehydrate(id, handle, persisted);
-        if (rec)
+        if (rec) {
+          // Resume reuses the running pod, whose daemon still holds the clone
+          // credential baked in at provision — a ~1h GitHub App token that has
+          // likely expired. Forward the freshly-minted one so authenticated git
+          // keeps working. No-op when unchanged / public clone.
+          await this.refreshDaemonGitCredential(rec, opts);
           return this.finish(
             rec,
             ops,
@@ -953,6 +959,7 @@ export class AgentSandboxProvider implements SandboxProvider {
             /* patchTtl */ true,
             "resume",
           );
+        }
         await ops.delete(id, RUNNER_KIND);
       }
     }
@@ -986,7 +993,10 @@ export class AgentSandboxProvider implements SandboxProvider {
           );
           return null;
         });
-        if (adopted)
+        if (adopted) {
+          // Same as resume: the adopted pod's daemon holds a clone credential
+          // from an earlier provision that may have lapsed. Rotate it.
+          await this.refreshDaemonGitCredential(adopted, opts);
           return this.finish(
             adopted,
             ops,
@@ -994,6 +1004,7 @@ export class AgentSandboxProvider implements SandboxProvider {
             /* patchTtl */ true,
             "adopt",
           );
+        }
         await deleteSandboxClaim(this.kubeConfig, this.namespace, handle).catch(
           () => {},
         );
@@ -1325,6 +1336,31 @@ export class AgentSandboxProvider implements SandboxProvider {
       port: opts?.workload?.devPort ?? DEFAULT_DEV_PORT,
       tenant: opts?.tenant ?? undefined,
     });
+  }
+
+  /**
+   * Forward a freshly-minted clone credential to a resumed/adopted sandbox's
+   * daemon so authenticated git survives the ~1h expiry of the token baked in
+   * at provision. Best-effort: a rotation failure must not fail the resume (the
+   * sandbox is otherwise healthy; worst case git stays stale until next start).
+   * The daemon classifies same-repo + new-token as `git-credential-refresh` and
+   * rotates `origin` in place; identical token / public clone is a no-op.
+   */
+  private async refreshDaemonGitCredential(
+    rec: K8sRecord,
+    opts: EnsureOptions,
+  ): Promise<void> {
+    const patch = gitCredentialRefreshPatch(opts);
+    if (!patch) return;
+    try {
+      await postConfig(rec.daemonUrl, rec.token, patch);
+    } catch (err) {
+      console.warn(
+        `[${LOG_LABEL}] git credential refresh failed for ${rec.handle}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /**

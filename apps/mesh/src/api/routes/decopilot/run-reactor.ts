@@ -1,9 +1,9 @@
 /**
  * Run Reactor — impure shell of the run lifecycle pipeline
  *
- * Every DB write, SSE emit, and stream buffer purge triggered by a run
- * state transition lives here. This is the only layer in the pipeline
- * that performs I/O; decide() and project() are kept pure.
+ * Every DB write and SSE emit triggered by a run state transition lives
+ * here. This is the only layer in the pipeline that performs I/O;
+ * decide() and project() are kept pure.
  *
  * Consumed via RunRegistry — callers should not use reactAll directly:
  *   registry.execute(command)          — dispatch + react (common case)
@@ -17,8 +17,11 @@ import {
   createDecopilotStepEvent,
   createDecopilotThreadStatusEvent,
 } from "@decocms/mesh-sdk";
-import type { StreamBuffer } from "./stream-buffer";
 import type { RunEvent, RunTransition } from "./run-state";
+
+/** Recorded on a run the idle reaper force-fails for lack of progress. */
+const STALL_FAILURE_REASON =
+  "Run stalled — no progress within the idle timeout window";
 
 // ============================================================================
 // Errors
@@ -30,7 +33,6 @@ import type { RunEvent, RunTransition } from "./run-state";
 
 export interface RunReactorDeps {
   storage: ThreadStoragePort;
-  streamBuffer: StreamBuffer;
   sseHub: { emit(orgId: string, event: SSEEvent): void };
 }
 
@@ -50,7 +52,12 @@ async function handleTerminalStatus(
   // DB status write intentionally removed: the consume step (consume-run-projection.ts)
   // is now the sole writer for completed/requires_action. The live reactor only emits
   // SSE for instant UX — the durable projector workflow owns the terminal DB transition.
-  // (RUN_FAILED is exempt: failed runs skip the projector path and keep their write below.)
+  // (RUN_FAILED below still writes directly, but the projector path now runs
+  // unconditionally for both topologies too — so for stream-driven failures that write
+  // RACES the projector's `markRunFailed` on the same terminal state. The write here
+  // remains the sole DB terminal only for desktop pre-publish setup failures
+  // (`failPreparedRun`) and for reaped/cancelled/ghost force-fails, which never reach
+  // the projector. See the T3 report's follow-up for the race.)
   sseHub.emit(
     orgId,
     createDecopilotThreadStatusEvent(taskId, status, {
@@ -71,7 +78,7 @@ async function handleTerminalStatus(
 // ============================================================================
 
 async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
-  const { storage, streamBuffer, sseHub } = deps;
+  const { storage, sseHub } = deps;
 
   switch (event.type) {
     case "RUN_STARTED": {
@@ -83,6 +90,10 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         run_config: event.runConfig ?? null,
         run_started_at: new Date().toISOString(),
         last_progress_at: null,
+        // Clear any prior run's recorded failure as this new run starts, so a
+        // re-run of a previously-stalled thread doesn't carry a stale reason.
+        failure_reason: null,
+        failure_kind: null,
       });
       const startedThread = await storage.get(event.taskId, event.orgId);
       sseHub.emit(
@@ -95,6 +106,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           branch: startedThread?.branch ?? null,
           createdAt: startedThread?.created_at,
           updatedAt: startedThread?.updated_at,
+          messageId: event.messageId,
         }),
       );
       return;
@@ -158,9 +170,22 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           status: "failed",
           run_config: null,
           run_started_at: null,
+          // A reaped run stalled (no progress within the idle window); record a
+          // legible reason. Other reasons ("error"/"cancelled") keep their bare
+          // terminal write — their reason is surfaced elsewhere.
+          ...(event.reason === "reaped"
+            ? { failure_reason: STALL_FAILURE_REASON, failure_kind: "stall" }
+            : {}),
         });
       }
-      streamBuffer.purge(event.taskId);
+      // Deliberately NO JetStream purge here. The consume step projects every
+      // dispatched run (its entry guard ignores terminal status) and requires
+      // the contiguous seq 1..N log; purging on a force-fail beheads a log the
+      // producer may still be appending to (reaped-but-alive run, or an
+      // in-band failure racing the consume step's read), and the projector
+      // then poisons the thread with a persisted "missing seq N" error part.
+      // Terminal purge is owned by the projector (runProjectorWorkflowBody);
+      // dispatch-start clears the previous turn; max_age bounds the rest.
       const failedThread = await storage.get(event.taskId, event.orgId);
       sseHub.emit(
         event.orgId,

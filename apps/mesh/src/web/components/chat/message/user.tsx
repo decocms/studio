@@ -15,7 +15,6 @@ import {
 
 export interface MessageProps<T extends Metadata> {
   message: UIMessage<T>;
-  status?: "streaming" | "submitted" | "ready" | "error";
   className?: string;
   onScrollToPair?: () => void;
 }

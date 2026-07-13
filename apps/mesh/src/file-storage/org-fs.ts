@@ -275,13 +275,43 @@ export class OrgFs {
 
   /**
    * `recent()` with `effectivePublic` per entry (own flag OR a published
-   * ancestor dir). Batches the ancestor lookup to one query per volume so the
-   * cross-volume feed stays cheap.
+   * ancestor dir).
    */
   async recentWithEffectivePublic(
     limit: number,
   ): Promise<Array<OrgFsEntry & { effectivePublic: boolean }>> {
-    const entries = await this.recent(limit);
+    return this.withEffectivePublic(await this.recent(limit));
+  }
+
+  /**
+   * Path search (case-insensitive substring) with `effectivePublic` per
+   * entry — the Library's search box. Searches every volume unless
+   * `volumes` narrows it (the public-sets pseudo-org passes its configured
+   * set volumes).
+   */
+  async searchWithEffectivePublic(
+    query: string,
+    limit: number,
+    volumes?: string[],
+  ): Promise<Array<OrgFsEntry & { effectivePublic: boolean }>> {
+    return this.withEffectivePublic(
+      await this.manifest.searchFiles({
+        organizationId: this.organizationId,
+        query,
+        limit,
+        volumes,
+      }),
+    );
+  }
+
+  /**
+   * Resolve `effectivePublic` (own flag OR a published ancestor dir) for a
+   * cross-volume entry list. Batches the ancestor lookup to one query per
+   * volume so the feeds stay cheap.
+   */
+  private async withEffectivePublic(
+    entries: OrgFsEntry[],
+  ): Promise<Array<OrgFsEntry & { effectivePublic: boolean }>> {
     const ancestorsByVolume = new Map<string, Set<string>>();
     for (const e of entries) {
       let set = ancestorsByVolume.get(e.volume);
@@ -561,7 +591,7 @@ export class OrgFs {
 
   /**
    * Most recently written live files across every volume, newest first.
-   * Powers the Library page's "Recently added"/"All files" feed.
+   * Powers the Library page's "Recently added" feed.
    */
   async recent(limit: number): Promise<OrgFsEntry[]> {
     return this.manifest.recentFiles({

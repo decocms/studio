@@ -25,10 +25,11 @@ import { appLogPath, hasGitRepo, resolvePmRoot } from "../paths";
 import { discoverScripts } from "../process/script-discovery";
 import type { Application, Config } from "../types";
 import { autodetectApplication } from "./autodetect";
-import { spawnClone } from "./clone";
+import { type CloneResult, spawnClone } from "./clone";
 import { emitInstalledDeps } from "./dep-metrics";
+import { publishGolden, pruneGoldens, tryRestoreGolden } from "./golden-cache";
 import { configureGitIdentity } from "./identity";
-import { spawnInstall } from "./install";
+import { denoCacheEnv, spawnInstall } from "./install";
 import { spawnSetupStep } from "./spawn-step";
 import { installProtectedBranchHook } from "../git/protect-branch";
 
@@ -68,6 +69,10 @@ export class SetupOrchestrator {
   private running = false;
   private currentBranchHead: string | undefined;
   private latestScripts: string[] | null = null;
+  // A fresh install that hasn't been published as a golden yet — published by
+  // publishPendingGolden() once the dev server is confirmed healthy. Null when
+  // the boot restored an existing golden (nothing new to publish).
+  private pendingGolden: { installRoot: string; pm: string } | null = null;
 
   constructor(private readonly deps: SetupOrchestratorDeps) {
     this.deps.taskManager.onTaskExit((summary) => {
@@ -100,6 +105,12 @@ export class SetupOrchestrator {
 
   /** Studio retry endpoint → resume from a named step. Fire-and-forget. */
   resumeFrom(step: Step): void {
+    // A retry is explicit intent: clear a dev-script-failure `error` so the
+    // enqueued step isn't silently skipped by stepStart's status gate. `paused`
+    // is deliberately left alone — that's a user stop, not a failure.
+    if (this.deps.getStatus().state === "error") {
+      this.deps.setStatus({ state: "running" });
+    }
     this.enqueueStep(step);
   }
 
@@ -117,6 +128,29 @@ export class SetupOrchestrator {
   /** True while a step is being applied. Surfaced on /health. */
   isRunning(): boolean {
     return this.running;
+  }
+
+  /**
+   * Publish the golden for this boot's fresh install — but only now that the
+   * dev server is confirmed healthy (called from the probe's `running`
+   * transition). Deferring here is what stops a broken install from becoming
+   * a reused golden. No-op when nothing is pending (golden-restore boot, or a
+   * boot with no fresh install), and self-guards against the `running`
+   * transition re-firing. Fire-and-forget; best-effort.
+   */
+  async publishPendingGolden(): Promise<void> {
+    const pending = this.pendingGolden;
+    if (!pending) return;
+    this.pendingGolden = null;
+    const config = this.currentConfig();
+    if (!config) return;
+    await publishGolden({
+      config,
+      installRoot: pending.installRoot,
+      pm: pending.pm,
+      log: (m) => this.rawChunk(`${m}\r\n`),
+    });
+    pruneGoldens();
   }
 
   pendingCount(): number {
@@ -235,9 +269,9 @@ export class SetupOrchestrator {
         /* not present */
       }
       const cloneTee = new LogTee(cloneLogPath, INSTALL_LOG_MAX_BYTES);
-      let code: number;
+      let result: CloneResult;
       try {
-        code = await spawnClone({
+        result = await spawnClone({
           config,
           onChunk: (_src, data) => {
             this.rawChunk(data);
@@ -252,11 +286,27 @@ export class SetupOrchestrator {
         return false;
       }
       cloneTee.close();
-      if (code !== 0) {
-        const error = `exit ${code}`;
+      if (result.code !== 0) {
+        const error = `exit ${result.code}`;
         this.chunk(`\r\n[orchestrator] clone failed (${error})\r\n`);
         this.deps.lifecycle.transition({ phase: "clone-failed", error });
         return false;
+      }
+      // Base-branch fetch is off the critical path: fire it detached so
+      // install+start don't wait on 1-2 network round trips that only feed
+      // the divergence header. Logs via rawChunk (the clone tee is closed);
+      // refreshes branch status when it lands so the header updates without
+      // waiting for the next poll. Best-effort — a failure just leaves the
+      // header in its "unavailable until next fetch" state.
+      if (result.fetchBase) {
+        void result
+          .fetchBase((_src, data) => this.rawChunk(data))
+          .then(() => this.deps.branchStatus.refresh())
+          .catch((e) =>
+            this.rawChunk(
+              `\r\n[clone] deferred base fetch failed: ${(e as Error).message}\r\n`,
+            ),
+          );
       }
     } else if (cloneUrl) {
       // Repo exists. If a different branch is configured, treat that as a
@@ -304,6 +354,28 @@ export class SetupOrchestrator {
     }
 
     this.deps.lifecycle.transition({ phase: "installing" });
+
+    // Golden fast path: reflink a cached node_modules for this exact lockfile
+    // and skip `bun install` entirely (see golden-cache.ts). Best-effort — a
+    // miss or any failure falls through to the normal install below.
+    const installRoot = resolvePmRoot(
+      config.repoDir,
+      config.application?.packageManager?.path,
+    );
+    if (
+      await tryRestoreGolden({
+        config,
+        installRoot,
+        pm,
+        log: (m) => this.chunk(`${m}\r\n`),
+      })
+    ) {
+      // Restored from an existing golden — nothing to publish.
+      this.pendingGolden = null;
+      this.markInstallSucceeded(config);
+      return true;
+    }
+
     this.chunk(`[orchestrator] installing dependencies\r\n`);
 
     const installLogPath = appLogPath(this.deps.logsDir, "install");
@@ -342,12 +414,26 @@ export class SetupOrchestrator {
       return false;
     }
     this.markInstallSucceeded(config);
+    // Install scripts (postinstall/prepare — lefthook, husky, etc.) can
+    // overwrite .git/hooks/pre-push; reinstall so branch protection survives.
+    if (config.repoDir) {
+      try {
+        await installProtectedBranchHook(config.repoDir);
+      } catch (e) {
+        this.chunk(
+          `\r\n[orchestrator] warning: could not reinstall protected-branch hook: ${(e as Error).message}\r\n`,
+        );
+      }
+    }
+    // Don't publish the golden yet — defer to publishPendingGolden(), which
+    // the probe's `running` transition calls once the dev server is confirmed
+    // healthy. Publishing only from a boot that actually came up prevents a
+    // broken-but-exit-0 install from becoming a golden that every later branch
+    // then reuses (the "sticky bad golden" failure mode).
+    this.pendingGolden = { installRoot, pm };
     // Report the installed dep set for pre-bake analysis (best-effort, async).
     void emitInstalledDeps({
-      installRoot: resolvePmRoot(
-        config.repoDir,
-        config.application?.packageManager?.path,
-      ),
+      installRoot,
       packageManager: pm,
       bootId: process.env.DAEMON_BOOT_ID ?? "",
       repoName: config.git?.repository?.repoName,
@@ -395,6 +481,16 @@ export class SetupOrchestrator {
       this.chunk(
         `[orchestrator] dev already running (${command.source}) — skipping restart\r\n`,
       );
+      // The dev task we would have spawned is already up (same command+cwd),
+      // but a prior failure may have left lifecycle at a terminal phase the
+      // probe refuses to promote from. Reconcile: enter `starting` so the
+      // probe can confirm `running` on its next healthy response. No-op when
+      // the lifecycle already reflects a live server.
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
+      const cur = this.deps.lifecycle.current().phase;
+      if (cur !== "running" && cur !== "starting") {
+        this.deps.lifecycle.transition({ phase: "starting" });
+      }
       return;
     }
     await this.stopDevTask();
@@ -402,7 +498,10 @@ export class SetupOrchestrator {
     await this.deps.taskManager.spawn({
       command: command.cmd,
       cwd: command.cwd,
-      env: buildDevEnv(config, config.env),
+      // denoCacheEnv points DENO_DIR at the per-repo node-local cache for deno
+      // dev servers (no-op for other PMs); layered under config.env so a
+      // user-supplied DENO_DIR still wins.
+      env: buildDevEnv(config, { ...denoCacheEnv(config), ...config.env }),
       label: command.label,
       mode: "pty",
       logName: command.source,
@@ -511,7 +610,7 @@ export class SetupOrchestrator {
     }
     if (config.repoDir) {
       try {
-        installProtectedBranchHook(config.repoDir);
+        await installProtectedBranchHook(config.repoDir);
       } catch (e) {
         this.chunk(
           `\r\n[orchestrator] warning: could not install protected-branch hook: ${(e as Error).message}\r\n`,

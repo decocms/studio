@@ -79,6 +79,49 @@ function resourcesToParts(
   return parts;
 }
 
+interface SkillFile {
+  relPath: string;
+  content: string;
+}
+
+/**
+ * Converts a skill mention to a UI message part, mirroring how MCP prompts are
+ * inlined (a `[/label]` header + the content, no extra prose). The markdown/text
+ * docs are baked in — each wrapped in a `<skill-file path="…">` delimiter — and
+ * files left on disk (scripts/assets) are surfaced as a compact path list under
+ * the mount, so the agent knows what's there without re-reading the skill.
+ */
+function skillMentionToParts(
+  meta: {
+    sandboxPath: string;
+    files: SkillFile[];
+    omittedPaths?: string[];
+  },
+  mentionName: string,
+): ChatMessage["parts"] {
+  const files = (meta.files ?? []).filter((f) => f.content?.trim());
+  const omitted = meta.omittedPaths ?? [];
+  if (files.length === 0 && omitted.length === 0) return [];
+
+  const blocks = files
+    .map(
+      (f) =>
+        `<skill-file path="${f.relPath}">\n${f.content.trim()}\n</skill-file>`,
+    )
+    .join("\n\n");
+  const omittedLine =
+    omitted.length > 0
+      ? `\n\nOther files in \`${meta.sandboxPath}/\`: ${omitted.join(", ")}`
+      : "";
+
+  return [
+    {
+      type: "text",
+      text: `[${mentionName}]\n${blocks}${omittedLine}`,
+    },
+  ];
+}
+
 /**
  * Converts prompt messages to UI message parts
  */
@@ -221,6 +264,19 @@ export function derivePartsFromTiptapDoc(
               mentionName,
             ),
           );
+        }
+      } else if (node.attrs.kind === "skill") {
+        // Skill mention: SKILL.md + sibling files inlined, plus a disk pointer.
+        const meta = node.attrs.metadata as
+          | {
+              sandboxPath: string;
+              files: SkillFile[];
+              omittedPaths?: string[];
+            }
+          | null
+          | undefined;
+        if (meta && !Array.isArray(meta) && Array.isArray(meta.files)) {
+          parts.push(...skillMentionToParts(meta, mentionName));
         }
       } else {
         // Slash mentions: prompts or resources (both use "/")

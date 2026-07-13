@@ -981,6 +981,29 @@ NATS operator/account credential env vars such as `NATS_OPERATOR_JWT`, `NATS_ACC
 
 The public link session endpoint requires `NATS_PUBLIC_URL`, `NATS_TUNNEL_PUBLIC_ENABLED=true`, `NATS_ACCOUNT_JWT`, and `NATS_ACCOUNT_SIGNING_KEY`. It returns `503` until those values are present. When bundled NATS runs in operator/JWT mode, Studio's internal connection also needs `NATS_CREDS`; otherwise anonymous `NATS_URL` connections will fail.
 
+### In-cluster ClickHouse (optional)
+
+Backs the monitoring dashboard when you don't use ClickHouse Cloud. Two independent optional dependencies from the official [ClickHouse operator](https://github.com/ClickHouse/clickhouse-operator) repo, pinned to the same version:
+
+- `clickhouse-operator` — the operator Deployment + CRDs (`ClickHouseCluster`, `KeeperCluster`). Enable only if the cluster doesn't already run it. The admission webhooks require **cert-manager**; without it set `clickhouse-operator.certManager.enabled=false` and `clickhouse-operator.webhook.enabled=false`.
+- `clickhouse-cluster` — renders the `ClickHouseCluster` + `KeeperCluster` CRs. `clickhouse-cluster.clickhouse.spec` and `clickhouse-cluster.keeper.spec` are passed verbatim to the CRs, so any CRD field can be customized. Works with the embedded operator or a pre-existing one.
+
+```yaml
+clickhouse-operator:
+  enabled: true
+  controller:
+    watchNamespaces: [<install namespace>]  # required; validated at render time
+
+clickhouse-cluster:
+  enabled: true
+```
+
+The embedded operator must be scoped to the install namespace via `clickhouse-operator.controller.watchNamespaces` — the chart fails at render time (with the exact namespace in the message) if it is empty or doesn't include the release namespace. The upstream chart only accepts a static list, so it can't be derived automatically. For a cluster-wide operator, install `clickhouse-operator-helm` separately and enable only `clickhouse-cluster` here.
+
+When the CR is enabled, `CLICKHOUSE_URL` is auto-derived to `http://<cr-name>-clickhouse-headless:8123` (no password on the `default` user out of the box). An explicit `CLICKHOUSE_URL` in `configMap.meshConfig` or in the Secret takes precedence — the Secret is the place for an authenticated URL (`http://default:<pass>@...`) paired with `clickhouse.spec.settings.defaultUserPassword`.
+
+Telemetry gets **into** ClickHouse via the in-cluster OTel collector's `clickhouse` exporter, and the dashboard reads the `studio_monitoring_logs` view, which is provisioned once by hand — see `examples/values-clickhouse.yaml` for the full wiring and `apps/mesh/src/monitoring/clickhouse-setup.md` for the view DDL. Backups are your responsibility (single-node ClickHouse has no replication).
+
 ### Secret
 
 The chart supports three secret management scenarios:

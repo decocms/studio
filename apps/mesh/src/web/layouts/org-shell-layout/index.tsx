@@ -76,11 +76,7 @@ export default function OrgShellLayout() {
                   <Toolbar.LeftColumn>
                     <Toolbar.LogoLink />
                     <SidebarTriggerButton />
-                    <span className="hidden md:contents">
-                      <Toolbar.Nav />
-                    </span>
                     <Toolbar.TogglesSlot />
-                    <LinkedDesktopIndicator />
                   </Toolbar.LeftColumn>
                   <Toolbar.CenterSlot />
                   <Toolbar.RightColumn>

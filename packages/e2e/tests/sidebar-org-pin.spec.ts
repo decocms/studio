@@ -50,11 +50,14 @@ test.describe("Sidebar org pin", () => {
     await toggleSidebar.waitFor({ state: "visible", timeout: 15_000 });
     await toggleSidebar.click();
 
-    const anyGroupHeader = page.locator('[role="button"][aria-expanded]');
-    await anyGroupHeader.first().waitFor({ state: "visible", timeout: 30_000 });
-
-    const groupHeader = anyGroupHeader.filter({ hasText: agentTitle }).first();
-    await groupHeader.waitFor({ state: "visible", timeout: 30_000 });
+    // Agents render as flat rows in the "Agents" section now (no expandable
+    // group headers). Scope to that section and locate our agent by title.
+    const agentsSection = page.locator("#sidebar-section-agents");
+    const agentRow = agentsSection
+      .locator('[role="button"]')
+      .filter({ hasText: agentTitle })
+      .first();
+    await agentRow.waitFor({ state: "visible", timeout: 30_000 });
 
     const pinMenuItem = page.getByRole("menuitem", {
       name: "Pin for all members",
@@ -64,7 +67,7 @@ test.describe("Sidebar org pin", () => {
     // until the pin action is available for the owner.
     await expect(async () => {
       await page.keyboard.press("Escape");
-      await groupHeader.click({ button: "right" });
+      await agentRow.click({ button: "right" });
       await expect(pinMenuItem).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: 30_000 });
 

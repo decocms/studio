@@ -4,6 +4,7 @@
  * timeout. Treats any HTTP response (incl. 404) as "up".
  */
 import {
+  PROBE_FAILURE_THRESHOLD,
   PROBE_FAST_MS,
   PROBE_HEAD_TIMEOUT_MS,
   PROBE_SLOW_MS,
@@ -77,6 +78,21 @@ export function cadence(state: ProbeState): number {
   return state.status === "online" ? PROBE_SLOW_MS : PROBE_FAST_MS;
 }
 
+/**
+ * Whether a HEAD miss should escalate to a `head-failure` event (→ offline) or
+ * be absorbed as a transient blip. Only an *online* server is debounced —
+ * `booting`/`offline` pass straight through (reduce ignores head-failure for
+ * them anyway). An online server is held until `PROBE_FAILURE_THRESHOLD`
+ * consecutive misses so a single slow probe (heavy dev-server work) doesn't
+ * report a live server as crashed.
+ */
+export function shouldEscalateFailure(
+  status: UpstreamStatus,
+  consecutiveFailures: number,
+): boolean {
+  return status !== "online" || consecutiveFailures >= PROBE_FAILURE_THRESHOLD;
+}
+
 interface HeadResult {
   status: number;
   isHtml: boolean;
@@ -118,6 +134,9 @@ export function startUpstreamProbe(deps: ProbeDeps): ProbeState {
   };
   let inFlight = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  // Consecutive HEAD misses. Reset on any response; drives the debounce so a
+  // busy-but-alive dev server isn't flipped to "crashed" on one slow probe.
+  let consecutiveFailures = 0;
 
   function applyEvent(event: ProbeEvent) {
     const result = reduce(state, event);
@@ -165,20 +184,30 @@ export function startUpstreamProbe(deps: ProbeDeps): ProbeState {
     }
 
     if (result !== null) {
+      consecutiveFailures = 0;
       applyEvent({
         kind: "head-response",
         status: result.status,
         isHtml: result.isHtml,
       });
     } else {
-      applyEvent({ kind: "head-failure" });
+      consecutiveFailures++;
+      // Debounce: hold an online server through transient slow probes; only
+      // escalate to offline once we've missed PROBE_FAILURE_THRESHOLD in a row.
+      if (shouldEscalateFailure(state.status, consecutiveFailures)) {
+        applyEvent({ kind: "head-failure" });
+      }
     }
     schedule();
   }
 
   function schedule() {
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => void tick(), cadence(state));
+    // While a miss is pending on an online server, re-probe fast so a real
+    // crash is confirmed within ~PROBE_FAILURE_THRESHOLD seconds instead of
+    // waiting a full slow interval.
+    const delay = consecutiveFailures > 0 ? PROBE_FAST_MS : cadence(state);
+    timer = setTimeout(() => void tick(), delay);
   }
 
   schedule();

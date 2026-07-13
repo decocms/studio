@@ -44,19 +44,25 @@ export function createVmTools(params: VmToolsParams) {
 
   // Proxy an arbitrary `/_sandbox/*` route through the fs hooks' retry layer.
   // Used by the tools whose daemon surface the typed flat ops don't model
-  // (image-read, html-buffer write/edit).
+  // (image-read, html-buffer write/edit). `signal` is the run's abort signal
+  // (ToolCallOptions.abortSignal) so cancelling the run aborts the daemon call.
   const call = (
     daemonPath: string,
     input: Record<string, unknown>,
+    signal?: AbortSignal,
     method: "POST" | "PUT" = "POST",
-  ): Promise<unknown> => fs.onProxy(daemonPath, input, method);
+  ): Promise<unknown> => fs.onProxy(daemonPath, input, method, signal);
 
   const read = tool({
     needsApproval: approvalFor(TOOL_APPROVAL.read),
     description: READ_DESCRIPTION,
     inputSchema: zodSchema(ReadInputSchema),
-    execute: async (input) => {
-      const result = (await call("/_sandbox/read", input)) as
+    execute: async (input, options) => {
+      const result = (await call(
+        "/_sandbox/read",
+        input,
+        options.abortSignal,
+      )) as
         | { kind: "text"; content: string; lineCount: number }
         | {
             kind: "image";
@@ -89,8 +95,12 @@ export function createVmTools(params: VmToolsParams) {
     needsApproval: approvalFor(TOOL_APPROVAL.write),
     description: WRITE_DESCRIPTION,
     inputSchema: zodSchema(WriteInputSchema),
-    execute: async (input) => {
-      const daemonResult = await call("/_sandbox/write", input);
+    execute: async (input, options) => {
+      const daemonResult = await call(
+        "/_sandbox/write",
+        input,
+        options.abortSignal,
+      );
       // Fast path: mirror `org/home/{decks,pages}/*.html` content into
       // org-fs server-side at step end (skips the mount's slow vfs write-back)
       // so the live-preview watcher sees the bytes in the same step.
@@ -103,8 +113,12 @@ export function createVmTools(params: VmToolsParams) {
     needsApproval: approvalFor(TOOL_APPROVAL.edit),
     description: EDIT_DESCRIPTION,
     inputSchema: zodSchema(EditInputSchema),
-    execute: async (input) => {
-      const daemonResult = (await call("/_sandbox/edit", input)) as {
+    execute: async (input, options) => {
+      const daemonResult = (await call(
+        "/_sandbox/edit",
+        input,
+        options.abortSignal,
+      )) as {
         ok: boolean;
         replacements: number;
         content?: string;
@@ -121,8 +135,8 @@ export function createVmTools(params: VmToolsParams) {
     needsApproval: approvalFor(TOOL_APPROVAL.grep),
     description: GREP_DESCRIPTION,
     inputSchema: zodSchema(GrepInputSchema),
-    execute: async (input) => {
-      const result = await call("/_sandbox/grep", input);
+    execute: async (input, options) => {
+      const result = await call("/_sandbox/grep", input, options.abortSignal);
       return maybeTruncate(result, toolOutputMap);
     },
   });
@@ -131,8 +145,8 @@ export function createVmTools(params: VmToolsParams) {
     needsApproval: approvalFor(TOOL_APPROVAL.glob),
     description: GLOB_DESCRIPTION,
     inputSchema: zodSchema(GlobInputSchema),
-    execute: async (input) => {
-      const result = await call("/_sandbox/glob", input);
+    execute: async (input, options) => {
+      const result = await call("/_sandbox/glob", input, options.abortSignal);
       return maybeTruncate(result, toolOutputMap);
     },
   });
@@ -141,8 +155,8 @@ export function createVmTools(params: VmToolsParams) {
     needsApproval: approvalFor(TOOL_APPROVAL.bash),
     description: BASH_DESCRIPTION,
     inputSchema: zodSchema(BashInputSchema),
-    execute: async (input) => {
-      const result = await call("/_sandbox/bash", input);
+    execute: async (input, options) => {
+      const result = await call("/_sandbox/bash", input, options.abortSignal);
       return maybeTruncate(result, toolOutputMap);
     },
   });
@@ -154,7 +168,7 @@ export function createVmTools(params: VmToolsParams) {
     needsApproval: approvalFor(TOOL_APPROVAL.skill),
     description: SKILL_DESCRIPTION,
     inputSchema: zodSchema(SkillInputSchema),
-    execute: async ({ id }) => {
+    execute: async ({ id }, options) => {
       const path = resolveSkillPath(id);
       if (!path) {
         return {
@@ -162,7 +176,11 @@ export function createVmTools(params: VmToolsParams) {
         };
       }
       try {
-        const result = await call("/_sandbox/read", { path });
+        const result = await call(
+          "/_sandbox/read",
+          { path },
+          options.abortSignal,
+        );
         return maybeTruncate(result, toolOutputMap);
       } catch {
         return {

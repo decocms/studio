@@ -11,6 +11,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
+import { writeAgentPrompts } from "../../file-storage/agent-prompts";
 import { VirtualMCPEntitySchema, VirtualMCPUpdateDataSchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 
@@ -35,7 +36,8 @@ const UpdateOutputSchema = z.object({
 
 export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
   name: "COLLECTION_VIRTUAL_MCP_UPDATE",
-  description: "Update a Virtual MCP's name, slug, or connection list.",
+  description:
+    "Update a Virtual MCP's name, slug, connection list, or kickstart prompts. Pass `prompts` to replace the agent's conversation starters (full set; empty array clears them).",
   annotations: {
     title: "Update Virtual MCP",
     readOnlyHint: false,
@@ -66,10 +68,9 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
       throw new Error(`Virtual MCP not found: ${input.id}`);
     }
 
-    // Shallow-merge incoming metadata with existing so that callers can send
-    // partial metadata updates (e.g. only enabled_plugins) without wiping
-    // other fields like instructions or ui.
-    const data = { ...input.data };
+    // `prompts` lives in org-fs, not on the agent row — pull it out before the
+    // row update and re-seed separately below.
+    const { prompts, ...data } = input.data;
     if (data.metadata && existing.metadata) {
       data.metadata = { ...existing.metadata, ...data.metadata };
     }
@@ -83,6 +84,12 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
       userId,
       data,
     );
+
+    // Re-seed kickstart prompts when provided (full replace; [] clears all).
+    // Best-effort: never fail the update over a prompt write.
+    if (prompts !== undefined && ctx.orgFs) {
+      await writeAgentPrompts(ctx.orgFs, input.id, userId, prompts);
+    }
 
     // Return virtual MCP entity directly (already in correct format)
     return {

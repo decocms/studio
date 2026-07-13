@@ -269,6 +269,38 @@ class BridgeStore {
       this.set({ error: "Failed to load app", isLoading: false });
     };
 
+    // Rebind the bridge when the iframe re-navigates. Relocating an iframe in
+    // the DOM (e.g. the tile board reordering/moving tiles) gives it a fresh
+    // browsing context — a new `contentWindow` — WITHOUT React re-firing this
+    // ref. The existing bridge's transport stays bound to the now-dead window,
+    // so the reloaded app's `ui/initialize` never reaches us and it hangs on
+    // "Connecting to host". The initial load is skipped: the ref-time
+    // connectBridge already listens before the app's `connect()` runs.
+    let sawLoad = false;
+    iframe.onload = () => {
+      if (this.disposed) return;
+      if (!sawLoad) {
+        sawLoad = true;
+        return;
+      }
+      this.set({ height: this.config.minHeight, isLoading: true, error: null });
+      this.connectBridge(iframe);
+    };
+
+    this.connectBridge(iframe);
+  };
+
+  /** Build a fresh AppBridge and connect its transport to the iframe's current
+   *  contentWindow. Closes any prior bridge first (reload rebind). */
+  private connectBridge(iframe: HTMLIFrameElement) {
+    this.clearTimeout();
+    this.unsubTheme?.();
+    this.unsubTheme = null;
+    if (this.bridge) {
+      this.bridge.close();
+      this.bridge = null;
+    }
+
     try {
       const { client, displayMode, maxHeight, toolInfo, orgId } = this.config;
       const hostContext = buildHostContext(
@@ -299,7 +331,7 @@ class BridgeStore {
         isLoading: false,
       });
     }
-  };
+  }
 
   // ---- private handler registration ----
 

@@ -2,11 +2,12 @@
  * Library (/$org/files) — the org filesystem as a Drive-like home (Figma
  * qFc7wr91 node 7870-5644). Replaces the settings → Files table browser.
  *
- * Root: "Recently added" (cross-volume `/fs/recent` feed) + Folders
- * (volumes and public sets) + "All files". Browsing into a folder swaps to
- * a breadcrumbed listing of that directory in the same card language.
- * Browse location lives in `?path=` and the open preview in `?preview=`,
- * so both are linkable and survive reload.
+ * A global search box (cross-volume `/fs/search`) sits above every view;
+ * typing swaps the active listing for its results. Root: "Recently added"
+ * (cross-volume `/fs/recent` feed) + Folders (volumes and public sets).
+ * Browsing into a folder swaps to a breadcrumbed listing of that directory
+ * in the same card language. Browse location lives in `?path=` and the open
+ * preview in `?preview=`, so both are linkable and survive reload.
  */
 
 import { useRef, useState } from "react";
@@ -23,11 +24,14 @@ import {
   Palette,
   Plus,
   RefreshCw01,
+  SearchLg,
   Stars01,
   Upload01,
+  XClose,
   Zap,
 } from "@untitledui/icons";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   AlertDialog,
@@ -55,6 +59,7 @@ import { FileTypeIcon } from "@/web/components/file-type-icon";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { KEYS } from "@/web/lib/query-keys";
+import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
 import {
   type OrgFsEntry,
   type ShareMode,
@@ -63,6 +68,7 @@ import {
   useOrgFsMutations,
   useOrgFsPublicSets,
   useOrgFsRecent,
+  useOrgFsSearch,
   useOrgFsUsage,
 } from "@/web/hooks/use-org-fs";
 import {
@@ -77,8 +83,10 @@ import {
 import {
   basename,
   browsePathFor,
+  browsePathForEntry,
   type LibraryLocation,
   parseLibraryPath,
+  publicSetOf,
 } from "./location";
 import {
   ResizableHandle,
@@ -119,7 +127,20 @@ const VOLUMES = [
   { id: "outputs", description: "Agent run outputs", glyph: Stars01 },
 ] as const;
 
-const RECENTLY_ADDED_COUNT = 3;
+const RECENTLY_ADDED_COUNT = 6;
+
+/** "volume/dir" a cross-volume entry lives in — home shows the org slug,
+ *  `public-<set>` volumes show as `public/<set>`. */
+function locationOf(volume: string, path: string, orgSlug: string): string {
+  const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const set = publicSetOf(volume);
+  const volLabel = set
+    ? `public/${set}`
+    : volume === "home"
+      ? homeDisplayName(orgSlug)
+      : volume;
+  return dir ? `${volLabel}/${dir}` : volLabel;
+}
 
 interface PendingDelete {
   volume: string;
@@ -133,8 +154,10 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function CardsGrid({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {children}
+    <div className="@container">
+      <div className="grid grid-cols-1 gap-3 @[440px]:grid-cols-2 @[660px]:grid-cols-3">
+        {children}
+      </div>
     </div>
   );
 }
@@ -224,7 +247,83 @@ function Breadcrumbs({
   );
 }
 
-/** Root view: Recently added + Folders (volumes/public) + All files. */
+/**
+ * Global search results — cross-volume, shown in place of whatever listing
+ * is active (root or folder) while the search box has a query.
+ */
+function SearchResultsView({
+  query,
+  stale,
+  onOpenFile,
+  onShare,
+  onDelete,
+}: {
+  query: string;
+  /** The input is ahead of `query` (still inside the debounce window). */
+  stale: boolean;
+  onOpenFile: (previewPath: string) => void;
+  onShare: (target: ShareTarget) => void;
+  onDelete: (pending: PendingDelete) => void;
+}) {
+  const { org } = useProjectContext();
+  const fileUrl = useOrgFsFileUrl();
+  const search = useOrgFsSearch(query);
+
+  const shareFile = (e: OrgFsEntry & { volume: string }) =>
+    onShare({
+      volume: e.volume,
+      path: e.path,
+      kind: "file",
+      shareMode: e.shareMode ?? "private",
+      effectivePublic: e.effectivePublic ?? false,
+      url: publicFileUrl(fileUrl(e.volume, e.path)),
+    });
+
+  if (search.isPending) return <GridSkeleton rows={2} />;
+  const results = search.data ?? [];
+  if (results.length === 0) {
+    return <EmptyNote>No files match “{query}”.</EmptyNote>;
+  }
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3",
+        // Dim while showing results for a previous query.
+        (stale || search.isPlaceholderData) && "opacity-50",
+      )}
+    >
+      <SectionLabel>
+        {results.length} {results.length === 1 ? "result" : "results"}
+      </SectionLabel>
+      <CardsGrid>
+        {results.map((e) => {
+          // Hits from the shared public sets are read-only: no share/delete.
+          const readOnly = publicSetOf(e.volume) !== null;
+          return (
+            <FileCard
+              key={`${e.volume}/${e.path}`}
+              filename={basename(e.path)}
+              updatedAt={e.updatedAt}
+              downloadUrl={fileUrl(e.volume, e.path)}
+              subtitle={locationOf(e.volume, e.path, org.slug)}
+              publicState={publicStateOf(e)}
+              onOpen={() => onOpenFile(browsePathForEntry(e.volume, e.path))}
+              onShare={readOnly ? undefined : () => shareFile(e)}
+              onDelete={
+                readOnly
+                  ? undefined
+                  : () =>
+                      onDelete({ volume: e.volume, path: e.path, kind: "file" })
+              }
+            />
+          );
+        })}
+      </CardsGrid>
+    </div>
+  );
+}
+
+/** Root view: Recently added + Folders (volumes/public). */
 function RootView({
   onOpenDir,
   onOpenFile,
@@ -251,9 +350,7 @@ function RootView({
       url: publicFileUrl(fileUrl(e.volume, e.path)),
     });
 
-  const entries = recent.data ?? [];
-  const recentlyAdded = entries.slice(0, RECENTLY_ADDED_COUNT);
-  const allFiles = entries.slice(RECENTLY_ADDED_COUNT);
+  const recentlyAdded = (recent.data ?? []).slice(0, RECENTLY_ADDED_COUNT);
 
   return (
     <>
@@ -273,6 +370,7 @@ function RootView({
                 updatedAt={e.updatedAt}
                 size={e.size}
                 downloadUrl={fileUrl(e.volume, e.path)}
+                subtitle={locationOf(e.volume, e.path, org.slug)}
                 publicState={publicStateOf(e)}
                 onOpen={() => onOpenFile(`${e.volume}/${e.path}`)}
                 onShare={() => shareFile(e)}
@@ -320,28 +418,6 @@ function RootView({
           )}
         </CardsGrid>
       </div>
-
-      {allFiles.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <SectionLabel>All files</SectionLabel>
-          <CardsGrid>
-            {allFiles.map((e) => (
-              <FileCard
-                key={`${e.volume}/${e.path}`}
-                filename={basename(e.path)}
-                updatedAt={e.updatedAt}
-                downloadUrl={fileUrl(e.volume, e.path)}
-                publicState={publicStateOf(e)}
-                onOpen={() => onOpenFile(`${e.volume}/${e.path}`)}
-                onShare={() => shareFile(e)}
-                onDelete={() =>
-                  onDelete({ volume: e.volume, path: e.path, kind: "file" })
-                }
-              />
-            ))}
-          </CardsGrid>
-        </div>
-      )}
     </>
   );
 }
@@ -527,7 +603,16 @@ function VolumeView({
   );
 }
 
-function LibraryPage() {
+export function LibraryPage({
+  onOpenFile: onOpenFileOverride,
+  onOpenSkill: onOpenSkillOverride,
+  onOpenBrand: onOpenBrandOverride,
+}: {
+  /** Override file-open behaviour (e.g. open as a panel tab instead of ?preview=). */
+  onOpenFile?: (previewPath: string) => void;
+  onOpenSkill?: (skillPath: string) => void;
+  onOpenBrand?: (brandPath: string) => void;
+} = {}) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -568,10 +653,20 @@ function LibraryPage() {
         [kind]: value,
       }),
     });
-  const onOpenFile = (previewPath: string) =>
-    openPreview("preview", previewPath);
-  const onOpenSkill = (skillPath: string) => openPreview("skill", skillPath);
-  const onOpenBrand = (brandPath: string) => openPreview("brand", brandPath);
+  const onOpenFile =
+    onOpenFileOverride ??
+    ((previewPath: string) => openPreview("preview", previewPath));
+  const onOpenSkill =
+    onOpenSkillOverride ??
+    ((skillPath: string) => openPreview("skill", skillPath));
+  const onOpenBrand =
+    onOpenBrandOverride ??
+    ((brandPath: string) => openPreview("brand", brandPath));
+
+  // Global file search — cross-volume, so it lives above the browse
+  // location and stays visible while inside any folder.
+  const [searchText, setSearchText] = useState("");
+  const searchQuery = useDebouncedValue(searchText.trim(), 300);
 
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(
     null,
@@ -686,6 +781,7 @@ function LibraryPage() {
       });
     }
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(org.id) });
+    queryClient.invalidateQueries({ queryKey: KEYS.orgFsSearchRoot(org.id) });
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsPublicSets(org.id) });
   }
 
@@ -763,7 +859,42 @@ function LibraryPage() {
             </div>
           </div>
 
-          {isRoot ? (
+          <div className="relative">
+            <SearchLg
+              size={16}
+              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setSearchText("");
+              }}
+              placeholder="Search all files…"
+              className="h-10 rounded-xl pr-9 pl-9"
+            />
+            {searchText && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
+                onClick={() => setSearchText("")}
+                aria-label="Clear search"
+              >
+                <XClose size={14} />
+              </Button>
+            )}
+          </div>
+
+          {searchQuery ? (
+            <SearchResultsView
+              query={searchQuery}
+              stale={searchText.trim() !== searchQuery}
+              onOpenFile={onOpenFile}
+              onShare={setShareTarget}
+              onDelete={setPendingDelete}
+            />
+          ) : isRoot ? (
             <RootView
               onOpenDir={onOpenDir}
               onOpenFile={onOpenFile}

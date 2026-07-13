@@ -319,6 +319,7 @@ isolation) and is intentionally separate.
 - Components and classes: PascalCase
 - Hooks and utilities: camelCase
 - Files in shared packages: kebab-case (enforced by `plugins/enforce-kebab-case-file-names.ts`)
+- A comment that takes a paragraph to justify a workaround is a signal the code is wrong, not the comment—fix the code, don't explain it away
 
 ### React 19 Patterns
 - Uses React 19 with React Compiler (babel-plugin-react-compiler)
@@ -429,6 +430,7 @@ PRs should include:
 5. **Formatting**: The pre-commit hook will reject commits if code isn't formatted with Biome
 6. **Never modify knip configuration** (`knip.json`, `knip.config.ts`, etc.) to silence warnings. Knip warnings indicate dead code, unused exports, or unused dependencies—these are code smells that should be fixed by removing the unused code/export/dependency, not by adding exclusions to the knip config.
 7. **CI errors are always on your branch**. The `main` branch CI always passes. When CI fails, the problem is in the code you changed—do not assume it's a pre-existing issue or a flaky test. Investigate and fix your code.
+8. **No synchronous/blocking work in the sandbox daemon** (`packages/sandbox/daemon/**`). It runs on a single-threaded Bun event loop. Any sync fs (`readFileSync`/`writeFileSync`/`mkdirSync`), sync crypto/hashing, or CPU-bound work (huge `JSON.parse`/`stringify`, unbounded loops) blocks the loop—so the daemon stops answering its HTTP health probe. Studio polls that probe and will mark the sandbox **dead** and tear it down / trigger recovery on a single miss. Use `node:fs/promises`, `await`, stream/chunk large payloads, and offload CPU work. This is CONTRIBUTING.md rule #1 for a reason. See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ## API Path Convention
 

@@ -10,8 +10,11 @@
  * - Per-subject message limit (500K msgs/subject) prevents one thread
  *   from starving others.
  * - Per-thread publish error tracking with sampled logging.
- * - `purge()` is called on terminal events from the run reactor to drop
- *   completed runs early; the 24h `max_age` is the upper bound.
+ * - `purge()` is owned by the projector: `runProjectorWorkflowBody` purges a
+ *   run's subject after a terminal projection, and `dispatchRun` purges the
+ *   previous turn's remnants at turn start. Nothing may purge a subject the
+ *   consume step hasn't projected yet (it needs the contiguous seq 1..N log);
+ *   the 24h `max_age` is the backstop for never-projected runs.
  */
 
 import {
@@ -274,7 +277,7 @@ export class NatsStreamBuffer implements StreamBuffer {
     taskId: string,
     registrySignal: AbortSignal,
     orgId?: string,
-  ): void {
+  ): Promise<void> {
     const js = this.js;
     if (!js) {
       // No JetStream client — every chunk for this run is silently dropped
@@ -283,7 +286,7 @@ export class NatsStreamBuffer implements StreamBuffer {
       console.warn(
         `[Decopilot] pump: JetStream client unavailable for thread ${taskId}; chunks NOT published to NATS`,
       );
-      return;
+      return Promise.resolve();
     }
 
     const tracker = createPublishTracker(taskId, orgId);
@@ -340,10 +343,18 @@ export class NatsStreamBuffer implements StreamBuffer {
       }
     };
 
-    void (async () => {
+    return (async () => {
       const reader = stream.getReader();
       let sinceYield = 0;
       let publishedChunks = 0;
+      // Captured, not swallowed: a mid-stream failure (e.g. the
+      // `buildAgentSandboxUiStream` vessel erroring because `ingestRun` threw)
+      // still publishes the legacy unfenced `{done}` below so any tail
+      // consumer closes cleanly, but the caller (`dispatchRunAndWait`) needs
+      // to learn about the failure too — awaiting the promise this function
+      // now returns surfaces it instead of the caller reading a false
+      // "the tail saw {done}, so the run finished cleanly" signal.
+      let caught: unknown;
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -361,6 +372,7 @@ export class NatsStreamBuffer implements StreamBuffer {
           }
         }
       } catch (err) {
+        caught = err;
         console.warn(
           `[Decopilot] stream pump error for thread ${taskId}:`,
           (err as Error)?.message ?? err,
@@ -380,6 +392,7 @@ export class NatsStreamBuffer implements StreamBuffer {
           );
         }
       }
+      if (caught !== undefined) throw caught;
     })();
   }
 

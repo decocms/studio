@@ -1,5 +1,7 @@
 import { IntegrationIcon } from "@/web/components/integration-icon";
+import { KEYS } from "@/web/lib/query-keys";
 import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Dialog,
   DialogContent,
@@ -14,48 +16,42 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@decocms/mesh-sdk";
-import { CheckCircle, Edit03, Loading01 } from "@untitledui/icons";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle, Loading01, Settings01 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
+import { toast } from "sonner";
 import type { CompanionCardModel } from "./companions-core.ts";
 import {
   getConfigurationSummaryEntries,
   shouldAutoOpenCompanionConfig,
 } from "./companions-core.ts";
 import { COMPANION_CONFIG_FORMS } from "./companion-forms/registry.ts";
+import { SaBindingForm } from "./companion-forms/sa-binding-form.tsx";
+import {
+  type BindProvider,
+  PROVIDER_BY_BINDING_TYPE,
+} from "./companion-forms/sa-binding-copy.ts";
 
 /**
- * Loading placeholder that mirrors {@link CompanionCard}'s box model (same
- * wrapper, icon row, and two unlock lines) so its height matches a real card
- * instead of a short generic block.
+ * Loading placeholder that mirrors {@link CompanionCard}'s box model (square-ish
+ * tile: icon row, title line, benefit line, action) so the grid doesn't jump
+ * when real cards swap in.
  */
 export function CompanionCardSkeleton() {
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4">
-      <div className="flex items-center gap-2">
-        <div className="size-9 shrink-0 animate-pulse rounded-lg bg-muted/60" />
-        <div className="h-4 w-32 animate-pulse rounded bg-muted/60" />
-        <div className="ml-auto h-8 w-20 animate-pulse rounded-lg bg-muted/60" />
+    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 sm:h-full sm:flex-col sm:items-stretch">
+      <div className="size-9 shrink-0 animate-pulse rounded-lg bg-muted/60" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="h-4 w-24 animate-pulse rounded bg-muted/60" />
+        <div className="h-3 w-full animate-pulse rounded bg-muted/60" />
       </div>
-      <div className="flex flex-col gap-1 px-1 py-2">
-        <div className="p-1">
-          <div className="h-5 w-40 animate-pulse rounded bg-muted/60" />
-        </div>
-        <div className="p-1">
-          <div className="h-5 w-56 animate-pulse rounded bg-muted/60" />
-        </div>
-      </div>
+      <div className="h-8 w-20 shrink-0 animate-pulse rounded-lg bg-muted/60 sm:mt-auto sm:w-full" />
     </div>
   );
 }
 
-function UnlockLine({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 p-1">
-      <CheckCircle size={14} className="shrink-0 text-blue-500" />
-      <p className="text-sm text-foreground">{children}</p>
-    </div>
-  );
-}
+const AREA_BADGE_CLASS =
+  "rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground";
 
 export function CompanionCard({
   card,
@@ -79,68 +75,39 @@ export function CompanionCard({
   onAutoOpenConfigHandled: () => void;
 }) {
   const linkedConnectionId = card.linkedConnectionId;
-  const savedConfigEntries = getConfigurationSummaryEntries(
-    card.configurationState,
-  );
+  // GA4/GSC use the shared-SA lane by default; only fall back to the OAuth gear
+  // when the card was actually satisfied via OAuth (has a companion connection).
+  const saProvider = PROVIDER_BY_BINDING_TYPE[card.bindingType] as
+    | BindProvider
+    | undefined;
+  const useSaFlow = !!saProvider && card.boundVia !== "oauth";
 
-  return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4">
-      <div className="flex items-center gap-2">
-        <IntegrationIcon
-          icon={card.icon}
-          name={card.title}
-          size="sm"
-          fit="contain"
-          className="p-1.5"
-        />
-        <p className="flex-1 text-sm text-foreground">{card.title}</p>
-        {card.satisfied ? (
-          <div className="flex h-8 items-center gap-2 px-3 text-sm text-muted-foreground">
-            <CheckCircle size={16} /> Conectado
-          </div>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={disabled || connecting}
-            onClick={onConnect}
-            aria-label={`Conectar ${card.title}`}
-          >
-            {connecting ? (
-              <Loading01 size={16} className="animate-spin" />
-            ) : (
-              "Conectar"
-            )}
-          </Button>
-        )}
-      </div>
-      <div className="flex flex-col gap-1 px-1 py-2">
-        {card.checks !== null && (
-          <UnlockLine>+ {card.checks} verificações</UnlockLine>
-        )}
-        {card.headline && <UnlockLine>{card.headline}</UnlockLine>}
-        {card.bullets.map((b) => (
-          <UnlockLine key={b}>{b}</UnlockLine>
-        ))}
-        {!card.satisfied && card.candidateConnectionId && (
-          <p className="px-1 text-xs text-muted-foreground">
-            Usando sua conexão existente de {card.title}
-          </p>
-        )}
-      </div>
-      {card.satisfied && linkedConnectionId && (
-        // Own Suspense boundary: CompanionConfiguration opens the companion's own
-        // MCP client (useMCPClient → useSuspenseQuery). Isolating it here keeps a
-        // connecting companion from bubbling up and reverting the whole section
-        // to its skeleton — only this card's config area shows a placeholder.
-        <Suspense fallback={<CompanionConfigurationFallback />}>
+  const action =
+    useSaFlow && saProvider ? (
+      <SaConnectAction
+        card={card}
+        provider={saProvider}
+        org={org}
+        selfClient={selfClient}
+        siteUrl={siteUrl}
+        onOAuthInstead={onConnect}
+        disabled={disabled}
+        connecting={connecting}
+      />
+    ) : card.satisfied && linkedConnectionId ? (
+      <div className="flex items-center justify-end gap-1 sm:justify-start">
+        <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <CheckCircle size={16} className="text-success" /> Conectado
+        </span>
+        {/* Own Suspense boundary: CompanionConfiguration opens the companion's
+            own MCP client (useMCPClient → useSuspenseQuery). Isolating it keeps
+            a connecting companion from reverting the whole grid to skeletons. */}
+        <Suspense fallback={<ConfigGearFallback />}>
           <CompanionConfiguration
             card={card}
             org={org}
             selfClient={selfClient}
             connectionId={linkedConnectionId}
-            savedConfigEntries={savedConfigEntries}
             contextSiteUrl={siteUrl}
             autoOpen={shouldAutoOpenCompanionConfig({
               autoOpenFieldKey: autoOpenConfigFieldKey,
@@ -149,14 +116,178 @@ export function CompanionCard({
             onAutoOpenHandled={onAutoOpenConfigHandled}
           />
         </Suspense>
-      )}
+      </div>
+    ) : (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="sm:w-full"
+        disabled={disabled || connecting}
+        onClick={onConnect}
+        aria-label={`Conectar ${card.title}`}
+      >
+        {connecting ? (
+          <Loading01 size={16} className="animate-spin" />
+        ) : (
+          "Conectar"
+        )}
+      </Button>
+    );
+
+  return (
+    // Responsive: a compact horizontal row on mobile (icon · text · action),
+    // a vertical tile in the desktop grid (sm+). The old inline "Configuração"
+    // block lives in the gear's dialog so a connected card stays compact.
+    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 sm:h-full sm:flex-col sm:items-stretch">
+      {/* Icon row: on the desktop tile the badge sits top-right, centered with
+          the icon; on mobile the badge renders as an eyebrow in the text block
+          instead, so the name never clips against it. */}
+      <div className="shrink-0 self-start sm:flex sm:w-full sm:items-center sm:justify-between sm:gap-2">
+        <IntegrationIcon
+          icon={card.icon}
+          name={card.title}
+          size="sm"
+          fit="contain"
+          className="shrink-0 p-1.5"
+        />
+        {card.area && (
+          <span className={cn("hidden sm:inline-block", AREA_BADGE_CLASS)}>
+            {card.area}
+          </span>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        {card.area && (
+          <span className={cn("mb-1 inline-block sm:hidden", AREA_BADGE_CLASS)}>
+            {card.area}
+          </span>
+        )}
+        <p className="text-sm font-medium text-foreground">{card.title}</p>
+        {card.headline && (
+          <p className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+            {card.headline}
+          </p>
+        )}
+      </div>
+
+      <div className="shrink-0 sm:mt-auto sm:w-full sm:pt-1">{action}</div>
     </div>
   );
 }
 
-function maskConfigValue(key: string, value: string) {
-  const isSensitiveKey = /(token|secret|password|appKey|key)$/i.test(key);
-  return isSensitiveKey ? "••••••••" : value;
+/** The shared-SA connect/config action for GA4/GSC: a "Conectar" button (or a
+ *  "Conectado" + gear once bound) that opens a dialog with the step-by-step
+ *  binding form. The low-key "authorize via OAuth" link inside the dialog runs
+ *  the legacy OAuth flow for anyone who prefers it. No companion MCP client is
+ *  needed — the binding lives in commerce-discovery, not a Studio connection. */
+function SaConnectAction({
+  card,
+  provider,
+  org,
+  selfClient,
+  siteUrl,
+  onOAuthInstead,
+  disabled,
+  connecting,
+}: {
+  card: CompanionCardModel;
+  provider: BindProvider;
+  org: { id: string; slug: string };
+  selfClient: Client;
+  siteUrl?: string;
+  onOAuthInstead: () => void;
+  disabled: boolean;
+  connecting: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [savePending, setSavePending] = useState(false);
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next && savePending) return; // don't close mid-verify
+    setOpen(next);
+  };
+
+  return (
+    <>
+      {card.satisfied ? (
+        <div className="flex items-center justify-end gap-1 sm:justify-start">
+          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <CheckCircle size={16} className="text-success" /> Conectado
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0"
+                onClick={() => setOpen(true)}
+                aria-label={`Configurar ${card.title}`}
+              >
+                <Settings01 size={16} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Editar configuração</TooltipContent>
+          </Tooltip>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="sm:w-full"
+          disabled={disabled || connecting}
+          onClick={() => setOpen(true)}
+          aria-label={`Conectar ${card.title}`}
+        >
+          {connecting ? (
+            <Loading01 size={16} className="animate-spin" />
+          ) : (
+            "Conectar"
+          )}
+        </Button>
+      )}
+
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
+            <IntegrationIcon
+              icon={card.icon}
+              name={card.title}
+              size="md"
+              fit="contain"
+              className="p-1.5"
+            />
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <DialogTitle>{card.title}</DialogTitle>
+              <DialogDescription>
+                Conceda acesso ao nosso leitor e informe o identificador
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+          <SaBindingForm
+            provider={provider}
+            siteUrl={siteUrl}
+            selfClient={selfClient}
+            org={org}
+            initialResourceId={card.boundResource ?? undefined}
+            onDone={() => setOpen(false)}
+            onIsPendingChange={setSavePending}
+            onOAuthInstead={
+              card.satisfied
+                ? undefined
+                : () => {
+                    setOpen(false);
+                    onOAuthInstead();
+                  }
+            }
+          />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
 
 interface CompanionConfigurationProps {
@@ -164,39 +295,16 @@ interface CompanionConfigurationProps {
   org: { id: string; slug: string };
   selfClient: Client;
   connectionId: string;
-  savedConfigEntries: Array<{ key: string; label: string; value: string }>;
   contextSiteUrl?: string;
   autoOpen: boolean;
   onAutoOpenHandled: () => void;
 }
 
-interface NotAvailableNoteProps {
-  title: string;
-}
-
-function NotAvailableNote({ title }: NotAvailableNoteProps) {
+/** Gear placeholder while the companion MCP client connects — keeps the action
+ *  slot from jumping when the real trigger swaps in. */
+function ConfigGearFallback() {
   return (
-    <div className="grid gap-3 border-t border-border pt-3">
-      <p className="text-xs text-muted-foreground">
-        A configuração ainda não está disponível aqui para {title}.
-      </p>
-    </div>
-  );
-}
-
-/**
- * Placeholder shown while {@link CompanionConfiguration}'s companion MCP client
- * connects. Mirrors the config section's box model (top border + header row with
- * a label and an action) so the card doesn't jump when the real content swaps in.
- */
-function CompanionConfigurationFallback() {
-  return (
-    <div className="grid gap-3 border-t border-border pt-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="h-5 w-24 animate-pulse rounded bg-muted/60" />
-        <div className="h-8 w-20 animate-pulse rounded-lg bg-muted/60" />
-      </div>
-    </div>
+    <div className="size-8 shrink-0 animate-pulse rounded-lg bg-muted/60" />
   );
 }
 
@@ -205,7 +313,6 @@ function CompanionConfiguration({
   org,
   selfClient,
   connectionId,
-  savedConfigEntries,
   contextSiteUrl,
   autoOpen,
   onAutoOpenHandled,
@@ -217,8 +324,12 @@ function CompanionConfiguration({
   });
   const [dialogOpen, setDialogOpen] = useState(autoOpen);
   const [isSavePending, setIsSavePending] = useState(false);
+  const queryClient = useQueryClient();
 
   const FormComponent = COMPANION_CONFIG_FORMS[card.bindingType];
+  const savedConfigEntries = getConfigurationSummaryEntries(
+    card.configurationState,
+  );
 
   const closeDialog = () => {
     setDialogOpen(false);
@@ -238,96 +349,80 @@ function CompanionConfiguration({
     setDialogOpen(true);
   };
 
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      await selfClient.callTool({
+        name: "COLLECTION_CONNECTIONS_DELETE",
+        arguments: { id: connectionId, force: true },
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
+      });
+      toast.success(`${card.title} desconectado`);
+      closeDialog();
+    },
+    onError: () => {
+      toast.error("Não foi possível desconectar. Tente novamente.");
+    },
+  });
+
+  // No config form for this binding → nothing to open; skip the gear entirely.
+  if (!FormComponent) {
+    return null;
+  }
+
   return (
     <>
-      <div className="grid gap-3 border-t border-border pt-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="grid gap-1">
-            <p className="text-sm font-medium text-foreground">Configuração</p>
-            {savedConfigEntries.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                Nenhum valor de configuração foi salvo ainda.
-              </p>
-            )}
-          </div>
-          {savedConfigEntries.length > 0 ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setDialogOpen(true)}
-                  aria-label={`Editar configuração de ${card.title}`}
-                  disabled={!FormComponent}
-                >
-                  <Edit03 size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Editar configuração</TooltipContent>
-            </Tooltip>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setDialogOpen(true)}
-              disabled={!FormComponent}
-            >
-              Configurar
-            </Button>
-          )}
-        </div>
-        {savedConfigEntries.length > 0 && (
-          <dl className="grid gap-2">
-            {savedConfigEntries.map((entry) => (
-              <div
-                key={entry.key}
-                className="flex items-center justify-between gap-3 text-sm"
-              >
-                <dt className="text-muted-foreground">{entry.label}</dt>
-                <dd className="truncate text-foreground">
-                  {maskConfigValue(entry.key, entry.value)}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        )}
-      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0"
+            onClick={() => setDialogOpen(true)}
+            aria-label={`Configurar ${card.title}`}
+          >
+            <Settings01 size={16} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {savedConfigEntries.length > 0 ? "Editar configuração" : "Configurar"}
+        </TooltipContent>
+      </Tooltip>
 
-      {FormComponent ? (
-        <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
-              <IntegrationIcon
-                icon={card.icon}
-                name={card.title}
-                size="md"
-                fit="contain"
-                className="p-1.5"
-              />
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <DialogTitle>{card.title}</DialogTitle>
-                <DialogDescription>
-                  Configure o {card.title} para enriquecer os dados
-                </DialogDescription>
-              </div>
-            </DialogHeader>
-            <FormComponent
-              card={card}
-              connectionId={connectionId}
-              companionClient={companionClient}
-              selfClient={selfClient}
-              org={org}
-              contextSiteUrl={contextSiteUrl}
-              onDone={closeDialog}
-              onIsPendingChange={setIsSavePending}
+      <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
+            <IntegrationIcon
+              icon={card.icon}
+              name={card.title}
+              size="md"
+              fit="contain"
+              className="p-1.5"
             />
-          </DialogContent>
-        </Dialog>
-      ) : (
-        <NotAvailableNote title={card.title} />
-      )}
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <DialogTitle>{card.title}</DialogTitle>
+              <DialogDescription>
+                Configure o {card.title} para enriquecer os dados
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+          <FormComponent
+            card={card}
+            connectionId={connectionId}
+            companionClient={companionClient}
+            selfClient={selfClient}
+            org={org}
+            contextSiteUrl={contextSiteUrl}
+            onDone={closeDialog}
+            onDisconnect={() => disconnectMutation.mutate()}
+            onIsPendingChange={setIsSavePending}
+          />
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

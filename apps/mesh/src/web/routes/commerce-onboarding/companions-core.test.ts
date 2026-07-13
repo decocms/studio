@@ -106,6 +106,26 @@ describe("getConfigurationSummaryEntries", () => {
       { key: "accountName", label: "Nome da conta", value: "electrolux" },
     ]);
   });
+
+  it("humanizes keys with no curated label (camelCase and snake/kebab-case)", () => {
+    expect(
+      getConfigurationSummaryEntries({
+        storeDomain: "electrolux",
+        api_key: "abc",
+        "sales-channel": "1",
+      }),
+    ).toEqual([
+      { key: "storeDomain", label: "Store Domain", value: "electrolux" },
+      { key: "api_key", label: "Api Key", value: "abc" },
+      { key: "sales-channel", label: "Sales Channel", value: "1" },
+    ]);
+  });
+
+  it("stringifies non-scalar values as JSON", () => {
+    expect(
+      getConfigurationSummaryEntries({ scopes: ["read", "write"] }),
+    ).toEqual([{ key: "scopes", label: "Scopes", value: '["read","write"]' }]);
+  });
 });
 
 describe("resolveCandidate", () => {
@@ -179,7 +199,7 @@ describe("buildCompanionCards", () => {
   const curated = {
     vtex: {
       registryAppId: "deco/vtex",
-      checks: 49,
+      area: "Catálogo",
       headline: "vtex value",
       bullets: ["b1"],
     },
@@ -202,14 +222,14 @@ describe("buildCompanionCards", () => {
       bindingType: "vtex",
       title: "VTEX",
       icon: "https://x/VTEX.png",
-      checks: 49,
+      area: "Catálogo",
       headline: "vtex value",
       bullets: ["b1"],
       satisfied: false,
       candidateConnectionId: null,
     });
   });
-  it("uncurated survivor renders plain (registry short_description, no checks/bullets)", () => {
+  it("uncurated survivor renders plain (registry short_description, no area/bullets)", () => {
     const cards = buildCompanionCards({
       requirements: [{ fieldKey: "SHOP", bindingType: "shopify" }],
       itemsById: {},
@@ -221,7 +241,7 @@ describe("buildCompanionCards", () => {
     expect(cards[0]).toMatchObject({
       title: "shopify",
       headline: "shopify desc",
-      checks: null,
+      area: null,
       bullets: [],
     });
   });
@@ -287,6 +307,71 @@ describe("buildCompanionCards", () => {
     expect(cards[0]!.satisfied).toBe(false);
     expect(cards[0]!.candidateConnectionId).toBe("c_vtex");
   });
+  it("falls back to a GitHub avatar when the registry item has no icons", () => {
+    const cards = buildCompanionCards({
+      requirements: [{ fieldKey: "SHOP", bindingType: "shopify" }],
+      itemsById: {},
+      itemsByName: {
+        shopify: {
+          id: "deco/shopify",
+          server: { repository: "https://github.com/deco-cx/shopify" },
+        },
+      },
+      connections: [],
+      configurationState: null,
+      curated,
+    });
+    expect(cards[0]!.icon).toContain("images.weserv.nl");
+  });
+  it("has a null icon when the registry item has neither icons nor a repository", () => {
+    const cards = buildCompanionCards({
+      requirements: [{ fieldKey: "SHOP", bindingType: "shopify" }],
+      itemsById: {},
+      itemsByName: { shopify: { id: "deco/shopify" } },
+      connections: [],
+      configurationState: null,
+      curated,
+    });
+    expect(cards[0]!.icon).toBeNull();
+  });
+  it("marks a card connected via the shared-SA binding (boundVia='sa')", () => {
+    const cards = buildCompanionCards({
+      requirements: [{ fieldKey: "GA", bindingType: "google-analytics" }],
+      itemsById: {},
+      itemsByName: {
+        "google-analytics": item("deco/google-analytics", "google-analytics"),
+      },
+      connections: [],
+      configurationState: null,
+      curated,
+      saBindings: { "google-analytics": { resource: "123456789" } },
+    });
+    expect(cards[0]!.satisfied).toBe(true);
+    expect(cards[0]!.boundVia).toBe("sa");
+    expect(cards[0]!.boundResource).toBe("123456789");
+    expect(cards[0]!.linkedConnectionId).toBeNull();
+  });
+  it("OAuth linkage wins over an SA binding (run-time precedence)", () => {
+    const cards = buildCompanionCards({
+      requirements: [{ fieldKey: "GA", bindingType: "google-analytics" }],
+      itemsById: {},
+      itemsByName: {
+        "google-analytics": item("deco/google-analytics", "google-analytics"),
+      },
+      connections: [
+        { id: "c_ga", app_name: "google-analytics", status: "active" },
+      ],
+      configurationState: {
+        GA: { __type: "google-analytics", value: "c_ga" },
+      },
+      curated,
+      saBindings: { "google-analytics": { resource: "123" } },
+    });
+    expect(cards[0]!.satisfied).toBe(true);
+    expect(cards[0]!.boundVia).toBe("oauth");
+    expect(cards[0]!.boundResource).toBeNull();
+    expect(cards[0]!.linkedConnectionId).toBe("c_ga");
+  });
 });
 
 describe("matchGscSite", () => {
@@ -314,6 +399,16 @@ describe("matchGscSite", () => {
   it("returns null when contextSiteUrl is undefined", () => {
     const site = matchGscSite(undefined, [{ siteUrl: "https://example.com/" }]);
     expect(site).toBeNull();
+  });
+  it("returns null when sites is empty", () => {
+    expect(matchGscSite("example.com", [])).toBeNull();
+  });
+  it("falls back to the raw string instead of throwing on an unparseable siteUrl", () => {
+    const site = matchGscSite("not a valid url", [
+      { siteUrl: "not a valid url" },
+      { siteUrl: "https://example.com/" },
+    ]);
+    expect(site).toBe("not a valid url");
   });
 });
 

@@ -11,6 +11,10 @@ export const KEYS = {
   // Public config (no auth required)
   publicConfig: () => ["publicConfig"] as const,
 
+  // Polled separately from publicConfig (which is cached forever) to detect
+  // a deployed version newer than the client's own build.
+  appVersionCheck: () => ["appVersionCheck"] as const,
+
   // Auth-related queries
   session: () => ["session"] as const,
 
@@ -80,6 +84,37 @@ export const KEYS = {
     ] as const,
   commerceDiscoveryCompanionGscSites: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "companion-gsc-sites", orgId, connectionId] as const,
+  // GitHub repo picker: repos matching a server-side search (empty = default
+  // page) for the companion connection. Keyed by query so each search term is
+  // cached independently.
+  commerceDiscoveryCompanionGithubRepos: (
+    orgId: string,
+    connectionId: string,
+    query: string,
+  ) =>
+    [
+      "commerce-discovery",
+      "companion-github-repos",
+      orgId,
+      connectionId,
+      query,
+    ] as const,
+  // The repo currently selected on the Commerce Discovery connection
+  // (github_repo), read once for prefill — independent of the search query.
+  commerceDiscoveryCompanionGithubSelected: (
+    orgId: string,
+    connectionId: string,
+  ) =>
+    [
+      "commerce-discovery",
+      "companion-github-selected",
+      orgId,
+      connectionId,
+    ] as const,
+  // Per-(org, siteUrl) connection status from commerce-discovery — the single
+  // source of truth for "Conectado" across both lanes (OAuth + shared-SA).
+  commerceDiscoveryConnectionStatus: (orgId: string, siteUrl: string) =>
+    ["commerce-discovery", "connection-status", orgId, siteUrl] as const,
 
   connectionActivity: (
     connectionId: string,
@@ -379,13 +414,34 @@ export const KEYS = {
   // volume named like the segment can never collide; mutations invalidate it
   // explicitly alongside the volume prefix.
   orgFsRecent: (orgId: string) => ["org-fs-recent", orgId] as const,
+  // Cross-volume path search (Library search box). The root key is the
+  // prefix mutations invalidate; per-query keys nest under it.
+  orgFsSearchRoot: (orgId: string) => ["org-fs-search", orgId] as const,
+  orgFsSearch: (orgId: string, query: string) =>
+    ["org-fs-search", orgId, query] as const,
   // Skill folders (dirs with SKILL.md) across home + public sets — the
   // attachable-skill set for agent knowledge.
   orgFsSkills: (orgId: string) => ["org-fs-skills", orgId] as const,
 
+  // Full skill catalog for the chat "/" picker. Distinct from `orgFsSkills`
+  // (same endpoint, but that caches a stripped {volume,path} shape) — reusing
+  // its key would collide two writers with incompatible payloads.
+  slashSkills: (orgId: string) => ["slash-skills", orgId] as const,
+
   // File picker — objects listed from a configured bucket
-  filePickerObjects: (orgId: string, configId: string | null) =>
-    ["file-picker-objects", orgId, configId] as const,
+  filePickerObjects: (
+    orgId: string,
+    configId: string | null,
+    search?: string,
+    imageOnly?: boolean,
+  ) =>
+    [
+      "file-picker-objects",
+      orgId,
+      configId,
+      search ?? "",
+      imageOnly ?? false,
+    ] as const,
 
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>

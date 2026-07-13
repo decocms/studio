@@ -93,8 +93,36 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      {{- if .Values.netinit.enabled }}
+      {{- if or .Values.netinit.enabled .Values.depsCache.enabled }}
       initContainers:
+        {{- if .Values.depsCache.enabled }}
+        # hostPath dirs are created root:root and fsGroup does not apply to
+        # hostPath volumes, so hand the cache root to the sandbox uid once
+        # per pod (idempotent). Reuses the sandbox image — already on the
+        # node, no extra pull.
+        - name: deps-cache-init
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c", "chown 1000:1000 /deps-cache"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              add: ["CHOWN"]
+              drop: ["ALL"]
+          volumeMounts:
+            - name: deps-cache
+              mountPath: /deps-cache
+        {{- end }}
+        {{- if .Values.netinit.enabled }}
         - name: setup-netpol
           image: "{{ .Values.netinit.image }}:{{ .Values.netinit.tag }}"
           imagePullPolicy: {{ .Values.netinit.pullPolicy }}
@@ -171,6 +199,7 @@ spec:
             runAsUser: 0
             runAsNonRoot: false
             allowPrivilegeEscalation: false
+        {{- end }}
       {{- end }}
       containers:
         - name: sandbox
@@ -180,6 +209,20 @@ spec:
           env:
             - name: WORKDIR
               value: "/app"
+            {{- if .Values.depsCache.enabled }}
+            # Root of the node-local dependency cache; the daemon derives a
+            # per-repo BUN_INSTALL_CACHE_DIR under it (see setup/install.ts).
+            - name: DEPS_CACHE_ROOT
+              value: "/deps-cache"
+            {{- if .Values.depsCache.golden }}
+            # Golden node_modules reflink cache (opt-in, off by default — it
+            # touches the boot install path). Requires a reflink-capable
+            # filesystem shared between the cache and the workdir; falls back
+            # to a normal install otherwise. See setup/golden-cache.ts.
+            - name: GOLDEN_CACHE_ENABLED
+              value: "1"
+            {{- end }}
+            {{- end }}
             - name: DAEMON_PORT
               value: "9000"
             - name: DAEMON_TOKEN
@@ -227,6 +270,10 @@ spec:
               mountPath: /app
             - name: tmp
               mountPath: /tmp
+            {{- end }}
+            {{- if .Values.depsCache.enabled }}
+            - name: deps-cache
+              mountPath: /deps-cache
             {{- end }}
             - name: home
               mountPath: /home/sandbox
@@ -279,6 +326,15 @@ spec:
         - name: home
           emptyDir:
             sizeLimit: 5Gi
+        {{- if .Values.depsCache.enabled }}
+        # Node-local package cache shared across sandbox pods (see the
+        # depsCache comment in values.yaml for the hardlink + isolation
+        # rationale).
+        - name: deps-cache
+          hostPath:
+            path: {{ .Values.depsCache.hostPath }}
+            type: DirectoryOrCreate
+        {{- end }}
         {{- if not .Values.disableFsSidecar }}
         # Mount surface (volumes attach under it) + relay control files.
         - name: orgfs-org

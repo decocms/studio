@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Code01,
   Copy01,
+  Database01,
   DotsHorizontal,
   Edit01,
   File02,
@@ -25,6 +26,7 @@ import {
   Trash01,
   Users01,
   X,
+  Zap,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -40,14 +42,6 @@ import {
 import { Button } from "@deco/ui/components/button.tsx";
 import { Checkbox } from "@deco/ui/components/checkbox.tsx";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@deco/ui/components/dialog.tsx";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -57,18 +51,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import { Label } from "@deco/ui/components/label.tsx";
-import {
-  RadioGroup,
-  RadioGroupItem,
-} from "@deco/ui/components/radio-group.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@deco/ui/components/select.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import {
   Tooltip,
@@ -121,7 +103,11 @@ import {
 } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { SandboxStateCard } from "@/web/components/sandbox/preview/state-card";
 import { derivePhaseProgress } from "@/web/components/sandbox/preview/derive-phase-progress";
-import { computePreviewState } from "@/web/components/sandbox/preview/preview-state";
+import {
+  computePreviewState,
+  type SandboxStartError,
+} from "@/web/components/sandbox/preview/preview-state";
+import { decodeSandboxStartError } from "@/shared/sandbox-start-errors";
 import {
   buildDuplicatePage,
   buildEmptyPage,
@@ -155,6 +141,8 @@ import {
   useSaveBlogBlock,
 } from "./blog/use-blog-mutations";
 import { PageJsonDialog } from "@/web/components/sections-editor/page-json-dialog";
+import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
+import { countAvailableRunnables } from "./runnable-catalog";
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
@@ -170,6 +158,12 @@ const RecordEditor = lazy(() =>
 
 const CategoryEditor = lazy(() =>
   import("./blog/category-editor").then((m) => ({ default: m.CategoryEditor })),
+);
+
+const BulkCategoryPanel = lazy(() =>
+  import("./blog/bulk-category-panel").then((m) => ({
+    default: m.BulkCategoryPanel,
+  })),
 );
 
 const SectionsEditor = lazy(() =>
@@ -199,7 +193,21 @@ type CollectionId =
   | "site"
   | "seo"
   | "calendar"
+  | "loaders"
+  | "actions"
   | BlogKind;
+
+type CollectionCounts = Record<
+  | "pages"
+  | "sections"
+  | "apps"
+  | "loaders"
+  | "actions"
+  | "posts"
+  | "authors"
+  | "categories",
+  number
+>;
 
 type Selection =
   | { collection: "pages"; key: string; path: string }
@@ -315,6 +323,10 @@ export function ContentBrowser() {
     previewUrl,
     appPaused: vmEvents.status.state === "paused",
     userStopped,
+    startError:
+      startVm.isError && startVm.error
+        ? decodeSandboxStartError(startVm.error.message)
+        : null,
   });
 
   if (sandboxState.kind !== "iframe") {
@@ -324,6 +336,7 @@ export function ContentBrowser() {
         claimPhase={vmEvents.phase}
         lifecycle={vmEvents.lifecycle}
         onStart={triggerStart}
+        connectionsHref={`/${org.slug}/settings/connections`}
       />
     );
   }
@@ -390,9 +403,17 @@ function ContentBrowserReady({
   const [selectedPostKeys, setSelectedPostKeys] = useState<Set<string>>(
     () => new Set(),
   );
+  // Category slug that pre-opens the bulk "Update category" panel (set when
+  // arriving from a category's "Add posts" / "Manage posts" action). While
+  // non-null the panel stays open even with zero posts selected.
+  const [bulkCategorySeed, setBulkCategorySeed] = useState<string | null>(null);
   // Multi-select is implicit: selecting the first post (via the hover-revealed
-  // checkbox) enters "selection mode" — clearing the selection leaves it.
-  const clearSelection = () => setSelectedPostKeys(new Set());
+  // checkbox) enters "selection mode". Closing the panel (or applying) leaves
+  // it and drops the seed.
+  const clearSelection = () => {
+    setSelectedPostKeys(new Set());
+    setBulkCategorySeed(null);
+  };
   // Reset search + post filters/selection when switching collections
   // (derived-state sync pattern).
   const [prevCollection, setPrevCollection] = useState(activeCollection);
@@ -403,6 +424,7 @@ function ContentBrowserReady({
     setPostAuthorFilter(null);
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
+    setBulkCategorySeed(null);
   }
 
   const {
@@ -472,10 +494,6 @@ function ContentBrowserReady({
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
   const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
-  // "Update category" bulk dialog — holds the count of posts it will act on.
-  const [categoryDialog, setCategoryDialog] = useState<{
-    count: number;
-  } | null>(null);
 
   if (decofileLoading || metaLoading) {
     return (
@@ -505,8 +523,8 @@ function ContentBrowserReady({
     ? allBlogEntries[activeCollection]
     : [];
 
-  // Category choices for the bulk "Update category" dialog (parent scope, since
-  // the dialog renders here rather than inside ItemList).
+  // Category choices for the bulk "Update category" panel (parent scope, since
+  // the panel renders in the right pane rather than inside ItemList).
   const bulkCategoryChoices: CategoryRef[] = (
     showBlog ? listBlogPayloads(decofile, "categories") : []
   )
@@ -518,23 +536,42 @@ function ContentBrowserReady({
     .filter((c) => c.slug)
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  if (!hasEditableDecoContent(decofile, meta) && !showBlog) {
+  // The bulk "Update category" panel shows while posts are selected, or while
+  // a category seed forces it open (arriving from the category editor).
+  const bulkPanelOpen =
+    activeCollection === "posts" &&
+    (selectedPostKeys.size > 0 || bulkCategorySeed !== null);
+  // Posts the panel will act on (selection order is irrelevant — list order
+  // mirrors the decofile scan, same as the list pane).
+  const selectedPostsMeta = bulkPanelOpen
+    ? listPostsWithMeta(decofile).filter((p) => selectedPostKeys.has(p.key))
+    : [];
+
+  const loadersCount = countAvailableRunnables(meta, "loaders");
+  const actionsCount = countAvailableRunnables(meta, "actions");
+
+  // Loader/action-only sites are still editable — don't gate them out.
+  if (
+    !hasEditableDecoContent(decofile, meta) &&
+    !showBlog &&
+    loadersCount === 0 &&
+    actionsCount === 0
+  ) {
     return (
       <EmptyMessage
         icon={AlertCircle}
         title="No editable content"
-        description="This project doesn't expose any Deco pages, sections, or apps."
+        description="This project doesn't expose any Deco pages, sections, apps, loaders, or actions."
       />
     );
   }
 
-  const counts: Record<
-    "pages" | "sections" | "apps" | "posts" | "authors" | "categories",
-    number
-  > = {
+  const counts: CollectionCounts = {
     pages: pages.length,
     sections: globalSections.length,
     apps: appCatalog.length,
+    loaders: loadersCount,
+    actions: actionsCount,
     posts: allBlogEntries.posts.length,
     authors: allBlogEntries.authors.length,
     categories: allBlogEntries.categories.length,
@@ -601,12 +638,26 @@ function ContentBrowserReady({
     });
   };
 
-  const submitPageDialog = async (values: { name: string; path: string }) => {
+  const submitPageDialog = async (values: {
+    name: string;
+    path: string;
+    templateKey: string | null;
+  }) => {
     if (!pageDialog) return;
     const { mode, sourceKey } = pageDialog;
     try {
       if (mode === "create") {
-        const data = buildEmptyPage(values.name, values.path);
+        // A template clones an existing page's content; only name/path change.
+        let data: Record<string, unknown>;
+        if (values.templateKey) {
+          const template = decofile[values.templateKey] as
+            | Record<string, unknown>
+            | undefined;
+          if (!template) throw new Error("Selected template no longer exists.");
+          data = { ...template, name: values.name, path: values.path };
+        } else {
+          data = buildEmptyPage(values.name, values.path);
+        }
         const key = generateUniquePageBlockKey(decofile, values.name);
         await saveBlock.mutateAsync({ blockKey: key, data });
         toast.success(`Created "${values.name}"`);
@@ -780,21 +831,22 @@ function ContentBrowserReady({
     });
   };
 
-  // Land on the posts list, optionally pre-filtered by a category (from the
-  // category editor). An empty slug lands on the unfiltered list (all
-  // categories) — used by the "Add posts" action for empty categories. Sync
-  // `prevCollection` here so the collection-change reset above doesn't
-  // immediately clear the filter we're setting.
+  // Land on the unfiltered posts list with the bulk "Update category" panel
+  // already open and the clicked category pre-selected (from the category
+  // editor's "Add posts" / "Manage posts" actions). Sync `prevCollection` here
+  // so the collection-change reset above doesn't immediately clear what we're
+  // setting.
   const handleManagePosts = (slug: string) => {
     setActiveCollection("posts");
     setPrevCollection("posts");
     setSelection(null);
     setOpenPageSeoKey(null);
     setSearchQuery("");
-    setPostCategoryFilter(slug || null);
+    setPostCategoryFilter(null);
     setPostAuthorFilter(null);
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
+    setBulkCategorySeed(slug || null);
   };
 
   // Apply a pure category mutation to every selected post and persist
@@ -825,8 +877,8 @@ function ContentBrowserReady({
     return changed;
   };
 
-  // Driven by the "Update category" dialog: applies the chosen mode, reports
-  // the outcome, then closes the dialog and clears the selection.
+  // Driven by the "Update category" panel: applies the chosen mode, reports
+  // the outcome, then clears the selection (which closes the panel).
   const runBulkCategoryUpdate = async (
     mode: "add" | "replace",
     category: CategoryRef,
@@ -841,7 +893,6 @@ function ContentBrowserReady({
           (unchanged > 0 ? ` (${unchanged} already set)` : ""),
       );
       clearSelection();
-      setCategoryDialog(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bulk update failed");
     }
@@ -944,7 +995,9 @@ function ContentBrowserReady({
       />
       {activeCollection !== "seo" &&
         activeCollection !== "site" &&
-        activeCollection !== "calendar" && (
+        activeCollection !== "calendar" &&
+        activeCollection !== "loaders" &&
+        activeCollection !== "actions" && (
           <ItemList
             activeCollection={activeCollection}
             pages={pages}
@@ -969,12 +1022,11 @@ function ContentBrowserReady({
             }}
             onPostSortChange={setPostSort}
             selectedPostKeys={selectedPostKeys}
+            postBulkPanelOpen={bulkPanelOpen}
             onTogglePostSelect={togglePostSelection}
             onSelectAllPosts={(keys) => setSelectedPostKeys(new Set(keys))}
             onClearPostSelection={() => setSelectedPostKeys(new Set())}
-            onBulkUpdateCategory={() =>
-              setCategoryDialog({ count: selectedPostKeys.size })
-            }
+            onExitPostSelection={clearSelection}
             onBulkDeletePosts={() =>
               setDeleteTarget({
                 kind: "blog-bulk",
@@ -1026,178 +1078,208 @@ function ContentBrowserReady({
           />
         )}
       <div className="flex-1 min-w-0">
-        <Suspense
-          fallback={
-            <div className="h-full flex items-center justify-center">
-              <Loading01
-                size={20}
-                className="animate-spin text-muted-foreground"
-              />
-            </div>
-          }
-        >
-          {activeCollection === "calendar" ? (
-            <VariantCalendar decofile={decofile} />
-          ) : activeCollection === "site" ? (
-            siteApp ? (
-              <AppEditor
-                key={`site:${siteApp.key}`}
+        {activeCollection === "loaders" || activeCollection === "actions" ? (
+          <RunnableBlocksBrowser
+            orgSlug={orgSlug}
+            virtualMcpId={virtualMcpId}
+            branch={branch}
+            previewUrl={previewUrl}
+            meta={meta}
+            decofile={decofile}
+            kind={activeCollection}
+          />
+        ) : (
+          <Suspense
+            fallback={
+              <div className="h-full flex items-center justify-center">
+                <Loading01
+                  size={20}
+                  className="animate-spin text-muted-foreground"
+                />
+              </div>
+            }
+          >
+            {activeCollection === "calendar" ? (
+              <VariantCalendar decofile={decofile} />
+            ) : activeCollection === "site" ? (
+              siteApp ? (
+                <AppEditor
+                  key={`site:${siteApp.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  blockKey={siteApp.key}
+                  block={decofile[siteApp.key] as Record<string, unknown>}
+                  decofile={decofile}
+                  meta={meta}
+                  title="Site"
+                  excludeFields={["seo"]}
+                  schemaPending={isAppSchemaLoading(siteApp.resolveType, [
+                    "seo",
+                  ])}
+                  previewBaseUrl={previewUrl}
+                />
+              ) : (
+                <EmptyMessage
+                  title="Site settings not found"
+                  description="This project doesn't have a site app block (site/apps/site.ts)."
+                />
+              )
+            ) : activeCollection === "seo" ? (
+              <SeoEditor
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
-                blockKey={siteApp.key}
-                block={decofile[siteApp.key] as Record<string, unknown>}
                 decofile={decofile}
                 meta={meta}
-                title="Site"
-                excludeFields={["seo"]}
-                schemaPending={isAppSchemaLoading(siteApp.resolveType, ["seo"])}
+                target={{ kind: "site" }}
                 previewBaseUrl={previewUrl}
               />
+            ) : activeCollection === "sections" ? (
+              <SectionsRightPane
+                selection={
+                  selection?.collection === "sections" ||
+                  selection?.collection === "available-section"
+                    ? selection
+                    : null
+                }
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                previewUrl={previewUrl}
+                meta={meta}
+                decofile={decofile}
+                isCreating={saveBlock.isPending}
+                onCreateAvailable={handleCreateAvailableSection}
+                onSaveReferencedBlock={saveReferencedBlock}
+              />
+            ) : bulkPanelOpen ? (
+              // Posts selection mode: the bulk "Update category" panel takes
+              // over the right pane (rows toggle selection, not the editor).
+              // Keyed by seed so arriving from a category remounts the panel
+              // with that category pre-selected.
+              <BulkCategoryPanel
+                key={bulkCategorySeed ?? "selection"}
+                posts={selectedPostsMeta}
+                categories={bulkCategoryChoices}
+                initialSlug={bulkCategorySeed}
+                isPending={saveBlogBlock.isPending}
+                onApply={(mode, category) =>
+                  void runBulkCategoryUpdate(mode, category)
+                }
+                onClose={clearSelection}
+              />
+            ) : selection && selection.collection !== "available-section" ? (
+              selection.collection === "apps" ? (
+                <AppEditor
+                  key={`app:${selection.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  blockKey={selection.key}
+                  block={decofile[selection.key] as Record<string, unknown>}
+                  decofile={decofile}
+                  meta={meta}
+                  previewBaseUrl={previewUrl}
+                  schemaPending={isAppSchemaLoading(
+                    typeof (decofile[selection.key] as Record<string, unknown>)
+                      ?.__resolveType === "string"
+                      ? String(
+                          (decofile[selection.key] as Record<string, unknown>)
+                            .__resolveType,
+                        )
+                      : undefined,
+                  )}
+                />
+              ) : selection.collection === "posts" ? (
+                <PostEditor
+                  key={`post:${selection.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  blockKey={selection.key}
+                  block={decofile[selection.key] as Record<string, unknown>}
+                  decofile={decofile}
+                  meta={meta}
+                  previewBaseUrl={previewUrl}
+                />
+              ) : selection.collection === "categories" ? (
+                <CategoryEditor
+                  key={`category:${selection.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  blockKey={selection.key}
+                  block={decofile[selection.key] as Record<string, unknown>}
+                  decofile={decofile}
+                  meta={meta}
+                  onManagePosts={handleManagePosts}
+                  onOpenPost={(key) => {
+                    setActiveCollection("posts");
+                    setPrevCollection("posts");
+                    setSelection({ collection: "posts", key });
+                    setOpenPageSeoKey(null);
+                  }}
+                  previewBaseUrl={previewUrl}
+                />
+              ) : selection.collection === "authors" ? (
+                <RecordEditor
+                  key={`authors:${selection.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  kind="authors"
+                  blockKey={selection.key}
+                  block={decofile[selection.key] as Record<string, unknown>}
+                />
+              ) : (
+                <SectionsEditor
+                  key={
+                    selection.collection === "pages"
+                      ? `page:${selection.key}`
+                      : `section:${selection.key}`
+                  }
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  previewReady
+                  previewUrl={previewUrl ?? undefined}
+                  currentPath={
+                    selection.collection === "pages" ? selection.path : "/"
+                  }
+                  activePageBlockKey={
+                    selection.collection === "pages" ? selection.key : null
+                  }
+                  activeGlobalBlockKey={
+                    selection.collection === "sections" ? selection.key : null
+                  }
+                  initialEditSeo={
+                    selection.collection === "pages" &&
+                    openPageSeoKey === selection.key
+                  }
+                  onExitSeo={() => setOpenPageSeoKey(null)}
+                />
+              )
             ) : (
               <EmptyMessage
-                title="Site settings not found"
-                description="This project doesn't have a site app block (site/apps/site.ts)."
-              />
-            )
-          ) : activeCollection === "seo" ? (
-            <SeoEditor
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              decofile={decofile}
-              meta={meta}
-              target={{ kind: "site" }}
-              previewBaseUrl={previewUrl}
-            />
-          ) : activeCollection === "sections" ? (
-            <SectionsRightPane
-              selection={
-                selection?.collection === "sections" ||
-                selection?.collection === "available-section"
-                  ? selection
-                  : null
-              }
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              previewUrl={previewUrl}
-              meta={meta}
-              decofile={decofile}
-              isCreating={saveBlock.isPending}
-              onCreateAvailable={handleCreateAvailableSection}
-              onSaveReferencedBlock={saveReferencedBlock}
-            />
-          ) : selection && selection.collection !== "available-section" ? (
-            selection.collection === "apps" ? (
-              <AppEditor
-                key={`app:${selection.key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
-                decofile={decofile}
-                meta={meta}
-                previewBaseUrl={previewUrl}
-                schemaPending={isAppSchemaLoading(
-                  typeof (decofile[selection.key] as Record<string, unknown>)
-                    ?.__resolveType === "string"
-                    ? String(
-                        (decofile[selection.key] as Record<string, unknown>)
-                          .__resolveType,
-                      )
-                    : undefined,
-                )}
-              />
-            ) : selection.collection === "posts" ? (
-              <PostEditor
-                key={`post:${selection.key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
-                decofile={decofile}
-                meta={meta}
-                previewBaseUrl={previewUrl}
-              />
-            ) : selection.collection === "categories" ? (
-              <CategoryEditor
-                key={`category:${selection.key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
-                decofile={decofile}
-                meta={meta}
-                onManagePosts={handleManagePosts}
-                onOpenPost={(key) => {
-                  setActiveCollection("posts");
-                  setPrevCollection("posts");
-                  setSelection({ collection: "posts", key });
-                  setOpenPageSeoKey(null);
-                }}
-                previewBaseUrl={previewUrl}
-              />
-            ) : selection.collection === "authors" ? (
-              <RecordEditor
-                key={`authors:${selection.key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                kind="authors"
-                blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
-              />
-            ) : (
-              <SectionsEditor
-                key={
-                  selection.collection === "pages"
-                    ? `page:${selection.key}`
-                    : `section:${selection.key}`
+                title={`Select ${
+                  isBlogKind(activeCollection)
+                    ? `a ${BLOG_SINGULAR[activeCollection]}`
+                    : activeCollection === "pages"
+                      ? "a page"
+                      : activeCollection === "apps"
+                        ? "an app"
+                        : "a section"
+                } to edit`}
+                description={
+                  activeCollection === "apps"
+                    ? "Browse all apps and select an installed one to edit its settings."
+                    : 'Pick an item from the list, or click "+" to create one.'
                 }
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                previewReady
-                previewUrl={previewUrl ?? undefined}
-                currentPath={
-                  selection.collection === "pages" ? selection.path : "/"
-                }
-                activePageBlockKey={
-                  selection.collection === "pages" ? selection.key : null
-                }
-                activeGlobalBlockKey={
-                  selection.collection === "sections" ? selection.key : null
-                }
-                initialEditSeo={
-                  selection.collection === "pages" &&
-                  openPageSeoKey === selection.key
-                }
-                onExitSeo={() => setOpenPageSeoKey(null)}
               />
-            )
-          ) : (
-            <EmptyMessage
-              title={`Select ${
-                isBlogKind(activeCollection)
-                  ? `a ${BLOG_SINGULAR[activeCollection]}`
-                  : activeCollection === "pages"
-                    ? "a page"
-                    : activeCollection === "apps"
-                      ? "an app"
-                      : "a section"
-              } to edit`}
-              description={
-                activeCollection === "apps"
-                  ? "Browse all apps and select an installed one to edit its settings."
-                  : 'Pick an item from the list, or click "+" to create one.'
-              }
-            />
-          )}
-        </Suspense>
+            )}
+          </Suspense>
+        )}
       </div>
 
       {/* Page create/duplicate/rename dialog */}
@@ -1209,6 +1291,7 @@ function ContentBrowserReady({
           initialPath={pageDialog.initialPath}
           isPending={saveBlock.isPending}
           error={pageDialogError}
+          templates={pages}
           validate={validatePageValues}
           onSubmit={submitPageDialog}
           onOpenChange={(next) => {
@@ -1246,21 +1329,6 @@ function ContentBrowserReady({
           }}
           pageKey={jsonPageKey}
           decofile={decofile}
-        />
-      )}
-
-      {/* Bulk "Update category" dialog */}
-      {categoryDialog && (
-        <BulkCategoryDialog
-          count={categoryDialog.count}
-          categories={bulkCategoryChoices}
-          isPending={saveBlogBlock.isPending}
-          onApply={(mode, category) =>
-            void runBulkCategoryUpdate(mode, category)
-          }
-          onOpenChange={(open) => {
-            if (!open && !saveBlogBlock.isPending) setCategoryDialog(null);
-          }}
         />
       )}
 
@@ -1429,10 +1497,7 @@ function CollectionsSidebar({
   onSelect,
 }: {
   active: CollectionId;
-  counts: Record<
-    "pages" | "sections" | "apps" | "posts" | "authors" | "categories",
-    number
-  >;
+  counts: CollectionCounts;
   showBlog: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
@@ -1464,6 +1529,22 @@ function CollectionsSidebar({
           label="Apps"
           count={counts.apps}
           active={active === "apps"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
+          id="loaders"
+          icon={Database01}
+          label="Loaders"
+          count={counts.loaders}
+          active={active === "loaders"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
+          id="actions"
+          icon={Zap}
+          label="Actions"
+          count={counts.actions}
+          active={active === "actions"}
           onSelect={onSelect}
         />
         <CollectionRow
@@ -1584,10 +1665,11 @@ function ItemList({
   onPostAuthorFilterChange,
   onPostSortChange,
   selectedPostKeys,
+  postBulkPanelOpen,
   onTogglePostSelect,
   onSelectAllPosts,
   onClearPostSelection,
-  onBulkUpdateCategory,
+  onExitPostSelection,
   onBulkDeletePosts,
   selection,
   onSelect,
@@ -1621,10 +1703,14 @@ function ItemList({
   onPostAuthorFilterChange: (email: string | null) => void;
   onPostSortChange: (sort: PostSort) => void;
   selectedPostKeys: Set<string>;
+  /** The right-pane bulk panel is open (forces selection mode in the list). */
+  postBulkPanelOpen: boolean;
   onTogglePostSelect: (key: string) => void;
   onSelectAllPosts: (keys: string[]) => void;
+  /** Deselect all posts, staying in selection mode if the panel is open. */
   onClearPostSelection: () => void;
-  onBulkUpdateCategory: () => void;
+  /** Leave selection mode entirely (also closes the bulk panel). */
+  onExitPostSelection: () => void;
   onBulkDeletePosts: () => void;
   selection: Selection;
   onSelect: (next: Selection) => void;
@@ -1749,8 +1835,9 @@ function ItemList({
     visiblePostKeys.length > 0 &&
     visiblePostKeys.every((k) => selectedPostKeys.has(k));
   // Selecting the first post enters "selection mode": the toolbar replaces the
-  // filter bar and every row's checkbox becomes visible.
-  const selectionActive = selectionCount > 0;
+  // filter bar and every row's checkbox becomes visible. The open bulk panel
+  // forces it too, so posts can be picked right after landing from a category.
+  const selectionActive = selectionCount > 0 || postBulkPanelOpen;
   const toggleSelectAll = () => {
     if (allVisibleSelected) {
       onClearPostSelection();
@@ -1807,9 +1894,8 @@ function ItemList({
             count={selectionCount}
             allSelected={allVisibleSelected}
             onToggleSelectAll={toggleSelectAll}
-            onUpdateCategory={onBulkUpdateCategory}
             onDelete={onBulkDeletePosts}
-            onExit={onClearPostSelection}
+            onExit={onExitPostSelection}
           />
         ) : (
           <PostFilterBar
@@ -2347,14 +2433,12 @@ function PostSelectionToolbar({
   count,
   allSelected,
   onToggleSelectAll,
-  onUpdateCategory,
   onDelete,
   onExit,
 }: {
   count: number;
   allSelected: boolean;
   onToggleSelectAll: () => void;
-  onUpdateCategory: () => void;
   onDelete: () => void;
   onExit: () => void;
 }) {
@@ -2367,27 +2451,10 @@ function PostSelectionToolbar({
           <TooltipTrigger asChild>
             <Button
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1 px-2 text-xs"
-              onClick={onUpdateCategory}
-              aria-label="Set the category for the selected posts"
-            >
-              <Tag01 size={14} />
-              Set category
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Set the category for the selected posts
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-destructive hover:text-destructive"
+              disabled={count === 0}
               onClick={onDelete}
               aria-label="Delete selected posts"
             >
@@ -2416,138 +2483,7 @@ function PostSelectionToolbar({
   );
 }
 
-/**
- * Dialog for the bulk "Update category" action: pick a category, then choose
- * whether to add it (keeping existing categories) or replace all categories
- * with it (a one-step migration). Holds its own selection/mode state so the
- * parent only deals with the final apply.
- */
-function BulkCategoryDialog({
-  count,
-  categories,
-  isPending,
-  onApply,
-  onOpenChange,
-}: {
-  count: number;
-  categories: CategoryRef[];
-  isPending: boolean;
-  onApply: (mode: "add" | "replace", category: CategoryRef) => void;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const [slug, setSlug] = useState<string>(categories[0]?.slug ?? "");
-  const [mode, setMode] = useState<"add" | "replace">("add");
-  const selected = categories.find((c) => c.slug === slug);
-
-  return (
-    <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Update category</DialogTitle>
-          <DialogDescription>
-            Choose a category to apply to {count}{" "}
-            {count === 1 ? "post" : "posts"}.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label>Category</Label>
-            {categories.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No categories yet — create one in the Categories collection.
-              </p>
-            ) : (
-              <Select value={slug} onValueChange={setSlug}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c.slug} value={c.slug}>
-                      <span className="truncate">{c.name}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-
-          <RadioGroup
-            value={mode}
-            onValueChange={(v) => setMode(v as "add" | "replace")}
-            className="gap-2"
-          >
-            <Label
-              htmlFor="cat-mode-add"
-              className="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3"
-            >
-              <RadioGroupItem
-                value="add"
-                id="cat-mode-add"
-                className="mt-0.5"
-              />
-              <span className="space-y-0.5">
-                <span className="block text-sm font-medium">Add category</span>
-                <span className="block text-xs text-muted-foreground">
-                  Keep existing categories and add this one.
-                </span>
-              </span>
-            </Label>
-            <Label
-              htmlFor="cat-mode-replace"
-              className="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3"
-            >
-              <RadioGroupItem
-                value="replace"
-                id="cat-mode-replace"
-                className="mt-0.5"
-              />
-              <span className="space-y-0.5">
-                <span className="block text-sm font-medium">
-                  Replace category
-                </span>
-                <span className="block text-xs text-muted-foreground">
-                  Remove all current categories and set only this one.
-                </span>
-              </span>
-            </Label>
-          </RadioGroup>
-        </div>
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            disabled={!selected || isPending}
-            onClick={() =>
-              selected &&
-              onApply(mode, { name: selected.name, slug: selected.slug })
-            }
-          >
-            {isPending ? (
-              <>
-                <Loading01 size={14} className="animate-spin" />
-                Updating…
-              </>
-            ) : (
-              "Apply"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ItemRow({
+export function ItemRow({
   icon: Icon,
   logoUrl,
   title,
@@ -2803,11 +2739,16 @@ function SandboxStateRenderer({
   claimPhase,
   lifecycle,
   onStart,
+  connectionsHref,
 }: {
-  state: { kind: "starting" } | { kind: "suspended" };
+  state:
+    | { kind: "starting" }
+    | { kind: "suspended" }
+    | { kind: "errored"; error: SandboxStartError };
   claimPhase: ReturnType<typeof useSandboxEvents>["phase"];
   lifecycle: ReturnType<typeof useSandboxEvents>["lifecycle"];
   onStart: () => void;
+  connectionsHref?: string;
 }) {
   switch (state.kind) {
     case "starting":
@@ -2820,10 +2761,19 @@ function SandboxStateRenderer({
       );
     case "suspended":
       return <SandboxStateCard kind="suspended" onResume={onStart} />;
+    case "errored":
+      return (
+        <SandboxStateCard
+          kind="errored"
+          error={state.error}
+          onRetry={onStart}
+          connectionsHref={connectionsHref}
+        />
+      );
   }
 }
 
-function EmptyMessage({
+export function EmptyMessage({
   icon: Icon,
   title,
   description,

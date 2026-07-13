@@ -1,4 +1,7 @@
-import { normalizeCommerceSiteUrl } from "@/commerce-discovery/site-url";
+import {
+  isConnectionClaimedForSite,
+  normalizeCommerceSiteUrl,
+} from "@/commerce-discovery/site-url";
 import { AuthEntry } from "@/web/components/auth-entry";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { AuthSplitLayout } from "@/web/components/auth-split-layout";
@@ -11,6 +14,7 @@ import {
   useActiveOrganizations,
 } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { isPostHogInitialized, track } from "@/web/lib/posthog-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -188,10 +192,26 @@ function commerceSiteUrlErrorPtBr(error: string): string {
   }
 }
 
+// One-shot per SPA load, render-time (useEffect is banned in this app; same
+// pattern as PostHogIdentitySync). This is the LP→studio funnel seam: the
+// diagnostic deck's CTAs land here, so this event is funnel step "arrived in
+// studio", joinable to the LP journey via the bootstrapped ph_did identity.
+let onboardingViewTracked = false;
+
 function CommerceOnboardingPage() {
   const search = useSearch({ from: "/commerce-onboarding" });
   const { org: requestedOrgSlug, siteUrl } = search;
   const siteHost = siteUrlToHost(siteUrl);
+
+  if (!onboardingViewTracked && isPostHogInitialized()) {
+    onboardingViewTracked = true;
+    track("commerce_onboarding_viewed", {
+      site_url: siteUrl,
+      domain: siteHost ?? undefined,
+      // Person-level copy so the store follows the user across sessions.
+      ...(siteHost ? { $set: { last_scanned_domain: siteHost } } : {}),
+    });
+  }
 
   return (
     <CommerceSiteHostContext.Provider value={siteHost}>
@@ -565,7 +585,9 @@ function CommerceSetup({
     siteUrl: initialSiteUrl,
     email: session?.user?.email,
   });
-  const meetingVisual = <ScheduleMeetingVisual href={meetingUrl} />;
+  const meetingVisual = (
+    <ScheduleMeetingVisual href={meetingUrl} orgId={org.id} />
+  );
 
   return (
     <QueryErrorResetBoundary>
@@ -695,13 +717,22 @@ function CommerceSetupContent({
       return parseSelfToolResult<CommerceDiscoverySetupResult>(result);
     },
     retry: false,
-    onSuccess: (result) => {
+    onSuccess: (result, submittedSiteUrl) => {
+      track("commerce_onboarding_setup_succeeded", {
+        domain: siteUrlToHost(submittedSiteUrl) ?? undefined,
+        organization_id: org.id,
+      });
       setSetupResult(result);
       setInlineError(null);
       void connectionQuery.refetch();
       void virtualMcpQuery.refetch();
     },
-    onError: (error) => {
+    onError: (error, submittedSiteUrl) => {
+      track("commerce_onboarding_setup_failed", {
+        domain: siteUrlToHost(submittedSiteUrl) ?? undefined,
+        organization_id: org.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
       setInlineError(
         error instanceof Error
           ? error.message
@@ -728,10 +759,11 @@ function CommerceSetupContent({
   });
   const [runError, setRunError] = useState<string | null>(null);
 
-  const setupReady = !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
+  const connectionExists =
+    !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
   // A returning session may arrive with no ?siteUrl param and an empty form while
-  // the connection already exists (setupReady). Recover the site from the
-  // connection metadata (persisted at setup) so the run can still be triggered.
+  // the connection already exists. Recover the site from the connection metadata
+  // (persisted at setup) so the run can still be triggered.
   const connectionItem = connectionQuery.data.item as unknown as
     | { metadata?: Record<string, unknown> | null }
     | null
@@ -740,6 +772,20 @@ function CommerceSetupContent({
     typeof connectionItem?.metadata?.siteUrl === "string"
       ? (connectionItem.metadata.siteUrl as string)
       : undefined;
+  // The CD connection is per-ORG, but its token is claimed per-SITE (setup calls
+  // /upgrade, which mints a token scoped to one site and persists it here). So an
+  // org that already has a connection for site A, then opens the onboarding for
+  // site B, must RE-RUN setup to re-claim B — otherwise the report renders A's
+  // diagnostic (the wrong store) and COMMERCE_DISCOVERY_RUN(B) returns
+  // not_upgraded. Treat the connection as ready ONLY when it's claimed for the
+  // requested site; when the site differs, fall through to setup (idempotent
+  // re-claim) so the token + metadata.siteUrl follow the site being onboarded.
+  const requestedSite = initialSiteUrl || siteUrlInput || "";
+  const claimedForRequestedSite = isConnectionClaimedForSite(
+    requestedSite,
+    connectionSiteUrl,
+  );
+  const setupReady = connectionExists && claimedForRequestedSite;
   const currentSiteUrl =
     initialSiteUrl || siteUrlInput || connectionSiteUrl || "";
   const currentMeetingUrl = buildScheduleMeetingUrl({
@@ -747,7 +793,7 @@ function CommerceSetupContent({
     email: sessionEmail,
   });
   const currentMeetingVisual = (
-    <ScheduleMeetingVisual href={currentMeetingUrl} />
+    <ScheduleMeetingVisual href={currentMeetingUrl} orgId={org.id} />
   );
 
   const runSetup = (rawSiteUrl: string) => {
@@ -771,6 +817,13 @@ function CommerceSetupContent({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const normalizedForTracking = normalizeCommerceSiteUrl(siteUrlInput);
+    if (normalizedForTracking.ok) {
+      track("commerce_onboarding_site_url_submitted", {
+        domain: new URL(normalizedForTracking.value).hostname,
+        organization_id: org.id,
+      });
+    }
     runSetup(siteUrlInput);
   };
 
@@ -782,14 +835,41 @@ function CommerceSetupContent({
 
   const openReport = async () => {
     setRunError(null);
+    // The onboarding-completion intent: the click, not the report render
+    // (mcp_app_opened covers the render after navigation).
+    track("commerce_onboarding_open_report_clicked", {
+      domain: siteUrlToHost(currentSiteUrl) ?? undefined,
+      organization_id: org.id,
+    });
     // Trigger the enriching run now that the user is done connecting. Await it so a
     // failure surfaces (generic message, stay put) instead of silently opening an
     // empty report. No resolvable site (legacy session) ⇒ nothing to trigger, just open.
     const normalized = normalizeCommerceSiteUrl(currentSiteUrl);
     if (normalized.ok) {
       try {
-        await runMutation.mutateAsync(normalized.value);
-      } catch {
+        const runResult = await runMutation.mutateAsync(normalized.value);
+        // triggered:false means the site was never claimed for this org
+        // (not_upgraded — see triggerCommerceDiscoveryRun). Opening the report
+        // anyway would render whatever the connection's token still points at
+        // (a previously-claimed site's diagnostic). Surface the error and stay
+        // put instead of showing the wrong store's report.
+        if (!runResult.triggered) {
+          track("commerce_onboarding_run_failed", {
+            domain: siteUrlToHost(currentSiteUrl) ?? undefined,
+            organization_id: org.id,
+            error: runResult.reason ?? "not_triggered",
+          });
+          setRunError(
+            "Não foi possível gerar o relatório para este site. Recarregue a página e tente novamente.",
+          );
+          return;
+        }
+      } catch (err) {
+        track("commerce_onboarding_run_failed", {
+          domain: siteUrlToHost(currentSiteUrl) ?? undefined,
+          organization_id: org.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
         setRunError(
           "Algo deu errado ao gerar seu relatório. Tente novamente em instantes.",
         );
@@ -978,7 +1058,11 @@ function CommerceDiscoveryReady({
         <div className="flex shrink-0 flex-col gap-3 md:mt-8">
           {/* Right-side ScheduleMeetingVisual is hidden on mobile, so the human
               escape hatch rides in the footer above the report CTA. */}
-          <ScheduleMeetingBanner className="md:hidden" href={meetingUrl} />
+          <ScheduleMeetingBanner
+            className="md:hidden"
+            href={meetingUrl}
+            orgId={org.id}
+          />
           {error ? <InlineError message={error} /> : null}
           <Button
             type="button"

@@ -65,7 +65,18 @@ describe("formatVisualEditorMessage", () => {
 
   test("omits manifestKey when null", () => {
     const msg = formatVisualEditorMessage(basePayload, "test");
-    expect(msg).not.toContain("Section source file");
+    expect(msg).not.toContain("Section resolveType");
+  });
+
+  test("frames manifestKey as a resolveType, not a literal path", () => {
+    const payload = {
+      ...basePayload,
+      manifestKey: "site/sections/Landing/Hero.tsx",
+    };
+    const msg = formatVisualEditorMessage(payload, "test");
+    expect(msg).toContain("Section resolveType");
+    expect(msg).toContain("not a literal file path");
+    expect(msg).toContain("src/sections/");
   });
 
   test("includes componentName when present", () => {

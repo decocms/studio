@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BranchMeta, LifecycleState } from "@decocms/sandbox/shared";
 import type { ClaimPhase } from "@/web/components/sandbox/hooks/sandbox-events-context";
-import { mergeBranchMetaWithGitStatus } from "./sandbox-git-api.ts";
 import { selectHeaderButton } from "./panel-state";
 import type { CheckRun, PrSummary } from "./use-pr-data";
 import type { PrReviewSignals } from "./use-pr-reviews";
@@ -222,14 +221,14 @@ describe("selectHeaderButton", () => {
   // the user can commit fixes or push a hotfix even when the dev server
   // can't run.
 
-  test("lifecycle.installing + dirty branch → Save changes (fall-through)", () => {
+  test("lifecycle.installing + dirty branch → Submit for review (fall-through)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "installing" },
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Save changes");
+    expect(r.label).toBe("Submit for review");
   });
 
   test("lifecycle.starting + clean ready branch → Up to date (fall-through)", () => {
@@ -239,14 +238,14 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Up to date");
   });
 
-  test("lifecycle.install-failed + dirty branch → Save changes (commit fixes)", () => {
+  test("lifecycle.install-failed + dirty branch → Submit for review (commit fixes)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "install-failed", error: "ENOENT package.json" },
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Save changes");
+    expect(r.label).toBe("Submit for review");
   });
 
   test("lifecycle.start-failed + ahead-of-base → Submit for review", () => {
@@ -259,14 +258,14 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Submit for review");
   });
 
-  test("lifecycle.crashed + dirty branch → Save changes (push hotfix)", () => {
+  test("lifecycle.crashed + dirty branch → Submit for review (push hotfix)", () => {
     const r = selectHeaderButton(
       happyInput({
         lifecycle: { phase: "crashed" },
         branch: ready({ workingTreeDirty: true }),
       }),
     );
-    expect(r.label).toBe("Save changes");
+    expect(r.label).toBe("Submit for review");
   });
 
   test("post-clone with branch still unknown → Loading branch… (defensive)", () => {
@@ -289,13 +288,14 @@ describe("selectHeaderButton", () => {
     expect(r.variant).toBe("outline");
   });
 
-  test("dirty working tree → Save changes", () => {
+  test("dirty working tree → Submit for review + side Publish", () => {
     const r = selectHeaderButton(
       happyInput({ branch: ready({ workingTreeDirty: true }) }),
     );
-    expect(r.label).toBe("Save changes");
-    expect(r.action).toBe("commit-and-push");
+    expect(r.label).toBe("Submit for review");
+    expect(r.action).toBe("create-pr");
     expect(r.disabled).toBeFalsy();
+    expect(r.showPublishSide).toBe(true);
   });
 
   test("unpushed commits ahead of base with no PR → Submit for review", () => {
@@ -304,6 +304,7 @@ describe("selectHeaderButton", () => {
     );
     expect(r.label).toBe("Submit for review");
     expect(r.action).toBe("create-pr");
+    expect(r.showPublishSide).toBe(true);
   });
 
   test("unpushed commits without base divergence and no PR → Submit for review", () => {
@@ -314,15 +315,15 @@ describe("selectHeaderButton", () => {
     expect(r.action).toBe("create-pr");
   });
 
-  test("unpushed commits with open PR (different head) → Save changes", () => {
+  test("unpushed commits with open PR (different head) → Submit for review", () => {
     const r = selectHeaderButton(
       happyInput({
         branch: ready({ unpushed: 2, aheadOfBase: 2, headSha: "local999" }),
         pr: pr({ headSha: "remote888" }),
       }),
     );
-    expect(r.label).toBe("Save changes");
-    expect(r.action).toBe("commit-and-push");
+    expect(r.label).toBe("Submit for review");
+    expect(r.action).toBe("create-pr");
   });
 
   test("false-positive unpushed (headSha matches PR) → falls through to merge", () => {
@@ -381,37 +382,6 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Continue");
     expect(r.action).toBe("create-pr");
     expect(r.variant).toBe("special");
-  });
-
-  test("refresh: unknown SSE + git aheadOfBase → Submit for review", () => {
-    const branch = mergeBranchMetaWithGitStatus(
-      { kind: "unknown" },
-      {
-        not_added: [],
-        conflicted: [],
-        created: [],
-        deleted: [],
-        modified: [],
-        renamed: [],
-        files: [],
-        staged: [],
-        ahead: 0,
-        behind: 0,
-        current: "deco/young-trail",
-        tracking: "origin/deco/young-trail",
-        detached: false,
-        aheadOfBase: 2,
-        behindBase: 0,
-        base: "main",
-        headSha: "abc",
-        unpushed: 0,
-      },
-    );
-    const r = selectHeaderButton(
-      happyInput({ branch, pr: null, checks: [], reviews: null }),
-    );
-    expect(r.label).toBe("Submit for review");
-    expect(r.action).toBe("create-pr");
   });
 
   test("ahead of base + no PR → Submit for review", () => {
@@ -510,6 +480,8 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Publish to production");
     expect(r.action).toBe("merge-split");
     expect(r.variant).toBe("success");
+    // merge-split IS the publish action — no redundant side Publish button.
+    expect(r.showPublishSide).toBeFalsy();
   });
 
   test("PR open + reviews still loading → Publish to production (main base)", () => {
@@ -547,7 +519,7 @@ describe("selectHeaderButton", () => {
         reviews: reviews({ mergeableState: "dirty" }),
       }),
     );
-    expect(r.label).toBe("Save changes");
+    expect(r.label).toBe("Submit for review");
   });
 
   test("priority inside PR open: conflicts beat failed checks", () => {

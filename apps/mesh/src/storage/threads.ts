@@ -371,6 +371,12 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.last_progress_at !== undefined) {
       updateData.last_progress_at = data.last_progress_at;
     }
+    if (data.failure_reason !== undefined) {
+      updateData.failure_reason = data.failure_reason;
+    }
+    if (data.failure_kind !== undefined) {
+      updateData.failure_kind = data.failure_kind;
+    }
     if (data.metadata !== undefined) {
       updateData.metadata = JSON.stringify(data.metadata);
     }

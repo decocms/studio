@@ -10,10 +10,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   applyThreadLock,
   computeIdempotencyKey,
-  planSubmitRunFence,
   shouldPersistRequestMessage,
 } from "./routes";
 import { StreamRequestSchema } from "./schemas";
@@ -157,56 +158,6 @@ describe("StreamRequestSchema", () => {
     });
 
     expect(result.sandboxProviderKind).toBe("agent-sandbox");
-  });
-});
-
-describe("planSubmitRunFence", () => {
-  test("reuses the in-flight fence for a network redelivery", () => {
-    const plan = planSubmitRunFence({
-      isRedelivery: true,
-      existingFenceToken: "fence-existing",
-      mintFenceToken: () => "fence-new",
-    });
-
-    expect(plan.runFenceToken).toBe("fence-existing");
-    expect(plan.shouldWriteFence).toBe(false);
-  });
-
-  test("recovers a redelivery with a missing fence by minting one", () => {
-    const plan = planSubmitRunFence({
-      isRedelivery: true,
-      existingFenceToken: null,
-      mintFenceToken: () => "fence-recovered",
-    });
-
-    expect(plan.runFenceToken).toBe("fence-recovered");
-    expect(plan.shouldWriteFence).toBe(true);
-  });
-
-  test("fresh messages mint a fence before user parts are emitted", () => {
-    const plan = planSubmitRunFence({
-      isRedelivery: false,
-      existingFenceToken: null,
-      mintFenceToken: () => "fence-fresh",
-    });
-
-    expect(plan.runFenceToken).toBe("fence-fresh");
-    expect(plan.shouldWriteFence).toBe(true);
-  });
-
-  test("a NEW turn mints a fresh fence even when a prior turn's fence exists (approval/tool continuation must not inherit the proposal fence)", () => {
-    // The continuation re-POSTs an already-persisted assistant message, so the
-    // thread still carries the proposal turn's fence — but it is a NEW turn
-    // (not a redelivery), so it MUST mint a fresh fence. Reusing the prior fence
-    // would collide the hosted-harness child id and strand the resume.
-    const plan = planSubmitRunFence({
-      isRedelivery: false,
-      existingFenceToken: "fence-proposal",
-      mintFenceToken: () => "fence-continuation",
-    });
-
-    expect(plan.runFenceToken).toBe("fence-continuation");
-    expect(plan.shouldWriteFence).toBe(true);
   });
 });
 
@@ -403,5 +354,80 @@ describe("applyThreadLock", () => {
     expect(result.harnessId).toBe("claude-code");
     expect(result.sandboxProviderKind).toBe("agent-sandbox");
     expect(result.branch).toBe("feature-x");
+  });
+});
+
+// unified-control-plane T7: Stop must also tear down the detached hosted
+// child (see hosted-harness-workflow.ts's `startHostedHarness` doc comment —
+// since T3, the gate starts the child and does NOT await it, so a Stop that
+// only cancelled the gate head left the child running as a wasted-but-inert
+// background burn). `cancelActiveThreadRun` is a route-layer closure over
+// live StudioContext/DBOS/NATS dependencies (DB reads, `DBOS.cancelWorkflow`
+// via `cancelHostedHarness`, cross-pod broadcast) — exercising it end-to-end
+// needs a launched DBOS + Postgres instance (repo policy: no mock fortress),
+// so — same technique as thread-gate-workflow.test.ts's step-ordering
+// regressions and hosted-harness-workflow.test.ts's `hostedChildWorkflowId`
+// regression — this reads the real function body directly instead of a
+// stand-in.
+describe("cancelActiveThreadRun (T7: stop cancels the detached hosted child)", () => {
+  const src = readFileSync(join(import.meta.dir, "routes.ts"), "utf8");
+  const fnStart = src.indexOf("async function cancelActiveThreadRun(args: {");
+  const fnEnd = src.indexOf(
+    '\n  app.post("/:org/decopilot/cancel/:threadId"',
+    fnStart,
+  );
+  const body = src.slice(fnStart, fnEnd === -1 ? undefined : fnEnd);
+
+  test("locates the function", () => {
+    expect(fnStart).toBeGreaterThan(-1);
+    expect(fnEnd).toBeGreaterThan(fnStart);
+  });
+
+  test("imports cancelHostedHarness through the dispatch-queue barrel — the same single source of truth startHostedHarness uses, not a reconstructed id", () => {
+    expect(src).toContain(
+      'import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";',
+    );
+  });
+
+  test("reads the thread's CURRENT fence before cancelling the child (not a stale/cached one)", () => {
+    const fenceReadIdx = body.indexOf(
+      "await ctx.storage.threads.getRunFence(taskId)",
+    );
+    expect(fenceReadIdx).toBeGreaterThan(-1);
+  });
+
+  test("only cancels the child when a live fence exists — desktop runs (no hosted child) and threads that never dispatched are a no-op", () => {
+    const fenceReadIdx = body.indexOf(
+      "const fenceToken = await ctx.storage.threads.getRunFence(taskId);",
+    );
+    const guardIdx = body.indexOf("if (fenceToken) {", fenceReadIdx);
+    const cancelCallIdx = body.indexOf(
+      "await cancelHostedHarness(taskId, fenceToken);",
+      guardIdx,
+    );
+    expect(fenceReadIdx).toBeGreaterThan(-1);
+    expect(guardIdx).toBeGreaterThan(fenceReadIdx);
+    expect(cancelCallIdx).toBeGreaterThan(guardIdx);
+  });
+
+  test("best-effort: the DBOS cancel is wrapped in try/catch so an unknown/already-terminal child (or any DBOS hiccup) can never fail the user-facing Stop", () => {
+    const fenceReadIdx = body.indexOf(
+      "const fenceToken = await ctx.storage.threads.getRunFence(taskId);",
+    );
+    const tryIdx = body.lastIndexOf("try {", fenceReadIdx);
+    const catchIdx = body.indexOf("} catch (err) {", fenceReadIdx);
+    expect(tryIdx).toBeGreaterThan(-1);
+    expect(catchIdx).toBeGreaterThan(fenceReadIdx);
+    // The catch logs (not rethrows) — grep the slice for a rethrow between
+    // the catch and its close to make sure it stays a swallow-and-log.
+    const catchBody = body.slice(catchIdx, body.indexOf("\n    }", catchIdx));
+    expect(catchBody).not.toContain("throw ");
+  });
+
+  test("the hosted-child cancel runs AFTER the gate-head cancel (freeing the DBOS queue partition before touching the child)", () => {
+    const gateHeadCancelIdx = body.indexOf("await cancelThreadGateHead(");
+    const hostedCancelIdx = body.indexOf("await cancelHostedHarness(");
+    expect(gateHeadCancelIdx).toBeGreaterThan(-1);
+    expect(hostedCancelIdx).toBeGreaterThan(gateHeadCancelIdx);
   });
 });

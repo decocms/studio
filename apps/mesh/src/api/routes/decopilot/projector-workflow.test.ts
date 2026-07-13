@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ProjectChunksResult } from "./project-chunks";
 import {
+  livenessFailureReason,
   runProjectorWorkflowBody,
   shouldSkipProjection,
 } from "./projector-workflow";
@@ -8,6 +9,7 @@ import type {
   ProjectorWorkflowRuntime,
   ProjectorWorkflowInput,
 } from "./projector-workflow";
+import { StreamIdleTimeoutError } from "./nats-chunk-source";
 
 describe("projector workflow helpers", () => {
   test("does not skip terminal runs for the same fence", () => {
@@ -304,6 +306,41 @@ describe("runProjectorWorkflowBody", () => {
     expect(recordFailCall?.distinctId).toBe("user_1");
   });
 
+  // unified-control-plane T4: a StreamIdleTimeoutError (thrown by
+  // natsChunkSource — nats-chunk-source.ts — when the subject goes silent for
+  // idleTimeoutMs) is a LIVENESS breach, not a projection bug, and must be
+  // recorded distinctly so `failure_reason` reads as a liveness terminal
+  // instead of the generic (and misleading) "projection" catch-all every
+  // other thrown error still gets — see the "projection throw" test above for
+  // the unchanged-baseline comparison.
+  test("silence (StreamIdleTimeoutError) throw → markRunFailed(kind='liveness') with a liveness reason, and workflow re-throws", async () => {
+    const { rt, calls } = makeRuntime();
+    const idleTimeoutMs = 10 * 60_000; // RUN_IDLE_TIMEOUT_MS (10m)
+    const projectFn = async () => {
+      throw new StreamIdleTimeoutError(idleTimeoutMs);
+    };
+
+    await expect(
+      runProjectorWorkflowBody(input, rt, projectFn),
+    ).rejects.toBeInstanceOf(StreamIdleTimeoutError);
+
+    const failCalls = calls.filter((c) => c.kind === "fail");
+    const completeCalls = calls.filter((c) => c.kind === "complete");
+
+    expect(completeCalls).toHaveLength(0);
+    expect(failCalls).toHaveLength(1);
+    const failCall = failCalls[0]!;
+    expect(failCall.failKind).toBe("liveness");
+    expect(failCall.reason).toBe(livenessFailureReason(idleTimeoutMs));
+    expect(failCall.reason).toBe("liveness: no stream events for 10m");
+    const recordFailCall = calls.find((c) => c.kind === "record-fail");
+    expect(recordFailCall?.failKind).toBe("liveness");
+    expect(recordFailCall?.reason).toBe(failCall.reason);
+    expect(recordFailCall?.runId).toBe("run_1");
+    expect(recordFailCall?.orgId).toBe("org_1");
+    expect(recordFailCall?.distinctId).toBe("user_1");
+  });
+
   test("tool-calls + approval-requested → requires_action, no recordCompleted", async () => {
     const { rt, calls } = makeRuntime();
     const projectFn = makeProjectFn({
@@ -387,6 +424,53 @@ describe("runProjectorWorkflowBody", () => {
     expect(calls.filter((c) => c.kind === "requires-action")).toHaveLength(0);
   });
 
+  test("EXACTLY ONCE: a no-op flip (run already terminal) does NOT re-fire recordCompleted", async () => {
+    // Simulates a retried/re-entrant projection of an already-completed run
+    // (e.g. a redelivered consume step, or a run the hosted live path already
+    // finalized before the projector backstop ran). The conditional DB flip
+    // (`WHERE status = 'in_progress'`) returns null/falsy on a no-op — the
+    // side-effect (posthog `chat_message_completed`) must not fire again.
+    const { rt, calls } = makeRuntime();
+    rt.completeRunIfNotCompleted = async (runId, orgId) => {
+      calls.push({ kind: "complete", runId, orgId });
+      return null; // no-op: already terminal
+    };
+    const projectFn = makeProjectFn({
+      outcome: {
+        failed: false,
+        finishReason: "stop",
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+        finalParts: [],
+      },
+    });
+
+    await runProjectorWorkflowBody(input, rt, projectFn);
+
+    expect(calls.filter((c) => c.kind === "complete")).toHaveLength(1);
+    expect(calls.filter((c) => c.kind === "record-complete")).toHaveLength(0);
+  });
+
+  test("EXACTLY ONCE: a no-op flip (run already terminal) does NOT re-fire recordFailed", async () => {
+    const { rt, calls } = makeRuntime();
+    rt.markRunFailed = async (runId, orgId, reason, kind) => {
+      calls.push({ kind: "fail", runId, orgId, reason, failKind: kind });
+      return null; // no-op: already terminal
+    };
+    const projectFn = makeProjectFn({
+      outcome: {
+        failed: true,
+        finishReason: undefined,
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        finalParts: [],
+      },
+    });
+
+    await runProjectorWorkflowBody(input, rt, projectFn);
+
+    expect(calls.filter((c) => c.kind === "fail")).toHaveLength(1);
+    expect(calls.filter((c) => c.kind === "record-fail")).toHaveLength(0);
+  });
+
   test("purge (cleanup) runs on ALL terminal paths (completed, harness-failed, requires_action)", async () => {
     // completed path
     const { rt: rt1, calls: calls1 } = makeRuntime();
@@ -448,6 +532,58 @@ describe("runProjectorWorkflowBody", () => {
 
     const purgeCalls = calls.filter((c) => c.kind === "purge");
     expect(purgeCalls).toHaveLength(0);
+  });
+
+  test("forwards input.messageId to projectFn (queue ordering plumb)", async () => {
+    // Guards the plumb from thread-gate-workflow → consumeRunProjection →
+    // runProjectorWorkflowBody → projectFn. This asserts up to the projectFn
+    // boundary only; the final projectFromJetStreamStep → createRunPersistence
+    // (requestMessageId) hop is DB/JetStream-bound and covered by the CI e2e.
+    const { rt } = makeRuntime();
+    const receivedInputs: ProjectorWorkflowInput[] = [];
+    const projectFn = async (inp: ProjectorWorkflowInput) => {
+      receivedInputs.push(inp);
+      return {
+        chunkCount: 1,
+        attempts: 1,
+        outcome: {
+          failed: false as const,
+          finishReason: "stop" as const,
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finalParts: [],
+        },
+      };
+    };
+
+    await runProjectorWorkflowBody(
+      { ...input, messageId: "msg_u2" },
+      rt,
+      projectFn,
+    );
+
+    expect(receivedInputs[0]?.messageId).toBe("msg_u2");
+  });
+
+  test("input.messageId is undefined when the caller doesn't supply one (legacy)", async () => {
+    const { rt } = makeRuntime();
+    const receivedInputs: ProjectorWorkflowInput[] = [];
+    const projectFn = async (inp: ProjectorWorkflowInput) => {
+      receivedInputs.push(inp);
+      return {
+        chunkCount: 1,
+        attempts: 1,
+        outcome: {
+          failed: false as const,
+          finishReason: "stop" as const,
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finalParts: [],
+        },
+      };
+    };
+
+    await runProjectorWorkflowBody(input, rt, projectFn);
+
+    expect(receivedInputs[0]?.messageId).toBeUndefined();
   });
 });
 

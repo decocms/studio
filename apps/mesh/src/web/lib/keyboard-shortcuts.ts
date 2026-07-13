@@ -18,6 +18,7 @@ interface ShortcutGroup {
 
 export const KEYBOARD_SHORTCUTS = {
   keyboardShortcuts: { keys: [MOD, "K"], description: "Keyboard shortcuts" },
+  back: { keys: [MOD, "["], description: "Back to previous" },
   focusChatInput: { keys: [MOD, "L"], description: "Focus chat input" },
   saveAndFormat: { keys: [MOD, "S"], description: "Save & format" },
   sendMessage: { keys: ["Enter"], description: "Send message" },
@@ -43,6 +44,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     label: "General",
     shortcuts: [
       KEYBOARD_SHORTCUTS.keyboardShortcuts,
+      KEYBOARD_SHORTCUTS.back,
       KEYBOARD_SHORTCUTS.newTask,
       KEYBOARD_SHORTCUTS.toggleDaemon,
     ],

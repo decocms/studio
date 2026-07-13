@@ -440,4 +440,64 @@ describe("projectChunks", () => {
         }),
     ).toBe(true);
   });
+
+  test("ignores data-user-message chunks when projecting assistant parts", async () => {
+    const emitted: Array<{ id: string; parts?: unknown[] }> = [];
+
+    await projectChunks({
+      chunks: (async function* () {
+        yield {
+          type: "data-user-message",
+          data: {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "hi" }],
+          },
+        } as unknown as UIMessageChunk;
+        yield { type: "start", messageId: "m-1" } as UIMessageChunk;
+        yield { type: "text-start", id: "txt" } as UIMessageChunk;
+        yield {
+          type: "text-delta",
+          id: "txt",
+          delta: "hello",
+        } as UIMessageChunk;
+        yield { type: "text-end", id: "txt" } as UIMessageChunk;
+        yield { type: "finish", finishReason: "stop" } as UIMessageChunk;
+      })(),
+      persistence: {
+        emitStepParts: async (message) => {
+          emitted.push({ id: message.id, parts: message.parts });
+        },
+        emitFinal: async (message) => {
+          emitted.push({ id: message.id, parts: message.parts });
+        },
+        emitError: async () => {},
+      },
+    });
+
+    // The user-message chunk must not leak into any projected assistant part,
+    // and the assistant text still folds normally.
+    expect(
+      emitted
+        .flatMap((message) => message.parts ?? [])
+        .some(
+          (part) =>
+            typeof part === "object" &&
+            part !== null &&
+            (part as { type?: unknown }).type === "data-user-message",
+        ),
+    ).toBe(false);
+    expect(emitted.some((m) => m.id === "u-1")).toBe(false);
+    expect(
+      emitted
+        .flatMap((message) => message.parts ?? [])
+        .some(
+          (part) =>
+            typeof part === "object" &&
+            part !== null &&
+            (part as { type?: unknown; text?: unknown }).type === "text" &&
+            (part as { text?: unknown }).text === "hello",
+        ),
+    ).toBe(true);
+  });
 });

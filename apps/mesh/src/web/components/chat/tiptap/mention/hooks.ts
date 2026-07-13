@@ -28,6 +28,10 @@ export interface BaseItem {
   icon?: string | null;
   /** Show an Enter key hint — indicates this item drills into a submenu */
   drillable?: boolean;
+  /** Category discriminator — namespaces the React list key so items from
+   * different sources (prompt/resource/skill) can share a `name` without
+   * colliding. */
+  kind?: string;
 }
 
 export type OnSelectProps<T extends BaseItem = BaseItem> = {

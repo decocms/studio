@@ -15,6 +15,7 @@ import {
 } from "../../core/studio-context";
 import { VirtualMCPCreateDataSchema, VirtualMCPEntitySchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
+import { writeAgentPrompts } from "../../file-storage/agent-prompts";
 /**
  * Random icon+color for new agents (server-side, no React deps).
  * Uses the same icon:// format as the client-side agent-icon module.
@@ -88,7 +89,7 @@ const CreateOutputSchema = z.object({
 export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
   name: "COLLECTION_VIRTUAL_MCP_CREATE",
   description:
-    "Create a Virtual MCP that aggregates tools from multiple connections into one endpoint.",
+    "Create a Virtual MCP (agent) that aggregates tools from multiple connections into one endpoint. Pass `prompts` to seed the agent with kickstart prompts (conversation starters shown as icebreakers). Author them from the agent's role/instructions and the descriptions of the tools it will have, so the starters are coherent and immediately useful.",
   annotations: {
     title: "Create Virtual MCP",
     readOnlyHint: false,
@@ -114,12 +115,15 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
       requireOrgAdminForPinnedField(ctx);
     }
 
+    // `prompts` is seeded to org-fs after creation, not stored on the agent row.
+    const { prompts, ...createData } = input.data;
+
     // Create the virtual MCP (input.data is already in the correct format)
     // Note: The facade creates a VIRTUAL connection in the connections table
     // Use a random icon+color if no icon is provided
     const dataWithIcon = {
-      ...input.data,
-      icon: input.data.icon ?? pickRandomAgentIcon(),
+      ...createData,
+      icon: createData.icon ?? pickRandomAgentIcon(),
     };
 
     const virtualMcp = await ctx.storage.virtualMcps.create(
@@ -127,6 +131,13 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
       userId,
       dataWithIcon,
     );
+
+    // Seed kickstart prompts into org-fs so the agent's gateway serves them as
+    // native MCP prompts (icebreakers). Best-effort: never fail agent creation
+    // over a prompt write.
+    if (prompts?.length && ctx.orgFs && virtualMcp.id) {
+      await writeAgentPrompts(ctx.orgFs, virtualMcp.id, userId, prompts);
+    }
 
     // Return virtual MCP entity directly (already in correct format)
     return {

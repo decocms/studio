@@ -26,6 +26,7 @@ import {
   AppProductCardBlock,
   AppProductShelfBlock,
 } from "./product-string-blocks";
+import { TableBlock } from "./table-block";
 import {
   blockComponentName,
   isBlogAppBlockResolveType,
@@ -174,6 +175,22 @@ export function BlockEditor({
           <ComparisonBlock
             left={str(block.left)}
             right={str(block.right)}
+            onChange={(next) => onChange({ ...block, ...next })}
+          />
+        );
+      case "Table":
+        return (
+          <TableBlock
+            headers={
+              typeof block.headers === "string"
+                ? block.headers
+                : JSON.stringify(block.headers ?? [])
+            }
+            rows={
+              typeof block.rows === "string"
+                ? block.rows
+                : JSON.stringify(block.rows ?? [])
+            }
             onChange={(next) => onChange({ ...block, ...next })}
           />
         );

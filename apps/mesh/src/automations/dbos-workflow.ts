@@ -89,7 +89,6 @@ export const AUTOMATIONS_PARTITION_CONCURRENCY = 10;
 export const AUTOMATIONS_POLL_INTERVAL_MS = 5_000;
 /** Prefix of the retired per-org queues — kept only for migration cleanup. */
 const AUTOMATIONS_ORG_QUEUE_PREFIX = "automations-org-";
-const AUTOMATIONS_RUN_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * MIGRATION (remove once no `automations-org-*` rows remain): delete the
@@ -125,7 +124,6 @@ export async function cleanupOrphanedOrgQueues(pool: Pool): Promise<void> {
 export interface AutomationRuntime {
   storage: AutomationsStorage;
   meshContextFactory: StudioContextFactory;
-  runTimeoutMs?: number;
 }
 
 let runtime: AutomationRuntime | null = null;
@@ -383,10 +381,14 @@ async function buildDispatchRequestStep(
   return { ok: true, request: serializableRequest };
 }
 
-async function markRunFailedStep(taskId: string): Promise<void> {
+async function markRunFailedStep(
+  taskId: string,
+  reason?: string,
+  kind?: string,
+): Promise<void> {
   const rt = requireRuntime();
   try {
-    await rt.storage.markRunFailed(taskId);
+    await rt.storage.markRunFailed(taskId, reason, kind);
   } catch {
     // best-effort
   }
@@ -444,18 +446,16 @@ async function fireAutomationWorkflowFn(
     { name: "buildDispatchRequest" },
   );
   if (!built.ok) {
-    await DBOS.runStep(() => markRunFailedStep(taskId), {
+    await DBOS.runStep(() => markRunFailedStep(taskId, built.reason, "setup"), {
       name: "markRunFailed",
     });
     return { taskId, error: built.reason };
   }
 
-  const rt = requireRuntime();
   try {
     await runDispatchSteps({
       threadId: taskId,
       request: built.request,
-      timeoutMs: rt.runTimeoutMs ?? AUTOMATIONS_RUN_TIMEOUT_MS,
       source: "automation",
     });
   } catch (err) {
@@ -467,16 +467,17 @@ async function fireAutomationWorkflowFn(
       await DBOS.runStep(() => deactivateAutomationStep(prep.automation.id), {
         name: "deactivateAutomation",
       });
-      await DBOS.runStep(() => markRunFailedStep(taskId), {
-        name: "markRunFailed",
-      });
+      await DBOS.runStep(
+        () => markRunFailedStep(taskId, runError, "permanent"),
+        { name: "markRunFailed" },
+      );
       return { taskId, error: runError };
     }
     console.error(
       `[fireAutomationWorkflow] ERROR "${prep.automation.name}" taskId=${taskId}:`,
       runError,
     );
-    await DBOS.runStep(() => markRunFailedStep(taskId), {
+    await DBOS.runStep(() => markRunFailedStep(taskId, runError, "error"), {
       name: "markRunFailed",
     });
     return { taskId, error: runError };

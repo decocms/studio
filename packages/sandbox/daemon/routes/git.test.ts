@@ -65,6 +65,63 @@ describe("git routes", () => {
     });
   });
 
+  it("publish returns 409 notReady before the repo is cloned", async () => {
+    const appRoot = mkdtempSync(join(tmpdir(), "git-route-root-"));
+    const repoDir = join(appRoot, "app");
+    mkdirSync(repoDir, { recursive: true });
+    const handler = makeGitPublishHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/publish", {
+        method: "POST",
+        body: JSON.stringify({ message: "test" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "repository not initialized",
+      notReady: true,
+    });
+  });
+
+  it("discard returns 409 notReady before the repo is cloned", async () => {
+    const appRoot = mkdtempSync(join(tmpdir(), "git-route-root-"));
+    const repoDir = join(appRoot, "app");
+    mkdirSync(repoDir, { recursive: true });
+    const handler = makeGitDiscardHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/discard", {
+        method: "POST",
+        body: JSON.stringify({ filepaths: ["README.md"] }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "repository not initialized",
+      notReady: true,
+    });
+  });
+
+  it("rebase returns 409 notReady before the repo is cloned", async () => {
+    const appRoot = mkdtempSync(join(tmpdir(), "git-route-root-"));
+    const repoDir = join(appRoot, "app");
+    mkdirSync(repoDir, { recursive: true });
+    const handler = makeGitRebaseHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/rebase", {
+        method: "POST",
+        body: JSON.stringify({ base: "main" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "repository not initialized",
+      notReady: true,
+    });
+  });
+
   it("status reports unpushed when feature branch has no remote ref", async () => {
     const { appRoot, repoDir } = initRepo();
     gitSync(["checkout", "-b", "deco/thin-crane"], {
@@ -173,7 +230,7 @@ describe("git routes", () => {
       asUser: false,
     });
 
-    const prDiff = computeDiffAgainstBase(repoDir, "main");
+    const prDiff = await computeDiffAgainstBase(repoDir, "main");
     expect(Object.keys(prDiff.diffs)).toContain("feature.txt");
     expect(prDiff.diffs["feature.txt"]?.from).toBeNull();
     expect(prDiff.diffs["feature.txt"]?.to).toContain("on branch");
@@ -224,7 +281,7 @@ describe("git routes", () => {
       asUser: false,
     });
 
-    const pinned = computeDiffAgainstBase(repoDir, "main", firstSha);
+    const pinned = await computeDiffAgainstBase(repoDir, "main", firstSha);
     expect(pinned.diffs["feature.txt"]?.to).toContain("v1");
     expect(pinned.diffs["feature.txt"]?.to).not.toContain("v2");
   });

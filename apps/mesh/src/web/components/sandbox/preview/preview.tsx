@@ -1,5 +1,9 @@
 import { useState, useRef, useEffect, Suspense, lazy } from "react";
+import { createPortal } from "react-dom";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
+import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
+import { useSecondaryPanel } from "@/web/layouts/agent-shell-layout/secondary-panel-context";
+import { useColumnResize } from "@/web/hooks/use-column-resize";
 import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -8,6 +12,7 @@ import {
   ChevronDown,
   Code01,
   Code02,
+  CornerDownLeft,
   CursorClick01,
   DotsHorizontal,
   Globe02,
@@ -26,14 +31,11 @@ import {
 import { cn } from "@deco/ui/lib/utils.js";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
-  ViewModeToggle,
-  type ViewModeOption,
-} from "@deco/ui/components/view-mode-toggle.tsx";
-import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,6 +46,7 @@ import {
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { withVariantMatcherOverride } from "@/web/components/sections-editor/variant-matcher-override";
 import { parseSections } from "@/web/components/sections-editor/parse-sections";
+import { resolveSectionCandidates } from "./section-candidates";
 import { getPageVariantSectionsAt } from "@/web/components/sections-editor/page-variants";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import {
@@ -55,7 +58,9 @@ import {
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
 import {
+  fillPathTemplate,
   normalizePagePath,
+  splitPathTemplate,
   validatePagePath,
 } from "@/web/components/sections-editor/page-path-utils";
 import { decoBlockFileViewPath } from "@/web/components/sections-editor/deco-block-key";
@@ -76,7 +81,20 @@ import {
   useSandboxReloadHandler,
 } from "../hooks/use-sandbox-events";
 import { SandboxStateCard } from "./state-card";
+import {
+  lastPreviewPageKey,
+  readLastPreviewPage,
+  writeLastPreviewPage,
+  type LastPreviewPage,
+} from "./last-preview-page";
 import { derivePhaseProgress } from "./derive-phase-progress";
+import {
+  detectPickerKind,
+  PICKER_LOADER_RESOLVE_TYPE,
+  type PathParamPickerKind,
+} from "./path-param-picker";
+import { PathParamPickerChip } from "./path-param-picker-chip";
+import { isManifestRunnableResolveType } from "@/web/components/sandbox/content/runnable-catalog";
 import { track } from "@/web/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
 
@@ -123,67 +141,76 @@ const DEVICE_LABELS: Record<PreviewDeviceSize, string> = {
   desktop: "Desktop",
 };
 
-const LAZY_RESOLVE_TYPE = "website/sections/Rendering/Lazy.tsx";
-
 /**
- * Candidate top-level `data-manifest-key`s a page section can render as, used
- * iframe-side to align the editable run within the DOM. Saved-block refs
- * (globals) resolve to their underlying component. A Lazy returns BOTH its
- * loader key and the inner section's key — the classic runtime keeps the Lazy
- * wrapper at top level, TanStack renders the inner section directly. Multivariate
- * flags render an unpredictable active variant, so they return [] (a wildcard
- * the iframe treats as "matches anything").
+ * Inline editor for one `:param` or `*` (catch-all) token, rendered in place
+ * inside the URL label. Grows with its content and commits on Enter/blur.
  */
-function resolveSectionCandidates(
-  section: { __resolveType?: unknown; section?: unknown; variants?: unknown },
-  decofile: Record<string, unknown>,
-): string[] {
-  let obj: { __resolveType?: unknown; section?: unknown; variants?: unknown } =
-    section;
-  let rt = typeof obj?.__resolveType === "string" ? obj.__resolveType : "";
-  for (let i = 0; rt && i < 5; i++) {
-    const block = decofile[rt];
-    if (block && typeof block === "object" && "__resolveType" in block) {
-      const next = (block as { __resolveType?: unknown }).__resolveType;
-      if (typeof next === "string" && next && next !== rt) {
-        obj = block as typeof obj;
-        rt = next;
-        continue;
-      }
-    }
-    break;
-  }
-  if (!rt) return [];
-  // Multivariate (A/B) renders one of its variants — collect every variant's
-  // possible key so it matches whichever rendered (NOT a blind wildcard, which
-  // could otherwise grab an adjacent framework section).
-  if (rt.includes("flags/multivariate")) {
-    const variants = Array.isArray(obj.variants) ? obj.variants : [];
-    const keys: string[] = [];
-    for (const v of variants) {
-      const value = (v as { value?: unknown })?.value;
-      if (value && typeof value === "object") {
-        for (const k of resolveSectionCandidates(
-          value as { __resolveType?: unknown },
-          decofile,
-        )) {
-          if (!keys.includes(k)) keys.push(k);
-        }
-      }
-    }
-    return keys;
-  }
-  if (rt === LAZY_RESOLVE_TYPE) {
-    const inner =
-      obj.section && typeof obj.section === "object"
-        ? resolveSectionCandidates(
-            obj.section as { __resolveType?: unknown },
-            decofile,
-          )
-        : [];
-    return inner.length ? [rt, ...inner] : [rt];
-  }
-  return [rt];
+function PathParamInput({
+  name,
+  value,
+  onCommit,
+}: {
+  name: string;
+  value: string;
+  onCommit: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
+  const cancelledRef = useRef(false);
+  const label = name === "*" ? "*" : `:${name}`;
+  const sizer = draft || label;
+  return (
+    <>
+      <span className="relative inline-flex max-w-64 shrink-0 items-center overflow-hidden">
+        {/* Invisible sizer: the box hugs the rendered text exactly. Must
+          mirror the input's font size and horizontal padding. */}
+        <span
+          aria-hidden
+          className="invisible whitespace-pre px-1 py-0.5 text-[12px]"
+        >
+          {sizer}
+        </span>
+        <input
+          type="text"
+          value={draft}
+          placeholder={label}
+          title={`Value for ${label}`}
+          spellCheck={false}
+          className="absolute inset-0 rounded-sm bg-violet-500/15 px-1 text-[12px] text-violet-600 outline-none placeholder:text-violet-500/60 focus:bg-violet-500/25 dark:text-violet-400"
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              cancelledRef.current = true;
+              setDraft(value);
+              e.currentTarget.blur();
+            }
+          }}
+          onBlur={() => {
+            setFocused(false);
+            if (cancelledRef.current) {
+              cancelledRef.current = false;
+              return;
+            }
+            // Blank values are not accepted: clearing the input reverts to the
+            // bare `:param` token (placeholder) and the template URL.
+            const next = draft.trim();
+            setDraft(next);
+            if (next !== value) onCommit(next);
+          }}
+        />
+      </span>
+      {/* Editing hint, outside the value box */}
+      {focused && (
+        <span className="pointer-events-none ml-1.5 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+          <CornerDownLeft size={10} />
+          Enter to go
+        </span>
+      )}
+    </>
+  );
 }
 
 /** Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`). */
@@ -205,8 +232,14 @@ export function PreviewContent() {
     useState<VisualEditorPayload | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Sections editor panel
+  // Sections editor panel. On desktop it is portaled into a shared secondary
+  // column beside the preview (SecondaryPanelContext); when no provider is
+  // present (e.g. mobile) it falls back to rendering inline below, using its
+  // own drag-resizable width.
+  const secondaryPanel = useSecondaryPanel();
+  const setSecondaryOpen = secondaryPanel?.setOpen;
   const sectionsOpen = viewMode === "cms";
+  const inlineResize = useColumnResize();
   const [cmsSelectedSectionIndex, setCmsSelectedSectionIndex] = useState<
     number | null
   >(null);
@@ -215,10 +248,6 @@ export function PreviewContent() {
   const [variantOverrideParams, setVariantOverrideParams] = useState<
     string[] | null
   >(null);
-  const [panelWidth, setPanelWidth] = useState(384);
-  const isResizingRef = useRef(false);
-  const resizeStartXRef = useRef(0);
-  const resizeStartWidthRef = useRef(0);
   // Tracks the last focused element outside the iframe so we can restore it
   // when the iframe reload steals focus.
   const focusBeforeIframeRef = useRef<HTMLElement | null>(null);
@@ -238,6 +267,10 @@ export function PreviewContent() {
   const [currentPath, setCurrentPath] = useState("/");
   /** Explicit page block key from the page picker; disambiguates duplicate paths. */
   const [pinnedPageKey, setPinnedPageKey] = useState<string | null>(null);
+  /** User-provided values for `:param` tokens in path templates, keyed by page block key. */
+  const [pathParamsByPage, setPathParamsByPage] = useState<
+    Record<string, Record<string, string>>
+  >({});
 
   // SEO panel state
   const [cmsInitialEditSeo, setCmsInitialEditSeo] = useState(false);
@@ -311,6 +344,37 @@ export function PreviewContent() {
     : currentPage?.name;
   const currentPageKey = currentPage?.key ?? null;
 
+  // Path templates: pages like `/blog/:slug` expose inline inputs in the URL
+  // bar. `currentPath` keeps the template (so the page stays matched); the
+  // iframe navigates to the template with the user's values filled in.
+  const pathParamValues =
+    (currentPageKey ? pathParamsByPage[currentPageKey] : undefined) ?? {};
+  const resolvedPath = fillPathTemplate(currentPath, pathParamValues);
+
+  // Special selectors for path params: PDP-style params get a product picker,
+  // the PLP catch-all a category picker — only when the running site's
+  // manifest actually has the VTEX loader the picker invokes.
+  const pathParamPickerKinds: Record<string, PathParamPickerKind> = {};
+  if (devServerReady && previewUrl && meta) {
+    for (const token of splitPathTemplate(currentPath)) {
+      if (token.type !== "param") continue;
+      const name = token.name;
+      const kind = detectPickerKind(currentPath, name);
+      if (
+        kind &&
+        isManifestRunnableResolveType(
+          meta,
+          PICKER_LOADER_RESOLVE_TYPE[kind],
+          "loaders",
+        )
+      ) {
+        pathParamPickerKinds[name] = kind;
+      }
+    }
+  }
+  const pickerSandboxRef =
+    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
+
   // Per-section metadata for the CMS hover overlay, aligned by index with the
   // iframe's top-level section list. `label`: ONLY global (saved block)
   // sections get a name — the DOM can't carry it (incl. globals inside async
@@ -380,14 +444,25 @@ export function PreviewContent() {
       ? withVariantMatcherOverride(
           withDeviceHint(
             directPreviewUrl ??
-              new URL(currentPath, previewState.previewUrl).href,
+              new URL(resolvedPath, previewState.previewUrl).href,
             previewDeviceSize,
           ),
           sectionsOpen && variantOverrideParams ? variantOverrideParams : [],
         )
       : null;
 
-  // Reset navigation when the VM preview base URL changes (branch switch, etc.)
+  // Last visited page (incl. `:param` values), persisted per project+branch.
+  const previewStorageKey =
+    virtualMcpId && branch
+      ? lastPreviewPageKey(org.slug, virtualMcpId, branch)
+      : null;
+  const persistLastPage = (page: LastPreviewPage) => {
+    if (previewStorageKey) writeLastPreviewPage(previewStorageKey, page);
+  };
+
+  // When the VM preview base URL appears or changes (first boot, branch
+  // switch, etc.), restore the last visited page for this project+branch;
+  // reset navigation to "/" when there's nothing saved.
   const [prevIframeBase, setPrevIframeBase] = useState<string | null>(null);
   if (
     previewState.kind === "iframe" &&
@@ -395,7 +470,21 @@ export function PreviewContent() {
   ) {
     const hadPreviousBase = prevIframeBase !== null;
     setPrevIframeBase(previewState.previewUrl);
-    if (hadPreviousBase) {
+    const saved = previewStorageKey
+      ? readLastPreviewPage(previewStorageKey)
+      : null;
+    if (saved) {
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- expect the restored page's resolved path on the next iframe load
+      intendedPathRef.current = fillPathTemplate(saved.path, saved.params);
+      setCurrentPath(saved.path);
+      setPinnedPageKey(saved.pageKey);
+      setDirectPreviewUrl(null);
+      setActiveGlobalSection(null);
+      if (saved.pageKey && Object.keys(saved.params).length > 0) {
+        const pageKey = saved.pageKey;
+        setPathParamsByPage((prev) => ({ ...prev, [pageKey]: saved.params }));
+      }
+    } else if (hadPreviousBase) {
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- clear stale navigation intent on branch switch
       intendedPathRef.current = null;
       setCurrentPath("/");
@@ -419,10 +508,9 @@ export function PreviewContent() {
     !appPaused &&
     (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
 
-  // `visual` and `cms` drop out of the toggle options when the iframe is
-  // gone (they require a live dev server to inject overlays into). Fall
-  // back to `preview` for the toggle binding + overlay renders so the
-  // toggle never carries a value not in its option list.
+  // `visual` and `cms` require a live iframe (they inject overlays into the
+  // dev server). When the iframe is gone, fall back to `preview` for the
+  // overlay renders so we never reference a mode that can't be shown.
   const effectiveViewMode: PreviewViewMode =
     previewState.kind !== "iframe" &&
     (viewMode === "visual" || viewMode === "cms")
@@ -631,7 +719,7 @@ export function PreviewContent() {
     if (activeGlobalSection) return activeGlobalSection.name;
     try {
       const url = new URL(previewUrl);
-      const path = currentPath === "/" ? "" : currentPath;
+      const path = resolvedPath === "/" ? "" : resolvedPath;
       return `${url.host}${path}`;
     } catch {
       return previewUrl;
@@ -639,13 +727,26 @@ export function PreviewContent() {
   })();
 
   const navigatePreviewToPage = (page: PageEntry) => {
-    intendedPathRef.current = page.path;
+    // The iframe loads the template with any stored param values filled in.
+    const params = pathParamsByPage[page.key] ?? {};
+    intendedPathRef.current = fillPathTemplate(page.path, params);
     setActiveGlobalSection(null);
     setDirectPreviewUrl(null);
     setPinnedPageKey(page.key);
     setCurrentPath(page.path);
     setCmsSelectedSectionIndex(null);
     setCmsInitialEditSeo(false);
+    persistLastPage({ path: page.path, pageKey: page.key, params });
+  };
+
+  const setPathParamValue = (name: string, value: string) => {
+    if (!currentPageKey) return;
+    const pageKey = currentPageKey;
+    const nextValues = { ...pathParamValues, [name]: value };
+    // Guard against a stale onLoad from the previous URL resetting currentPath.
+    intendedPathRef.current = fillPathTemplate(currentPath, nextValues);
+    setPathParamsByPage((prev) => ({ ...prev, [pageKey]: nextValues }));
+    persistLastPage({ path: currentPath, pageKey, params: nextValues });
   };
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
@@ -668,9 +769,11 @@ export function PreviewContent() {
   const handleCreatePage = async ({
     name,
     path,
+    templateKey,
   }: {
     name: string;
     path: string;
+    templateKey: string | null;
   }) => {
     if (!virtualMcpId || !branch) return;
     const pathError = validatePagePath(path);
@@ -685,11 +788,20 @@ export function PreviewContent() {
       setCreatePageError(`A page with path "${trimmedPath}" already exists.`);
       return;
     }
+    let template: Record<string, unknown> | undefined;
+    if (templateKey) {
+      template = decofile?.[templateKey] as Record<string, unknown> | undefined;
+      if (!template) {
+        setCreatePageError("Selected template no longer exists.");
+        return;
+      }
+    }
     setCreatePageError(undefined);
     try {
       const result = await createPage.mutateAsync({
         name,
         path: trimmedPath,
+        template,
       });
       setCreatePageDialogOpen(false);
       toast.success(`Page "${name}" created`);
@@ -708,481 +820,547 @@ export function PreviewContent() {
   };
 
   // visual + cms require a live iframe (they inject overlays into the dev
-  // server); when the iframe isn't up we still offer preview + code so the
-  // user can browse files after a dev-script crash.
-  const viewModeOptions: ViewModeOption<PreviewViewMode>[] = [
-    { value: "preview", icon: <Monitor04 size={14} />, tooltip: "Interactive" },
-    ...(previewState.kind === "iframe"
-      ? [
-          {
-            value: "visual" as PreviewViewMode,
-            icon: <CursorClick01 size={14} />,
-            tooltip: "Visual editor",
-          },
-        ]
-      : []),
-    ...(previewState.kind === "iframe" && hasEditableDecoContent(decofile, meta)
-      ? [
-          {
-            value: "cms" as PreviewViewMode,
-            icon: <TextInput size={14} />,
-            tooltip: "Sections editor",
-          },
-        ]
-      : []),
-    { value: "code", icon: <Code02 size={14} />, tooltip: "Code editor" },
-  ];
+  // server). `preview` is the base interactive view — the toggle buttons
+  // below flip a mode on, or back to `preview` when their mode is already
+  // active, so there is no dedicated "interactive" button.
+  const canVisualEdit = previewState.kind === "iframe";
+  const canSectionsEdit =
+    previewState.kind === "iframe" && hasEditableDecoContent(decofile, meta);
+  const toggleViewMode = (mode: PreviewViewMode) =>
+    handleViewModeChange(viewMode === mode ? "preview" : mode);
+
+  // Keep the shared secondary column in sync with whether the Sections editor
+  // can actually render — not just `viewMode`. This closes the column (and
+  // frees the toggle) if the dev server drops while in CMS mode, and resets it
+  // when the preview unmounts (tab switch) so no empty column is left behind.
+  const showSectionsColumn = sectionsOpen && canSectionsEdit;
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs cross-component panel state; no React 19 alternative for unmount cleanup
+  useEffect(() => {
+    setSecondaryOpen?.(showSectionsColumn);
+    return () => setSecondaryOpen?.(false);
+  }, [showSectionsColumn, setSecondaryOpen]);
+
+  // The Sections editor. Rendered into its own column beside the preview via
+  // portal (desktop) or inline as a fallback (mobile — no panel provider).
+  const sectionsEditorEl =
+    sectionsOpen && previewUrl && branch && virtualMcpId ? (
+      <Suspense
+        fallback={
+          <div className="h-full flex items-center justify-center">
+            <Loading01
+              size={20}
+              className="animate-spin text-muted-foreground"
+            />
+          </div>
+        }
+      >
+        <SectionsEditor
+          orgSlug={org.slug}
+          virtualMcpId={virtualMcpId}
+          branch={branch}
+          previewReady={devServerReady}
+          previewUrl={previewUrl}
+          currentPath={currentPath}
+          activePageBlockKey={currentPageKey}
+          activeGlobalBlockKey={activeGlobalSection?.key ?? null}
+          externalSelectedIndex={
+            activeGlobalSection ? null : cmsSelectedSectionIndex
+          }
+          onSaved={() => {
+            setTimeout(reloadPreviewPreservingScroll, DEV_SERVER_SETTLE_MS);
+          }}
+          initialEditSeo={cmsInitialEditSeo}
+          onExitSeo={() => setCmsInitialEditSeo(false)}
+          onViewJsonFile={(pageKey) => {
+            try {
+              setCodeFilePath(decoBlockFileViewPath(pageKey));
+              handleViewModeChange("code");
+            } catch {
+              toast.error("Invalid page block key");
+            }
+          }}
+          onVariantPreviewOverride={handleVariantPreviewOverride}
+        />
+      </Suspense>
+    ) : null;
 
   return (
     <div className="flex flex-col w-full h-full">
+      {/* View-mode controls live in the app toolbar (next to the chat/compose
+          toggles), portaled up out of this panel. Individual toggle buttons —
+          each flips its mode on, or back to the base `preview` view. Rendered
+          whenever the daemon is up so the user can drop into code after a
+          crash. */}
       {daemonReady && (
-        <div className="flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
-          {/* Group 1: view mode toggle. Always visible when the daemon is up
-              so the user can drop into code mode after a dev-script crash. */}
-          <div className="flex shrink-0 items-center gap-1">
-            <ViewModeToggle
-              value={effectiveViewMode}
-              onValueChange={handleViewModeChange}
-              options={viewModeOptions}
-              size="sm"
-              className="shrink-0 bg-foreground/4.5"
-            />
-          </div>
-
-          {/* Groups 2+3 only render when the iframe is live — they read
+        <Toolbar.Toggles>
+          {canSectionsEdit && (
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <ToolbarIconButton
+                  onClick={() => toggleViewMode("cms")}
+                  aria-pressed={viewMode === "cms"}
+                  aria-label="Sections editor"
+                  active={viewMode === "cms"}
+                >
+                  <TextInput size={16} />
+                </ToolbarIconButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Sections editor</TooltipContent>
+            </Tooltip>
+          )}
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                onClick={() => toggleViewMode("code")}
+                aria-pressed={viewMode === "code"}
+                aria-label="Code editor"
+                active={viewMode === "code"}
+              >
+                <Code02 size={16} />
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Code editor</TooltipContent>
+          </Tooltip>
+        </Toolbar.Toggles>
+      )}
+      {daemonReady &&
+        (previewState.kind === "iframe" ||
+          (viewMode === "code" && Boolean(repoDir))) && (
+          <div className="relative flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
+            {/* Groups 2+3 only render when the iframe is live — they read
               `previewState.previewUrl` and steer the iframe directly. */}
-          {previewState.kind === "iframe" && (
-            <>
-              {/* Group 2: nav + url (hidden in code mode) */}
+            {previewState.kind === "iframe" && (
               <div
                 className={cn(
-                  "flex min-w-0 flex-1 items-center gap-0.5 ml-2",
+                  "flex w-full items-center justify-center",
                   viewMode === "code" && "hidden",
                 )}
               >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={handleRefresh}>
-                      <RefreshCw01 size={14} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Refresh</TooltipContent>
-                </Tooltip>
-
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleDeviceToggle}
-                    >
-                      <span
-                        key={previewDeviceSize}
-                        className="flex items-center justify-center animate-device-icon-pop"
+                {/* Centered address bar (max 500px):
+                    reload · URL · open in new tab · more actions. */}
+                <div className="flex w-full max-w-[500px] items-center gap-0.5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleRefresh}
                       >
-                        {previewDeviceSize === "mobile" && (
-                          <Phone02 size={14} />
-                        )}
-                        {previewDeviceSize === "tablet" && (
-                          <Tablet01 size={14} />
-                        )}
-                        {previewDeviceSize === "desktop" && (
-                          <Monitor04 size={14} />
-                        )}
-                      </span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {DEVICE_LABELS[previewDeviceSize]}
-                  </TooltipContent>
-                </Tooltip>
+                        <RefreshCw01 size={14} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Refresh</TooltipContent>
+                  </Tooltip>
 
-                <div
-                  ref={pagesContainerRef}
-                  className="relative min-w-0 flex-1"
-                >
-                  <button
-                    type="button"
-                    className="flex h-8 w-full min-w-0 items-center gap-1 rounded-md bg-background px-2 transition-colors duration-200 hover:bg-accent"
-                    onClick={() => setPagesOpen((prev) => !prev)}
+                  <div
+                    ref={pagesContainerRef}
+                    className="relative min-w-0 flex-1"
                   >
-                    {activeGlobalSection && (
-                      <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                        <Globe02 size={11} />
-                        Global
-                      </span>
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-left text-[12px] text-foreground/88">
-                      {previewLabel}
-                    </span>
-                    {currentPageName && !activeGlobalSection && (
-                      <span className="shrink-0 text-[12px] text-muted-foreground">
-                        {currentPageName}
-                      </span>
-                    )}
-                    <ChevronDown
-                      size={12}
-                      className={cn(
-                        "shrink-0 text-muted-foreground transition-transform",
-                        pagesOpen && "rotate-180",
-                      )}
-                    />
-                  </button>
-
-                  {pagesOpen && (
-                    <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
-                      <div className="px-2 h-10 flex items-center gap-2 border-b">
-                        <SearchLg
-                          size={14}
-                          className="shrink-0 text-muted-foreground"
-                          aria-hidden
-                        />
-                        <input
-                          type="text"
-                          value={pagesSearch}
-                          onChange={(e) => setPagesSearch(e.target.value)}
-                          placeholder="Search pages and components..."
-                          className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                          autoFocus
-                        />
-                      </div>
-                      <div className="p-1.5 border-b">
-                        <button
-                          type="button"
-                          className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            setPagesOpen(false);
-                            setPagesSearch("");
-                            setCreatePageError(undefined);
-                            setCreatePageDialogOpen(true);
-                          }}
-                        >
-                          <Plus
-                            size={16}
-                            className="shrink-0 text-muted-foreground"
-                          />
-                          <span className="flex-1 font-medium">
-                            Create new page
+                    <div className="flex h-8 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
+                      {/* Not a <button>: path-template pages render `:param`
+                        inputs inline, and inputs can't nest inside a button.
+                        Keyboard toggling stays on the chevron button. */}
+                      <div
+                        className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 pl-2 pr-1"
+                        onClick={() => setPagesOpen((prev) => !prev)}
+                      >
+                        {activeGlobalSection && (
+                          <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                            <Globe02 size={11} />
+                            Global
                           </span>
-                        </button>
-                      </div>
-                      {filteredPages.length === 0 &&
-                      filteredGlobalSections.length === 0 ? (
-                        <div className="px-4 py-5 text-center text-xs text-muted-foreground">
-                          {pages.length === 0 && globalSections.length === 0
-                            ? "No pages found in this site."
-                            : "No results match your search."}
-                        </div>
-                      ) : (
-                        <div className="max-h-80 overflow-y-auto overscroll-contain">
-                          {filteredPages.length > 0 && (
-                            <div className="p-1.5">
-                              {filteredPages.map((page) => (
-                                <button
-                                  key={page.key}
-                                  type="button"
-                                  className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    setPagesOpen(false);
-                                    setPagesSearch("");
-                                    navigatePreviewToPage(page);
-                                  }}
-                                >
-                                  <LayoutAlt01
-                                    size={16}
-                                    className="shrink-0 text-muted-foreground"
-                                  />
-                                  <span className="min-w-0 flex-1 truncate font-medium">
-                                    {page.name}
-                                  </span>
-                                  <span className="shrink-0 text-xs text-muted-foreground">
-                                    {page.path}
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
+                        )}
+                        {/* Page name in focus, followed by the route path.
+                            Path-template segments (`:param`/`*`) stay editable
+                            inputs; plain paths render as muted text. */}
+                        <span
+                          className={cn(
+                            "text-[13px] font-medium text-foreground",
+                            // A real page name stays fully visible (the route
+                            // path truncates instead); the host fallback has no
+                            // path segment to shed, so it must truncate itself.
+                            currentPageName == null
+                              ? "min-w-0 flex-1 truncate"
+                              : "shrink-0",
                           )}
-                          {filteredGlobalSections.length > 0 && (
-                            <div
-                              className={cn(
-                                "p-1.5",
-                                filteredPages.length > 0 && "border-t",
+                        >
+                          {currentPageName ?? previewLabel}
+                        </span>
+                        {!activeGlobalSection &&
+                          currentPageName != null &&
+                          currentPath && (
+                            <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
+                              {splitPathTemplate(currentPath).map(
+                                (token, i) => {
+                                  if (token.type === "text") {
+                                    return (
+                                      <span
+                                        key={`text-${i}`}
+                                        className={cn(
+                                          i === 0
+                                            ? "min-w-0 truncate"
+                                            : "shrink-0",
+                                        )}
+                                      >
+                                        {token.text}
+                                      </span>
+                                    );
+                                  }
+                                  const pickerKind =
+                                    pathParamPickerKinds[token.name];
+                                  // Params with a picker render as a chip that
+                                  // opens the modal (search or free-form value);
+                                  // the rest keep the inline input.
+                                  if (pickerKind && pickerSandboxRef) {
+                                    return (
+                                      <PathParamPickerChip
+                                        key={`${currentPageKey}:${token.name}`}
+                                        kind={pickerKind}
+                                        paramName={token.name}
+                                        value={
+                                          pathParamValues[token.name] ?? ""
+                                        }
+                                        sandboxRef={pickerSandboxRef}
+                                        onCommit={(value) =>
+                                          setPathParamValue(token.name, value)
+                                        }
+                                      />
+                                    );
+                                  }
+                                  return (
+                                    <PathParamInput
+                                      key={`${currentPageKey}:${token.name}`}
+                                      name={token.name}
+                                      value={pathParamValues[token.name] ?? ""}
+                                      onCommit={(value) =>
+                                        setPathParamValue(token.name, value)
+                                      }
+                                    />
+                                  );
+                                },
                               )}
-                            >
-                              <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
-                                Global components
-                              </div>
-                              {filteredGlobalSections.map((section) => (
-                                <button
-                                  key={section.key}
-                                  type="button"
-                                  className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    setPagesOpen(false);
-                                    setPagesSearch("");
-                                    navigatePreviewToGlobalSection(section);
-                                  }}
-                                >
-                                  <Globe02
-                                    size={16}
-                                    className="shrink-0 text-muted-foreground"
-                                  />
-                                  <span className="min-w-0 flex-1 truncate font-medium">
-                                    {section.name}
-                                  </span>
-                                  <span className="shrink-0 text-xs text-muted-foreground">
-                                    {section.resolveType
-                                      .split("/")
-                                      .pop()
-                                      ?.replace(/\.tsx?$/, "")}
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
+                            </span>
                           )}
-                        </div>
-                      )}
+                      </div>
+                      <button
+                        type="button"
+                        className="flex h-full shrink-0 items-center pl-1 pr-2"
+                        onClick={() => setPagesOpen((prev) => !prev)}
+                        aria-label="Choose page"
+                      >
+                        <ChevronDown
+                          size={12}
+                          className={cn(
+                            "shrink-0 text-muted-foreground transition-transform",
+                            pagesOpen && "rotate-180",
+                          )}
+                        />
+                      </button>
                     </div>
-                  )}
+
+                    {pagesOpen && (
+                      <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
+                        <div className="px-2 h-10 flex items-center gap-2 border-b">
+                          <SearchLg
+                            size={14}
+                            className="shrink-0 text-muted-foreground"
+                            aria-hidden
+                          />
+                          <input
+                            type="text"
+                            value={pagesSearch}
+                            onChange={(e) => setPagesSearch(e.target.value)}
+                            placeholder="Search pages and components..."
+                            className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="p-1.5 border-b">
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setPagesOpen(false);
+                              setPagesSearch("");
+                              setCreatePageError(undefined);
+                              setCreatePageDialogOpen(true);
+                            }}
+                          >
+                            <Plus
+                              size={16}
+                              className="shrink-0 text-muted-foreground"
+                            />
+                            <span className="flex-1 font-medium">
+                              Create new page
+                            </span>
+                          </button>
+                        </div>
+                        {filteredPages.length === 0 &&
+                        filteredGlobalSections.length === 0 ? (
+                          <div className="px-4 py-5 text-center text-xs text-muted-foreground">
+                            {pages.length === 0 && globalSections.length === 0
+                              ? "No pages found in this site."
+                              : "No results match your search."}
+                          </div>
+                        ) : (
+                          <div className="max-h-80 overflow-y-auto overscroll-contain">
+                            {filteredPages.length > 0 && (
+                              <div className="p-1.5">
+                                {filteredPages.map((page) => (
+                                  <button
+                                    key={page.key}
+                                    type="button"
+                                    className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setPagesOpen(false);
+                                      setPagesSearch("");
+                                      navigatePreviewToPage(page);
+                                    }}
+                                  >
+                                    <LayoutAlt01
+                                      size={16}
+                                      className="shrink-0 text-muted-foreground"
+                                    />
+                                    <span className="min-w-0 flex-1 truncate font-medium">
+                                      {page.name}
+                                    </span>
+                                    <span className="shrink-0 text-xs text-muted-foreground">
+                                      {page.path}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {filteredGlobalSections.length > 0 && (
+                              <div
+                                className={cn(
+                                  "p-1.5",
+                                  filteredPages.length > 0 && "border-t",
+                                )}
+                              >
+                                <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                                  Global components
+                                </div>
+                                {filteredGlobalSections.map((section) => (
+                                  <button
+                                    key={section.key}
+                                    type="button"
+                                    className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setPagesOpen(false);
+                                      setPagesSearch("");
+                                      navigatePreviewToGlobalSection(section);
+                                    }}
+                                  >
+                                    <Globe02
+                                      size={16}
+                                      className="shrink-0 text-muted-foreground"
+                                    />
+                                    <span className="min-w-0 flex-1 truncate font-medium">
+                                      {section.name}
+                                    </span>
+                                    <span className="shrink-0 text-xs text-muted-foreground">
+                                      {section.resolveType
+                                        .split("/")
+                                        .pop()
+                                        ?.replace(/\.tsx?$/, "")}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* open in new tab · more actions */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          const url = iframeSrc ?? previewState.previewUrl;
+                          if (url) window.open(url, "_blank", "noopener");
+                        }}
+                      >
+                        <LinkExternal01 size={14} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      Open in new tab
+                    </TooltipContent>
+                  </Tooltip>
+                  {/* more actions — pinned to the right of the header,
+                      outside the centered address bar. */}
+                  <div className="absolute inset-y-0 right-3 flex items-center md:right-4">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <DotsHorizontal size={14} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuItem onClick={handleHardReload}>
+                          Hard Reload
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleCopyUrl}>
+                          Copy Current URL
+                        </DropdownMenuItem>
+                        {decofile && meta && (
+                          <>
+                            <DropdownMenuSeparator />
+                            {currentPageKey && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setCmsInitialEditSeo(true);
+                                  handleViewModeChange("cms");
+                                }}
+                              >
+                                <CreditCardSearch size={14} />
+                                Edit SEO
+                              </DropdownMenuItem>
+                            )}
+                            {currentPageKey && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  try {
+                                    setCodeFilePath(
+                                      decoBlockFileViewPath(currentPageKey),
+                                    );
+                                    handleViewModeChange("code");
+                                  } catch {
+                                    toast.error("Invalid page block key");
+                                  }
+                                }}
+                              >
+                                <Code01 size={14} />
+                                View JSON
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() => setSiteSeoOpen(true)}
+                            >
+                              <CreditCardSearch size={14} />
+                              Site SEO
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                        {repoDir && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() =>
+                                window.open(
+                                  `vscode://file${repoDir}?windowId=_blank`,
+                                )
+                              }
+                            >
+                              <img
+                                src={VSCODE_ICON_URL}
+                                alt="VSCode"
+                                width={14}
+                                height={14}
+                              />
+                              Open in VSCode
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                window.open(
+                                  `cursor://file${repoDir}?windowId=_blank`,
+                                )
+                              }
+                            >
+                              <img
+                                src={CURSOR_ICON_URL}
+                                alt="Cursor"
+                                width={14}
+                                height={14}
+                              />
+                              Open in Cursor
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Group 3: open in new tab + more actions (hidden in code mode) */}
-              <div
-                className={cn(
-                  "flex shrink-0 items-center gap-0.5",
-                  viewMode === "code" && "hidden",
-                )}
-              >
+            {/* IDE buttons — visible only in code mode, right-aligned */}
+            {viewMode === "code" && repoDir && (
+              <div className="ml-auto flex shrink-0 items-center gap-0.5">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => {
-                        const url = iframeSrc ?? previewState.previewUrl;
-                        if (url) window.open(url, "_blank", "noopener");
-                      }}
+                      aria-label="Open in VSCode"
+                      onClick={() =>
+                        window.open(`vscode://file${repoDir}?windowId=_blank`)
+                      }
                     >
-                      <LinkExternal01 size={14} />
+                      <img
+                        src={VSCODE_ICON_URL}
+                        alt="VSCode"
+                        width={14}
+                        height={14}
+                      />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom">Open in new tab</TooltipContent>
+                  <TooltipContent side="bottom">Open in VSCode</TooltipContent>
                 </Tooltip>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                      <DotsHorizontal size={14} />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Open in Cursor"
+                      onClick={() =>
+                        window.open(`cursor://file${repoDir}?windowId=_blank`)
+                      }
+                    >
+                      <img
+                        src={CURSOR_ICON_URL}
+                        alt="Cursor"
+                        width={14}
+                        height={14}
+                      />
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuItem onClick={handleHardReload}>
-                      Hard Reload
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleCopyUrl}>
-                      Copy Current URL
-                    </DropdownMenuItem>
-                    {decofile && meta && (
-                      <>
-                        <DropdownMenuSeparator />
-                        {currentPageKey && (
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setCmsInitialEditSeo(true);
-                              handleViewModeChange("cms");
-                            }}
-                          >
-                            <CreditCardSearch size={14} />
-                            Edit SEO
-                          </DropdownMenuItem>
-                        )}
-                        {currentPageKey && (
-                          <DropdownMenuItem
-                            onClick={() => {
-                              try {
-                                setCodeFilePath(
-                                  decoBlockFileViewPath(currentPageKey),
-                                );
-                                handleViewModeChange("code");
-                              } catch {
-                                toast.error("Invalid page block key");
-                              }
-                            }}
-                          >
-                            <Code01 size={14} />
-                            View JSON
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onClick={() => setSiteSeoOpen(true)}>
-                          <CreditCardSearch size={14} />
-                          Site SEO
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                    {repoDir && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() =>
-                            window.open(
-                              `vscode://file${repoDir}?windowId=_blank`,
-                            )
-                          }
-                        >
-                          <img
-                            src={VSCODE_ICON_URL}
-                            alt="VSCode"
-                            width={14}
-                            height={14}
-                          />
-                          Open in VSCode
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() =>
-                            window.open(
-                              `cursor://file${repoDir}?windowId=_blank`,
-                            )
-                          }
-                        >
-                          <img
-                            src={CURSOR_ICON_URL}
-                            alt="Cursor"
-                            width={14}
-                            height={14}
-                          />
-                          Open in Cursor
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Open in Cursor</TooltipContent>
+                </Tooltip>
               </div>
-            </>
-          )}
+            )}
+          </div>
+        )}
 
-          {/* IDE buttons — visible only in code mode, right-aligned */}
-          {viewMode === "code" && repoDir && (
-            <div className="ml-auto flex shrink-0 items-center gap-0.5">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Open in VSCode"
-                    onClick={() =>
-                      window.open(`vscode://file${repoDir}?windowId=_blank`)
-                    }
-                  >
-                    <img
-                      src={VSCODE_ICON_URL}
-                      alt="VSCode"
-                      width={14}
-                      height={14}
-                    />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Open in VSCode</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Open in Cursor"
-                    onClick={() =>
-                      window.open(`cursor://file${repoDir}?windowId=_blank`)
-                    }
-                  >
-                    <img
-                      src={CURSOR_ICON_URL}
-                      alt="Cursor"
-                      width={14}
-                      height={14}
-                    />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Open in Cursor</TooltipContent>
-              </Tooltip>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Desktop: portal the Sections editor into the shared secondary column
+          beside the preview ([Chat | CMS | Preview]). */}
+      {secondaryPanel?.slotEl && sectionsEditorEl
+        ? createPortal(sectionsEditorEl, secondaryPanel.slotEl)
+        : null}
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Sections editor side panel (left) */}
-        {sectionsOpen && previewUrl && branch && virtualMcpId && (
+        {/* Fallback: no panel provider (e.g. mobile) — render the editor as an
+            inline, drag-resizable left column inside the preview. */}
+        {!secondaryPanel && sectionsEditorEl && (
           <>
             <div
               className="shrink-0 border-r overflow-hidden"
-              style={{ width: panelWidth }}
+              style={{ width: inlineResize.width }}
             >
-              <Suspense
-                fallback={
-                  <div className="h-full flex items-center justify-center">
-                    <Loading01
-                      size={20}
-                      className="animate-spin text-muted-foreground"
-                    />
-                  </div>
-                }
-              >
-                <SectionsEditor
-                  orgSlug={org.slug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  previewReady={devServerReady}
-                  previewUrl={previewUrl}
-                  currentPath={currentPath}
-                  activePageBlockKey={currentPageKey}
-                  activeGlobalBlockKey={activeGlobalSection?.key ?? null}
-                  externalSelectedIndex={
-                    activeGlobalSection ? null : cmsSelectedSectionIndex
-                  }
-                  onSaved={() => {
-                    setTimeout(
-                      reloadPreviewPreservingScroll,
-                      DEV_SERVER_SETTLE_MS,
-                    );
-                  }}
-                  initialEditSeo={cmsInitialEditSeo}
-                  onExitSeo={() => setCmsInitialEditSeo(false)}
-                  onViewJsonFile={(pageKey) => {
-                    try {
-                      setCodeFilePath(decoBlockFileViewPath(pageKey));
-                      handleViewModeChange("code");
-                    } catch {
-                      toast.error("Invalid page block key");
-                    }
-                  }}
-                  onVariantPreviewOverride={handleVariantPreviewOverride}
-                />
-              </Suspense>
+              {sectionsEditorEl}
             </div>
             <div
               className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-border transition-colors"
-              onPointerDown={(e) => {
-                isResizingRef.current = true;
-                resizeStartXRef.current = e.clientX;
-                resizeStartWidthRef.current = panelWidth;
-                e.currentTarget.setPointerCapture(e.pointerId);
-              }}
-              onPointerMove={(e) => {
-                if (!isResizingRef.current) return;
-                const delta = e.clientX - resizeStartXRef.current;
-                setPanelWidth(
-                  Math.max(
-                    240,
-                    Math.min(640, resizeStartWidthRef.current + delta),
-                  ),
-                );
-              }}
-              onPointerUp={() => {
-                isResizingRef.current = false;
-              }}
+              {...inlineResize.dividerProps}
             />
           </>
         )}
@@ -1212,6 +1390,17 @@ export function PreviewContent() {
             </div>
           )}
 
+          {previewState.kind === "errored" && (
+            <div className="absolute inset-0 z-30">
+              <SandboxStateCard
+                kind="errored"
+                error={previewState.error}
+                onRetry={lifecycle.retry}
+                connectionsHref={`/${org.slug}/settings/connections`}
+              />
+            </div>
+          )}
+
           {effectiveViewMode === "visual" && !visualElement && (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
               <CursorClick01 size={12} />
@@ -1223,6 +1412,54 @@ export function PreviewContent() {
               element={visualElement}
               onDismiss={() => setVisualElement(null)}
             />
+          )}
+
+          {/* Floating preview controls — a centered pill at the bottom of the
+              preview (Visual editor toggle + device switcher), à la Lovable. */}
+          {canVisualEdit && viewMode !== "code" && (
+            <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
+              <div className="flex items-center gap-0.5 rounded-full border bg-background/90 p-1 shadow-lg backdrop-blur-sm">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ToolbarIconButton
+                      onClick={() => toggleViewMode("visual")}
+                      aria-pressed={viewMode === "visual"}
+                      aria-label="Visual editor"
+                      active={viewMode === "visual"}
+                    >
+                      <CursorClick01 size={16} />
+                    </ToolbarIconButton>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Visual editor</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <ToolbarIconButton
+                      onClick={handleDeviceToggle}
+                      aria-label={DEVICE_LABELS[previewDeviceSize]}
+                    >
+                      <span
+                        key={previewDeviceSize}
+                        className="flex items-center justify-center animate-device-icon-pop"
+                      >
+                        {previewDeviceSize === "mobile" && (
+                          <Phone02 size={16} />
+                        )}
+                        {previewDeviceSize === "tablet" && (
+                          <Tablet01 size={16} />
+                        )}
+                        {previewDeviceSize === "desktop" && (
+                          <Monitor04 size={16} />
+                        )}
+                      </span>
+                    </ToolbarIconButton>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {DEVICE_LABELS[previewDeviceSize]}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
           )}
           {/* File explorer (code mode). Gated on daemon-ready, NOT on the
               dev server: the daemon's FS endpoints (/read, /glob, …) keep
@@ -1298,12 +1535,23 @@ export function PreviewContent() {
                       const intended = intendedPathRef.current;
                       if (intended !== null) {
                         intendedPathRef.current = null;
-                        if (normPath(iframePath) === normPath(intended)) {
-                          setCurrentPath(iframePath);
+                        // Stale onLoad from the previous URL — ignore.
+                        if (normPath(iframePath) !== normPath(intended)) {
+                          return;
                         }
+                      }
+                      // Keep the template as currentPath when the loaded
+                      // path is just the template with params filled in —
+                      // otherwise the page match and param inputs are lost.
+                      if (normPath(iframePath) === normPath(resolvedPath)) {
                         return;
                       }
                       setCurrentPath(iframePath);
+                      persistLastPage({
+                        path: iframePath,
+                        pageKey: pinnedPageKey,
+                        params: pathParamValues,
+                      });
                     } catch {
                       // Cross-origin — can't read, keep current value
                     }
@@ -1321,6 +1569,7 @@ export function PreviewContent() {
         onOpenChange={setCreatePageDialogOpen}
         isPending={createPage.isPending}
         error={createPageError}
+        templates={pages}
         onSubmit={handleCreatePage}
       />
 

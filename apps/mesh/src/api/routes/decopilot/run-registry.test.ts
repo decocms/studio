@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { RunRegistry } from "./run-registry";
-import type { StreamBuffer } from "./stream-buffer";
 import type { RunReactorDeps } from "./run-reactor";
 
 // ---------------------------------------------------------------------------
@@ -38,7 +37,6 @@ function inertDeps(): RunReactorDeps {
       // which is exactly the timing these pure tests exercise.
       getProgress: async () => null,
     } as unknown as RunReactorDeps["storage"],
-    streamBuffer: { purge() {} } as unknown as StreamBuffer,
     sseHub: { emit() {} },
   };
 }
@@ -115,6 +113,35 @@ describe("RunRegistry (in-memory state machine)", () => {
       const newSignal = registry.getAbortSignal("t1");
       expect(newSignal).not.toBeNull();
       expect(newSignal).not.toBe(firstSignal);
+    });
+
+    it("copies messageId onto the RUN_STARTED event", () => {
+      const registry = createRegistry();
+      const pairs = registry.dispatch({
+        type: "START",
+        taskId: "t1",
+        orgId: "org1",
+        userId: "u1",
+        abortController: new AbortController(),
+        messageId: "m1",
+      });
+
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("RUN_STARTED");
+      if (pairs[0]!.event.type === "RUN_STARTED") {
+        expect(pairs[0]!.event.messageId).toBe("m1");
+      }
+    });
+
+    it("leaves messageId undefined on RUN_STARTED when the START command omits it", () => {
+      const registry = createRegistry();
+      const pairs = startThread(registry, "t1");
+
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]!.event.type).toBe("RUN_STARTED");
+      if (pairs[0]!.event.type === "RUN_STARTED") {
+        expect(pairs[0]!.event.messageId).toBeUndefined();
+      }
     });
   });
 

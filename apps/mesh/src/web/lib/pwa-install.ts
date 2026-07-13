@@ -88,14 +88,27 @@ function getServerSnapshot(): null {
   return null;
 }
 
+/**
+ * True when the app is running as an installed PWA rather than a regular
+ * browser tab. Covers the installed display modes this app uses (`standalone`
+ * for mobile, `window-controls-overlay` for the desktop title-bar shell) plus
+ * iOS's legacy `navigator.standalone`.
+ *
+ * We deliberately do NOT match `(display-mode: fullscreen)` or `minimal-ui`:
+ * a plain browser tab can enter fullscreen (F11 / macOS fullscreen) without
+ * being an installed PWA, which would give a false positive.
+ */
 function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
-  const standaloneMedia =
+  const displayModeMedia =
     typeof window.matchMedia === "function" &&
-    window.matchMedia("(display-mode: standalone)").matches;
+    [
+      "(display-mode: standalone)",
+      "(display-mode: window-controls-overlay)",
+    ].some((query) => window.matchMedia(query).matches);
   const iosStandalone =
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
-  return standaloneMedia || iosStandalone;
+  return displayModeMedia || iosStandalone;
 }
 
 function isIos(): boolean {
@@ -137,12 +150,14 @@ export function usePwaInstall(): PwaInstall {
     ios: isIos(),
     promptInstall: async () => {
       if (!deferredPrompt) return "unavailable";
-      await deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      if (choice.outcome === "accepted") {
-        deferredPrompt = null;
-        emit();
-      }
+      const promptEvent = deferredPrompt;
+      await promptEvent.prompt();
+      const choice = await promptEvent.userChoice;
+      // The event fires only once — whether accepted or dismissed, it can't
+      // be reused, so it must be dropped either way or the button would look
+      // clickable but silently do nothing on a second try.
+      deferredPrompt = null;
+      emit();
       return choice.outcome;
     },
   };
