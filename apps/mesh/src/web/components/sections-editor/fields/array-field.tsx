@@ -324,13 +324,29 @@ export function ArrayField({
   // Only plain object arrays (banners, links, …) get the hide toggle. Section
   // pickers have their own hide flow, and primitive arrays can't be wrapped.
   const canHideItems = !usesSectionPicker && itemSchema?.type === "object";
+  // Index of the item the user has explicitly opened. Array items are addressed
+  // in the breadcrumb by their mutable, non-unique display label, so this lets
+  // selection stay on the opened row even when its label collides with another
+  // item's (e.g. after Duplicate, or while typing a name/alt another item uses).
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
   const selection = resolveArrayItemSelection(
     label,
     breadcrumbPath,
     items,
     itemSchema,
+    openIndex,
   );
   const selectedIndex = selection?.index ?? null;
+
+  // Keep the tracked index in step with the breadcrumb: forget it once the
+  // breadcrumb no longer opens an item here, and adopt the resolved index when
+  // navigation opened an item some other way (header/breadcrumb click, deep link).
+  if (selection === null) {
+    if (openIndex !== null) setOpenIndex(null);
+  } else if (selection.index !== openIndex) {
+    setOpenIndex(selection.index);
+  }
 
   const [entries, setEntries] = useState<ArrayEntry[]>(() =>
     createArrayEntries(items.length),
@@ -344,6 +360,7 @@ export function ArrayField({
     setPrevListKey(path);
     setPrevItemCount(items.length);
     setEntries(createArrayEntries(items.length));
+    setOpenIndex(null);
   } else if (prevItemCount !== items.length) {
     setPrevItemCount(items.length);
     setEntries((current) => resizeArrayEntries(current, items.length));
@@ -355,6 +372,7 @@ export function ArrayField({
   const openItem = (index: number) => {
     if (suppressClickRef.current) return;
     const labelText = itemLabel(items[index], index);
+    setOpenIndex(index);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
     );
@@ -364,6 +382,7 @@ export function ArrayField({
     const next = [...items, item];
     onChange(next);
     const nextIndex = next.length - 1;
+    setOpenIndex(nextIndex);
     const labelText = getArrayItemLabel(item, nextIndex, itemSchema);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
@@ -395,6 +414,7 @@ export function ArrayField({
     const next = [...items, defaultVal];
     onChange(next);
     const nextIndex = next.length - 1;
+    setOpenIndex(nextIndex);
     const labelText = getArrayItemLabel(defaultVal, nextIndex, itemSchema);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
