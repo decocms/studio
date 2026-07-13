@@ -25,11 +25,27 @@
  * through, which completes the close chain and fires `raw.onExit`.
  * The actual exit code / signal is captured there; signals are mapped to
  * shell-style exit codes (`128 + signal`).
+ *
+ * This whole workaround is POSIX-only: it only makes sense for a real PTY
+ * master fd (exposed via `_socket.fd` on `UnixTerminal`). node-pty's Windows
+ * implementation (ConPTY/winpty, `WindowsTerminal`) backs `_socket` with a
+ * `net.Socket` over a named pipe instead — `.fd` is not a number there, and
+ * Bun's `tty.ReadStream`/EAGAIN bug doesn't apply to it in the first place.
+ * `spawnPty` detects that case (`typeof socket?.fd !== "number"`) and drives
+ * I/O through node-pty's public `onData`/`onExit` API directly, with no
+ * fd polling and no destroy patching.
  */
 
 import fs from "node:fs";
 import { spawn as nodeSpawn } from "node:child_process";
 import { spawn as ptySpawn } from "node-pty";
+import {
+  isStructuredCommand,
+  type StructuredCommand,
+} from "./structured-command";
+import { resolveShell } from "./resolve-shell";
+
+export { ShellNotFoundError } from "./structured-command";
 
 export interface PtyHandle {
   /** OS process id of the spawned child. */
@@ -43,18 +59,51 @@ export interface PtyHandle {
 }
 
 export interface PtySpawnOpts {
-  /** Shell command. Runs as `sh -c <cmd>`. */
-  cmd: string;
+  /** Shell command (runs via a resolved shell) OR a shell-free argv spawn. */
+  cmd: string | StructuredCommand;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  /** Drop privileges to this uid (Linux only; ignored on macOS). */
+  /** Drop privileges to this uid (Linux only; ignored on macOS/win32). */
   uid?: number;
-  /** Drop privileges to this gid (Linux only; ignored on macOS). */
   gid?: number;
-  /** Defaults to 120. */
   cols?: number;
-  /** Defaults to 30. */
   rows?: number;
+}
+
+function ptyArgv(
+  cmd: string | StructuredCommand,
+  childPath?: string,
+): [string, string[]] {
+  if (isStructuredCommand(cmd)) {
+    const [exe, ...rest] = cmd.argv;
+    // win32: a bare command name (e.g. "git") is the same shape that made
+    // resolveShell() necessary for bash below — node-pty's ConPTY spawn
+    // doesn't reliably resolve it via PATH, so structured commands (git
+    // clone/fetch/checkout, …) can hit a spurious "File not found" even
+    // when the real executable IS on PATH. Resolve up front via Bun.which
+    // (same pattern already used for rclone in org-fs/sidecar-main.ts) so
+    // PATH search happens in a context known to work; fall back to the
+    // bare name — preserving today's behavior, including the legible
+    // "<exe> not found on PATH" error below — when Bun.which can't find it
+    // either. Resolve against the CHILD's effective PATH (the merged env
+    // may prepend runtimePathDirs like /opt/bun/bin), not the daemon's own
+    // — on POSIX execvp resolves in the child env, and win32 must match
+    // that or a runtime-pinned binary hits "File not found" while a
+    // shadowed one silently runs the wrong copy.
+    if (process.platform === "win32") {
+      const resolved = childPath
+        ? Bun.which(exe, { PATH: childPath })
+        : Bun.which(exe);
+      if (resolved) return [resolved, rest];
+    }
+    return [exe, rest];
+  }
+  // String command → needs a shell. win32 has no `sh`; resolveShell finds
+  // Git Bash (or throws ShellNotFoundError legibly if it can't).
+  if (process.platform === "win32") {
+    return [resolveShell("sh"), ["-c", cmd]];
+  }
+  return ["sh", ["-c", cmd]];
 }
 
 export function spawnPty(opts: PtySpawnOpts): PtyHandle {
@@ -70,27 +119,45 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
     }
   }
 
+  const structured = isStructuredCommand(opts.cmd) ? opts.cmd : undefined;
   const spawnOpts: Parameters<typeof ptySpawn>[2] = {
     name: "xterm-256color",
     cols: opts.cols ?? 120,
     rows: opts.rows ?? 30,
-    cwd: opts.cwd ?? process.cwd(),
-    env: { TERM: "xterm-256color", ...baseEnv, ...overrideEnv },
+    cwd: opts.cwd ?? structured?.cwd ?? process.cwd(),
+    env: {
+      TERM: "xterm-256color",
+      ...baseEnv,
+      ...structured?.env,
+      ...overrideEnv,
+    },
   };
-  if (typeof opts.uid === "number")
-    (spawnOpts as Record<string, unknown>).uid = opts.uid;
-  if (typeof opts.gid === "number")
-    (spawnOpts as Record<string, unknown>).gid = opts.gid;
+  // uid/gid: Linux-only concept. Setting them on win32 throws in libuv; on
+  // macOS a non-root daemon can't setuid anyway. Gate hard.
+  if (process.platform === "linux") {
+    if (typeof opts.uid === "number")
+      (spawnOpts as Record<string, unknown>).uid = opts.uid;
+    if (typeof opts.gid === "number")
+      (spawnOpts as Record<string, unknown>).gid = opts.gid;
+  }
 
   // forkpty(3) can fail transiently in CI containers under PTY pressure
   // (concurrent test files allocating PTYs faster than the kernel reaps them).
   // Retry a few times before giving up — production callers also benefit from
   // resilience to brief PTY exhaustion.
+  // Computed once, outside the retry loop below: a deterministic
+  // ShellNotFoundError (or any other resolution error) must not burn the
+  // 3 forkpty retries — it will fail identically every time.
+  const [file, args] = ptyArgv(
+    opts.cmd,
+    (spawnOpts.env as Record<string, string>).PATH,
+  );
+
   let raw!: ReturnType<typeof ptySpawn>;
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      raw = ptySpawn("sh", ["-c", opts.cmd], spawnOpts);
+      raw = ptySpawn(file, args, spawnOpts);
       lastErr = undefined;
       break;
     } catch (err) {
@@ -119,15 +186,89 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
     if ((lastErr as Error).message?.includes("posix_spawnp")) {
       return spawnFallback(opts);
     }
+    // ConPTY's "File not found" is bare — no executable name — when a
+    // structured command's argv[0] (e.g. `git`) isn't on PATH. That was the
+    // original dead-end for customers: name the culprit and point at a fix.
+    if (
+      process.platform === "win32" &&
+      /File not found/i.test((lastErr as Error).message ?? "")
+    ) {
+      throw new Error(
+        `"${file}" not found on PATH — the daemon needs it to run this step. ` +
+          `Install Git for Windows (https://gitforwindows.org) or run the daemon under WSL2.`,
+      );
+    }
     throw lastErr;
   }
 
   const pid = raw.pid;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const socket = (raw as any)._socket as {
-    fd: number;
-    destroy: (err?: Error) => void;
-  };
+  const socket = (raw as any)._socket as
+    | { fd?: number; destroy: (err?: Error) => void }
+    | undefined;
+
+  /** Map node-pty's (exitCode, signal) to a shell-convention exit code. */
+  function shellExitCode(code: number, signal: number): number {
+    // On macOS node-pty always reports exitCode=0 for signal-killed processes;
+    // the signal number is in `signal`. Map to shell convention: 128 + signal.
+    if (signal > 0) return 128 + signal;
+    return code;
+  }
+
+  // node-pty's Windows implementation (ConPTY/winpty, see windowsTerminal.js)
+  // backs `_socket` with a `net.Socket` over a named pipe, not a POSIX PTY
+  // master fd — `.fd` is not a number there. The entire Bun-compat machinery
+  // below exists to work around Bun's tty.ReadStream mis-handling EAGAIN on a
+  // POSIX PTY master fd (see the file header); that bug doesn't apply here,
+  // so drive I/O through node-pty's own public API instead — `onData`/
+  // `onExit` work via the socket's normal event plumbing on every platform
+  // and were never subject to the Bun bug in the first place.
+  if (typeof socket?.fd !== "number") {
+    const dataListeners: Array<(data: string) => void> = [];
+    const exitListeners: Array<(exitCode: number) => void> = [];
+    let done = false;
+
+    raw.onData((data: string) => {
+      for (const listener of dataListeners) listener(data);
+    });
+    raw.onExit(({ exitCode, signal }) => {
+      if (done) return;
+      done = true;
+      // `exitCode` can arrive undefined/null in edge cases (e.g. the pty is
+      // torn down before the child's own exit is observed by the native
+      // layer) — never let that resolve a caller's "did the step succeed?"
+      // check as `undefined` (upstream compares `result.code !== 0`, and
+      // `undefined !== 0` is true, but logs a useless "exit undefined").
+      // Default to a real failure code instead.
+      for (const listener of exitListeners) {
+        listener(shellExitCode(exitCode ?? 1, signal ?? 0));
+      }
+    });
+
+    return {
+      pid,
+      onData(cb) {
+        dataListeners.push(cb);
+      },
+      onExit(cb) {
+        exitListeners.push(cb);
+      },
+      kill(signal) {
+        // node-pty's WindowsTerminal.kill(signal) THROWS ("Signals not
+        // supported on windows.") for any signal argument; on win32 every
+        // signal means terminate, so call bare — the ConPTY agent kill
+        // closes the pipe and onExit fires normally. Guarding here (not in
+        // callers) keeps task-manager's SIGTERM→SIGKILL escalation code
+        // platform-agnostic.
+        if (process.platform === "win32") {
+          raw.kill();
+          return;
+        }
+        raw.kill(signal);
+      },
+    };
+  }
+
   const fd: number = socket.fd;
 
   // ── Bun Compat Patch ──────────────────────────────────────────────────────
@@ -154,14 +295,6 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
   const exitListeners: Array<(exitCode: number) => void> = [];
   let done = false;
 
-  /** Map node-pty's (exitCode, signal) to a shell-convention exit code. */
-  function shellExitCode(code: number, signal: number): number {
-    // On macOS node-pty always reports exitCode=0 for signal-killed processes;
-    // the signal number is in `signal`. Map to shell convention: 128 + signal.
-    if (signal > 0) return 128 + signal;
-    return code;
-  }
-
   function fireExit(code: number): void {
     if (done) return;
     done = true;
@@ -169,9 +302,13 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
     for (const listener of exitListeners) listener(code);
   }
 
-  // node-pty's native exit fires after the close chain completes.
+  // node-pty's native exit fires after the close chain completes. `exitCode`
+  // is expected to always be a number here (this is the real POSIX fd path),
+  // but never let a stray undefined resolve a caller's exit-code check as
+  // `undefined` — fall back to the same "assume clean exit" default the EOF
+  // path below uses.
   raw.onExit(({ exitCode, signal }) => {
-    fireExit(shellExitCode(exitCode, signal ?? 0));
+    fireExit(shellExitCode(exitCode ?? 0, signal ?? 0));
   });
 
   // ── Data polling loop ─────────────────────────────────────────────────────
@@ -240,14 +377,28 @@ function spawnFallback(opts: PtySpawnOpts): PtyHandle {
     }
   }
 
+  const structured = isStructuredCommand(opts.cmd) ? opts.cmd : undefined;
   const spawnOpts: Parameters<typeof nodeSpawn>[2] = {
-    cwd: opts.cwd ?? process.cwd(),
-    env: { TERM: "xterm-256color", ...baseEnv, ...overrideEnv },
-    ...(typeof opts.uid === "number" ? { uid: opts.uid } : {}),
-    ...(typeof opts.gid === "number" ? { gid: opts.gid } : {}),
+    cwd: opts.cwd ?? structured?.cwd ?? process.cwd(),
+    env: {
+      TERM: "xterm-256color",
+      ...baseEnv,
+      ...structured?.env,
+      ...overrideEnv,
+    },
+    ...(process.platform === "linux" && typeof opts.uid === "number"
+      ? { uid: opts.uid }
+      : {}),
+    ...(process.platform === "linux" && typeof opts.gid === "number"
+      ? { gid: opts.gid }
+      : {}),
   };
 
-  const child = nodeSpawn("sh", ["-c", opts.cmd], spawnOpts);
+  const [file, args] = ptyArgv(
+    opts.cmd,
+    (spawnOpts.env as Record<string, string>).PATH,
+  );
+  const child = nodeSpawn(file, args, spawnOpts);
   const dataListeners: Array<(data: string) => void> = [];
   const exitListeners: Array<(exitCode: number) => void> = [];
 

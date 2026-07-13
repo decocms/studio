@@ -234,6 +234,34 @@ describe("MountManager", () => {
     await mm.stop();
   });
 
+  it("win32: skips all volumes, mounts nothing, list() stays empty", async () => {
+    const { mounter, calls } = fakeMounter();
+    const inv = fakeInvalidators();
+    const logs: string[] = [];
+    const mm = new MountManager(
+      mounter,
+      (m) => logs.push(m),
+      inv.factory,
+      "win32",
+    );
+    await mm.start(
+      config([
+        { volume: "skills", path: "skills" },
+        { volume: "things", path: "things" },
+      ]),
+      appRoot,
+    );
+
+    // no mounter call at all — not even an attempt that could throw/degrade
+    expect(calls.length).toBe(0);
+    expect(inv.started).toEqual([]);
+    expect(mm.list()).toEqual([]);
+    expect(logs.some((m) => /windows/i.test(m) && m.includes("2"))).toBe(true);
+
+    await mm.stop(); // no-op, nothing to unmount
+    expect(mm.list()).toEqual([]);
+  });
+
   it("does not remount when the exit comes from a deliberate stop()", async () => {
     const { mounter, calls } = fakeMounter();
     const inv = fakeInvalidators();

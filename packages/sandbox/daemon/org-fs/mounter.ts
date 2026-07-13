@@ -121,8 +121,21 @@ export function createRcloneMounter(
   } = {},
 ): Mounter {
   const isMac = process.platform === "darwin";
+  const isWindows = process.platform === "win32";
   return {
     async mount({ webdavUrl, mountPath, rcAddr, readonly }) {
+      // rclone's nfsmount/mount (and the umount/fusermount detach below) have
+      // no Windows equivalent. This is unreachable in practice: MountManager
+      // gates on win32 BEFORE ever calling mountOne (see its constructor doc),
+      // so `active` stays empty there and this Mounter is never invoked. Throw
+      // defensively rather than hand back a fake success handle — a caller
+      // that bypassed the manager gate must not get an indistinguishable-from-
+      // real MountHandle, since that would let downstream link logic
+      // (ensureOrgRepoLink / repointOutputLinkForRun) symlink into an unbacked
+      // directory and silently strand files (see entry.ts's link-gate doc).
+      if (isWindows) {
+        throw new Error("org-fs mounts are not supported on Windows");
+      }
       // Reclaim: clear a stale mount from a prior killed session so we don't
       // layer a fresh mount over a hung one (no-op on a clean path).
       detachMount(mountPath, isMac);
