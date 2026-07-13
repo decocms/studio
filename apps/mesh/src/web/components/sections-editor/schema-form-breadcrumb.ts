@@ -69,7 +69,15 @@ export function consumedBreadcrumbPrefix(
   );
 }
 
-/** Drop crumbs consumed by the active field so children see a relative trail. */
+/**
+ * Drop crumbs consumed by the active field so children see a relative trail.
+ *
+ * NOTE: {@link consumedBreadcrumbPrefix} reconstructs the dropped prefix purely
+ * by length difference, which relies on the return value always being a
+ * front-suffix of `breadcrumbPath` (this only ever drops the leading crumb).
+ * Keep it that way — dropping from the middle or rewriting a crumb would make
+ * that reconstruction silently wrong.
+ */
 export function breadcrumbPathForActiveField(
   activeKey: string,
   schema: SchemaProperty,
