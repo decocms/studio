@@ -21,12 +21,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
-import { useSidebar } from "@deco/ui/components/sidebar.tsx";
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@deco/ui/components/sidebar.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
+  useVirtualMCPs,
 } from "@decocms/mesh-sdk";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { authClient } from "@/web/lib/auth-client";
@@ -39,6 +45,8 @@ import { GlobalSearchDialog } from "@/web/layouts/tasks-panel/global-search-dial
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { AgentAvatar } from "@/web/components/agent-icon";
+import { SidebarTriggerButton } from "@/web/layouts/shell-controls";
 import { MyThreadsSection } from "./my-threads-section";
 import type { SidebarFilters } from "./next-page-offset";
 
@@ -65,6 +73,8 @@ export function TaskGroupsList({
     orgSlug: org.slug,
   });
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  // Agent entities (for the collapsed rail's per-thread avatars).
+  const agents = useVirtualMCPs();
 
   const {
     threads: allThreads,
@@ -217,11 +227,39 @@ export function TaskGroupsList({
 
   const isCollapsed = sidebarState === "collapsed" && !isMobile;
 
-  // Collapsed rail: the thread list can't render as an icon rail, and agents
-  // now live in the breadcrumb — so the rail carries just the new-thread "+"
-  // (provided by use-project-sidebar-items). Nothing to render here.
+  // Collapsed rail: the toggle up top, then each thread as its agent's avatar
+  // (tooltip = title), so threads stay reachable without expanding.
   if (isCollapsed) {
-    return null;
+    const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
+    const agentById = new Map((agents ?? []).map((a) => [a.id, a] as const));
+    const resolveAgent = (id: string | undefined) =>
+      (id ? agentById.get(id) : undefined) ??
+      (id === decopilotId ? decopilot : undefined);
+    return (
+      <SidebarMenu className="min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <SidebarMenuItem>
+          <SidebarTriggerButton />
+        </SidebarMenuItem>
+        {visibleScopedThreads.map((t) => {
+          const agent = resolveAgent(t.virtual_mcp_id);
+          return (
+            <SidebarMenuItem key={t.id}>
+              <SidebarMenuButton
+                tooltip={t.title || "New chat"}
+                isActive={t.id === activeTaskId}
+                onClick={() => handleSelectTask(t)}
+              >
+                <AgentAvatar
+                  icon={agent?.icon ?? null}
+                  name={agent?.title ?? "Agent"}
+                  size="2xs"
+                />
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          );
+        })}
+      </SidebarMenu>
+    );
   }
 
   const scopeToggle = (
@@ -242,6 +280,7 @@ export function TaskGroupsList({
       )}
     >
       <div className="flex items-center gap-0.5">
+        {!mobile && <SidebarTriggerButton />}
         <ToolbarIconButton
           aria-label="Search threads"
           onClick={() => {

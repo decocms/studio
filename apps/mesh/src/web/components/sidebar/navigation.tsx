@@ -14,7 +14,6 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import type { ReactNode } from "react";
 import type { NavigationSidebarItem, SidebarSection } from "./types";
 import { SidebarCollapsibleGroup } from "./sidebar-group";
-import { SidebarTriggerButton } from "@/web/layouts/shell-controls";
 import { track } from "@/web/lib/posthog-client";
 
 interface NavigationSidebarProps {
@@ -107,10 +106,6 @@ function NavigationSidebarInner({
           contentClassName,
         )}
       >
-        {/* Collapse toggle lives at the top of the sidebar itself. */}
-        <div className="shrink-0 flex items-center group-data-[state=collapsed]/sidebar:justify-center mb-1">
-          <SidebarTriggerButton />
-        </div>
         {sections.map((section, index) => (
           <SidebarSectionRenderer key={index} section={section} />
         ))}
