@@ -256,22 +256,17 @@ export function TaskGroupsList({
       (id ? agentById.get(id) : undefined) ??
       (id === decopilotId ? decopilot : undefined);
     return (
-      <SidebarMenu className="min-h-0 items-center gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <SidebarMenu className="min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {/* Toggle first, then new thread, then the threads themselves. All
-            SidebarMenuButtons so they share one height/alignment. */}
-        <SidebarMenuItem className="flex justify-center">
-          <SidebarMenuButton
-            tooltip="Toggle sidebar"
-            className="justify-center"
-            onClick={toggleSidebar}
-          >
+            SidebarMenuButtons so they share the rail's default sizing/padding. */}
+        <SidebarMenuItem>
+          <SidebarMenuButton tooltip="Toggle sidebar" onClick={toggleSidebar}>
             <LayoutLeft size={16} />
           </SidebarMenuButton>
         </SidebarMenuItem>
-        <SidebarMenuItem className="flex justify-center">
+        <SidebarMenuItem>
           <SidebarMenuButton
             tooltip="New thread"
-            className="justify-center"
             onClick={() => void handleNewThread()}
           >
             <Edit05 size={16} />
@@ -280,11 +275,10 @@ export function TaskGroupsList({
         {visibleScopedThreads.map((t) => {
           const agent = resolveAgent(t.virtual_mcp_id);
           return (
-            <SidebarMenuItem key={t.id} className="flex justify-center">
+            <SidebarMenuItem key={t.id}>
               <SidebarMenuButton
                 tooltip={t.title || "New chat"}
                 isActive={t.id === activeTaskId}
-                className="justify-center"
                 onClick={() => handleSelectTask(t)}
               >
                 <AgentAvatar
