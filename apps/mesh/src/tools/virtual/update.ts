@@ -12,6 +12,7 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import { writeAgentPrompts } from "../../file-storage/agent-prompts";
+import { isPublicVolume } from "../../file-storage/public-sets";
 import { VirtualMCPEntitySchema, VirtualMCPUpdateDataSchema } from "./schema";
 import { requireOrgAdminForPinnedField } from "./require-org-admin-for-pin";
 
@@ -77,6 +78,37 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
 
     if (data.pinned !== undefined && data.pinned !== existing.pinned) {
       requireOrgAdminForPinnedField(ctx);
+    }
+
+    // Prompt-linked-to-file: an actual instructions change writes through to
+    // the linked org-fs file (the runtime source of truth). Gated on the
+    // incoming text differing from BOTH the stored mirror (so unrelated
+    // autosaves echoing an unchanged/stale mirror never clobber external file
+    // edits) and the current file content (so link-time saves don't churn the
+    // change feed). Runs before the row update so a failed write fails the
+    // whole update instead of silently diverging mirror and file. `public-*`
+    // volumes are readonly — the synced file is canonical there, never written.
+    const fileRef = data.metadata?.instructionsFile;
+    const incomingInstructions = input.data.metadata?.instructions;
+    if (
+      fileRef &&
+      typeof incomingInstructions === "string" &&
+      incomingInstructions !== existing.metadata?.instructions &&
+      !isPublicVolume(fileRef.volume) &&
+      ctx.orgFs
+    ) {
+      const fileText = await ctx.orgFs
+        .read(fileRef.volume, fileRef.path)
+        .then((bytes) => new TextDecoder().decode(bytes))
+        .catch(() => null);
+      if (fileText !== incomingInstructions) {
+        await ctx.orgFs.write(
+          fileRef.volume,
+          fileRef.path,
+          incomingInstructions,
+          { actor: userId },
+        );
+      }
     }
 
     const virtualMcp = await ctx.storage.virtualMcps.update(

@@ -12,6 +12,7 @@ import { getMcpListCache } from "../mcp-list-cache";
 import type { StudioContext } from "../../core/studio-context";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { VirtualMCPEntity } from "../../tools/virtual/schema";
+import { loadInstructionsFileText } from "./instructions-file";
 import { PassthroughClient } from "./passthrough-client";
 import { renderSkillsCatalogBlock } from "./skills-instructions";
 import type { VirtualClientOptions } from "./types";
@@ -139,6 +140,12 @@ export async function createVirtualClientFrom(
     ? ((await renderSkillsCatalogBlock(ctx, virtualMcp)) ?? undefined)
     : undefined;
 
+  // Prompt-linked-to-file: read the linked org-fs file now (async, same seam
+  // as the skills block) so getInstructions() can prefer it over the inline
+  // mirror on every run path. No-op (no read) for agents without a link.
+  const instructionsOverride =
+    (await loadInstructionsFileText(ctx, virtualMcp)) ?? undefined;
+
   // Build aggregator options
   const clientOptions: VirtualClientOptions = {
     connections: loadedConnections,
@@ -147,6 +154,7 @@ export async function createVirtualClientFrom(
     mcpListCache: getMcpListCache() ?? undefined,
     listTimeoutMs: options?.listTimeoutMs,
     skillsBlock,
+    instructionsOverride,
   };
 
   return new PassthroughClient(clientOptions, ctx);

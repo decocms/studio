@@ -542,6 +542,26 @@ const knowledgeMetadataField = z
   );
 
 /**
+ * Reusable `metadata.instructionsFile` field shared by the entity, create, and
+ * update schemas. When set, the agent's system prompt is sourced from this
+ * org-fs file at run time and `instructions` becomes a mirror: kept in sync by
+ * the update tool's write-through and used as a fallback when the file is
+ * unreadable. Files on readonly (`public-*`) volumes make the prompt readonly.
+ */
+const instructionsFileMetadataField = z
+  .object({
+    volume: z
+      .string()
+      .describe("Org filesystem (Library) volume the file lives in"),
+    path: z.string().describe("Path within the volume"),
+  })
+  .nullable()
+  .optional()
+  .describe(
+    "Org-fs markdown/text file the system prompt is synced from. Takes precedence over `instructions` at run time; null/absent = inline instructions.",
+  );
+
+/**
  * Virtual MCP entity schema - single source of truth
  * Compliant with collections binding pattern
  */
@@ -605,6 +625,7 @@ export const VirtualMCPEntitySchema = z.object({
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
       knowledge: knowledgeMetadataField,
+      instructionsFile: instructionsFileMetadataField,
       siteSlug: z
         .string()
         .nullable()
@@ -703,6 +724,7 @@ export const VirtualMCPCreateDataSchema = z.object({
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
       knowledge: knowledgeMetadataField,
+      instructionsFile: instructionsFileMetadataField,
       siteSlug: z
         .string()
         .nullable()
@@ -782,6 +804,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
       knowledge: knowledgeMetadataField,
+      instructionsFile: instructionsFileMetadataField,
       siteSlug: z
         .string()
         .nullable()

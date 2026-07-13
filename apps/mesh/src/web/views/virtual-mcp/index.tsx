@@ -10,6 +10,8 @@ import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { User } from "@/web/components/user/user";
 import { useMCPAuthStatus } from "@/web/hooks/use-mcp-auth-status";
+import { fetchOrgFsText, useOrgFsReadText } from "@/web/hooks/use-org-fs.ts";
+import { publicSetOf } from "@/web/layouts/library/location";
 
 import {
   authenticateMcp,
@@ -88,6 +90,7 @@ import { IconPicker } from "../../components/icon-picker";
 import { SimpleIconPicker } from "../../components/simple-icon-picker";
 import { Page } from "@/web/components/page";
 import { AddConnectionDialog } from "./add-connection-dialog";
+import { PromptFileLink, type PromptFileRef } from "./prompt-file-link";
 import { FilesSection } from "./files-section";
 import { SubAgentsSection } from "./sub-agents-section";
 import { track } from "@/web/lib/posthog-client";
@@ -1153,6 +1156,29 @@ function VirtualMcpDetailViewWithData({
   // GitHub repo connected (real auth) — instructions become read-only
   const hasGithubRepo = agentHasConnectedGithub(virtualMcp);
 
+  // Prompt linked to an org-fs file: the file is the runtime source of truth
+  // (the update tool writes edits made here through to it); `public-*`
+  // volumes are readonly and lock the editor. Display prefers the fresh file
+  // content over the possibly-stale inline mirror; `promptDraft` holds
+  // in-progress edits until the post-save refetch echoes them back.
+  const promptFile = form.watch("metadata.instructionsFile") ?? null;
+  const promptFileReadOnly =
+    promptFile !== null && publicSetOf(promptFile.volume) !== null;
+  const { data: promptFileText } = useOrgFsReadText(
+    promptFile?.volume ?? null,
+    promptFile?.path ?? "",
+  );
+  const [promptDraft, setPromptDraft] = useState<string | null>(null);
+  // Post-save echo: the refetched file matches the draft — drop it so later
+  // external file updates show through. Render-phase adjust, not an effect.
+  if (promptDraft !== null && promptFileText === promptDraft) {
+    setPromptDraft(null);
+  }
+  const promptDisplayValue = (fieldValue: string | null | undefined) =>
+    promptFile
+      ? (promptDraft ?? promptFileText ?? fieldValue ?? "")
+      : (fieldValue ?? "");
+
   // Repo info for the Runtime card (display-only — loose check is intentional)
   const githubRepoForRuntimeCard = getActiveGithubRepo(virtualMcp);
   const runtimeCardRepo = githubRepoForRuntimeCard
@@ -1178,8 +1204,10 @@ function VirtualMcpDetailViewWithData({
 
   const handleImprovePrompt = async () => {
     if (isImproving) return;
-    const currentInstructions = form.getValues("metadata.instructions");
-    if (!currentInstructions?.trim()) return;
+    const currentInstructions = promptDisplayValue(
+      form.getValues("metadata.instructions"),
+    );
+    if (!currentInstructions.trim()) return;
 
     setIsImproving(true);
     try {
@@ -1270,6 +1298,19 @@ function VirtualMcpDetailViewWithData({
       id: virtualMcp.id,
       data: payload,
     });
+
+    // Refetch the linked prompt file after the server's write-through so the
+    // draft-clearing echo check (above) sees the new content.
+    const linkedFile = formData.metadata?.instructionsFile;
+    if (linkedFile) {
+      queryClient.invalidateQueries({
+        queryKey: KEYS.orgFsReadText(
+          org.id,
+          linkedFile.volume,
+          linkedFile.path,
+        ),
+      });
+    }
 
     // Accumulate into the current edit session and (re)schedule a flush
     // 30s after the last save.
@@ -1548,6 +1589,34 @@ Define step-by-step how the agent should handle requests.
     form.setValue("metadata.instructions", next, { shouldDirty: true });
   };
 
+  const handleLinkPromptFile = async (file: PromptFileRef) => {
+    try {
+      const text = await fetchOrgFsText(org.slug, file.volume, file.path);
+      form.setValue("metadata.instructionsFile", file, { shouldDirty: true });
+      // Mirror the file content at link time so the entity fallback stays
+      // coherent (the server skips the no-op file write).
+      form.setValue("metadata.instructions", text, { shouldDirty: true });
+      setPromptDraft(null);
+      flushAndSave();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to read file.",
+      );
+    }
+  };
+
+  const handleUnlinkPromptFile = () => {
+    // Keep the currently-displayed text inline so unlinking never loses it.
+    form.setValue(
+      "metadata.instructions",
+      promptDisplayValue(form.getValues("metadata.instructions")),
+      { shouldDirty: true },
+    );
+    form.setValue("metadata.instructionsFile", null, { shouldDirty: true });
+    setPromptDraft(null);
+    flushAndSave();
+  };
+
   const addedConnectionIds = new Set(connections.map((c) => c.connection_id));
   const navigate = useNavigate();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -1796,20 +1865,28 @@ Define step-by-step how the agent should handle requests.
                   Instructions
                 </h2>
                 <div className="flex items-center gap-2">
-                  {!form.watch("metadata.instructions")?.trim() && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleInsertTemplate}
-                    >
-                      + Prompt template
-                    </Button>
-                  )}
+                  <PromptFileLink
+                    file={promptFile}
+                    readOnly={promptFileReadOnly}
+                    onLink={handleLinkPromptFile}
+                    onUnlink={handleUnlinkPromptFile}
+                  />
+                  {!promptFile &&
+                    !form.watch("metadata.instructions")?.trim() && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleInsertTemplate}
+                      >
+                        + Prompt template
+                      </Button>
+                    )}
                   <Button
                     variant="outline"
                     size="sm"
                     disabled={
                       isImproving ||
+                      promptFileReadOnly ||
                       !form.watch("metadata.instructions")?.trim()
                     }
                     onClick={handleImprovePrompt}
@@ -1826,14 +1903,16 @@ Define step-by-step how the agent should handle requests.
                   <div className="relative rounded-xl card-shadow bg-card focus-within:ring-1 focus-within:ring-ring">
                     <Textarea
                       {...field}
-                      value={field.value ?? ""}
+                      value={promptDisplayValue(field.value)}
                       onChange={(e) => {
+                        if (promptFile) setPromptDraft(e.target.value);
                         field.onChange(e);
                       }}
                       onBlur={() => {
                         field.onBlur();
                         flushAndSave();
                       }}
+                      disabled={promptFileReadOnly}
                       placeholder="Define how this agent should behave, what tone to use, any constraints or guidelines..."
                       className="min-h-[200px] max-h-[360px] overflow-auto resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed border-0 shadow-none px-4 py-3 pr-11 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent"
                       style={{ boxShadow: "none" }}
@@ -1999,15 +2078,16 @@ Define step-by-step how the agent should handle requests.
               render={({ field }) => (
                 <Textarea
                   {...field}
-                  value={field.value ?? ""}
+                  value={promptDisplayValue(field.value)}
                   onChange={(e) => {
+                    if (promptFile) setPromptDraft(e.target.value);
                     field.onChange(e);
                   }}
                   onBlur={() => {
                     field.onBlur();
                     flushAndSave();
                   }}
-                  disabled={hasGithubRepo}
+                  disabled={hasGithubRepo || promptFileReadOnly}
                   placeholder="Define how this agent should behave, what tone to use, any constraints or guidelines..."
                   className="w-full h-full resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed rounded-xl card-shadow px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 bg-card border-0"
                   style={{ boxShadow: "none" }}

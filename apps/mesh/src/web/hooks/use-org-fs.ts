@@ -240,13 +240,23 @@ export async function fetchOrgFsSkillCatalog(
 }
 
 /** Read a file's contents as UTF-8 text (org-fs `/read` endpoint). */
-async function fetchOrgFsText(
+export async function fetchOrgFsText(
   orgSlug: string,
   volume: string,
   path: string,
 ): Promise<string> {
   const res = await fsFetch(fsUrl(orgSlug, volume, "read", { path }));
   return res.text();
+}
+
+/** A text file's content, cached — powers the prompt-linked-file editor. */
+export function useOrgFsReadText(volume: string | null, path: string) {
+  const { org } = useProjectContext();
+  return useQuery({
+    queryKey: KEYS.orgFsReadText(org.id, volume ?? "", path),
+    enabled: volume !== null,
+    queryFn: () => fetchOrgFsText(org.slug, volume ?? "", path),
+  });
 }
 
 /** A text file inside a skill folder, collected for inlining into chat. */
