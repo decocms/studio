@@ -1,4 +1,7 @@
-import { normalizeCommerceSiteUrl } from "@/commerce-discovery/site-url";
+import {
+  isConnectionClaimedForSite,
+  normalizeCommerceSiteUrl,
+} from "@/commerce-discovery/site-url";
 import { AuthEntry } from "@/web/components/auth-entry";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { AuthSplitLayout } from "@/web/components/auth-split-layout";
@@ -778,14 +781,10 @@ function CommerceSetupContent({
   // requested site; when the site differs, fall through to setup (idempotent
   // re-claim) so the token + metadata.siteUrl follow the site being onboarded.
   const requestedSite = initialSiteUrl || siteUrlInput || "";
-  const requestedNormalized = normalizeCommerceSiteUrl(requestedSite);
-  const claimedNormalized = connectionSiteUrl
-    ? normalizeCommerceSiteUrl(connectionSiteUrl)
-    : null;
-  const claimedForRequestedSite =
-    !requestedNormalized.ok ||
-    (!!claimedNormalized?.ok &&
-      claimedNormalized.value === requestedNormalized.value);
+  const claimedForRequestedSite = isConnectionClaimedForSite(
+    requestedSite,
+    connectionSiteUrl,
+  );
   const setupReady = connectionExists && claimedForRequestedSite;
   const currentSiteUrl =
     initialSiteUrl || siteUrlInput || connectionSiteUrl || "";
