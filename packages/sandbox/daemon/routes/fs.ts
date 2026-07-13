@@ -817,16 +817,30 @@ function assertUnlinkAllowed(
   return null;
 }
 
-function toRepoRelativePath(
+/**
+ * Repo-relative paths are a wire contract (agents/tools glob+grep over them)
+ * that must always come back POSIX-style (forward slashes), regardless of
+ * the platform separator `path.join`/`path.relative` used to build `abs`.
+ * On win32 those use `\`, so a naive `${repoDir}/`-prefixed startsWith check
+ * never matches (mixed separators) and silently falls through to returning
+ * the untouched absolute path — normalize before comparing so this is
+ * separator-agnostic on every platform.
+ */
+export function toRepoRelativePath(
   abs: string,
   searchPath: string,
   repoDir: string,
 ): string {
-  return abs.startsWith(`${repoDir}/`)
-    ? abs.slice(repoDir.length + 1)
-    : abs.startsWith(`${searchPath}/`)
-      ? abs.slice(searchPath.length + 1)
-      : abs;
+  const normalizedAbs = abs.replace(/\\/g, "/");
+  const normalizedRepoDir = repoDir.replace(/\\/g, "/");
+  const normalizedSearchPath = searchPath.replace(/\\/g, "/");
+  if (normalizedAbs.startsWith(`${normalizedRepoDir}/`)) {
+    return normalizedAbs.slice(normalizedRepoDir.length + 1);
+  }
+  if (normalizedAbs.startsWith(`${normalizedSearchPath}/`)) {
+    return normalizedAbs.slice(normalizedSearchPath.length + 1);
+  }
+  return normalizedAbs;
 }
 
 /** Empty directories have no nested files and no nested directories in the scan. */

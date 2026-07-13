@@ -25,6 +25,7 @@ import {
   GLOB_RESULT_LIMIT,
   GLOB_MAX_RESULT_LIMIT,
   resolveGlobResultLimit,
+  toRepoRelativePath,
 } from "./fs";
 
 const hasRg = spawnSync("which", ["rg"]).status === 0;
@@ -407,6 +408,47 @@ describe("fs handlers", () => {
     const dirs = new Set<string>();
     registerGlobAncestorDirectories("a/b/c/d", 3, dirs, false);
     expect([...dirs].sort()).toEqual(["a", "a/b", "a/b/c"]);
+  });
+
+  it("toRepoRelativePath: strips the repoDir prefix on POSIX-style paths", () => {
+    expect(toRepoRelativePath("/repo/needle.txt", "/repo", "/repo")).toBe(
+      "needle.txt",
+    );
+  });
+
+  it("toRepoRelativePath: strips a Windows-style backslash repoDir prefix", () => {
+    // Simulates what path.join/path.relative produce on win32, regardless
+    // of the host OS actually running this test — this is the exact shape
+    // that broke the naive `${repoDir}/`-prefixed startsWith check (mixed
+    // separators never matched, so the full absolute path leaked into the
+    // wire response instead of a repo-relative one).
+    expect(
+      toRepoRelativePath(
+        "C:\\Users\\runner\\repo\\needle.txt",
+        "C:\\Users\\runner\\repo",
+        "C:\\Users\\runner\\repo",
+      ),
+    ).toBe("needle.txt");
+  });
+
+  it("toRepoRelativePath: falls back to the searchPath prefix when abs is outside repoDir", () => {
+    expect(
+      toRepoRelativePath(
+        "C:\\Users\\runner\\app\\dev\\index.ts",
+        "C:\\Users\\runner\\app\\dev",
+        "C:\\Users\\runner\\app\\repo",
+      ),
+    ).toBe("index.ts");
+  });
+
+  it("toRepoRelativePath: normalizes nested Windows subdirectories to forward slashes", () => {
+    expect(
+      toRepoRelativePath(
+        "C:\\Users\\runner\\repo\\.deco\\tools\\ARCHIVE_EMAIL.json",
+        "C:\\Users\\runner\\repo",
+        "C:\\Users\\runner\\repo",
+      ),
+    ).toBe(".deco/tools/ARCHIVE_EMAIL.json");
   });
 
   it("collectEmptyDirectories ignores parents of nested directories", () => {

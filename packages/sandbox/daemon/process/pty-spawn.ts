@@ -25,6 +25,15 @@
  * through, which completes the close chain and fires `raw.onExit`.
  * The actual exit code / signal is captured there; signals are mapped to
  * shell-style exit codes (`128 + signal`).
+ *
+ * This whole workaround is POSIX-only: it only makes sense for a real PTY
+ * master fd (exposed via `_socket.fd` on `UnixTerminal`). node-pty's Windows
+ * implementation (ConPTY/winpty, `WindowsTerminal`) backs `_socket` with a
+ * `net.Socket` over a named pipe instead — `.fd` is not a number there, and
+ * Bun's `tty.ReadStream`/EAGAIN bug doesn't apply to it in the first place.
+ * `spawnPty` detects that case (`typeof socket?.fd !== "number"`) and drives
+ * I/O through node-pty's public `onData`/`onExit` API directly, with no
+ * fd polling and no destroy patching.
  */
 
 import fs from "node:fs";
@@ -194,10 +203,62 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
 
   const pid = raw.pid;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const socket = (raw as any)._socket as {
-    fd: number;
-    destroy: (err?: Error) => void;
-  };
+  const socket = (raw as any)._socket as
+    | { fd?: number; destroy: (err?: Error) => void }
+    | undefined;
+
+  /** Map node-pty's (exitCode, signal) to a shell-convention exit code. */
+  function shellExitCode(code: number, signal: number): number {
+    // On macOS node-pty always reports exitCode=0 for signal-killed processes;
+    // the signal number is in `signal`. Map to shell convention: 128 + signal.
+    if (signal > 0) return 128 + signal;
+    return code;
+  }
+
+  // node-pty's Windows implementation (ConPTY/winpty, see windowsTerminal.js)
+  // backs `_socket` with a `net.Socket` over a named pipe, not a POSIX PTY
+  // master fd — `.fd` is not a number there. The entire Bun-compat machinery
+  // below exists to work around Bun's tty.ReadStream mis-handling EAGAIN on a
+  // POSIX PTY master fd (see the file header); that bug doesn't apply here,
+  // so drive I/O through node-pty's own public API instead — `onData`/
+  // `onExit` work via the socket's normal event plumbing on every platform
+  // and were never subject to the Bun bug in the first place.
+  if (typeof socket?.fd !== "number") {
+    const dataListeners: Array<(data: string) => void> = [];
+    const exitListeners: Array<(exitCode: number) => void> = [];
+    let done = false;
+
+    raw.onData((data: string) => {
+      for (const listener of dataListeners) listener(data);
+    });
+    raw.onExit(({ exitCode, signal }) => {
+      if (done) return;
+      done = true;
+      // `exitCode` can arrive undefined/null in edge cases (e.g. the pty is
+      // torn down before the child's own exit is observed by the native
+      // layer) — never let that resolve a caller's "did the step succeed?"
+      // check as `undefined` (upstream compares `result.code !== 0`, and
+      // `undefined !== 0` is true, but logs a useless "exit undefined").
+      // Default to a real failure code instead.
+      for (const listener of exitListeners) {
+        listener(shellExitCode(exitCode ?? 1, signal ?? 0));
+      }
+    });
+
+    return {
+      pid,
+      onData(cb) {
+        dataListeners.push(cb);
+      },
+      onExit(cb) {
+        exitListeners.push(cb);
+      },
+      kill(signal) {
+        raw.kill(signal);
+      },
+    };
+  }
+
   const fd: number = socket.fd;
 
   // ── Bun Compat Patch ──────────────────────────────────────────────────────
@@ -224,14 +285,6 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
   const exitListeners: Array<(exitCode: number) => void> = [];
   let done = false;
 
-  /** Map node-pty's (exitCode, signal) to a shell-convention exit code. */
-  function shellExitCode(code: number, signal: number): number {
-    // On macOS node-pty always reports exitCode=0 for signal-killed processes;
-    // the signal number is in `signal`. Map to shell convention: 128 + signal.
-    if (signal > 0) return 128 + signal;
-    return code;
-  }
-
   function fireExit(code: number): void {
     if (done) return;
     done = true;
@@ -239,9 +292,13 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
     for (const listener of exitListeners) listener(code);
   }
 
-  // node-pty's native exit fires after the close chain completes.
+  // node-pty's native exit fires after the close chain completes. `exitCode`
+  // is expected to always be a number here (this is the real POSIX fd path),
+  // but never let a stray undefined resolve a caller's exit-code check as
+  // `undefined` — fall back to the same "assume clean exit" default the EOF
+  // path below uses.
   raw.onExit(({ exitCode, signal }) => {
-    fireExit(shellExitCode(exitCode, signal ?? 0));
+    fireExit(shellExitCode(exitCode ?? 0, signal ?? 0));
   });
 
   // ── Data polling loop ─────────────────────────────────────────────────────
