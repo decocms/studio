@@ -18,7 +18,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { useActiveOrganizations } from "@/web/lib/auth-client";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
 
-export function getOrgColorStyle(name: string): {
+function getOrgColorStyle(name: string): {
   backgroundColor: string;
   color: string;
 } {
