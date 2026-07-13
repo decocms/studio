@@ -138,11 +138,11 @@ export class MonitoringTransport extends WrapperTransport {
     }
 
     const organizationId = ctx.organization?.id ?? "";
-    const isError = "error" in response;
-    const result = isError ? response.error : response.result;
+    const transportError = "error" in response;
+    const result = transportError ? response.error : response.result;
 
     // Convert to CallToolResult format for logging
-    const callToolResult: CallToolResult = isError
+    const callToolResult: CallToolResult = transportError
       ? {
           content: [
             {
@@ -153,6 +153,13 @@ export class MonitoringTransport extends WrapperTransport {
           isError: true,
         }
       : (result as CallToolResult);
+
+    // A tool call fails two ways: a JSON-RPC transport error, or a successful
+    // response whose CallToolResult carries isError:true — the normal way MCP
+    // tools signal failure. Both must count; checking only "error" in response
+    // undercounted real failures ~35x in production telemetry.
+    const isError = transportError || callToolResult?.isError === true;
+    const errorMessage = extractCallToolErrorMessage(callToolResult) || null;
 
     // Record connection-level OpenTelemetry metrics
     ctx.meter.createHistogram("connection.proxy.duration").record(duration, {
@@ -167,7 +174,7 @@ export class MonitoringTransport extends WrapperTransport {
         "connection.id": connectionId,
         "organization.id": organizationId,
         "tool.name": toolName,
-        error: response.error?.message,
+        error: response.error?.message ?? errorMessage ?? undefined,
       });
     } else {
       ctx.meter.createCounter("connection.proxy.requests").add(1, {
@@ -186,14 +193,16 @@ export class MonitoringTransport extends WrapperTransport {
         toolName,
         durationMs: duration,
         isError,
-        errorType: isError ? "RemoteError" : "",
+        errorType: transportError ? "RemoteError" : isError ? "ToolError" : "",
       });
     }
 
     // Enrich and end OpenTelemetry span
     if (span) {
-      if (isError && response.error) {
-        span.recordException(new Error(response.error.message));
+      if (isError) {
+        span.recordException(
+          new Error(response.error?.message ?? errorMessage ?? "Tool error"),
+        );
       }
 
       const metaProps = extractMetaProperties(toolArguments);
@@ -209,8 +218,8 @@ export class MonitoringTransport extends WrapperTransport {
           toolArguments,
           result: callToolResult,
           duration,
-          isError: Boolean(isError),
-          errorMessage: extractCallToolErrorMessage(callToolResult) || null,
+          isError,
+          errorMessage,
           userId: ctx.auth.user?.id || ctx.auth.apiKey?.userId || null,
           requestId: ctx.metadata.requestId,
           userAgent: ctx.metadata.userAgent || null,
