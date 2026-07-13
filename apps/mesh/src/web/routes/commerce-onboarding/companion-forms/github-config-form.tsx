@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   Form,
   FormControl,
@@ -12,8 +13,11 @@ import {
   FormMessage,
 } from "@deco/ui/components/form.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
+import { Input } from "@deco/ui/components/input.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
+import { SearchSm } from "@untitledui/icons";
 import { KEYS } from "@/web/lib/query-keys";
+import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
 import { fetchGithubInstallations } from "@/web/lib/github-installations";
 import { unwrapToolResult } from "../companions-core.ts";
 import { SelectableList } from "./selectable-list.tsx";
@@ -31,52 +35,95 @@ interface GithubSearchRepo {
   updated_at?: string;
 }
 
-async function listAccessibleRepos(
+/** Per-account search_repositories timeout — a hung/slow account is treated as a
+ *  failure (surfaced to the user) rather than blocking the picker forever. */
+const SEARCH_TIMEOUT_MS = 15_000;
+
+/** A plausible "owner/name" so we can offer any repo as a manual fallback even
+ *  when the search index doesn't surface it. */
+const OWNER_NAME_RE = /^[\w.-]+\/[\w.-]+$/;
+
+interface RepoSearchResult {
+  repos: string[];
+  /** Installations whose search call failed (error/timeout/unparseable). */
+  failed: number;
+  /** Total installations searched. */
+  total: number;
+}
+
+/**
+ * Search repos across the user's GitHub App installations. The GitHub search
+ * API returns at most `perPage` per call and orders by "best match", so a fixed
+ * page-1 listing silently drops most repos of a large org (e.g. deco-sites has
+ * 600+). Passing the typed query as an `in:name` filter is what makes an
+ * arbitrary repo findable — this is the fix for repos that never appeared.
+ *
+ * Each account is searched independently (allSettled) and per-call timed out, so
+ * one slow/failing account doesn't blank the whole picker. The count of failed
+ * accounts is returned so the UI can WARN instead of implying "no repos exist"
+ * when the search actually errored or timed out.
+ */
+async function searchRepos(
   selfCallTool: (req: {
     name: string;
     arguments: Record<string, unknown>;
   }) => Promise<unknown>,
-  companionCallTool: (req: {
-    name: string;
-    arguments: Record<string, unknown>;
-  }) => Promise<unknown>,
+  companionClient: Client,
   connectionId: string,
-): Promise<string[]> {
+  query: string,
+): Promise<RepoSearchResult> {
   const { installations } = await fetchGithubInstallations(
     selfCallTool,
     connectionId,
   );
-  const perAccount = await Promise.all(
+  const term = query.trim();
+  const settled = await Promise.allSettled(
     installations.map(async (inst) => {
       const qualifier = inst.type === "User" ? "user" : "org";
-      const result = await companionCallTool({
-        name: "search_repositories",
-        arguments: {
-          query: `${qualifier}:${inst.login}`,
-          page: 1,
-          perPage: 50,
+      const q = term
+        ? `${qualifier}:${inst.login} ${term} in:name`
+        : `${qualifier}:${inst.login}`;
+      const result = await companionClient.callTool(
+        {
+          name: "search_repositories",
+          arguments: { query: q, page: 1, perPage: 50 },
         },
-      });
-      const content = (result as { content?: Array<{ text?: string }> })
-        .content?.[0]?.text;
-      if (!content) return [] as GithubSearchRepo[];
-      try {
-        const parsed = JSON.parse(content) as { items?: GithubSearchRepo[] };
-        return parsed.items ?? [];
-      } catch {
-        return [] as GithubSearchRepo[];
+        undefined,
+        { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) },
+      );
+      const typed = result as {
+        isError?: boolean;
+        content?: Array<{ text?: string }>;
+      };
+      const content = typed.content?.[0]?.text;
+      // A tool-level error carries text but is NOT a valid payload — surface it
+      // as a failure instead of parsing it into an empty list.
+      if (typed.isError) {
+        throw new Error(content ?? "search_repositories failed");
       }
+      if (!content) throw new Error("empty search_repositories response");
+      const parsed = JSON.parse(content) as { items?: GithubSearchRepo[] };
+      return parsed.items ?? [];
     }),
   );
+
   const byName = new Map<string, GithubSearchRepo>();
-  for (const repo of perAccount.flat()) {
-    if (repo.full_name && !byName.has(repo.full_name)) {
-      byName.set(repo.full_name, repo);
+  let failed = 0;
+  for (const outcome of settled) {
+    if (outcome.status === "rejected") {
+      failed += 1;
+      continue;
+    }
+    for (const repo of outcome.value) {
+      if (repo.full_name && !byName.has(repo.full_name)) {
+        byName.set(repo.full_name, repo);
+      }
     }
   }
-  return Array.from(byName.values())
+  const repos = Array.from(byName.values())
     .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
     .map((repo) => repo.full_name);
+  return { repos, failed, total: installations.length };
 }
 
 export function GitHubConfigForm({
@@ -93,30 +140,43 @@ export function GitHubConfigForm({
   // time — not on the GitHub companion connection like GA4/GSC config values.
   const cdConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
 
-  const dataQuery = useQuery({
-    queryKey: KEYS.commerceDiscoveryCompanionGithubRepos(org.id, connectionId),
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  // Prefill: the repo currently persisted on the CD connection.
+  const selectedQuery = useQuery({
+    queryKey: KEYS.commerceDiscoveryCompanionGithubSelected(
+      org.id,
+      connectionId,
+    ),
     queryFn: async () => {
-      const [repos, cdGet] = await Promise.all([
-        listAccessibleRepos(
-          (req) => selfClient.callTool(req),
-          (req) => companionClient.callTool(req),
-          connectionId,
-        ),
-        selfClient.callTool({
-          name: "COLLECTION_CONNECTIONS_GET",
-          arguments: { id: cdConnectionId },
-        }),
-      ]);
+      const cdGet = await selfClient.callTool({
+        name: "COLLECTION_CONNECTIONS_GET",
+        arguments: { id: cdConnectionId },
+      });
       const state =
         unwrapToolResult<{
           item: {
             configuration_state?: Record<string, unknown> | null;
           } | null;
         }>(cdGet).item?.configuration_state ?? null;
-      const selectedRepo =
-        typeof state?.github_repo === "string" ? state.github_repo : "";
-      return { repos, selectedRepo };
+      return typeof state?.github_repo === "string" ? state.github_repo : "";
     },
+  });
+
+  const reposQuery = useQuery({
+    queryKey: KEYS.commerceDiscoveryCompanionGithubRepos(
+      org.id,
+      connectionId,
+      debouncedSearch.trim(),
+    ),
+    queryFn: () =>
+      searchRepos(
+        (req) => selfClient.callTool(req),
+        companionClient,
+        connectionId,
+        debouncedSearch,
+      ),
   });
 
   const form = useForm<FormData>({
@@ -167,67 +227,102 @@ export function GitHubConfigForm({
     saveMutation.mutate(data.githubRepo);
   });
 
-  if (dataQuery.isLoading) {
-    return (
-      <div className="flex min-h-[200px] items-center justify-center">
-        <LoadingIndicator label="Carregando repositórios..." />
-      </div>
-    );
-  }
-
-  if (dataQuery.isError) {
-    return (
-      <div className="space-y-4">
-        <p className="text-sm text-destructive">
-          Não foi possível carregar os repositórios do GitHub.
-        </p>
-      </div>
-    );
-  }
-
-  const repos = dataQuery.data?.repos ?? [];
-  const selectedRepo = dataQuery.data?.selectedRepo ?? "";
-
-  if (repos.length === 0) {
-    return (
-      <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Nenhum repositório acessível foi encontrado nesta conexão do GitHub.
-        </p>
-      </div>
-    );
-  }
-
+  const selectedRepo = selectedQuery.data ?? "";
   if (selectedRepo && form.getValues("githubRepo") !== selectedRepo) {
     form.setValue("githubRepo", selectedRepo);
   }
 
+  const results = reposQuery.data?.repos ?? [];
+  const failedAccounts = reposQuery.data?.failed ?? 0;
+  const totalAccounts = reposQuery.data?.total ?? 0;
+  const trimmed = debouncedSearch.trim();
+  // Guarantee any repo is selectable: if the search yields nothing but the term
+  // is a valid owner/name, offer it directly (and always keep the currently
+  // selected repo in the list so it renders as chosen).
+  const options = [...results];
+  if (trimmed && OWNER_NAME_RE.test(trimmed) && !options.includes(trimmed)) {
+    options.unshift(trimmed);
+  }
+  if (selectedRepo && !options.includes(selectedRepo)) {
+    options.push(selectedRepo);
+  }
+
+  // A partial failure (some accounts errored/timed out) may hide real repos; a
+  // total failure means the list is empty because the search broke, not because
+  // there are no repos. Warn in both cases instead of showing a silent empty.
+  const allAccountsFailed =
+    totalAccounts > 0 && failedAccounts === totalAccounts;
+  const searchWarning =
+    reposQuery.isError || allAccountsFailed
+      ? "Não foi possível buscar os repositórios (erro ou tempo esgotado). Tente novamente ou digite o repositório no formato owner/nome."
+      : failedAccounts > 0
+        ? "Parte da busca falhou — alguns repositórios podem não ter aparecido. Tente novamente ou digite owner/nome."
+        : null;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <Form {...form}>
-        <FormField
-          control={form.control}
-          name="githubRepo"
-          render={({ field }) => (
-            <FormItem>
-              <FormControl>
-                <SelectableList
-                  options={repos.map((fullName) => ({
-                    value: fullName,
-                    label: fullName,
-                  }))}
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={isPending}
-                  ariaLabel="Repositório"
-                  searchPlaceholder="Buscar repositório..."
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+      <div className="relative">
+        <SearchSm
+          size={16}
+          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
-      </Form>
+        <Input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          disabled={isPending}
+          placeholder="Buscar repositório (ex: deco-sites/fila-store)"
+          aria-label="Buscar repositório"
+          className="h-8 pl-8"
+        />
+      </div>
+
+      {reposQuery.isLoading ? (
+        <div className="flex min-h-[160px] items-center justify-center">
+          <LoadingIndicator label="Carregando repositórios..." />
+        </div>
+      ) : (
+        <>
+          {searchWarning && (
+            <p role="alert" className="text-sm text-destructive">
+              {searchWarning}
+            </p>
+          )}
+          {options.length === 0 ? (
+            !searchWarning && (
+              <p className="text-sm text-muted-foreground">
+                Nenhum repositório encontrado. Digite o nome do repositório
+                (owner/nome) para buscar.
+              </p>
+            )
+          ) : (
+            <Form {...form}>
+              <FormField
+                control={form.control}
+                name="githubRepo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <SelectableList
+                        options={options.map((fullName) => ({
+                          value: fullName,
+                          label: fullName,
+                        }))}
+                        value={field.value}
+                        onChange={field.onChange}
+                        disabled={isPending}
+                        ariaLabel="Repositório"
+                        hideSearch
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </Form>
+          )}
+        </>
+      )}
 
       {saveMutation.error && (
         <p role="alert" className="text-sm text-destructive">
