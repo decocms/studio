@@ -372,8 +372,8 @@ export function PreviewContent() {
       }
     }
   }
-  const pickerSandboxKey =
-    virtualMcpId && branch ? `${org.slug}/${virtualMcpId}/${branch}` : "";
+  const pickerSandboxRef =
+    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
 
   // Per-section metadata for the CMS hover overlay, aligned by index with the
   // iframe's top-level section list. `label`: ONLY global (saved block)
@@ -996,19 +996,14 @@ export function PreviewContent() {
                               // Params with a picker render as a chip that
                               // opens the modal (search or free-form value);
                               // the rest keep the inline input.
-                              if (
-                                pickerKind &&
-                                previewUrl &&
-                                pickerSandboxKey
-                              ) {
+                              if (pickerKind && pickerSandboxRef) {
                                 return (
                                   <PathParamPickerChip
                                     key={`${currentPageKey}:${token.name}`}
                                     kind={pickerKind}
                                     paramName={token.name}
                                     value={pathParamValues[token.name] ?? ""}
-                                    previewUrl={previewUrl}
-                                    sandboxKey={pickerSandboxKey}
+                                    sandboxRef={pickerSandboxRef}
                                     onCommit={(value) =>
                                       setPathParamValue(token.name, value)
                                     }

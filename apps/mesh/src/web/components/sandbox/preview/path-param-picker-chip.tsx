@@ -17,6 +17,10 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { KEYS } from "@/web/lib/query-keys";
 import {
+  buildPreviewInvokePath,
+  type RunBlockSandboxRef,
+} from "@/web/components/sandbox/content/use-run-block";
+import {
   categoryOptionsFromPayload,
   filterPickerOptions,
   mergePickerOptions,
@@ -30,19 +34,19 @@ import {
 const PICKER_FETCH_TIMEOUT_MS = 10_000;
 
 /**
- * Invoke a loader straight at the preview origin — same pattern as the
- * sections editor's dynamic-options field. The resolveType goes in the path
- * with slashes intact (that's the shape the deco runtime routes).
+ * Invoke a loader via the mesh preview-invoke proxy (same-origin,
+ * authenticated) — the same route useRunBlock uses. Fetching the preview
+ * origin directly would hit CORS: previews don't send
+ * `Access-Control-Allow-Origin` for `/deco/invoke`.
  */
 async function invokeLoader(
-  previewUrl: string,
+  ref: RunBlockSandboxRef,
   { resolveType, props }: PickerLoaderRequest,
 ): Promise<unknown> {
-  const base = previewUrl.replace(/\/+$/, "");
-  const res = await fetch(`${base}/deco/invoke/${resolveType}`, {
+  const res = await fetch(buildPreviewInvokePath(ref), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(props),
+    body: JSON.stringify({ __resolveType: resolveType, ...props }),
     signal: AbortSignal.timeout(PICKER_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
@@ -57,13 +61,13 @@ async function invokeLoader(
  * tolerated as long as at least one call succeeds.
  */
 async function fetchPickerOptions(
-  previewUrl: string,
+  ref: RunBlockSandboxRef,
   kind: PathParamPickerKind,
   term: string,
 ): Promise<PathParamOption[]> {
   const requests = pickerLoaderRequests(kind, term);
   const settled = await Promise.allSettled(
-    requests.map((request) => invokeLoader(previewUrl, request)),
+    requests.map((request) => invokeLoader(ref, request)),
   );
   const payloads = settled
     .filter(
@@ -96,15 +100,13 @@ export function PathParamPickerChip({
   kind,
   paramName,
   value,
-  previewUrl,
-  sandboxKey,
+  sandboxRef,
   onCommit,
 }: {
   kind: PathParamPickerKind;
   paramName: string;
   value: string;
-  previewUrl: string;
-  sandboxKey: string;
+  sandboxRef: RunBlockSandboxRef;
   onCommit: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -141,10 +143,10 @@ export function PathParamPickerChip({
   // so its query key ignores the search term.
   const query = useQuery({
     queryKey: KEYS.sandboxInvoke(
-      sandboxKey,
+      `${sandboxRef.orgSlug}/${sandboxRef.virtualMcpId}/${sandboxRef.branch}`,
       `path-param-${kind}:${kind === "product" ? debouncedSearch : ""}`,
     ),
-    queryFn: () => fetchPickerOptions(previewUrl, kind, debouncedSearch),
+    queryFn: () => fetchPickerOptions(sandboxRef, kind, debouncedSearch),
     enabled: open,
     staleTime: 60_000,
     retry: 1,
