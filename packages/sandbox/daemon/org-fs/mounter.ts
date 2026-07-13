@@ -125,15 +125,16 @@ export function createRcloneMounter(
   return {
     async mount({ webdavUrl, mountPath, rcAddr, readonly }) {
       // rclone's nfsmount/mount (and the umount/fusermount detach below) have
-      // no Windows equivalent. Degrade gracefully: warn once and hand back an
-      // inert handle instead of throwing — org-fs mounts are purely additive
-      // (see module docblock), so a Windows sandbox just runs without them and
-      // files remain reachable via the Studio UI.
+      // no Windows equivalent. This is unreachable in practice: MountManager
+      // gates on win32 BEFORE ever calling mountOne (see its constructor doc),
+      // so `active` stays empty there and this Mounter is never invoked. Throw
+      // defensively rather than hand back a fake success handle — a caller
+      // that bypassed the manager gate must not get an indistinguishable-from-
+      // real MountHandle, since that would let downstream link logic
+      // (ensureOrgRepoLink / repointOutputLinkForRun) symlink into an unbacked
+      // directory and silently strand files (see entry.ts's link-gate doc).
       if (isWindows) {
-        console.warn(
-          "[org-fs] org file mounts are not supported on Windows — skipping (files remain available via the Studio UI)",
-        );
-        return { async unmount() {} };
+        throw new Error("org-fs mounts are not supported on Windows");
       }
       // Reclaim: clear a stale mount from a prior killed session so we don't
       // layer a fresh mount over a hung one (no-op on a clean path).
