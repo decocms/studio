@@ -37,7 +37,8 @@ import {
   OrgSwitcherPopover,
 } from "@/web/components/header/org-switcher";
 import { AgentScopePicker } from "@/web/components/sidebar/agents-section";
-import { useAgentScope } from "@/web/components/sidebar/agent-scope-context";
+import { useThreads } from "@/web/components/chat/store/hooks";
+import { usePanelActions } from "@/web/layouts/shell-layout";
 
 const crumbBtnClass =
   "wco-no-drag inline-flex items-center gap-1.5 min-w-0 rounded-md px-1.5 py-1 text-sm text-foreground hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
@@ -74,21 +75,33 @@ export function ShellBreadcrumb() {
     taskId?: string;
   };
   const search = useSearch({ strict: false }) as { virtualmcpid?: string };
-  const { scopeAgentId, setScopeAgentId } = useAgentScope();
+  const { threads } = useThreads();
+  const { setTaskId, createNewTask } = usePanelActions();
 
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
-  // Inside a thread the crumb shows that thread's agent; on the home it shows
-  // the picked scope (Decopilot when none).
+  // The active agent is whatever the URL says: the thread's agent inside a
+  // thread, else Decopilot (= all) on the home. This is what makes the
+  // selection survive a refresh — it lives in the URL, not React state.
   const activeAgentId = params.taskId
     ? (search.virtualmcpid ?? decopilotId)
-    : (scopeAgentId ?? decopilotId);
+    : decopilotId;
 
   const handlePickAgent = (id: string | null) => {
-    setScopeAgentId(id);
-    // Picking an agent scopes the list to it — leave any open thread so the
-    // filtered home list is what you see.
-    if (params.taskId) {
+    // Decopilot / "all" → the org home (every thread, no agent filter).
+    if (!id || id === decopilotId) {
       navigate({ to: "/$org", params: { org: org.slug } });
+      return;
+    }
+    // Open the agent's existing empty "New chat" if it has one, else start one.
+    // Either way you land in a chat with that agent and the sidebar scopes to
+    // it — one new chat per agent, no pile-up.
+    const existing = threads.find(
+      (t) => !t.hidden && t.virtual_mcp_id === id && t.title === "New chat",
+    );
+    if (existing) {
+      setTaskId(existing.id, id);
+    } else {
+      void createNewTask(id);
     }
   };
 

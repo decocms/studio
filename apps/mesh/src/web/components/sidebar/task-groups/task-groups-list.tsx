@@ -39,7 +39,6 @@ import { GlobalSearchDialog } from "@/web/layouts/tasks-panel/global-search-dial
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
-import { useAgentScope } from "../agent-scope-context";
 import { MyThreadsSection } from "./my-threads-section";
 import type { SidebarFilters } from "./next-page-offset";
 
@@ -90,8 +89,6 @@ export function TaskGroupsList({
     search.virtualmcpid ??
     allThreads.find((t) => t.id === activeTaskId)?.virtual_mcp_id ??
     null;
-  // The agent filter chosen from the breadcrumb picker (null = all agents).
-  const { scopeAgentId } = useAgentScope();
   const closeAfterNavigation = () => {
     onNavigate?.();
   };
@@ -145,10 +142,9 @@ export function TaskGroupsList({
   const allThreadsFiltered = typeFiltered(sortedThreads);
   const memberScoped = showAll ? allThreadsFiltered : myThreads;
 
-  // Agent scope (from the breadcrumb picker): filter the list to the selected
-  // agent's threads. Inside a thread the active agent wins (snap); Decopilot /
-  // null = all agents.
-  const filterAgentId = activeTaskId ? activeAgentId : scopeAgentId;
+  // Agent scope is URL-driven: inside a thread the sidebar shows that thread's
+  // agent's threads; on the org home it shows everything. Decopilot = all.
+  const filterAgentId = activeTaskId ? activeAgentId : null;
   const visibleScopedThreads =
     filterAgentId && filterAgentId !== decopilotId
       ? memberScoped.filter((t) => t.virtual_mcp_id === filterAgentId)
