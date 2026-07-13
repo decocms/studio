@@ -268,7 +268,11 @@ export function TaskGroupsList({
         {/* Toggle first, then new thread, then the threads themselves. All
             SidebarMenuButtons so they share the rail's default sizing/padding. */}
         <SidebarMenuItem>
-          <SidebarMenuButton tooltip="Toggle sidebar" onClick={toggleSidebar}>
+          <SidebarMenuButton
+            aria-label="Toggle sidebar"
+            tooltip="Toggle sidebar"
+            onClick={toggleSidebar}
+          >
             <LayoutLeft size={16} />
           </SidebarMenuButton>
         </SidebarMenuItem>
