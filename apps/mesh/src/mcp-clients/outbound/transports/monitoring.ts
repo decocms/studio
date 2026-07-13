@@ -159,6 +159,11 @@ export class MonitoringTransport extends WrapperTransport {
     // tools signal failure. Both must count; checking only "error" in response
     // undercounted real failures ~35x in production telemetry.
     const isError = transportError || callToolResult?.isError === true;
+    // Read response.error only inside the aliased type guard so TS narrows the
+    // JSONRPCResponse union; downstream branches use the derived string.
+    const transportErrorMessage = transportError
+      ? response.error?.message
+      : undefined;
     const errorMessage = extractCallToolErrorMessage(callToolResult) || null;
 
     // Record connection-level OpenTelemetry metrics
@@ -174,7 +179,7 @@ export class MonitoringTransport extends WrapperTransport {
         "connection.id": connectionId,
         "organization.id": organizationId,
         "tool.name": toolName,
-        error: response.error?.message ?? errorMessage ?? undefined,
+        error: transportErrorMessage ?? errorMessage ?? undefined,
       });
     } else {
       ctx.meter.createCounter("connection.proxy.requests").add(1, {
@@ -201,7 +206,7 @@ export class MonitoringTransport extends WrapperTransport {
     if (span) {
       if (isError) {
         span.recordException(
-          new Error(response.error?.message ?? errorMessage ?? "Tool error"),
+          new Error(transportErrorMessage ?? errorMessage ?? "Tool error"),
         );
       }
 
