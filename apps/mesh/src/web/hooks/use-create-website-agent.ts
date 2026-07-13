@@ -26,14 +26,6 @@ export const SHOPIFY_HYDROGEN_ICON = `data:image/svg+xml,${encodeURIComponent(
   SHOPIFY_HYDROGEN_ICON_SVG,
 )}`;
 
-export const WEBSITE_TEMPLATE: AgentTemplate = {
-  title: "New Website",
-  description: "Website cloned from a public template",
-  url: "https://github.com/decocms/webapp-template",
-  owner: "decocms",
-  name: "webapp-template",
-};
-
 export const HYDROGEN_TEMPLATE: AgentTemplate = {
   title: "Shopify Headless Store",
   description: "Shopify Headless Store cloned from a public template",

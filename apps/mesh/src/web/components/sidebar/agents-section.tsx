@@ -31,7 +31,7 @@ import {
 } from "@deco/ui/components/drawer.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { CollectionSearch } from "@deco/ui/components/collection-search.tsx";
-import { Check, Globe02, Plus } from "@untitledui/icons";
+import { Check, Plus } from "@untitledui/icons";
 import {
   getWellKnownDecopilotVirtualMCP,
   isDecopilot,
@@ -40,10 +40,6 @@ import {
 } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
-import {
-  WEBSITE_TEMPLATE,
-  useCreateAgentFromTemplate,
-} from "@/web/hooks/use-create-website-agent";
 import { track } from "@/web/lib/posthog-client";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
@@ -196,8 +192,6 @@ function PinAgentPopoverContent({
   const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
     navigateOnCreate: true,
   });
-  const { createFromTemplate, isCreating: isCreatingFromTemplate } =
-    useCreateAgentFromTemplate();
   const isDecoUser = useIsDecoUser();
 
   const navigateToNewTask = useNavigateToNewTaskWithBranchCarry(org.slug);
@@ -276,27 +270,6 @@ function PinAgentPopoverContent({
             </div>
             <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
               Create new
-            </span>
-          </button>
-
-          <button
-            type="button"
-            disabled={isCreatingFromTemplate}
-            onClick={async () => {
-              track("agent_create_clicked", {
-                source: "browse_popover",
-                method: "website",
-              });
-              await createFromTemplate(WEBSITE_TEMPLATE);
-              onClose();
-            }}
-            className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <div className="w-12 h-12 rounded-xl border-2 border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
-              <Globe02 className="size-5 text-muted-foreground" />
-            </div>
-            <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
-              Start Website
             </span>
           </button>
 

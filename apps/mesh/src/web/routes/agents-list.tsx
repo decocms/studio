@@ -13,7 +13,6 @@ import { EmptyState } from "@/web/components/empty-state.tsx";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import {
   HYDROGEN_TEMPLATE,
-  WEBSITE_TEMPLATE,
   useCreateAgentFromTemplate,
 } from "@/web/hooks/use-create-website-agent";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
@@ -118,13 +117,6 @@ export default function AgentsListPage() {
                       });
                       createVirtualMCP();
                     }}
-                    onCreateWebsite={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "website",
-                      });
-                      createFromTemplate(WEBSITE_TEMPLATE);
-                    }}
                     onCreateHydrogenStore={() => {
                       track("agent_create_clicked", {
                         source: "agents_list",
@@ -185,13 +177,6 @@ export default function AgentsListPage() {
                             method: "scratch",
                           });
                           createVirtualMCP();
-                        }}
-                        onCreateWebsite={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "website",
-                          });
-                          createFromTemplate(WEBSITE_TEMPLATE);
                         }}
                         onCreateHydrogenStore={() => {
                           track("agent_create_clicked", {
