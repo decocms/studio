@@ -88,6 +88,13 @@ import {
   type LastPreviewPage,
 } from "./last-preview-page";
 import { derivePhaseProgress } from "./derive-phase-progress";
+import {
+  detectPickerKind,
+  PICKER_LOADER_RESOLVE_TYPE,
+  type PathParamPickerKind,
+} from "./path-param-picker";
+import { PathParamPickerChip } from "./path-param-picker-chip";
+import { isManifestRunnableResolveType } from "@/web/components/sandbox/content/runnable-catalog";
 import { track } from "@/web/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
 
@@ -343,6 +350,30 @@ export function PreviewContent() {
   const pathParamValues =
     (currentPageKey ? pathParamsByPage[currentPageKey] : undefined) ?? {};
   const resolvedPath = fillPathTemplate(currentPath, pathParamValues);
+
+  // Special selectors for path params: PDP-style params get a product picker,
+  // the PLP catch-all a category picker — only when the running site's
+  // manifest actually has the VTEX loader the picker invokes.
+  const pathParamPickerKinds: Record<string, PathParamPickerKind> = {};
+  if (devServerReady && previewUrl && meta) {
+    for (const token of splitPathTemplate(currentPath)) {
+      if (token.type !== "param") continue;
+      const name = token.name;
+      const kind = detectPickerKind(currentPath, name);
+      if (
+        kind &&
+        isManifestRunnableResolveType(
+          meta,
+          PICKER_LOADER_RESOLVE_TYPE[kind],
+          "loaders",
+        )
+      ) {
+        pathParamPickerKinds[name] = kind;
+      }
+    }
+  }
+  const pickerSandboxRef =
+    virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
 
   // Per-section metadata for the CMS hover overlay, aligned by index with the
   // iframe's top-level section list. `label`: ONLY global (saved block)
@@ -947,17 +978,39 @@ export function PreviewContent() {
                         </span>
                         {!activeGlobalSection && currentPath && (
                           <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
-                            {splitPathTemplate(currentPath).map((token, i) =>
-                              token.type === "text" ? (
-                                <span
-                                  key={`text-${i}`}
-                                  className={cn(
-                                    i === 0 ? "min-w-0 truncate" : "shrink-0",
-                                  )}
-                                >
-                                  {token.text}
-                                </span>
-                              ) : (
+                            {splitPathTemplate(currentPath).map((token, i) => {
+                              if (token.type === "text") {
+                                return (
+                                  <span
+                                    key={`text-${i}`}
+                                    className={cn(
+                                      i === 0 ? "min-w-0 truncate" : "shrink-0",
+                                    )}
+                                  >
+                                    {token.text}
+                                  </span>
+                                );
+                              }
+                              const pickerKind =
+                                pathParamPickerKinds[token.name];
+                              // Params with a picker render as a chip that
+                              // opens the modal (search or free-form value);
+                              // the rest keep the inline input.
+                              if (pickerKind && pickerSandboxRef) {
+                                return (
+                                  <PathParamPickerChip
+                                    key={`${currentPageKey}:${token.name}`}
+                                    kind={pickerKind}
+                                    paramName={token.name}
+                                    value={pathParamValues[token.name] ?? ""}
+                                    sandboxRef={pickerSandboxRef}
+                                    onCommit={(value) =>
+                                      setPathParamValue(token.name, value)
+                                    }
+                                  />
+                                );
+                              }
+                              return (
                                 <PathParamInput
                                   key={`${currentPageKey}:${token.name}`}
                                   name={token.name}
@@ -966,8 +1019,8 @@ export function PreviewContent() {
                                     setPathParamValue(token.name, value)
                                   }
                                 />
-                              ),
-                            )}
+                              );
+                            })}
                           </span>
                         )}
                       </div>
