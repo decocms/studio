@@ -61,7 +61,10 @@ export interface PtySpawnOpts {
   rows?: number;
 }
 
-function ptyArgv(cmd: string | StructuredCommand): [string, string[]] {
+function ptyArgv(
+  cmd: string | StructuredCommand,
+  childPath?: string,
+): [string, string[]] {
   if (isStructuredCommand(cmd)) {
     const [exe, ...rest] = cmd.argv;
     // win32: a bare command name (e.g. "git") is the same shape that made
@@ -73,9 +76,15 @@ function ptyArgv(cmd: string | StructuredCommand): [string, string[]] {
     // PATH search happens in a context known to work; fall back to the
     // bare name — preserving today's behavior, including the legible
     // "<exe> not found on PATH" error below — when Bun.which can't find it
-    // either.
+    // either. Resolve against the CHILD's effective PATH (the merged env
+    // may prepend runtimePathDirs like /opt/bun/bin), not the daemon's own
+    // — on POSIX execvp resolves in the child env, and win32 must match
+    // that or a runtime-pinned binary hits "File not found" while a
+    // shadowed one silently runs the wrong copy.
     if (process.platform === "win32") {
-      const resolved = Bun.which(exe);
+      const resolved = childPath
+        ? Bun.which(exe, { PATH: childPath })
+        : Bun.which(exe);
       if (resolved) return [resolved, rest];
     }
     return [exe, rest];
@@ -130,7 +139,10 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
   // Computed once, outside the retry loop below: a deterministic
   // ShellNotFoundError (or any other resolution error) must not burn the
   // 3 forkpty retries — it will fail identically every time.
-  const [file, args] = ptyArgv(opts.cmd);
+  const [file, args] = ptyArgv(
+    opts.cmd,
+    (spawnOpts.env as Record<string, string>).PATH,
+  );
 
   let raw!: ReturnType<typeof ptySpawn>;
   let lastErr: unknown;
@@ -315,7 +327,10 @@ function spawnFallback(opts: PtySpawnOpts): PtyHandle {
       : {}),
   };
 
-  const [file, args] = ptyArgv(opts.cmd);
+  const [file, args] = ptyArgv(
+    opts.cmd,
+    (spawnOpts.env as Record<string, string>).PATH,
+  );
   const child = nodeSpawn(file, args, spawnOpts);
   const dataListeners: Array<(data: string) => void> = [];
   const exitListeners: Array<(exitCode: number) => void> = [];
