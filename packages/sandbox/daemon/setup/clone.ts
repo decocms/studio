@@ -2,6 +2,7 @@ import { sleep } from "@decocms/std";
 import { existsSync, readdirSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { isSyntheticBranch } from "../constants";
+import { isValidRemoteBranchName } from "../git/ref-name";
 import type { Config } from "../types";
 import { spawnSetupStep } from "./spawn-step";
 
@@ -97,26 +98,6 @@ async function runNetworkStep(cmd: string, deps: CloneDeps): Promise<number> {
 // through to a fork-from-default fallback.
 const LS_REMOTE_NO_MATCH = 2;
 
-/**
- * Conservative ref-name allowlist. `base` below is derived from
- * remote-controlled `ls-remote` output and interpolated into `sh -c` git
- * commands; git permits shell metacharacters (`;`, `$(…)`, backticks, `|`, …)
- * in branch names, so an untrusted remote whose HEAD points at a maliciously
- * named default branch could inject commands. Restrict to characters that
- * appear in real branch names and reject the ref-format edge cases.
- */
-export function isSafeRefName(name: string): boolean {
-  return (
-    /^[A-Za-z0-9._/-]+$/.test(name) &&
-    !name.startsWith("-") &&
-    !name.startsWith("/") &&
-    !name.endsWith("/") &&
-    !name.endsWith(".lock") &&
-    !name.includes("..") &&
-    !name.includes("//")
-  );
-}
-
 /** Like runNetworkStep but also returns the (merged stdout+stderr) output. */
 async function runNetworkStepCapture(
   cmd: string,
@@ -180,7 +161,7 @@ async function fetchBaseBranch(
   // into `sh -c` git commands below — reject anything outside a safe ref-name
   // charset to close the command-injection vector (git allows `;`, `$(…)`,
   // backticks, etc. in branch names).
-  if (!isSafeRefName(base)) {
+  if (!isValidRemoteBranchName(base)) {
     deps.onChunk(
       "setup",
       `\r\n[clone] warning: refusing unsafe base branch name ${JSON.stringify(base)}; divergence vs base unavailable until next fetch\r\n`,
@@ -266,6 +247,17 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
   let branchOnRemote: string | null = null;
   let branchToForkLocally: string | null = null;
   if (branch) {
+    // `branch` is config-supplied and interpolated into `sh -c` git commands
+    // below (ls-remote/clone/checkout) — same command-injection vector as
+    // `base` above (git permits shell metacharacters in ref names), so
+    // validate before it ever reaches a shell string.
+    if (!isValidRemoteBranchName(branch)) {
+      deps.onChunk(
+        "setup",
+        `\r\n[clone] refusing invalid branch name ${JSON.stringify(branch)}\r\n`,
+      );
+      return { code: 1 };
+    }
     const probe = await runNetworkStep(
       `${gc} ls-remote --exit-code --heads ${cloneUrl} ${branch}`,
       deps,
