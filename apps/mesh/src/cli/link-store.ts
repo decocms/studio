@@ -100,9 +100,9 @@ export function applySandboxEvent(
     previewUrl: e.previewUrl ?? prev?.previewUrl ?? null,
     status: e.phase, // "spawning" | "ready" | "failed"
     error: e.phase === "failed" ? (e.error ?? "failed") : null,
-    projectName: prev?.projectName ?? null,
-    branch: prev?.branch ?? null,
-    sandboxPath: prev?.sandboxPath ?? null,
+    projectName: e.projectName ?? prev?.projectName ?? null,
+    branch: e.branch ?? prev?.branch ?? null,
+    sandboxPath: e.sandboxPath ?? prev?.sandboxPath ?? null,
   });
   return next;
 }
