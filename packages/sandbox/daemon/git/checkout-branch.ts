@@ -49,6 +49,11 @@ export async function spawnCheckoutBranch(
 ): Promise<void> {
   const { repoDir, branch, gc, runStep, log } = params;
 
+  // `branch` is interpolated into `sh -c` git commands below (ls-remote,
+  // fetch, checkout) — same shell-injection vector as `defaultBranch` above,
+  // so it needs the same validation before ever reaching a shell string.
+  assertValidRemoteBranchName(branch);
+
   try {
     const head = gitSync(["rev-parse", "--abbrev-ref", "HEAD"], {
       cwd: repoDir,

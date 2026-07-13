@@ -154,4 +154,27 @@ describe("spawnCheckoutBranch", () => {
       cleanup();
     }
   }, 30_000);
+
+  it("rejects a malicious requested branch instead of shelling it out", async () => {
+    const { url, root, cleanup } = setupBareRepo();
+    try {
+      const repoDir = cloneWorkspace(url, root);
+      // `branch` comes from the sandbox's git config and is interpolated
+      // into `sh -c` git commands (ls-remote/fetch/checkout) — same
+      // injection vector as origin/HEAD, just from a different source.
+      await expect(
+        spawnCheckoutBranch({
+          repoDir,
+          branch: `pwn;touch\${IFS}${root}/INJECTED`,
+          gc: `git -C ${repoDir}`,
+          runStep: (cmd) => spawnSetupStep(cmd, () => {}),
+          log: () => {},
+        }),
+      ).rejects.toThrow(InvalidRemoteBranchNameError);
+
+      expect(existsSync(join(root, "INJECTED"))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
 });
