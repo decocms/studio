@@ -254,6 +254,16 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
         exitListeners.push(cb);
       },
       kill(signal) {
+        // node-pty's WindowsTerminal.kill(signal) THROWS ("Signals not
+        // supported on windows.") for any signal argument; on win32 every
+        // signal means terminate, so call bare — the ConPTY agent kill
+        // closes the pipe and onExit fires normally. Guarding here (not in
+        // callers) keeps task-manager's SIGTERM→SIGKILL escalation code
+        // platform-agnostic.
+        if (process.platform === "win32") {
+          raw.kill();
+          return;
+        }
         raw.kill(signal);
       },
     };
