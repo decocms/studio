@@ -319,6 +319,7 @@ isolation) and is intentionally separate.
 - Components and classes: PascalCase
 - Hooks and utilities: camelCase
 - Files in shared packages: kebab-case (enforced by `plugins/enforce-kebab-case-file-names.ts`)
+- A comment that takes a paragraph to justify a workaround is a signal the code is wrong, not the comment—fix the code, don't explain it away
 
 ### React 19 Patterns
 - Uses React 19 with React Compiler (babel-plugin-react-compiler)
