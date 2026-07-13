@@ -9,27 +9,27 @@ import {
   SidebarMenu,
 } from "@deco/ui/components/sidebar.tsx";
 import { BrowseAgentsButton } from "@/web/components/sidebar/browse-agents-button";
-import { useKanbanEnabled } from "@/web/hooks/use-organization-settings";
+import { useTaskBoardEnabled } from "@/web/hooks/use-organization-settings";
 
 export function useProjectSidebarItems(): SidebarSection[] {
   const { org } = useProjectContext();
   const { state, isMobile } = useSidebar();
   const isCollapsed = !isMobile && state === "collapsed";
   const navigate = useNavigate();
-  const kanbanEnabled = useKanbanEnabled();
+  const taskBoardEnabled = useTaskBoardEnabled();
 
   const sections: SidebarSection[] = [];
 
-  if (kanbanEnabled) {
+  if (taskBoardEnabled) {
     sections.push({
       type: "items",
       items: [
         {
-          key: "kanban",
-          label: "Kanban",
+          key: "board",
+          label: "Board",
           icon: <Columns03 className="size-4!" />,
           onClick: () =>
-            navigate({ to: "/$org/kanban", params: { org: org.slug } }),
+            navigate({ to: "/$org/board", params: { org: org.slug } }),
         },
       ],
     });

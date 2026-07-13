@@ -2,19 +2,19 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import {
-  KanbanTaskPrioritySchema,
-  KanbanTaskSchema,
-  KanbanTaskStatusSchema,
+  TaskBoardItemPrioritySchema,
+  TaskBoardItemSchema,
+  TaskBoardItemStatusSchema,
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
-import { requireKanbanEnabled } from "./require-enabled";
+import { requireTaskBoardEnabled } from "./require-enabled";
 
-export const KANBAN_TASK_UPDATE = defineTool({
-  name: "KANBAN_TASK_UPDATE",
+export const TASK_BOARD_ITEM_UPDATE = defineTool({
+  name: "TASK_BOARD_ITEM_UPDATE",
   description:
-    "Update a kanban board task's fields (title, description, status, priority, assignee).",
+    "Update a task board item's fields (title, description, status, priority, assignee).",
   annotations: {
-    title: "Update Kanban Task",
+    title: "Update Task Board Item",
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: true,
@@ -24,11 +24,11 @@ export const KANBAN_TASK_UPDATE = defineTool({
     id: z.string(),
     title: z.string().min(1).optional(),
     description: z.string().nullable().optional(),
-    status: KanbanTaskStatusSchema.optional(),
-    priority: KanbanTaskPrioritySchema.optional(),
+    status: TaskBoardItemStatusSchema.optional(),
+    priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
   }),
-  outputSchema: z.object({ item: KanbanTaskSchema }),
+  outputSchema: z.object({ item: TaskBoardItemSchema }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
@@ -40,13 +40,13 @@ export const KANBAN_TASK_UPDATE = defineTool({
       );
     }
 
-    await requireKanbanEnabled(ctx, organizationId);
+    await requireTaskBoardEnabled(ctx, organizationId);
 
     if (input.assigneeId) {
       await assertValidAssignee(ctx, organizationId, input.assigneeId);
     }
 
-    const item = await ctx.storage.kanbanTasks.update(
+    const item = await ctx.storage.taskBoard.update(
       input.id,
       organizationId,
       {

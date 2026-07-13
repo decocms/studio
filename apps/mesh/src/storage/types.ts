@@ -160,7 +160,7 @@ export interface OrganizationSettingsTable {
   registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
-  kanban_enabled: ColumnType<boolean, boolean | undefined, boolean>;
+  task_board_enabled: ColumnType<boolean, boolean | undefined, boolean>;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -172,7 +172,7 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
-  kanban_enabled: boolean;
+  task_board_enabled: boolean;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -1482,24 +1482,28 @@ export interface OrgSite {
   updatedAt: string;
 }
 
-export type KanbanTaskStatus =
+export type TaskBoardItemStatus =
   | "triage"
   | "todo"
   | "in_progress"
   | "in_review"
   | "done";
 
-export type KanbanTaskPriority = "low" | "medium" | "high" | "urgent";
+export type TaskBoardItemPriority = "low" | "medium" | "high" | "urgent";
 
-export interface KanbanTaskTable {
+export interface TaskBoardItemTable {
   id: string;
   organization_id: string;
   title: string;
   description: string | null;
-  status: ColumnType<KanbanTaskStatus, KanbanTaskStatus | undefined, string>;
+  status: ColumnType<
+    TaskBoardItemStatus,
+    TaskBoardItemStatus | undefined,
+    string
+  >;
   priority: ColumnType<
-    KanbanTaskPriority,
-    KanbanTaskPriority | undefined,
+    TaskBoardItemPriority,
+    TaskBoardItemPriority | undefined,
     string
   >;
   assignee_id: string | null;
@@ -1509,13 +1513,13 @@ export interface KanbanTaskTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
-export interface KanbanTask {
+export interface TaskBoardItem {
   id: string;
   organizationId: string;
   title: string;
   description: string | null;
-  status: KanbanTaskStatus;
-  priority: KanbanTaskPriority;
+  status: TaskBoardItemStatus;
+  priority: TaskBoardItemPriority;
   assigneeId: string | null;
   createdBy: string;
   createdAt: string;
@@ -1667,7 +1671,7 @@ export interface Database {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
-  kanban_tasks: KanbanTaskTable;
+  task_board_items: TaskBoardItemTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

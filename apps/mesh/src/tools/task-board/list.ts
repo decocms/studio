@@ -1,21 +1,21 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
-import { KanbanTaskSchema } from "./schema";
-import { requireKanbanEnabled } from "./require-enabled";
+import { TaskBoardItemSchema } from "./schema";
+import { requireTaskBoardEnabled } from "./require-enabled";
 
-export const KANBAN_TASK_LIST = defineTool({
-  name: "KANBAN_TASK_LIST",
-  description: "List all kanban board tasks for the organization.",
+export const TASK_BOARD_ITEM_LIST = defineTool({
+  name: "TASK_BOARD_ITEM_LIST",
+  description: "List all task board items for the organization.",
   annotations: {
-    title: "List Kanban Tasks",
+    title: "List Task Board Items",
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
     openWorldHint: false,
   },
   inputSchema: z.object({}),
-  outputSchema: z.object({ items: z.array(KanbanTaskSchema) }),
+  outputSchema: z.object({ items: z.array(TaskBoardItemSchema) }),
   handler: async (_input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
@@ -27,9 +27,9 @@ export const KANBAN_TASK_LIST = defineTool({
       );
     }
 
-    await requireKanbanEnabled(ctx, organizationId);
+    await requireTaskBoardEnabled(ctx, organizationId);
 
-    const items = await ctx.storage.kanbanTasks.list(organizationId);
+    const items = await ctx.storage.taskBoard.list(organizationId);
     return { items };
   },
 });

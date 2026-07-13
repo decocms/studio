@@ -1,7 +1,7 @@
 /**
- * Kanban board (/$org/kanban) — the org's own board of tasks (title,
+ * Task board (/$org/board) — the org's own board of tasks (title,
  * description, status, priority, assignee), independent of chat threads.
- * Gated behind the org's kanban_enabled setting (see org settings).
+ * Gated behind the org's task_board_enabled setting (see org settings).
  */
 
 import { useState } from "react";
@@ -12,28 +12,28 @@ import { Badge } from "@deco/ui/components/badge.tsx";
 import { Columns03, List, Loading01, Plus } from "@untitledui/icons";
 import { useMembers } from "@/web/hooks/use-members";
 import {
-  useKanbanTaskActions,
-  useKanbanTasks,
-} from "@/web/hooks/use-kanban-tasks";
+  useTaskBoardItemActions,
+  useTaskBoardItems,
+} from "@/web/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import {
   PRIORITY_CONFIG,
   STATUS_CONFIG,
   STATUSES,
-  type KanbanTask,
-  type KanbanTaskStatus,
+  type TaskBoardItem,
+  type TaskBoardItemStatus,
   type Member,
 } from "./config";
-import { KanbanTaskDialog } from "./task-dialog";
+import { TaskBoardItemDialog } from "./task-dialog";
 
-type Layout = "kanban" | "list";
+type Layout = "board" | "list";
 
-export default function KanbanBoard() {
+export default function TaskBoard() {
   return (
     <div className="min-h-0 flex-1 pt-0 pr-1 pb-1 pl-0">
       <div className="h-full p-0.5 pt-0.25">
         <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
-          <KanbanBoardPage />
+          <TaskBoardPage />
         </div>
       </div>
     </div>
@@ -50,24 +50,24 @@ function getInitials(name?: string | null) {
     .slice(0, 2);
 }
 
-function KanbanBoardPage() {
-  const { items, isLoading } = useKanbanTasks();
-  const actions = useKanbanTaskActions();
+function TaskBoardPage() {
+  const { items, isLoading } = useTaskBoardItems();
+  const actions = useTaskBoardItemActions();
   const { data: membersData } = useMembers();
   const members = (membersData?.data?.members ?? []) as Member[];
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
-  const [layout, setLayout] = useState<Layout>("kanban");
+  const [layout, setLayout] = useState<Layout>("board");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<KanbanTask | null>(null);
+  const [editingItem, setEditingItem] = useState<TaskBoardItem | null>(null);
 
   const openCreate = () => {
-    setEditingTask(null);
+    setEditingItem(null);
     setDialogOpen(true);
   };
 
-  const openEdit = (task: KanbanTask) => {
-    setEditingTask(task);
+  const openEdit = (item: TaskBoardItem) => {
+    setEditingItem(item);
     setDialogOpen(true);
   };
 
@@ -84,10 +84,10 @@ function KanbanBoardPage() {
       <div
         className={cn(
           "mx-auto flex w-full flex-col gap-6 px-10 pt-10 pb-16",
-          layout === "kanban" ? "max-w-[1400px]" : "max-w-[900px]",
+          layout === "board" ? "max-w-[1400px]" : "max-w-[900px]",
         )}
       >
-        <h1 className="text-xl font-medium text-foreground">Kanban</h1>
+        <h1 className="text-xl font-medium text-foreground">Board</h1>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={openCreate}>
@@ -103,8 +103,8 @@ function KanbanBoardPage() {
               label="List"
             />
             <LayoutToggle
-              active={layout === "kanban"}
-              onClick={() => setLayout("kanban")}
+              active={layout === "board"}
+              onClick={() => setLayout("board")}
               icon={Columns03}
               label="Board"
             />
@@ -115,8 +115,8 @@ function KanbanBoardPage() {
           <div className="rounded-xl border border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
             No tasks yet. Start one with New task.
           </div>
-        ) : layout === "kanban" ? (
-          <KanbanLanes
+        ) : layout === "board" ? (
+          <Lanes
             items={items}
             memberByUserId={memberByUserId}
             onOpen={openEdit}
@@ -124,40 +124,40 @@ function KanbanBoardPage() {
           />
         ) : (
           <div className="flex flex-col gap-2">
-            {items.map((task) => (
+            {items.map((item) => (
               <ListRow
-                key={task.id}
-                task={task}
+                key={item.id}
+                item={item}
                 assignee={
-                  task.assigneeId
-                    ? memberByUserId.get(task.assigneeId)
+                  item.assigneeId
+                    ? memberByUserId.get(item.assigneeId)
                     : undefined
                 }
-                onOpen={() => openEdit(task)}
+                onOpen={() => openEdit(item)}
               />
             ))}
           </div>
         )}
       </div>
 
-      <KanbanTaskDialog
-        key={dialogOpen ? (editingTask?.id ?? "new") : "closed"}
+      <TaskBoardItemDialog
+        key={dialogOpen ? (editingItem?.id ?? "new") : "closed"}
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        task={editingTask ?? undefined}
+        item={editingItem ?? undefined}
         isSaving={actions.create.isPending || actions.update.isPending}
         onSubmit={(input) => {
-          if (editingTask) {
-            actions.update.mutate({ id: editingTask.id, ...input });
+          if (editingItem) {
+            actions.update.mutate({ id: editingItem.id, ...input });
           } else {
             actions.create.mutate(input);
           }
           setDialogOpen(false);
         }}
         onDelete={
-          editingTask
+          editingItem
             ? () => {
-                actions.remove.mutate(editingTask.id);
+                actions.remove.mutate(editingItem.id);
                 setDialogOpen(false);
               }
             : undefined
@@ -197,18 +197,18 @@ function LayoutToggle({
   );
 }
 
-function KanbanLanes({
+function Lanes({
   items,
   memberByUserId,
   onOpen,
   onMove,
 }: {
-  items: KanbanTask[];
+  items: TaskBoardItem[];
   memberByUserId: Map<string, Member>;
-  onOpen: (task: KanbanTask) => void;
-  onMove: (id: string, status: KanbanTaskStatus) => void;
+  onOpen: (item: TaskBoardItem) => void;
+  onMove: (id: string, status: TaskBoardItemStatus) => void;
 }) {
-  const [overLane, setOverLane] = useState<KanbanTaskStatus | null>(null);
+  const [overLane, setOverLane] = useState<TaskBoardItemStatus | null>(null);
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -250,16 +250,16 @@ function KanbanLanes({
               </span>
             </div>
             <div className="flex min-h-12 flex-col gap-2">
-              {laneItems.map((task) => (
-                <KanbanCard
-                  key={task.id}
-                  task={task}
+              {laneItems.map((item) => (
+                <TaskCard
+                  key={item.id}
+                  item={item}
                   assignee={
-                    task.assigneeId
-                      ? memberByUserId.get(task.assigneeId)
+                    item.assigneeId
+                      ? memberByUserId.get(item.assigneeId)
                       : undefined
                   }
-                  onOpen={() => onOpen(task)}
+                  onOpen={() => onOpen(item)}
                 />
               ))}
             </div>
@@ -270,12 +270,12 @@ function KanbanLanes({
   );
 }
 
-function KanbanCard({
-  task,
+function TaskCard({
+  item,
   assignee,
   onOpen,
 }: {
-  task: KanbanTask;
+  item: TaskBoardItem;
   assignee?: Member;
   onOpen: () => void;
 }) {
@@ -284,7 +284,7 @@ function KanbanCard({
       type="button"
       draggable
       onDragStart={(e) => {
-        e.dataTransfer.setData("text/plain", task.id);
+        e.dataTransfer.setData("text/plain", item.id);
         e.dataTransfer.effectAllowed = "move";
       }}
       onClick={onOpen}
@@ -292,7 +292,7 @@ function KanbanCard({
     >
       <div className="flex items-start gap-2">
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-snug text-foreground">
-          {task.title}
+          {item.title}
         </span>
         {assignee && (
           <Avatar
@@ -307,13 +307,13 @@ function KanbanCard({
         <Badge
           className={cn(
             "text-[10px]",
-            PRIORITY_CONFIG[task.priority].badgeClassName,
+            PRIORITY_CONFIG[item.priority].badgeClassName,
           )}
         >
-          {PRIORITY_CONFIG[task.priority].label}
+          {PRIORITY_CONFIG[item.priority].label}
         </Badge>
         <span className="text-[11px] text-muted-foreground/70">
-          {formatTimeAgo(new Date(task.createdAt))}
+          {formatTimeAgo(new Date(item.createdAt))}
         </span>
       </div>
     </button>
@@ -321,15 +321,15 @@ function KanbanCard({
 }
 
 function ListRow({
-  task,
+  item,
   assignee,
   onOpen,
 }: {
-  task: KanbanTask;
+  item: TaskBoardItem;
   assignee?: Member;
   onOpen: () => void;
 }) {
-  const config = STATUS_CONFIG[task.status];
+  const config = STATUS_CONFIG[item.status];
   const StatusIcon = config.icon;
   return (
     <button
@@ -339,15 +339,15 @@ function ListRow({
     >
       <StatusIcon size={15} className={cn("shrink-0", config.iconClassName)} />
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-        {task.title}
+        {item.title}
       </span>
       <Badge
         className={cn(
           "shrink-0 text-[10px]",
-          PRIORITY_CONFIG[task.priority].badgeClassName,
+          PRIORITY_CONFIG[item.priority].badgeClassName,
         )}
       >
-        {PRIORITY_CONFIG[task.priority].label}
+        {PRIORITY_CONFIG[item.priority].label}
       </Badge>
       {assignee && (
         <Avatar
@@ -358,7 +358,7 @@ function ListRow({
         />
       )}
       <span className="shrink-0 text-[11px] text-muted-foreground/70">
-        {formatTimeAgo(new Date(task.createdAt))}
+        {formatTimeAgo(new Date(item.createdAt))}
       </span>
     </button>
   );

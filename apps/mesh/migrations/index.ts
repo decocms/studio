@@ -126,6 +126,8 @@ import * as migration124dropthreadprojectedseq from "./124-drop-thread-projected
 import * as migration125githubchildsingleparent from "./125-github-child-single-parent.ts";
 import * as migration126kanbantasks from "./126-kanban-tasks.ts";
 import * as migration127kanbanenabled from "./127-kanban-enabled.ts";
+import * as migration128renamekanbantaskstotaskboarditems from "./128-rename-kanban-tasks-to-task-board-items.ts";
+import * as migration129renamekanbanenabledtotaskboardenabled from "./129-rename-kanban-enabled-to-task-board-enabled.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -277,6 +279,10 @@ const migrations: Record<string, Migration> = {
   "125-github-child-single-parent": migration125githubchildsingleparent,
   "126-kanban-tasks": migration126kanbantasks,
   "127-kanban-enabled": migration127kanbanenabled,
+  "128-rename-kanban-tasks-to-task-board-items":
+    migration128renamekanbantaskstotaskboarditems,
+  "129-rename-kanban-enabled-to-task-board-enabled":
+    migration129renamekanbanenabledtotaskboardenabled,
 };
 
 export default migrations;

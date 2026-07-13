@@ -293,7 +293,7 @@ import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
-import type { KanbanTaskStorage } from "@/storage/kanban-tasks";
+import type { TaskBoardStorage } from "@/storage/task-board";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
 import type { OrgFs } from "@/file-storage/org-fs";
 import type { KVStorage } from "@/storage/kv";
@@ -330,7 +330,7 @@ export interface MeshStorage {
   secrets: SecretStorage;
   orgFileConfigs: OrgFileConfigStorage;
   orgSites: OrgSiteStorage;
-  kanbanTasks: KanbanTaskStorage;
+  taskBoard: TaskBoardStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   automations: AutomationsStorage;

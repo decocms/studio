@@ -1,60 +1,60 @@
 /**
- * Kanban Task Storage Implementation
+ * Task Board Storage Implementation
  *
- * Handles CRUD operations for org-scoped kanban board cards.
+ * Handles CRUD operations for org-scoped task board items.
  */
 
 import type { Kysely } from "kysely";
 import type {
   Database,
-  KanbanTask,
-  KanbanTaskPriority,
-  KanbanTaskStatus,
+  TaskBoardItem,
+  TaskBoardItemPriority,
+  TaskBoardItemStatus,
 } from "./types";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 
-export class KanbanTaskStorage {
+export class TaskBoardStorage {
   constructor(private db: Kysely<Database>) {}
 
-  async list(organizationId: string): Promise<KanbanTask[]> {
+  async list(organizationId: string): Promise<TaskBoardItem[]> {
     const rows = await this.db
-      .selectFrom("kanban_tasks")
+      .selectFrom("task_board_items")
       .selectAll()
       .where("organization_id", "=", organizationId)
       .orderBy("created_at", "desc")
       .execute();
 
-    return rows.map((row) => this.taskFromDbRow(row));
+    return rows.map((row) => this.itemFromDbRow(row));
   }
 
   async getById(
     id: string,
     organizationId: string,
-  ): Promise<KanbanTask | null> {
+  ): Promise<TaskBoardItem | null> {
     const row = await this.db
-      .selectFrom("kanban_tasks")
+      .selectFrom("task_board_items")
       .selectAll()
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .executeTakeFirst();
 
-    return row ? this.taskFromDbRow(row) : null;
+    return row ? this.itemFromDbRow(row) : null;
   }
 
   async create(params: {
     organizationId: string;
     title: string;
     description?: string | null;
-    status?: KanbanTaskStatus;
-    priority?: KanbanTaskPriority;
+    status?: TaskBoardItemStatus;
+    priority?: TaskBoardItemPriority;
     assigneeId?: string | null;
     by: string;
-  }): Promise<KanbanTask> {
-    const id = generatePrefixedId("ktask");
+  }): Promise<TaskBoardItem> {
+    const id = generatePrefixedId("board");
     const now = new Date().toISOString();
 
     const row = await this.db
-      .insertInto("kanban_tasks")
+      .insertInto("task_board_items")
       .values({
         id,
         organization_id: params.organizationId,
@@ -71,7 +71,7 @@ export class KanbanTaskStorage {
       .returningAll()
       .executeTakeFirstOrThrow();
 
-    return this.taskFromDbRow(row);
+    return this.itemFromDbRow(row);
   }
 
   async update(
@@ -80,14 +80,14 @@ export class KanbanTaskStorage {
     data: {
       title?: string;
       description?: string | null;
-      status?: KanbanTaskStatus;
-      priority?: KanbanTaskPriority;
+      status?: TaskBoardItemStatus;
+      priority?: TaskBoardItemPriority;
       assigneeId?: string | null;
     },
     by: string,
-  ): Promise<KanbanTask> {
+  ): Promise<TaskBoardItem> {
     const row = await this.db
-      .updateTable("kanban_tasks")
+      .updateTable("task_board_items")
       .set({
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.description !== undefined
@@ -106,18 +106,18 @@ export class KanbanTaskStorage {
       .returningAll()
       .executeTakeFirstOrThrow();
 
-    return this.taskFromDbRow(row);
+    return this.itemFromDbRow(row);
   }
 
   async delete(id: string, organizationId: string): Promise<void> {
     await this.db
-      .deleteFrom("kanban_tasks")
+      .deleteFrom("task_board_items")
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .execute();
   }
 
-  private taskFromDbRow(row: {
+  private itemFromDbRow(row: {
     id: string;
     organization_id: string;
     title: string;
@@ -129,14 +129,14 @@ export class KanbanTaskStorage {
     created_at: string | Date;
     updated_by: string;
     updated_at: string | Date;
-  }): KanbanTask {
+  }): TaskBoardItem {
     return {
       id: row.id,
       organizationId: row.organization_id,
       title: row.title,
       description: row.description,
-      status: row.status as KanbanTaskStatus,
-      priority: row.priority as KanbanTaskPriority,
+      status: row.status as TaskBoardItemStatus,
+      priority: row.priority as TaskBoardItemPriority,
       assigneeId: row.assignee_id,
       createdBy: row.created_by,
       createdAt:

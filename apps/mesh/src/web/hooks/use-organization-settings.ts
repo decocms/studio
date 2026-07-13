@@ -41,7 +41,7 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
-  kanban_enabled?: boolean;
+  task_board_enabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -53,7 +53,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   registry_config: null,
   simple_mode: null,
   default_home_agents: null,
-  kanban_enabled: false,
+  task_board_enabled: false,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -139,7 +139,7 @@ type OrgSettingsUpdateInput = Partial<
     | "registry_config"
     | "simple_mode"
     | "default_home_agents"
-    | "kanban_enabled"
+    | "task_board_enabled"
   >
 >;
 
@@ -227,19 +227,21 @@ export function useUpdateSimpleMode() {
   };
 }
 
-export function useKanbanEnabled(): boolean {
-  const { data } = useOrganizationSettings((s) => s.kanban_enabled ?? false);
+export function useTaskBoardEnabled(): boolean {
+  const { data } = useOrganizationSettings(
+    (s) => s.task_board_enabled ?? false,
+  );
   return data ?? false;
 }
 
-export function useUpdateKanbanEnabled() {
+export function useUpdateTaskBoardEnabled() {
   const mutation = useUpdateOrganizationSettings();
   return {
     ...mutation,
     mutate: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
-      mutation.mutate({ kanban_enabled: enabled }, options),
+      mutation.mutate({ task_board_enabled: enabled }, options),
     mutateAsync: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
-      mutation.mutateAsync({ kanban_enabled: enabled }, options),
+      mutation.mutateAsync({ task_board_enabled: enabled }, options),
   };
 }
 

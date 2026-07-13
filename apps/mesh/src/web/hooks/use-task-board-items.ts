@@ -4,15 +4,15 @@ import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import type { ToolInput, ToolOutput } from "@/tools/io-types";
 
-type KanbanTask = ToolOutput<"KANBAN_TASK_LIST">["items"][number];
+type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 
-export function useKanbanTasks() {
+export function useTaskBoardItems() {
   const { locator } = useProjectContext();
   const studio = useStudioTools();
 
   const query = useQuery({
-    queryKey: KEYS.kanbanTasks(locator),
-    queryFn: async () => (await studio.call("KANBAN_TASK_LIST", {})).items,
+    queryKey: KEYS.taskBoardItems(locator),
+    queryFn: async () => (await studio.call("TASK_BOARD_ITEM_LIST", {})).items,
   });
 
   return {
@@ -22,29 +22,29 @@ export function useKanbanTasks() {
   };
 }
 
-export function useKanbanTaskActions() {
+export function useTaskBoardItemActions() {
   const { locator } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
-  const queryKey = KEYS.kanbanTasks(locator);
+  const queryKey = KEYS.taskBoardItems(locator);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey });
 
   const create = useMutation({
-    mutationFn: (input: ToolInput<"KANBAN_TASK_CREATE">) =>
-      studio.call("KANBAN_TASK_CREATE", input),
+    mutationFn: (input: ToolInput<"TASK_BOARD_ITEM_CREATE">) =>
+      studio.call("TASK_BOARD_ITEM_CREATE", input),
     onSuccess: invalidate,
   });
 
   const update = useMutation({
-    mutationFn: (input: ToolInput<"KANBAN_TASK_UPDATE">) =>
-      studio.call("KANBAN_TASK_UPDATE", input),
+    mutationFn: (input: ToolInput<"TASK_BOARD_ITEM_UPDATE">) =>
+      studio.call("TASK_BOARD_ITEM_UPDATE", input),
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<KanbanTask[]>(queryKey);
-      queryClient.setQueryData<KanbanTask[]>(queryKey, (prev) =>
-        prev?.map((task) =>
-          task.id === input.id ? { ...task, ...input } : task,
+      const previous = queryClient.getQueryData<TaskBoardItem[]>(queryKey);
+      queryClient.setQueryData<TaskBoardItem[]>(queryKey, (prev) =>
+        prev?.map((item) =>
+          item.id === input.id ? { ...item, ...input } : item,
         ),
       );
       return { previous };
@@ -57,7 +57,7 @@ export function useKanbanTaskActions() {
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => studio.call("KANBAN_TASK_DELETE", { id }),
+    mutationFn: (id: string) => studio.call("TASK_BOARD_ITEM_DELETE", { id }),
     onSuccess: invalidate,
   });
 

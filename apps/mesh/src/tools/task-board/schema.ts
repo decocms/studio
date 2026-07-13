@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const KanbanTaskStatusSchema = z.enum([
+export const TaskBoardItemStatusSchema = z.enum([
   "triage",
   "todo",
   "in_progress",
@@ -8,20 +8,20 @@ export const KanbanTaskStatusSchema = z.enum([
   "done",
 ]);
 
-export const KanbanTaskPrioritySchema = z.enum([
+export const TaskBoardItemPrioritySchema = z.enum([
   "low",
   "medium",
   "high",
   "urgent",
 ]);
 
-export const KanbanTaskSchema = z.object({
+export const TaskBoardItemSchema = z.object({
   id: z.string(),
   organizationId: z.string(),
   title: z.string(),
   description: z.string().nullable(),
-  status: KanbanTaskStatusSchema,
-  priority: KanbanTaskPrioritySchema,
+  status: TaskBoardItemStatusSchema,
+  priority: TaskBoardItemPrioritySchema,
   assigneeId: z.string().nullable(),
   createdBy: z.string(),
   createdAt: z.string().datetime(),

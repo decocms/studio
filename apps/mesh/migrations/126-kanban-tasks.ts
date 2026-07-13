@@ -5,6 +5,10 @@ import { type Kysely, sql } from "kysely";
  * `assignee_id` references an org member's user id but has no hard FK (member
  * lookups are validated at the tool layer, matching how member references
  * work elsewhere in this codebase).
+ *
+ * Renamed to `task_board_items` by migration 128 — this migration's content
+ * must stay unchanged since it may already be recorded as executed in some
+ * environments.
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema

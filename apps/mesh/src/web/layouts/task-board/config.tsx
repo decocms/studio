@@ -7,9 +7,9 @@ import {
 } from "@untitledui/icons";
 import type { ToolOutput } from "@/tools/io-types";
 
-export type KanbanTask = ToolOutput<"KANBAN_TASK_LIST">["items"][number];
-export type KanbanTaskStatus = KanbanTask["status"];
-export type KanbanTaskPriority = KanbanTask["priority"];
+export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
+export type TaskBoardItemStatus = TaskBoardItem["status"];
+export type TaskBoardItemPriority = TaskBoardItem["priority"];
 
 /** Shape of an org member as returned by `useMembers()`, trimmed to the fields used here. */
 export type Member = {
@@ -17,7 +17,7 @@ export type Member = {
   user?: { name?: string | null; image?: string | null };
 };
 
-export const STATUSES: KanbanTaskStatus[] = [
+export const STATUSES: TaskBoardItemStatus[] = [
   "triage",
   "todo",
   "in_progress",
@@ -26,7 +26,7 @@ export const STATUSES: KanbanTaskStatus[] = [
 ];
 
 export const STATUS_CONFIG: Record<
-  KanbanTaskStatus,
+  TaskBoardItemStatus,
   { label: string; icon: typeof Circle; iconClassName: string }
 > = {
   triage: {
@@ -56,7 +56,7 @@ export const STATUS_CONFIG: Record<
   },
 };
 
-export const PRIORITIES: KanbanTaskPriority[] = [
+export const PRIORITIES: TaskBoardItemPriority[] = [
   "low",
   "medium",
   "high",
@@ -64,7 +64,7 @@ export const PRIORITIES: KanbanTaskPriority[] = [
 ];
 
 export const PRIORITY_CONFIG: Record<
-  KanbanTaskPriority,
+  TaskBoardItemPriority,
   { label: string; badgeClassName: string }
 > = {
   low: {

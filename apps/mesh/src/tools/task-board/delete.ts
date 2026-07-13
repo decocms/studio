@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
-import { requireKanbanEnabled } from "./require-enabled";
+import { requireTaskBoardEnabled } from "./require-enabled";
 
-export const KANBAN_TASK_DELETE = defineTool({
-  name: "KANBAN_TASK_DELETE",
-  description: "Delete a kanban board task.",
+export const TASK_BOARD_ITEM_DELETE = defineTool({
+  name: "TASK_BOARD_ITEM_DELETE",
+  description: "Delete a task board item.",
   annotations: {
-    title: "Delete Kanban Task",
+    title: "Delete Task Board Item",
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: true,
@@ -26,9 +26,9 @@ export const KANBAN_TASK_DELETE = defineTool({
       );
     }
 
-    await requireKanbanEnabled(ctx, organizationId);
+    await requireTaskBoardEnabled(ctx, organizationId);
 
-    await ctx.storage.kanbanTasks.delete(input.id, organizationId);
+    await ctx.storage.taskBoard.delete(input.id, organizationId);
     return { success: true };
   },
 });

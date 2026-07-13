@@ -20,8 +20,8 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import {
   PRIORITIES,
   PRIORITY_CONFIG,
-  type KanbanTask,
-  type KanbanTaskPriority,
+  type TaskBoardItem,
+  type TaskBoardItemPriority,
   type Member,
 } from "./config";
 
@@ -35,10 +35,10 @@ function getInitials(name?: string | null) {
     .slice(0, 2);
 }
 
-export function KanbanTaskDialog({
+export function TaskBoardItemDialog({
   open,
   onClose,
-  task,
+  item,
   onSubmit,
   onDelete,
   isSaving,
@@ -46,11 +46,11 @@ export function KanbanTaskDialog({
   open: boolean;
   onClose: () => void;
   /** Present in edit mode, prefills the form. */
-  task?: KanbanTask;
+  item?: TaskBoardItem;
   onSubmit: (input: {
     title: string;
     description: string | null;
-    priority: KanbanTaskPriority;
+    priority: TaskBoardItemPriority;
     assigneeId: string | null;
   }) => void;
   onDelete?: () => void;
@@ -59,20 +59,20 @@ export function KanbanTaskDialog({
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
 
-  const [title, setTitle] = useState(task?.title ?? "");
-  const [description, setDescription] = useState(task?.description ?? "");
-  const [priority, setPriority] = useState<KanbanTaskPriority>(
-    task?.priority ?? "medium",
+  const [title, setTitle] = useState(item?.title ?? "");
+  const [description, setDescription] = useState(item?.description ?? "");
+  const [priority, setPriority] = useState<TaskBoardItemPriority>(
+    item?.priority ?? "medium",
   );
   const [assigneeId, setAssigneeId] = useState<string | null>(
-    task?.assigneeId ?? null,
+    item?.assigneeId ?? null,
   );
 
   const reset = () => {
-    setTitle(task?.title ?? "");
-    setDescription(task?.description ?? "");
-    setPriority(task?.priority ?? "medium");
-    setAssigneeId(task?.assigneeId ?? null);
+    setTitle(item?.title ?? "");
+    setDescription(item?.description ?? "");
+    setPriority(item?.priority ?? "medium");
+    setAssigneeId(item?.assigneeId ?? null);
   };
 
   const close = () => {
@@ -100,7 +100,7 @@ export function KanbanTaskDialog({
         closeButtonClassName="hidden"
       >
         <DialogTitle className="sr-only">
-          {task ? "Edit task" : "New task"}
+          {item ? "Edit task" : "New task"}
         </DialogTitle>
 
         <div className="flex flex-col gap-3 px-4 pt-4">
@@ -187,7 +187,7 @@ export function KanbanTaskDialog({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {task && onDelete && (
+          {item && onDelete && (
             <Button
               variant="ghost"
               size="icon"
@@ -205,7 +205,7 @@ export function KanbanTaskDialog({
             disabled={!title.trim() || isSaving}
             onClick={submit}
           >
-            {task ? "Save" : "Create task"}
+            {item ? "Save" : "Create task"}
           </Button>
         </div>
       </DialogContent>

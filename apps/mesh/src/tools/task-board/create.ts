@@ -2,18 +2,18 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import {
-  KanbanTaskPrioritySchema,
-  KanbanTaskSchema,
-  KanbanTaskStatusSchema,
+  TaskBoardItemPrioritySchema,
+  TaskBoardItemSchema,
+  TaskBoardItemStatusSchema,
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
-import { requireKanbanEnabled } from "./require-enabled";
+import { requireTaskBoardEnabled } from "./require-enabled";
 
-export const KANBAN_TASK_CREATE = defineTool({
-  name: "KANBAN_TASK_CREATE",
-  description: "Create a new kanban board task for the organization.",
+export const TASK_BOARD_ITEM_CREATE = defineTool({
+  name: "TASK_BOARD_ITEM_CREATE",
+  description: "Create a new task board item for the organization.",
   annotations: {
-    title: "Create Kanban Task",
+    title: "Create Task Board Item",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false,
@@ -22,11 +22,11 @@ export const KANBAN_TASK_CREATE = defineTool({
   inputSchema: z.object({
     title: z.string().min(1),
     description: z.string().nullable().optional(),
-    status: KanbanTaskStatusSchema.optional(),
-    priority: KanbanTaskPrioritySchema.optional(),
+    status: TaskBoardItemStatusSchema.optional(),
+    priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
   }),
-  outputSchema: z.object({ item: KanbanTaskSchema }),
+  outputSchema: z.object({ item: TaskBoardItemSchema }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
@@ -38,13 +38,13 @@ export const KANBAN_TASK_CREATE = defineTool({
       );
     }
 
-    await requireKanbanEnabled(ctx, organizationId);
+    await requireTaskBoardEnabled(ctx, organizationId);
 
     if (input.assigneeId) {
       await assertValidAssignee(ctx, organizationId, input.assigneeId);
     }
 
-    const item = await ctx.storage.kanbanTasks.create({
+    const item = await ctx.storage.taskBoard.create({
       organizationId,
       title: input.title,
       description: input.description ?? null,

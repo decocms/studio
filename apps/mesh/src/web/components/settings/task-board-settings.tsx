@@ -5,28 +5,29 @@ import {
 } from "@/web/components/settings/settings-section";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import {
-  useKanbanEnabled,
-  useUpdateKanbanEnabled,
+  useTaskBoardEnabled,
+  useUpdateTaskBoardEnabled,
 } from "@/web/hooks/use-organization-settings";
 
-export function KanbanSettings() {
-  const enabled = useKanbanEnabled();
-  const { mutate: updateKanbanEnabled, isPending } = useUpdateKanbanEnabled();
+export function TaskBoardSettings() {
+  const enabled = useTaskBoardEnabled();
+  const { mutate: updateTaskBoardEnabled, isPending } =
+    useUpdateTaskBoardEnabled();
 
   return (
     <SettingsSection
-      title="Kanban board"
+      title="Task board"
       description="A board for tracking org tasks by status, priority, and assignee."
     >
       <SettingsCard>
         <SettingsCardItem
-          title="Enable Kanban board"
-          description="Adds a Kanban entry to the sidebar for this organization."
+          title="Enable task board"
+          description="Adds a Board entry to the sidebar for this organization."
           action={
             <Switch
               checked={enabled}
               disabled={isPending}
-              onCheckedChange={(checked) => updateKanbanEnabled(checked)}
+              onCheckedChange={(checked) => updateTaskBoardEnabled(checked)}
             />
           }
         />
