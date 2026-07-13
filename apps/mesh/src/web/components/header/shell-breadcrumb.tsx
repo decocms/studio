@@ -33,10 +33,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { AgentAvatar } from "@/web/components/agent-icon";
-import {
-  OrgIcon,
-  OrgSwitcherPopover,
-} from "@/web/components/header/org-switcher";
+import { OrgSwitcherPopover } from "@/web/components/header/org-switcher";
 import { AgentScopePicker } from "@/web/components/sidebar/agents-section";
 import { useThreads } from "@/web/components/chat/store/hooks";
 import { usePanelActions } from "@/web/layouts/shell-layout";
@@ -160,7 +157,6 @@ export function ShellBreadcrumb() {
               orgParam={org.slug}
               trigger={
                 <button type="button" className={crumbBtnClass}>
-                  <OrgIcon org={org} size="xs" />
                   <span className="truncate font-medium max-w-[10rem]">
                     {org.name}
                   </span>
@@ -174,7 +170,9 @@ export function ShellBreadcrumb() {
           )}
         </BreadcrumbItem>
 
-        <BreadcrumbSeparator />
+        {/* Separator only when the org crumb is shown — otherwise it's just
+            `deco  agent` with no dangling divider. */}
+        {!sidebarCollapsed && <BreadcrumbSeparator />}
 
         {/* agent → avatar opens the agent home, label opens the picker */}
         <BreadcrumbItem>
