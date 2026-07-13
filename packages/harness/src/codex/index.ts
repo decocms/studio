@@ -105,7 +105,7 @@ export const codexHarnessFactory: HarnessFactory = {
       id: "codex",
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
         // 1. Resolve the composite `codex:<model>` id to the SDK model
-        //    name (e.g. `gpt-5.4`). Mirrors stream-core line 922.
+        //    name (e.g. `gpt-5.6-terra`). Mirrors stream-core line 922.
         const sdkModelId = resolveCodexModelId(input.models.thinking.id);
 
         // 2. Translate the workspace cwd to an SDK option. `null` means no
@@ -168,7 +168,7 @@ export const codexHarnessFactory: HarnessFactory = {
           const titleSetup = needsTitle
             ? (() => {
                 const { model: titleModel, provider: titleProvider } =
-                  createCodexModel(resolveCodexModelId("codex:gpt-5.4-mini"), {
+                  createCodexModel(resolveCodexModelId("codex:gpt-5.6-luna"), {
                     toolApprovalLevel: "readonly",
                     isPlanMode: true,
                     cwd,

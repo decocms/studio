@@ -3,7 +3,6 @@ import {
   buildCompanionCards,
   buildRegistryWhere,
   getConfigurationSummaryEntries,
-  hasConfigurationValues,
   matchGscSite,
   mergeBindingValue,
   parseBindingRequirements,
@@ -75,21 +74,6 @@ describe("mergeBindingValue", () => {
     expect(mergeBindingValue(null, "VTEX_STORE", "vtex", "c1")).toEqual({
       VTEX_STORE: { __type: "vtex", value: "c1" },
     });
-  });
-});
-
-describe("hasConfigurationValues", () => {
-  it("treats null, empty objects, and empty scalar values as not configured", () => {
-    expect(hasConfigurationValues(null)).toBe(false);
-    expect(hasConfigurationValues({})).toBe(false);
-    expect(hasConfigurationValues({ propertyId: null })).toBe(false);
-    expect(hasConfigurationValues({ accountName: "" })).toBe(false);
-    expect(hasConfigurationValues({ accountName: "   " })).toBe(false);
-  });
-
-  it("detects nested saved values", () => {
-    expect(hasConfigurationValues({ accountName: "electrolux" })).toBe(true);
-    expect(hasConfigurationValues({ nested: { value: "123" } })).toBe(true);
   });
 });
 

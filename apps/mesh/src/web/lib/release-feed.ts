@@ -30,6 +30,29 @@ export interface Release {
  */
 export const RELEASES: Release[] = [
   {
+    id: "codex-gpt-5-6-defaults",
+    date: "2026-07-13",
+    eyebrow: "Now Available",
+    title: "Codex defaults move to GPT-5.6",
+    bullets: [
+      {
+        icon: Stars02,
+        title: "Sol leads Thinking",
+        body: "Codex Thinking now defaults to `gpt-5.6-sol` for deeper coding and reasoning work.",
+      },
+      {
+        icon: CheckCircle,
+        title: "Terra balances Smart",
+        body: "The Smart tier now uses `gpt-5.6-terra`, replacing GPT-5.4 as the default balanced Codex model.",
+      },
+      {
+        icon: Zap,
+        title: "Luna speeds up Fast",
+        body: "The Fast tier and lightweight Codex title generation now use `gpt-5.6-luna`. Existing threads that reference older GPT-5.4 or GPT-5.5 model IDs remain supported.",
+      },
+    ],
+  },
+  {
     id: "claude-sonnet-5",
     date: "2026-06-30",
     eyebrow: "Now Available",

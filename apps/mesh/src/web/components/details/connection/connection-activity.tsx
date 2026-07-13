@@ -8,6 +8,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@deco/ui/components/chart.tsx";
+import { computeTopErrors } from "./connection-health.ts";
 import { KEYS } from "@/web/lib/query-keys.ts";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { cn } from "@deco/ui/lib/utils.ts";
@@ -68,6 +69,11 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
   const stats = calculateStats(data?.logs ?? [], dateRange);
   const chartData = stats.data;
   const hasData = stats.totalCalls > 0;
+  const topErrors = computeTopErrors(data?.logs ?? []);
+  const errorRate =
+    stats.totalCalls > 0
+      ? Math.round((stats.totalErrors / stats.totalCalls) * 100)
+      : 0;
 
   return (
     <div>
@@ -154,6 +160,29 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
           <p className="text-sm text-muted-foreground/60">
             No activity in this period
           </p>
+        </div>
+      )}
+
+      {topErrors.length > 0 && (
+        <div className="px-5 py-4 border-t border-border">
+          <p className="text-xs font-medium text-muted-foreground mb-2">
+            Top errors{errorRate > 0 ? ` · ${errorRate}% of calls failed` : ""}
+          </p>
+          <ul className="space-y-1.5">
+            {topErrors.map((e) => (
+              <li key={e.message} className="flex items-start gap-2 text-xs">
+                <span className="tabular-nums text-destructive font-medium shrink-0">
+                  {e.count.toLocaleString()}×
+                </span>
+                <span
+                  className="text-muted-foreground truncate"
+                  title={e.message}
+                >
+                  {e.message}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

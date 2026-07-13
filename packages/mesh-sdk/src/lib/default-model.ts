@@ -33,7 +33,7 @@ export const DEFAULT_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
       "claude-code:opus",
       "claude-code:haiku",
     ],
-    codex: ["codex:gpt-5.4"],
+    codex: ["codex:gpt-5.6-terra"],
   };
 
 /**
@@ -52,7 +52,7 @@ export const FAST_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
   llmapi: ["claude-haiku-4-5", "claude-haiku", "gpt-4o-mini"],
   google: ["gemini-2.5-flash", "gemini-3-flash"],
   "claude-code": ["claude-code:haiku", "claude-code:sonnet"],
-  codex: ["codex:gpt-5.4-mini"],
+  codex: ["codex:gpt-5.6-luna"],
 };
 
 /**
@@ -84,7 +84,7 @@ export const SMART_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
   llmapi: ["claude-sonnet-4-6", "claude-sonnet"],
   google: ["gemini-3-pro", "gemini-3-flash"],
   "claude-code": ["claude-code:sonnet"],
-  codex: ["codex:gpt-5.4"],
+  codex: ["codex:gpt-5.6-terra"],
 };
 
 /**
@@ -123,7 +123,7 @@ export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
       "claude-code:opus",
       "claude-code:sonnet",
     ],
-    codex: ["codex:gpt-5.5"],
+    codex: ["codex:gpt-5.6-sol"],
   };
 
 /**

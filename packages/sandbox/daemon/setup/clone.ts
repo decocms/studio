@@ -2,6 +2,7 @@ import { sleep } from "@decocms/std";
 import { existsSync, readdirSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { isSyntheticBranch } from "../constants";
+import { isValidRemoteBranchName } from "../git/ref-name";
 import {
   formatCommand,
   type StructuredCommand,
@@ -134,25 +135,6 @@ async function runNetworkStep(
 // through to a fork-from-default fallback.
 const LS_REMOTE_NO_MATCH = 2;
 
-/**
- * Conservative ref-name allowlist. `base` below is derived from
- * remote-controlled `ls-remote` output. Even though the argv/env command
- * representation makes shell injection impossible, this still guards against
- * ref-format garbage flowing into a `git fetch`/`symbolic-ref` argv — defense
- * in depth is free.
- */
-export function isSafeRefName(name: string): boolean {
-  return (
-    /^[A-Za-z0-9._/-]+$/.test(name) &&
-    !name.startsWith("-") &&
-    !name.startsWith("/") &&
-    !name.endsWith("/") &&
-    !name.endsWith(".lock") &&
-    !name.includes("..") &&
-    !name.includes("//")
-  );
-}
-
 /** Like runNetworkStep but also returns the (merged stdout+stderr) output. */
 async function runNetworkStepCapture(
   cmd: StructuredCommand,
@@ -213,9 +195,11 @@ async function fetchBaseBranch(
   const base = output.match(/ref:\s+refs\/heads\/(\S+)\s+HEAD/)?.[1] ?? null;
   if (!base || base === branchOnRemote) return;
   // `base` comes from remote-controlled ls-remote output and flows into a
-  // `git fetch`/`symbolic-ref` argv below — reject anything outside a safe
-  // ref-name charset (defense in depth; see isSafeRefName).
-  if (!isSafeRefName(base)) {
+  // `git fetch`/`symbolic-ref` argv below. The argv/env representation makes
+  // shell injection impossible, but ref-format garbage (and flag-shaped
+  // names) still has no business reaching git — shared allowlist, same as
+  // the checkout path (git/ref-name.ts).
+  if (!isValidRemoteBranchName(base)) {
     deps.onChunk(
       "setup",
       `\r\n[clone] warning: refusing unsafe base branch name ${JSON.stringify(base)}; divergence vs base unavailable until next fetch\r\n`,
@@ -314,6 +298,18 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
   let branchOnRemote: string | null = null;
   let branchToForkLocally: string | null = null;
   if (branch) {
+    // `branch` is config-supplied and flows into git argv below
+    // (ls-remote/clone/checkout). Argv can't be shell-injected, but a
+    // flag-shaped or ref-format-invalid name still has no business reaching
+    // git — same shared allowlist as the `base` check above and the
+    // checkout path (git/ref-name.ts).
+    if (!isValidRemoteBranchName(branch)) {
+      deps.onChunk(
+        "setup",
+        `\r\n[clone] refusing invalid branch name ${JSON.stringify(branch)}\r\n`,
+      );
+      return { code: 1 };
+    }
     const probe = await runNetworkStep(
       git(
         ["ls-remote", "--exit-code", "--heads", cloneUrl, branch],

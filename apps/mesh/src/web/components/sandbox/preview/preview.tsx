@@ -973,56 +973,74 @@ export function PreviewContent() {
                         {/* Page name in focus, followed by the route path.
                             Path-template segments (`:param`/`*`) stay editable
                             inputs; plain paths render as muted text. */}
-                        <span className="shrink-0 text-[13px] font-medium text-foreground">
+                        <span
+                          className={cn(
+                            "text-[13px] font-medium text-foreground",
+                            // A real page name stays fully visible (the route
+                            // path truncates instead); the host fallback has no
+                            // path segment to shed, so it must truncate itself.
+                            currentPageName == null
+                              ? "min-w-0 flex-1 truncate"
+                              : "shrink-0",
+                          )}
+                        >
                           {currentPageName ?? previewLabel}
                         </span>
-                        {!activeGlobalSection && currentPath && (
-                          <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
-                            {splitPathTemplate(currentPath).map((token, i) => {
-                              if (token.type === "text") {
-                                return (
-                                  <span
-                                    key={`text-${i}`}
-                                    className={cn(
-                                      i === 0 ? "min-w-0 truncate" : "shrink-0",
-                                    )}
-                                  >
-                                    {token.text}
-                                  </span>
-                                );
-                              }
-                              const pickerKind =
-                                pathParamPickerKinds[token.name];
-                              // Params with a picker render as a chip that
-                              // opens the modal (search or free-form value);
-                              // the rest keep the inline input.
-                              if (pickerKind && pickerSandboxRef) {
-                                return (
-                                  <PathParamPickerChip
-                                    key={`${currentPageKey}:${token.name}`}
-                                    kind={pickerKind}
-                                    paramName={token.name}
-                                    value={pathParamValues[token.name] ?? ""}
-                                    sandboxRef={pickerSandboxRef}
-                                    onCommit={(value) =>
-                                      setPathParamValue(token.name, value)
-                                    }
-                                  />
-                                );
-                              }
-                              return (
-                                <PathParamInput
-                                  key={`${currentPageKey}:${token.name}`}
-                                  name={token.name}
-                                  value={pathParamValues[token.name] ?? ""}
-                                  onCommit={(value) =>
-                                    setPathParamValue(token.name, value)
+                        {!activeGlobalSection &&
+                          currentPageName != null &&
+                          currentPath && (
+                            <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
+                              {splitPathTemplate(currentPath).map(
+                                (token, i) => {
+                                  if (token.type === "text") {
+                                    return (
+                                      <span
+                                        key={`text-${i}`}
+                                        className={cn(
+                                          i === 0
+                                            ? "min-w-0 truncate"
+                                            : "shrink-0",
+                                        )}
+                                      >
+                                        {token.text}
+                                      </span>
+                                    );
                                   }
-                                />
-                              );
-                            })}
-                          </span>
-                        )}
+                                  const pickerKind =
+                                    pathParamPickerKinds[token.name];
+                                  // Params with a picker render as a chip that
+                                  // opens the modal (search or free-form value);
+                                  // the rest keep the inline input.
+                                  if (pickerKind && pickerSandboxRef) {
+                                    return (
+                                      <PathParamPickerChip
+                                        key={`${currentPageKey}:${token.name}`}
+                                        kind={pickerKind}
+                                        paramName={token.name}
+                                        value={
+                                          pathParamValues[token.name] ?? ""
+                                        }
+                                        sandboxRef={pickerSandboxRef}
+                                        onCommit={(value) =>
+                                          setPathParamValue(token.name, value)
+                                        }
+                                      />
+                                    );
+                                  }
+                                  return (
+                                    <PathParamInput
+                                      key={`${currentPageKey}:${token.name}`}
+                                      name={token.name}
+                                      value={pathParamValues[token.name] ?? ""}
+                                      onCommit={(value) =>
+                                        setPathParamValue(token.name, value)
+                                      }
+                                    />
+                                  );
+                                },
+                              )}
+                            </span>
+                          )}
                       </div>
                       <button
                         type="button"

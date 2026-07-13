@@ -55,6 +55,14 @@ import {
   resolveArrayItemSelection,
 } from "../schema-form-breadcrumb";
 import { isSectionArrayField } from "../section-array-field";
+import {
+  type ArrayEntry,
+  createArrayEntries,
+  insertEntryAfter,
+  remapEntryIndices,
+  removeEntryAt,
+  resizeArrayEntries,
+} from "./array-entries";
 import type { FieldProps } from "./field-props";
 import { SchemaForm, renderField } from "../schema-form";
 import {
@@ -62,19 +70,6 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "../resolve-schema";
-
-/** Stable DnD id per row; item data always comes from the `items` prop. */
-interface ArrayEntry {
-  id: string;
-  index: number;
-}
-
-function createArrayEntries(count: number): ArrayEntry[] {
-  return Array.from({ length: count }, (_, index) => ({
-    id: crypto.randomUUID(),
-    index,
-  }));
-}
 
 function itemEditorSchema(
   item: unknown,
@@ -121,28 +116,6 @@ function itemEditorSchema(
 function arrayFieldKeyFromPath(path: string): string {
   const segments = path.split(".").filter((segment) => !/^\d+$/.test(segment));
   return segments[segments.length - 1] ?? path;
-}
-
-function remapEntryIndices(entries: ArrayEntry[]): ArrayEntry[] {
-  return entries.map((entry, index) => ({ ...entry, index }));
-}
-
-function resizeArrayEntries(
-  current: ArrayEntry[],
-  nextCount: number,
-): ArrayEntry[] {
-  if (nextCount === current.length) return current;
-  if (nextCount < current.length) {
-    return remapEntryIndices(current.slice(0, nextCount));
-  }
-  const extra = Array.from(
-    { length: nextCount - current.length },
-    (_, offset) => ({
-      id: crypto.randomUUID(),
-      index: current.length + offset,
-    }),
-  );
-  return [...current, ...extra];
 }
 
 function ArrayRowContent({
@@ -458,6 +431,7 @@ export function ArrayField({
       ...items.slice(index + 1),
     ];
     onChange(next);
+    setEntries((current) => insertEntryAfter(current, index));
   };
 
   const toggleItemHidden = (index: number) => {
@@ -471,13 +445,7 @@ export function ArrayField({
 
   const removeItem = (index: number) => {
     onChange(items.filter((_, i) => i !== index));
-    if (selectedIndex === index) {
-      const itemName = itemLabel(items[index], index);
-      const itemIndex = findBreadcrumbLabelIndex(breadcrumbPath, itemName);
-      onBreadcrumbChange?.(
-        itemIndex >= 0 ? breadcrumbPath.slice(0, itemIndex) : [],
-      );
-    }
+    setEntries((current) => removeEntryAt(current, index));
   };
 
   const updateItem = (index: number, val: unknown) => {
