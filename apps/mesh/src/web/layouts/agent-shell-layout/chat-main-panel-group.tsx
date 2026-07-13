@@ -164,10 +164,16 @@ function ChatMainPanelGroupInner({
                   />
                 </div>
               </div>
-              <div
-                className="w-1 shrink-0 cursor-col-resize rounded bg-transparent hover:bg-border transition-colors"
-                {...dividerProps}
-              />
+              {/* Zero-width seam so the form↔preview gap is just the two card
+                  gutters, matching the other panel gaps. The grab-area is an
+                  absolutely positioned transparent child — it adds no layout
+                  width, so it can't widen the gap or read as a scrollbar. */}
+              <div className="relative w-0 shrink-0 bg-sidebar hover:bg-border transition-colors">
+                <div
+                  className="absolute inset-y-0 -left-1 -right-1 cursor-col-resize"
+                  {...dividerProps}
+                />
+              </div>
             </>
           )}
           <div className="h-full flex-1 min-w-0 p-0.5 pt-0.25">
