@@ -635,6 +635,74 @@ export function TaskGroupsList({
   return (
     <div className="flex flex-col h-full min-h-0">
       <SyncSidebarAgentGroupsEmpty value={agentGroups.length === 0} />
+      <div
+        className={cn(
+          "flex flex-col min-h-0",
+          agentsOpen ? "basis-[35%] shrink-0" : "shrink-0",
+        )}
+      >
+        <SidebarSectionHeader
+          label="Agents"
+          open={agentsOpen}
+          onToggle={() => setAgentsOpen((v) => !v)}
+          count={agentGroups.length}
+          controlsId="sidebar-section-agents"
+          actionSlot={
+            <>
+              {agentsOpen && (
+                <ToolbarIconButton
+                  aria-label={
+                    agentView === "list"
+                      ? "Switch to grid view"
+                      : "Switch to list view"
+                  }
+                  title={agentView === "list" ? "Grid view" : "List view"}
+                  onClick={() =>
+                    setAgentView((v) => (v === "list" ? "grid" : "list"))
+                  }
+                >
+                  {agentView === "list" ? (
+                    <Grid01 className="size-4" />
+                  ) : (
+                    <List className="size-4" />
+                  )}
+                </ToolbarIconButton>
+              )}
+              <BrowseAgentsButton compact />
+            </>
+          }
+        />
+        <div
+          id="sidebar-section-agents"
+          aria-hidden={!agentsOpen}
+          className="grid min-h-0 transition-[grid-template-rows] duration-200 ease-out"
+          style={{ gridTemplateRows: agentsOpen ? "1fr" : "0fr" }}
+        >
+          <div className="overflow-hidden min-h-0">
+            <ScrollFade
+              wrapperClassName="h-full min-h-0"
+              className="flex flex-col gap-0.5 h-full overflow-y-auto overscroll-contain"
+            >
+              {agentView === "grid" ? (
+                <AgentIconGrid
+                  groups={agentGroups}
+                  renderGroup={buildAgentRowProps}
+                />
+              ) : (
+                <SortableAgentRows
+                  groups={agentGroups}
+                  orderScope={orderScope}
+                  decopilotId={decopilotId}
+                  orgPinnedIds={orgPinnedIds}
+                  onReorder={() => setLocalOrderRevision((n) => n + 1)}
+                  renderGroup={buildAgentRowProps}
+                />
+              )}
+            </ScrollFade>
+          </div>
+        </div>
+      </div>
+      <div className="shrink-0 mx-2 my-2 border-b" />
       {toolbar(false)}
       <div className="flex-1 min-h-0 flex flex-col gap-0.5 -mr-2 pr-2">
         <ScrollFade
@@ -653,74 +721,6 @@ export function TaskGroupsList({
             onLoadMore={() => void fetchNextPage()}
           />
         </ScrollFade>
-        <div className="shrink-0 mx-2 my-2 border-b" />
-        <div
-          className={cn(
-            "flex flex-col min-h-0",
-            agentsOpen ? "basis-[35%] shrink-0" : "shrink-0",
-          )}
-        >
-          <SidebarSectionHeader
-            label="Agents"
-            open={agentsOpen}
-            onToggle={() => setAgentsOpen((v) => !v)}
-            count={agentGroups.length}
-            controlsId="sidebar-section-agents"
-            actionSlot={
-              <>
-                {agentsOpen && (
-                  <ToolbarIconButton
-                    aria-label={
-                      agentView === "list"
-                        ? "Switch to grid view"
-                        : "Switch to list view"
-                    }
-                    title={agentView === "list" ? "Grid view" : "List view"}
-                    onClick={() =>
-                      setAgentView((v) => (v === "list" ? "grid" : "list"))
-                    }
-                  >
-                    {agentView === "list" ? (
-                      <Grid01 className="size-4" />
-                    ) : (
-                      <List className="size-4" />
-                    )}
-                  </ToolbarIconButton>
-                )}
-                <BrowseAgentsButton compact />
-              </>
-            }
-          />
-          <div
-            id="sidebar-section-agents"
-            aria-hidden={!agentsOpen}
-            className="grid min-h-0 transition-[grid-template-rows] duration-200 ease-out"
-            style={{ gridTemplateRows: agentsOpen ? "1fr" : "0fr" }}
-          >
-            <div className="overflow-hidden min-h-0">
-              <ScrollFade
-                wrapperClassName="h-full min-h-0"
-                className="flex flex-col gap-0.5 h-full overflow-y-auto overscroll-contain"
-              >
-                {agentView === "grid" ? (
-                  <AgentIconGrid
-                    groups={agentGroups}
-                    renderGroup={buildAgentRowProps}
-                  />
-                ) : (
-                  <SortableAgentRows
-                    groups={agentGroups}
-                    orderScope={orderScope}
-                    decopilotId={decopilotId}
-                    orgPinnedIds={orgPinnedIds}
-                    onReorder={() => setLocalOrderRevision((n) => n + 1)}
-                    renderGroup={buildAgentRowProps}
-                  />
-                )}
-              </ScrollFade>
-            </div>
-          </div>
-        </div>
       </div>
       {searchEverOpened && (
         <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />

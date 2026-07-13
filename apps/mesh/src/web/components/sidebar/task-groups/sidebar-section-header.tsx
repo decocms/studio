@@ -26,7 +26,7 @@ export function SidebarSectionHeader({
   controlsId?: string;
 }) {
   return (
-    <div className="group/section flex items-center gap-1 px-2 pt-1 pb-0.5">
+    <div className="group/section flex items-center gap-1 px-2 pb-0.5">
       <button
         type="button"
         aria-expanded={open}

@@ -102,7 +102,7 @@ function NavigationSidebarInner({
     <Sidebar variant={variant}>
       <SidebarContent
         className={cn(
-          "flex flex-col flex-1 px-2 py-2 gap-0.5",
+          "flex flex-col flex-1 px-2 pb-2 gap-0.5",
           contentClassName,
         )}
       >
@@ -110,7 +110,7 @@ function NavigationSidebarInner({
           <SidebarSectionRenderer key={index} section={section} />
         ))}
         {additionalContent && (
-          <div className="flex flex-col flex-1 min-h-0 group-data-[state=collapsed]/sidebar:mt-1 group-data-[state=expanded]/sidebar:mt-2">
+          <div className="flex flex-col flex-1 min-h-0">
             {additionalContent}
           </div>
         )}
