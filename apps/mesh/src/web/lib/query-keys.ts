@@ -409,6 +409,10 @@ export const KEYS = {
     ["org-fs", orgId, volume, "usage"] as const,
   orgFsStat: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "stat", path] as const,
+  // A text file's content (prompt-linked-file editor). Nested under the
+  // volume prefix so write mutations refresh it with the listings.
+  orgFsReadText: (orgId: string, volume: string, path: string) =>
+    ["org-fs", orgId, volume, "read-text", path] as const,
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
   // Cross-volume recent-files feed (Library home). Separate root key so a
   // volume named like the segment can never collide; mutations invalidate it

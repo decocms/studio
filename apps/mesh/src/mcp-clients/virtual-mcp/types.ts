@@ -25,4 +25,11 @@ export interface VirtualClientOptions {
    * cluster engine and the sandbox/desktop daemon. Only set for agent runtimes.
    */
   skillsBlock?: string;
+  /**
+   * System prompt read from the agent's linked org-fs file
+   * (`metadata.instructionsFile`). Same factory-side async pattern as
+   * `skillsBlock`; when set, `getInstructions()` prefers it over the inline
+   * `metadata.instructions` mirror.
+   */
+  instructionsOverride?: string;
 }

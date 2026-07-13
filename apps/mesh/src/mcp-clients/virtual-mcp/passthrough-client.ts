@@ -211,7 +211,11 @@ export class PassthroughClient extends GatewayClient {
     // daemon both read instructions; only the cluster runs the richer
     // buildAgentSystemPrompt).
     const base = withKnowledge(
-      this.options.virtualMcp.metadata?.instructions ?? undefined,
+      // The linked instructions file (factory-read) wins over the inline
+      // mirror; the mirror is the fallback when the file is unreadable.
+      this.options.instructionsOverride ??
+        this.options.virtualMcp.metadata?.instructions ??
+        undefined,
       this.options.virtualMcp.metadata?.knowledge,
     );
     // Append the pre-rendered <available-skills> catalog (built async in the
