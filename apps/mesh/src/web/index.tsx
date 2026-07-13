@@ -300,6 +300,14 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./layouts/library/index.tsx")),
 });
 
+// Kanban board (/$org/kanban) — org-owned task board, gated behind the org's
+// kanban_enabled setting.
+const kanbanRoute = createRoute({
+  getParentRoute: () => orgShellLayout,
+  path: "/kanban",
+  component: lazyRouteComponent(() => import("./layouts/kanban/index.tsx")),
+});
+
 // ============================================
 // SETTINGS LAYOUT (/$org/settings)
 // ============================================
@@ -555,6 +563,7 @@ const agentShellWithChildren = agentShellLayout.addChildren([unifiedChatRoute]);
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
   libraryRoute,
+  kanbanRoute,
   agentShellWithChildren,
 ]);
 

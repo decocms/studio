@@ -37,6 +37,9 @@ export const KEYS = {
   myCapabilities: (locator: ProjectLocator) =>
     [locator, "my-capabilities"] as const,
 
+  // Kanban board tasks (scoped by org)
+  kanbanTasks: (locator: ProjectLocator) => [locator, "kanban-tasks"] as const,
+
   // Connections (scoped by project)
   connections: (locator: ProjectLocator) => [locator, "connections"] as const,
   connectionsByBinding: (locator: ProjectLocator, binding: string) =>

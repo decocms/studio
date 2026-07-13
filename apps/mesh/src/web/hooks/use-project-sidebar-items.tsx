@@ -1,4 +1,6 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@decocms/mesh-sdk";
+import { Columns03 } from "@untitledui/icons";
 import type { SidebarSection } from "@/web/components/sidebar/types";
 import { useSidebar } from "@deco/ui/components/sidebar.tsx";
 import {
@@ -7,13 +9,31 @@ import {
   SidebarMenu,
 } from "@deco/ui/components/sidebar.tsx";
 import { BrowseAgentsButton } from "@/web/components/sidebar/browse-agents-button";
+import { useKanbanEnabled } from "@/web/hooks/use-organization-settings";
 
 export function useProjectSidebarItems(): SidebarSection[] {
-  const { org: _org } = useProjectContext();
+  const { org } = useProjectContext();
   const { state, isMobile } = useSidebar();
   const isCollapsed = !isMobile && state === "collapsed";
+  const navigate = useNavigate();
+  const kanbanEnabled = useKanbanEnabled();
 
   const sections: SidebarSection[] = [];
+
+  if (kanbanEnabled) {
+    sections.push({
+      type: "items",
+      items: [
+        {
+          key: "kanban",
+          label: "Kanban",
+          icon: <Columns03 className="size-4!" />,
+          onClick: () =>
+            navigate({ to: "/$org/kanban", params: { org: org.slug } }),
+        },
+      ],
+    });
+  }
 
   if (isCollapsed) {
     sections.push({

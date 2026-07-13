@@ -45,6 +45,7 @@ export class OrganizationSettingsStorage
           ? JSON.parse(record.default_home_agents)
           : record.default_home_agents
         : null,
+      kanban_enabled: record.kanban_enabled,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -60,6 +61,7 @@ export class OrganizationSettingsStorage
         | "registry_config"
         | "simple_mode"
         | "default_home_agents"
+        | "kanban_enabled"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -89,6 +91,7 @@ export class OrganizationSettingsStorage
         registry_config: registryConfigJson,
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
+        kanban_enabled: data?.kanban_enabled,
         createdAt: now,
         updatedAt: now,
       })
@@ -101,6 +104,7 @@ export class OrganizationSettingsStorage
           default_home_agents: defaultHomeAgentsJson
             ? defaultHomeAgentsJson
             : undefined,
+          kanban_enabled: data?.kanban_enabled,
           updatedAt: now,
         }),
       )
@@ -116,6 +120,7 @@ export class OrganizationSettingsStorage
         registry_config: data?.registry_config ?? null,
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
+        kanban_enabled: data?.kanban_enabled ?? false,
         createdAt: now,
         updatedAt: now,
       };

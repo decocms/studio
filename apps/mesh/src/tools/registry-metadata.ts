@@ -37,7 +37,8 @@ export type ToolCategory =
   | "GitHub"
   | "VM"
   | "Links"
-  | "Search";
+  | "Search"
+  | "Kanban";
 
 /**
  * All tool names - keep in sync with CORE_TOOLS in index.ts
@@ -216,6 +217,12 @@ const ALL_TOOL_NAMES = [
 
   // Search tools
   "GLOBAL_SEARCH",
+
+  // Kanban tools
+  "KANBAN_TASK_CREATE",
+  "KANBAN_TASK_LIST",
+  "KANBAN_TASK_UPDATE",
+  "KANBAN_TASK_DELETE",
 ] as const;
 
 /**
@@ -1007,6 +1014,28 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
       "Search across organization resources (currently threads). Returns a typed union of matches.",
     category: "Search",
   },
+  // Kanban tools
+  {
+    name: "KANBAN_TASK_CREATE",
+    description: "Create kanban board task",
+    category: "Kanban",
+  },
+  {
+    name: "KANBAN_TASK_LIST",
+    description: "List kanban board tasks",
+    category: "Kanban",
+  },
+  {
+    name: "KANBAN_TASK_UPDATE",
+    description: "Update kanban board task",
+    category: "Kanban",
+  },
+  {
+    name: "KANBAN_TASK_DELETE",
+    description: "Delete kanban board task",
+    category: "Kanban",
+    dangerous: true,
+  },
 ];
 
 // ============================================================================
@@ -1103,6 +1132,13 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // the run fence token, same trust boundary as the chat turn itself.
       "THREAD_BACKGROUND_TOOL_START",
       "THREAD_SUBTASK_DELIVER",
+      // Kanban board — org-scoped, gated behind the org's kanban_enabled
+      // setting (enforced per-handler), but usable by every member once on,
+      // same basic-usage tier as chat threads.
+      "KANBAN_TASK_CREATE",
+      "KANBAN_TASK_LIST",
+      "KANBAN_TASK_UPDATE",
+      "KANBAN_TASK_DELETE",
     ],
   },
   // Organization

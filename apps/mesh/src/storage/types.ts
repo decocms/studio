@@ -160,6 +160,7 @@ export interface OrganizationSettingsTable {
   registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
+  kanban_enabled: ColumnType<boolean, boolean | undefined, boolean>;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -171,6 +172,7 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
+  kanban_enabled: boolean;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -1480,6 +1482,47 @@ export interface OrgSite {
   updatedAt: string;
 }
 
+export type KanbanTaskStatus =
+  | "triage"
+  | "todo"
+  | "in_progress"
+  | "in_review"
+  | "done";
+
+export type KanbanTaskPriority = "low" | "medium" | "high" | "urgent";
+
+export interface KanbanTaskTable {
+  id: string;
+  organization_id: string;
+  title: string;
+  description: string | null;
+  status: ColumnType<KanbanTaskStatus, KanbanTaskStatus | undefined, string>;
+  priority: ColumnType<
+    KanbanTaskPriority,
+    KanbanTaskPriority | undefined,
+    string
+  >;
+  assignee_id: string | null;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface KanbanTask {
+  id: string;
+  organizationId: string;
+  title: string;
+  description: string | null;
+  status: KanbanTaskStatus;
+  priority: KanbanTaskPriority;
+  assigneeId: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
 // ============================================================================
 // Brand Context Table Definition
 // ============================================================================
@@ -1624,6 +1667,7 @@ export interface Database {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+  kanban_tasks: KanbanTaskTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }
