@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { BUILTIN_ROLES } from "@/auth/roles";
+import { adminFetch } from "@/web/lib/admin-fetch";
 import { formatDate } from "@/web/lib/format-time";
 import { KEYS } from "@/web/lib/query-keys";
 
@@ -44,18 +45,12 @@ function AddMemberDialog({ org }: { org: DeploymentAdminOrg }) {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/_admin/orgs/${org.id}/members`, {
+    mutationFn: () =>
+      adminFetch(`/api/_admin/orgs/${org.id}/members`, {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), role }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(body.error || "Failed to add member");
-      }
-    },
+      }),
     onSuccess: () => {
       toast.success(`Added ${email.trim()} to ${org.name}`);
       queryClient.invalidateQueries({
@@ -138,14 +133,12 @@ export default function AdminOrgsPage() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: KEYS.deploymentAdminOrgs(debouncedSearch),
-    queryFn: async () => {
+    queryFn: () => {
       const params = new URLSearchParams({ limit: "100" });
       if (debouncedSearch) params.set("search", debouncedSearch);
-      const res = await fetch(`/api/_admin/orgs?${params}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to load organizations");
-      return (await res.json()) as { organizations: DeploymentAdminOrg[] };
+      return adminFetch<{ organizations: DeploymentAdminOrg[] }>(
+        `/api/_admin/orgs?${params}`,
+      );
     },
   });
 

@@ -48,7 +48,11 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
-import { ADMIN_API_PREFIX, createAdminRoutes } from "./routes/admin";
+import {
+  ADMIN_API_PREFIX,
+  createAdminRoutes,
+  fenceRawAdminSurface,
+} from "./routes/admin";
 import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
@@ -1228,20 +1232,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.route("/api/auth/custom", authRoutes);
 
   // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
-  // external callers. Every deployment-admin action goes through /api/_admin/*
-  // (which calls auth.api.* in-process), so the only admin-plugin endpoint the
-  // browser legitimately hits directly is stop-impersonating (needs no admin
-  // permission). Leaving the rest reachable would let any id pushed into
-  // deploymentAdminUserIds (see @/auth) call set-role / set-user-password /
-  // ban-user etc. directly — a permanent, restart-surviving escalation past the
-  // DEPLOYMENT_ADMIN_EMAILS allowlist. 404 (not 403) so the surface isn't
-  // advertised.
-  app.all("/api/auth/admin/*", async (c, next) => {
-    if (c.req.path === "/api/auth/admin/stop-impersonating") {
-      return await next();
-    }
-    return c.json({ error: "Not Found", path: c.req.path }, 404);
-  });
+  // external callers — see fenceRawAdminSurface's doc in routes/admin.ts for
+  // why this must exist whenever deploymentAdminUserIds does.
+  app.all("/api/auth/admin/*", fenceRawAdminSurface);
 
   // All Better Auth routes (OAuth, session management, etc.)
   app.all("/api/auth/*", async (c) => {
@@ -2028,10 +2021,13 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.all("/api/:org/registry/*", publicMCPHandler);
 
   // Deployment admin dashboard. Static segment — must register before the
-  // `:org` catch-all below, same trick as the registry mounts above. The `_`
-  // prefix keeps it out of the org-slug namespace: slugs match `^[a-z0-9-]+$`
-  // (no underscore), so `_admin` can never collide with a real org — unlike a
-  // bare `admin`, which is a legal slug and would be shadowed here.
+  // `:org` catch-all below, same trick as the registry mounts above. That
+  // registration order is the real no-collision guarantee: ORGANIZATION_CREATE
+  // rejects slugs outside `^[a-z0-9-]+$`, but the raw better-auth
+  // organization/create endpoint enforces no charset, so an `_admin`-slugged
+  // org CAN exist — mounting first means such an org gets shadowed, never the
+  // admin surface. The `_` prefix just keeps well-behaved slugs from ever
+  // wanting the name (a bare `admin` is a legal, live slug).
   app.route(ADMIN_API_PREFIX, createAdminRoutes());
 
   // New canonical org-scoped API surface — all routes that depend on org context

@@ -35,7 +35,7 @@ function AdminTabs() {
 }
 
 function AdminGate() {
-  const { isAdmin, loading } = useDeploymentAdmin();
+  const { isAdmin, loading, needsEmailVerification } = useDeploymentAdmin();
 
   if (loading) {
     return (
@@ -49,7 +49,11 @@ function AdminGate() {
     return (
       <NoPermissionState
         area="the admin dashboard"
-        description="This dashboard is restricted to deployment admins."
+        description={
+          needsEmailVerification
+            ? "Verify your email address to access the admin dashboard."
+            : "This dashboard is restricted to deployment admins."
+        }
         action={
           <Button variant="outline" size="sm" asChild>
             <Link to="/">Go home</Link>

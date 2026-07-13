@@ -10,6 +10,7 @@ import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { useDebouncedValue } from "@/web/hooks/use-debounced-value";
+import { adminFetch } from "@/web/lib/admin-fetch";
 import { authClient } from "@/web/lib/auth-client";
 import { formatDate } from "@/web/lib/format-time";
 import { getInitials } from "@/web/lib/get-initials";
@@ -32,33 +33,22 @@ export default function AdminUsersPage() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: KEYS.deploymentAdminUsers(debouncedSearch),
-    queryFn: async () => {
+    queryFn: () => {
       const params = new URLSearchParams({ limit: "100" });
       if (debouncedSearch) params.set("searchValue", debouncedSearch);
-      const res = await fetch(`/api/_admin/users?${params}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to load users");
-      return (await res.json()) as {
-        users: DeploymentAdminUser[];
-        total: number;
-      };
+      return adminFetch<{ users: DeploymentAdminUser[] }>(
+        `/api/_admin/users?${params}`,
+      );
     },
   });
 
   const impersonateMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const res = await fetch("/api/_admin/impersonate", {
+    mutationFn: (userId: string) =>
+      adminFetch("/api/_admin/impersonate", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}) as { error?: string });
-        throw new Error(body.error || "Failed to impersonate user");
-      }
-    },
+      }),
     onSuccess: () => {
       // Session just changed under us — full reload, not a client nav.
       window.location.href = "/";

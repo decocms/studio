@@ -102,9 +102,11 @@ const oauthCallbackAiProviderRoute = createRoute({
 // DEPLOYMENT ADMIN DASHBOARD (instance-level, not org-scoped)
 // ============================================
 
-// Mounted at `/_admin`, not `/admin`: org slugs match `^[a-z0-9-]+$` (no
-// underscore), so this instance-level route can never shadow a real org's
-// `/$org` surface. A bare `/admin` would (and `admin` is a live slug).
+// Mounted at `/_admin`, not `/admin`. TanStack ranks the static `/_admin`
+// segment above the `$org` param, so this route wins even if an `_admin`
+// slug were ever minted (ORGANIZATION_CREATE rejects `_`, but the raw
+// better-auth endpoint enforces no charset) — the org gets shadowed, never
+// this surface. A bare `/admin` would shadow a legal, live slug.
 const adminLayout = createRoute({
   getParentRoute: () => rootRoute,
   path: "/_admin",

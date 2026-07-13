@@ -11,26 +11,33 @@
  * `serial` removes that race — see TESTING.md's tenant-scoping doctrine for
  * why every OTHER spec instead mints a fresh org/user/thread per test.
  *
+ * Serial mode is also load-bearing for ORDERING, not just the emailVerified
+ * race: grantDeploymentAdmin is a per-process, push-only grant, so whether a
+ * fellow admin can be impersonated flips permanently the first time that
+ * admin's identity passes requireDeploymentAdmin. The 409 test (pre-grant:
+ * impersonation succeeds) must run before the FORBIDDEN test (post-grant:
+ * better-auth refuses) — serial makes that deterministic.
+ *
  * This spec is also the upgrade canary for the adminUserIds mechanism — see
  * the comment on `deploymentAdminUserIds` in apps/mesh/src/auth/index.ts.
  *
  * The impersonation *exit* path is covered at the API level (stop-impersonating
- * below); the amber "Impersonating" pill is client-only presentation left to a
- * component test rather than a flaky popover-drive here.
+ * below); the amber "Impersonating" pill is client-only presentation, currently
+ * uncovered (a popover-drive here would be flaky; a component test would fit).
  */
 import type { APIRequestContext } from "@playwright/test";
 import type { Client } from "pg";
 import { connectDevDb } from "../fixtures/db";
-import { signUpViaApi } from "../fixtures/auth-api";
+import { signUpViaApi, TEST_PASSWORD } from "../fixtures/auth-api";
 import { expect, getE2EAppOrigin, newApiContext, test } from "../fixtures/test";
 
 const DEPLOYMENT_ADMIN_EMAIL = "deployment-admin@e2e.local";
 // Second allowlisted admin (see playwright.config.ts) — impersonating THIS
 // verified admin is what lets the re-impersonation test reach the 409 guard.
 const DEPLOYMENT_ADMIN_EMAIL_2 = "deployment-admin-2@e2e.local";
-// Matches generateTestUser's fixed password in fixtures/auth-api.ts, so the
-// sign-in fallback below succeeds against a user created by an earlier run.
-const DEPLOYMENT_ADMIN_PASSWORD = "Playwright123!";
+// The sign-in fallback below must use the same password sign-up used when an
+// earlier `reuseExistingServer` run created the identity.
+const DEPLOYMENT_ADMIN_PASSWORD = TEST_PASSWORD;
 
 /** Idempotent: signs up the reserved admin identity, or signs in if a prior
  *  `reuseExistingServer` run already created it. */
@@ -89,8 +96,24 @@ test.describe("/api/_admin/*", () => {
 
   let db: Client;
 
-  test.beforeAll(async () => {
+  test.beforeAll(async ({ playwright }) => {
     db = await connectDevDb();
+    // Fail fast with a pointed message when the app server wasn't started
+    // with DEPLOYMENT_ADMIN_EMAILS — easy under reuseExistingServer (a plain
+    // dev server predating this suite's env). Without this, every test below
+    // fails as an opaque 403.
+    const probe = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(probe);
+    await verifyDeploymentAdmin(db, admin.userId);
+    const me = await probe.get("/api/_admin/me");
+    await probe.dispose();
+    if (me.status() === 403) {
+      throw new Error(
+        "GET /api/_admin/me → 403 for the reserved admin: the app server is " +
+          "missing DEPLOYMENT_ADMIN_EMAILS. Restart it with the env from " +
+          "playwright.config.ts, or stop reusing the existing server.",
+      );
+    }
   });
 
   test.afterAll(async () => {
@@ -124,16 +147,24 @@ test.describe("/api/_admin/*", () => {
     const adminCtx = await newApiContext(playwright);
     const admin = await ensureDeploymentAdmin(adminCtx);
     await verifyDeploymentAdmin(db, admin.userId);
+    // Establish the threat precondition the fence exists for: the admin id is
+    // actually IN adminUserIds (granted on this /me pass), so the probes below
+    // prove the fence blocks a GRANTED id, not just an unknown one.
+    const me = await adminCtx.get("/api/_admin/me");
+    expect(me.status()).toBe(200);
 
     // Cover a representative spread of the admin plugin (mixed methods): a
     // path- or method-specific refactor of the fence could pass a single-route
-    // check while reopening the others.
+    // check while reopening the others. impersonate-user matters most — it's
+    // the one that would bypass the audited /api/_admin/impersonate wrapper.
     const fenced: Array<{ path: string; method: "get" | "post" }> = [
       { path: "set-role", method: "post" },
       { path: "set-user-password", method: "post" },
       { path: "create-user", method: "post" },
       { path: "ban-user", method: "post" },
       { path: "remove-user", method: "post" },
+      { path: "update-user", method: "post" },
+      { path: "impersonate-user", method: "post" },
       { path: "list-users", method: "get" },
     ];
     for (const { path, method } of fenced) {
@@ -145,6 +176,32 @@ test.describe("/api/_admin/*", () => {
         `${method.toUpperCase()} ${path} must be fenced`,
       ).toBe(404);
     }
+    await adminCtx.dispose();
+  });
+
+  test("mutating admin routes reject an untrusted Origin (CSRF hardening)", async ({
+    playwright,
+  }) => {
+    // The SameSite=Lax cookie is what blocks cross-site POSTs today, but the
+    // routes also check Origin explicitly so a future cookie-config change
+    // (e.g. SameSite=None for cross-subdomain deploys) can't silently reopen
+    // instance-wide CSRF. A forged Origin must lose even with a valid session.
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const res = await adminCtx.post("/api/_admin/impersonate", {
+      data: { userId: admin.userId },
+      headers: { Origin: "https://evil.example" },
+    });
+    expect(res.status()).toBe(403);
+
+    // GETs are reads, not CSRF targets — still served.
+    const read = await adminCtx.get("/api/_admin/me", {
+      headers: { Origin: "https://evil.example" },
+    });
+    expect(read.status()).toBe(200);
+
     await adminCtx.dispose();
   });
 
@@ -192,6 +249,25 @@ test.describe("/api/_admin/*", () => {
       users: Array<{ id: string; email: string }>;
     };
     expect(body.users.some((u) => u.id === target.userId)).toBe(true);
+
+    // The search merges an email probe and a NAME probe (better-auth searches
+    // one field per call) — prove the name half works. Test names are unique
+    // per run ("T<suffix> User"), so the first word is a precise needle.
+    const nameNeedle = target.name.split(" ")[0];
+    const byName = await adminCtx.get(
+      `/api/_admin/users?searchValue=${encodeURIComponent(nameNeedle)}`,
+    );
+    expect(byName.status()).toBe(200);
+    const byNameBody = (await byName.json()) as {
+      users: Array<{ id: string }>;
+    };
+    expect(byNameBody.users.some((u) => u.id === target.userId)).toBe(true);
+
+    // limit is clamped and honored (there are ≥2 users by this point).
+    const limited = await adminCtx.get("/api/_admin/users?limit=1");
+    expect(limited.status()).toBe(200);
+    const limitedBody = (await limited.json()) as { users: unknown[] };
+    expect(limitedBody.users.length).toBe(1);
 
     await adminCtx.dispose();
     await targetCtx.dispose();
@@ -250,6 +326,12 @@ test.describe("/api/_admin/*", () => {
     });
     expect(unknown.status()).toBe(404);
 
+    // Self-impersonation is rejected server-side, not just disabled in the UI.
+    const self = await adminCtx.post("/api/_admin/impersonate", {
+      data: { userId: admin.userId },
+    });
+    expect(self.status()).toBe(400);
+
     // Impersonate a normal user, then try again: requireDeploymentAdmin rejects
     // the second call because the session is now the target — 401 if the target
     // is unverified (fresh e2e signups are), 403 if verified-but-not-allowlisted.
@@ -293,6 +375,16 @@ test.describe("/api/_admin/*", () => {
     const first = await adminCtx.post("/api/_admin/impersonate", {
       data: { userId: admin2.userId },
     });
+    if (first.status() === 403) {
+      // Reused server process (local reuseExistingServer rerun): a previous
+      // run already pushed admin2 into adminUserIds, so better-auth refuses
+      // to impersonate them at all — the post-grant behavior the NEXT test
+      // pins deterministically. The 409 guard is only reachable pre-grant,
+      // i.e. once per server process.
+      await adminCtx.dispose();
+      await admin2Ctx.dispose();
+      return;
+    }
     expect(first.ok()).toBe(true);
 
     // Session is now admin2 (allowlisted+verified) → middleware passes → the
@@ -303,6 +395,38 @@ test.describe("/api/_admin/*", () => {
     expect(second.status()).toBe(409);
 
     await adminCtx.post("/api/auth/admin/stop-impersonating");
+    await adminCtx.dispose();
+    await admin2Ctx.dispose();
+  });
+
+  test("a granted fellow admin cannot be impersonated (blocked, not silent)", async ({
+    playwright,
+  }) => {
+    // grantDeploymentAdmin is lazy: an allowlisted admin enters adminUserIds
+    // the first time they pass requireDeploymentAdmin, and better-auth then
+    // refuses to impersonate them (allowImpersonatingAdmins is deliberately
+    // off). The previous test proved the pre-grant order; this one forces the
+    // grant and pins the post-grant order, so the timing-dependent behavior
+    // is documented in both directions. Serial mode makes the order real.
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const admin2Ctx = await newApiContext(playwright);
+    const admin2 = await ensureDeploymentAdmin(
+      admin2Ctx,
+      DEPLOYMENT_ADMIN_EMAIL_2,
+    );
+    await verifyDeploymentAdmin(db, admin2.userId);
+    // Force the grant: admin2's own identity passes requireDeploymentAdmin.
+    const me2 = await admin2Ctx.get("/api/_admin/me");
+    expect(me2.status()).toBe(200);
+
+    const res = await adminCtx.post("/api/_admin/impersonate", {
+      data: { userId: admin2.userId },
+    });
+    expect(res.status()).toBe(403);
+
     await adminCtx.dispose();
     await admin2Ctx.dispose();
   });
@@ -405,8 +529,92 @@ test.describe("/api/_admin/*", () => {
     expect(org).toBeTruthy();
     expect(org?.memberCount).toBeGreaterThanOrEqual(1);
 
+    // Slug search: a hit narrows to the org, a nonsense needle finds nothing.
+    const hit = await adminCtx.get(
+      `/api/_admin/orgs?search=${encodeURIComponent(owner.orgSlug)}`,
+    );
+    const hitBody = (await hit.json()) as {
+      organizations: Array<{ slug: string }>;
+    };
+    expect(hitBody.organizations.some((o) => o.slug === owner.orgSlug)).toBe(
+      true,
+    );
+    const miss = await adminCtx.get(
+      `/api/_admin/orgs?search=no-such-org-${Date.now()}`,
+    );
+    expect(
+      ((await miss.json()) as { organizations: unknown[] }).organizations,
+    ).toHaveLength(0);
+
+    // limit is clamped and honored (≥2 orgs exist: admin's + owner's).
+    const limited = await adminCtx.get("/api/_admin/orgs?limit=1");
+    expect(
+      ((await limited.json()) as { organizations: unknown[] }).organizations,
+    ).toHaveLength(1);
+
     await adminCtx.dispose();
     await ownerCtx.dispose();
+  });
+
+  test("the SSO-enforcement middleware exempts /api/_admin/*", async ({
+    playwright,
+  }) => {
+    // Regression guard for the ADMIN_API_PREFIX exemption in app.ts: an org
+    // with `enforced` SSO 403s its members' org-context API calls, but the
+    // instance-level admin surface is not governed by any single org's SSO
+    // policy — an admin whose ACTIVE org enforces SSO must keep dashboard
+    // access (the UI would otherwise read the 403 as "not an admin").
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const orgRow = await db.query<{ organizationId: string }>(
+      `SELECT "organizationId" FROM "member" WHERE "userId" = $1 LIMIT 1`,
+      [admin.userId],
+    );
+    const orgId = orgRow.rows[0]?.organizationId;
+    if (!orgId) throw new Error("Admin has no org membership");
+
+    // The enforcement middleware reads the org off the session, so make this
+    // session's active org the one we're about to enforce.
+    const setActive = await adminCtx.post("/api/auth/organization/set-active", {
+      data: { organizationId: orgId },
+    });
+    expect(setActive.ok()).toBe(true);
+
+    await db.query(
+      `DELETE FROM "org_sso_config" WHERE "organization_id" = $1`,
+      [orgId],
+    );
+    await db.query(
+      `INSERT INTO "org_sso_config"
+         (id, organization_id, issuer, client_id, client_secret, scopes,
+          domain, enforced, created_at, updated_at)
+       VALUES ($1, $2, 'https://sso.e2e.local', 'e2e-client', 'not-decryptable',
+               '["openid"]', 'e2e.local', 1, $3, $3)`,
+      [crypto.randomUUID(), orgId, new Date().toISOString()],
+    );
+
+    try {
+      // Enforcement is live for this principal: a non-exempt API path is
+      // blocked. 403 is the clean enforcement answer; 500 means the middleware
+      // consulted the seeded config (the vault can't decrypt the fixture
+      // secret) — either proves the middleware fired, where an exempt or
+      // unenforced path would fall through to the 404 handler.
+      const blocked = await adminCtx.get("/api/e2e-sso-enforcement-probe");
+      expect([403, 500]).toContain(blocked.status());
+
+      // The exemption: the admin surface stays reachable.
+      const me = await adminCtx.get("/api/_admin/me");
+      expect(me.status()).toBe(200);
+    } finally {
+      await db.query(
+        `DELETE FROM "org_sso_config" WHERE "organization_id" = $1`,
+        [orgId],
+      );
+    }
+
+    await adminCtx.dispose();
   });
 
   test("a verified admin sees the dashboard in a browser", async ({
@@ -428,6 +636,25 @@ test.describe("/api/_admin/*", () => {
       page.getByRole("heading", { name: "Admin Dashboard" }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("link", { name: "Users" })).toBeVisible();
+
+    // The index route redirects to the users tab; a broken redirect renders a
+    // blank outlet under a green heading.
+    await expect(page).toHaveURL(/\/_admin\/users/);
+
+    // The initial (no-search) GET /api/_admin/users parsed and rendered rows —
+    // the Impersonate button renders once per user row.
+    await expect(
+      page.getByRole("button", { name: "Impersonate" }).first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Search reaches the API and finds a known row (the admin itself — the
+    // unsearched first page can't be asserted on a long-lived dev DB).
+    await page
+      .getByPlaceholder("Search users by email or name...")
+      .fill(DEPLOYMENT_ADMIN_EMAIL);
+    await expect(page.getByText(DEPLOYMENT_ADMIN_EMAIL).first()).toBeVisible({
+      timeout: 15_000,
+    });
 
     await ctx.close();
   });

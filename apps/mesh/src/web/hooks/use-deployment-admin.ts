@@ -14,19 +14,32 @@
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 
-export function useDeploymentAdmin(): { isAdmin: boolean; loading: boolean } {
+export function useDeploymentAdmin(): {
+  isAdmin: boolean;
+  loading: boolean;
+  /** Allowlisted but blocked by the email-verification gate — the one denial
+   *  the operator can fix themselves, so the UI says so instead of the
+   *  generic "restricted" message. */
+  needsEmailVerification: boolean;
+} {
   const { data, isLoading } = useQuery({
     queryKey: KEYS.deploymentAdminMe(),
-    queryFn: async () => {
+    queryFn: async (): Promise<"admin" | "unverified" | "denied"> => {
       const res = await fetch("/api/_admin/me", { credentials: "include" });
       if (res.status >= 500) {
         throw new Error(`admin/me request failed: ${res.status}`);
       }
-      return res.ok;
+      if (res.ok) return "admin";
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      return body.error === "email_not_verified" ? "unverified" : "denied";
     },
     staleTime: Infinity,
     retry: 2,
   });
 
-  return { isAdmin: data === true, loading: isLoading };
+  return {
+    isAdmin: data === "admin",
+    loading: isLoading,
+    needsEmailVerification: data === "unverified",
+  };
 }

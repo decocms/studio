@@ -40,6 +40,11 @@ function asApiError(
  * 4xx instead of a misleading 500. Only `message`/`code` are forwarded — never
  * `body.cause`, which can hold internals.
  *
+ * NOTE this mapping is GLOBAL (app.onError): every route on the API surface
+ * that lets an APIError bubble now returns better-auth's real status and
+ * message text to the client, where it previously flattened to an opaque 500.
+ * That exposure is deliberate — these are user-facing auth errors by design.
+ *
  * Anything else is a genuine unexpected failure → logged + 500.
  */
 export function handleApiError(err: unknown, c: Context): Response {

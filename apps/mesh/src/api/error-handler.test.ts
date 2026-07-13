@@ -98,6 +98,12 @@ describe("handleApiError APIError shape-mapping", () => {
     expect(res.status).toBe(503);
   });
 
+  it("falls back to err.message and omits code when body is absent", async () => {
+    const res = handleApiError(apiError(404), fakeCtx);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "api error" });
+  });
+
   it("does NOT match a foreign Error with statusCode but a different name", async () => {
     // e.g. the AI SDK's AI_APICallError carries statusCode but is not ours —
     // must 500, not relabel an upstream failure as a client-facing 4xx.

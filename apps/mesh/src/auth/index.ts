@@ -391,7 +391,7 @@ const database = getDbDialect(databaseUrl);
 const baseUrl = getBaseUrl();
 
 // Build trusted origins: include both localhost and 127.0.0.1 variants
-function getTrustedOrigins(): string[] {
+export function getTrustedOrigins(): string[] {
   const origins = [baseUrl];
   try {
     const url = new URL(baseUrl);

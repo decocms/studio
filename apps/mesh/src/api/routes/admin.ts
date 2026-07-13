@@ -20,7 +20,7 @@
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { auth, grantDeploymentAdmin } from "@/auth";
+import { auth, getTrustedOrigins, grantDeploymentAdmin } from "@/auth";
 import { isAlreadyMemberError } from "@/auth/is-already-member-error";
 import { BUILTIN_ROLES, type BuiltinRole } from "@/auth/roles";
 import { getDb } from "@/database";
@@ -38,6 +38,55 @@ import type { Env } from "@/api/hono-env";
 export const ADMIN_API_PREFIX = "/api/_admin";
 
 /**
+ * Fence for the raw Better Auth admin plugin (`/api/auth/admin/*`), mounted in
+ * app.ts BEFORE the catch-all auth handler. Every deployment-admin action goes
+ * through `/api/_admin/*` (which calls `auth.api.*` in-process), so the only
+ * admin-plugin endpoint the browser legitimately hits directly is
+ * stop-impersonating (needs no admin permission). Leaving the rest reachable
+ * would let any id pushed into deploymentAdminUserIds (see @/auth) call
+ * set-role / set-user-password / ban-user etc. directly — a permanent,
+ * restart-surviving escalation past the DEPLOYMENT_ADMIN_EMAILS allowlist.
+ * 404 (not 403) so the surface isn't advertised.
+ *
+ * Lives here (not inline in app.ts) so the fence and the routes it protects
+ * are one module: deleting or refactoring this file breaks the app.ts import
+ * instead of silently leaving the raw surface open.
+ */
+export function fenceRawAdminSurface(
+  c: Context<Env>,
+  next: () => Promise<void>,
+) {
+  if (c.req.path === "/api/auth/admin/stop-impersonating") {
+    return next();
+  }
+  return c.json({ error: "Not Found", path: c.req.path }, 404);
+}
+
+/**
+ * CSRF defense-in-depth for the mutating admin routes. What actually blocks a
+ * cross-site POST today is the session cookie's `SameSite=Lax` — better-auth's
+ * default, configured nowhere near this file. If that ever changes (e.g.
+ * `crossSubDomainCookies` forces `SameSite=None`), a page on any origin could
+ * fire /impersonate with a logged-in admin's cookie. Browsers always send
+ * `Origin` on cross-site POSTs, so rejecting untrusted origins closes that
+ * hole; requests without an Origin header (curl, server-to-server) are not
+ * CSRF and pass through to the session check.
+ */
+async function rejectUntrustedOrigin(
+  c: Context<Env>,
+  next: () => Promise<void>,
+) {
+  const method = c.req.method;
+  if (method !== "GET" && method !== "HEAD") {
+    const origin = c.req.header("origin");
+    if (origin && !getTrustedOrigins().includes(origin)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+  }
+  return next();
+}
+
+/**
  * Durable audit line for a privileged deployment-admin action. Impersonating a
  * user or granting org membership are the highest-blast-radius actions in the
  * product; stdout is the one sink present in every deployment (PostHog can be
@@ -45,6 +94,25 @@ export const ADMIN_API_PREFIX = "/api/_admin";
  */
 function auditAdminAction(action: string, props: Record<string, unknown>) {
   console.log("deployment_admin_action", { action, ...props });
+}
+
+/**
+ * The REAL actor for audit purposes. Under impersonation the session user (and
+ * meshContext.auth.user) is the impersonation TARGET — an admin impersonating
+ * a fellow admin can reach every /api/_admin route, and attributing their
+ * actions to the impersonated identity would defeat the audit trail. The
+ * original admin's id lives in `session.impersonatedBy`.
+ */
+async function getAuditActor(
+  c: Context<Env>,
+): Promise<{ actorId?: string; impersonatedBy?: string }> {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  return {
+    actorId: c.get("meshContext").auth.user?.id,
+    impersonatedBy: (
+      session?.session as { impersonatedBy?: string } | undefined
+    )?.impersonatedBy,
+  };
 }
 
 async function requireDeploymentAdmin(
@@ -71,6 +139,7 @@ async function requireDeploymentAdmin(
 export function createAdminRoutes(): Hono<Env> {
   const app = new Hono<Env>();
 
+  app.use("*", rejectUntrustedOrigin);
   app.use("*", requireDeploymentAdmin);
 
   // The middleware IS the check — the UI gate just probes this.
@@ -89,10 +158,32 @@ export function createAdminRoutes(): Hono<Env> {
     const limit = Math.min(requested > 0 ? requested : 100, 100);
     const headers = c.req.raw.headers;
 
+    // Project to the fields the dashboard renders instead of forwarding
+    // better-auth's raw rows: the plugin payload carries admin-plugin columns
+    // (role, banned, banReason, ...) this surface doesn't expose, and an
+    // explicit projection keeps the wire contract stable across plugin bumps.
+    const project = (u: {
+      id: string;
+      email: string;
+      name?: string | null;
+      image?: string | null;
+      emailVerified: boolean;
+      createdAt: Date;
+    }) => ({
+      id: u.id,
+      email: u.email,
+      name: u.name ?? null,
+      image: u.image ?? null,
+      emailVerified: u.emailVerified,
+      createdAt: u.createdAt,
+    });
+
     if (!searchValue) {
-      return c.json(
-        await auth.api.listUsers({ query: { limit: String(limit) }, headers }),
-      );
+      const { users } = await auth.api.listUsers({
+        query: { limit: String(limit) },
+        headers,
+      });
+      return c.json({ users: users.map(project) });
     }
 
     // better-auth's listUsers searches ONE field per call (searchField), so a
@@ -111,8 +202,8 @@ export function createAdminRoutes(): Hono<Env> {
     const merged = new Map(
       [...byEmail.users, ...byName.users].map((u) => [u.id, u] as const),
     );
-    const users = [...merged.values()].slice(0, limit);
-    return c.json({ users, total: users.length });
+    const users = [...merged.values()].slice(0, limit).map(project);
+    return c.json({ users });
   });
 
   app.post("/impersonate", async (c) => {
@@ -123,14 +214,16 @@ export function createAdminRoutes(): Hono<Env> {
     if (!userId) {
       return c.json({ error: "userId is required" }, 400);
     }
+    // The UI disables the button for the current user, but the server is the
+    // trust boundary — self-impersonation would set impersonatedBy = self.
+    if (userId === c.get("meshContext").auth.user?.id) {
+      return c.json({ error: "Cannot impersonate yourself" }, 400);
+    }
 
     // Impersonating while already impersonating would overwrite the signed
     // admin_session restore cookie with the CURRENT (impersonated) session,
     // stranding the original admin's path back. Stop first.
-    const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const impersonatedBy = (
-      session?.session as { impersonatedBy?: string } | undefined
-    )?.impersonatedBy;
+    const { impersonatedBy } = await getAuditActor(c);
     if (impersonatedBy) {
       return c.json(
         { error: "Already impersonating — stop impersonating first" },
@@ -167,6 +260,10 @@ export function createAdminRoutes(): Hono<Env> {
     // Clamp + search, same shape as /users: every signup mints a personal org,
     // so the table is ~user-count. An unbounded load (plus a per-row dialog in
     // the UI) would degrade at a few thousand orgs.
+    //
+    // The count aggregates the whole member table before LIMIT — fine to
+    // ~10^5 member rows; past that, switch to limit-first + LATERAL count and
+    // add an index on member(organizationId).
     const search = c.req.query("search")?.trim();
     const requested = Number(c.req.query("limit"));
     const limit = Math.min(requested > 0 ? requested : 100, 100);
@@ -251,9 +348,15 @@ export function createAdminRoutes(): Hono<Env> {
       throw error;
     }
 
-    const actorId = c.get("meshContext").auth.user?.id;
+    // Unlike /impersonate (which 409s while impersonating), this route IS
+    // reachable by an admin impersonating a fellow admin — attribute to the
+    // real actor, not the impersonated identity.
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
     auditAdminAction("member_add", {
       actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
       organization_id: orgId,
       added_user_id: user.id,
       role,
