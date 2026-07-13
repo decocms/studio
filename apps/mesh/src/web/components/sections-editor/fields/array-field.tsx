@@ -342,6 +342,15 @@ export function ArrayField({
   // Keep the tracked index in step with the breadcrumb: forget it once the
   // breadcrumb no longer opens an item here, and adopt the resolved index when
   // navigation opened an item some other way (header/breadcrumb click, deep link).
+  //
+  // This set-state-during-render reconciliation converges in one extra render
+  // because `resolveArrayItemSelection` returns `preferredIndex` only when that
+  // item still matches the winning crumb: adopting the resolved index yields a
+  // fixed point on the next render (no oscillation). `openIndex` is a raw index
+  // (not tied to the stable `entries` ids), which is safe only because every
+  // index-shifting mutation (reorder, duplicate, remove) is reachable exclusively
+  // from the list view below — where `selection` is null and `openIndex` has
+  // already been forced back to null.
   if (selection === null) {
     if (openIndex !== null) setOpenIndex(null);
   } else if (selection.index !== openIndex) {

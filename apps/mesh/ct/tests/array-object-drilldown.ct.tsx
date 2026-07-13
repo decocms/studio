@@ -160,6 +160,87 @@ test("editing a drilled-in item updates the correct index", async ({
     .toEqual({ cards: [{ name: "Alpha" }, { name: "Beta2" }] });
 });
 
+test("editing a label field whose value equals the array label keeps the editor open", async ({
+  mount,
+}) => {
+  // Regression: an array labelled "Banner" whose single item is ALSO labelled
+  // "Banner" (its label comes from `alt` via titleBy). The breadcrumb is
+  // ["Banner", "Banner"]; editing `alt` must not collapse the trail and kick
+  // you back to the list. Guards the SchemaForm consumed-prefix re-prepend.
+  const meta = sectionWithProps({
+    banner: {
+      type: "array",
+      title: "Banner",
+      items: {
+        type: "object",
+        title: "Banner",
+        titleBy: "alt",
+        properties: { alt: { type: "string", title: "Alt" } },
+      },
+    },
+  });
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ banner: [{ alt: "Banner" }] }}
+    />,
+  );
+
+  await component.getByRole("button", { name: "Banner", exact: true }).click();
+  await expect
+    .poll(() => readBreadcrumb(component))
+    .toEqual(["Banner", "Banner"]);
+
+  const altInput = component.getByLabel("Alt");
+  await expect(altInput).toHaveAttribute("id", "banner.0.alt");
+  await altInput.fill("Banner Sale");
+
+  // Editor stays open on the same item (does NOT drop back to the list), and
+  // the edit is applied.
+  await expect(component.getByLabel("Alt")).toHaveAttribute(
+    "id",
+    "banner.0.alt",
+  );
+  await expect(component.getByRole("button", { name: "Add item" })).toHaveCount(
+    0,
+  );
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ banner: [{ alt: "Banner Sale" }] });
+});
+
+test("editing a label to collide with an earlier sibling keeps the opened row", async ({
+  mount,
+}) => {
+  // Regression: drill into item 1, rename it to equal item 0's label. Selection
+  // must stay on index 1 (not snap to the first matching label at index 0).
+  // Guards the ArrayField openIndex/preferredIndex disambiguation.
+  const meta = sectionWithProps(cardArrayProps);
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ cards: [{ name: "Alpha" }, { name: "Beta" }] }}
+    />,
+  );
+
+  await component.getByRole("button", { name: "Beta", exact: true }).click();
+  const nameInput = component.getByLabel("Name");
+  await expect(nameInput).toHaveAttribute("id", "cards.1.name");
+
+  await nameInput.fill("Alpha");
+
+  // Still editing index 1 — not snapped to the identically-labelled index 0.
+  await expect(component.getByLabel("Name")).toHaveAttribute(
+    "id",
+    "cards.1.name",
+  );
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ cards: [{ name: "Alpha" }, { name: "Alpha" }] });
+});
+
 test("deleting a row removes the right item from the array", async ({
   mount,
   page,
