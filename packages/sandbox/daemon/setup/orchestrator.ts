@@ -502,10 +502,15 @@ export class SetupOrchestrator {
     await this.deps.taskManager.spawn({
       command: command.cmd,
       cwd: command.cwd,
-      // denoCacheEnv points DENO_DIR at the per-repo node-local cache for deno
-      // dev servers (no-op for other PMs); layered under config.env so a
+      // command.env carries the runtime PATH prepend (pmRunCommand); spread
+      // first so buildDevEnv's HOST/PORT/user overrides win. denoCacheEnv
+      // points DENO_DIR at the per-repo node-local cache for deno dev
+      // servers (no-op for other PMs); layered under config.env so a
       // user-supplied DENO_DIR still wins.
-      env: buildDevEnv(config, { ...denoCacheEnv(config), ...config.env }),
+      env: {
+        ...command.env,
+        ...buildDevEnv(config, { ...denoCacheEnv(config), ...config.env }),
+      },
       label: command.label,
       mode: "pty",
       logName: command.source,
@@ -583,9 +588,13 @@ export class SetupOrchestrator {
     return `\r\n[orchestrator] skipping start: no 'dev' or 'start' script found (available: ${scripts.join(", ")}) — update the VM config to set the correct start script\r\n`;
   }
 
-  private buildStartCommand(
-    config: Config,
-  ): { cmd: string; cwd: string; label: string; source: string } | null {
+  private buildStartCommand(config: Config): {
+    cmd: string;
+    cwd: string;
+    env: Record<string, string>;
+    label: string;
+    source: string;
+  } | null {
     const pm = config.application?.packageManager?.name;
     if (!pm) return null;
     const pmConf = PACKAGE_MANAGER_DAEMON_CONFIG[pm];
@@ -598,8 +607,7 @@ export class SetupOrchestrator {
     const starter = WELL_KNOWN_STARTERS.find((s) => scripts.includes(s));
     if (!starter) return null;
     return {
-      ...pmRunCommand(config.runtimePathPrefix, cwd, pmConf.runPrefix, starter),
-      cwd,
+      ...pmRunCommand(cwd, pmConf.runPrefix, starter, config.runtimePathDirs),
       source: starter,
     };
   }

@@ -71,13 +71,6 @@ export interface TenantConfig {
 
 /** In-memory enriched view: TenantConfig + derivations. */
 export interface EnrichedTenantConfig extends TenantConfig {
-  /**
-   * Computed from `application.runtime`.
-   * @deprecated shell-string form of `runtimePathDirs` — superseded by the
-   * structured-command conversion. Kept until Task 7 migrates its last two
-   * readers (`pmRunCommand`, `routes/exec.ts`).
-   */
-  readonly runtimePathPrefix: string;
   /** Computed from `application.runtime` — PATH dirs to prepend for structured commands. */
   readonly runtimePathDirs: readonly string[];
 }

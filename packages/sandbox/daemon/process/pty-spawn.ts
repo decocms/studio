@@ -34,17 +34,9 @@ import {
   isStructuredCommand,
   type StructuredCommand,
 } from "./structured-command";
+import { resolveShell } from "./resolve-shell";
 
-/** Thrown when no shell can run a string command on this platform. */
-export class ShellNotFoundError extends Error {
-  constructor() {
-    super(
-      "POSIX shell (sh) not found — string commands need a shell. " +
-        "On Windows: install Git for Windows (ships bash) or run the daemon under WSL2.",
-    );
-    this.name = "ShellNotFoundError";
-  }
-}
+export { ShellNotFoundError } from "./structured-command";
 
 export interface PtyHandle {
   /** OS process id of the spawned child. */
@@ -71,10 +63,11 @@ export interface PtySpawnOpts {
 
 function ptyArgv(cmd: string | StructuredCommand): [string, string[]] {
   if (isStructuredCommand(cmd)) return [cmd.argv[0], [...cmd.argv.slice(1)]];
-  // String command → needs a shell. win32 has no `sh`; ConPTY would throw
-  // the unhelpful "File not found: " (empty resolved path). Fail legibly
-  // until Task 7 wires resolveShell() here.
-  if (process.platform === "win32") throw new ShellNotFoundError();
+  // String command → needs a shell. win32 has no `sh`; resolveShell finds
+  // Git Bash (or throws ShellNotFoundError legibly if it can't).
+  if (process.platform === "win32") {
+    return [resolveShell("sh"), ["-c", cmd]];
+  }
   return ["sh", ["-c", cmd]];
 }
 
@@ -117,11 +110,15 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
   // (concurrent test files allocating PTYs faster than the kernel reaps them).
   // Retry a few times before giving up — production callers also benefit from
   // resilience to brief PTY exhaustion.
+  // Computed once, outside the retry loop below: a deterministic
+  // ShellNotFoundError (or any other resolution error) must not burn the
+  // 3 forkpty retries — it will fail identically every time.
+  const [file, args] = ptyArgv(opts.cmd);
+
   let raw!: ReturnType<typeof ptySpawn>;
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const [file, args] = ptyArgv(opts.cmd);
       raw = ptySpawn(file, args, spawnOpts);
       lastErr = undefined;
       break;

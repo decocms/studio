@@ -185,10 +185,7 @@ export function spawnInstall(deps: InstallDeps): Promise<number> | null {
   const steps = installSteps({
     pm,
     installRoot,
-    // Defensive default: production configs always go through `enrich()`
-    // (config-store/derive.ts), which guarantees this field, but callers
-    // that hand-build a Config (tests, warm-pool edge cases) may omit it.
-    runtimePathDirs: config.runtimePathDirs ?? [],
+    runtimePathDirs: config.runtimePathDirs,
     cacheEnv: depsCacheEnv(config),
     userEnv: deps.env,
     basePath: process.env.PATH,

@@ -97,13 +97,15 @@ export function makeExecHandler(deps: ExecDeps) {
     // a blocking response opt in via mode: "await".
     const mode: ExecMode = body.mode === "await" ? "await" : "background";
 
-    const env = buildDevEnv(config, { ...config.env, ...body.env });
-    const { cmd, label } = pmRunCommand(
-      config.runtimePathPrefix,
-      cwd,
-      pmConf.runPrefix,
-      name,
-    );
+    const {
+      cmd,
+      label,
+      env: pmEnv,
+    } = pmRunCommand(cwd, pmConf.runPrefix, name, config.runtimePathDirs);
+    const env = {
+      ...pmEnv,
+      ...buildDevEnv(config, { ...config.env, ...body.env }),
+    };
 
     // Manually running a dev starter is explicit intent to (re)start the dev
     // server — the same WELL_KNOWN_STARTERS list whose non-zero exit wedges

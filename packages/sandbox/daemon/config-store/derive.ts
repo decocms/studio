@@ -1,11 +1,5 @@
 import type { EnrichedTenantConfig, RuntimeName, TenantConfig } from "../types";
 
-function derivePathPrefix(runtime: RuntimeName | undefined): string {
-  if (runtime === "bun") return "export PATH=/opt/bun/bin:$PATH && ";
-  if (runtime === "deno") return "export PATH=/opt/deno/bin:$PATH && ";
-  return "";
-}
-
 function deriveRuntimePathDirs(
   runtime: RuntimeName | undefined,
 ): readonly string[] {
@@ -22,7 +16,6 @@ function deriveRuntimePathDirs(
 export function enrich(config: TenantConfig): EnrichedTenantConfig {
   return Object.freeze({
     ...config,
-    runtimePathPrefix: derivePathPrefix(config.application?.runtime),
     runtimePathDirs: deriveRuntimePathDirs(config.application?.runtime),
   });
 }

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { appLogPath } from "../paths";
 import { LogTee } from "./log-tee";
 import { spawnPty } from "./pty-spawn";
+import { resolveShell } from "./resolve-shell";
 import { RingBuffer } from "./ring-buffer";
 import type { PhaseManager } from "./phase-manager";
 
@@ -462,8 +463,9 @@ export class TaskManager {
       env: task.spec.env,
       detached: true,
     };
+    const shell = process.platform === "win32" ? resolveShell("bash") : "bash";
     const child: ChildProcess = nodeSpawn(
-      "bash",
+      shell,
       ["-c", task.spec.command],
       opts,
     );

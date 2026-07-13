@@ -15,6 +15,17 @@ export interface StructuredCommand {
   cwd?: string;
 }
 
+/** Thrown when no shell can run a string command on this platform. */
+export class ShellNotFoundError extends Error {
+  constructor() {
+    super(
+      "POSIX shell (sh) not found — string commands need a shell. " +
+        "On Windows: install Git for Windows (ships bash) or run the daemon under WSL2.",
+    );
+    this.name = "ShellNotFoundError";
+  }
+}
+
 export function isStructuredCommand(x: unknown): x is StructuredCommand {
   return (
     typeof x === "object" &&
