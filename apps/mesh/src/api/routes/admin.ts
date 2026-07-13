@@ -9,20 +9,43 @@
  * directly. The one exception the client hits directly is
  * `authClient.admin.stopImpersonating()`, which needs no admin permission.
  *
- * Impersonation and member-add are audited via PostHog (actor + target), the
- * same way the org tools capture privileged actions.
+ * Impersonation and member-add are audited two ways: a durable stdout line
+ * (captured in every deployment's logs — the self-hosts this surface targets
+ * often run without PostHog) plus a PostHog event, the same way the org tools
+ * capture privileged actions.
  *
- * Route: /api/_admin/* (underscore keeps it out of the org-slug namespace).
+ * Route: `ADMIN_API_PREFIX`/* (underscore keeps it out of the org-slug
+ * namespace). The prefix is exported so the mount and the SSO-enforcement
+ * exemption in app.ts share one source — see the constant below.
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { auth, deploymentAdminUserIds } from "@/auth";
+import { auth, grantDeploymentAdmin } from "@/auth";
 import { isAlreadyMemberError } from "@/auth/is-already-member-error";
 import { BUILTIN_ROLES, type BuiltinRole } from "@/auth/roles";
 import { getDb } from "@/database";
 import { posthog } from "@/posthog";
 import { getSettings } from "@/settings";
 import type { Env } from "@/api/hono-env";
+
+/**
+ * Mount path for the deployment-admin surface. Single source of truth: app.ts
+ * mounts the router here AND exempts this prefix from SSO enforcement. Matching
+ * by prefix means any endpoint added under this router is automatically fenced
+ * (the sub-app's `app.use("*", requireDeploymentAdmin)`) and SSO-exempt — no
+ * second edit anywhere. Change the path here and both move together.
+ */
+export const ADMIN_API_PREFIX = "/api/_admin";
+
+/**
+ * Durable audit line for a privileged deployment-admin action. Impersonating a
+ * user or granting org membership are the highest-blast-radius actions in the
+ * product; stdout is the one sink present in every deployment (PostHog can be
+ * unconfigured or sampled), so it's the non-negotiable trail.
+ */
+function auditAdminAction(action: string, props: Record<string, unknown>) {
+  console.log("deployment_admin_action", { action, ...props });
+}
 
 async function requireDeploymentAdmin(
   c: Context<Env>,
@@ -41,9 +64,7 @@ async function requireDeploymentAdmin(
   if (!email || !getSettings().deploymentAdminEmails.includes(email)) {
     return c.json({ error: "Forbidden" }, 403);
   }
-  if (!deploymentAdminUserIds.includes(user.id)) {
-    deploymentAdminUserIds.push(user.id);
-  }
+  grantDeploymentAdmin(user.id);
   return next();
 }
 
@@ -63,14 +84,35 @@ export function createAdminRoutes(): Hono<Env> {
     // Whitelist + clamp rather than forwarding c.req.query() raw: an omitted
     // `limit` otherwise makes better-auth return the entire user table, and the
     // raw passthrough couples this endpoint's contract to the plugin's schema.
-    const searchValue = c.req.query("searchValue");
+    const searchValue = c.req.query("searchValue")?.trim();
     const requested = Number(c.req.query("limit"));
     const limit = Math.min(requested > 0 ? requested : 100, 100);
-    const result = await auth.api.listUsers({
-      query: { limit: String(limit), ...(searchValue ? { searchValue } : {}) },
-      headers: c.req.raw.headers,
-    });
-    return c.json(result);
+    const headers = c.req.raw.headers;
+
+    if (!searchValue) {
+      return c.json(
+        await auth.api.listUsers({ query: { limit: String(limit) }, headers }),
+      );
+    }
+
+    // better-auth's listUsers searches ONE field per call (searchField), so a
+    // single probe can't honor the UI's "email or name" search. Probe both and
+    // merge (deduped by id, later wins) so the search does what it says.
+    const [byEmail, byName] = await Promise.all([
+      auth.api.listUsers({
+        query: { limit: String(limit), searchValue, searchField: "email" },
+        headers,
+      }),
+      auth.api.listUsers({
+        query: { limit: String(limit), searchValue, searchField: "name" },
+        headers,
+      }),
+    ]);
+    const merged = new Map(
+      [...byEmail.users, ...byName.users].map((u) => [u.id, u] as const),
+    );
+    const users = [...merged.values()].slice(0, limit);
+    return c.json({ users, total: users.length });
   });
 
   app.post("/impersonate", async (c) => {
@@ -107,6 +149,10 @@ export function createAdminRoutes(): Hono<Env> {
 
     if (res.ok) {
       const actorId = c.get("meshContext").auth.user?.id;
+      auditAdminAction("impersonate", {
+        actor_user_id: actorId,
+        target_user_id: userId,
+      });
       posthog.capture({
         distinctId: actorId ?? userId,
         event: "deployment_admin_impersonated",
@@ -118,8 +164,15 @@ export function createAdminRoutes(): Hono<Env> {
   });
 
   app.get("/orgs", async (c) => {
+    // Clamp + search, same shape as /users: every signup mints a personal org,
+    // so the table is ~user-count. An unbounded load (plus a per-row dialog in
+    // the UI) would degrade at a few thousand orgs.
+    const search = c.req.query("search")?.trim();
+    const requested = Number(c.req.query("limit"));
+    const limit = Math.min(requested > 0 ? requested : 100, 100);
     const db = getDb().db;
-    const rows = await db
+
+    let query = db
       .selectFrom("organization")
       .leftJoin("member", "member.organizationId", "organization.id")
       .select([
@@ -128,7 +181,19 @@ export function createAdminRoutes(): Hono<Env> {
         "organization.slug as slug",
         "organization.createdAt as createdAt",
       ])
-      .select((eb) => eb.fn.count<string>("member.id").as("memberCount"))
+      .select((eb) => eb.fn.count<string>("member.id").as("memberCount"));
+
+    if (search) {
+      // Parameterized by Kysely; `%`/`_` in the term just widen the match.
+      query = query.where((eb) =>
+        eb.or([
+          eb("organization.name", "ilike", `%${search}%`),
+          eb("organization.slug", "ilike", `%${search}%`),
+        ]),
+      );
+    }
+
+    const rows = await query
       .groupBy([
         "organization.id",
         "organization.name",
@@ -136,6 +201,7 @@ export function createAdminRoutes(): Hono<Env> {
         "organization.createdAt",
       ])
       .orderBy("organization.createdAt", "desc")
+      .limit(limit)
       .execute();
 
     return c.json({
@@ -186,6 +252,12 @@ export function createAdminRoutes(): Hono<Env> {
     }
 
     const actorId = c.get("meshContext").auth.user?.id;
+    auditAdminAction("member_add", {
+      actor_user_id: actorId,
+      organization_id: orgId,
+      added_user_id: user.id,
+      role,
+    });
     posthog.capture({
       distinctId: actorId ?? user.id,
       event: "deployment_admin_member_added",

@@ -25,6 +25,9 @@ import { signUpViaApi } from "../fixtures/auth-api";
 import { expect, getE2EAppOrigin, newApiContext, test } from "../fixtures/test";
 
 const DEPLOYMENT_ADMIN_EMAIL = "deployment-admin@e2e.local";
+// Second allowlisted admin (see playwright.config.ts) — impersonating THIS
+// verified admin is what lets the re-impersonation test reach the 409 guard.
+const DEPLOYMENT_ADMIN_EMAIL_2 = "deployment-admin-2@e2e.local";
 // Matches generateTestUser's fixed password in fixtures/auth-api.ts, so the
 // sign-in fallback below succeeds against a user created by an earlier run.
 const DEPLOYMENT_ADMIN_PASSWORD = "Playwright123!";
@@ -33,10 +36,11 @@ const DEPLOYMENT_ADMIN_PASSWORD = "Playwright123!";
  *  `reuseExistingServer` run already created it. */
 async function ensureDeploymentAdmin(
   request: APIRequestContext,
+  email: string = DEPLOYMENT_ADMIN_EMAIL,
 ): Promise<{ userId: string }> {
   const signUpRes = await request.post("/api/auth/sign-up/email", {
     data: {
-      email: DEPLOYMENT_ADMIN_EMAIL,
+      email,
       password: DEPLOYMENT_ADMIN_PASSWORD,
       name: "Deployment Admin",
     },
@@ -54,7 +58,7 @@ async function ensureDeploymentAdmin(
 
   const signInRes = await request.post("/api/auth/sign-in/email", {
     data: {
-      email: DEPLOYMENT_ADMIN_EMAIL,
+      email,
       password: DEPLOYMENT_ADMIN_PASSWORD,
     },
   });
@@ -121,10 +125,26 @@ test.describe("/api/_admin/*", () => {
     const admin = await ensureDeploymentAdmin(adminCtx);
     await verifyDeploymentAdmin(db, admin.userId);
 
-    const setRole = await adminCtx.post("/api/auth/admin/set-role", {
-      data: { userId: admin.userId, role: "admin" },
-    });
-    expect(setRole.status()).toBe(404);
+    // Cover a representative spread of the admin plugin (mixed methods): a
+    // path- or method-specific refactor of the fence could pass a single-route
+    // check while reopening the others.
+    const fenced: Array<{ path: string; method: "get" | "post" }> = [
+      { path: "set-role", method: "post" },
+      { path: "set-user-password", method: "post" },
+      { path: "create-user", method: "post" },
+      { path: "ban-user", method: "post" },
+      { path: "remove-user", method: "post" },
+      { path: "list-users", method: "get" },
+    ];
+    for (const { path, method } of fenced) {
+      const url = `/api/auth/admin/${path}`;
+      const res =
+        method === "get" ? await adminCtx.get(url) : await adminCtx.post(url);
+      expect(
+        res.status(),
+        `${method.toUpperCase()} ${path} must be fenced`,
+      ).toBe(404);
+    }
     await adminCtx.dispose();
   });
 
@@ -249,6 +269,42 @@ test.describe("/api/_admin/*", () => {
     await adminCtx.post("/api/auth/admin/stop-impersonating");
     await adminCtx.dispose();
     await targetCtx.dispose();
+  });
+
+  test("re-impersonating (admin impersonating an admin) hits the 409 restore-cookie guard", async ({
+    playwright,
+  }) => {
+    // The non-admin re-impersonate test above is stopped by the middleware
+    // before the handler's 409 runs. To exercise the 409 itself — the guard
+    // that stops the admin_session restore cookie from being clobbered — the
+    // impersonated session must still pass requireDeploymentAdmin, i.e. the
+    // target must itself be a verified, allowlisted admin.
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const admin2Ctx = await newApiContext(playwright);
+    const admin2 = await ensureDeploymentAdmin(
+      admin2Ctx,
+      DEPLOYMENT_ADMIN_EMAIL_2,
+    );
+    await verifyDeploymentAdmin(db, admin2.userId);
+
+    const first = await adminCtx.post("/api/_admin/impersonate", {
+      data: { userId: admin2.userId },
+    });
+    expect(first.ok()).toBe(true);
+
+    // Session is now admin2 (allowlisted+verified) → middleware passes → the
+    // handler's "already impersonating" guard is what rejects, with 409.
+    const second = await adminCtx.post("/api/_admin/impersonate", {
+      data: { userId: admin.userId },
+    });
+    expect(second.status()).toBe(409);
+
+    await adminCtx.post("/api/auth/admin/stop-impersonating");
+    await adminCtx.dispose();
+    await admin2Ctx.dispose();
   });
 
   test("add member: success, duplicate 409, unknown email 404, bad role 400", async ({

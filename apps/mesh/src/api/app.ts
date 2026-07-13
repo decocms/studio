@@ -48,7 +48,7 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
-import { createAdminRoutes } from "./routes/admin";
+import { ADMIN_API_PREFIX, createAdminRoutes } from "./routes/admin";
 import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
@@ -1705,7 +1705,11 @@ export async function createApp(options: CreateAppOptions = {}) {
       path.startsWith("/api/org-sso/") ||
       path.startsWith("/api/auth/") ||
       path.startsWith("/api/tools/management") ||
-      path.startsWith("/oauth-proxy/")
+      path.startsWith("/oauth-proxy/") ||
+      // Instance-level operator surface — not governed by any single org's SSO
+      // policy. Without this, an admin whose active org enforces SSO gets 403'd
+      // off the whole dashboard, and the UI reads that as "not an admin".
+      path.startsWith(`${ADMIN_API_PREFIX}/`)
     ) {
       return next();
     }
@@ -2028,7 +2032,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // prefix keeps it out of the org-slug namespace: slugs match `^[a-z0-9-]+$`
   // (no underscore), so `_admin` can never collide with a real org — unlike a
   // bare `admin`, which is a legal slug and would be shadowed here.
-  app.route("/api/_admin", createAdminRoutes());
+  app.route(ADMIN_API_PREFIX, createAdminRoutes());
 
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup

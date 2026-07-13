@@ -5,13 +5,17 @@ import { HTTPException } from "hono/http-exception";
  * A better-auth / better-call APIError, matched by SHAPE not `instanceof`.
  * better-call is present in several copies (better-auth bundles its own), so the
  * APIError class thrown by the auth plugins isn't identical to one we'd import —
- * `instanceof` silently misses and the error 500s. An Error carrying a numeric
- * 4xx/5xx `statusCode` is the reliable discriminator.
+ * `instanceof` silently misses and the error 500s. Every copy's constructor sets
+ * `this.name = "APIError"` (verified in better-call error.mjs, both 1.x and 2.x),
+ * so `name === "APIError"` + a numeric 4xx/5xx `statusCode` is the reliable
+ * cross-copy discriminator. The name check is what keeps this from misfiring on
+ * foreign errors that merely happen to carry a `statusCode` (e.g. the AI SDK's
+ * `AI_APICallError`), relabeling an upstream 5xx as our own client-facing 4xx.
  */
 function asApiError(
   err: unknown,
 ): { statusCode: number; body?: { message?: string; code?: string } } | null {
-  if (!(err instanceof Error)) return null;
+  if (!(err instanceof Error) || err.name !== "APIError") return null;
   const code = (err as { statusCode?: unknown }).statusCode;
   if (typeof code !== "number" || code < 400 || code >= 600) return null;
   return err as unknown as {

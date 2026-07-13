@@ -30,7 +30,7 @@ export default function AdminUsersPage() {
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: KEYS.deploymentAdminUsers(debouncedSearch),
     queryFn: async () => {
       const params = new URLSearchParams({ limit: "100" });
@@ -154,14 +154,21 @@ export default function AdminUsersPage() {
               data={users}
               isLoading={isLoading}
               emptyState={
-                <EmptyState
-                  title="No users found"
-                  description={
-                    debouncedSearch
-                      ? `No users match "${debouncedSearch}"`
-                      : "No users yet."
-                  }
-                />
+                isError ? (
+                  <EmptyState
+                    title="Failed to load users"
+                    description="Something went wrong. Refresh to try again."
+                  />
+                ) : (
+                  <EmptyState
+                    title="No users found"
+                    description={
+                      debouncedSearch
+                        ? `No users match "${debouncedSearch}"`
+                        : "No users yet."
+                    }
+                  />
+                )
               }
             />
           </div>

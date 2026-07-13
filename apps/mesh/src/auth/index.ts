@@ -126,6 +126,18 @@ const scopes = Object.values(getToolsByCategory())
  */
 export const deploymentAdminUserIds: string[] = [];
 
+/**
+ * Register a verified, allowlisted operator's id for the raw admin-plugin
+ * privilege (see above). The `/api/_admin/*` middleware calls this on each such
+ * request; the grant logic and the shallow-spread caveat live here in one place
+ * rather than the route poking the module array directly. Push-only + deduped.
+ */
+export function grantDeploymentAdmin(userId: string): void {
+  if (!deploymentAdminUserIds.includes(userId)) {
+    deploymentAdminUserIds.push(userId);
+  }
+}
+
 export const authConfig = getConfig().auth;
 
 let sendInvitationEmail: OrganizationOptions["sendInvitationEmail"] = undefined;

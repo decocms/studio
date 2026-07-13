@@ -5,9 +5,11 @@ import { Page } from "@/web/components/page";
 import { CollectionTableWrapper } from "@/web/components/collections/collection-table-wrapper.tsx";
 import type { TableColumn } from "@/web/components/collections/collection-table.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
+import { SearchInput } from "@deco/ui/components/search-input.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
+import { useDebouncedValue } from "@/web/hooks/use-debounced-value";
 import {
   Dialog,
   DialogContent,
@@ -56,7 +58,9 @@ function AddMemberDialog({ org }: { org: DeploymentAdminOrg }) {
     },
     onSuccess: () => {
       toast.success(`Added ${email.trim()} to ${org.name}`);
-      queryClient.invalidateQueries({ queryKey: KEYS.deploymentAdminOrgs() });
+      queryClient.invalidateQueries({
+        queryKey: KEYS.deploymentAdminOrgsList(),
+      });
       setOpen(false);
       setEmail("");
       setRole("user");
@@ -129,10 +133,17 @@ function AddMemberDialog({ org }: { org: DeploymentAdminOrg }) {
 }
 
 export default function AdminOrgsPage() {
-  const { data, isLoading } = useQuery({
-    queryKey: KEYS.deploymentAdminOrgs(),
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: KEYS.deploymentAdminOrgs(debouncedSearch),
     queryFn: async () => {
-      const res = await fetch("/api/_admin/orgs", { credentials: "include" });
+      const params = new URLSearchParams({ limit: "100" });
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      const res = await fetch(`/api/_admin/orgs?${params}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Failed to load organizations");
       return (await res.json()) as { organizations: DeploymentAdminOrg[] };
     },
@@ -186,17 +197,36 @@ export default function AdminOrgsPage() {
     <Page>
       <Page.Content>
         <Page.Body>
-          <CollectionTableWrapper
-            columns={columns}
-            data={orgs}
-            isLoading={isLoading}
-            emptyState={
-              <EmptyState
-                title="No organizations found"
-                description="No organizations exist yet."
-              />
-            }
-          />
+          <div className="flex flex-col gap-6">
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Search organizations by name or slug..."
+              className="w-full md:w-[375px]"
+            />
+            <CollectionTableWrapper
+              columns={columns}
+              data={orgs}
+              isLoading={isLoading}
+              emptyState={
+                isError ? (
+                  <EmptyState
+                    title="Failed to load organizations"
+                    description="Something went wrong. Refresh to try again."
+                  />
+                ) : (
+                  <EmptyState
+                    title="No organizations found"
+                    description={
+                      debouncedSearch
+                        ? `No organizations match "${debouncedSearch}"`
+                        : "No organizations exist yet."
+                    }
+                  />
+                )
+              }
+            />
+          </div>
         </Page.Body>
       </Page.Content>
     </Page>
