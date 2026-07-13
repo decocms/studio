@@ -24,6 +24,7 @@ import { LogTee } from "../process/log-tee";
 import { appLogPath, hasGitRepo, resolvePmRoot } from "../paths";
 import { discoverScripts } from "../process/script-discovery";
 import type { Application, Config } from "../types";
+import { materializeAskpass } from "./askpass";
 import { autodetectApplication } from "./autodetect";
 import { type CloneResult, spawnClone } from "./clone";
 import { emitInstalledDeps } from "./dep-metrics";
@@ -271,8 +272,10 @@ export class SetupOrchestrator {
       const cloneTee = new LogTee(cloneLogPath, INSTALL_LOG_MAX_BYTES);
       let result: CloneResult;
       try {
+        const askpassPath = await materializeAskpass(this.deps.logsDir);
         result = await spawnClone({
           config,
+          askpassPath,
           onChunk: (_src, data) => {
             this.rawChunk(data);
             cloneTee.write(data);
