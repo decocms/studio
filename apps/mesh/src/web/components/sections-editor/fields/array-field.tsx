@@ -471,13 +471,6 @@ export function ArrayField({
 
   const removeItem = (index: number) => {
     onChange(items.filter((_, i) => i !== index));
-    if (selectedIndex === index) {
-      const itemName = itemLabel(items[index], index);
-      const itemIndex = findBreadcrumbLabelIndex(breadcrumbPath, itemName);
-      onBreadcrumbChange?.(
-        itemIndex >= 0 ? breadcrumbPath.slice(0, itemIndex) : [],
-      );
-    }
   };
 
   const updateItem = (index: number, val: unknown) => {
