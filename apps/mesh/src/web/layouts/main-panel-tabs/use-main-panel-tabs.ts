@@ -304,10 +304,8 @@ export function useMainPanelTabs(ctx: {
   // per-agent special-case. Source tabs (Blocks · Preview · Code) share one
   // capability gate via getSourceSystemTabs.
   const leadingSystemTabs: Array<{ id: string; title: string }> = [];
-  // Library leads the bar and never changes with the agent — an org-level,
-  // agent-independent anchor pinned leftmost so it doesn't shuffle as the
-  // per-agent views (Overview / Preview / Blocks / Code) come and go.
-  leadingSystemTabs.push({ id: "files", title: "Library" });
+  // Library is agent-independent, so it lives in the LEFT toolbar group next to
+  // the Chat toggle (see LibraryToggle), NOT in this per-agent tab bar.
   if (effectiveDefaultMainView?.type === "overview") {
     leadingSystemTabs.push({ id: "overview", title: "Overview" });
   }
