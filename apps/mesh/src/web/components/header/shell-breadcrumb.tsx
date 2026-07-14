@@ -39,6 +39,7 @@ import { AgentScopePicker } from "@/web/components/sidebar/agents-section";
 import { useThreads } from "@/web/components/chat/store/hooks";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { findReusableNewChat } from "@/web/lib/reusable-new-chat";
+import { usePendingInvitations } from "@/web/hooks/use-pending-invitations";
 
 const crumbBtnClass =
   "wco-no-drag inline-flex items-center gap-1.5 min-w-0 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
@@ -110,6 +111,9 @@ export function ShellBreadcrumb() {
   const search = useSearch({ strict: false }) as { virtualmcpid?: string };
   const { threads } = useThreads();
   const { setTaskId, createNewTask } = usePanelActions();
+  // Pending cross-org invitations surface inside the org switcher; show a dot on
+  // its trigger so they're noticed without opening it.
+  const hasPendingInvites = usePendingInvitations().length > 0;
 
   const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
   const decopilotId = decopilot.id;
@@ -151,14 +155,23 @@ export function ShellBreadcrumb() {
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    aria-label={`${org.name} — switch organization`}
+                    aria-label={
+                      hasPendingInvites
+                        ? `${org.name} — switch organization (pending invitation)`
+                        : `${org.name} — switch organization`
+                    }
                     // Extra left padding centers the org icon over the 56px
                     // collapsed sidebar rail below it (icons sit at ~28px from
                     // the shared left edge), so it lines up when the sidebar is
                     // closed.
                     className="wco-no-drag flex items-center gap-1.5 shrink-0 rounded-md pl-3 pr-1.5 py-1.5 hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
-                    <OrgIcon org={org} size="sm" />
+                    <span className="relative inline-flex">
+                      <OrgIcon org={org} size="sm" />
+                      {hasPendingInvites && (
+                        <span className="absolute -top-1 -right-1 size-2.5 rounded-full bg-destructive ring-2 ring-background" />
+                      )}
+                    </span>
                     <ChevronDown
                       size={14}
                       className="shrink-0 text-muted-foreground opacity-70"
