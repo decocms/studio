@@ -1,10 +1,5 @@
 import { MessageCircle01 } from "@untitledui/icons";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
 
 export interface ToggleButtonsProps {
@@ -18,8 +13,11 @@ export interface ToggleButtonsProps {
 }
 
 /**
- * Top-toolbar chat toggle. (The New task action lives in the sidebar toolbar,
- * next to the thread list.)
+ * Top-toolbar chat toggle. Renders through the shared HeaderTabButton so it
+ * stays pixel-identical to the Preview/Blocks/Code tabs (same height, icon and
+ * label metrics, active/hover styling) — the only extras are the PWA titlebar
+ * drag opt-out and a taller mobile touch target. (The New task action lives in
+ * the sidebar toolbar, next to the thread list.)
  */
 export function ToggleButtons({
   chatOpen,
@@ -27,26 +25,19 @@ export function ToggleButtons({
   disableChatToggle = false,
 }: ToggleButtonsProps) {
   return (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <ToolbarIconButton
-          onClick={() => {
-            if (disableChatToggle) return;
-            track("agent_toolbar_toggled", {
-              button: "chat",
-              next_state: !chatOpen ? "open" : "closed",
-            });
-            toggleChat();
-          }}
-          disabled={disableChatToggle}
-          aria-pressed={chatOpen}
-          aria-label="Chat"
-          active={chatOpen}
-        >
-          <MessageCircle01 size={16} />
-        </ToolbarIconButton>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">Chat</TooltipContent>
-    </Tooltip>
+    <HeaderTabButton
+      title="Chat"
+      icon={{ kind: "component", Component: MessageCircle01 }}
+      active={chatOpen}
+      disabled={disableChatToggle}
+      className="wco-no-drag h-10 md:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+      onClick={() => {
+        track("agent_toolbar_toggled", {
+          button: "chat",
+          next_state: !chatOpen ? "open" : "closed",
+        });
+        toggleChat();
+      }}
+    />
   );
 }

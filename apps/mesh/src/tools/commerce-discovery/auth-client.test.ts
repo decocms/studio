@@ -257,6 +257,33 @@ describe("triggerCommerceDiscoveryRun", () => {
     ]);
   });
 
+  test("forwards github_repo in the body when provided", async () => {
+    let body: unknown;
+    await triggerCommerceDiscoveryRun(
+      {
+        siteUrl: "https://example.com",
+        orgId: "org_123",
+        githubRepo: "deco-sites/fila-store",
+      },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async (input, init) => {
+          body = await new Request(input, init).json();
+          return Response.json({
+            url: "example.com",
+            scope: "private",
+            run: {},
+          });
+        },
+      },
+    );
+    expect(body).toEqual({
+      org_id: "org_123",
+      github_repo: "deco-sites/fila-store",
+    });
+  });
+
   test("treats a 409 (not upgraded yet) as a soft skip, not a throw", async () => {
     const out = await triggerCommerceDiscoveryRun(
       { siteUrl: "https://example.com", orgId: "org_123" },

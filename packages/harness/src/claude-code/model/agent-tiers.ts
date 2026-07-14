@@ -24,9 +24,9 @@ const CLAUDE_CODE_TIERS: AgentTierMap = {
 };
 
 const CODEX_TIERS: AgentTierMap = {
-  fast: { modelId: "codex:gpt-5.4-mini", label: "GPT-5.4 Mini" },
-  smart: { modelId: "codex:gpt-5.4", label: "GPT-5.4" },
-  thinking: { modelId: "codex:gpt-5.5", label: "GPT-5.5" },
+  fast: { modelId: "codex:gpt-5.6-luna", label: "GPT-5.6 Luna" },
+  smart: { modelId: "codex:gpt-5.6-terra", label: "GPT-5.6 Terra" },
+  thinking: { modelId: "codex:gpt-5.6-sol", label: "GPT-5.6 Sol" },
 };
 
 function getAgentTiers(agent: HarnessId): AgentTierMap | null {

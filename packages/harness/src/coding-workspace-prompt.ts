@@ -7,12 +7,36 @@ export interface CodingWorkspacePromptInput {
   branch?: string | null;
   cwd?: string | null;
   workspaceKind?: "github" | "template" | "local" | "unknown";
+  /**
+   * Whether the attached workspace is a Deco CMS site (its checkout contains a
+   * `.deco/` directory). Gates the {@link DECO_CMS_CONTENT_RULES} block — the
+   * caller resolves this against the sandbox the agent is attached to (local fs
+   * for the in-sandbox CLI harnesses, the sandbox-fs proxy for the cluster
+   * engine). Absent/false ⇒ the CMS rules are omitted, so non-deco workspaces
+   * don't carry the dead-weight instructions.
+   */
+  isDecoSite?: boolean;
 }
 
 function line(label: string, value: string | null | undefined): string | null {
   const text = value?.trim();
   return text ? `- ${label}: ${text}` : null;
 }
+
+/**
+ * CMS-content rules for Deco sites. Rendered only when the caller has confirmed
+ * the attached workspace is a Deco site (`isDecoSite` — resolved against the
+ * sandbox `.deco/` directory), so non-deco workspaces don't carry it as dead
+ * weight. Getting this wrong is silent data loss — `blocks.gen.json` edits
+ * render in the dev preview but are regenerated from `.deco/blocks/` on every
+ * production build, so the change never reaches the deployed site.
+ */
+const DECO_CMS_CONTENT_RULES = `This is a Deco CMS site (its repository contains a \`.deco/\` directory). These rules apply to content changes (page copy, section props, loader config, site settings):
+
+- CMS content lives in \`.deco/blocks/<encoded-key>.json\` — one JSON file per block, filename is the URI-encoded block key. Edit ONLY the matching \`.deco/blocks/*.json\` file(s).
+- NEVER edit generated artifacts: \`blocks.gen.json\`, \`blocks.gen.ts\`, \`meta.gen.json\`, or any other \`*.gen.*\` file. They are regenerated from \`.deco/blocks/\` by the dev server and by every production build — an edit there looks correct in the preview but is silently discarded on deploy.
+- Do not touch any other file to make a content change visible: the dev server watches \`.deco/blocks/\` and hot-reloads the preview, and production builds/content syncs read \`.deco/blocks/\` directly. Committing the \`.deco/blocks/*.json\` change is all that is needed.
+- After making a CMS content change, check the repo's AGENTS.md: if it is missing or does not document these \`.deco/\` content rules, add a short "Deco CMS content" section (creating AGENTS.md if needed) so other tools working in this repo follow the same rules. If AGENTS.md already documents them, leave it untouched.`;
 
 export function buildCodingWorkspacePrompt(
   input?: CodingWorkspacePromptInput | null,
@@ -53,6 +77,8 @@ When asked to change code, edit the working tree directly and verify the result.
 Cite files as \`path:line\` when explaining code.
 Do not re-clone the repository; it is already available in the workspace.
 Use git CLI for local working tree, branch, history, rebase, commit, and push operations.
-Use GitHub tools only for PR, review, comment, issue, or remote repository operations when available.${githubCaution}
+Use GitHub tools only for PR, review, comment, issue, or remote repository operations when available.${githubCaution}${
+    input?.isDecoSite ? `\n\n${DECO_CMS_CONTENT_RULES}` : ""
+  }
 </coding-workspace>`;
 }

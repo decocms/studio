@@ -100,6 +100,45 @@ describe("buildCodingWorkspacePrompt", () => {
     );
   });
 
+  test("includes Deco CMS content rules only when isDecoSite is set", () => {
+    const decoPrompt = buildCodingWorkspacePrompt({
+      repo: { owner: "deco", name: "site", connectedGithub: true },
+      workspaceKind: "github",
+      cwd: "/repo",
+      isDecoSite: true,
+    });
+    expect(decoPrompt).toContain("This is a Deco CMS site");
+    expect(decoPrompt).toContain(".deco/blocks/<encoded-key>.json");
+    expect(decoPrompt).toContain("NEVER edit generated artifacts");
+    expect(decoPrompt).toContain("blocks.gen.json");
+    expect(decoPrompt).toContain("AGENTS.md");
+  });
+
+  test("omits Deco CMS content rules for non-deco or unverified workspaces", () => {
+    for (const input of [
+      undefined,
+      { workspaceKind: "local" as const },
+      // A repo workspace that was NOT confirmed to be a deco site.
+      {
+        repo: { owner: "deco", name: "site", connectedGithub: true },
+        workspaceKind: "github" as const,
+        cwd: "/repo",
+      },
+      // Explicitly not a deco site.
+      {
+        repo: { owner: "acme", name: "app", connectedGithub: true },
+        workspaceKind: "github" as const,
+        cwd: "/repo",
+        isDecoSite: false,
+      },
+    ]) {
+      const prompt = buildCodingWorkspacePrompt(input);
+      expect(prompt).not.toContain("This is a Deco CMS site");
+      expect(prompt).not.toContain(".deco/blocks/<encoded-key>.json");
+      expect(prompt).not.toContain("NEVER edit generated artifacts");
+    }
+  });
+
   test("does not include Decopilot-only tool vocabulary", () => {
     const prompt = buildCodingWorkspacePrompt({
       repo: {

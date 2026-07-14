@@ -19,6 +19,7 @@ import * as DatabaseTools from "./database";
 import * as VirtualMCPTools from "./virtual";
 import * as MonitoringTools from "./monitoring";
 import * as OrganizationTools from "./organization";
+import * as TaskBoardTools from "./task-board";
 import * as TagTools from "./tags";
 import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
@@ -49,6 +50,10 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_DELETE,
   OrganizationTools.ORGANIZATION_SETTINGS_GET,
   OrganizationTools.ORGANIZATION_SETTINGS_UPDATE,
+  TaskBoardTools.TASK_BOARD_ITEM_CREATE,
+  TaskBoardTools.TASK_BOARD_ITEM_LIST,
+  TaskBoardTools.TASK_BOARD_ITEM_UPDATE,
+  TaskBoardTools.TASK_BOARD_ITEM_DELETE,
   OrganizationTools.BRAND_CONTEXT_LIST,
   OrganizationTools.BRAND_CONTEXT_GET,
   OrganizationTools.BRAND_CONTEXT_CREATE,

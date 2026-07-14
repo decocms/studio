@@ -38,7 +38,7 @@ export class RingBuffer {
     return { data: this.chunks.join(""), truncated: this.dropped };
   }
 
-  byteLength(): number {
-    return this.size;
+  isTruncated(): boolean {
+    return this.dropped;
   }
 }

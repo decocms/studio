@@ -11,29 +11,27 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { ArrowLeft, Inbox01, Settings02, ZapSquare } from "@untitledui/icons";
+import {
+  ArrowLeft,
+  Inbox01,
+  Settings02,
+  UserPlus01,
+  ZapSquare,
+} from "@untitledui/icons";
 import { useState, type ReactNode } from "react";
+import { RepoSwitcher } from "@/web/components/sidebar/footer/repo-switcher";
+import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
+import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
-import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
-import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
-import { track } from "@/web/lib/posthog-client";
 import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item";
 import { JoinRequestItem } from "@/web/components/sidebar/footer/join-request-item";
 import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
 import { ReleaseCard } from "@/web/components/release-channel/release-card";
 import { useInboxFeed } from "@/web/hooks/use-inbox-feed";
-import {
-  SidebarTopActions,
-  SidebarTopActionsInline,
-} from "@/web/components/sidebar/top-actions";
+import { SidebarTopActions } from "@/web/components/sidebar/top-actions";
 
 function InboxPopover({ children }: { children: ReactNode }) {
   const { items, markReleaseSeen } = useInboxFeed();
@@ -161,85 +159,6 @@ function InboxFullButton() {
   );
 }
 
-function InboxIconButton() {
-  const hasUnread = useHasUnreadInbox();
-  return (
-    <InboxPopover>
-      <Tooltip delayDuration={300}>
-        <PopoverTrigger asChild>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton aria-label="Inbox">
-              <Inbox01 className="size-4" />
-              {hasUnread && (
-                <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 pointer-events-none" />
-              )}
-            </ToolbarIconButton>
-          </TooltipTrigger>
-        </PopoverTrigger>
-        <TooltipContent side="top">Inbox</TooltipContent>
-      </Tooltip>
-    </InboxPopover>
-  );
-}
-
-function ConnectionsFullButton() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <SidebarMenuButton
-        tooltip="Connections"
-        onClick={() => {
-          track("connections_dialog_opened", {
-            source: "sidebar_footer",
-            mode: "browse",
-          });
-          setOpen(true);
-        }}
-      >
-        <ZapSquare />
-        <span>Connections</span>
-      </SidebarMenuButton>
-      <AddConnectionDialog
-        mode="browse"
-        open={open}
-        onOpenChange={setOpen}
-        defaultTab="all"
-      />
-    </>
-  );
-}
-
-function ConnectionsIconButton() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Tooltip delayDuration={300}>
-        <TooltipTrigger asChild>
-          <ToolbarIconButton
-            aria-label="Connections"
-            onClick={() => {
-              track("connections_dialog_opened", {
-                source: "sidebar_footer",
-                mode: "browse",
-              });
-              setOpen(true);
-            }}
-          >
-            <ZapSquare className="size-4" />
-          </ToolbarIconButton>
-        </TooltipTrigger>
-        <TooltipContent side="top">Connections</TooltipContent>
-      </Tooltip>
-      <AddConnectionDialog
-        mode="browse"
-        open={open}
-        onOpenChange={setOpen}
-        defaultTab="all"
-      />
-    </>
-  );
-}
-
 function SettingsFullButton() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
@@ -259,26 +178,46 @@ function SettingsFullButton() {
   );
 }
 
-function SettingsIconButton() {
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
+/**
+ * Sidebar footer actions — org-wide entry points that aren't tied to a single
+ * agent: invite teammates, add a repo as an org-shared GitHub connection
+ * (available to every agent), and add any connection. Rendered as full-width
+ * rows above the account row.
+ */
+function SidebarExtraActions() {
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
   return (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <ToolbarIconButton
-          aria-label="Settings"
-          onClick={() =>
-            navigate({
-              to: "/$org/settings",
-              params: { org: org.slug },
-            })
-          }
-        >
-          <Settings02 className="size-4" />
-        </ToolbarIconButton>
-      </TooltipTrigger>
-      <TooltipContent side="top">Settings</TooltipContent>
-    </Tooltip>
+    <>
+      <SidebarMenu className="gap-0.5">
+        <SidebarMenuItem>
+          <InviteMemberDialog
+            trigger={
+              <SidebarMenuButton tooltip="Invite members">
+                <UserPlus01 />
+                <span>Invite members</span>
+              </SidebarMenuButton>
+            }
+          />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <RepoSwitcher />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            tooltip="Add connection"
+            onClick={() => setConnectionsOpen(true)}
+          >
+            <ZapSquare />
+            <span>Add connection</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+      <AddConnectionDialog
+        open={connectionsOpen}
+        onOpenChange={setConnectionsOpen}
+        mode="browse"
+      />
+    </>
   );
 }
 
@@ -289,18 +228,18 @@ export function SidebarInboxFooter() {
   if (isCollapsed) {
     return (
       <SidebarFooter className="px-2 pb-3 gap-1">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <InboxFullButton />
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <SidebarExtraActions />
         <SidebarTopActions />
         <SidebarMenu>
           <SidebarMenuItem>
             <div className="flex justify-center">
               <LinkedDesktopIndicator />
             </div>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <ConnectionsFullButton />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <InboxFullButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SettingsFullButton />
@@ -314,21 +253,25 @@ export function SidebarInboxFooter() {
   }
 
   return (
-    <SidebarFooter className="px-2 pb-3">
-      <div className="flex items-center gap-1">
-        <div className="flex-1 min-w-0">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <AccountPopover />
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </div>
-        <SettingsIconButton />
-        <InboxIconButton />
-        <LinkedDesktopIndicator />
-        <ConnectionsIconButton />
-        <SidebarTopActionsInline />
-      </div>
+    <SidebarFooter className="px-2 pb-3 gap-0.5">
+      <SidebarMenu className="gap-0.5">
+        <SidebarMenuItem>
+          <InboxFullButton />
+        </SidebarMenuItem>
+      </SidebarMenu>
+      <SidebarExtraActions />
+      <SidebarTopActions />
+      <SidebarMenu className="gap-0.5">
+        <SidebarMenuItem>
+          <LinkedDesktopIndicator variant="full" />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SettingsFullButton />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <AccountPopover />
+        </SidebarMenuItem>
+      </SidebarMenu>
     </SidebarFooter>
   );
 }

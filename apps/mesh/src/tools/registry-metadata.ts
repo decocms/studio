@@ -37,7 +37,8 @@ export type ToolCategory =
   | "GitHub"
   | "VM"
   | "Links"
-  | "Search";
+  | "Search"
+  | "Task Board";
 
 /**
  * All tool names - keep in sync with CORE_TOOLS in index.ts
@@ -216,6 +217,12 @@ const ALL_TOOL_NAMES = [
 
   // Search tools
   "GLOBAL_SEARCH",
+
+  // Task board tools
+  "TASK_BOARD_ITEM_CREATE",
+  "TASK_BOARD_ITEM_LIST",
+  "TASK_BOARD_ITEM_UPDATE",
+  "TASK_BOARD_ITEM_DELETE",
 ] as const;
 
 /**
@@ -1007,6 +1014,28 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
       "Search across organization resources (currently threads). Returns a typed union of matches.",
     category: "Search",
   },
+  // Task board tools
+  {
+    name: "TASK_BOARD_ITEM_CREATE",
+    description: "Create task board item",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_ITEM_LIST",
+    description: "List task board items",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_ITEM_UPDATE",
+    description: "Update task board item",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_ITEM_DELETE",
+    description: "Delete task board item",
+    category: "Task Board",
+    dangerous: true,
+  },
 ];
 
 // ============================================================================
@@ -1103,6 +1132,13 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // the run fence token, same trust boundary as the chat turn itself.
       "THREAD_BACKGROUND_TOOL_START",
       "THREAD_SUBTASK_DELIVER",
+      // Task board — org-scoped, gated behind the org's task_board_enabled
+      // setting (enforced per-handler), but usable by every member once on,
+      // same basic-usage tier as chat threads.
+      "TASK_BOARD_ITEM_CREATE",
+      "TASK_BOARD_ITEM_LIST",
+      "TASK_BOARD_ITEM_UPDATE",
+      "TASK_BOARD_ITEM_DELETE",
     ],
   },
   // Organization
