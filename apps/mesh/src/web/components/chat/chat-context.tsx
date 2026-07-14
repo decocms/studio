@@ -240,9 +240,9 @@ export interface ChatPrefsContextValue {
   setSimpleModeTier: (tier: SimpleTier) => void;
   /**
    * The agent option the chat will use for the next first message
-   * (`Decopilot` / `Decopilot desktop` / `Claude Code desktop` /
-   * `Codex desktop`). Single source of truth for the (harness, sandbox)
-   * pair — see `AGENT_OPTION_PINS` in `./pills/agent-options`.
+   * (cloud org router / Claude Code on desktop / Codex on desktop). Single
+   * source of truth for the (harness, sandbox) pair — see `AGENT_OPTION_PINS`
+   * in `./pills/agent-options`. Chosen inside the model selector.
    *
    * This is the **effective** value: the user's persisted pick filtered
    * through what the active agent can actually run. If the user picked a
@@ -564,9 +564,8 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   };
 
   // Pending agent — single source of truth for the user's pre-message
-  // pick (`Decopilot` / `Decopilot desktop` / `Claude Code desktop` /
-  // `Codex desktop`). Persisted to localStorage so the choice survives
-  // page reloads.
+  // pick (cloud org router / Claude Code on desktop / Codex on desktop).
+  // Persisted to localStorage so the choice survives page reloads.
   //
   // Scoped per `locator` (like the image-model and tier prefs) so a desktop
   // pick made in one org doesn't leak into another — runtime availability is
@@ -604,7 +603,9 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
 
   // Preserve the user's selected runtime exactly. Presence/capability probes are
   // advisory only; dispatch should surface the real backend error if the choice
-  // cannot run.
+  // cannot run. (Cloud chat via the org router works even where the cloud
+  // *sandbox* is unavailable, so we must not rewrite the harness here — the
+  // preview's cloud-vs-local fallback is handled at the sandbox layer.)
   const selectedAgentOption = pendingAgentOption;
 
   // When the thread is locked, the agent option is dictated by the persisted

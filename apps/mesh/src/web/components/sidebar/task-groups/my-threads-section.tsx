@@ -50,6 +50,11 @@ export function MyThreadsSection({
     );
   }
 
+  // Archiving your only thread is pointless — the app immediately mints a fresh
+  // "New chat" to replace it. Hide the archive affordance until there's more
+  // than one thread (or more waiting on the next page).
+  const canArchive = threads.length > 1 || hasMore;
+
   if (groupBy === "status") {
     return (
       <>
@@ -61,6 +66,7 @@ export function MyThreadsSection({
             activeTaskId={activeTaskId}
             onSelectTask={onSelectTask}
             onArchiveTask={onArchiveTask}
+            canArchive={canArchive}
             filters={filters}
           />
         ))}
@@ -77,7 +83,7 @@ export function MyThreadsSection({
           isActive={activeTaskId === task.id}
           onClick={() => onSelectTask(task)}
           onArchive={
-            task.created_by === filters.currentUserId
+            canArchive && task.created_by === filters.currentUserId
               ? () => onArchiveTask(task)
               : undefined
           }

@@ -85,7 +85,7 @@ export function computeChatMainSizes(
   chatOpen: boolean,
   mainOpen: boolean,
 ): { chat: number; main: number } {
-  if (chatOpen && mainOpen) return { chat: 45, main: 55 };
+  if (chatOpen && mainOpen) return { chat: 33, main: 67 };
   if (chatOpen && !mainOpen) return { chat: 100, main: 0 };
   if (!chatOpen && mainOpen) return { chat: 0, main: 100 };
   return { chat: 0, main: 0 };

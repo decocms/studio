@@ -5,11 +5,7 @@ import {
   type SandboxProviderKind,
 } from "@decocms/mesh-sdk";
 
-export type AgentOption =
-  | "decopilot"
-  | "decopilot-desktop"
-  | "claude-code-desktop"
-  | "codex-desktop";
+export type AgentOption = "decopilot" | "claude-code-desktop" | "codex-desktop";
 
 export interface AgentPins {
   harness: HarnessId;
@@ -24,7 +20,6 @@ export interface AgentPins {
  */
 export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
   decopilot: { harness: "decopilot", sandbox: "agent-sandbox" },
-  "decopilot-desktop": { harness: "decopilot", sandbox: "user-desktop" },
   "claude-code-desktop": { harness: "claude-code", sandbox: "user-desktop" },
   "codex-desktop": { harness: "codex", sandbox: "user-desktop" },
 };
@@ -74,6 +69,21 @@ export interface AgentOptionAvailability {
   codex: boolean;
 }
 
+/**
+ * The local desktop `AgentOption` to default to for the current availability —
+ * Claude Code wins when both CLIs are present. Null when no local CLI is
+ * available. One canonical home for the "which local runtime" precedence, so
+ * the model-selector runtime toggle and the preview runtime switcher can't
+ * drift apart.
+ */
+export function preferredLocalAgentOption(
+  availability: AgentOptionAvailability,
+): AgentOption | null {
+  if (availability.claudeCode) return "claude-code-desktop";
+  if (availability.codex) return "codex-desktop";
+  return null;
+}
+
 /** Whether `option` can run given the current `availability`. */
 export function agentOptionIsAvailable(
   option: AgentOption,
@@ -82,8 +92,6 @@ export function agentOptionIsAvailable(
   switch (option) {
     case "decopilot":
       return availability.agentSandbox;
-    case "decopilot-desktop":
-      return availability.userDesktop;
     case "claude-code-desktop":
       return availability.userDesktop && availability.claudeCode;
     case "codex-desktop":

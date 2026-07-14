@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Monitor01 } from "@untitledui/icons";
+import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ConnectProviderDialog } from "@/web/views/settings/ai-providers/connect-provider-dialog";
 import {
@@ -15,10 +16,21 @@ import { useStudioTools } from "@/web/lib/studio-tools";
 import { useQuery } from "@tanstack/react-query";
 import type { BrandContext } from "@/storage/types";
 import { ConnectDesktopDialog } from "./connect-desktop-dialog";
+import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
+import { useOptionalChatPrefs } from "./context";
+import type { AgentOption } from "./pills/agent-options";
 
 interface NoAiProviderEmptyStateProps {
   title?: string;
   description?: string;
+  /**
+   * Called right after the user picks a local runtime (Claude Code / Codex).
+   * The component has already persisted the pick; this lets the host advance
+   * the UI — the chat panel uses it to open the agent's Overview, mirroring
+   * "new chat with this agent". Omitted by the model-selector popover, where
+   * picking a runtime should not navigate.
+   */
+  onLocalRuntimePicked?: (option: AgentOption) => void;
 }
 
 function useDefaultBrand(): BrandContext | null {
@@ -66,11 +78,17 @@ function extractPrimaryColor(brand: BrandContext): string | null {
 export function NoAiProviderEmptyState({
   title,
   description,
+  onLocalRuntimePicked,
 }: NoAiProviderEmptyStateProps = {}) {
   const { org } = useProjectContext();
   const { localMode } = useAuthConfig();
   const brand = useDefaultBrand();
   const link = useCurrentLink();
+  // Optional: this empty state also renders inside the standalone model
+  // selector (settings / automations), which mounts outside ChatContextProvider.
+  // The local-runtime buttons only appear in the chat panel anyway, where the
+  // provider is present.
+  const chatPrefs = useOptionalChatPrefs();
   const [pendingProvider, setPendingProvider] =
     useState<ProviderSelection | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
@@ -78,6 +96,36 @@ export function NoAiProviderEmptyState({
 
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
+
+  // Local coding agents detected on the linked desktop. When present, they are
+  // a first-class way to start chatting *without* any cloud provider — picking
+  // one selects that runtime for the chat and the composer takes over. This is
+  // why the empty state isn't a hard block when a desktop link is online.
+  const localOptions: Array<{
+    option: AgentOption;
+    label: string;
+    icon: ReactNode;
+  }> = [];
+  if (link.online) {
+    if (link.capabilities.includes("claude-code")) {
+      localOptions.push({
+        option: "claude-code-desktop",
+        label: "Claude Code",
+        icon: <ClaudeCodeIcon size={16} />,
+      });
+    }
+    if (link.capabilities.includes("codex")) {
+      localOptions.push({
+        option: "codex-desktop",
+        label: "Codex",
+        icon: <CodexIcon size={16} />,
+      });
+    }
+  }
+  // Local runtime buttons write the pending agent option into chat prefs, so
+  // they only make sense where a chat context exists (the chat panel). Outside
+  // it (standalone model selector), fall back to the connect-a-provider grid.
+  const hasLocalOptions = localOptions.length > 0 && chatPrefs !== null;
 
   const orgName = org.name;
   const primaryColor = brand ? extractPrimaryColor(brand) : null;
@@ -90,9 +138,11 @@ export function NoAiProviderEmptyState({
       : "Your agents are almost ready");
   const subtitle =
     description ??
-    (localMode
-      ? "Connect a provider, or run `bunx decocms@latest link` on your desktop for Claude Code, Codex, and local files."
-      : "Connect a provider — or run `bunx decocms@latest link` on your desktop to use Claude Code, Codex, or your local files.");
+    (hasLocalOptions
+      ? "Your desktop is linked — start now with a local coding agent, or connect a cloud provider for hosted models."
+      : localMode
+        ? "Connect a provider, or run `bunx decocms@latest link` on your desktop for Claude Code, Codex, and local files."
+        : "Connect a provider — or run `bunx decocms@latest link` on your desktop to use Claude Code, Codex, or your local files.");
 
   // Badge styles: use brand color if available, otherwise a neutral muted background
   const hasBrandStyle = !!(brandIcon || primaryColor);
@@ -147,6 +197,32 @@ export function NoAiProviderEmptyState({
           <p className="text-sm text-muted-foreground max-w-md">{subtitle}</p>
         </div>
       </div>
+
+      {hasLocalOptions && (
+        <div className="flex flex-col items-center gap-3 w-full">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {localOptions.map((o) => (
+              <Button
+                key={o.option}
+                variant="default"
+                className="gap-2"
+                onClick={() => {
+                  chatPrefs?.setPendingAgentOption(o.option);
+                  onLocalRuntimePicked?.(o.option);
+                }}
+              >
+                {o.icon}
+                Use {o.label}
+              </Button>
+            ))}
+          </div>
+          <div className="flex items-center gap-3 w-full max-w-xs text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            or connect a cloud provider
+            <span className="h-px flex-1 bg-border" />
+          </div>
+        </div>
+      )}
 
       <div className="w-full">
         <ProviderGrid

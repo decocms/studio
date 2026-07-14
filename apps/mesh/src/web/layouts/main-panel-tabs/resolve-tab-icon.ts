@@ -5,6 +5,7 @@ import {
   Folder,
   GitBranch01,
   Globe01,
+  Home02,
   LayoutAlt04,
   Lightning01,
   TextInput,
@@ -21,6 +22,7 @@ export type TabIcon =
   | { kind: "fallback" };
 
 export type SystemTabId =
+  | "overview"
   | "settings"
   | "automations"
   | "preview"
@@ -31,6 +33,7 @@ export type SystemTabId =
   | "files";
 
 export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
+  overview: Home02,
   settings: LayoutAlt04,
   automations: Lightning01,
   preview: Globe01,

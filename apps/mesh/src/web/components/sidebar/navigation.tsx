@@ -102,7 +102,7 @@ function NavigationSidebarInner({
     <Sidebar variant={variant}>
       <SidebarContent
         className={cn(
-          "flex flex-col flex-1 px-2 py-2 gap-0.5",
+          "flex flex-col flex-1 px-2 pb-2 gap-0.5",
           contentClassName,
         )}
       >

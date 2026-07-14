@@ -44,7 +44,7 @@ export const RUN_STATUS_COPY: Record<RunStatusStage, RunStatusCopy> = {
   },
   "starting-assistant": {
     label: "Starting the assistant",
-    detail: "Opening the cluster Decopilot harness",
+    detail: "Opening the cluster runtime",
   },
   "analyzing-scope": {
     label: "Analyzing scope",
