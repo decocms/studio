@@ -1049,9 +1049,11 @@ function CommerceDiscoveryReady({
   meetingVisual: ReactNode;
   siteUrl?: string;
 }) {
-  // Starts false (blocked) until the companions section reports whether any
-  // data source is connected — see onReadinessChange below.
-  const [hasConnectedSource, setHasConnectedSource] = useState(false);
+  // Fails open: stays true (and the CTA usable) unless the companions section
+  // positively confirms there are required sources still unconnected. A
+  // section load error shouldn't be able to permanently trap the user behind
+  // a disabled button — see onReadinessChange below.
+  const [hasConnectedSource, setHasConnectedSource] = useState(true);
 
   return (
     <CommerceOnboardingLayout align="fill" visual={meetingVisual}>
