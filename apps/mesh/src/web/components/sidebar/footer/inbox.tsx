@@ -283,6 +283,7 @@ export function SidebarInboxFooter() {
     return (
       <SidebarFooter className="px-2 pb-3 gap-1">
         <SidebarTopActions />
+        <SidebarExtraActions />
         <SidebarMenu>
           <SidebarMenuItem>
             <div className="flex justify-center">
