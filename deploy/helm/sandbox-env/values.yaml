@@ -55,6 +55,17 @@ resources:
     memory: 4Gi
     ephemeral-storage: 10Gi
 
+# ── shutdown grace period ──────────────────────────────────────────────
+# On SIGTERM (rollout, spot reclaim, idle eviction) the daemon commits and
+# pushes the working tree to git — the only durable copy of the user's work
+# (the pod's /app is ephemeral emptyDir). That push self-limits at 30s
+# (git-sync.ts DEFAULT_GIT_TIMEOUT_MS); K8s must not SIGKILL the pod before it
+# finishes, so the grace period has to clear the push + commit + unmount with
+# margin. The K8s default (30s) is too tight and drops unsynced work. 90s fits
+# a 30s-bounded push comfortably and still sits inside AWS spot's 120s
+# reclaim notice.
+terminationGracePeriodSeconds: 90
+
 # ── netinit / sandbox egress enforcement ──────────────────────────────
 # Sandbox pods run user code and must not reach in-cluster services.
 # Enforcement is via an iptables init container rather than a Kubernetes
