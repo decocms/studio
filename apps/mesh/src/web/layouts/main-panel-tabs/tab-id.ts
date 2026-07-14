@@ -278,20 +278,13 @@ export function resolveActiveTabAndOpen(ctx: {
  *
  * Clicking the currently-active tab while the panel is open closes it
  * (navigates to `?main=0`). Any other click opens or switches.
- *
- * Exception: Blocks is Preview *with* the sections editor — you can't view
- * Blocks without Preview. So collapsing the active Blocks tab falls back to
- * Preview (closing the editor, keeping the surface visible) rather than closing
- * the panel outright, which felt like an accidental dismiss.
  */
 export function resolveTabClickTarget(ctx: {
   clickedId: string;
   activeTab: string;
   mainOpen: boolean;
 }): string {
-  if (ctx.mainOpen && ctx.clickedId === ctx.activeTab) {
-    return ctx.clickedId === "blocks" ? "preview" : "0";
-  }
+  if (ctx.mainOpen && ctx.clickedId === ctx.activeTab) return "0";
   return ctx.clickedId;
 }
 
