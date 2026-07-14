@@ -140,7 +140,12 @@ export function buildBlogPostPreviewUrl({
   if (!path) return null;
 
   try {
-    return new URL(path, previewBaseUrl).href;
+    const url = new URL(path, previewBaseUrl);
+    // The blog app hides non-published posts on the live site; `preview=true`
+    // makes the single-post loader render a draft so the editor can preview it
+    // before publishing. Previewed drafts are always `noIndexing` app-side.
+    url.searchParams.set("preview", "true");
+    return url.href;
   } catch {
     return null;
   }

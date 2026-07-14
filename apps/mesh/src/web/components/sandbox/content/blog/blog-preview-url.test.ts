@@ -211,14 +211,18 @@ describe("buildBlogPostPreviewUrl", () => {
     },
   };
 
-  it("builds an absolute preview url", () => {
+  it("builds an absolute preview url with the draft-preview flag", () => {
     expect(
       buildBlogPostPreviewUrl({
         decofile,
         post: { slug: "my-post", categories: [{ slug: "news" }] },
         previewBaseUrl: "https://abc.preview.example.com",
       }),
-    ).toBe("https://abc.preview.example.com/blogteste/news/my-post");
+      // `preview=true` lets the blog app render a not-yet-published draft on
+      // its single-post page so the editor can preview before publishing.
+    ).toBe(
+      "https://abc.preview.example.com/blogteste/news/my-post?preview=true",
+    );
   });
 
   it("returns null without a preview origin", () => {
