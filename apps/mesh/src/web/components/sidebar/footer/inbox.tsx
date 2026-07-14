@@ -26,8 +26,7 @@ import {
   ZapSquare,
 } from "@untitledui/icons";
 import { useState, type ReactNode } from "react";
-import { GitHubIcon } from "@/web/components/icons/github-icon";
-import { GitHubRepoPicker } from "@/web/components/github-repo-picker";
+import { RepoSwitcher } from "@/web/components/sidebar/footer/repo-switcher";
 import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { useProjectContext } from "@decocms/mesh-sdk";
@@ -240,7 +239,6 @@ function SettingsIconButton() {
  * rows above the account row.
  */
 function SidebarExtraActions() {
-  const [repoOpen, setRepoOpen] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   return (
     <>
@@ -256,13 +254,7 @@ function SidebarExtraActions() {
           />
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Add repo"
-            onClick={() => setRepoOpen(true)}
-          >
-            <GitHubIcon />
-            <span>Add repo</span>
-          </SidebarMenuButton>
+          <RepoSwitcher />
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
@@ -274,11 +266,6 @@ function SidebarExtraActions() {
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
-      <GitHubRepoPicker
-        open={repoOpen}
-        onOpenChange={setRepoOpen}
-        mode="connection"
-      />
       <AddConnectionDialog
         open={connectionsOpen}
         onOpenChange={setConnectionsOpen}
