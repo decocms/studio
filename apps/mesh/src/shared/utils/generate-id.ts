@@ -22,7 +22,8 @@ type IdPrefixes =
   | "sec"
   | "vpc"
   | "tile"
-  | "fcfg";
+  | "fcfg"
+  | "board";
 
 export function generatePrefixedId(prefix: IdPrefixes) {
   return `${prefix}_${nanoid()}`;

@@ -5,6 +5,15 @@ import {
   type HarnessUsage,
 } from "./consume-harness-stream";
 import { isRunStatusControlChunk } from "./run-status-stage";
+import { isUserMessageControlChunk } from "./user-message-stream";
+
+/** Transient control chunks that ride the run stream for the live UI but must
+ *  never be folded into the durable assistant projection. `fenceFilter`
+ *  already drops the fence-less ones, but filtering by type here keeps the
+ *  projection correct even if one is ever published with a run fence. */
+function isTransientControlChunk(chunk: unknown): boolean {
+  return isRunStatusControlChunk(chunk) || isUserMessageControlChunk(chunk);
+}
 
 /**
  * Title persistence for the projector. When supplied, the projector becomes the
@@ -192,7 +201,7 @@ export async function projectChunks(
       ? (async function* () {
           try {
             for await (const chunk of options.chunks!) {
-              if (isRunStatusControlChunk(chunk)) continue;
+              if (isTransientControlChunk(chunk)) continue;
               yield chunk;
             }
           } catch (e) {
@@ -207,7 +216,7 @@ export async function projectChunks(
       }).pipeThrough(
         new TransformStream<UIMessageChunk, UIMessageChunk>({
           transform(chunk, controller) {
-            if (!isRunStatusControlChunk(chunk)) controller.enqueue(chunk);
+            if (!isTransientControlChunk(chunk)) controller.enqueue(chunk);
           },
         }),
       )

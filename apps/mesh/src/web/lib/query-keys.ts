@@ -11,6 +11,10 @@ export const KEYS = {
   // Public config (no auth required)
   publicConfig: () => ["publicConfig"] as const,
 
+  // Polled separately from publicConfig (which is cached forever) to detect
+  // a deployed version newer than the client's own build.
+  appVersionCheck: () => ["appVersionCheck"] as const,
+
   // Auth-related queries
   session: () => ["session"] as const,
 
@@ -32,6 +36,10 @@ export const KEYS = {
   // Current user's resolved capability bitmap within the active org
   myCapabilities: (locator: ProjectLocator) =>
     [locator, "my-capabilities"] as const,
+
+  // Task board items (scoped by org)
+  taskBoardItems: (locator: ProjectLocator) =>
+    [locator, "task-board-items"] as const,
 
   // Connections (scoped by project)
   connections: (locator: ProjectLocator) => [locator, "connections"] as const,
@@ -80,6 +88,33 @@ export const KEYS = {
     ] as const,
   commerceDiscoveryCompanionGscSites: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "companion-gsc-sites", orgId, connectionId] as const,
+  // GitHub repo picker: repos matching a server-side search (empty = default
+  // page) for the companion connection. Keyed by query so each search term is
+  // cached independently.
+  commerceDiscoveryCompanionGithubRepos: (
+    orgId: string,
+    connectionId: string,
+    query: string,
+  ) =>
+    [
+      "commerce-discovery",
+      "companion-github-repos",
+      orgId,
+      connectionId,
+      query,
+    ] as const,
+  // The repo currently selected on the Commerce Discovery connection
+  // (github_repo), read once for prefill — independent of the search query.
+  commerceDiscoveryCompanionGithubSelected: (
+    orgId: string,
+    connectionId: string,
+  ) =>
+    [
+      "commerce-discovery",
+      "companion-github-selected",
+      orgId,
+      connectionId,
+    ] as const,
   // Per-(org, siteUrl) connection status from commerce-discovery — the single
   // source of truth for "Conectado" across both lanes (OAuth + shared-SA).
   commerceDiscoveryConnectionStatus: (orgId: string, siteUrl: string) =>
@@ -508,6 +543,22 @@ export function invalidateVirtualMcpQueries(
         (!orgId || key[1] === orgId) &&
         key[3] === "collection" &&
         key[4] === "VIRTUAL_MCP"
+      );
+    },
+  });
+}
+
+export function invalidateConnectionQueries(
+  queryClient: import("@tanstack/react-query").QueryClient,
+  orgId?: string,
+) {
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return (
+        (!orgId || key[1] === orgId) &&
+        key[3] === "collection" &&
+        key[4] === "CONNECTIONS"
       );
     },
   });

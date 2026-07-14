@@ -4,7 +4,6 @@
  * Desktop layout:
  *   SidebarInset
  *   ├── Toolbar                            (outside Suspense)
- *   │   • Toolbar.Nav (back/forward)
  *   │   • Toolbar.TabsSlot    (portal target — main-panel tab bar)
  *   │   • Toolbar.TogglesSlot (portal target — chat / new-task)
  *   └── Suspense
@@ -354,8 +353,6 @@ function AgentInsetProvider() {
                   <ToggleButtons
                     chatOpen={!layout.mainOpen}
                     toggleChat={layout.toggleMain}
-                    onNewTask={layout.createNewTask}
-                    newTaskFirst
                   />
                 </Toolbar.Toggles>
                 <Toolbar.Tabs>
@@ -413,7 +410,9 @@ function AgentInsetProvider() {
           <ToggleButtons
             chatOpen={layout.chatOpen}
             toggleChat={layout.toggleChat}
-            onNewTask={layout.createNewTask}
+            // Chat is the only content when no main panel is open — block
+            // turning it off so the content area can't go blank.
+            disableChatToggle={layout.chatOpen && !layout.mainOpen}
           />
         </Toolbar.Toggles>
 

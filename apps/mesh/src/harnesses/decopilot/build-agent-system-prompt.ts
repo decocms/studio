@@ -24,6 +24,7 @@ import {
   type CodingWorkspacePromptInput,
 } from "@decocms/harness/coding-workspace-prompt";
 import { buildOrgFilesystemPrompt } from "@/api/routes/decopilot/constants";
+import { sandboxIsDecoSite } from "./built-in-tools/cluster-sandbox-fs";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
@@ -132,7 +133,23 @@ export async function buildAgentSystemPrompt(
     add("planMode", modeConfig.planPrompt);
   }
 
-  add("codingWorkspace", buildCodingWorkspacePrompt(opts.codingWorkspace));
+  // Resolve whether the attached sandbox is a Deco CMS site (has a `.deco/`
+  // dir) so the CMS-content rules are only appended for deco workspaces. Gated
+  // on `user + branch` — the same prerequisites the VM file tools need to exist
+  // (see `tools.ts` vmContext). Without those there are no file tools to guide,
+  // so the rules are moot and we skip the sandbox round-trip entirely.
+  let codingWorkspaceInput = opts.codingWorkspace;
+  if (codingWorkspaceInput && opts.user?.id && codingWorkspaceInput.branch) {
+    codingWorkspaceInput = {
+      ...codingWorkspaceInput,
+      isDecoSite: await sandboxIsDecoSite(opts.ctx, {
+        virtualMcpId: opts.virtualMcp.id,
+        branch: codingWorkspaceInput.branch,
+        userId: opts.user.id,
+      }),
+    };
+  }
+  add("codingWorkspace", buildCodingWorkspacePrompt(codingWorkspaceInput));
 
   // Org filesystem layout. org-fs is mounted into every sandbox now (desktop +
   // cluster), so this is unconditional. The home folder mounts at the fixed

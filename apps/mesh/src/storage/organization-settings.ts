@@ -45,6 +45,7 @@ export class OrganizationSettingsStorage
           ? JSON.parse(record.default_home_agents)
           : record.default_home_agents
         : null,
+      task_board_enabled: record.task_board_enabled,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -60,6 +61,7 @@ export class OrganizationSettingsStorage
         | "registry_config"
         | "simple_mode"
         | "default_home_agents"
+        | "task_board_enabled"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -89,6 +91,7 @@ export class OrganizationSettingsStorage
         registry_config: registryConfigJson,
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
+        task_board_enabled: data?.task_board_enabled,
         createdAt: now,
         updatedAt: now,
       })
@@ -101,6 +104,7 @@ export class OrganizationSettingsStorage
           default_home_agents: defaultHomeAgentsJson
             ? defaultHomeAgentsJson
             : undefined,
+          task_board_enabled: data?.task_board_enabled,
           updatedAt: now,
         }),
       )
@@ -116,6 +120,7 @@ export class OrganizationSettingsStorage
         registry_config: data?.registry_config ?? null,
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
+        task_board_enabled: data?.task_board_enabled ?? false,
         createdAt: now,
         updatedAt: now,
       };

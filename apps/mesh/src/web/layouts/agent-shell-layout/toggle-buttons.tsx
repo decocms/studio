@@ -1,75 +1,43 @@
-import { Edit05, MessageCircle01 } from "@untitledui/icons";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { MessageCircle01 } from "@untitledui/icons";
+import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
 
 export interface ToggleButtonsProps {
   chatOpen: boolean;
   toggleChat: () => void;
-  onNewTask?: () => void;
   /**
-   * When true, render the New task button before the Chat button. Used on
-   * mobile, where new thread sits on the left and chat on the right.
+   * When true, the chat toggle is disabled — chat is the only visible panel,
+   * so turning it off would leave a blank content area.
    */
-  newTaskFirst?: boolean;
+  disableChatToggle?: boolean;
 }
 
+/**
+ * Top-toolbar chat toggle. Renders through the shared HeaderTabButton so it
+ * stays pixel-identical to the Preview/Blocks/Code tabs (same height, icon and
+ * label metrics, active/hover styling) — the only extras are the PWA titlebar
+ * drag opt-out and a taller mobile touch target. (The New task action lives in
+ * the sidebar toolbar, next to the thread list.)
+ */
 export function ToggleButtons({
   chatOpen,
   toggleChat,
-  onNewTask,
-  newTaskFirst = false,
+  disableChatToggle = false,
 }: ToggleButtonsProps) {
-  const chatButton = (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <ToolbarIconButton
-          onClick={() => {
-            track("agent_toolbar_toggled", {
-              button: "chat",
-              next_state: !chatOpen ? "open" : "closed",
-            });
-            toggleChat();
-          }}
-          aria-pressed={chatOpen}
-          aria-label="Chat"
-          active={chatOpen}
-        >
-          <MessageCircle01 size={16} />
-        </ToolbarIconButton>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">Chat</TooltipContent>
-    </Tooltip>
-  );
-
-  const newTaskButton = onNewTask && (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <ToolbarIconButton onClick={onNewTask} aria-label="New task">
-          <Edit05 size={16} />
-        </ToolbarIconButton>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">New task</TooltipContent>
-    </Tooltip>
-  );
-
   return (
-    <>
-      {newTaskFirst ? (
-        <>
-          {newTaskButton}
-          {chatButton}
-        </>
-      ) : (
-        <>
-          {chatButton}
-          {newTaskButton}
-        </>
-      )}
-    </>
+    <HeaderTabButton
+      title="Chat"
+      icon={{ kind: "component", Component: MessageCircle01 }}
+      active={chatOpen}
+      disabled={disableChatToggle}
+      className="wco-no-drag h-10 md:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+      onClick={() => {
+        track("agent_toolbar_toggled", {
+          button: "chat",
+          next_state: !chatOpen ? "open" : "closed",
+        });
+        toggleChat();
+      }}
+    />
   );
 }

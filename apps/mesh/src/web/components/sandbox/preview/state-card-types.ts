@@ -1,1 +1,1 @@
-export type StateCardKind = "starting" | "suspended";
+export type StateCardKind = "starting" | "suspended" | "errored";

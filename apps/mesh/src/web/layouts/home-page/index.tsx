@@ -7,8 +7,13 @@ import {
   virtualMcpItemQueryOptions,
 } from "@decocms/mesh-sdk";
 import { useQuery, useSuspenseQueries } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
-import { Check, LayoutAlt04, Plus, X } from "@untitledui/icons";
+import { Check, Folder, LayoutAlt04, Plus, X } from "@untitledui/icons";
+import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
+import { LibraryTab } from "@/web/layouts/main-panel-tabs/library-tab";
+import { LibraryFileTab } from "@/web/layouts/main-panel-tabs/library-file-tab";
+import { parseLibraryFileTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { Button } from "@deco/ui/components/button.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
@@ -156,10 +161,31 @@ function DesktopHome({
 }) {
   const { isEditMode, enter, save, cancel, hasChanges } = useHomeEdit();
   const [addTileOpen, setAddTileOpen] = useState(false);
+  const navigate = useNavigate();
+  const { main } = useSearch({ strict: false }) as { main?: string };
+
+  const libraryFile = main ? parseLibraryFileTabId(main) : null;
+  const libraryOpen = main === "files" || !!libraryFile;
+
+  // `main` opens the Library as a side panel over the home — no full
+  // navigation, so the composer/tiles stay put. Reuses the agent-shell's
+  // Library tab + file preview so behavior matches inside a thread.
+  const setMain = (value?: string) =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({ ...prev, main: value }),
+      replace: true,
+    });
 
   return (
     <>
       <Toolbar.Right>
+        <HeaderTabButton
+          title="Library"
+          icon={{ kind: "component", Component: Folder }}
+          active={libraryOpen}
+          onClick={() => setMain(libraryOpen ? undefined : "files")}
+        />
         <CustomizeToolbar
           isEditMode={isEditMode}
           hasChanges={hasChanges}
@@ -170,32 +196,61 @@ function DesktopHome({
         />
       </Toolbar.Right>
       <AddTileDrawer open={addTileOpen} onOpenChange={setAddTileOpen} />
-      <div className="flex-1 relative flex flex-col min-h-0">
-        <HomeBackground />
-        <div className="flex-1 relative flex flex-col overflow-y-auto">
-          <div
-            className={cn(
-              "relative flex flex-col items-center px-10 pb-4",
-              hasVisibleTiles || isEditMode ? "pt-32" : "flex-1 justify-center",
-            )}
-          >
-            <div className="flex flex-col items-center w-full max-w-[672px]">
-              <div className="text-center mb-10">
-                {eyebrow && <div className="mb-4">{eyebrow}</div>}
-                <p className="text-3xl font-medium text-foreground">
-                  What's on your mind, {userName}?
-                </p>
+      <div className="flex-1 relative flex flex-row min-h-0">
+        <div className="flex-1 min-w-0 relative flex flex-col">
+          <HomeBackground />
+          <div className="flex-1 relative flex flex-col overflow-y-auto">
+            <div
+              className={cn(
+                "relative flex flex-col items-center px-10 pb-4",
+                hasVisibleTiles || isEditMode
+                  ? "pt-32"
+                  : "flex-1 justify-center",
+              )}
+            >
+              <div className="flex flex-col items-center w-full max-w-[672px]">
+                <div className="text-center mb-10">
+                  {eyebrow && <div className="mb-4">{eyebrow}</div>}
+                  <p className="text-3xl font-medium text-foreground">
+                    What's on your mind, {userName}?
+                  </p>
+                </div>
+                <div className="relative w-full">
+                  <Capybara />
+                  <Chat.Input showConnectionsBanner />
+                </div>
               </div>
-              <div className="relative w-full">
-                <Capybara />
-                <Chat.Input showConnectionsBanner />
+              <div className="relative w-full mt-10 mx-auto max-w-[1280px] px-2 pb-16">
+                <HomeGrid isEditMode={isEditMode} />
               </div>
-            </div>
-            <div className="relative w-full mt-10 mx-auto max-w-[1280px] px-2 pb-16">
-              <HomeGrid isEditMode={isEditMode} />
             </div>
           </div>
         </div>
+        {libraryOpen && (
+          <div className="w-[45%] max-w-[680px] min-w-[380px] shrink-0 flex flex-col min-h-0 border-l border-border bg-background">
+            <div className="h-10 shrink-0 flex items-center justify-between px-3 border-b border-border">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <Folder size={16} />
+                Library
+              </div>
+              <button
+                type="button"
+                onClick={() => setMain(undefined)}
+                aria-label="Close Library panel"
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0">
+              {libraryFile ? (
+                <LibraryFileTab path={libraryFile.path} />
+              ) : (
+                <LibraryTab />
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

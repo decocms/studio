@@ -55,6 +55,14 @@ import {
   resolveArrayItemSelection,
 } from "../schema-form-breadcrumb";
 import { isSectionArrayField } from "../section-array-field";
+import {
+  type ArrayEntry,
+  createArrayEntries,
+  insertEntryAfter,
+  remapEntryIndices,
+  removeEntryAt,
+  resizeArrayEntries,
+} from "./array-entries";
 import type { FieldProps } from "./field-props";
 import { SchemaForm, renderField } from "../schema-form";
 import {
@@ -62,19 +70,6 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "../resolve-schema";
-
-/** Stable DnD id per row; item data always comes from the `items` prop. */
-interface ArrayEntry {
-  id: string;
-  index: number;
-}
-
-function createArrayEntries(count: number): ArrayEntry[] {
-  return Array.from({ length: count }, (_, index) => ({
-    id: crypto.randomUUID(),
-    index,
-  }));
-}
 
 function itemEditorSchema(
   item: unknown,
@@ -121,28 +116,6 @@ function itemEditorSchema(
 function arrayFieldKeyFromPath(path: string): string {
   const segments = path.split(".").filter((segment) => !/^\d+$/.test(segment));
   return segments[segments.length - 1] ?? path;
-}
-
-function remapEntryIndices(entries: ArrayEntry[]): ArrayEntry[] {
-  return entries.map((entry, index) => ({ ...entry, index }));
-}
-
-function resizeArrayEntries(
-  current: ArrayEntry[],
-  nextCount: number,
-): ArrayEntry[] {
-  if (nextCount === current.length) return current;
-  if (nextCount < current.length) {
-    return remapEntryIndices(current.slice(0, nextCount));
-  }
-  const extra = Array.from(
-    { length: nextCount - current.length },
-    (_, offset) => ({
-      id: crypto.randomUUID(),
-      index: current.length + offset,
-    }),
-  );
-  return [...current, ...extra];
 }
 
 function ArrayRowContent({
@@ -324,13 +297,38 @@ export function ArrayField({
   // Only plain object arrays (banners, links, …) get the hide toggle. Section
   // pickers have their own hide flow, and primitive arrays can't be wrapped.
   const canHideItems = !usesSectionPicker && itemSchema?.type === "object";
+  // Index of the item the user has explicitly opened. Array items are addressed
+  // in the breadcrumb by their mutable, non-unique display label, so this lets
+  // selection stay on the opened row even when its label collides with another
+  // item's (e.g. after Duplicate, or while typing a name/alt another item uses).
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
   const selection = resolveArrayItemSelection(
     label,
     breadcrumbPath,
     items,
     itemSchema,
+    openIndex,
   );
   const selectedIndex = selection?.index ?? null;
+
+  // Keep the tracked index in step with the breadcrumb: forget it once the
+  // breadcrumb no longer opens an item here, and adopt the resolved index when
+  // navigation opened an item some other way (header/breadcrumb click, deep link).
+  //
+  // This set-state-during-render reconciliation converges in one extra render
+  // because `resolveArrayItemSelection` returns `preferredIndex` only when that
+  // item still matches the winning crumb: adopting the resolved index yields a
+  // fixed point on the next render (no oscillation). `openIndex` is a raw index
+  // (not tied to the stable `entries` ids), which is safe only because every
+  // index-shifting mutation (reorder, duplicate, remove) is reachable exclusively
+  // from the list view below — where `selection` is null and `openIndex` has
+  // already been forced back to null.
+  if (selection === null) {
+    if (openIndex !== null) setOpenIndex(null);
+  } else if (selection.index !== openIndex) {
+    setOpenIndex(selection.index);
+  }
 
   const [entries, setEntries] = useState<ArrayEntry[]>(() =>
     createArrayEntries(items.length),
@@ -344,6 +342,7 @@ export function ArrayField({
     setPrevListKey(path);
     setPrevItemCount(items.length);
     setEntries(createArrayEntries(items.length));
+    setOpenIndex(null);
   } else if (prevItemCount !== items.length) {
     setPrevItemCount(items.length);
     setEntries((current) => resizeArrayEntries(current, items.length));
@@ -355,6 +354,7 @@ export function ArrayField({
   const openItem = (index: number) => {
     if (suppressClickRef.current) return;
     const labelText = itemLabel(items[index], index);
+    setOpenIndex(index);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
     );
@@ -364,6 +364,7 @@ export function ArrayField({
     const next = [...items, item];
     onChange(next);
     const nextIndex = next.length - 1;
+    setOpenIndex(nextIndex);
     const labelText = getArrayItemLabel(item, nextIndex, itemSchema);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
@@ -395,6 +396,7 @@ export function ArrayField({
     const next = [...items, defaultVal];
     onChange(next);
     const nextIndex = next.length - 1;
+    setOpenIndex(nextIndex);
     const labelText = getArrayItemLabel(defaultVal, nextIndex, itemSchema);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
@@ -429,6 +431,7 @@ export function ArrayField({
       ...items.slice(index + 1),
     ];
     onChange(next);
+    setEntries((current) => insertEntryAfter(current, index));
   };
 
   const toggleItemHidden = (index: number) => {
@@ -442,13 +445,7 @@ export function ArrayField({
 
   const removeItem = (index: number) => {
     onChange(items.filter((_, i) => i !== index));
-    if (selectedIndex === index) {
-      const itemName = itemLabel(items[index], index);
-      const itemIndex = findBreadcrumbLabelIndex(breadcrumbPath, itemName);
-      onBreadcrumbChange?.(
-        itemIndex >= 0 ? breadcrumbPath.slice(0, itemIndex) : [],
-      );
-    }
+    setEntries((current) => removeEntryAt(current, index));
   };
 
   const updateItem = (index: number, val: unknown) => {

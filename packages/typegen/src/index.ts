@@ -11,7 +11,7 @@ export type MeshClient<T extends ToolMap> = MeshClientInstance<T> & {
 
 export interface MeshClientOptions {
   mcpId: string;
-  /** Falls back to process.env.MESH_API_KEY */
+  /** Falls back to process.env.STUDIO_API_KEY (or legacy process.env.MESH_API_KEY) */
   apiKey?: string;
   /** Falls back to https://studio.decocms.com */
   baseUrl?: string;

@@ -151,12 +151,6 @@ function isMeaningfulConfigValue(value: unknown): boolean {
   return false;
 }
 
-export function hasConfigurationValues(
-  state: Record<string, unknown> | null | undefined,
-): boolean {
-  return isMeaningfulConfigValue(state);
-}
-
 function formatConfigurationKey(key: string): string {
   const labels: Record<string, string> = {
     accountName: "Nome da conta",

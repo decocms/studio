@@ -30,6 +30,7 @@ import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
 import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
+import { ShellBreadcrumb } from "@/web/components/header/shell-breadcrumb";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import {
   MobileSidebarSheet,
@@ -60,9 +61,9 @@ export default function OrgShellLayout() {
             <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
               {isMobile ? (
                 <Toolbar.Header className="grid-cols-1 px-1 pr-1">
-                  <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto_auto] items-center gap-2">
-                    <Toolbar.LogoLink />
+                  <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto] items-center gap-2">
                     <SidebarTriggerButton />
+                    <ShellBreadcrumb />
                     <LinkedDesktopIndicator />
                     <div aria-hidden className="min-w-0" />
                     <Toolbar.TogglesSlot />
@@ -74,17 +75,12 @@ export default function OrgShellLayout() {
               ) : (
                 <Toolbar.Header>
                   <Toolbar.LeftColumn>
-                    <Toolbar.LogoLink />
-                    <SidebarTriggerButton />
-                    <span className="hidden md:contents">
-                      <Toolbar.Nav />
-                    </span>
-                    <Toolbar.TogglesSlot />
-                    <LinkedDesktopIndicator />
+                    <ShellBreadcrumb />
                   </Toolbar.LeftColumn>
                   <Toolbar.CenterSlot />
                   <Toolbar.RightColumn>
-                    <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end">
+                    <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
+                      <Toolbar.TogglesSlot />
                       <Toolbar.TabsSlot />
                     </div>
                     <Toolbar.RightSlot />

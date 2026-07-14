@@ -146,6 +146,35 @@ describe("MonitoringTransport emitMonitoringLog", () => {
     );
   });
 
+  it("should flag isError when result.isError is true (tool-level failure)", async () => {
+    const { transport, simulateResponse } = createMockTransportAndCtx();
+
+    transport.onmessage = vi.fn();
+    await transport.start();
+
+    await transport.send({
+      jsonrpc: "2.0",
+      id: 42,
+      method: "tools/call",
+      params: { name: "FAILING_TOOL", arguments: {} },
+    } as any);
+
+    // Successful JSON-RPC response, but the tool signals failure the MCP way.
+    simulateResponse({
+      jsonrpc: "2.0",
+      id: 42,
+      result: {
+        content: [{ type: "text", text: "repo not found" }],
+        isError: true,
+      },
+    } as any);
+
+    expect(mockEmitMonitoringLog).toHaveBeenCalledTimes(1);
+    const [params] = mockEmitMonitoringLog.mock.calls[0]!;
+    expect(params.isError).toBe(true);
+    expect(params.errorMessage).toBe("repo not found");
+  });
+
   it("should pass context (spanCtx) as second argument to emitMonitoringLog", async () => {
     const { transport, simulateResponse } = createMockTransportAndCtx();
 

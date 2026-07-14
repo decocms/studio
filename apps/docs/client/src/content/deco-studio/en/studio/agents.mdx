@@ -88,6 +88,10 @@ To enable the local options, connect a desktop runtime with `deco link`. Studio 
   Cloud is the right default for unattended runs and teammates who shouldn't need a local setup. Reach for a local runtime when the agent needs your machine — your files, your credentials, or a coding harness like Claude Code or Codex.
 </Callout>
 
+## Windows
+
+The daemon runs natively on Windows with one prerequisite: **[Git for Windows](https://gitforwindows.org)** — it provides both `git` and the bash shell used to run your project's dev scripts. If the daemon reports "POSIX shell (sh) not found", install Git for Windows or set the `DECO_SHELL` environment variable to a bash-compatible shell. WSL2 remains a fully supported alternative. Org file mounts are not yet available on Windows.
+
 ## An agent is a virtual MCP
 
 Each agent in Studio is exposed as its own **MCP endpoint**: a curated bundle of tools, resources, and instructions that any MCP-compatible client can connect to. You can think of an agent as a "virtual MCP server" that you assemble visually — pick a few tools from your connections, layer on instructions, and you've published a focused MCP endpoint your team (or your other agents) can use.

@@ -31,6 +31,12 @@ describe("GET /api/config", () => {
     setGlobalSettings(originalSettings);
   });
 
+  it("sends Cache-Control: no-store so version-drift polling isn't defeated by caching", async () => {
+    const res = await publicConfigRoutes.request("/");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+  });
+
   it("returns posthog config when POSTHOG_KEY is set", async () => {
     process.env.POSTHOG_KEY = "phc_test_key";
     delete process.env.POSTHOG_HOST;

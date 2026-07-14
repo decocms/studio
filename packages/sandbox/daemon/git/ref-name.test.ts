@@ -21,6 +21,7 @@ describe("assertValidRemoteBranchName", () => {
       "main/",
       "main.lock",
       "has space",
+      "a//b",
     ]) {
       expect(() => assertValidRemoteBranchName(name)).toThrow(
         InvalidRemoteBranchNameError,

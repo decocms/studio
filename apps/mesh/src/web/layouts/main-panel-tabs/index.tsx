@@ -12,16 +12,19 @@ import { Suspense, lazy } from "react";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
 import { GitTab } from "@/web/components/thread/github/git-tab";
-import { PreviewTab } from "./preview-tab";
+import { PreviewBlocksTab } from "./preview-blocks-tab";
+import { CodeTab } from "./code-tab";
 import { ContentTab } from "./content-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
 import { DeckTab } from "./deck-tab";
 import { LibraryFileTab } from "./library-file-tab";
+import { LibraryTab } from "./library-tab";
 import { MainPanelLoading } from "./main-panel-loading";
 import {
   isLegacySettingsTab,
+  parseCodeTabId,
   parseDeckTabId,
   parseFileTabId,
   parseLibraryFileTabId,
@@ -74,11 +77,18 @@ function TabBody({
   if (activeTab === "automations") {
     return <AutomationsListTab virtualMcpId={virtualMcpId} />;
   }
-  if (activeTab === "preview") {
-    return <PreviewTab virtualMcpId={virtualMcpId} />;
+  if (activeTab === "preview" || activeTab === "blocks") {
+    return <PreviewBlocksTab surface={activeTab} virtualMcpId={virtualMcpId} />;
+  }
+  const codeTab = parseCodeTabId(activeTab);
+  if (codeTab) {
+    return <CodeTab openPath={codeTab.path} />;
   }
   if (activeTab === "content") {
     return <ContentTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "files") {
+    return <LibraryTab />;
   }
   if (automationTabParsed) {
     return <AutomationTab tabId={activeTab} />;
@@ -150,8 +160,16 @@ export function MainPanelContent({
       taskId,
     });
 
+  // Preview and Blocks render one shared `PreviewContent` (see PreviewBlocksTab),
+  // so they must sit under the SAME ErrorBoundary instance — keying it per-tab
+  // would remount the subtree and reload the preview iframe on every switch.
+  const boundaryKey =
+    activeTab === "preview" || activeTab === "blocks"
+      ? "preview-blocks"
+      : activeTab;
+
   return (
-    <ErrorBoundary key={activeTab}>
+    <ErrorBoundary key={boundaryKey}>
       <Suspense fallback={<MainPanelLoading />}>
         <TabBody
           activeTab={activeTab}

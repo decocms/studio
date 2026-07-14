@@ -23,11 +23,14 @@ import type { LifecycleManager } from "../lifecycle/manager";
 import { LogTee } from "../process/log-tee";
 import { appLogPath, hasGitRepo, resolvePmRoot } from "../paths";
 import { discoverScripts } from "../process/script-discovery";
+import { withPathDirs } from "../process/structured-command";
 import type { Application, Config } from "../types";
+import { materializeAskpass } from "./askpass";
 import { autodetectApplication } from "./autodetect";
 import { type CloneResult, spawnClone } from "./clone";
 import { emitInstalledDeps } from "./dep-metrics";
 import { publishGolden, pruneGoldens, tryRestoreGolden } from "./golden-cache";
+import { gitBaseArgv, gitStepEnv } from "./git-command";
 import { configureGitIdentity } from "./identity";
 import { denoCacheEnv, spawnInstall } from "./install";
 import { spawnSetupStep } from "./spawn-step";
@@ -271,8 +274,10 @@ export class SetupOrchestrator {
       const cloneTee = new LogTee(cloneLogPath, INSTALL_LOG_MAX_BYTES);
       let result: CloneResult;
       try {
+        const askpassPath = await materializeAskpass(this.deps.logsDir);
         result = await spawnClone({
           config,
+          askpassPath,
           onChunk: (_src, data) => {
             this.rawChunk(data);
             cloneTee.write(data);
@@ -414,6 +419,17 @@ export class SetupOrchestrator {
       return false;
     }
     this.markInstallSucceeded(config);
+    // Install scripts (postinstall/prepare — lefthook, husky, etc.) can
+    // overwrite .git/hooks/pre-push; reinstall so branch protection survives.
+    if (config.repoDir) {
+      try {
+        await installProtectedBranchHook(config.repoDir);
+      } catch (e) {
+        this.chunk(
+          `\r\n[orchestrator] warning: could not reinstall protected-branch hook: ${(e as Error).message}\r\n`,
+        );
+      }
+    }
     // Don't publish the golden yet — defer to publishPendingGolden(), which
     // the probe's `running` transition calls once the dev server is confirmed
     // healthy. Publishing only from a boot that actually came up prevents a
@@ -484,13 +500,26 @@ export class SetupOrchestrator {
     }
     await this.stopDevTask();
     this.deps.lifecycle.transition({ phase: "starting" });
+    // denoCacheEnv points DENO_DIR at the per-repo node-local cache for deno
+    // dev servers (no-op for other PMs); layered under config.env so a
+    // user-supplied DENO_DIR still wins. Runtime PATH dirs are prepended
+    // last, over whatever PATH falls out of that merge (a user override
+    // included) rather than getting replaced by it; when the merge carries
+    // no PATH, fall back to the daemon's own PATH so the prepend never
+    // replaces the effective PATH outright.
+    const merged = buildDevEnv(config, {
+      ...denoCacheEnv(config),
+      ...config.env,
+    });
     await this.deps.taskManager.spawn({
       command: command.cmd,
       cwd: command.cwd,
-      // denoCacheEnv points DENO_DIR at the per-repo node-local cache for deno
-      // dev servers (no-op for other PMs); layered under config.env so a
-      // user-supplied DENO_DIR still wins.
-      env: buildDevEnv(config, { ...denoCacheEnv(config), ...config.env }),
+      env: {
+        ...merged,
+        ...withPathDirs(config.runtimePathDirs, {
+          PATH: merged.PATH ?? process.env.PATH,
+        }),
+      },
       label: command.label,
       mode: "pty",
       logName: command.source,
@@ -568,9 +597,12 @@ export class SetupOrchestrator {
     return `\r\n[orchestrator] skipping start: no 'dev' or 'start' script found (available: ${scripts.join(", ")}) — update the VM config to set the correct start script\r\n`;
   }
 
-  private buildStartCommand(
-    config: Config,
-  ): { cmd: string; cwd: string; label: string; source: string } | null {
+  private buildStartCommand(config: Config): {
+    cmd: string;
+    cwd: string;
+    label: string;
+    source: string;
+  } | null {
     const pm = config.application?.packageManager?.name;
     if (!pm) return null;
     const pmConf = PACKAGE_MANAGER_DAEMON_CONFIG[pm];
@@ -583,8 +615,7 @@ export class SetupOrchestrator {
     const starter = WELL_KNOWN_STARTERS.find((s) => scripts.includes(s));
     if (!starter) return null;
     return {
-      ...pmRunCommand(config.runtimePathPrefix, cwd, pmConf.runPrefix, starter),
-      cwd,
+      ...pmRunCommand(cwd, pmConf.runPrefix, starter),
       source: starter,
     };
   }
@@ -599,7 +630,7 @@ export class SetupOrchestrator {
     }
     if (config.repoDir) {
       try {
-        installProtectedBranchHook(config.repoDir);
+        await installProtectedBranchHook(config.repoDir);
       } catch (e) {
         this.chunk(
           `\r\n[orchestrator] warning: could not install protected-branch hook: ${(e as Error).message}\r\n`,
@@ -663,13 +694,20 @@ export class SetupOrchestrator {
     const repoDir = this.deps.bootConfig.repoDir;
     if (!repoDir) return;
     const onChunk = (_src: "setup", data: string) => this.rawChunk(data);
-    const gc = `GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true git -c safe.directory='*' -c credential.helper= -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10 -C ${repoDir}`;
-
+    const askpassPath = await materializeAskpass(this.deps.logsDir);
+    const runGit = (args: readonly string[]) =>
+      spawnSetupStep(
+        {
+          argv: [...gitBaseArgv(), ...args],
+          env: gitStepEnv(askpassPath),
+          cwd: repoDir,
+        },
+        onChunk,
+      );
     await spawnCheckoutBranch({
       repoDir,
       branch,
-      gc,
-      runStep: (cmd) => spawnSetupStep(cmd, onChunk),
+      runGit,
       log: (message) => this.chunk(message),
     });
   }

@@ -10,6 +10,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
   GetPromptResult,
@@ -36,6 +37,7 @@ import {
   REVALIDATE_MIN_INTERVAL_MS,
 } from "./mcp-list-cache";
 import { getMcpReadCache, type ReadCacheScope } from "./mcp-read-cache";
+import { enrichInvalidParams, type ToolInputSchema } from "./validation-hint";
 
 /**
  * A read-only tool is eligible for result caching. We trust the upstream's
@@ -211,7 +213,11 @@ export function createLazyClient(
   const cacheReads =
     connection.connection_type !== "VIRTUAL" && !isDevConnection;
 
-  placeholder.callTool = async (params, resultSchema, options) => {
+  const callToolInner: Client["callTool"] = async (
+    params,
+    resultSchema,
+    options,
+  ) => {
     const toolName = (params as { name?: unknown })?.name;
     const readOnly =
       cacheReads &&
@@ -259,6 +265,38 @@ export function createLazyClient(
     }
 
     return real.callTool(params, resultSchema, options);
+  };
+
+  // On a -32602 (InvalidParams) rejection, append a schema-derived correction
+  // so the agent can fix its arguments instead of retrying the same bad shape.
+  // Only the error path pays the cached tool-list lookup.
+  placeholder.callTool = async (params, resultSchema, options) => {
+    try {
+      return await callToolInner(params, resultSchema, options);
+    } catch (err) {
+      const toolName = (params as { name?: unknown })?.name;
+      if (
+        err instanceof McpError &&
+        err.code === ErrorCode.InvalidParams &&
+        typeof toolName === "string" &&
+        cache
+      ) {
+        const tools = await cache.get("tools", connection.id).catch(() => null);
+        const tool = tools?.find(
+          (t): t is { name: string; inputSchema?: ToolInputSchema } =>
+            typeof t === "object" &&
+            t !== null &&
+            (t as { name?: unknown }).name === toolName,
+        );
+        throw enrichInvalidParams(
+          err,
+          toolName,
+          tool?.inputSchema,
+          (params as { arguments?: Record<string, unknown> })?.arguments,
+        );
+      }
+      throw err;
+    }
   };
 
   placeholder.getPrompt = async (params, options) => {

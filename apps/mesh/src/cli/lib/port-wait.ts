@@ -1,3 +1,4 @@
+import { sleep } from "@decocms/std";
 import { createServer } from "node:net";
 
 const LOCALHOST_ENDPOINTS = ["localhost", "127.0.0.1", "0.0.0.0"];
@@ -29,7 +30,7 @@ export async function waitForPort(
   for (;;) {
     const addr = await findRunningAddr(port);
     if (addr) return addr;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await sleep(intervalMs);
   }
 }
 

@@ -15,7 +15,7 @@ Recommended tool order:
 1. Use COLLECTION_CONNECTIONS_LIST to inspect what capabilities already exist.
 2. If the user names a specific connection, use COLLECTION_CONNECTIONS_GET to verify details.
 3. If requirements are ambiguous, use user_ask before creating anything.
-4. Use COLLECTION_VIRTUAL_MCP_CREATE with a focused title, description, connectionIds, and instructions.
+4. Use COLLECTION_VIRTUAL_MCP_CREATE with a focused title, description, connectionIds, instructions, and kickstart prompts.
 5. Use COLLECTION_VIRTUAL_MCP_GET to verify the saved configuration.
 
 Checks:
@@ -23,6 +23,7 @@ Checks:
 - Include only the connections relevant to that role.
 - Ensure the title is specific and easy to distinguish from other agents.
 - Write instructions using the docs://agents.md guidance, especially XML-structured sections and explicit workflows.
+- Seed 3-4 kickstart prompts via the \`prompts\` field so the agent opens with useful conversation starters. Author them from the agent's role and the tool descriptions of its connections (see docs://agents.md "Kickstart prompts").
 - Verify the created agent includes the intended connections and instructions before reporting success.
 `,
   },
@@ -140,6 +141,39 @@ When revising an existing agent:
 - Instruct the agent to inspect available capabilities before assuming.
 - Explain when tools are mandatory versus when direct answers are acceptable.
 - For multi-step workflows, tell the agent to chain tool calls instead of guessing intermediate state.
+
+## Kickstart prompts
+
+Seed a new agent with a few kickstart prompts (the \`prompts\` field on
+COLLECTION_VIRTUAL_MCP_CREATE). They render as clickable conversation starters
+(icebreakers) — clicking one sends its text as the first message. A good set
+makes an empty agent immediately useful.
+
+How to write coherent ones:
+- Read the agent's own role/instructions and the descriptions of the tools its
+  connections expose. Each prompt should map to a real capability.
+- Prefer 3-4 concrete, runnable tasks over generic greetings. Bad: "How can
+  you help me?". Good (for a support-triage agent with a ticketing tool):
+  "Summarize the 5 oldest open tickets and flag anything urgent."
+- \`title\` is the short chip label; \`description\` is a one-line subtitle;
+  \`text\` is the actual message sent on click — write it as the user would.
+
+Example \`prompts\` argument:
+
+\`\`\`json
+[
+  {
+    "title": "Triage new tickets",
+    "description": "Summarize and prioritize open tickets",
+    "text": "Summarize the 5 oldest open tickets and flag anything urgent."
+  },
+  {
+    "title": "Draft a reply",
+    "description": "Write a customer response",
+    "text": "Draft a reply to the latest ticket, matching our support tone."
+  }
+]
+\`\`\`
 
 ### Guardrails
 

@@ -4,6 +4,7 @@ import {
   shouldAutoStart,
   shouldSelfHeal,
   computeDrawerStatus,
+  buildSandboxStartArgs,
   type BranchMapEntryLike,
 } from "./sandbox-lifecycle-context";
 
@@ -130,6 +131,26 @@ describe("shouldSelfHeal", () => {
   });
 });
 
+describe("buildSandboxStartArgs", () => {
+  test("includes sandboxProviderKind when the thread has a locked kind", () => {
+    // Regression: user-driven start/retry/resume used to omit
+    // sandboxProviderKind (unlike auto-start/self-heal), so retrying a
+    // failed locked-provider thread could get provisioned on the wrong
+    // provider instead of the one the preview is locked to.
+    expect(buildSandboxStartArgs("vmcp1", "main", "user-desktop")).toEqual({
+      virtualMcpId: "vmcp1",
+      branch: "main",
+      sandboxProviderKind: "user-desktop",
+    });
+  });
+
+  test("omits branch and sandboxProviderKind when absent", () => {
+    expect(buildSandboxStartArgs("vmcp1", null, null)).toEqual({
+      virtualMcpId: "vmcp1",
+    });
+  });
+});
+
 describe("computeDrawerStatus", () => {
   test("suspended → suspended", () => {
     expect(computeDrawerStatus({ kind: "suspended" })).toBe("suspended");
@@ -143,5 +164,14 @@ describe("computeDrawerStatus", () => {
     expect(
       computeDrawerStatus({ kind: "iframe", previewUrl: "https://x" }),
     ).toBe("running");
+  });
+
+  test("errored → errored", () => {
+    expect(
+      computeDrawerStatus({
+        kind: "errored",
+        error: { code: null, message: "boom" },
+      }),
+    ).toBe("errored");
   });
 });

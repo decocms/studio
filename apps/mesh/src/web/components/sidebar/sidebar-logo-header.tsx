@@ -2,7 +2,6 @@ import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 import { SidebarHeader } from "@deco/ui/components/sidebar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { LayoutLeft } from "@untitledui/icons";
-import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 
 interface SidebarLogoHeaderProps {
@@ -63,7 +62,6 @@ export function SidebarLogoHeader({
       <ToolbarIconButton onClick={onToggle} aria-label="Toggle sidebar">
         <LayoutLeft size={16} />
       </ToolbarIconButton>
-      <LinkedDesktopIndicator />
     </SidebarHeader>
   );
 }

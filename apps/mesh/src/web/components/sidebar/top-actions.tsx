@@ -11,12 +11,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { cn } from "@deco/ui/lib/utils.ts";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 
 class SilentErrorBoundary extends Component<
   { children: ReactNode },
@@ -81,46 +75,6 @@ export function SidebarTopActions() {
     <SilentErrorBoundary>
       <Suspense fallback={null}>
         <CreditChip />
-      </Suspense>
-    </SilentErrorBoundary>
-  );
-}
-
-function CreditChipInline() {
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
-  const { hasDecoKey, balanceDollars } = useDecoCredits();
-  if (!hasDecoKey) return null;
-  const tooltipLabel =
-    balanceDollars != null
-      ? `Credits: $${balanceDollars.toFixed(2)}`
-      : "Credits";
-  return (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <ToolbarIconButton
-          aria-label={tooltipLabel}
-          onClick={() =>
-            navigate({
-              to: "/$org/settings/ai-providers",
-              params: { org: org.slug },
-            })
-          }
-          className={cn(balanceDollars != null && creditColor(balanceDollars))}
-        >
-          <Coins04 className="size-4" />
-        </ToolbarIconButton>
-      </TooltipTrigger>
-      <TooltipContent side="top">{tooltipLabel}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-export function SidebarTopActionsInline() {
-  return (
-    <SilentErrorBoundary>
-      <Suspense fallback={null}>
-        <CreditChipInline />
       </Suspense>
     </SilentErrorBoundary>
   );

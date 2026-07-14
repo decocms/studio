@@ -355,7 +355,11 @@ describe("projectorChunkStream", () => {
     expect(out.map((c) => c.type)).toEqual(["start", "text-delta"]);
   });
 
-  test("closes on the AI-SDK finish chunk (ignoring a later chunk)", async () => {
+  test("does NOT close on the AI-SDK finish chunk; keeps reading to the fenced done", async () => {
+    // Background title generation emits its transient `data-title-result` chunk
+    // AFTER the assistant `finish` chunk on fast runs. The projector must run to
+    // the fenced `done` (whose finalSeq covers it) rather than closing at
+    // `finish`, or the title is dropped and the thread stays on "New chat".
     const out = await readAll(
       projectorPipeline(
         [
@@ -364,14 +368,19 @@ describe("projectorChunkStream", () => {
             p: { type: "finish", finishReason: "stop" },
           }),
           rawJson("run_1:fence_a:3", {
-            p: { type: "text-delta", id: "t", delta: "late" },
+            p: { type: "data-title-result", data: { title: "Late title" } },
           }),
+          rawJson("run_1:fence_a:done:3", { done: true, finalSeq: 3 }),
         ],
         "run_1",
         "fence_a",
       ),
     );
-    expect(out.map((c) => c.type)).toEqual(["start", "finish"]);
+    expect(out.map((c) => c.type)).toEqual([
+      "start",
+      "finish",
+      "data-title-result",
+    ]);
   });
 
   test("errors on a tail gap exposed by finalSeq", async () => {

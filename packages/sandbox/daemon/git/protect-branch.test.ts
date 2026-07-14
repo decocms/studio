@@ -22,10 +22,10 @@ function runHook(
 }
 
 describe("installProtectedBranchHook", () => {
-  it("installs an executable pre-push hook", () => {
+  it("installs an executable pre-push hook", async () => {
     const repoDir = mkdtempSync(join(tmpdir(), "protect-branch-"));
     try {
-      installProtectedBranchHook(repoDir);
+      await installProtectedBranchHook(repoDir);
       const hookPath = join(repoDir, ".git", "hooks", "pre-push");
       expect(statSync(hookPath).mode & 0o777).toBe(0o755);
     } finally {
@@ -33,10 +33,10 @@ describe("installProtectedBranchHook", () => {
     }
   });
 
-  it("blocks pushes to main/master and allows other branches", () => {
+  it("blocks pushes to main/master and allows other branches", async () => {
     const repoDir = mkdtempSync(join(tmpdir(), "protect-branch-"));
     try {
-      installProtectedBranchHook(repoDir);
+      await installProtectedBranchHook(repoDir);
       const hookPath = join(repoDir, ".git", "hooks", "pre-push");
 
       const main = runHook(hookPath, "refs/heads/main");
@@ -45,6 +45,34 @@ describe("installProtectedBranchHook", () => {
 
       const master = runHook(hookPath, "refs/heads/master");
       expect(master.status).not.toBe(0);
+
+      const feature = runHook(hookPath, "refs/heads/feature/x");
+      expect(feature.status).toBe(0);
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("also blocks pushes to the repo's actual default branch when it isn't main/master", async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), "protect-branch-"));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: repoDir });
+      execFileSync(
+        "git",
+        [
+          "symbolic-ref",
+          "refs/remotes/origin/HEAD",
+          "refs/remotes/origin/release",
+        ],
+        { cwd: repoDir },
+      );
+
+      await installProtectedBranchHook(repoDir);
+      const hookPath = join(repoDir, ".git", "hooks", "pre-push");
+
+      const release = runHook(hookPath, "refs/heads/release");
+      expect(release.status).not.toBe(0);
+      expect(release.stderr).toContain("not allowed from a sandbox");
 
       const feature = runHook(hookPath, "refs/heads/feature/x");
       expect(feature.status).toBe(0);

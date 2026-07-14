@@ -320,4 +320,22 @@ if [ "$selector_mismatch" -eq 0 ]; then
   done < "$ROUTES_FILE"
 fi
 
-log "heartbeat ok claims=$total reaped=$reaped skipped=$skipped orphan_routes=$orphan_routes"
+# === Failed pod GC ===
+# A sandbox pod whose orgfs-sidecar can't unmount within terminationGracePeriod
+# is SIGKILLed (exit 137), flipping the whole pod to phase=Failed. Its owner
+# Sandbox is already gone by then, so nothing garbage-collects it and Failed
+# pods pile up for hours. Reap them here — Failed is terminal, so a delete can't
+# race a live workload. Gated on selector_mismatch (same caution as routes).
+failed_pods=0
+if [ "$selector_mismatch" -eq 0 ]; then
+  for POD in $(kubectl get pods -n "$NS" -l "$POD_SELECTOR" \
+      --field-selector=status.phase=Failed \
+      -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+    [ -z "$POD" ] && continue
+    log "failed-pod-gc pod=$POD"
+    kubectl delete pod "$POD" -n "$NS" --ignore-not-found >/dev/null 2>&1 || true
+    failed_pods=$((failed_pods + 1))
+  done
+fi
+
+log "heartbeat ok claims=$total reaped=$reaped skipped=$skipped orphan_routes=$orphan_routes failed_pods=$failed_pods"

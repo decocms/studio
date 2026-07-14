@@ -22,6 +22,10 @@ import {
   RECONNECT_ERROR,
 } from "../oauth/token-refresh";
 import { getRepoScope } from "./github-repo-scope";
+import {
+  encodeSandboxStartError,
+  SANDBOX_START_ERROR_CODES,
+} from "./sandbox-start-errors";
 
 export interface GitHubCloneInfo {
   cloneUrl: string;
@@ -75,17 +79,30 @@ export async function buildCloneInfo(
   name: string,
   db: Kysely<Database>,
   vault: CredentialVault,
+  opts?: {
+    /**
+     * Refresh the token when it has less than this many ms of life left.
+     * Callers that need a proactively-fresh token (e.g. a periodic refresh of
+     * long-lived sandboxes) pass a large value so the token is re-minted well
+     * before its ~55min expiry; omit for the default near-expiry buffer.
+     */
+    bufferMs?: number;
+  },
 ): Promise<GitHubCloneInfo> {
   const tokenStorage = new DownstreamTokenStorage(db, vault);
   const tokenResult = await getValidDownstreamAccessToken({
     connectionId,
     tokenStorage,
+    bufferMs: opts?.bufferMs,
   });
   if (!tokenResult.accessToken) {
     throw new Error(
-      tokenResult.state === "refresh_failed"
-        ? RECONNECT_ERROR
-        : "No GitHub token found. Ensure the mcp-github connection is authenticated.",
+      encodeSandboxStartError(
+        SANDBOX_START_ERROR_CODES.githubNotAuthenticated,
+        tokenResult.state === "refresh_failed"
+          ? RECONNECT_ERROR
+          : "No GitHub token found. Ensure the mcp-github connection is authenticated.",
+      ),
     );
   }
 

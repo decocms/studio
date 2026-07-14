@@ -19,6 +19,10 @@ import type { Kysely } from "kysely";
 import { meter } from "@/observability";
 import type { Database as DatabaseSchema } from "@/storage/types";
 import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state";
+import { buildCloneInfo } from "@/shared/github-clone-info";
+import { CredentialVault } from "@/encryption/credential-vault";
+import { getSettings } from "@/settings";
+import { parseGithubOwnerRepo } from "@/sandbox/parse-github-clone-url";
 
 // Stashed on globalThis so they survive Bun's `--hot` reload. The preview
 // reverse-proxy registered at the top of `apps/mesh/src/index.ts` is wired
@@ -149,6 +153,10 @@ async function instantiate(
       // `meter` is reassigned by initObservability() after sdk.start(); read
       // it at provider construction (post-init) so we get the real instruments
       // not the no-op evaluated at module load.
+      // Ambient vault (encryption key only, no request ctx) so the runner can
+      // re-mint a fresh clone credential on autonomous recovery instead of
+      // replaying the expired token baked into the persisted cloneUrl.
+      const vault = new CredentialVault(getSettings().encryptionKey);
       return new AgentSandboxProvider({
         stateStore,
         previewUrlPattern,
@@ -157,6 +165,24 @@ async function instantiate(
         previewGateway: readPreviewGateway(),
         sentinelToken: readSandboxSentinelToken(),
         meter,
+        mintCloneUrl: async (repo, mintOpts) => {
+          // Only connection-backed clones can be re-minted; buildCloneInfo
+          // refreshes standard OAuth GitHub connections from db + vault alone.
+          // Legacy repo-scoped tokens throw here (need an org-scoped ctx) and
+          // the runner falls back to the persisted URL.
+          if (!repo.connectionId) return null;
+          const parsed = parseGithubOwnerRepo(repo.cloneUrl);
+          if (!parsed) return null;
+          const { cloneUrl } = await buildCloneInfo(
+            repo.connectionId,
+            parsed.owner,
+            parsed.name,
+            db,
+            vault,
+            { bufferMs: mintOpts?.bufferMs },
+          );
+          return cloneUrl;
+        },
       });
     }
     case "user-desktop": {

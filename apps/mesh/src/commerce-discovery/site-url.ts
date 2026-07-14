@@ -72,3 +72,26 @@ export function normalizeCommerceSiteUrl(input: string): CommerceSiteUrlResult {
     value: url.origin,
   };
 }
+
+/**
+ * True when an already-provisioned Commerce Discovery connection's claimed
+ * site matches the one currently requested.
+ *
+ * An empty `requestedSite` means no site was specified (a returning session
+ * with no `?siteUrl`) — trust the existing claim. A non-empty but malformed
+ * `requestedSite` must NOT be treated the same as "no site requested": both
+ * fail `normalizeCommerceSiteUrl`, but only the empty case should bypass the
+ * match check — otherwise a garbled site param silently skips re-claiming
+ * and surfaces whatever site the connection happens to already be claimed
+ * for.
+ */
+export function isConnectionClaimedForSite(
+  requestedSite: string,
+  claimedSiteUrl: string | undefined,
+): boolean {
+  if (!requestedSite.trim()) return true;
+  const requested = normalizeCommerceSiteUrl(requestedSite);
+  if (!requested.ok || !claimedSiteUrl) return false;
+  const claimed = normalizeCommerceSiteUrl(claimedSiteUrl);
+  return claimed.ok && claimed.value === requested.value;
+}

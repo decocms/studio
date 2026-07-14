@@ -11,11 +11,6 @@ import { ProjectCard } from "@/web/components/project-card";
 import { useCapability } from "@/web/hooks/use-capability";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
-import {
-  HYDROGEN_TEMPLATE,
-  WEBSITE_TEMPLATE,
-  useCreateAgentFromTemplate,
-} from "@/web/hooks/use-create-website-agent";
 import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
 import {
   AlertDialog,
@@ -46,8 +41,6 @@ export default function AgentsListPage() {
   const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
     navigateOnCreate: true,
   });
-  const { createFromTemplate, isCreating: isCreatingFromTemplate } =
-    useCreateAgentFromTemplate();
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     title: string;
@@ -118,20 +111,6 @@ export default function AgentsListPage() {
                       });
                       createVirtualMCP();
                     }}
-                    onCreateWebsite={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "website",
-                      });
-                      createFromTemplate(WEBSITE_TEMPLATE);
-                    }}
-                    onCreateHydrogenStore={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "hydrogen",
-                      });
-                      createFromTemplate(HYDROGEN_TEMPLATE);
-                    }}
                     onImportGitHub={() => {
                       track("agent_create_clicked", {
                         source: "agents_list",
@@ -146,7 +125,7 @@ export default function AgentsListPage() {
                       });
                       setImportDecoOpen(true);
                     }}
-                    isCreating={isCreating || isCreatingFromTemplate}
+                    isCreating={isCreating}
                     align="end"
                   />
                 </DropdownMenu>
@@ -186,20 +165,6 @@ export default function AgentsListPage() {
                           });
                           createVirtualMCP();
                         }}
-                        onCreateWebsite={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "website",
-                          });
-                          createFromTemplate(WEBSITE_TEMPLATE);
-                        }}
-                        onCreateHydrogenStore={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "hydrogen",
-                          });
-                          createFromTemplate(HYDROGEN_TEMPLATE);
-                        }}
                         onImportGitHub={() => {
                           track("agent_create_clicked", {
                             source: "agents_list_empty",
@@ -214,7 +179,7 @@ export default function AgentsListPage() {
                           });
                           setImportDecoOpen(true);
                         }}
-                        isCreating={isCreating || isCreatingFromTemplate}
+                        isCreating={isCreating}
                         align="center"
                         showBetaBadge
                       />

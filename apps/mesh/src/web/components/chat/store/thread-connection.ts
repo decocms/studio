@@ -952,6 +952,15 @@ export class ThreadConnection {
       this.chunkBuffer.push(chunk);
       return;
     }
+    // A user prompt mirrored onto the run stream (see server
+    // `user-message-stream.ts`). Intercept BEFORE the assistant fold — the AI
+    // SDK reassembler hardcodes `role:"assistant"` — and upsert it by id so the
+    // author's optimistic copy dedupes while other viewers get it live.
+    if ((chunk as { type?: unknown }).type === "data-user-message") {
+      const message = (chunk as { data?: UIMessage }).data;
+      if (message) this.applyLocalMessage(message);
+      return;
+    }
     const isRunStatusControl = isRunStatusControlChunk(chunk);
     const runStatusStage = parseRunStatusStageChunk(chunk);
     if (this.waitingForNewRun) {
@@ -1122,7 +1131,10 @@ export class ThreadConnection {
           : pending;
       pending = null;
       this.messages.update((curr) =>
-        mergeAndSort(dropRedundantStubs(upsertById(curr, msg)), []),
+        mergeAndSort(
+          dropRedundantStubs(upsertById(curr, stampInflightOrder(curr, msg))),
+          [],
+        ),
       );
     };
     for await (const msg of iter) {
@@ -1456,6 +1468,40 @@ export function reconcileLatestPage(
     return Number.isFinite(t) && t <= cutoff;
   });
   return mergeAndSort(kept, fetched);
+}
+
+/**
+ * Give the in-flight streamed reply a client-clock top-level `created_at` so it
+ * sorts directly after the user turn it answers.
+ *
+ * The reply arrives carrying only a SERVER-clock `metadata.created_at` (stamped
+ * at run-start in run-stream.ts), while the optimistic user row is stamped with
+ * the CLIENT clock (`applyLocally`). Comparing the two in `mergeAndSort` mixes
+ * clock domains: if the client is ahead of the server by more than the POST
+ * latency, the reply's server timestamp predates the user's client timestamp
+ * and the reply sorts AHEAD of its own user turn — order-based `useMessagePairs`
+ * then pairs the reply with the previous turn and the current turn renders empty
+ * ("No response was generated"), until a refetch brings all-server timestamps.
+ *
+ * Stamp a client-clock timestamp strictly after everything currently in the
+ * store (same trick as `applyLocally`), keeping both rows in one clock domain.
+ * Only on the row's first appearance — later commits carry the stamp forward via
+ * `preserveCreatedAt`; a genuine DB refetch (incoming has `created_at`)
+ * overwrites it with the authoritative server value.
+ */
+function stampInflightOrder(curr: UIMessage[], m: UIMessage): UIMessage {
+  if ((m as { created_at?: unknown }).created_at != null) return m;
+  const existing = curr.find((x) => x.id === m.id) as
+    | (UIMessage & { created_at?: unknown })
+    | undefined;
+  if (existing?.created_at != null) return m;
+  let maxMs = 0;
+  for (const x of curr) {
+    const t = readTimestamp(x);
+    if (Number.isFinite(t) && t > maxMs) maxMs = t;
+  }
+  if (maxMs === 0) return m;
+  return { ...m, created_at: new Date(maxMs + 1).toISOString() } as UIMessage;
 }
 
 function readTimestamp(m: UIMessage): number {

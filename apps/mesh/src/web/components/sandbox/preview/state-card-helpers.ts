@@ -7,6 +7,8 @@ export function headlineFor(kind: StateCardKind): string {
       return "Starting your sandbox";
     case "suspended":
       return "Sandbox is paused";
+    case "errored":
+      return "Couldn't start the sandbox";
   }
 }
 

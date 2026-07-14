@@ -1,3 +1,4 @@
+import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { z } from "zod";
 import { normalizeCommerceSiteUrl } from "../../commerce-discovery/site-url";
 import { defineTool } from "../../core/define-tool";
@@ -40,9 +41,34 @@ export const COMMERCE_DISCOVERY_RUN = defineTool({
       throw new Error(normalized.error);
     }
 
+    // The repo the client picked in the GitHub companion is persisted on the CD
+    // connection's configuration_state (github_repo). Forward it so Commerce
+    // Discovery can run repo-audit against the right repo; its absence just means
+    // GitHub isn't connected and never blocks the run.
+    const cdConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(
+      organization.id,
+    );
+    const cdConnection = await ctx.storage.connections.findById(
+      cdConnectionId,
+      organization.id,
+    );
+    const configState = cdConnection?.configuration_state as
+      | Record<string, unknown>
+      | string
+      | null
+      | undefined;
+    const githubRepo =
+      configState &&
+      typeof configState === "object" &&
+      typeof configState.github_repo === "string" &&
+      configState.github_repo.length > 0
+        ? (configState.github_repo as string)
+        : undefined;
+
     return triggerCommerceDiscoveryRun({
       siteUrl: normalized.value,
       orgId: organization.id,
+      githubRepo,
     });
   },
 });

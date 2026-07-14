@@ -1,7 +1,6 @@
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { useProjectSidebarItems } from "@/web/hooks/use-project-sidebar-items";
 import { Suspense } from "react";
-import { Separator } from "@deco/ui/components/separator.tsx";
 import { NavigationSidebar } from "./navigation";
 import { MobileNavigationSidebar } from "./navigation-mobile";
 import { SidebarInboxFooter } from "./footer/inbox";
@@ -27,15 +26,7 @@ export function StudioSidebar() {
         footer={<SidebarInboxFooter />}
         additionalContent={
           <ErrorBoundary>
-            <Suspense
-              fallback={
-                <>
-                  <Separator className="mb-2" />
-                  <TaskGroupsSkeleton />
-                </>
-              }
-            >
-              <Separator className="mb-2" />
+            <Suspense fallback={<TaskGroupsSkeleton />}>
               <TaskGroupsList />
             </Suspense>
           </ErrorBoundary>
@@ -56,15 +47,7 @@ export function StudioSidebarMobile({ onClose }: { onClose: () => void }) {
         footer={<SidebarInboxFooterMobile />}
         additionalContent={
           <ErrorBoundary>
-            <Suspense
-              fallback={
-                <>
-                  <Separator className="mb-2" />
-                  <TaskGroupsSkeleton />
-                </>
-              }
-            >
-              <Separator className="mb-2" />
+            <Suspense fallback={<TaskGroupsSkeleton />}>
               <TaskGroupsList onNavigate={onClose} />
             </Suspense>
           </ErrorBoundary>

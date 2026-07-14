@@ -50,20 +50,20 @@ const CLAUDE_CODE_TIERS: AgentTierMap = {
 
 const CODEX_TIERS: AgentTierMap = {
   fast: {
-    modelId: "codex:gpt-5.4-mini",
-    label: "GPT-5.4 Mini",
+    modelId: "codex:gpt-5.6-luna",
+    label: "GPT-5.6 Luna",
     description: "Quicker responses",
     iconNode: <CodexIcon size={16} />,
   },
   smart: {
-    modelId: "codex:gpt-5.4",
-    label: "GPT-5.4",
+    modelId: "codex:gpt-5.6-terra",
+    label: "GPT-5.6 Terra",
     description: "Balanced quality",
     iconNode: <CodexIcon size={16} />,
   },
   thinking: {
-    modelId: "codex:gpt-5.5",
-    label: "GPT-5.5",
+    modelId: "codex:gpt-5.6-sol",
+    label: "GPT-5.6 Sol",
     description: "Deeper reasoning",
     iconNode: <CodexIcon size={16} />,
   },

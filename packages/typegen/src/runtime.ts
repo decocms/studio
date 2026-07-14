@@ -25,7 +25,8 @@ export function createMeshClient<T extends ToolMap>(
 
     connectPromise = (async () => {
       const base = (opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
-      const apiKey = opts.apiKey ?? process.env.MESH_API_KEY;
+      const apiKey =
+        opts.apiKey ?? process.env.STUDIO_API_KEY ?? process.env.MESH_API_KEY;
       // Build URL with string concat so a path-prefixed baseUrl is preserved,
       // and encode mcpId to guard against special characters in the ID.
       const url = new URL(
@@ -58,6 +59,12 @@ export function createMeshClient<T extends ToolMap>(
 
   return new Proxy({} as MeshClient<T>, {
     get(_target, toolName: string) {
+      // Without this, `await createMeshClient(...)` treats the proxy as a
+      // thenable (since `.then` resolves to a function), calls it as
+      // `then(resolve, reject)`, and — since that call is really a tool
+      // invocation that never touches `resolve`/`reject` — the await hangs
+      // forever instead of resolving to the client.
+      if (toolName === "then") return undefined;
       if (toolName === "close") {
         return async () => {
           if (connectPromise) {

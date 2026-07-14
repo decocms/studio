@@ -3,6 +3,7 @@ import {
   getOrgGithubConnections,
   getRepoScope,
   GITHUB_SCOPED_PERMISSIONS,
+  isOrgSharedConnection,
   type RepoScopeRecipe,
 } from "./github-repo-scope";
 
@@ -197,5 +198,23 @@ describe("getOrgGithubConnections", () => {
     expect(
       getOrgGithubConnections([scopedConn, refreshableScopedConn]),
     ).toEqual([]);
+  });
+});
+
+describe("isOrgSharedConnection", () => {
+  it("is true only when metadata.orgShared === true", () => {
+    expect(isOrgSharedConnection({ metadata: { orgShared: true } })).toBe(true);
+  });
+
+  it("is false for per-agent repo children and plain connections", () => {
+    expect(
+      isOrgSharedConnection({
+        metadata: { repoScope: { installationId: 1, owner: "a", repo: "b" } },
+      }),
+    ).toBe(false);
+    expect(isOrgSharedConnection({ metadata: null })).toBe(false);
+    expect(isOrgSharedConnection({ metadata: { orgShared: "yes" } })).toBe(
+      false,
+    );
   });
 });

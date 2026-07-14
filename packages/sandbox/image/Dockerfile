@@ -1,7 +1,8 @@
 # Build: docker build -t studio-sandbox:local -f packages/sandbox/image/Dockerfile packages/sandbox
 FROM oven/bun:1.3.14-debian
 
-ARG NODE_MAJOR=22
+ARG NODE_MAJOR=26
+ARG COREPACK_VERSION=0.35.0
 ARG DENO_VERSION=v1.46.3
 
 # `locales` + generated `en_US.UTF-8` is load-bearing: repos using
@@ -18,6 +19,9 @@ RUN apt-get update \
   && curl -fsSL https://deno.land/install.sh \
        | DENO_INSTALL=/opt/deno sh -s -- -y "${DENO_VERSION}" \
   && ln -s /opt/deno/bin/deno /usr/local/bin/deno \
+  # NodeSource's Node 26 packages no longer ship Corepack.
+  && (command -v corepack >/dev/null 2>&1 \
+       || npm install --global "corepack@${COREPACK_VERSION}") \
   && corepack enable \
   # Corepack fetches the tarballs from npm under the hood; if cloudflare
   # closes the TLS socket mid-stream (UND_ERR_SOCKET in undici) the build

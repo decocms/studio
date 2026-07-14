@@ -1,4 +1,7 @@
-import { normalizeCommerceSiteUrl } from "@/commerce-discovery/site-url";
+import {
+  isConnectionClaimedForSite,
+  normalizeCommerceSiteUrl,
+} from "@/commerce-discovery/site-url";
 import { AuthEntry } from "@/web/components/auth-entry";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { AuthSplitLayout } from "@/web/components/auth-split-layout";
@@ -756,10 +759,11 @@ function CommerceSetupContent({
   });
   const [runError, setRunError] = useState<string | null>(null);
 
-  const setupReady = !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
+  const connectionExists =
+    !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
   // A returning session may arrive with no ?siteUrl param and an empty form while
-  // the connection already exists (setupReady). Recover the site from the
-  // connection metadata (persisted at setup) so the run can still be triggered.
+  // the connection already exists. Recover the site from the connection metadata
+  // (persisted at setup) so the run can still be triggered.
   const connectionItem = connectionQuery.data.item as unknown as
     | { metadata?: Record<string, unknown> | null }
     | null
@@ -768,6 +772,20 @@ function CommerceSetupContent({
     typeof connectionItem?.metadata?.siteUrl === "string"
       ? (connectionItem.metadata.siteUrl as string)
       : undefined;
+  // The CD connection is per-ORG, but its token is claimed per-SITE (setup calls
+  // /upgrade, which mints a token scoped to one site and persists it here). So an
+  // org that already has a connection for site A, then opens the onboarding for
+  // site B, must RE-RUN setup to re-claim B — otherwise the report renders A's
+  // diagnostic (the wrong store) and COMMERCE_DISCOVERY_RUN(B) returns
+  // not_upgraded. Treat the connection as ready ONLY when it's claimed for the
+  // requested site; when the site differs, fall through to setup (idempotent
+  // re-claim) so the token + metadata.siteUrl follow the site being onboarded.
+  const requestedSite = initialSiteUrl || siteUrlInput || "";
+  const claimedForRequestedSite = isConnectionClaimedForSite(
+    requestedSite,
+    connectionSiteUrl,
+  );
+  const setupReady = connectionExists && claimedForRequestedSite;
   const currentSiteUrl =
     initialSiteUrl || siteUrlInput || connectionSiteUrl || "";
   const currentMeetingUrl = buildScheduleMeetingUrl({
@@ -829,7 +847,23 @@ function CommerceSetupContent({
     const normalized = normalizeCommerceSiteUrl(currentSiteUrl);
     if (normalized.ok) {
       try {
-        await runMutation.mutateAsync(normalized.value);
+        const runResult = await runMutation.mutateAsync(normalized.value);
+        // triggered:false means the site was never claimed for this org
+        // (not_upgraded — see triggerCommerceDiscoveryRun). Opening the report
+        // anyway would render whatever the connection's token still points at
+        // (a previously-claimed site's diagnostic). Surface the error and stay
+        // put instead of showing the wrong store's report.
+        if (!runResult.triggered) {
+          track("commerce_onboarding_run_failed", {
+            domain: siteUrlToHost(currentSiteUrl) ?? undefined,
+            organization_id: org.id,
+            error: runResult.reason ?? "not_triggered",
+          });
+          setRunError(
+            "Não foi possível gerar o relatório para este site. Recarregue a página e tente novamente.",
+          );
+          return;
+        }
       } catch (err) {
         track("commerce_onboarding_run_failed", {
           domain: siteUrlToHost(currentSiteUrl) ?? undefined,

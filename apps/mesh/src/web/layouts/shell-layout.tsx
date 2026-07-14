@@ -1,8 +1,9 @@
 import { Suspense, useEffect, useState } from "react";
 import { OrgAccessGate } from "@/web/components/org-access-gate";
 import { SplashScreen } from "@/web/components/splash-screen";
-import { SidebarReleaseCard } from "@/web/components/release-channel/sidebar-release-card";
+import { FloatingReleaseCard } from "@/web/components/release-channel/floating-release-card";
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
+import { VersionCheckDialog } from "@/web/components/version-check-dialog";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
@@ -23,6 +24,7 @@ import {
   useMatch,
   useNavigate,
   useParams,
+  useRouter,
   useSearch,
 } from "@tanstack/react-router";
 import { KEYS } from "../lib/query-keys";
@@ -218,6 +220,7 @@ function ShellLayoutContent() {
   const org = orgMatch?.params.org;
   const { taskId } = useParams({ strict: false }) as { taskId?: string };
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
+  const router = useRouter();
 
   useQuery({
     ...homeNextActionsQueryOptions(org ?? ""),
@@ -230,17 +233,29 @@ function ShellLayoutContent() {
   const userId = session?.user?.id;
   const cachedOrg = org && userId ? readCachedOrg(userId, org) : null;
 
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscribes to document keydown for ⌘K shortcuts dialog; DOM event listener has no React 19 alternative
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscribes to document keydown for ⌘K / ⌘[ shortcuts; DOM event listener has no React 19 alternative
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
       if (isModKey(e) && e.code === "KeyK") {
         e.preventDefault();
         setShortcutsDialogOpen(true);
+        return;
+      }
+      // ⌘[ / Ctrl+[ — back to the previous thread. Own the chord (preventDefault)
+      // so it uses SPA history instead of a full browser navigation; skip when
+      // there's nothing to go back to so cold entry doesn't leave the app.
+      if (
+        isModKey(e) &&
+        e.code === "BracketLeft" &&
+        router.history.canGoBack()
+      ) {
+        e.preventDefault();
+        router.history.back();
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, []);
+  }, [router]);
 
   const { data: activeOrg } = useSuspenseQuery({
     queryKey: KEYS.activeOrganization(org),
@@ -354,13 +369,15 @@ function ShellLayoutContent() {
       <PostHogGroupSync activeOrg={activeOrg} />
       <Outlet />
 
-      <SidebarReleaseCard />
+      <FloatingReleaseCard />
 
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog
         open={shortcutsDialogOpen}
         onOpenChange={setShortcutsDialogOpen}
       />
+
+      <VersionCheckDialog />
     </ShellProjectProvider>
   );
 }

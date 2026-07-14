@@ -11,6 +11,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { SplashScreen } from "@/web/components/splash-screen";
+import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 import { ChunkErrorBoundary } from "@/web/components/error-boundary";
 import * as z from "zod";
 
@@ -272,6 +273,11 @@ const orgShellLayout = createRoute({
 const agentShellLayout = createRoute({
   getParentRoute: () => orgShellLayout,
   id: "agent-shell",
+  // Render the centered panel-area loader (matches the shell's own Suspense
+  // fallbacks) while this route loads, instead of the full-screen SplashScreen.
+  // The sidebar is already mounted by orgShellLayout, so the pending state
+  // covers only the main panel region — no off-center left flash on nav.
+  pendingComponent: ShellRouteLoading,
   component: lazyRouteComponent(
     () => import("./layouts/agent-shell-layout/index.tsx"),
   ),
@@ -317,10 +323,17 @@ const unifiedChatRoute = createRoute({
 });
 
 // Org index renders the home landing page (single-panel + HomePage), no
-// agent shell.
+// agent shell. `main` opens a side panel over the home (e.g. "files" = the
+// Library) without leaving `/$org`, mirroring the thread's main-panel tabs.
+const orgIndexSearchSchema = z.object({
+  main: z.string().optional(),
+});
+
 const orgIndexRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/",
+  validateSearch: orgIndexSearchSchema,
+  pendingComponent: ShellRouteLoading,
   component: lazyRouteComponent(() => import("./layouts/org-home/index.tsx")),
 });
 
@@ -338,7 +351,16 @@ const libraryRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/files",
   validateSearch: librarySearchSchema,
+  pendingComponent: ShellRouteLoading,
   component: lazyRouteComponent(() => import("./layouts/library/index.tsx")),
+});
+
+// Task board (/$org/board) — org-owned task board, gated behind the org's
+// task_board_enabled setting.
+const boardRoute = createRoute({
+  getParentRoute: () => orgShellLayout,
+  path: "/board",
+  component: lazyRouteComponent(() => import("./layouts/task-board/index.tsx")),
 });
 
 // ============================================
@@ -596,6 +618,7 @@ const agentShellWithChildren = agentShellLayout.addChildren([unifiedChatRoute]);
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
   libraryRoute,
+  boardRoute,
   agentShellWithChildren,
 ]);
 

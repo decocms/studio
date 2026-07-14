@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  FIXED_SYSTEM_TABS,
+  formatCodeTabId,
   formatDeckTabId,
   formatFileTabId,
   formatLibraryFileTabId,
+  parseCodeTabId,
   isLegacySettingsTab,
   isPerThreadTab,
   parseAutomationTabId,
@@ -311,11 +314,38 @@ describe("resolveTabClickTarget", () => {
     ).toBe("0");
   });
 
+  test("clicking active Blocks tab collapses to Preview, not closed", () => {
+    expect(
+      resolveTabClickTarget({
+        clickedId: "blocks",
+        activeTab: "blocks",
+        mainOpen: true,
+      }),
+    ).toBe("preview");
+  });
+
   test("clicking non-active tab while panel open → clicked id", () => {
     expect(
       resolveTabClickTarget({
         clickedId: "preview",
         activeTab: "settings",
+        mainOpen: true,
+      }),
+    ).toBe("preview");
+  });
+
+  test("Preview and Blocks switch to their own tab ids", () => {
+    expect(
+      resolveTabClickTarget({
+        clickedId: "blocks",
+        activeTab: "preview",
+        mainOpen: true,
+      }),
+    ).toBe("blocks");
+    expect(
+      resolveTabClickTarget({
+        clickedId: "preview",
+        activeTab: "blocks",
         mainOpen: true,
       }),
     ).toBe("preview");
@@ -421,5 +451,30 @@ describe("resolveAutomationsPillClickTarget", () => {
         mainOpen: true,
       }),
     ).toBe("automations");
+  });
+});
+
+describe("code tab id", () => {
+  test("includes blocks and code in the fixed system tabs", () => {
+    expect(FIXED_SYSTEM_TABS).toContain("blocks");
+    expect(FIXED_SYSTEM_TABS).toContain("code");
+  });
+
+  test("parses the bare code id as a null path", () => {
+    expect(parseCodeTabId("code")).toEqual({ path: null });
+  });
+
+  test("round-trips a code path with slashes", () => {
+    const id = formatCodeTabId(".deco/blocks/pages-Home.json");
+    expect(id).toBe("code:.deco%2Fblocks%2Fpages-Home.json");
+    expect(parseCodeTabId(id)).toEqual({
+      path: ".deco/blocks/pages-Home.json",
+    });
+  });
+
+  test("returns null for non-code ids", () => {
+    expect(parseCodeTabId("preview")).toBeNull();
+    expect(parseCodeTabId(undefined)).toBeNull();
+    expect(parseCodeTabId("codex")).toBeNull();
   });
 });

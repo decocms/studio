@@ -13,10 +13,10 @@ const CODEX_LOGO =
 export const CODEX_MODELS: ModelInfo[] = [
   {
     providerId: "codex",
-    modelId: "codex:gpt-5.5",
-    title: "GPT-5.5",
+    modelId: "codex:gpt-5.6-sol",
+    title: "GPT-5.6 Sol",
     description:
-      "Frontier model for complex coding, research, and real-world work",
+      "Frontier Codex model for deep reasoning, complex coding, and real-world work",
     capabilities: ["text", "reasoning"],
     logo: CODEX_LOGO,
     limits: null,
@@ -24,9 +24,9 @@ export const CODEX_MODELS: ModelInfo[] = [
   },
   {
     providerId: "codex",
-    modelId: "codex:gpt-5.4",
-    title: "GPT-5.4",
-    description: "Strong model for everyday coding",
+    modelId: "codex:gpt-5.6-terra",
+    title: "GPT-5.6 Terra",
+    description: "Balanced Codex model for everyday coding and agent work",
     capabilities: ["text", "reasoning"],
     logo: CODEX_LOGO,
     limits: null,
@@ -34,10 +34,9 @@ export const CODEX_MODELS: ModelInfo[] = [
   },
   {
     providerId: "codex",
-    modelId: "codex:gpt-5.4-mini",
-    title: "GPT-5.4 Mini",
-    description:
-      "Small, fast, and cost-efficient model for simpler coding tasks",
+    modelId: "codex:gpt-5.6-luna",
+    title: "GPT-5.6 Luna",
+    description: "Fast Codex model for lightweight coding tasks and titles",
     capabilities: ["text", "reasoning"],
     logo: CODEX_LOGO,
     limits: null,
