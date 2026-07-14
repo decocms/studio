@@ -141,6 +141,7 @@ import {
   scanBlogEntries,
 } from "./blog/blog-data";
 import { PostStatusBadge } from "./blog/post-status";
+import { useSearch } from "@tanstack/react-router";
 import {
   useDeleteBlogBlock,
   useSaveBlogBlock,
@@ -393,9 +394,26 @@ function ContentBrowserReady({
   const { data: decofile, isLoading: decofileLoading } =
     useDecofile(fetchParams);
 
+  // Deep-link: the Blog Manager's "Editar no Studio" redirect can pre-select a
+  // blog collection and open a specific post via the URL
+  // (?contentCollection=posts&contentItem=<blockKey>). Read once, to seed the
+  // initial collection + selection; normal navigation takes over afterwards.
+  const deepLink = useSearch({ strict: false }) as {
+    contentCollection?: string;
+    contentItem?: string;
+  };
+  const initialCollection: CollectionId =
+    deepLink.contentCollection &&
+    isBlogKind(deepLink.contentCollection as CollectionId)
+      ? (deepLink.contentCollection as CollectionId)
+      : "pages";
   const [activeCollection, setActiveCollection] =
-    useState<CollectionId>("pages");
-  const [selection, setSelection] = useState<Selection>(null);
+    useState<CollectionId>(initialCollection);
+  const [selection, setSelection] = useState<Selection>(
+    deepLink.contentItem && isBlogKind(initialCollection)
+      ? { collection: initialCollection as BlogKind, key: deepLink.contentItem }
+      : null,
+  );
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
