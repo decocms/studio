@@ -2,22 +2,40 @@
  * Native home tiles — built-in React tiles that live on the home board next to
  * agent tiles. They aren't agents, so they aren't tracked in
  * `default_home_agents`; instead they're always-present board candidates whose
- * on/off state rides the board layout's `hidden` set (see home-grid + the
- * add-tile drawer's "Built-in tiles" section). Today the only one is recent
- * conversations, but the registry is open for more.
+ * on/off state rides the board layout (see home-grid + the add-tile drawer's
+ * "Built-in tiles" section).
+ *
+ * The default board is the four product tiles below: Tasks (real task-board
+ * data) plus Coding / Analytics / Sales (visual mocks whose hover CTA invites
+ * the user to connect the backing integration). Recent conversations is still
+ * available but `defaultHidden` — re-add it from Customize.
  */
 import { Suspense } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { MessageChatCircle } from "@untitledui/icons";
+import {
+  BarChart10,
+  CheckCircle,
+  GitBranch01,
+  MessageChatCircle,
+  ShoppingCart01,
+} from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { useMembers } from "@/web/hooks/use-members";
+import { useTaskBoardItems } from "@/web/hooks/use-task-board-items";
+import { STATUS_CONFIG } from "@/web/layouts/task-board/config";
+import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { KEYS } from "@/web/lib/query-keys";
 
+const TASKS_TILE_ID = "tasks";
+const CODING_TILE_ID = "coding";
+const ANALYTICS_TILE_ID = "analytics";
+const SALES_TILE_ID = "sales";
 const RECENT_CONVERSATIONS_TILE_ID = "recent-conversations";
 
 export interface NativeTileDef {
@@ -25,16 +43,45 @@ export interface NativeTileDef {
   title: string;
   defaultSize: { w: number; h: number };
   minSize: { w: number; h: number };
+  /** When true, the tile is NOT on the default board — it only appears once
+   *  the user adds it from Customize (which writes it a stored position). */
+  defaultHidden?: boolean;
 }
 
-/** Native tiles offered on the home board, in display order. */
+/** Native tiles offered on the home board, in display order. The first four
+ *  form the default board (2×2 in the 4-col grid). */
 export const NATIVE_TILES: NativeTileDef[] = [
+  {
+    id: TASKS_TILE_ID,
+    title: "Tasks",
+    defaultSize: { w: 2, h: 4 },
+    minSize: { w: 2, h: 2 },
+  },
+  {
+    id: CODING_TILE_ID,
+    title: "Coding",
+    defaultSize: { w: 2, h: 4 },
+    minSize: { w: 2, h: 2 },
+  },
+  {
+    id: ANALYTICS_TILE_ID,
+    title: "Analytics",
+    defaultSize: { w: 2, h: 4 },
+    minSize: { w: 2, h: 2 },
+  },
+  {
+    id: SALES_TILE_ID,
+    title: "Sales",
+    defaultSize: { w: 2, h: 4 },
+    minSize: { w: 2, h: 2 },
+  },
   {
     id: RECENT_CONVERSATIONS_TILE_ID,
     title: "Recent conversations",
-    // Full width (grid is 4 cols) × 4 rows, sitting under the agent tiles.
+    // Full width (grid is 4 cols) × 4 rows.
     defaultSize: { w: 4, h: 4 },
     minSize: { w: 2, h: 2 },
+    defaultHidden: true,
   },
 ];
 
@@ -42,6 +89,10 @@ export const NATIVE_TILES: NativeTileDef[] = [
 export function nativeCandidateId(nativeId: string): string {
   return `native:${nativeId}`;
 }
+
+// ---------------------------------------------------------------------------
+// Recent conversations
+// ---------------------------------------------------------------------------
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   completed: { label: "Completed", className: "text-success" },
@@ -149,6 +200,260 @@ function RecentConversationsList() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Tasks (real task-board data)
+// ---------------------------------------------------------------------------
+
+function TasksTileBody() {
+  const { org } = useProjectContext();
+  const navigate = useNavigate();
+  const { items, isLoading, error } = useTaskBoardItems();
+
+  const openBoard = () =>
+    navigate({ to: "/$org/board", params: { org: org.slug } });
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        {Array.from({ length: 4 }, (_, i) => (
+          <div
+            key={`task-skeleton-${i}`}
+            className="h-6 w-full animate-pulse rounded-md bg-muted/40"
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // An error usually means the task board is off for this org; either way,
+  // show the empty affordance rather than a scary error.
+  if (error || items.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <CheckCircle className="size-6 text-muted-foreground/50" />
+        <p className="text-xs text-muted-foreground">No tasks yet.</p>
+        <Button size="sm" variant="ghost" onClick={openBoard} className="h-7">
+          Open task board
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5 overflow-y-auto p-1.5">
+      {items.slice(0, 8).map((item) => {
+        const cfg = STATUS_CONFIG[item.status];
+        const Icon = cfg.icon;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={openBoard}
+            className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-accent/60"
+          >
+            <Icon className={cn("size-4 shrink-0", cfg.iconClassName)} />
+            <span className="truncate text-sm text-foreground">
+              {item.title}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mock tiles — Coding / Analytics / Sales. Static sample data; a hover overlay
+// invites the user to connect the real integration (not wired yet).
+// ---------------------------------------------------------------------------
+
+function MockConnectOverlay({
+  label,
+  icon,
+}: {
+  label: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-background/70 opacity-0 backdrop-blur-sm transition-opacity duration-150 group-hover/mock:opacity-100">
+      <Button size="sm" variant="secondary" className="gap-2 shadow-sm">
+        {icon}
+        {label}
+      </Button>
+    </div>
+  );
+}
+
+function MockTile({
+  children,
+  connectLabel,
+  connectIcon,
+}: {
+  children: React.ReactNode;
+  connectLabel: string;
+  connectIcon: React.ReactNode;
+}) {
+  return (
+    <div className="group/mock relative flex h-full flex-col overflow-hidden">
+      <div className="flex flex-1 flex-col p-3">{children}</div>
+      <MockConnectOverlay label={connectLabel} icon={connectIcon} />
+    </div>
+  );
+}
+
+/** A tiny deterministic contributions grid (7 rows × 14 weeks). Static
+ *  classes so Tailwind keeps the opacity variants. */
+const CONTRIB_LEVEL_CLASS = [
+  "bg-foreground/10",
+  "bg-foreground/25",
+  "bg-foreground/45",
+  "bg-foreground/70",
+];
+function ContributionsGrid() {
+  return (
+    <div className="flex gap-1">
+      {Array.from({ length: 14 }, (_, col) => (
+        <div key={`col-${col}`} className="flex flex-col gap-1">
+          {Array.from({ length: 7 }, (_, row) => {
+            // Deterministic pseudo-pattern — stable render, no randomness.
+            const cls = CONTRIB_LEVEL_CLASS[(col * 7 + row) % 4];
+            return (
+              <div
+                key={`cell-${col}-${row}`}
+                className={cn("size-2 rounded-[2px]", cls)}
+              />
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const MOCK_PRS = [
+  { id: 128, title: "Fix checkout flow", state: "merged" },
+  { id: 127, title: "Add product search", state: "open" },
+  { id: 126, title: "Bump deps", state: "merged" },
+];
+
+function CodingTileBody() {
+  return (
+    <MockTile
+      connectLabel="Connect GitHub"
+      connectIcon={<GitHubIcon className="size-4" />}
+    >
+      <ContributionsGrid />
+      <div className="mt-3 flex flex-col gap-1.5">
+        {MOCK_PRS.map((pr) => (
+          <div key={pr.id} className="flex items-center gap-2 text-xs">
+            <GitBranch01 className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate text-foreground">{pr.title}</span>
+            <span
+              className={cn(
+                "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                pr.state === "merged"
+                  ? "bg-success/10 text-success"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              #{pr.id}
+            </span>
+          </div>
+        ))}
+      </div>
+    </MockTile>
+  );
+}
+
+const MOCK_SPARKLINE = [8, 12, 10, 16, 14, 20, 18, 26, 24, 30];
+function Sparkline() {
+  const max = Math.max(...MOCK_SPARKLINE);
+  const pts = MOCK_SPARKLINE.map((v, i) => {
+    const x = (i / (MOCK_SPARKLINE.length - 1)) * 100;
+    const y = 32 - (v / max) * 30;
+    return `${x},${y}`;
+  }).join(" ");
+  return (
+    <svg
+      viewBox="0 0 100 32"
+      preserveAspectRatio="none"
+      className="h-10 w-full text-foreground/70"
+      aria-hidden
+    >
+      <polyline
+        points={pts}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
+function StatNumber({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-lg font-semibold text-foreground">{value}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+function AnalyticsTileBody() {
+  return (
+    <MockTile
+      connectLabel="Connect Google Analytics"
+      connectIcon={<BarChart10 className="size-4" />}
+    >
+      <div className="flex gap-6">
+        <StatNumber value="12.4k" label="Pageviews" />
+        <StatNumber value="3.2k" label="Sessions" />
+      </div>
+      <div className="mt-auto pt-3">
+        <Sparkline />
+      </div>
+    </MockTile>
+  );
+}
+
+const MOCK_BARS = [40, 65, 50, 80, 70, 95, 60];
+function BarChartMock() {
+  const max = Math.max(...MOCK_BARS);
+  return (
+    <div className="flex h-12 items-end gap-1.5">
+      {MOCK_BARS.map((v, i) => (
+        <div
+          key={`bar-${i}`}
+          className="flex-1 rounded-t-sm bg-foreground/60"
+          style={{ height: `${(v / max) * 100}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SalesTileBody() {
+  return (
+    <MockTile
+      connectLabel="Connect VTEX or Shopify"
+      connectIcon={<ShoppingCart01 className="size-4" />}
+    >
+      <div className="flex gap-6">
+        <StatNumber value="$8,240" label="Revenue" />
+        <StatNumber value="142" label="Orders" />
+      </div>
+      <div className="mt-auto pt-3">
+        <BarChartMock />
+      </div>
+    </MockTile>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Registry renderer
+// ---------------------------------------------------------------------------
+
 /**
  * Renders a native tile's body by id. Unknown ids render nothing (the tile
  * still occupies its cell, but degrades gracefully). Chrome (drag handle,
@@ -161,13 +466,23 @@ export function NativeTile({ nativeId }: { nativeId: string }) {
       <div className="shrink-0 border-b border-border/60 px-3 py-2 text-xs font-medium text-muted-foreground">
         {def?.title ?? "Tile"}
       </div>
-      {nativeId === RECENT_CONVERSATIONS_TILE_ID ? (
-        <Suspense
-          fallback={<div className="flex-1 animate-pulse bg-muted/30" />}
-        >
-          <RecentConversationsList />
-        </Suspense>
-      ) : null}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {nativeId === RECENT_CONVERSATIONS_TILE_ID ? (
+          <Suspense
+            fallback={<div className="h-full animate-pulse bg-muted/30" />}
+          >
+            <RecentConversationsList />
+          </Suspense>
+        ) : nativeId === TASKS_TILE_ID ? (
+          <TasksTileBody />
+        ) : nativeId === CODING_TILE_ID ? (
+          <CodingTileBody />
+        ) : nativeId === ANALYTICS_TILE_ID ? (
+          <AnalyticsTileBody />
+        ) : nativeId === SALES_TILE_ID ? (
+          <SalesTileBody />
+        ) : null}
+      </div>
     </div>
   );
 }

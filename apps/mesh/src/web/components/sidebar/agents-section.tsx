@@ -1,4 +1,4 @@
-import { Suspense, useState, type ReactElement } from "react";
+import { Suspense, useState, type ReactElement, type ReactNode } from "react";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
@@ -41,11 +41,16 @@ import {
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { track } from "@/web/lib/posthog-client";
 import { AgentAvatar } from "@/web/components/agent-icon";
+import { GitHubIcon } from "@/web/components/icons/github-icon";
+import { GitHubRepoPicker } from "@/web/components/github-repo-picker";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
 import { authClient } from "@/web/lib/auth-client";
 import { getServerPinnedIds } from "@/web/hooks/use-navigate-to-agent";
-import { getDevAgentIds } from "@/web/lib/agent-capabilities";
+import {
+  agentHasClonableSource,
+  getDevAgentIds,
+} from "@/web/lib/agent-capabilities";
 import {
   useSidebarAgentGroupsEmpty,
   useBumpSidebarOrderRevision,
@@ -145,10 +150,30 @@ function AgentRow({
   );
 }
 
+/** A group label ("Agents" / "Code Agents") with an optional trailing action
+ *  (the "Import from GitHub" button lives on the Code Agents header). */
+function SectionLabel({
+  children,
+  action,
+}: {
+  children: ReactNode;
+  action?: ReactElement;
+}) {
+  return (
+    <div className="flex items-center justify-between px-3 pb-1 pt-2">
+      <span className="text-xs font-medium text-muted-foreground">
+        {children}
+      </span>
+      {action}
+    </div>
+  );
+}
+
 function PinAgentPopoverContent({
   onClose,
   onSelectAgent,
   selectedAgentId,
+  onImportFromGithub,
 }: {
   onClose: () => void;
   /** When provided (breadcrumb scope picker), selecting an agent sets the
@@ -157,6 +182,9 @@ function PinAgentPopoverContent({
   onSelectAgent?: (id: string | null) => void;
   /** The currently-scoped agent, for the check mark (picker mode). */
   selectedAgentId?: string | null;
+  /** Close the popover and open the GitHub import dialog (owned by the parent
+   * so the dialog survives the popover unmounting). */
+  onImportFromGithub: () => void;
 }) {
   const [search, setSearch] = useState("");
   const allAgents = useVirtualMCPs();
@@ -180,6 +208,17 @@ function PinAgentPopoverContent({
     // Manager) live only on the agents page, not this browse list.
     .filter((s) => !isStudioPackAgent(s.id))
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
+
+  // "Code agents" are agents backed by a GitHub repo (imported from GitHub or
+  // cloned from a template); plain agents have no clonable source. They render
+  // as two labelled groups so the repo-backed ones — and the Import button that
+  // creates more — are easy to find.
+  const codeAgents = userAgents.filter((s) =>
+    agentHasClonableSource(s.metadata),
+  );
+  const plainAgents = userAgents.filter(
+    (s) => !agentHasClonableSource(s.metadata),
+  );
 
   // Decopilot — the "all threads / every agent" option in scope-picker mode.
   // The well-known agent isn't in the collection list, so build it directly.
@@ -225,7 +264,7 @@ function PinAgentPopoverContent({
       />
 
       {/* Scrollable content */}
-      <div className="overflow-y-auto flex-1 min-h-0 p-1.5 flex flex-col gap-1">
+      <div className="overflow-y-auto flex-1 min-h-0 p-1.5 flex flex-col gap-0.5">
         {/* Scope-picker mode: Decopilot = all threads, every agent. */}
         {onSelectAgent && showDecopilot && decopilotAgent && (
           <AgentRow
@@ -235,7 +274,9 @@ function PinAgentPopoverContent({
           />
         )}
 
-        {userAgents.map((agent) => (
+        {/* Agents */}
+        {plainAgents.length > 0 && <SectionLabel>Agents</SectionLabel>}
+        {plainAgents.map((agent) => (
           <AgentRow
             key={agent.id}
             agent={agent}
@@ -244,9 +285,36 @@ function PinAgentPopoverContent({
           />
         ))}
 
-        {userAgents.length === 0 && !decopilotRowShown && (
+        {/* Code Agents — repo-backed. The Import button is always available
+            when not filtering, so a repo can be imported even with none yet. */}
+        {(codeAgents.length > 0 || !search) && (
+          <SectionLabel
+            action={
+              <button
+                type="button"
+                onClick={onImportFromGithub}
+                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+              >
+                <GitHubIcon className="size-3.5" />
+                Import
+              </button>
+            }
+          >
+            Code Agents
+          </SectionLabel>
+        )}
+        {codeAgents.map((agent) => (
+          <AgentRow
+            key={agent.id}
+            agent={agent}
+            selected={onSelectAgent ? selectedAgentId === agent.id : undefined}
+            onClick={() => handleSelect(agent)}
+          />
+        ))}
+
+        {userAgents.length === 0 && !decopilotRowShown && search && (
           <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
-            {search ? "No agents found" : "No agents yet"}
+            No agents found
           </div>
         )}
       </div>
@@ -284,6 +352,7 @@ function PinAgentPopover({
   align?: "start" | "center" | "end";
 } = {}) {
   const [open, setOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const isMobile = useIsMobile();
   const { setOpenMobile } = useSidebar();
   const highlightEmpty = useSidebarAgentGroupsEmpty();
@@ -301,6 +370,14 @@ function PinAgentPopover({
     if (isMobile) setOpenMobile(false);
   };
 
+  // Close the popover first, then open the import dialog — the dialog is
+  // rendered as a sibling below (not inside the popover content) so it isn't
+  // torn down when the popover unmounts.
+  const handleImportFromGithub = () => {
+    handleClose();
+    setPickerOpen(true);
+  };
+
   const popoverContent = open && (
     <Suspense
       fallback={
@@ -313,6 +390,7 @@ function PinAgentPopover({
         onClose={handleClose}
         onSelectAgent={onSelectAgent}
         selectedAgentId={selectedAgentId}
+        onImportFromGithub={handleImportFromGithub}
       />
     </Suspense>
   );
@@ -413,6 +491,16 @@ function PinAgentPopover({
           </PopoverContent>
         </Popover>
       )}
+
+      {/* Import dialog lives outside the popover/drawer so it survives their
+          close. mode="agent" (default) provisions a repo-scoped connection,
+          creates the code agent, invalidates the agent list, and navigates to
+          it — so the new code agent shows up here immediately. */}
+      <GitHubRepoPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        mode="agent"
+      />
     </>
   );
 }
