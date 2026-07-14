@@ -9,6 +9,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { sleep } from "@decocms/std";
 import { jetstreamManager } from "@nats-io/jetstream";
 import { getSettings } from "../settings";
 import {
@@ -1676,9 +1677,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         const REVALIDATION_TIMEOUT_MS = 30_000;
         void Promise.race([
           Promise.allSettled(revalidations),
-          new Promise((resolve) =>
-            setTimeout(resolve, REVALIDATION_TIMEOUT_MS),
-          ),
+          sleep(REVALIDATION_TIMEOUT_MS),
         ]).catch((err) =>
           console.error("[mesh] revalidation cleanup error:", err),
         );
