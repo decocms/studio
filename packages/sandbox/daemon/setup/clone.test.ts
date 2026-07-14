@@ -379,4 +379,27 @@ describe("spawnClone", () => {
       cleanup();
     }
   }, 30_000);
+
+  it("lands on the default branch (not detached HEAD) via init+fetch when no branch is requested", async () => {
+    const { url, root, cleanup } = setupBareRepo();
+    try {
+      const repoDir = join(root, "workspace");
+      mkdirSync(repoDir);
+      // Same pre-populated-dir scenario as above, but with no branch
+      // requested — this must still land on a real local branch (`main`),
+      // matching what a plain `git clone` (no --branch) does, not a
+      // detached FETCH_HEAD checkout.
+      writeFileSync(join(repoDir, "marker.txt"), "preexisting\n");
+      const { code } = await spawnClone({
+        config: makeConfig(repoDir, url),
+        askpassPath: ASKPASS,
+        onChunk: () => {},
+      });
+      expect(code).toBe(0);
+      expect(currentBranch(repoDir)).toBe("main");
+      expect(existsSync(join(repoDir, "marker.txt"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
 });
