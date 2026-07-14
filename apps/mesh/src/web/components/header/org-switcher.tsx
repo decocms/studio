@@ -8,7 +8,6 @@
  */
 import { type ReactNode, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Popover,
@@ -79,9 +78,16 @@ export function OrgIcon({
  * navigates there. This is where invitations live now (the old global "inbox"
  * was removed); org-admin join-requests still live in Settings.
  */
-function InvitationRow({ invitation }: { invitation: Invitation }) {
+function InvitationRow({
+  invitation,
+  onChanged,
+}: {
+  invitation: Invitation;
+  /** Refresh the invitation list after a decline so the row + breadcrumb dot
+   *  clear. Accept hard-navigates, so it doesn't need this. */
+  onChanged: () => void;
+}) {
   const [busy, setBusy] = useState(false);
-  const queryClient = useQueryClient();
   const name = invitation.organizationName ?? "Unknown organization";
 
   const accept = async () => {
@@ -128,7 +134,10 @@ function InvitationRow({ invitation }: { invitation: Invitation }) {
         return;
       }
       toast.success("Invitation declined");
-      queryClient.invalidateQueries();
+      // Re-enable in case the refetch keeps the row briefly, and refresh the
+      // invitation list so the declined row (and the breadcrumb dot) clear.
+      setBusy(false);
+      onChanged();
     } catch {
       toast.error("Failed to decline invitation");
       setBusy(false);
@@ -183,7 +192,8 @@ function OrganizationsPanel({
   // deferred until the switcher is actually opened — it no longer fires on
   // every page load.
   const { data: organizations } = useActiveOrganizations();
-  const pendingInvitations = usePendingInvitations();
+  const { invitations: pendingInvitations, refetch: refetchInvitations } =
+    usePendingInvitations();
   const sortedOrgs = [...(organizations ?? [])].sort((a, b) => {
     if (a.slug === orgParam) return -1;
     if (b.slug === orgParam) return 1;
@@ -227,7 +237,11 @@ function OrganizationsPanel({
             click. Hidden while searching (they're not "your" orgs to filter). */}
         {!query &&
           pendingInvitations.map((invitation) => (
-            <InvitationRow key={invitation.id} invitation={invitation} />
+            <InvitationRow
+              key={invitation.id}
+              invitation={invitation}
+              onChanged={refetchInvitations}
+            />
           ))}
         {filtered.length === 0 && (
           <p className="px-3 py-4 text-sm text-muted-foreground/60 text-center">
