@@ -191,6 +191,9 @@ const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
  *   - "file:<encoded key>"            (ephemeral thread-output file preview)
  *   - "deck:<encoded path>"           (ephemeral HTML-artifact preview/editor)
  *   - "library-file:<encoded path>"   (ephemeral org Library file preview)
+ *   - "code:<encoded path>"           (open file in the Code tab's file explorer,
+ *     scoped to the task's branch/sandbox — the bare "code" tab id is NOT
+ *     per-thread, only a specific open path is)
  */
 export function isPerThreadTab(tabId: string): boolean {
   return (
@@ -198,7 +201,8 @@ export function isPerThreadTab(tabId: string): boolean {
     tabId.startsWith("automation:") ||
     tabId.startsWith("file:") ||
     tabId.startsWith("deck:") ||
-    tabId.startsWith("library-file:")
+    tabId.startsWith("library-file:") ||
+    tabId.startsWith("code:")
   );
 }
 
