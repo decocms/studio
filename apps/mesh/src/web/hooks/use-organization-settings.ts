@@ -254,17 +254,6 @@ export function useReportsOnlyGate(): boolean {
   return data.reports_only ?? false;
 }
 
-export function useUpdateReportsOnly() {
-  const mutation = useUpdateOrganizationSettings();
-  return {
-    ...mutation,
-    mutate: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
-      mutation.mutate({ reports_only: enabled }, options),
-    mutateAsync: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
-      mutation.mutateAsync({ reports_only: enabled }, options),
-  };
-}
-
 export function useTaskBoardEnabled(): boolean {
   const { data } = useOrganizationSettings(
     (s) => s.task_board_enabled ?? false,

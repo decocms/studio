@@ -23,11 +23,11 @@ import { fetchCommerceDiscoveryAuth } from "./auth-client";
 const REPORT_TOOL_NAME =
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME as "get_my_diagnostic";
 
-const ReportsSetupInputSchema = z.object({
+const CommerceDiscoverySetupInputSchema = z.object({
   siteUrl: z.string().min(1).describe("Website URL to configure."),
 });
 
-const ReportsSetupOutputSchema = z.object({
+const CommerceDiscoverySetupOutputSchema = z.object({
   connection: ConnectionEntitySchema,
   virtualMcp: VirtualMCPEntitySchema,
   reportApp: z.object({
@@ -69,19 +69,19 @@ async function rereadVirtualMcpOrThrow(
   throw error;
 }
 
-export const REPORTS_SETUP = defineTool({
-  name: "REPORTS_SETUP",
+export const COMMERCE_DISCOVERY_SETUP = defineTool({
+  name: "COMMERCE_DISCOVERY_SETUP",
   description:
-    "Create or return the Reports connection and virtual MCP for the current organization.",
+    "Create or return the Commerce Discovery connection and virtual MCP for the current organization.",
   annotations: {
-    title: "Set Up Reports",
+    title: "Set Up Commerce Discovery",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
     openWorldHint: false,
   },
-  inputSchema: ReportsSetupInputSchema,
-  outputSchema: ReportsSetupOutputSchema,
+  inputSchema: CommerceDiscoverySetupInputSchema,
+  outputSchema: CommerceDiscoverySetupOutputSchema,
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -91,7 +91,7 @@ export const REPORTS_SETUP = defineTool({
 
     const userId = getUserId(ctx);
     if (!userId) {
-      throw new Error("User ID required to set up Reports");
+      throw new Error("User ID required to set up Commerce Discovery");
     }
 
     const normalized = normalizeReportsSiteUrl(input.siteUrl);
@@ -102,11 +102,11 @@ export const REPORTS_SETUP = defineTool({
     const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(organization.id);
     const virtualMcpId = getCommerceDiscoveryAgentId(organization.id);
 
-    // Claim contact forwarded on /upgrade: Reports emails this
+    // Claim contact forwarded on /upgrade: Commerce Discovery emails this
     // address when the run completes (the "generating" screen's promise). The
     // "diagnóstico completo" CTA must land on the report app view — NOT the
-    // /reports-onboarding page. Build the exact URL the onboarding "open report"
-    // button navigates to (reports-onboarding.tsx): /$org/$taskId with the vMCP
+    // /commerce-onboarding page. Build the exact URL the onboarding "open report"
+    // button navigates to (commerce-onboarding.tsx): /$org/$taskId with the vMCP
     // selected and its report view pinned open. connectionId + virtualMcpId are
     // deterministic per org, so the URL is fully known here at /upgrade time.
     //   main="app:<connectionId>:<toolName>" — pinned-view tab grammar
@@ -161,7 +161,7 @@ export const REPORTS_SETUP = defineTool({
     });
 
     if (connection) {
-      console.log("[reports] syncing connection to claimed site", {
+      console.log("[commerce-discovery] syncing connection to claimed site", {
         orgId: organization.id,
         siteUrl: normalized.value,
         connectionId,
@@ -171,7 +171,7 @@ export const REPORTS_SETUP = defineTool({
         metadata: { ...(connection.metadata ?? {}), siteUrl: normalized.value },
       });
     } else {
-      console.log("[reports] creating connection", {
+      console.log("[commerce-discovery] creating connection", {
         orgId: organization.id,
         siteUrl: normalized.value,
         connectionId,
@@ -207,7 +207,7 @@ export const REPORTS_SETUP = defineTool({
     );
 
     if (!virtualMcp) {
-      console.log("[reports] creating virtual MCP", {
+      console.log("[commerce-discovery] creating virtual MCP", {
         orgId: organization.id,
         siteUrl: normalized.value,
         connectionId: connection.id,
@@ -242,16 +242,20 @@ export const REPORTS_SETUP = defineTool({
     }
 
     // Default the "reports only" flag on for orgs onboarded through
-    // reports — this collapses the product to the diagnostic panel. Only set
-    // it when it's never been set (NULL), so an org that later turns it off
-    // stays off across setup re-runs.
-    const settings = await ctx.storage.organizationSettings.get(
-      organization.id,
-    );
-    if (settings?.reports_only == null) {
-      await ctx.storage.organizationSettings.upsert(organization.id, {
-        reports_only: true,
-      });
+    // commerce — this collapses the product to the diagnostic panel. Gated to
+    // first-time setup (created.connection): this tool only requires
+    // COLLECTION_CONNECTIONS_CREATE, which every member holds, so a re-run
+    // against an established org must not flip an org-wide setting. Only set
+    // when never set (NULL), so an org that later turns it off stays off.
+    if (created.connection) {
+      const settings = await ctx.storage.organizationSettings.get(
+        organization.id,
+      );
+      if (settings?.reports_only == null) {
+        await ctx.storage.organizationSettings.upsert(organization.id, {
+          reports_only: true,
+        });
+      }
     }
 
     return {

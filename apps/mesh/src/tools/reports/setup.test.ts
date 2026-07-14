@@ -18,7 +18,7 @@ mock.module("./auth-client", () => ({
   fetchCommerceDiscoveryAuth: fetchAuthMock,
 }));
 
-const { REPORTS_SETUP } = await import("./setup");
+const { COMMERCE_DISCOVERY_SETUP } = await import("./setup");
 
 interface StubConnection {
   id: string;
@@ -34,7 +34,10 @@ interface StubVirtualMcp {
 function makeCtx(opts: {
   existingConnection?: StubConnection;
   existingVirtualMcp?: StubVirtualMcp;
-  connectionUpdate: (id: string, data: Record<string, unknown>) => void;
+  connectionUpdate?: (id: string, data: Record<string, unknown>) => void;
+  /** Stored reports_only value; undefined = settings row never created. */
+  reportsOnly?: boolean | null;
+  settingsUpsert?: (orgId: string, data: Record<string, unknown>) => void;
 }): StudioContext {
   let connection = opts.existingConnection ?? null;
   const virtualMcp = opts.existingVirtualMcp ?? { id: "vmcp_1", pinned: true };
@@ -60,7 +63,7 @@ function makeCtx(opts: {
       connections: {
         findById: async () => connection,
         update: async (id: string, data: Record<string, unknown>) => {
-          opts.connectionUpdate(id, data);
+          opts.connectionUpdate?.(id, data);
           connection = { ...(connection ?? { id }), ...data } as StubConnection;
           return connection;
         },
@@ -74,12 +77,22 @@ function makeCtx(opts: {
         create: async () => virtualMcp,
         update: async () => virtualMcp,
       },
+      organizationSettings: {
+        get: async () =>
+          opts.reportsOnly === undefined
+            ? null
+            : { organizationId: ORG_ID, reports_only: opts.reportsOnly },
+        upsert: async (orgId: string, data: Record<string, unknown>) => {
+          opts.settingsUpsert?.(orgId, data);
+          return { organizationId: orgId, ...data };
+        },
+      },
     },
     metadata: { requestId: "req_1", timestamp: new Date() },
   } as unknown as StudioContext;
 }
 
-describe("REPORTS_SETUP", () => {
+describe("COMMERCE_DISCOVERY_SETUP", () => {
   test("claims the site and syncs token + metadata even when a connection with a token already exists", async () => {
     fetchAuthMock.mockClear();
     const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
@@ -95,7 +108,7 @@ describe("REPORTS_SETUP", () => {
       connectionUpdate: (id, data) => updates.push({ id, data }),
     });
 
-    await REPORTS_SETUP.handler(
+    await COMMERCE_DISCOVERY_SETUP.handler(
       { siteUrl: "https://new-site.com" },
       ctx,
     );
@@ -128,5 +141,52 @@ describe("REPORTS_SETUP", () => {
     expect((update.data.metadata as Record<string, unknown>).siteUrl).toBe(
       "https://new-site.com",
     );
+  });
+
+  test("defaults reports_only on first-time setup when never set", async () => {
+    const upserts: Array<{ orgId: string; data: Record<string, unknown> }> = [];
+    const ctx = makeCtx({
+      // No existing connection → this run creates it (first-time setup).
+      settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
+    });
+
+    await COMMERCE_DISCOVERY_SETUP.handler(
+      { siteUrl: "https://new-site.com" },
+      ctx,
+    );
+
+    expect(upserts).toEqual([{ orgId: ORG_ID, data: { reports_only: true } }]);
+  });
+
+  test("does not clobber an explicit reports_only=false on first-time setup", async () => {
+    const upserts: Array<{ orgId: string; data: Record<string, unknown> }> = [];
+    const ctx = makeCtx({
+      reportsOnly: false,
+      settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
+    });
+
+    await COMMERCE_DISCOVERY_SETUP.handler(
+      { siteUrl: "https://new-site.com" },
+      ctx,
+    );
+
+    expect(upserts).toHaveLength(0);
+  });
+
+  test("does not touch reports_only on re-runs against an existing connection", async () => {
+    const upserts: Array<{ orgId: string; data: Record<string, unknown> }> = [];
+    const ctx = makeCtx({
+      // Existing connection → re-run against an established org: an org-wide
+      // setting must not flip under a member-level connections permission.
+      existingConnection: { id: "conn_1", connection_token: "dgn_token" },
+      settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
+    });
+
+    await COMMERCE_DISCOVERY_SETUP.handler(
+      { siteUrl: "https://new-site.com" },
+      ctx,
+    );
+
+    expect(upserts).toHaveLength(0);
   });
 });

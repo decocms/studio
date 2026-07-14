@@ -37,7 +37,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     registry_config: RegistryConfigSchema.nullable().optional(),
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
-    commerce_discovery_only: z.boolean().nullable().optional(),
+    reports_only: z.boolean().nullable().optional(),
     task_board_enabled: z.boolean().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),

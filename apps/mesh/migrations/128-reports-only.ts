@@ -7,9 +7,12 @@ import type { Kysely } from "kysely";
  * orgs start focused on the diagnostic, and other parts get added back later.
  *
  * Nullable on purpose (no default): NULL means "never set" (treated as off),
- * which lets REPORTS_SETUP default it on for reports orgs while
+ * which lets COMMERCE_DISCOVERY_SETUP default it on for commerce orgs while
  * leaving every other org off, and lets an explicit `false` (turned off later)
  * survive a re-run of setup.
+ *
+ * UI-cosmetic only: nothing server-side enforces it — routes and tools stay
+ * reachable. Do not treat as an access-control boundary.
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema

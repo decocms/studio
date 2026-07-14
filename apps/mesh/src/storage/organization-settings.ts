@@ -83,12 +83,6 @@ export class OrganizationSettingsStorage
     const defaultHomeAgentsJson = data?.default_home_agents
       ? JSON.stringify(data.default_home_agents)
       : null;
-    // Boolean flag: unlike the JSON columns above, an explicit `false` must
-    // persist, so `undefined` (field absent from the update) is the only value
-    // that skips the write — the "truthy-or-skip" trick would swallow `false`.
-    const reportsOnly =
-      data?.reports_only === undefined ? undefined : data.reports_only;
-
     await this.db
       .insertInto("organization_settings")
       .values({
@@ -98,7 +92,7 @@ export class OrganizationSettingsStorage
         registry_config: registryConfigJson,
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
-        reports_only: reportsOnly ?? null,
+        reports_only: data?.reports_only ?? null,
         task_board_enabled: data?.task_board_enabled,
         createdAt: now,
         updatedAt: now,
@@ -112,7 +106,9 @@ export class OrganizationSettingsStorage
           default_home_agents: defaultHomeAgentsJson
             ? defaultHomeAgentsJson
             : undefined,
-          reports_only: reportsOnly,
+          // Boolean flag: explicit `false` must persist; `undefined` (field
+          // absent) skips the column in doUpdateSet, same as task_board_enabled.
+          reports_only: data?.reports_only,
           task_board_enabled: data?.task_board_enabled,
           updatedAt: now,
         }),
