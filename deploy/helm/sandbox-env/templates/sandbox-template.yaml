@@ -55,6 +55,10 @@ spec:
         # dashboards filter by absence-of-handle instead.
     spec:
       automountServiceAccountToken: false
+      # Room for the daemon's SIGTERM git-sync (commit + push, push bounded at
+      # 30s) before SIGKILL — the pushed branch is the only durable copy of the
+      # user's work. See values.yaml.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

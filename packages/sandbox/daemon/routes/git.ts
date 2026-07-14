@@ -467,6 +467,11 @@ function pushBranch(repoDir: string, branch: string): void {
       "-c",
       "safe.directory=*",
       "push",
+      // Skip native pre-push hooks (parity with the --no-verify commit above).
+      // A repo's pre-push script can fail or hang the push, and the shutdown
+      // sync — which shares this path — has no room to wait it out before the
+      // pod's grace period elapses and SIGKILL drops the unsynced work.
+      "--no-verify",
       "-u",
       "origin",
       branch,

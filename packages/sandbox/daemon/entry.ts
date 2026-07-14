@@ -916,13 +916,10 @@ async function shutdown(): Promise<void> {
   shuttingDown = true;
   taskManager.shutdown();
   branchStatus.stop();
-  // Best-effort unmount before exit (rclone --daemon detaches, so it would
-  // otherwise outlive us). A truly abrupt SIGKILL skips this — the sync `exit`
-  // handler below and the next boot's reclaim are the backstops.
-  if (mountManager) {
-    await mountManager.stop().catch(() => {});
-  }
-  // Reuse the same publish() path as POST /_sandbox/git/publish so the
+  // Publish BEFORE unmount: syncing the user's work is the only irrecoverable
+  // step. A stale mount is backstopped (sync `exit` handler + next-boot
+  // reclaim), so a hanging unmount must never eat the push's slice of the grace
+  // period. Reuse the same publish() path as POST /_sandbox/git/publish so the
   // shutdown sync inherits credentialed-remote setup, hook-skipping, and
   // non-interactive push — the blind add/commit/push it replaced silently
   // failed on GitHub repos whose origin URL lacked embedded credentials and
@@ -937,6 +934,11 @@ async function shutdown(): Promise<void> {
     } catch (err) {
       console.warn("[daemon] shutdown publish failed", err);
     }
+  }
+  // rclone --daemon detaches, so an unmount here stops it from outliving us.
+  // Best-effort: a truly abrupt SIGKILL skips it and the backstops above cover.
+  if (mountManager) {
+    await mountManager.stop().catch(() => {});
   }
   process.exit(0);
 }
