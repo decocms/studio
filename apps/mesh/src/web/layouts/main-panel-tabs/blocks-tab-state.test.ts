@@ -34,9 +34,9 @@ describe("resolveBlocksTabState", () => {
   });
 
   test("renders content when editable Deco content is available", () => {
-    expect(
-      resolveBlocksTabState(input({ hasEditableContent: true })),
-    ).toEqual({ kind: "content" });
+    expect(resolveBlocksTabState(input({ hasEditableContent: true }))).toEqual({
+      kind: "content",
+    });
   });
 
   test("renders empty after both resources settle without editable content", () => {
