@@ -24,6 +24,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { useSidebar } from "@deco/ui/components/sidebar.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
@@ -103,6 +105,7 @@ function AgentCrumb({
 
 export function ShellBreadcrumb() {
   const { org } = useProjectContext();
+  const { state: sidebarState, isMobile } = useSidebar();
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as {
     org?: string;
@@ -114,6 +117,7 @@ export function ShellBreadcrumb() {
   // Pending cross-org invitations surface inside the org switcher; show a dot on
   // its trigger so they're noticed without opening it.
   const hasPendingInvites = usePendingInvitations().invitations.length > 0;
+  const isSidebarCollapsed = sidebarState === "collapsed" || isMobile;
 
   const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
   const decopilotId = decopilot.id;
@@ -169,7 +173,14 @@ export function ShellBreadcrumb() {
                     <span className="relative inline-flex">
                       <OrgIcon org={org} size="sm" />
                       {hasPendingInvites && (
-                        <span className="absolute -top-1 -right-1 size-2.5 rounded-full bg-destructive ring-2 ring-background" />
+                        <span
+                          className={cn(
+                            "absolute -right-1 size-2.5 rounded-full bg-destructive ring-2 ring-background",
+                            isSidebarCollapsed
+                              ? "-top-1"
+                              : "top-1/2 -translate-y-1/2",
+                          )}
+                        />
                       )}
                     </span>
                     <ChevronDown
