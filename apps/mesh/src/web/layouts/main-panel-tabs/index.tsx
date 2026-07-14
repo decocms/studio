@@ -13,6 +13,7 @@ import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
 import { GitTab } from "@/web/components/thread/github/git-tab";
 import { PreviewTab } from "./preview-tab";
+import { BlocksTab } from "./blocks-tab";
 import { CodeTab } from "./code-tab";
 import { ContentTab } from "./content-tab";
 import { AutomationTab } from "./automation-tab";
@@ -81,7 +82,7 @@ function TabBody({
     return <PreviewTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "blocks") {
-    return <PreviewTab virtualMcpId={virtualMcpId} initialViewMode="cms" />;
+    return <BlocksTab virtualMcpId={virtualMcpId} />;
   }
   const codeTab = parseCodeTabId(activeTab);
   if (codeTab) {

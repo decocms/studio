@@ -58,6 +58,7 @@ import {
   type AutomationTabParsed,
 } from "./tab-id";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
+import { getSourceSystemTabs } from "./source-system-tabs";
 
 export type AgentTabDef = {
   id: string;
@@ -298,19 +299,9 @@ export function useMainPanelTabs(ctx: {
   // into a single detail view. On GitHub-linked vMCPs the contextual
   // work tabs (Preview, git) come first so they're closest to the panel;
   // Settings + Automations stay anchored at the right.
-  // Leading work tabs, rendered first in the bar (right after the Chat toggle):
-  // Preview · Blocks · Code. Blocks (Sections editor) needs a live preview
-  // iframe to inject its CMS overlays; Code (file tree) only needs a clonable
-  // source — the daemon serves files even when the dev script has crashed.
-  const showBlocksTab = hasClonableSource && devServerReady && showContentTab;
-  const showCodeTab = hasClonableSource;
-  const leadingSystemTabs: Array<{ id: string; title: string }> = [];
-  if (hasClonableSource) {
-    leadingSystemTabs.push({ id: "preview", title: "Preview" });
-    if (showBlocksTab)
-      leadingSystemTabs.push({ id: "blocks", title: "Blocks" });
-    if (showCodeTab) leadingSystemTabs.push({ id: "code", title: "Code" });
-  }
+  // Leading source tabs share one capability gate. Blocks resolves whether the
+  // current project supports CMS editing inside its own tab body.
+  const leadingSystemTabs = getSourceSystemTabs(hasClonableSource);
 
   const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasClonableSource && showContentTab) {
