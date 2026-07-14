@@ -176,10 +176,14 @@ export function ShellBreadcrumb() {
 
         {/* Slash, not a chevron: the org's own dropdown ▾ sits right before it,
             and two arrows in a row read as noise. A slash marks hierarchy
-            without competing with the dropdown affordance. */}
-        <BreadcrumbSeparator className="opacity-40">
-          <span className="text-sm font-normal select-none">/</span>
-        </BreadcrumbSeparator>
+            without competing with the dropdown affordance. Only shown when the
+            org crumb is visible (sidebar open) — otherwise it's a dangling
+            divider between `deco` and the agent. */}
+        {!sidebarCollapsed && (
+          <BreadcrumbSeparator className="opacity-40">
+            <span className="text-sm font-normal select-none">/</span>
+          </BreadcrumbSeparator>
+        )}
 
         {/* agent → avatar opens the agent home, label opens the picker */}
         <BreadcrumbItem>
