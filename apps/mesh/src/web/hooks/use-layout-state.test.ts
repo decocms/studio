@@ -3,6 +3,8 @@ import {
   canCloseWorkspacePanel,
   computeChatMainSizes,
   resolveDefaultPanelState,
+  resolveWorkspacePanelAction,
+  resolveWorkspaceVisibility,
 } from "./use-layout-state";
 
 describe("resolveDefaultPanelState", () => {
@@ -134,6 +136,30 @@ describe("resolveDefaultPanelState", () => {
     ).toEqual({ mainOpen: false, chatOpen: false, blocksOpen: true });
   });
 
+  test("legacy ?main=blocks&blocks=0 closes Blocks and falls back to Chat", () => {
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: null,
+        mainParamPresent: true,
+        mainParamValue: "blocks",
+        blocksParamPresent: true,
+        blocksParamValue: 0,
+      }),
+    ).toEqual({ mainOpen: false, chatOpen: true, blocksOpen: false });
+  });
+
+  test("legacy ?main=blocks&blocks=1 remains Blocks-only", () => {
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: null,
+        mainParamPresent: true,
+        mainParamValue: "blocks",
+        blocksParamPresent: true,
+        blocksParamValue: 1,
+      }),
+    ).toEqual({ mainOpen: false, chatOpen: false, blocksOpen: true });
+  });
+
   test("defaultMainView.type='blocks' becomes blocks-only", () => {
     expect(
       resolveDefaultPanelState({
@@ -157,6 +183,37 @@ describe("resolveDefaultPanelState", () => {
         blocksParamValue: 0,
       }),
     ).toEqual({ mainOpen: false, chatOpen: true, blocksOpen: false });
+  });
+});
+
+describe("resolveWorkspaceVisibility", () => {
+  test("explicit chat=1 opens Chat alongside legacy Blocks", () => {
+    const defaults = resolveDefaultPanelState({
+      entityMetadata: null,
+      mainParamPresent: true,
+      mainParamValue: "blocks",
+      blocksParamPresent: false,
+    });
+
+    expect(resolveWorkspaceVisibility(defaults, { chat: 1 })).toEqual({
+      chatOpen: true,
+      blocksOpen: true,
+      mainOpen: false,
+    });
+  });
+
+  test("explicit chat=1 opens Chat alongside a Blocks default", () => {
+    const defaults = resolveDefaultPanelState({
+      entityMetadata: { defaultMainView: { type: "blocks" } },
+      mainParamPresent: false,
+      blocksParamPresent: false,
+    });
+
+    expect(resolveWorkspaceVisibility(defaults, { chat: 1 })).toEqual({
+      chatOpen: true,
+      blocksOpen: true,
+      mainOpen: false,
+    });
   });
 });
 
@@ -197,6 +254,59 @@ describe("canCloseWorkspacePanel", () => {
     const visibility = { chatOpen: true, blocksOpen: false, mainOpen: true };
 
     expect(canCloseWorkspacePanel("blocks", visibility)).toBe(false);
+  });
+});
+
+describe("resolveWorkspacePanelAction", () => {
+  test("toggleBlocks updates only the blocks search param", () => {
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "toggleBlocks" },
+        { chatOpen: true, blocksOpen: false, mainOpen: false },
+      ),
+    ).toEqual({ blocks: 1 });
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "toggleBlocks" },
+        { chatOpen: true, blocksOpen: true, mainOpen: false },
+      ),
+    ).toEqual({ blocks: 0 });
+  });
+
+  test("panel toggles refuse to close the final open panel", () => {
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "toggleChat" },
+        { chatOpen: true, blocksOpen: false, mainOpen: false },
+      ),
+    ).toBeNull();
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "toggleBlocks" },
+        { chatOpen: false, blocksOpen: true, mainOpen: false },
+      ),
+    ).toBeNull();
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "toggleMain", openMainValue: "settings" },
+        { chatOpen: false, blocksOpen: false, mainOpen: true },
+      ),
+    ).toBeNull();
+  });
+
+  test("openChat is idempotent and only opens Chat", () => {
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "openChat" },
+        { chatOpen: true, blocksOpen: true, mainOpen: false },
+      ),
+    ).toBeNull();
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "openChat" },
+        { chatOpen: false, blocksOpen: true, mainOpen: false },
+      ),
+    ).toEqual({ chat: 1 });
   });
 });
 

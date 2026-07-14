@@ -67,6 +67,18 @@ export interface WorkspaceVisibility {
   mainOpen: boolean;
 }
 
+export type WorkspacePanelAction =
+  | { type: "toggleChat" }
+  | { type: "toggleBlocks" }
+  | { type: "toggleMain"; openMainValue: string }
+  | { type: "openChat" };
+
+export type WorkspacePanelSearchUpdate = {
+  chat?: 0 | 1;
+  blocks?: 0 | 1;
+  main?: string;
+};
+
 export function canCloseWorkspacePanel(
   panel: WorkspacePanel,
   visibility: WorkspaceVisibility,
@@ -107,6 +119,46 @@ function parsePanelParam(
   return defaultOpen;
 }
 
+export function resolveWorkspaceVisibility(
+  defaults: WorkspaceVisibility,
+  params: { chat?: number; blocks?: number },
+): WorkspaceVisibility {
+  return withWorkspaceFallback({
+    chatOpen: parsePanelParam(params.chat, defaults.chatOpen),
+    blocksOpen: parsePanelParam(params.blocks, defaults.blocksOpen),
+    mainOpen: defaults.mainOpen,
+  });
+}
+
+export function resolveWorkspacePanelAction(
+  action: WorkspacePanelAction,
+  visibility: WorkspaceVisibility,
+): WorkspacePanelSearchUpdate | null {
+  switch (action.type) {
+    case "toggleChat":
+      if (visibility.chatOpen && !canCloseWorkspacePanel("chat", visibility)) {
+        return null;
+      }
+      return { chat: visibility.chatOpen ? 0 : 1 };
+    case "toggleBlocks":
+      if (
+        visibility.blocksOpen &&
+        !canCloseWorkspacePanel("blocks", visibility)
+      ) {
+        return null;
+      }
+      return { blocks: visibility.blocksOpen ? 0 : 1 };
+    case "toggleMain":
+      if (visibility.mainOpen) {
+        if (!canCloseWorkspacePanel("main", visibility)) return null;
+        return { main: "0" };
+      }
+      return { main: action.openMainValue };
+    case "openChat":
+      return visibility.chatOpen ? null : { chat: 1 };
+  }
+}
+
 export function resolveDefaultPanelState(ctx: {
   entityMetadata: EntityLayoutMetadata | null;
   mainParamPresent: boolean;
@@ -117,12 +169,10 @@ export function resolveDefaultPanelState(ctx: {
   const def = ctx.entityMetadata?.defaultMainView ?? null;
   const defaultIsChat = def == null || def.type === "chat";
   const defaultIsBlocks = def?.type === "blocks";
-  const legacyBlocksOnly =
-    !ctx.blocksParamPresent &&
-    ctx.mainParamPresent &&
-    ctx.mainParamValue === "blocks";
+  const legacyBlocksView =
+    ctx.mainParamPresent && ctx.mainParamValue === "blocks";
 
-  const mainOpen = legacyBlocksOnly
+  const mainOpen = legacyBlocksView
     ? false
     : ctx.mainParamPresent
       ? ctx.mainParamValue !== "0"
@@ -132,17 +182,15 @@ export function resolveDefaultPanelState(ctx: {
   // alongside the main view only when the agent's layout opts in via
   // chatDefaultOpen.
   const chatOpen =
-    legacyBlocksOnly || defaultIsBlocks
+    legacyBlocksView || defaultIsBlocks
       ? false
       : defaultIsChat
         ? true
         : (ctx.entityMetadata?.chatDefaultOpen ?? false);
-  const blocksOpen = legacyBlocksOnly
-    ? true
-    : parsePanelParam(
-        ctx.blocksParamPresent ? ctx.blocksParamValue : undefined,
-        defaultIsBlocks,
-      );
+  const blocksOpen = parsePanelParam(
+    ctx.blocksParamPresent ? ctx.blocksParamValue : undefined,
+    legacyBlocksView || defaultIsBlocks,
+  );
 
   return withWorkspaceFallback({
     mainOpen,
@@ -205,11 +253,10 @@ export function useChatMainPanelState(
     blocksParamValue: search.blocks,
   });
 
-  const { chatOpen, blocksOpen, mainOpen } = withWorkspaceFallback({
-    chatOpen: parsePanelParam(search.chat, defaults.chatOpen),
-    blocksOpen: parsePanelParam(search.blocks, defaults.blocksOpen),
-    mainOpen: defaults.mainOpen,
-  });
+  const { chatOpen, blocksOpen, mainOpen } = resolveWorkspaceVisibility(
+    defaults,
+    search,
+  );
   const visibility = { chatOpen, blocksOpen, mainOpen };
 
   const fallbackRef = useRef(crypto.randomUUID());
@@ -246,30 +293,38 @@ export function useChatMainPanelState(
   };
 
   const toggleMain = () => {
-    if (mainOpen) {
-      if (!canCloseWorkspacePanel("main", visibility)) return;
-      navigateSearch({ main: "0" }, { replace: true });
-    } else {
-      navigateSearch(
-        { main: resolveDefaultTabId(entityMetadata) },
-        { replace: true },
-      );
-    }
+    const update = resolveWorkspacePanelAction(
+      {
+        type: "toggleMain",
+        openMainValue: resolveDefaultTabId(entityMetadata),
+      },
+      visibility,
+    );
+    if (update) navigateSearch(update, { replace: true });
   };
 
   const toggleChat = () => {
-    if (chatOpen && !canCloseWorkspacePanel("chat", visibility)) return;
-    navigateSearch({ chat: chatOpen ? 0 : 1 }, { replace: true });
+    const update = resolveWorkspacePanelAction(
+      { type: "toggleChat" },
+      visibility,
+    );
+    if (update) navigateSearch(update, { replace: true });
   };
 
   const toggleBlocks = () => {
-    if (blocksOpen && !canCloseWorkspacePanel("blocks", visibility)) return;
-    navigateSearch({ blocks: blocksOpen ? 0 : 1 }, { replace: true });
+    const update = resolveWorkspacePanelAction(
+      { type: "toggleBlocks" },
+      visibility,
+    );
+    if (update) navigateSearch(update, { replace: true });
   };
 
   const openChat = () => {
-    if (chatOpen) return;
-    navigateSearch({ chat: 1 }, { replace: true });
+    const update = resolveWorkspacePanelAction(
+      { type: "openChat" },
+      visibility,
+    );
+    if (update) navigateSearch(update, { replace: true });
   };
 
   // Carry the active task's branch into the new thread so it lands on the
