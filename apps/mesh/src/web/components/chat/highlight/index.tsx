@@ -1,6 +1,7 @@
 import { Button } from "@deco/ui/components/button.tsx";
-import { AlertCircle, AlertTriangle, Copy01 } from "@untitledui/icons";
+import { AlertCircle, AlertTriangle, Copy01, X } from "@untitledui/icons";
 import { toast } from "sonner";
+import { NoAiProviderEmptyState } from "../no-ai-provider-empty-state";
 import {
   readToolApprovalLevel,
   usePreferences,
@@ -45,6 +46,16 @@ type StatusHighlightProps =
       onDismiss: () => void;
     };
 
+/**
+ * The server rejects a send with `TierUnavailableError` ("No model available
+ * for tier … Connect a provider …") when the org has no usable AI provider for
+ * the chosen tier. Rather than surface raw JSON, we render the "ready for
+ * agents" provider-setup UI inline so the user can fix it in place and retry.
+ */
+function isNoProviderError(message: string): boolean {
+  return /no model available for tier|connect a provider/i.test(message);
+}
+
 function StatusHighlight(props: StatusHighlightProps) {
   const { variant, onDismiss } = props;
   const isError = variant === "error";
@@ -56,6 +67,25 @@ function StatusHighlight(props: StatusHighlightProps) {
     ? props.error.message
     : (WARNING_DESCRIPTIONS[props.finishReason] ??
       `Response stopped unexpectedly: ${props.finishReason}`);
+
+  if (isError && isNoProviderError(rawMessage)) {
+    return (
+      <div className="relative mx-auto flex w-full max-w-3xl justify-center py-8">
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+        >
+          <X size={16} />
+        </button>
+        <NoAiProviderEmptyState
+          title="Connect a provider to run this chat"
+          description="This chat needs an AI provider. Connect one below — or run `bunx decocms@latest link` on your desktop to use Claude Code, Codex, or your local files — then send your message again."
+        />
+      </div>
+    );
+  }
 
   const { summary, rawDetails } = isError
     ? parseErrorMessage(rawMessage)
