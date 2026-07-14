@@ -1,5 +1,6 @@
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
+import { cn } from "@deco/ui/lib/utils.js";
 import {
   Select,
   SelectContent,
@@ -36,7 +37,7 @@ export function PostStatusBadge({ status }: { status: string }) {
   const dot = STATUS_DOT[status as PostStatus] ?? "bg-muted-foreground";
   return (
     <Badge variant="outline" className="gap-1.5 font-normal">
-      <span className={`size-1.5 shrink-0 rounded-full ${dot}`} />
+      <span className={cn("size-1.5 shrink-0 rounded-full", dot)} />
       {labelFor(status)}
     </Badge>
   );
@@ -70,9 +71,10 @@ export function PostStatusSelect({
             <SelectItem key={status} value={status}>
               <span className="flex items-center gap-2">
                 <span
-                  className={`size-1.5 shrink-0 rounded-full ${
-                    STATUS_DOT[status]
-                  }`}
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    STATUS_DOT[status],
+                  )}
                 />
                 {POST_STATUS_LABELS[status]}
               </span>
