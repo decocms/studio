@@ -261,6 +261,8 @@ export const KEYS = {
   // Thread queries (scoped by locator)
   threadsInfinite: (locator: string, paramsKey: string) =>
     ["threads", "list-infinite", locator, paramsKey] as const,
+  overviewThreads: (locator: string) =>
+    ["threads", "overview", locator] as const,
   threadMessages: (locator: string, threadId: string) =>
     ["threads", "messages", locator, threadId] as const,
   threadModelLogs: (locator: string, dateKey: string) =>

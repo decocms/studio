@@ -15,7 +15,7 @@ describe("run status copy", () => {
     }
   });
 
-  test("uses the agreed cluster Decopilot labels", () => {
+  test("uses the agreed cluster runtime labels", () => {
     expect(RUN_STATUS_COPY["waiting-runner"]).toEqual({
       label: "Waiting for an available runner",
       detail: "Waiting for the per-thread dispatch slot",

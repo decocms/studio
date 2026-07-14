@@ -9,6 +9,7 @@ import { ToolSetSelector } from "@/web/components/tool-set-selector.tsx";
 import { useMembers } from "@/web/hooks/use-members";
 import { type OrganizationRole } from "@/web/hooks/use-organization-roles";
 import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
+import { getInitials } from "@/web/lib/get-initials";
 import { KEYS } from "@/web/lib/query-keys";
 import { getInitials } from "@/web/lib/get-initials";
 import { track } from "@/web/lib/posthog-client";

@@ -299,9 +299,17 @@ export function useMainPanelTabs(ctx: {
   // into a single detail view. On GitHub-linked vMCPs the contextual
   // work tabs (Preview, git) come first so they're closest to the panel;
   // Settings + Automations stay anchored at the right.
-  // Leading source tabs share one capability gate. Blocks resolves whether the
-  // current project supports CMS editing inside its own tab body.
-  const leadingSystemTabs = getSourceSystemTabs(hasClonableSource);
+  // The Overview view (the Super Agent's default) leads the bar so it reads as
+  // the agent's home. Data-driven off the configured default view — no
+  // per-agent special-case. Source tabs (Blocks · Preview · Code) share one
+  // capability gate via getSourceSystemTabs.
+  const leadingSystemTabs: Array<{ id: string; title: string }> = [];
+  // Library is agent-independent, so it lives in the LEFT toolbar group next to
+  // the Chat toggle (see LibraryToggle), NOT in this per-agent tab bar.
+  if (effectiveDefaultMainView?.type === "overview") {
+    leadingSystemTabs.push({ id: "overview", title: "Overview" });
+  }
+  leadingSystemTabs.push(...getSourceSystemTabs(hasClonableSource));
 
   const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasClonableSource && showContentTab) {
@@ -310,11 +318,11 @@ export function useMainPanelTabs(ctx: {
   if (gitTabVisible) {
     systemTabs.push({ id: "git", title: "Review changes" });
   }
+  systemTabs.push({ id: "automations", title: "Automations" });
+  // Settings is always the last tab (Library moved to the leading anchor above).
   if (canManageAgents) {
     systemTabs.push({ id: "settings", title: "Settings" });
   }
-  systemTabs.push({ id: "automations", title: "Automations" });
-  systemTabs.push({ id: "files", title: "Library" });
 
   // Merge pinned views + per-task expanded tools into a single list keyed
   // by the pinned-view tab id. Pinned views win on dedupe so the

@@ -1,32 +1,20 @@
 import { describe, expect, it } from "bun:test";
 import {
   agentModeFromOption,
-  agentOptionFromMode,
   resolveTierSubtitle,
   type AgentMode,
 } from "./use-agent-mode";
+import type { AgentOption } from "./pills/agent-options";
 
-describe("agentOptionFromMode <-> agentModeFromOption", () => {
-  const cases: Array<
-    [
-      AgentMode,
-      (
-        | "decopilot"
-        | "decopilot-desktop"
-        | "claude-code-desktop"
-        | "codex-desktop"
-      ),
-    ]
-  > = [
-    ["cloud-decopilot", "decopilot"],
-    ["local-decopilot", "decopilot-desktop"],
-    ["local-claude-code", "claude-code-desktop"],
-    ["local-codex", "codex-desktop"],
+describe("agentModeFromOption", () => {
+  const cases: Array<[AgentOption, AgentMode]> = [
+    ["decopilot", "cloud-decopilot"],
+    ["claude-code-desktop", "local-claude-code"],
+    ["codex-desktop", "local-codex"],
   ];
 
-  for (const [mode, option] of cases) {
-    it(`maps ${mode} <-> ${option}`, () => {
-      expect(agentOptionFromMode(mode)).toBe(option);
+  for (const [option, mode] of cases) {
+    it(`maps ${option} → ${mode}`, () => {
       expect(agentModeFromOption(option)).toBe(mode);
     });
   }
@@ -82,24 +70,6 @@ describe("resolveTierSubtitle", () => {
     });
     it("thinking → Deeper reasoning", () => {
       expect(resolveTierSubtitle("cloud-decopilot", "thinking")).toBe(
-        "Deeper reasoning",
-      );
-    });
-  });
-
-  describe("local-decopilot: returns the intent description", () => {
-    it("fast → Quicker responses", () => {
-      expect(resolveTierSubtitle("local-decopilot", "fast")).toBe(
-        "Quicker responses",
-      );
-    });
-    it("smart → Balanced quality", () => {
-      expect(resolveTierSubtitle("local-decopilot", "smart")).toBe(
-        "Balanced quality",
-      );
-    });
-    it("thinking → Deeper reasoning", () => {
-      expect(resolveTierSubtitle("local-decopilot", "thinking")).toBe(
         "Deeper reasoning",
       );
     });

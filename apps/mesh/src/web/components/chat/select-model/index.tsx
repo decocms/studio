@@ -19,6 +19,10 @@ interface BodyProps {
  * Renders the model picker matching the active agent.
  * Decopilot → existing two-pane API-key selector.
  * Claude Code / Codex → fixed three-tier picker, no key dropdown.
+ *
+ * The cloud/local runtime choice lives in the chat's TierTrigger pill (the
+ * control users actually see), not here — this body is reached from the
+ * settings/automations model pickers.
  */
 export function ModelSelectorBody({ onClose, agent }: BodyProps) {
   const prefs = useChatPrefs();

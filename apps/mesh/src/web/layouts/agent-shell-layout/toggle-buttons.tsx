@@ -1,6 +1,7 @@
 import { MessageCircle01 } from "@untitledui/icons";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
+import { LibraryToggle } from "./library-toggle";
 
 export interface ToggleButtonsProps {
   chatOpen: boolean;
@@ -25,19 +26,24 @@ export function ToggleButtons({
   disableChatToggle = false,
 }: ToggleButtonsProps) {
   return (
-    <HeaderTabButton
-      title="Chat"
-      icon={{ kind: "component", Component: MessageCircle01 }}
-      active={chatOpen}
-      disabled={disableChatToggle}
-      className="wco-no-drag h-10 md:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
-      onClick={() => {
-        track("agent_toolbar_toggled", {
-          button: "chat",
-          next_state: !chatOpen ? "open" : "closed",
-        });
-        toggleChat();
-      }}
-    />
+    <>
+      <HeaderTabButton
+        title="Chat"
+        icon={{ kind: "component", Component: MessageCircle01 }}
+        active={chatOpen}
+        disabled={disableChatToggle}
+        className="wco-no-drag h-10 md:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+        onClick={() => {
+          track("agent_toolbar_toggled", {
+            button: "chat",
+            next_state: !chatOpen ? "open" : "closed",
+          });
+          toggleChat();
+        }}
+      />
+      {/* Library is agent-independent, so it lives here in the left group next
+          to Chat rather than in the per-agent tab bar on the right. */}
+      <LibraryToggle />
+    </>
   );
 }
