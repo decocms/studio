@@ -37,7 +37,6 @@ import {
 } from "react";
 import { Chat, useChatTask } from "@/web/components/chat/index";
 import { useChatPrefs } from "@/web/components/chat/context";
-import { useNeedsRuntimeSetup } from "@/web/components/chat/use-needs-runtime-setup";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
@@ -202,14 +201,14 @@ function VmEventsBridge({
 
 // ---------------------------------------------------------------------------
 // Task workspace — the chat + main-panel region, rendered inside
-// Chat.ActiveTaskProvider so `useNeedsRuntimeSetup()` is locked-thread-aware.
+// Chat.ActiveTaskProvider.
 //
-// When the org has no runtime yet (no AI provider AND no usable local CLI),
-// there is nothing to browse: the chat panel's provider-setup empty state is
-// the entire screen. We deliberately DON'T mount the main panel (Overview),
-// the view tabs, or the panel toggles in that state — they'd expose an Overview
-// board behind a wall the user can't act on. A locked historical thread
-// early-returns false from the hook, so past conversations are never gated.
+// The no-runtime state (no AI provider AND no usable local CLI) is handled
+// per-surface, not by unmounting the workspace: the chat panel shows the
+// provider-setup empty state, the view tabs disable themselves
+// (main-panel-tabs-bar), and the Overview view swaps to the setup prompt
+// (overview-tab). Sandbox-backed views (Preview / Settings / Deck / …) stay
+// available without a cloud provider.
 // ---------------------------------------------------------------------------
 
 type TaskLayout = ReturnType<typeof useChatMainPanelState>;
@@ -225,24 +224,6 @@ function DesktopTaskWorkspace({
   layout: TaskLayout;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
 }) {
-  const needsSetup = useNeedsRuntimeSetup();
-
-  if (needsSetup) {
-    return (
-      <>
-        <NewTaskBridge
-          onNewTaskRef={onNewTaskRef}
-          createNewTask={layout.createNewTask}
-        />
-        <div className="flex-1 min-w-0 flex flex-col p-0.5 pt-0.25 pb-1 pr-1">
-          <div className="h-full bg-background rounded-[0.75rem] overflow-hidden card-shadow">
-            <ActiveTaskBoundary />
-          </div>
-        </div>
-      </>
-    );
-  }
-
   return (
     <>
       <Toolbar.Toggles>
@@ -286,29 +267,22 @@ function MobileTaskWorkspace({
   layout: TaskLayout;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
 }) {
-  const needsSetup = useNeedsRuntimeSetup();
-  // No runtime → the chat empty state is the whole screen; never surface the
-  // main panel or its tab select behind it.
-  const showMain = layout.mainOpen && !needsSetup;
+  const showMain = layout.mainOpen;
 
   return (
     <>
-      {!needsSetup && (
-        <Toolbar.Toggles>
-          <ToggleButtons
-            chatOpen={!layout.mainOpen}
-            toggleChat={layout.toggleMain}
-          />
-        </Toolbar.Toggles>
-      )}
-      {!needsSetup && (
-        <Toolbar.Tabs>
-          <MobileMainPanelTabSelect
-            virtualMcpId={virtualMcpId}
-            taskId={layout.taskId}
-          />
-        </Toolbar.Tabs>
-      )}
+      <Toolbar.Toggles>
+        <ToggleButtons
+          chatOpen={!layout.mainOpen}
+          toggleChat={layout.toggleMain}
+        />
+      </Toolbar.Toggles>
+      <Toolbar.Tabs>
+        <MobileMainPanelTabSelect
+          virtualMcpId={virtualMcpId}
+          taskId={layout.taskId}
+        />
+      </Toolbar.Tabs>
       <NewTaskBridge
         onNewTaskRef={onNewTaskRef}
         createNewTask={layout.createNewTask}
