@@ -22,7 +22,7 @@ import { useChatTask } from "@/web/components/chat/context";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useSandboxRepoDir } from "@/web/components/sandbox/hooks/use-sandbox-repo-dir";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
-import { ideDeepLink } from "@/web/components/sandbox/preview/ide-deep-link";
+import { ideDeepLink } from "@/web/components/sandbox/ide-deep-link";
 
 const VSCODE_ICON_URL =
   "https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png";

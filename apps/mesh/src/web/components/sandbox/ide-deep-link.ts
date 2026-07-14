@@ -14,12 +14,14 @@ export function ideDeepLink(
   scheme: "vscode" | "cursor",
   repoDir: string,
 ): string {
-  const forwardSlashed = repoDir.replace(/\\/g, "/");
-  const withLeadingSlash = forwardSlashed.startsWith("/")
-    ? forwardSlashed
-    : `/${forwardSlashed}`;
-  // `encodeURI` escapes spaces/special chars while preserving the `/`
-  // separators and the drive `:` (both legal in a URL path), matching the
-  // `vscode://file/C:/...` form the IDEs document.
-  return `${scheme}://file${encodeURI(withLeadingSlash)}?windowId=_blank`;
+  const path = repoDir.replace(/\\/g, "/").replace(/^(?!\/)/, "/");
+  // Encode each segment so spaces and reserved chars (`#`, `%`, `?`, …) can't
+  // corrupt the URL — `encodeURI` leaves those alone, letting a `#` truncate
+  // the path into a fragment. Keep the `/` separators and drive-letter `:`
+  // literal to match the documented `vscode://file/C:/...` shape.
+  const encoded = path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment).replace(/%3A/gi, ":"))
+    .join("/");
+  return `${scheme}://file${encoded}?windowId=_blank`;
 }

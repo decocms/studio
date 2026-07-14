@@ -89,7 +89,7 @@ import {
   type LastPreviewPage,
 } from "./last-preview-page";
 import { derivePhaseProgress } from "./derive-phase-progress";
-import { ideDeepLink } from "./ide-deep-link";
+import { ideDeepLink } from "../ide-deep-link";
 import {
   detectPickerKind,
   PICKER_LOADER_RESOLVE_TYPE,

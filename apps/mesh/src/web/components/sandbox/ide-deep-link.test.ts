@@ -31,4 +31,20 @@ describe("ideDeepLink", () => {
       "vscode://file/repo?windowId=_blank",
     );
   });
+
+  it("escapes `#` in a path so it does not become a URL fragment", () => {
+    // Windows usernames may legally contain `#`; `encodeURI` would leave it,
+    // truncating the path and dropping the `?windowId=_blank` query.
+    const link = ideDeepLink("vscode", "C:\\Users\\John#Doe\\repo");
+    expect(link).toBe("vscode://file/C:/Users/John%23Doe/repo?windowId=_blank");
+    const url = new URL(link);
+    expect(url.hash).toBe("");
+    expect(url.search).toBe("?windowId=_blank");
+  });
+
+  it("escapes a literal `%` so it is not a malformed escape", () => {
+    expect(ideDeepLink("cursor", "/home/me/50%off/repo")).toBe(
+      "cursor://file/home/me/50%25off/repo?windowId=_blank",
+    );
+  });
 });
