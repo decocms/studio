@@ -125,17 +125,14 @@ export function ShellBreadcrumb() {
       navigate({ to: "/$org", params: { org: org.slug } });
       return;
     }
-    // Open the agent's existing empty "New chat" if it has one, else start one.
-    // Either way you land in a chat with that agent and the sidebar scopes to
-    // it — one new chat per agent, no pile-up. A thread that has already run
-    // (failed / completed / expired / requires_action) isn't a fresh home even
-    // though it keeps the "New chat" title — skip it so a fresh chat opens.
+    // Reuse this agent's existing empty "New chat" if it has one, else start
+    // one — so re-selecting the same agent focuses the empty chat instead of
+    // piling up duplicates. "New chat" is the never-auto-titled marker of an
+    // unused thread; we intentionally do NOT gate on status here (a fresh empty
+    // thread can carry any/no status), matching the org-home resolver. Gating
+    // on `in_progress` before is exactly what let duplicates accumulate.
     const existing = threads.find(
-      (t) =>
-        !t.hidden &&
-        t.virtual_mcp_id === id &&
-        t.title === "New chat" &&
-        (!t.status || t.status === "in_progress"),
+      (t) => !t.hidden && t.virtual_mcp_id === id && t.title === "New chat",
     );
     if (existing) {
       setTaskId(existing.id, id);
