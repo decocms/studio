@@ -5,10 +5,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@deco/ui/components/select.tsx";
-import {
-  isAutomationsPillActive,
-  resolveAutomationsPillClickTarget,
-} from "./tab-id";
+import { isAutomationsPillActive } from "./tab-id";
 import { useMainPanelTabs, type Tab } from "./use-main-panel-tabs";
 import { TabIconGlyph } from "./tab-icon-glyph";
 import { track } from "@/web/lib/posthog-client";
@@ -37,7 +34,7 @@ export function MobileMainPanelTabSelect({
   taskId: string;
 }) {
   const navigate = useNavigate();
-  const { tabs, activeTab, mainOpen, setActiveTab } = useMainPanelTabs({
+  const { tabs, activeTab, mainOpen } = useMainPanelTabs({
     virtualMcpId,
     taskId,
   });
@@ -62,15 +59,28 @@ export function MobileMainPanelTabSelect({
       source: "mobile_select",
     });
     if (id === "automations") {
-      const target = resolveAutomationsPillClickTarget({ activeTab, mainOpen });
       navigate({
         to: ".",
-        search: (prev: Record<string, unknown>) => ({ ...prev, main: target }),
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          chat: 0,
+          blocks: 0,
+          main: "automations",
+        }),
         replace: true,
       });
       return;
     }
-    setActiveTab(id);
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        chat: 0,
+        blocks: 0,
+        main: id,
+      }),
+      replace: true,
+    });
   };
 
   return (

@@ -175,7 +175,6 @@ export const FIXED_SYSTEM_TABS = [
   "settings",
   "automations",
   "preview",
-  "blocks",
   "code",
   "content",
   "git",
@@ -221,11 +220,17 @@ export function isLegacySettingsTab(tabId: string | undefined): boolean {
   return !!tabId && LEGACY_SETTINGS_TABS.has(tabId);
 }
 
+export function isLegacyBlocksTab(tabId: string | undefined): boolean {
+  return tabId === "blocks";
+}
+
 export function resolveDefaultTabId(
   metadata: EntityLayoutMetadata | null,
 ): string {
   const def = metadata?.defaultMainView ?? null;
   if (!def) return "settings";
+
+  if (isLegacyBlocksTab(def.type)) return "settings";
 
   // Legacy tab ids (instructions/connections/layout) now live inside the
   // unified "settings" tab.
@@ -255,6 +260,10 @@ export function resolveActiveTabAndOpen(ctx: {
 }): { mainOpen: boolean; activeTab: string } {
   const def = resolveDefaultTabId(ctx.metadata);
 
+  if (isLegacyBlocksTab(ctx.mainParam)) {
+    return { mainOpen: false, activeTab: def };
+  }
+
   if (ctx.mainParam === "0") {
     return { mainOpen: false, activeTab: def };
   }
@@ -264,7 +273,8 @@ export function resolveActiveTabAndOpen(ctx: {
     // a tab while the panel is 0px wide.
     const view = ctx.metadata?.defaultMainView ?? null;
     const defaultIsChat = view == null || view.type === "chat";
-    return { mainOpen: !defaultIsChat, activeTab: def };
+    const defaultIsBlocks = view?.type === "blocks";
+    return { mainOpen: !defaultIsChat && !defaultIsBlocks, activeTab: def };
   }
   // Legacy ids coming from URL state migrate to the unified settings tab.
   if (LEGACY_SETTINGS_TABS.has(ctx.mainParam)) {

@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { getSourceSystemTabs } from "./source-system-tabs";
 
 describe("getSourceSystemTabs", () => {
-  test("returns Preview, Blocks, and Code for clonable source", () => {
+  test("returns Preview and Code for clonable source", () => {
     expect(getSourceSystemTabs(true)).toEqual([
       { id: "preview", title: "Preview" },
-      { id: "blocks", title: "Blocks" },
       { id: "code", title: "Code" },
     ]);
   });

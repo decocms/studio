@@ -14,7 +14,7 @@
  *           • Chat.Provider
  *             └── VmEventsBridge
  *                 └── Chat.ActiveTaskProvider
- *                     └── ChatMainPanelGroup
+ *                     └── WorkspacePanelGroup (Chat | Blocks | Main)
  *                         (the per-thread todo list is rendered
  *                          by TodosHighlight inside ChatHighlight,
  *                          not as a side column)
@@ -58,7 +58,7 @@ import { EmptyState } from "@/web/components/empty-state";
 import { useChatMainPanelState } from "@/web/hooks/use-layout-state";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { Toolbar } from "./toolbar";
-import { ChatMainPanelGroup } from "./chat-main-panel-group";
+import { WorkspacePanelGroup } from "./workspace-panel-group";
 import { ToggleButtons } from "./toggle-buttons";
 import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { MobileMainPanelTabSelect } from "@/web/layouts/main-panel-tabs/mobile-main-panel-tab-select";
@@ -74,6 +74,9 @@ import { useEnsureTask } from "@/web/hooks/use-ensure-task";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/web/components/chat/org-file-open-context";
+import { BlocksPreviewWorkspaceProvider } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
+import { BlocksPanel } from "@/web/components/sandbox/blocks/blocks-panel";
+import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -193,7 +196,11 @@ function VmEventsBridge({
         sandboxMap={sandboxMap}
         sandboxProviderKind={pendingSandboxProviderKind}
       >
-        {children}
+        <BlocksPreviewWorkspaceProvider
+          key={`${virtualMcpId}:${currentBranch ?? "no-branch"}`}
+        >
+          {children}
+        </BlocksPreviewWorkspaceProvider>
       </SandboxLifecycleProvider>
     </SandboxEventsProvider>
   );
@@ -230,15 +237,25 @@ function DesktopTaskWorkspace({
         <ToggleButtons
           chatOpen={layout.chatOpen}
           toggleChat={layout.toggleChat}
-          // Chat is the only content when no main panel is open — block
-          // turning it off so the content area can't go blank.
-          disableChatToggle={layout.chatOpen && !layout.mainOpen}
+          blocksAvailable={agentHasClonableSource(entity.metadata)}
+          blocksOpen={layout.blocksOpen}
+          toggleBlocks={layout.toggleBlocks}
+          disableChatToggle={
+            layout.chatOpen && !layout.blocksOpen && !layout.mainOpen
+          }
+          disableBlocksToggle={
+            layout.blocksOpen && !layout.chatOpen && !layout.mainOpen
+          }
         />
       </Toolbar.Toggles>
       {/* Tabs must live under SandboxEventsProvider — useMainPanelTabs gates
           Content on lifecycle.phase === "running" + decofile. */}
       <Toolbar.Tabs>
-        <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={layout.taskId} />
+        <MainPanelTabsBar
+          virtualMcpId={virtualMcpId}
+          taskId={layout.taskId}
+          disableActiveMainToggle={!layout.chatOpen && !layout.blocksOpen}
+        />
       </Toolbar.Tabs>
       <NewTaskBridge
         onNewTaskRef={onNewTaskRef}
@@ -246,10 +263,11 @@ function DesktopTaskWorkspace({
       />
       <VirtualMcpHeaderInfo virtualMcp={entity} />
       <Suspense fallback={<Chat.Skeleton />}>
-        <ChatMainPanelGroup
+        <WorkspacePanelGroup
           virtualMcpId={virtualMcpId}
           taskId={layout.taskId}
           chatOpen={layout.chatOpen}
+          blocksOpen={layout.blocksOpen}
           mainOpen={layout.mainOpen}
           chatContent={<ActiveTaskBoundary />}
         />
@@ -262,19 +280,30 @@ function MobileTaskWorkspace({
   virtualMcpId,
   layout,
   onNewTaskRef,
+  blocksAvailable,
 }: {
   virtualMcpId: string;
   layout: TaskLayout;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
+  blocksAvailable: boolean;
 }) {
-  const showMain = layout.mainOpen;
+  const mobileSurface = layout.blocksOpen
+    ? "blocks"
+    : layout.mainOpen
+      ? "main"
+      : "chat";
 
   return (
     <>
       <Toolbar.Toggles>
         <ToggleButtons
-          chatOpen={!layout.mainOpen}
-          toggleChat={layout.toggleMain}
+          chatOpen={mobileSurface === "chat"}
+          toggleChat={() => layout.setMobileSurface("chat")}
+          blocksAvailable={blocksAvailable}
+          blocksOpen={mobileSurface === "blocks"}
+          toggleBlocks={() => layout.setMobileSurface("blocks")}
+          disableChatToggle={mobileSurface === "chat"}
+          disableBlocksToggle={mobileSurface === "blocks"}
         />
       </Toolbar.Toggles>
       <Toolbar.Tabs>
@@ -289,7 +318,11 @@ function MobileTaskWorkspace({
       />
       <Suspense fallback={<Chat.Skeleton />}>
         <div className="flex-1 min-h-0 overflow-hidden">
-          {showMain ? (
+          {mobileSurface === "blocks" ? (
+            <div data-testid="blocks-panel-shell" className="h-full">
+              <BlocksPanel virtualMcpId={virtualMcpId} />
+            </div>
+          ) : mobileSurface === "main" ? (
             <ErrorBoundary
               fallback={
                 <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
@@ -307,14 +340,18 @@ function MobileTaskWorkspace({
                   </div>
                 }
               >
-                <MainPanelWithDrawer
-                  taskId={layout.taskId}
-                  virtualMcpId={virtualMcpId}
-                />
+                <div data-testid="main-panel" className="h-full">
+                  <MainPanelWithDrawer
+                    taskId={layout.taskId}
+                    virtualMcpId={virtualMcpId}
+                  />
+                </div>
               </Suspense>
             </ErrorBoundary>
           ) : (
-            <ActiveTaskBoundary />
+            <div data-testid="chat-panel" className="h-full">
+              <ActiveTaskBoundary />
+            </div>
           )}
         </div>
       </Suspense>
@@ -365,6 +402,7 @@ function AgentInsetProvider() {
     : null;
 
   const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
+  const hasClonableSource = agentHasClonableSource(entity?.metadata);
 
   const layout = useChatMainPanelState(entityMetadata, {
     virtualMcpId,
@@ -473,6 +511,7 @@ function AgentInsetProvider() {
                     virtualMcpId={chatVirtualMcpId}
                     layout={layout}
                     onNewTaskRef={onNewTask}
+                    blocksAvailable={hasClonableSource}
                   />
                 </Suspense>
               </Chat.ActiveTaskProvider>

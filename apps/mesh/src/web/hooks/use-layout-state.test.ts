@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   canCloseWorkspacePanel,
-  computeChatMainSizes,
+  computeWorkspacePanelSizes,
+  mobileSurfaceSearch,
   resolveDefaultPanelState,
   resolveWorkspacePanelAction,
   resolveWorkspaceVisibility,
@@ -340,20 +341,57 @@ describe("resolveWorkspacePanelAction", () => {
   });
 });
 
-describe("computeChatMainSizes", () => {
-  test("both open → 45/55", () => {
-    expect(computeChatMainSizes(true, true)).toEqual({ chat: 33, main: 67 });
+describe("computeWorkspacePanelSizes", () => {
+  test.each([
+    [
+      { chatOpen: true, blocksOpen: false, mainOpen: false },
+      { chat: 100, blocks: 0, main: 0 },
+    ],
+    [
+      { chatOpen: false, blocksOpen: true, mainOpen: false },
+      { chat: 0, blocks: 100, main: 0 },
+    ],
+    [
+      { chatOpen: false, blocksOpen: false, mainOpen: true },
+      { chat: 0, blocks: 0, main: 100 },
+    ],
+    [
+      { chatOpen: true, blocksOpen: false, mainOpen: true },
+      { chat: 33, blocks: 0, main: 67 },
+    ],
+    [
+      { chatOpen: false, blocksOpen: true, mainOpen: true },
+      { chat: 0, blocks: 40, main: 60 },
+    ],
+    [
+      { chatOpen: true, blocksOpen: true, mainOpen: false },
+      { chat: 40, blocks: 60, main: 0 },
+    ],
+    [
+      { chatOpen: true, blocksOpen: true, mainOpen: true },
+      { chat: 25, blocks: 35, main: 40 },
+    ],
+  ])("computes workspace sizes", (visibility, expected) => {
+    expect(computeWorkspacePanelSizes(visibility)).toEqual(expected);
   });
+});
 
-  test("only chat → 100/0", () => {
-    expect(computeChatMainSizes(true, false)).toEqual({ chat: 100, main: 0 });
-  });
-
-  test("only main → 0/100", () => {
-    expect(computeChatMainSizes(false, true)).toEqual({ chat: 0, main: 100 });
-  });
-
-  test("neither → 0/0 (chat panel is collapsible to 0)", () => {
-    expect(computeChatMainSizes(false, false)).toEqual({ chat: 0, main: 0 });
+describe("mobileSurfaceSearch", () => {
+  test("selects exactly one mobile surface", () => {
+    expect(mobileSurfaceSearch("chat", "preview")).toEqual({
+      chat: 1,
+      blocks: 0,
+      main: "0",
+    });
+    expect(mobileSurfaceSearch("blocks", "preview")).toEqual({
+      chat: 0,
+      blocks: 1,
+      main: "0",
+    });
+    expect(mobileSurfaceSearch("main", "preview")).toEqual({
+      chat: 0,
+      blocks: 0,
+      main: "preview",
+    });
   });
 });

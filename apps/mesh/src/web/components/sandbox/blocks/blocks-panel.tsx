@@ -1,16 +1,19 @@
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useChatTask } from "@/web/components/chat/context";
+import { ContentBrowser } from "@/web/components/sandbox/content/content-browser";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
+import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
-import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
-import { PreviewContent } from "@/web/components/sandbox/preview/preview";
-import { resolveBlocksTabState } from "./blocks-tab-state";
-import { MainPanelLoading } from "./main-panel-loading";
-import { BlocksEmptyState, BlocksErrorState } from "./blocks-tab-states";
+import { resolveBlocksTabState } from "@/web/layouts/main-panel-tabs/blocks-tab-state";
+import {
+  BlocksEmptyState,
+  BlocksErrorState,
+} from "@/web/layouts/main-panel-tabs/blocks-tab-states";
+import { MainPanelLoading } from "@/web/layouts/main-panel-tabs/main-panel-loading";
 
-export function BlocksTab({ virtualMcpId }: { virtualMcpId: string }) {
+export function BlocksPanel({ virtualMcpId }: { virtualMcpId: string }) {
   const { org } = useProjectContext();
   const { currentBranch } = useChatTask();
   const sandboxEvents = useSandboxEvents();
@@ -38,17 +41,21 @@ export function BlocksTab({ virtualMcpId }: { virtualMcpId: string }) {
   });
 
   if (state.kind === "loading") return <MainPanelLoading />;
-  if (state.kind === "content") {
-    return <PreviewContent surface="blocks" />;
-  }
   if (state.kind === "empty") return <BlocksEmptyState />;
+  if (state.kind === "error") {
+    const retry = () => {
+      if (state.source === "sandbox") {
+        lifecycle.retry();
+        return;
+      }
+      void Promise.all([decofile.refetch(), meta.refetch()]);
+    };
+    return <BlocksErrorState source={state.source} onRetry={retry} />;
+  }
 
-  const retry = () => {
-    if (state.source === "sandbox") {
-      lifecycle.retry();
-      return;
-    }
-    void Promise.all([decofile.refetch(), meta.refetch()]);
-  };
-  return <BlocksErrorState source={state.source} onRetry={retry} />;
+  return (
+    <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
+      <ContentBrowser mode="blocks" />
+    </div>
+  );
 }

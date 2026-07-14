@@ -15,7 +15,6 @@ import { OverviewTab } from "./overview-tab";
 import { TaskBoardPage } from "@/web/layouts/task-board";
 import { GitTab } from "@/web/components/thread/github/git-tab";
 import { PreviewTab } from "./preview-tab";
-import { BlocksTab } from "./blocks-tab";
 import { CodeTab } from "./code-tab";
 import { ContentTab } from "./content-tab";
 import { AutomationTab } from "./automation-tab";
@@ -95,9 +94,6 @@ function TabBody({
   }
   if (activeTab === "preview") {
     return <PreviewTab virtualMcpId={virtualMcpId} />;
-  }
-  if (activeTab === "blocks") {
-    return <BlocksTab virtualMcpId={virtualMcpId} />;
   }
   const codeTab = parseCodeTabId(activeTab);
   if (codeTab) {

@@ -7,6 +7,7 @@ import {
   formatLibraryFileTabId,
   parseCodeTabId,
   isLegacySettingsTab,
+  isLegacyBlocksTab,
   isPerThreadTab,
   parseAutomationTabId,
   parseDeckTabId,
@@ -301,6 +302,21 @@ describe("resolveActiveTabAndOpen", () => {
       resolveActiveTabAndOpen({ mainParam: "git", metadata: meta }),
     ).toEqual({ mainOpen: true, activeTab: "git" });
   });
+
+  test("legacy ?main=blocks closes Main and preserves a valid active tab", () => {
+    expect(
+      resolveActiveTabAndOpen({ mainParam: "blocks", metadata: meta }),
+    ).toEqual({ mainOpen: false, activeTab: "analytics" });
+  });
+
+  test("a legacy Blocks default closes Main", () => {
+    expect(
+      resolveActiveTabAndOpen({
+        mainParam: undefined,
+        metadata: { defaultMainView: { type: "blocks" } },
+      }),
+    ).toEqual({ mainOpen: false, activeTab: "settings" });
+  });
 });
 
 describe("resolveTabClickTarget", () => {
@@ -314,38 +330,11 @@ describe("resolveTabClickTarget", () => {
     ).toBe("0");
   });
 
-  test("clicking active Blocks tab while panel open → close ('0')", () => {
-    expect(
-      resolveTabClickTarget({
-        clickedId: "blocks",
-        activeTab: "blocks",
-        mainOpen: true,
-      }),
-    ).toBe("0");
-  });
-
   test("clicking non-active tab while panel open → clicked id", () => {
     expect(
       resolveTabClickTarget({
         clickedId: "preview",
         activeTab: "settings",
-        mainOpen: true,
-      }),
-    ).toBe("preview");
-  });
-
-  test("Preview and Blocks switch to their own tab ids", () => {
-    expect(
-      resolveTabClickTarget({
-        clickedId: "blocks",
-        activeTab: "preview",
-        mainOpen: true,
-      }),
-    ).toBe("blocks");
-    expect(
-      resolveTabClickTarget({
-        clickedId: "preview",
-        activeTab: "blocks",
         mainOpen: true,
       }),
     ).toBe("preview");
@@ -455,8 +444,9 @@ describe("resolveAutomationsPillClickTarget", () => {
 });
 
 describe("code tab id", () => {
-  test("includes blocks and code in the fixed system tabs", () => {
-    expect(FIXED_SYSTEM_TABS).toContain("blocks");
+  test("keeps Blocks out of the fixed system tabs", () => {
+    expect(FIXED_SYSTEM_TABS).not.toContain("blocks");
+    expect(isLegacyBlocksTab("blocks")).toBe(true);
     expect(FIXED_SYSTEM_TABS).toContain("code");
   });
 

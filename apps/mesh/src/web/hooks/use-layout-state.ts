@@ -50,6 +50,7 @@ export interface ChatMainLayoutActions {
   toggleMain: () => void;
   toggleChat: () => void;
   toggleBlocks: () => void;
+  setMobileSurface: (surface: MobileWorkspaceSurface) => void;
   openChat: () => void;
   createNewTask: () => void;
   openTab: (id: string) => void;
@@ -199,14 +200,42 @@ export function resolveDefaultPanelState(ctx: {
   });
 }
 
-export function computeChatMainSizes(
-  chatOpen: boolean,
-  mainOpen: boolean,
-): { chat: number; main: number } {
-  if (chatOpen && mainOpen) return { chat: 33, main: 67 };
-  if (chatOpen && !mainOpen) return { chat: 100, main: 0 };
-  if (!chatOpen && mainOpen) return { chat: 0, main: 100 };
-  return { chat: 0, main: 0 };
+export interface WorkspacePanelSizes {
+  chat: number;
+  blocks: number;
+  main: number;
+}
+
+export function computeWorkspacePanelSizes(
+  visibility: WorkspaceVisibility,
+): WorkspacePanelSizes {
+  const { chatOpen, blocksOpen, mainOpen } = visibility;
+  if (chatOpen && blocksOpen && mainOpen) {
+    return { chat: 25, blocks: 35, main: 40 };
+  }
+  if (chatOpen && blocksOpen) return { chat: 40, blocks: 60, main: 0 };
+  if (chatOpen && mainOpen) return { chat: 33, blocks: 0, main: 67 };
+  if (blocksOpen && mainOpen) return { chat: 0, blocks: 40, main: 60 };
+  if (chatOpen) return { chat: 100, blocks: 0, main: 0 };
+  if (blocksOpen) return { chat: 0, blocks: 100, main: 0 };
+  if (mainOpen) return { chat: 0, blocks: 0, main: 100 };
+  return { chat: 0, blocks: 0, main: 0 };
+}
+
+export type MobileWorkspaceSurface = "chat" | "blocks" | "main";
+
+export function mobileSurfaceSearch(
+  surface: MobileWorkspaceSurface,
+  mainTabId: string,
+): Required<Pick<WorkspacePanelSearchUpdate, "chat" | "blocks" | "main">> {
+  switch (surface) {
+    case "chat":
+      return { chat: 1, blocks: 0, main: "0" };
+    case "blocks":
+      return { chat: 0, blocks: 1, main: "0" };
+    case "main":
+      return { chat: 0, blocks: 0, main: mainTabId };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +348,16 @@ export function useChatMainPanelState(
     if (update) navigateSearch(update, { replace: true });
   };
 
+  const setMobileSurface = (surface: MobileWorkspaceSurface) => {
+    const activeMainTab =
+      search.main && search.main !== "0" && search.main !== "blocks"
+        ? search.main
+        : resolveDefaultTabId(entityMetadata);
+    navigateSearch(mobileSurfaceSearch(surface, activeMainTab), {
+      replace: true,
+    });
+  };
+
   const openChat = () => {
     const update = resolveWorkspacePanelAction(
       { type: "openChat" },
@@ -356,7 +395,15 @@ export function useChatMainPanelState(
   };
 
   const openTab = (id: string) => {
-    navigateSearch({ main: id }, { replace: true });
+    navigateSearch(
+      {
+        ...(search.main === "blocks" && search.blocks === undefined
+          ? { blocks: 1 }
+          : {}),
+        main: id,
+      },
+      { replace: true },
+    );
   };
 
   return {
@@ -369,6 +416,7 @@ export function useChatMainPanelState(
     toggleMain,
     toggleChat,
     toggleBlocks,
+    setMobileSurface,
     openChat,
     createNewTask,
     openTab,

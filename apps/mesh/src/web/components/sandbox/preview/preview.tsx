@@ -1,12 +1,8 @@
 import { sleep } from "@decocms/std";
 import { useState, useRef, useEffect, Suspense, lazy } from "react";
-import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/web/layouts/main-panel-tabs/tab-id";
-import { consumePreviewTabIntent, setPreviewTabIntent } from "./tab-intent";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
-import { useSecondaryPanel } from "@/web/layouts/agent-shell-layout/secondary-panel-context";
-import { useColumnResize } from "@/web/hooks/use-column-resize";
 import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -23,7 +19,6 @@ import {
   Plus,
   SearchLg,
   CreditCardSearch,
-  Loading01,
   Monitor04,
   Phone02,
   RefreshCw01,
@@ -45,16 +40,11 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
-import { withVariantMatcherOverride } from "@/web/components/sections-editor/variant-matcher-override";
-import { parseSections } from "@/web/components/sections-editor/parse-sections";
-import { resolveSectionCandidates } from "./section-candidates";
-import { getPageVariantSectionsAt } from "@/web/components/sections-editor/page-variants";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
   extractPages,
   findPageForPath,
-  hasEditableDecoContent,
   type GlobalSectionEntry,
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
@@ -75,14 +65,6 @@ import {
   VisualEditorPayloadSchema,
   type VisualEditorPayload,
 } from "./visual-editor-script";
-import { CMS_EDITOR_SCRIPT, CmsEditorPayloadSchema } from "./cms-editor-script";
-import {
-  canToggleVisualEditor,
-  viewModeForSurface,
-  type PreviewInteractiveViewMode,
-  type PreviewSurface,
-  type PreviewViewMode,
-} from "./preview-surface";
 import { VisualEditorPrompt } from "./visual-editor-prompt";
 import {
   useSandboxEvents,
@@ -106,17 +88,12 @@ import { PathParamPickerChip } from "./path-param-picker-chip";
 import { isManifestRunnableResolveType } from "@/web/components/sandbox/content/runnable-catalog";
 import { track } from "@/web/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
+import { useBlocksPreviewWorkspace } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
 
 const VSCODE_ICON_URL =
   "https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png";
 const CURSOR_ICON_URL =
   "https://decoims.com/decocms/7583d3b5-81d0-4afb-becf-6a59bbb3a68e/cursor-logo-icon-freelogovectors.net_.png";
-
-const SectionsEditor = lazy(() =>
-  import("@/web/components/sections-editor/sections-editor").then((m) => ({
-    default: m.SectionsEditor,
-  })),
-);
 
 const SeoSheet = lazy(() =>
   import("@/web/components/sections-editor/page-seo-sheet").then((m) => ({
@@ -128,6 +105,7 @@ const SeoSheet = lazy(() =>
 const DEV_SERVER_SETTLE_MS = 500;
 
 type PreviewDeviceSize = "mobile" | "tablet" | "desktop";
+type PreviewViewMode = "preview" | "visual";
 
 const PREVIEW_DEVICE_WIDTHS: Record<PreviewDeviceSize, number | null> = {
   mobile: 375,
@@ -222,14 +200,11 @@ function withDeviceHint(url: string, device: PreviewDeviceSize): string {
   return parsed.href;
 }
 
-export function PreviewContent({
-  surface = "preview",
-}: {
-  surface?: PreviewSurface;
-} = {}) {
+export function PreviewContent() {
   const inset = useInsetContext();
   const navigate = useNavigate();
   const { currentBranch: branch } = useChatTask();
+  const workspace = useBlocksPreviewWorkspace();
 
   const goToTab = (main: string) => {
     navigate({
@@ -240,34 +215,12 @@ export function PreviewContent({
   };
 
   // Visual editor state
-  const [interactiveViewMode, setInteractiveViewMode] =
-    useState<PreviewInteractiveViewMode>("preview");
-  const viewMode = viewModeForSurface(surface, interactiveViewMode);
+  const [viewMode, setViewMode] = useState<PreviewViewMode>("preview");
   const [previewDeviceSize, setPreviewDeviceSize] =
     useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
-
-  // Sections editor panel. On desktop it is portaled into a shared secondary
-  // column beside the preview (SecondaryPanelContext); when no provider is
-  // present (e.g. mobile) it falls back to rendering inline below, using its
-  // own drag-resizable width.
-  const secondaryPanel = useSecondaryPanel();
-  const setSecondaryOpen = secondaryPanel?.setOpen;
-  const sectionsOpen = viewMode === "cms";
-  const inlineResize = useColumnResize();
-  const [cmsSelectedSectionIndex, setCmsSelectedSectionIndex] = useState<
-    number | null
-  >(null);
-  // `x-deco-matchers-override` params forcing the preview to render the section
-  // variant currently selected in the sections editor (CMS mode only).
-  const [variantOverrideParams, setVariantOverrideParams] = useState<
-    string[] | null
-  >(null);
-  // Tracks the last focused element outside the iframe so we can restore it
-  // when the iframe reload steals focus.
-  const focusBeforeIframeRef = useRef<HTMLElement | null>(null);
 
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
@@ -310,22 +263,7 @@ export function PreviewContent({
   };
 
   // SEO panel state
-  const [cmsInitialEditSeo, setCmsInitialEditSeo] = useState(false);
   const [siteSeoOpen, setSiteSeoOpen] = useState(false);
-
-  // Consume the one-shot Preview→Blocks intent once on mount: "Edit SEO" from
-  // the Preview tab navigates here (Blocks) and wants the SEO panel open. Uses
-  // a useState guard (not a ref) — the render-time setState pattern used by
-  // `prevIframeBase` below — so it runs exactly once without reading a ref
-  // during render.
-  const [intentConsumed, setIntentConsumed] = useState(false);
-  if (!intentConsumed) {
-    setIntentConsumed(true);
-    const intent = consumePreviewTabIntent();
-    if (intent?.kind === "edit-seo") {
-      setCmsInitialEditSeo(true);
-    }
-  }
 
   const virtualMcpId = inset?.entity?.id ?? null;
   const { org } = useProjectContext();
@@ -424,29 +362,6 @@ export function PreviewContent({
   const pickerSandboxRef =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
 
-  // Per-section metadata for the CMS hover overlay, aligned by index with the
-  // iframe's top-level section list. `label`: ONLY global (saved block)
-  // sections get a name — the DOM can't carry it (incl. globals inside async
-  // rendering); non-global sections are empty so the iframe falls back to their
-  // full resolve. `kind`: drives the highlight color (global / variant / normal).
-  const cmsRawSections =
-    decofile && currentPageKey
-      ? getPageVariantSectionsAt(decofile, currentPageKey, 0)
-      : [];
-  const cmsSections = decofile ? parseSections(cmsRawSections, decofile) : [];
-  const cmsSectionLabels = cmsSections.map((s) =>
-    s.isSavedBlock ? s.label : "",
-  );
-  const cmsSectionKinds = cmsSections.map((s) =>
-    s.isSavedBlock ? "global" : s.isMultivariate ? "variant" : "normal",
-  );
-  // Candidate manifest keys per editable section, used iframe-side to align the
-  // editable run within the DOM (handles framework sections deco injects around
-  // OR between the editable ones) — no hardcoded list of sections to skip.
-  const cmsSectionKeys = cmsRawSections.map((s) =>
-    resolveSectionCandidates(s, decofile ?? {}),
-  );
-
   const iframeSrcRef = useRef<string | null>(null);
   /** Path we navigated to programmatically; ignore stale iframe onLoad events. */
   const intendedPathRef = useRef<string | null>(null);
@@ -490,13 +405,10 @@ export function PreviewContent({
 
   const iframeSrc =
     previewState.kind === "iframe"
-      ? withVariantMatcherOverride(
-          withDeviceHint(
-            directPreviewUrl ??
-              new URL(resolvedPath, previewState.previewUrl).href,
-            previewDeviceSize,
-          ),
-          sectionsOpen && variantOverrideParams ? variantOverrideParams : [],
+      ? withDeviceHint(
+          directPreviewUrl ??
+            new URL(resolvedPath, previewState.previewUrl).href,
+          previewDeviceSize,
         )
       : null;
 
@@ -508,6 +420,38 @@ export function PreviewContent({
   const persistLastPage = (page: LastPreviewPage) => {
     if (previewStorageKey) writeLastPreviewPage(previewStorageKey, page);
   };
+
+  const sharedTarget = workspace.state.target;
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- synchronizes the independent Blocks selection with the mounted Preview iframe
+  useEffect(() => {
+    if (!sharedTarget || !previewUrl || !meta) return;
+    if (sharedTarget.kind === "page") {
+      const params = pathParamsByPage[sharedTarget.key] ?? {};
+      intendedPathRef.current = fillPathTemplate(sharedTarget.path, params);
+      setActiveGlobalSection(null);
+      setDirectPreviewUrl(null);
+      setPinnedPageKey(sharedTarget.key);
+      setCurrentPath(sharedTarget.path);
+      persistLastPage({
+        path: sharedTarget.path,
+        pageKey: sharedTarget.key,
+        params,
+      });
+    } else {
+      const section = globalSections.find(
+        (candidate) => candidate.key === sharedTarget.key,
+      );
+      if (section) {
+        intendedPathRef.current = null;
+        const livePageRt = findLivePageResolveType(meta);
+        setActiveGlobalSection(section);
+        setDirectPreviewUrl(
+          buildGlobalSectionPreviewUrl(previewUrl, livePageRt, section.key),
+        );
+      }
+    }
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- derived helpers must not retrigger selection synchronization every render
+  }, [sharedTarget, previewUrl, meta, pathParamsByPage]);
 
   // When the VM preview base URL appears or changes (first boot, branch
   // switch, etc.), restore the last visited page for this project+branch;
@@ -557,12 +501,9 @@ export function PreviewContent({
     !appPaused &&
     (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
 
-  // `visual` and `cms` require a live iframe (they inject overlays into the
-  // dev server). When the iframe is gone, fall back to `preview` for the
-  // overlay renders so we never reference a mode that can't be shown.
+  // Visual mode requires a live iframe. When it is gone, fall back to Preview.
   const effectiveViewMode: PreviewViewMode =
-    previewState.kind !== "iframe" &&
-    (viewMode === "visual" || viewMode === "cms")
+    previewState.kind !== "iframe" && viewMode === "visual"
       ? "preview"
       : viewMode;
 
@@ -580,10 +521,6 @@ export function PreviewContent({
       if (e.data?.type === "visual-editor::element-clicked") {
         const result = VisualEditorPayloadSchema.safeParse(e.data.payload);
         if (result.success) setVisualElement(result.data);
-      } else if (e.data?.type === "cms-editor::section-clicked") {
-        const result = CmsEditorPayloadSchema.safeParse(e.data.payload);
-        if (result.success)
-          setCmsSelectedSectionIndex(result.data.sectionIndex);
       }
     };
     window.addEventListener("message", handler);
@@ -604,45 +541,6 @@ export function PreviewContent({
     return () => document.removeEventListener("pointerdown", handler);
   }, [pagesOpen]);
 
-  // Prevent the iframe from stealing focus away from sections-editor inputs.
-  // When focus leaves an element and lands on the iframe (or body, which
-  // happens for cross-origin iframe focus), restore the previously focused
-  // element. We track the last non-iframe focused element via `focusin`, and
-  // detect the steal via a rAF after `blur` (by that time activeElement has
-  // settled to body/iframe when focus entered the iframe content window).
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription for focus tracking
-  useEffect(() => {
-    if (!sectionsOpen) return;
-
-    const onFocusIn = (e: FocusEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && target !== previewIframeRef.current) {
-        focusBeforeIframeRef.current = target;
-      }
-    };
-
-    const onBlur = () => {
-      requestAnimationFrame(() => {
-        const active = document.activeElement;
-        // When focus enters a cross-origin iframe, activeElement becomes
-        // <body> or the <iframe> element itself.
-        if (
-          (active === document.body || active === previewIframeRef.current) &&
-          focusBeforeIframeRef.current
-        ) {
-          focusBeforeIframeRef.current.focus();
-        }
-      });
-    };
-
-    document.addEventListener("focusin", onFocusIn);
-    document.addEventListener("blur", onBlur, true);
-    return () => {
-      document.removeEventListener("focusin", onFocusIn);
-      document.removeEventListener("blur", onBlur, true);
-    };
-  }, [sectionsOpen]);
-
   const injectVisualEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
     if (!win) return;
@@ -658,41 +556,11 @@ export function PreviewContent({
     win.postMessage({ type: "visual-editor::deactivate" }, "*");
   };
 
-  const injectCmsEditor = () => {
-    const win = previewIframeRef.current?.contentWindow;
-    if (!win) return;
-    win.postMessage(
-      { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
-      "*",
-    );
-    // Ordered after activate, so the script's listener is registered by the
-    // time this arrives. Re-sent on every (re)injection (mode switch, page
-    // navigation, save-reload) so labels track the current page.
-    win.postMessage(
-      {
-        type: "cms-editor::set-labels",
-        labels: cmsSectionLabels,
-        kinds: cmsSectionKinds,
-        keys: cmsSectionKeys,
-      },
-      "*",
-    );
-  };
-
-  const deactivateCmsEditor = () => {
-    const win = previewIframeRef.current?.contentWindow;
-    if (!win) return;
-    win.postMessage({ type: "cms-editor::deactivate" }, "*");
-  };
-
-  const handleViewModeChange = (mode: PreviewInteractiveViewMode) => {
+  const handleViewModeChange = (mode: PreviewViewMode) => {
     const prev = viewMode;
-    setInteractiveViewMode(mode);
+    setViewMode(mode);
     setVisualElement(null);
-    setCmsSelectedSectionIndex(null);
-    setVariantOverrideParams(null);
     if (prev === "visual") deactivateVisualEditor();
-    if (prev === "cms") deactivateCmsEditor();
     if (mode === "visual") injectVisualEditor();
   };
 
@@ -704,16 +572,7 @@ export function PreviewContent({
     iframe.src = iframeSrc;
   };
 
-  // Selecting/reordering a variant changes `iframeSrc` (override params), which
-  // re-navigates the iframe. Scroll position is preserved entirely inside the
-  // injected CMS script (it persists scroll to sessionStorage and restores it
-  // after the reload, surviving re-hydration), so nothing to capture here.
-  const handleVariantPreviewOverride = (params: string[] | null) => {
-    setVariantOverrideParams(params);
-  };
-
-  // Reload the preview after a save while preventing the iframe from stealing
-  // focus. Scroll is restored by the injected CMS script (see above).
+  // Reload the preview after a Blocks save without moving keyboard focus.
   const reloadPreviewPreservingScroll = () => {
     const iframe = previewIframeRef.current;
     if (!iframe) return;
@@ -737,6 +596,16 @@ export function PreviewContent({
     iframe.addEventListener("load", restore);
     setTimeout(restore, 3000);
   };
+
+  const [handledPreviewRevision, setHandledPreviewRevision] = useState(
+    workspace.state.previewRevision,
+  );
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- synchronizes persisted Blocks saves with the mounted preview iframe
+  useEffect(() => {
+    if (handledPreviewRevision === workspace.state.previewRevision) return;
+    setHandledPreviewRevision(workspace.state.previewRevision);
+    reloadPreviewPreservingScroll();
+  }, [handledPreviewRevision, workspace.state.previewRevision]);
 
   const handleHardReload = () => {
     if (!previewIframeRef.current || !iframeSrc) return;
@@ -783,9 +652,12 @@ export function PreviewContent({
     setDirectPreviewUrl(null);
     setPinnedPageKey(page.key);
     setCurrentPath(page.path);
-    setCmsSelectedSectionIndex(null);
-    setCmsInitialEditSeo(false);
     persistLastPage({ path: page.path, pageKey: page.key, params });
+    workspace.selectTarget({
+      kind: "page",
+      key: page.key,
+      path: page.path,
+    });
   };
 
   const setPathParamValue = (name: string, value: string) => {
@@ -813,7 +685,7 @@ export function PreviewContent({
     );
     setActiveGlobalSection(section);
     setDirectPreviewUrl(url);
-    setCmsSelectedSectionIndex(null);
+    workspace.selectTarget({ kind: "section", key: section.key });
   };
 
   const handleCreatePage = async ({
@@ -861,7 +733,11 @@ export function PreviewContent({
         name: result.name,
         path: result.path,
       });
-      goToTab("blocks");
+      navigate({
+        to: ".",
+        search: (prev: Record<string, unknown>) => ({ ...prev, blocks: 1 }),
+        replace: true,
+      });
     } catch (error) {
       setCreatePageError(
         error instanceof Error ? error.message : "Failed to create page",
@@ -869,68 +745,9 @@ export function PreviewContent({
     }
   };
 
-  // Visual mode belongs only to the Preview surface and requires a live
-  // iframe. The Blocks surface remains fixed in CMS mode.
-  const canVisualEdit =
-    previewState.kind === "iframe" && canToggleVisualEditor(surface);
-  const canSectionsEdit =
-    previewState.kind === "iframe" && hasEditableDecoContent(decofile, meta);
-  const toggleViewMode = (mode: PreviewInteractiveViewMode) =>
+  const canVisualEdit = previewState.kind === "iframe";
+  const toggleViewMode = (mode: PreviewViewMode) =>
     handleViewModeChange(viewMode === mode ? "preview" : mode);
-
-  // Keep the shared secondary column in sync with whether the Sections editor
-  // can actually render — not just `viewMode`. This closes the column (and
-  // frees the toggle) if the dev server drops while in CMS mode, and resets it
-  // when the preview unmounts (tab switch) so no empty column is left behind.
-  const showSectionsColumn = sectionsOpen && canSectionsEdit;
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs cross-component panel state; no React 19 alternative for unmount cleanup
-  useEffect(() => {
-    setSecondaryOpen?.(showSectionsColumn);
-    return () => setSecondaryOpen?.(false);
-  }, [showSectionsColumn, setSecondaryOpen]);
-
-  // The Sections editor. Rendered into its own column beside the preview via
-  // portal (desktop) or inline as a fallback (mobile — no panel provider).
-  const sectionsEditorEl =
-    sectionsOpen && previewUrl && branch && virtualMcpId ? (
-      <Suspense
-        fallback={
-          <div className="h-full flex items-center justify-center">
-            <Loading01
-              size={20}
-              className="animate-spin text-muted-foreground"
-            />
-          </div>
-        }
-      >
-        <SectionsEditor
-          orgSlug={org.slug}
-          virtualMcpId={virtualMcpId}
-          branch={branch}
-          previewReady={devServerReady}
-          previewUrl={previewUrl}
-          currentPath={currentPath}
-          activePageBlockKey={currentPageKey}
-          activeGlobalBlockKey={activeGlobalSection?.key ?? null}
-          externalSelectedIndex={
-            activeGlobalSection ? null : cmsSelectedSectionIndex
-          }
-          onSaved={() => {
-            setTimeout(reloadPreviewPreservingScroll, DEV_SERVER_SETTLE_MS);
-          }}
-          initialEditSeo={cmsInitialEditSeo}
-          onExitSeo={() => setCmsInitialEditSeo(false)}
-          onViewJsonFile={(pageKey) => {
-            try {
-              goToTab(formatCodeTabId(decoBlockFileViewPath(pageKey)));
-            } catch {
-              toast.error("Invalid page block key");
-            }
-          }}
-          onVariantPreviewOverride={handleVariantPreviewOverride}
-        />
-      </Suspense>
-    ) : null;
 
   return (
     <div className="flex flex-col w-full h-full">
@@ -1210,11 +1027,19 @@ export function PreviewContent({
                           {currentPageKey && (
                             <DropdownMenuItem
                               onClick={() => {
-                                setPreviewTabIntent({
-                                  kind: "edit-seo",
-                                  pageKey: currentPageKey,
+                                workspace.editSeo({
+                                  kind: "page",
+                                  key: currentPageKey,
+                                  path: currentPath,
                                 });
-                                goToTab("blocks");
+                                navigate({
+                                  to: ".",
+                                  search: (prev: Record<string, unknown>) => ({
+                                    ...prev,
+                                    blocks: 1,
+                                  }),
+                                  replace: true,
+                                });
                               }}
                             >
                               <CreditCardSearch size={14} />
@@ -1287,30 +1112,7 @@ export function PreviewContent({
         </div>
       )}
 
-      {/* Desktop: portal the Sections editor into the shared secondary column
-          beside the preview ([Chat | CMS | Preview]). */}
-      {secondaryPanel?.slotEl && sectionsEditorEl
-        ? createPortal(sectionsEditorEl, secondaryPanel.slotEl)
-        : null}
-
       <div className="flex-1 flex overflow-hidden">
-        {/* Fallback: no panel provider (e.g. mobile) — render the editor as an
-            inline, drag-resizable left column inside the preview. */}
-        {!secondaryPanel && sectionsEditorEl && (
-          <>
-            <div
-              className="shrink-0 border-r overflow-hidden"
-              style={{ width: inlineResize.width }}
-            >
-              {sectionsEditorEl}
-            </div>
-            <div
-              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-border transition-colors"
-              {...inlineResize.dividerProps}
-            />
-          </>
-        )}
-
         <div
           className={cn(
             "flex-1 relative overflow-hidden",
@@ -1435,7 +1237,6 @@ export function PreviewContent({
                 src={iframeSrc}
                 className="w-full h-full border-0"
                 title="Dev Server Preview"
-                tabIndex={sectionsOpen ? -1 : undefined}
                 onLoad={() => {
                   // The page finished loading — always clear the navigation
                   // indicator first, before any of the early returns below.
@@ -1482,7 +1283,6 @@ export function PreviewContent({
                     }
                   }
                   if (viewMode === "visual") injectVisualEditor();
-                  if (viewMode === "cms") injectCmsEditor();
                 }}
               />
             </div>
