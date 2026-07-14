@@ -113,7 +113,7 @@ export function ShellBreadcrumb() {
   const { setTaskId, createNewTask } = usePanelActions();
   // Pending cross-org invitations surface inside the org switcher; show a dot on
   // its trigger so they're noticed without opening it.
-  const hasPendingInvites = usePendingInvitations().length > 0;
+  const hasPendingInvites = usePendingInvitations().invitations.length > 0;
 
   const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
   const decopilotId = decopilot.id;
