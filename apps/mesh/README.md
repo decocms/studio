@@ -245,11 +245,7 @@ Product docs: [docs.decocms.com](https://docs.decocms.com/).
 
 ## License
 
-[Deco CMS Sustainable Use License v1.1](../../LICENSE.md).
-
-- Free to self-host for internal use
-- Free for client projects (agencies, SIs)
-- Commercial license required for SaaS or revenue-generating production systems
+[MIT License](../../LICENSE.md).
 
 Questions: [builders@decocms.com](mailto:builders@decocms.com)
 

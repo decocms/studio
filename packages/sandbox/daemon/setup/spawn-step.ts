@@ -1,5 +1,6 @@
 import { DECO_GID, DECO_UID } from "../constants";
 import { spawnPty } from "../process/pty-spawn";
+import type { StructuredCommand } from "../process/structured-command";
 
 export interface SpawnSetupStepOpts {
   dropPrivileges?: boolean;
@@ -8,7 +9,7 @@ export interface SpawnSetupStepOpts {
 }
 
 export function spawnSetupStep(
-  cmd: string,
+  cmd: string | StructuredCommand,
   onChunk: (source: "setup", data: string) => void,
   opts: SpawnSetupStepOpts = {},
 ): Promise<number> {

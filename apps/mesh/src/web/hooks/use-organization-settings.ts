@@ -43,6 +43,7 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   commerce_discovery_only: boolean | null;
+  task_board_enabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -55,6 +56,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   simple_mode: null,
   default_home_agents: null,
   commerce_discovery_only: null,
+  task_board_enabled: false,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -141,6 +143,7 @@ type OrgSettingsUpdateInput = Partial<
     | "simple_mode"
     | "default_home_agents"
     | "commerce_discovery_only"
+    | "task_board_enabled"
   >
 >;
 
@@ -261,6 +264,24 @@ export function useUpdateCommerceDiscoveryOnly() {
       mutation.mutate({ commerce_discovery_only: enabled }, options),
     mutateAsync: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
       mutation.mutateAsync({ commerce_discovery_only: enabled }, options),
+  };
+}
+
+export function useTaskBoardEnabled(): boolean {
+  const { data } = useOrganizationSettings(
+    (s) => s.task_board_enabled ?? false,
+  );
+  return data ?? false;
+}
+
+export function useUpdateTaskBoardEnabled() {
+  const mutation = useUpdateOrganizationSettings();
+  return {
+    ...mutation,
+    mutate: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
+      mutation.mutate({ task_board_enabled: enabled }, options),
+    mutateAsync: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
+      mutation.mutateAsync({ task_board_enabled: enabled }, options),
   };
 }
 

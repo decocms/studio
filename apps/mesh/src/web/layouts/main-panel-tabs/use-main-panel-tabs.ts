@@ -58,6 +58,7 @@ import {
   type AutomationTabParsed,
 } from "./tab-id";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
+import { getSourceSystemTabs } from "./source-system-tabs";
 
 export type AgentTabDef = {
   id: string;
@@ -298,12 +299,13 @@ export function useMainPanelTabs(ctx: {
   // into a single detail view. On GitHub-linked vMCPs the contextual
   // work tabs (Preview, git) come first so they're closest to the panel;
   // Settings + Automations stay anchored at the right.
+  // Leading source tabs share one capability gate. Blocks resolves whether the
+  // current project supports CMS editing inside its own tab body.
+  const leadingSystemTabs = getSourceSystemTabs(hasClonableSource);
+
   const systemTabs: Array<{ id: string; title: string }> = [];
-  if (hasClonableSource) {
-    systemTabs.push({ id: "preview", title: "Preview" });
-    if (showContentTab) {
-      systemTabs.push({ id: "content", title: "Content" });
-    }
+  if (hasClonableSource && showContentTab) {
+    systemTabs.push({ id: "content", title: "Content" });
   }
   if (gitTabVisible) {
     systemTabs.push({ id: "git", title: "Review changes" });
@@ -421,6 +423,16 @@ export function useMainPanelTabs(ctx: {
     : [];
 
   const tabs: Tab[] = [
+    ...leadingSystemTabs.map((t) => ({
+      id: t.id,
+      title: t.title,
+      kind: "system" as const,
+      icon: resolveTabIcon({
+        tabId: t.id,
+        kind: "system",
+        connections,
+      }),
+    })),
     ...fileTabs,
     ...deckTabs,
     ...libraryFileTabs,
@@ -476,7 +488,7 @@ export function useMainPanelTabs(ctx: {
     activeTab,
     mainOpen,
     setActiveTab,
-    systemTabs,
+    systemTabs: [...leadingSystemTabs, ...systemTabs],
     layoutTabs,
     expandedTools,
     automationTabParsed,

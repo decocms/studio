@@ -20,5 +20,5 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
     );
   }
 
-  return <PreviewContent />;
+  return <PreviewContent surface="preview" />;
 }

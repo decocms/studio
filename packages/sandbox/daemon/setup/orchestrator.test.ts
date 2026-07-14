@@ -210,6 +210,7 @@ describe("SetupOrchestrator idempotent start", () => {
         store: {
           read: () => ({
             application: { packageManager: { name: "deno" }, runtime: "deno" },
+            runtimePathDirs: [],
           }),
           hydrate: () => {},
           applyInternal: async () => ({
@@ -273,6 +274,7 @@ describe("SetupOrchestrator idempotent start", () => {
         store: {
           read: () => ({
             application: { packageManager: { name: "deno" }, runtime: "deno" },
+            runtimePathDirs: [],
           }),
           hydrate: () => {},
           applyInternal: async () => ({
@@ -607,6 +609,7 @@ describe("SetupOrchestrator lifecycle wedge fixes", () => {
         store: {
           read: () => ({
             application: { packageManager: { name: "deno" }, runtime: "deno" },
+            runtimePathDirs: [],
           }),
           hydrate: () => {},
           applyInternal: async () => ({
@@ -681,6 +684,7 @@ describe("SetupOrchestrator lifecycle wedge fixes", () => {
         store: {
           read: () => ({
             application: { packageManager: { name: "deno" }, runtime: "deno" },
+            runtimePathDirs: [],
           }),
           hydrate: () => {},
           applyInternal: async () => ({
@@ -767,7 +771,7 @@ describe("SetupOrchestrator install-step branch protection", () => {
         store: {
           read: () => ({
             application: { packageManager: { name: "bun" } },
-            runtimePathPrefix: "",
+            runtimePathDirs: [],
           }),
         } as never,
         taskManager: {

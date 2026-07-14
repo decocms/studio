@@ -37,6 +37,10 @@ export const KEYS = {
   myCapabilities: (locator: ProjectLocator) =>
     [locator, "my-capabilities"] as const,
 
+  // Task board items (scoped by org)
+  taskBoardItems: (locator: ProjectLocator) =>
+    [locator, "task-board-items"] as const,
+
   // Connections (scoped by project)
   connections: (locator: ProjectLocator) => [locator, "connections"] as const,
   connectionsByBinding: (locator: ProjectLocator, binding: string) =>
@@ -530,6 +534,22 @@ export function invalidateVirtualMcpQueries(
         (!orgId || key[1] === orgId) &&
         key[3] === "collection" &&
         key[4] === "VIRTUAL_MCP"
+      );
+    },
+  });
+}
+
+export function invalidateConnectionQueries(
+  queryClient: import("@tanstack/react-query").QueryClient,
+  orgId?: string,
+) {
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return (
+        (!orgId || key[1] === orgId) &&
+        key[3] === "collection" &&
+        key[4] === "CONNECTIONS"
       );
     },
   });

@@ -4,6 +4,11 @@ import { join } from "node:path";
 import { PACKAGE_MANAGER_DAEMON_CONFIG } from "../constants";
 import { gitSync } from "../git/git-sync";
 import { hasGitRepo, resolvePmRoot } from "../paths";
+import {
+  formatCommand,
+  withPathDirs,
+  type StructuredCommand,
+} from "../process/structured-command";
 import type { Config } from "../types";
 import { spawnSetupStep } from "./spawn-step";
 
@@ -121,15 +126,53 @@ export interface InstallDeps {
   onChunk: (source: "setup", data: string) => void;
 }
 
+/**
+ * Pure builder for the two structured steps `spawnInstall` runs: a
+ * best-effort `corepack enable` (mirrors the old `(corepack enable
+ * 2>/dev/null || true)`), then the package manager's install argv. Env
+ * precedence (later wins): the download-prompt suppression, then the
+ * per-repo cache env, then user-supplied env — so an explicit
+ * `BUN_INSTALL_CACHE_DIR` in `userEnv` wins over the derived cache dir.
+ * `PATH` is the one exception: the runtime dirs are prepended *over*
+ * whatever `PATH` falls out of that merge (a user override included), the
+ * same way the old shell chain's `export PATH=/opt/bun/bin:$PATH` prepended
+ * onto the effective PATH rather than getting replaced by it.
+ *
+ * Returns null when the package manager has no install step (e.g. deno,
+ * which fetches deps lazily on first `deno task`) — caller treats null as
+ * "nothing to do".
+ */
+export function installSteps(p: {
+  pm: string;
+  installRoot: string;
+  runtimePathDirs: readonly string[];
+  cacheEnv: Record<string, string> | null;
+  userEnv: Readonly<Record<string, string>> | undefined;
+  basePath: string | undefined;
+}): { corepack: StructuredCommand; install: StructuredCommand } | null {
+  const pmConfig = PACKAGE_MANAGER_DAEMON_CONFIG[p.pm];
+  if (!pmConfig?.installArgv) return null;
+  const merged: Record<string, string> = {
+    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0",
+    ...(p.cacheEnv ?? {}),
+    ...(p.userEnv ?? {}),
+  };
+  const env: Record<string, string> = {
+    ...merged,
+    ...withPathDirs(p.runtimePathDirs, { PATH: merged.PATH ?? p.basePath }),
+  };
+  return {
+    corepack: { argv: ["corepack", "enable"], env },
+    install: { argv: [...pmConfig.installArgv], cwd: p.installRoot, env },
+  };
+}
+
 export function spawnInstall(deps: InstallDeps): Promise<number> | null {
   const { config } = deps;
   const pm = config.application?.packageManager?.name;
   if (!pm) return null;
   const pmConfig = PACKAGE_MANAGER_DAEMON_CONFIG[pm];
   if (!pmConfig) return null;
-  // No install command (e.g. deno) — runtime fetches deps lazily on first
-  // task. Caller treats null as "nothing to do" and proceeds to start.
-  if (!pmConfig.install) return null;
   const installRoot = resolvePmRoot(
     config.repoDir,
     config.application?.packageManager?.path,
@@ -144,15 +187,26 @@ export function spawnInstall(deps: InstallDeps): Promise<number> | null {
     );
     return null;
   }
-  const corepack =
-    "export COREPACK_ENABLE_DOWNLOAD_PROMPT=0 && (corepack enable 2>/dev/null || true) && ";
-  const cmd = `${config.runtimePathPrefix}cd ${installRoot} && ${corepack}${pmConfig.install}`;
-  deps.onChunk("setup", `\r\n$ ${cmd}\r\n`);
   // User-supplied config.env last: an explicit BUN_INSTALL_CACHE_DIR wins.
-  const cacheEnv = depsCacheEnv(config);
-  const env = cacheEnv ? { ...cacheEnv, ...deps.env } : deps.env;
-  return spawnSetupStep(cmd, deps.onChunk, {
-    dropPrivileges: deps.dropPrivileges,
-    env,
+  const steps = installSteps({
+    pm,
+    installRoot,
+    runtimePathDirs: config.runtimePathDirs,
+    cacheEnv: depsCacheEnv(config),
+    userEnv: deps.env,
+    basePath: process.env.PATH,
   });
+  // No install command (e.g. deno) — runtime fetches deps lazily on first
+  // task. Caller treats null as "nothing to do" and proceeds to start.
+  if (!steps) return null;
+  deps.onChunk("setup", `\r\n$ ${formatCommand(steps.install)}\r\n`);
+  return (async () => {
+    // corepack enable is best-effort — mirrors `(corepack enable || true)`.
+    await spawnSetupStep(steps.corepack, deps.onChunk, {
+      dropPrivileges: deps.dropPrivileges,
+    }).catch(() => 0);
+    return spawnSetupStep(steps.install, deps.onChunk, {
+      dropPrivileges: deps.dropPrivileges,
+    });
+  })();
 }

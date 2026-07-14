@@ -67,6 +67,13 @@ export interface EnsureOptions {
      * `origin` in place rather than leaving a stale token.
      */
     cloneUrl: string;
+    /**
+     * GitHub connection backing `cloneUrl`. Persisted so the runner can
+     * re-mint a fresh credential on autonomous recovery (pod recreation
+     * under a live claim) instead of replaying the stale token baked into
+     * `cloneUrl` at first provision. Absent for anonymous/public clones.
+     */
+    connectionId?: string;
     userName: string;
     userEmail: string;
     branch?: string;

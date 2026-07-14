@@ -27,6 +27,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     simple_mode: SimpleModeConfigSchema.optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.optional(),
     commerce_discovery_only: z.boolean().optional(),
+    task_board_enabled: z.boolean().optional(),
   }),
 
   outputSchema: z.object({
@@ -37,6 +38,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     commerce_discovery_only: z.boolean().nullable().optional(),
+    task_board_enabled: z.boolean().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
   }),
@@ -58,6 +60,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,
         commerce_discovery_only: input.commerce_discovery_only,
+        task_board_enabled: input.task_board_enabled,
       },
     );
 

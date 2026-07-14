@@ -85,6 +85,4 @@ not a unit test — move it to e2e.
 
 ## License
 
-Sustainable Use License — see [`LICENSE.md`](./LICENSE.md). Free to self-host
-for internal use and for client projects; a commercial license is required for
-SaaS / revenue-generating production systems. Questions: contact@decocms.com.
+MIT — see [`LICENSE.md`](./LICENSE.md).

@@ -126,8 +126,12 @@ function freePort(): Promise<number> {
  */
 export function resolveMountPath(appRoot: string, p: string): string | null {
   const orgRoot = join(appRoot, "org");
+  // Route absolute paths through the same resolve-then-clamp check relative
+  // paths get below — a raw `startsWith(appRoot)` never normalizes `..`
+  // segments, so e.g. "<appRoot>/../../etc" passes the prefix check while
+  // actually resolving outside appRoot.
   if (isAbsolute(p)) {
-    return p.startsWith(`${appRoot}/`) || p === appRoot ? p : null;
+    return safePath(appRoot, appRoot, p);
   }
   return safePath(appRoot, orgRoot, p);
 }
@@ -143,6 +147,14 @@ export class MountManager {
     private readonly log: (msg: string, err?: unknown) => void = (m, e) =>
       e ? console.warn(`[org-fs] ${m}`, e) : console.log(`[org-fs] ${m}`),
     private readonly startInvalidator: InvalidatorFactory = defaultInvalidatorFactory,
+    /**
+     * Injectable for tests; defaults to the real OS. Gated here (not just in
+     * mounter.ts) so a Windows daemon never calls `mountOne` at all — `active`
+     * stays empty and `list()` returns `[]`, which is what entry.ts's
+     * per-run link gate (see its docblock) relies on to keep it off rather
+     * than symlinking into an unbacked directory.
+     */
+    private readonly platform: string = process.platform,
   ) {}
 
   /** Serve + mount every configured volume. Never throws. */
@@ -150,6 +162,12 @@ export class MountManager {
     this.config = config;
     this.appRoot = appRoot;
     this.stopped = false;
+    if (this.platform === "win32") {
+      this.log(
+        `org file mounts are not supported on Windows — skipping ${config.mounts.length} volume(s) (files remain available via the Studio UI)`,
+      );
+      return;
+    }
     for (const m of config.mounts) {
       await this.mountOne(m);
     }

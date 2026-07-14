@@ -4,12 +4,10 @@ import {
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { Globe02, Users03 } from "@untitledui/icons";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
-import { SHOPIFY_HYDROGEN_ICON } from "@/web/hooks/use-create-website-agent";
 
 interface CreateAgentDropdownContentProps {
   onCreateFromScratch: () => void;
   onCreateWebsite: () => void;
-  onCreateHydrogenStore: () => void;
   onImportGitHub: () => void;
   onImportDeco: () => void;
   isCreating?: boolean;
@@ -21,7 +19,6 @@ interface CreateAgentDropdownContentProps {
 export function CreateAgentDropdownContent({
   onCreateFromScratch,
   onCreateWebsite,
-  onCreateHydrogenStore,
   onImportGitHub,
   onImportDeco,
   isCreating,
@@ -38,14 +35,6 @@ export function CreateAgentDropdownContent({
       <DropdownMenuItem disabled={isCreating} onClick={onCreateWebsite}>
         <Globe02 size={14} />
         Start Website
-      </DropdownMenuItem>
-      <DropdownMenuItem disabled={isCreating} onClick={onCreateHydrogenStore}>
-        <img
-          src={SHOPIFY_HYDROGEN_ICON}
-          alt=""
-          className="size-3.5 object-contain"
-        />
-        Create Shopify Headless Store
       </DropdownMenuItem>
       <DropdownMenuItem onClick={onImportGitHub}>
         <GitHubIcon className="size-3.5" />

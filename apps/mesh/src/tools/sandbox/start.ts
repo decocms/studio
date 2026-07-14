@@ -297,6 +297,7 @@ async function provisionSandbox(
   let repoOpts:
     | {
         cloneUrl: string;
+        connectionId?: string;
         userName: string;
         userEmail: string;
         branch: string;
@@ -376,6 +377,10 @@ async function provisionSandbox(
 
     repoOpts = {
       cloneUrl,
+      // Persisted so the runner can re-mint on recovery; absent for anonymous.
+      ...(githubRepo.connectionId
+        ? { connectionId: githubRepo.connectionId }
+        : {}),
       userName: gitUserName,
       userEmail: gitUserEmail,
       branch,

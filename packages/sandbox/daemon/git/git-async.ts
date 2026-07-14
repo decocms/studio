@@ -19,7 +19,8 @@ const DEFAULT_GIT_TIMEOUT_MS = 30_000;
  */
 export function gitAsync(args: string[], opts: GitSyncOpts): Promise<string> {
   return new Promise<string>((resolve, reject) => {
-    const asUser = opts.asUser !== false;
+    // uid/gid: Linux-only concept, same gate as pty-spawn.ts / git-sync.ts.
+    const asUser = opts.asUser !== false && process.platform === "linux";
     const spawnOpts: SpawnOptions = {
       cwd: opts.cwd,
       env: opts.env,

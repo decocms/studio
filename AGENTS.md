@@ -454,10 +454,5 @@ stable.
 
 ## License
 
-Sustainable Use License (SUL):
-- ✅ Free to self-host for internal use
-- ✅ Free for client projects (agencies, SIs)
-- ⚠️ Commercial license required for SaaS or revenue-generating production systems
-
-See LICENSE.md for details. Questions: contact@decocms.com
+MIT License — see LICENSE.md for details.
 

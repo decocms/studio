@@ -6,33 +6,39 @@ import {
   Activity,
   Edit05,
   FilterLines,
-  Grid01,
-  List,
+  LayoutLeft,
   Rows01,
   SearchSm,
 } from "@untitledui/icons";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@deco/ui/components/select.tsx";
-import { SidebarMenu, useSidebar } from "@deco/ui/components/sidebar.tsx";
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@deco/ui/components/toggle-group.tsx";
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@deco/ui/components/sidebar.tsx";
 import {
   getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-  useVirtualMCPActions,
   useVirtualMCPs,
 } from "@decocms/mesh-sdk";
-import { useNavigate, useParams, useRouterState } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { authClient } from "@/web/lib/auth-client";
 import {
   useThreadActions,
@@ -42,48 +48,88 @@ import { usePanelActions } from "@/web/layouts/shell-layout";
 import { GlobalSearchDialog } from "@/web/layouts/tasks-panel/global-search-dialog";
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
-import {
-  getServerPinnedIds,
-  useNavigateToAgent,
-} from "@/web/hooks/use-navigate-to-agent";
-import { useCanPinAgentsForOrg } from "@/web/hooks/use-can-pin-agents-for-org";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
-import { BrowseAgentsButton } from "../browse-agents-button";
-import {
-  SyncSidebarAgentGroupsEmpty,
-  useSidebarOrderRevision,
-} from "../sidebar-agent-groups-context";
-import { SortableCollapsedTaskGroups } from "./sortable-collapsed-task-groups";
-import {
-  foldDevGroupsIntoLive,
-  groupThreadsByVirtualMcp,
-  TOOL_CALL_RUNS_GROUP_KEY,
-} from "./group-threads";
-import { getLiveDevAgentMaps } from "@/web/lib/agent-capabilities";
-import { removeGroupFromOrder, syncOrdersOnOrgPinToggle } from "./stable-order";
-import { SortableAgentRows } from "./sortable-agent-rows";
-import { AgentIconGrid } from "./agent-icon-grid";
-import type { AgentRowProps } from "./agent-row";
+import { AgentAvatar } from "@/web/components/agent-icon";
+import { SidebarTriggerButton } from "@/web/layouts/shell-controls";
 import { MyThreadsSection } from "./my-threads-section";
-import { SidebarSectionHeader } from "./sidebar-section-header";
 import type { SidebarFilters } from "./next-page-offset";
-import { buildGroupThreadCounts } from "./next-page-offset";
-import { useSidebarGroupOrder } from "./use-sidebar-group-order";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@deco/ui/components/tabs.tsx";
 
 type TypeFilter = "all" | "manual" | "automation";
 type GroupBy = "flat" | "status";
 
-const TYPE_LABELS: Record<TypeFilter, string> = {
-  all: "All tasks",
-  manual: "Chats",
-  automation: "Automation",
-};
+/** Toolbar icon button with the shared dark tooltip (matches the collapsed
+ * rail's SidebarMenuButton tooltip). `active` gives the pressed/highlighted look.
+ *
+ * Open state is driven purely by hover/focus (not Radix's defaults) so a click
+ * doesn't dismiss the tooltip while the pointer is still over the button. */
+function ToolbarTooltipButton({
+  label,
+  onClick,
+  active,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Tooltip open={open}>
+      <TooltipTrigger asChild>
+        <ToolbarIconButton
+          aria-label={label}
+          onClick={onClick}
+          onPointerEnter={() => setOpen(true)}
+          onPointerLeave={() => setOpen(false)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          className={cn(active && "bg-sidebar-accent text-foreground")}
+        >
+          {children}
+        </ToolbarIconButton>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** One labelled segmented control (View / Type / Scope) in the filter popover. */
+function FilterRow<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: T;
+  onChange: (value: T) => void;
+  options: { value: T; label: string; icon?: ReactNode }[];
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <ToggleGroup
+        type="single"
+        size="sm"
+        value={value}
+        onValueChange={(v) => v && onChange(v as T)}
+        className="gap-0.5 rounded-lg border border-border bg-muted/50 p-0.5"
+      >
+        {options.map((opt) => (
+          <ToggleGroupItem
+            key={opt.value}
+            value={opt.value}
+            className="h-6 gap-1.5 rounded-md border border-transparent px-2 text-xs font-medium text-muted-foreground hover:bg-transparent data-[state=on]:border-border data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+          >
+            {opt.icon}
+            {opt.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </div>
+  );
+}
 
 export function TaskGroupsList({
   onNavigate,
@@ -92,7 +138,6 @@ export function TaskGroupsList({
 } = {}) {
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
-  const sidebarUserId = currentUserId ?? "anon";
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -100,45 +145,8 @@ export function TaskGroupsList({
     orgSlug: org.slug,
   });
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  // Agent entities (for the collapsed rail's per-thread avatars).
   const agents = useVirtualMCPs();
-  const { liveToDev, devToLive } = getLiveDevAgentMaps(agents);
-  const serverOrgPinnedIds = getServerPinnedIds(agents);
-  const canManageOrgPin = useCanPinAgentsForOrg();
-  const virtualMcpActions = useVirtualMCPActions();
-
-  const [orgPinOverrides, setOrgPinOverrides] = useState<
-    Record<string, boolean>
-  >({});
-  const serverOrgPinnedSet = new Set(serverOrgPinnedIds);
-
-  // Partition overrides into active (server hasn't confirmed yet) vs confirmed.
-  // Confirmed entries are pruned from state so they can't reactivate if server
-  // data fluctuates (cache miss, background refetch, etc.).
-  const activeOverrides: Record<string, boolean> = {};
-  const confirmedKeys: string[] = [];
-  for (const [id, pinned] of Object.entries(orgPinOverrides)) {
-    if (serverOrgPinnedSet.has(id) !== pinned) {
-      activeOverrides[id] = pinned;
-    } else {
-      confirmedKeys.push(id);
-    }
-  }
-  if (confirmedKeys.length > 0) {
-    setOrgPinOverrides((prev) => {
-      const next = { ...prev };
-      for (const k of confirmedKeys) delete next[k];
-      return next;
-    });
-  }
-  const orgPinnedIds = (() => {
-    const set = new Set(serverOrgPinnedIds);
-    for (const [id, pinned] of Object.entries(activeOverrides)) {
-      if (pinned) set.add(id);
-      else set.delete(id);
-    }
-    return [...set];
-  })();
-  const orgPinnedSet = new Set(orgPinnedIds);
 
   const {
     threads: allThreads,
@@ -150,18 +158,19 @@ export function TaskGroupsList({
   const { hide } = useThreadActions();
 
   const navigate = useNavigate();
-  const navigateToAgent = useNavigateToAgent();
   const { setTaskId, createNewTask } = usePanelActions();
   const params = useParams({ strict: false }) as {
     taskId?: string;
   };
-  const pathname = useRouterState({
-    select: (s) => s.location.pathname,
-  });
-  const isOnHome = pathname === `/${org.slug}` || pathname === `/${org.slug}/`;
+  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
   const activeTaskId = params.taskId ?? null;
+  // The recipient is the URL's `virtualmcpid` (what the composer sends to),
+  // falling back to the thread row's agent. Preferring the param keeps the
+  // active-agent highlight in sync when a new chat is retargeted in place.
   const activeAgentId =
-    allThreads.find((t) => t.id === activeTaskId)?.virtual_mcp_id ?? null;
+    search.virtualmcpid ??
+    allThreads.find((t) => t.id === activeTaskId)?.virtual_mcp_id ??
+    null;
   const closeAfterNavigation = () => {
     onNavigate?.();
   };
@@ -172,21 +181,12 @@ export function TaskGroupsList({
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("flat");
-  const [agentsOpen, setAgentsOpen] = useState(true);
-  const [agentView, setAgentView] = useLocalStorage<"list" | "grid">(
-    "sidebar-agents-view",
-    "list",
-  );
   const [showAll, setShowAll] = useLocalStorage<boolean>(
     "sidebar-threads-scope-all",
     false,
   );
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
-  const [localOrderRevision, setLocalOrderRevision] = useState(0);
-  const contextOrderRevision = useSidebarOrderRevision();
-  const orderRevision = localOrderRevision + contextOrderRevision;
-  const orderScope = { orgId: org.id, userId: sidebarUserId };
 
   // `filters` drives the per-status / per-group server pagination (status mode),
   // where `member: "mine"` scopes the query to the current user. The flat list,
@@ -200,46 +200,6 @@ export function TaskGroupsList({
     member: "mine",
     currentUserId: currentUserId ?? null,
   };
-
-  const agentThreadCounts = buildGroupThreadCounts(
-    sortedThreads,
-    "agent",
-    filters,
-  );
-
-  // Dev agents are hidden from agent PICKERS (browse popover, @-mention, add
-  // to home). Their thread groups are folded into the live counterpart's group
-  // so dev sessions stay under one entry instead of a confusing standalone one.
-  const orderedGroups = useSidebarGroupOrder(
-    orderScope,
-    foldDevGroupsIntoLive(
-      groupThreadsByVirtualMcp(sortedThreads, decopilotId),
-      devToLive,
-    ),
-    decopilotId,
-    orgPinnedIds,
-    orderRevision,
-  );
-
-  // Groups are built from threads, whose virtual_mcp_id has no FK cascade — so a
-  // deleted agent leaves its threads orphaned and would render a ghost "Agent"
-  // group. Drop groups whose agent no longer exists in the (delete-invalidated)
-  // list. Decopilot (synthetic well-known) and the tool-call-runs bucket are
-  // never backed by a listed agent, so they're always kept.
-  const knownAgentIds = new Set(
-    agents.map((a) => a.id).filter((id): id is string => Boolean(id)),
-  );
-  const groups = orderedGroups.filter(
-    (g) =>
-      g.virtualMcpId === decopilotId ||
-      g.virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY ||
-      knownAgentIds.has(g.virtualMcpId),
-  );
-  // The Agents section lists real agents only — threads without an agent
-  // (tool-call runs) surface in the thread lists, not as an "agent".
-  const agentGroups = groups.filter(
-    (g) => g.virtualMcpId !== TOOL_CALL_RUNS_GROUP_KEY,
-  );
 
   // Until the session resolves, `currentUserId` is undefined — render nothing
   // rather than leaking every member's threads into the "My threads" list.
@@ -262,6 +222,9 @@ export function TaskGroupsList({
   const myThreadsAll = mineFiltered(sortedThreads);
   const myThreads = typeFiltered(myThreadsAll);
   const allThreadsFiltered = typeFiltered(sortedThreads);
+  // The sidebar always shows every thread (subject to the type/scope/view
+  // filters) regardless of which agent is open — the agent's own filtered
+  // threads live on its home view.
   const visibleScopedThreads = showAll ? allThreadsFiltered : myThreads;
 
   const handleArchive = (task: Task) => {
@@ -291,10 +254,20 @@ export function TaskGroupsList({
     setTaskId(t.id, t.virtual_mcp_id);
   };
 
-  const handleNewInGroup = (virtualMcpId: string) => {
-    track("sidebar_group_new_clicked", { virtual_mcp_id: virtualMcpId });
-    closeAfterNavigation();
-    createNewTask(virtualMcpId);
+  // Verify a thread has no messages (an unsent "New chat"), so we can reuse it
+  // instead of spawning another empty one. Failure → treat as non-empty.
+  const isThreadEmpty = async (threadId: string): Promise<boolean> => {
+    try {
+      const res = await client.callTool({
+        name: "COLLECTION_THREAD_MESSAGES_LIST",
+        arguments: { thread_id: threadId, limit: 1, offset: 0 },
+      });
+      const payload = ((res as { structuredContent?: unknown })
+        .structuredContent ?? res) as { items?: unknown[] };
+      return (payload.items?.length ?? 0) === 0;
+    } catch {
+      return false;
+    }
   };
 
   // New thread: always target the currently selected agent (the active
@@ -307,324 +280,187 @@ export function TaskGroupsList({
     const candidate = myThreadsAll.find(
       (t) => t.virtual_mcp_id === currentAgentId && t.title === "New chat",
     );
-    if (candidate) {
-      let isEmpty = false;
-      try {
-        const res = await client.callTool({
-          name: "COLLECTION_THREAD_MESSAGES_LIST",
-          arguments: { thread_id: candidate.id, limit: 1, offset: 0 },
-        });
-        const payload = ((res as { structuredContent?: unknown })
-          .structuredContent ?? res) as { items?: unknown[] };
-        isEmpty = (payload.items?.length ?? 0) === 0;
-      } catch {
-        // On lookup failure, fall through and create a fresh thread.
-      }
-      if (isEmpty) {
-        closeAfterNavigation();
-        setTaskId(candidate.id, currentAgentId);
-        return;
-      }
+    if (candidate && (await isThreadEmpty(candidate.id))) {
+      closeAfterNavigation();
+      setTaskId(candidate.id, currentAgentId);
+      return;
     }
     closeAfterNavigation();
     createNewTask(currentAgentId);
   };
 
-  // Click an agent → show the agent home (threads list + new chat input).
-  // Decopilot is the product home — clicking it navigates to /$org directly.
-  const handleOpenAgent = (virtualMcpId: string) => {
-    if (virtualMcpId === decopilotId) {
-      closeAfterNavigation();
-      navigate({ to: "/$org", params: { org: org.slug } });
-      return;
-    }
-    track("sidebar_agent_opened", { virtual_mcp_id: virtualMcpId });
-    closeAfterNavigation();
-    navigateToAgent(virtualMcpId);
-  };
-
-  const handleShowSettings = (virtualMcpId: string) => {
-    track("sidebar_group_settings_clicked", { virtual_mcp_id: virtualMcpId });
-    closeAfterNavigation();
-    navigateToAgent(virtualMcpId, { search: { main: "instructions" } });
-  };
-
-  const handleHideGroup = (virtualMcpId: string) => {
-    if (orgPinnedSet.has(virtualMcpId)) return;
-    track("sidebar_group_hide_clicked", { virtual_mcp_id: virtualMcpId });
-    const group = groups.find((g) => g.virtualMcpId === virtualMcpId);
-    if (group) {
-      for (const t of group.threads) hide(t.id);
-    }
-    removeGroupFromOrder(orderScope, virtualMcpId, orgPinnedIds);
-    setLocalOrderRevision((n) => n + 1);
-  };
-
-  const handleToggleOrgPin = async (virtualMcpId: string, pinned: boolean) => {
-    if (!canManageOrgPin) return;
-    if (activeOverrides[virtualMcpId] !== undefined) return;
-    track("sidebar_group_org_pin_toggled", {
-      virtual_mcp_id: virtualMcpId,
-      pinned,
-    });
-    setOrgPinOverrides((prev) => ({ ...prev, [virtualMcpId]: pinned }));
-    try {
-      await virtualMcpActions.update.mutateAsync({
-        id: virtualMcpId,
-        data: { pinned },
-      });
-      // The override is pruned from state automatically on the next render once
-      // serverOrgPinnedIds reflects the change — no explicit cleanup needed here.
-    } catch {
-      syncOrdersOnOrgPinToggle(orderScope, virtualMcpId, !pinned);
-      setOrgPinOverrides((prev) => {
-        const next = { ...prev };
-        delete next[virtualMcpId];
-        return next;
-      });
-    }
-  };
-
-  const groupContextMenuProps = (virtualMcpId: string) => {
-    const isNonAgentGroup =
-      virtualMcpId === decopilotId || virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
-    return {
-      isOrgPinned: isNonAgentGroup || orgPinnedSet.has(virtualMcpId),
-      canManageOrgPin: isNonAgentGroup ? false : canManageOrgPin,
-      onToggleOrgPin: isNonAgentGroup ? undefined : handleToggleOrgPin,
-    };
-  };
-
-  const buildAgentRowProps = (
-    group: (typeof agentGroups)[number],
-  ): AgentRowProps => ({
-    virtualMcpId: group.virtualMcpId,
-    isActive:
-      group.virtualMcpId === decopilotId
-        ? isOnHome
-        : activeAgentId === group.virtualMcpId,
-    threadCount: agentThreadCounts.get(group.virtualMcpId) ?? 0,
-    onOpen: handleOpenAgent,
-    onNewTask: handleNewInGroup,
-    onShowSettings: handleShowSettings,
-    onHideGroup: handleHideGroup,
-    ...groupContextMenuProps(group.virtualMcpId),
-  });
-
-  // The collapsed rail still renders per-agent thread popovers, so it keeps the
-  // richer group-render props (with nested, mine-scoped threads).
-  const buildCollapsedGroupProps = (group: (typeof groups)[number]) => {
-    const filtered = typeFiltered(mineFiltered(group.threads));
-    const devPartnerId = liveToDev.get(group.virtualMcpId) ?? null;
-    return {
-      virtualMcpId: group.virtualMcpId,
-      threads: filtered,
-      devPartnerId,
-      devGroupVisibleCount: devPartnerId
-        ? (agentThreadCounts.get(devPartnerId) ?? 0)
-        : 0,
-      activeTaskId,
-      filters,
-      groupVisibleCount: agentThreadCounts.get(group.virtualMcpId) ?? 0,
-      onSelectTask: handleSelectTask,
-      onArchiveTask: handleArchive,
-      onNewTaskInGroup: handleNewInGroup,
-      onShowSettings: handleShowSettings,
-      onHideGroup: handleHideGroup,
-      ...groupContextMenuProps(group.virtualMcpId),
-    };
-  };
-
-  const filtersActive = typeFilter !== "all";
-  const { state: sidebarState, isMobile } = useSidebar();
+  const { state: sidebarState, isMobile, toggleSidebar } = useSidebar();
 
   const isCollapsed = sidebarState === "collapsed" && !isMobile;
 
+  // Collapsed rail: the toggle up top, then each thread as its agent's avatar
+  // (tooltip = title), so threads stay reachable without expanding.
   if (isCollapsed) {
-    const visibleGroups = groups.filter((group) => {
-      const filtered = typeFiltered(mineFiltered(group.threads));
-      return !(filtersActive && filtered.length === 0);
-    });
-
+    const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
+    const agentById = new Map((agents ?? []).map((a) => [a.id, a] as const));
+    const resolveAgent = (id: string | undefined) =>
+      (id ? agentById.get(id) : undefined) ??
+      (id === decopilotId ? decopilot : undefined);
     return (
-      <>
-        <SyncSidebarAgentGroupsEmpty value={agentGroups.length === 0} />
-        <SidebarMenu className="min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <SortableCollapsedTaskGroups
-            groups={visibleGroups}
-            orderScope={orderScope}
-            decopilotId={decopilotId}
-            orgPinnedIds={orgPinnedIds}
-            onReorder={() => setLocalOrderRevision((n) => n + 1)}
-            renderGroup={(group) => buildCollapsedGroupProps(group)}
-          />
-        </SidebarMenu>
-      </>
+      <SidebarMenu className="min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Toggle first, then new thread, then the threads themselves. All
+            SidebarMenuButtons so they share the rail's default sizing/padding. */}
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            aria-label="Toggle sidebar"
+            tooltip="Toggle sidebar"
+            onClick={toggleSidebar}
+          >
+            <LayoutLeft size={16} />
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            tooltip="New thread"
+            onClick={() => void handleNewThread()}
+          >
+            <Edit05 size={16} />
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        {visibleScopedThreads.map((t) => {
+          const agent = resolveAgent(t.virtual_mcp_id);
+          return (
+            <SidebarMenuItem key={t.id}>
+              <SidebarMenuButton
+                tooltip={t.title || "New chat"}
+                isActive={t.id === activeTaskId}
+                onClick={() => handleSelectTask(t)}
+              >
+                <AgentAvatar
+                  icon={agent?.icon ?? null}
+                  name={agent?.title ?? "Agent"}
+                  size="2xs"
+                />
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          );
+        })}
+      </SidebarMenu>
     );
   }
 
-  const scopeToggle = (
-    <button
-      type="button"
-      onClick={() => setShowAll((v) => !v)}
-      className="text-xs text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-muted"
-    >
-      {showAll ? "All" : "Mine"}
-    </button>
+  const filtersActive =
+    groupBy !== "flat" || typeFilter !== "all" || showAll === true;
+
+  const filterPopover = (
+    <Popover>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <ToolbarIconButton
+              aria-label="Filter threads"
+              active={filtersActive}
+            >
+              <FilterLines size={16} />
+              {filtersActive && (
+                <span className="absolute right-1 top-1 size-1.5 rounded-full bg-primary ring-2 ring-sidebar" />
+              )}
+            </ToolbarIconButton>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Filter threads</TooltipContent>
+      </Tooltip>
+      <PopoverContent align="start" className="w-64 flex flex-col gap-3 p-3">
+        <FilterRow
+          label="View"
+          value={groupBy}
+          onChange={(v) => {
+            track("tasks_panel_group_by_changed", { to_value: v });
+            setGroupBy(v);
+          }}
+          options={[
+            { value: "flat", label: "List", icon: <Rows01 size={13} /> },
+            { value: "status", label: "Status", icon: <Activity size={13} /> },
+          ]}
+        />
+        <FilterRow
+          label="Type"
+          value={typeFilter}
+          onChange={(v) => {
+            track("tasks_panel_filter_changed", { to_value: v });
+            setTypeFilter(v);
+          }}
+          options={[
+            { value: "all", label: "All" },
+            { value: "manual", label: "Chats" },
+            { value: "automation", label: "Auto" },
+          ]}
+        />
+        <FilterRow
+          label="Scope"
+          value={showAll ? "team" : "mine"}
+          onChange={(v) => setShowAll(v === "team")}
+          options={[
+            { value: "mine", label: "Mine" },
+            { value: "team", label: "Team" },
+          ]}
+        />
+      </PopoverContent>
+    </Popover>
   );
 
   const toolbar = (mobile: boolean) => (
-    <div
-      className={cn(
-        "shrink-0 px-1 flex items-center justify-between",
-        mobile ? "h-10" : "h-10 md:h-7 mb-2",
-      )}
-    >
-      <div className="flex items-center gap-0.5">
-        <ToolbarIconButton
-          aria-label="Search threads"
-          onClick={() => {
-            track("tasks_panel_search_opened");
-            setSearchEverOpened(true);
-            setSearchOpen(true);
-          }}
-        >
-          <SearchSm size={16} />
-        </ToolbarIconButton>
-        <ToolbarIconButton
-          aria-label={
-            groupBy === "flat" ? "Group by status" : "Show as flat list"
-          }
-          title={groupBy === "flat" ? "Flat list" : "Grouped by status"}
-          onClick={() => {
-            const next: GroupBy = groupBy === "flat" ? "status" : "flat";
-            track("tasks_panel_group_by_changed", { to_value: next });
-            setGroupBy(next);
-          }}
-        >
-          {groupBy === "flat" ? <Rows01 size={16} /> : <Activity size={16} />}
-        </ToolbarIconButton>
-        {!mobile && (
-          <Popover>
-            <PopoverTrigger asChild>
-              <ToolbarIconButton aria-label="Filter tasks">
-                <FilterLines size={16} />
-                {filtersActive && (
-                  <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 ring-1 ring-sidebar pointer-events-none" />
-                )}
-              </ToolbarIconButton>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              sideOffset={8}
-              collisionPadding={16}
-              className="w-72 p-3"
-            >
-              <div className="flex flex-col gap-2">
-                <FilterRow label="Type">
-                  <Select
-                    value={typeFilter}
-                    onValueChange={(v) => {
-                      const next = v as TypeFilter;
-                      if (next !== typeFilter) {
-                        track("tasks_panel_filter_changed", {
-                          to_value: next,
-                        });
-                      }
-                      setTypeFilter(next);
-                    }}
-                  >
-                    <SelectTrigger size="sm" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(TYPE_LABELS) as TypeFilter[]).map((opt) => (
-                        <SelectItem key={opt} value={opt}>
-                          {TYPE_LABELS[opt]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FilterRow>
-              </div>
-            </PopoverContent>
-          </Popover>
+    <TooltipProvider delayDuration={300}>
+      <div
+        className={cn(
+          "shrink-0 px-1 flex items-center justify-between",
+          mobile ? "h-10" : "h-10 md:h-7 mb-2",
         )}
+      >
+        {/* Left: toggle + filter popover. */}
+        <div className="flex items-center gap-0.5">
+          {!mobile && <SidebarTriggerButton />}
+          {filterPopover}
+        </div>
+        {/* Right: search + new thread. */}
+        <div className="flex items-center gap-0.5">
+          <ToolbarTooltipButton
+            label="Search threads"
+            onClick={() => {
+              track("tasks_panel_search_opened");
+              setSearchEverOpened(true);
+              setSearchOpen(true);
+            }}
+          >
+            <SearchSm size={16} />
+          </ToolbarTooltipButton>
+          <ToolbarTooltipButton
+            label="New thread"
+            onClick={() => void handleNewThread()}
+          >
+            <Edit05 size={16} />
+          </ToolbarTooltipButton>
+        </div>
       </div>
-      <div className="flex items-center gap-1">
-        {scopeToggle}
-        <ToolbarIconButton
-          aria-label="New thread"
-          title="New thread"
-          onClick={() => void handleNewThread()}
-        >
-          <Edit05 size={16} />
-        </ToolbarIconButton>
-      </div>
-    </div>
+    </TooltipProvider>
   );
 
   if (isMobile) {
     return (
       <div className="flex flex-col h-full min-h-0">
-        <SyncSidebarAgentGroupsEmpty value={agentGroups.length === 0} />
         {toolbar(true)}
-        <Tabs
-          defaultValue="threads"
-          variant="pill"
-          className="flex flex-col flex-1 min-h-0 gap-0"
+        <ScrollFade
+          wrapperClassName="flex-1 min-h-0"
+          className="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-1 h-full"
         >
-          <TabsList
-            variant="pill"
-            className="shrink-0 mx-1 mb-2 w-[calc(100%-0.5rem)]"
-          >
-            <TabsTrigger variant="pill" value="threads">
-              Threads
-            </TabsTrigger>
-            <TabsTrigger variant="pill" value="agents">
-              Agents
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent
-            value="threads"
-            className="flex-1 min-h-0 mt-1 flex flex-col"
-          >
-            <ScrollFade
-              wrapperClassName="flex-1 min-h-0"
-              className="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-1 h-full"
-            >
-              <MyThreadsSection
-                threads={visibleScopedThreads}
-                groupBy={groupBy}
-                activeTaskId={activeTaskId}
-                onSelectTask={handleSelectTask}
-                onArchiveTask={handleArchive}
-                filters={filters}
-                hasMore={hasMore}
-                isFetchingMore={isFetchingMore}
-                onLoadMore={() => void fetchNextPage()}
-              />
-            </ScrollFade>
-          </TabsContent>
-          <TabsContent
-            value="agents"
-            className="flex-1 min-h-0 mt-1 flex flex-col"
-          >
-            <ScrollFade
-              wrapperClassName="flex-1 min-h-0"
-              className="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-1 h-full"
-            >
-              <SortableAgentRows
-                groups={agentGroups}
-                orderScope={orderScope}
-                decopilotId={decopilotId}
-                orgPinnedIds={orgPinnedIds}
-                onReorder={() => setLocalOrderRevision((n) => n + 1)}
-                renderGroup={buildAgentRowProps}
-              />
-            </ScrollFade>
-          </TabsContent>
-        </Tabs>
+          <MyThreadsSection
+            threads={visibleScopedThreads}
+            groupBy={groupBy}
+            activeTaskId={activeTaskId}
+            onSelectTask={handleSelectTask}
+            onArchiveTask={handleArchive}
+            filters={filters}
+            hasMore={hasMore}
+            isFetchingMore={isFetchingMore}
+            onLoadMore={() => void fetchNextPage()}
+            filtersActive={filtersActive}
+          />
+        </ScrollFade>
         {searchEverOpened && (
           <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
         )}
@@ -634,7 +470,6 @@ export function TaskGroupsList({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <SyncSidebarAgentGroupsEmpty value={agentGroups.length === 0} />
       {toolbar(false)}
       <div className="flex-1 min-h-0 flex flex-col gap-0.5 -mr-2 pr-2">
         <ScrollFade
@@ -651,95 +486,13 @@ export function TaskGroupsList({
             hasMore={hasMore}
             isFetchingMore={isFetchingMore}
             onLoadMore={() => void fetchNextPage()}
+            filtersActive={filtersActive}
           />
         </ScrollFade>
-        <div className="shrink-0 mx-2 my-2 border-b" />
-        <div
-          className={cn(
-            "flex flex-col min-h-0",
-            agentsOpen ? "basis-[35%] shrink-0" : "shrink-0",
-          )}
-        >
-          <SidebarSectionHeader
-            label="Agents"
-            open={agentsOpen}
-            onToggle={() => setAgentsOpen((v) => !v)}
-            count={agentGroups.length}
-            controlsId="sidebar-section-agents"
-            actionSlot={
-              <>
-                {agentsOpen && (
-                  <ToolbarIconButton
-                    aria-label={
-                      agentView === "list"
-                        ? "Switch to grid view"
-                        : "Switch to list view"
-                    }
-                    title={agentView === "list" ? "Grid view" : "List view"}
-                    onClick={() =>
-                      setAgentView((v) => (v === "list" ? "grid" : "list"))
-                    }
-                  >
-                    {agentView === "list" ? (
-                      <Grid01 className="size-4" />
-                    ) : (
-                      <List className="size-4" />
-                    )}
-                  </ToolbarIconButton>
-                )}
-                <BrowseAgentsButton compact />
-              </>
-            }
-          />
-          <div
-            id="sidebar-section-agents"
-            aria-hidden={!agentsOpen}
-            className="grid min-h-0 transition-[grid-template-rows] duration-200 ease-out"
-            style={{ gridTemplateRows: agentsOpen ? "1fr" : "0fr" }}
-          >
-            <div className="overflow-hidden min-h-0">
-              <ScrollFade
-                wrapperClassName="h-full min-h-0"
-                className="flex flex-col gap-0.5 h-full overflow-y-auto overscroll-contain"
-              >
-                {agentView === "grid" ? (
-                  <AgentIconGrid
-                    groups={agentGroups}
-                    renderGroup={buildAgentRowProps}
-                  />
-                ) : (
-                  <SortableAgentRows
-                    groups={agentGroups}
-                    orderScope={orderScope}
-                    decopilotId={decopilotId}
-                    orgPinnedIds={orgPinnedIds}
-                    onReorder={() => setLocalOrderRevision((n) => n + 1)}
-                    renderGroup={buildAgentRowProps}
-                  />
-                )}
-              </ScrollFade>
-            </div>
-          </div>
-        </div>
       </div>
       {searchEverOpened && (
         <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       )}
-    </div>
-  );
-}
-
-function FilterRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <div className="w-36 shrink-0">{children}</div>
     </div>
   );
 }

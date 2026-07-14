@@ -46,6 +46,7 @@ export class OrganizationSettingsStorage
           : record.default_home_agents
         : null,
       commerce_discovery_only: record.commerce_discovery_only ?? null,
+      task_board_enabled: record.task_board_enabled,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -62,6 +63,7 @@ export class OrganizationSettingsStorage
         | "simple_mode"
         | "default_home_agents"
         | "commerce_discovery_only"
+        | "task_board_enabled"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -99,6 +101,7 @@ export class OrganizationSettingsStorage
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
         commerce_discovery_only: commerceDiscoveryOnly ?? null,
+        task_board_enabled: data?.task_board_enabled,
         createdAt: now,
         updatedAt: now,
       })
@@ -112,6 +115,7 @@ export class OrganizationSettingsStorage
             ? defaultHomeAgentsJson
             : undefined,
           commerce_discovery_only: commerceDiscoveryOnly,
+          task_board_enabled: data?.task_board_enabled,
           updatedAt: now,
         }),
       )
@@ -128,6 +132,7 @@ export class OrganizationSettingsStorage
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
         commerce_discovery_only: data?.commerce_discovery_only ?? null,
+        task_board_enabled: data?.task_board_enabled ?? false,
         createdAt: now,
         updatedAt: now,
       };

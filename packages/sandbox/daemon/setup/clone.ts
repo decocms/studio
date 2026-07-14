@@ -3,11 +3,18 @@ import { existsSync, readdirSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { isSyntheticBranch } from "../constants";
 import { isValidRemoteBranchName } from "../git/ref-name";
+import {
+  formatCommand,
+  type StructuredCommand,
+} from "../process/structured-command";
 import type { Config } from "../types";
+import { gitBaseArgv, gitStepEnv } from "./git-command";
 import { spawnSetupStep } from "./spawn-step";
 
 export interface CloneDeps {
   config: Config;
+  /** Absolute path of the materialized no-op askpass (see setup/askpass.ts). */
+  askpassPath: string;
   dropPrivileges?: boolean;
   onChunk: (source: "setup", data: string) => void;
 }
@@ -36,8 +43,35 @@ function normalizeCarriageReturns(data: string): string {
   return data.replace(/\r(?!\n)/g, "\r\n");
 }
 
-function runStep(cmd: string, deps: CloneDeps): Promise<number> {
-  deps.onChunk("setup", `$ ${cmd}\r\n`);
+/** git <base flags> <extra…> as a StructuredCommand. */
+function git(
+  extra: readonly string[],
+  askpassPath: string,
+  opts: { cwd?: string } = {},
+): StructuredCommand {
+  return {
+    argv: [...gitBaseArgv(), ...extra],
+    env: gitStepEnv(askpassPath),
+    ...(opts.cwd ? { cwd: opts.cwd } : {}),
+  };
+}
+
+/** Exported for unit tests — the exact clone argv for both branch cases. */
+export function cloneCommand(p: {
+  cloneUrl: string;
+  dir: string;
+  branchOnRemote: string | null;
+  askpassPath: string;
+}): StructuredCommand {
+  const branchArgs = p.branchOnRemote ? ["--branch", p.branchOnRemote] : [];
+  return git(
+    ["clone", "--depth", "1", ...branchArgs, p.cloneUrl, p.dir],
+    p.askpassPath,
+  );
+}
+
+function runStep(cmd: StructuredCommand, deps: CloneDeps): Promise<number> {
+  deps.onChunk("setup", `$ ${formatCommand(cmd)}\r\n`);
   const normalized: CloneDeps = {
     ...deps,
     onChunk: (src, data) => deps.onChunk(src, normalizeCarriageReturns(data)),
@@ -68,7 +102,10 @@ function isTransient(output: string): boolean {
   return TRANSIENT_ERRORS.some((e) => output.includes(e));
 }
 
-async function runNetworkStep(cmd: string, deps: CloneDeps): Promise<number> {
+async function runNetworkStep(
+  cmd: StructuredCommand,
+  deps: CloneDeps,
+): Promise<number> {
   for (let attempt = 0; attempt <= CLONE_MAX_RETRIES; attempt++) {
     if (attempt > 0) {
       deps.onChunk(
@@ -100,7 +137,7 @@ const LS_REMOTE_NO_MATCH = 2;
 
 /** Like runNetworkStep but also returns the (merged stdout+stderr) output. */
 async function runNetworkStepCapture(
-  cmd: string,
+  cmd: StructuredCommand,
   deps: CloneDeps,
 ): Promise<{ code: number; output: string }> {
   let output = "";
@@ -137,14 +174,14 @@ async function runNetworkStepCapture(
  * (e.g. the PR-diff path) corrects the numbers.
  */
 async function fetchBaseBranch(
-  gc: string,
+  askpassPath: string,
   dir: string,
   cloneUrl: string,
   branchOnRemote: string,
   deps: CloneDeps,
 ): Promise<void> {
   const { code, output } = await runNetworkStepCapture(
-    `${gc} ls-remote --symref ${cloneUrl} HEAD`,
+    git(["ls-remote", "--symref", cloneUrl, "HEAD"], askpassPath),
     deps,
   );
   if (code !== 0) {
@@ -157,10 +194,11 @@ async function fetchBaseBranch(
   // "ref: refs/heads/main\tHEAD"
   const base = output.match(/ref:\s+refs\/heads\/(\S+)\s+HEAD/)?.[1] ?? null;
   if (!base || base === branchOnRemote) return;
-  // `base` comes from remote-controlled ls-remote output and is interpolated
-  // into `sh -c` git commands below — reject anything outside a safe ref-name
-  // charset to close the command-injection vector (git allows `;`, `$(…)`,
-  // backticks, etc. in branch names).
+  // `base` comes from remote-controlled ls-remote output and flows into a
+  // `git fetch`/`symbolic-ref` argv below. The argv/env representation makes
+  // shell injection impossible, but ref-format garbage (and flag-shaped
+  // names) still has no business reaching git — shared allowlist, same as
+  // the checkout path (git/ref-name.ts).
   if (!isValidRemoteBranchName(base)) {
     deps.onChunk(
       "setup",
@@ -170,7 +208,17 @@ async function fetchBaseBranch(
   }
 
   const fetchCode = await runNetworkStep(
-    `${gc} -C ${dir} fetch --depth 1 origin +refs/heads/${base}:refs/remotes/origin/${base}`,
+    git(
+      [
+        "fetch",
+        "--depth",
+        "1",
+        "origin",
+        `+refs/heads/${base}:refs/remotes/origin/${base}`,
+      ],
+      askpassPath,
+      { cwd: dir },
+    ),
     deps,
   );
   if (fetchCode !== 0) {
@@ -181,7 +229,15 @@ async function fetchBaseBranch(
     return;
   }
   await runStep(
-    `${gc} -C ${dir} symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/${base}`,
+    git(
+      [
+        "symbolic-ref",
+        "refs/remotes/origin/HEAD",
+        `refs/remotes/origin/${base}`,
+      ],
+      askpassPath,
+      { cwd: dir },
+    ),
     deps,
   );
 }
@@ -212,7 +268,7 @@ export interface CloneResult {
  * base-branch fetch — see CloneResult.
  */
 export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
-  const { config } = deps;
+  const { config, askpassPath } = deps;
   const cloneUrl = config.git?.repository?.cloneUrl;
   if (!cloneUrl) {
     return { code: 1 };
@@ -225,11 +281,6 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
     return { code: 1 };
   }
 
-  // GIT_TERMINAL_PROMPT=0 + GIT_ASKPASS=true: refuse to ever prompt for
-  // credentials. Without this the PTY makes git think it has a terminal, so
-  // a private repo without credentials hangs forever instead of failing fast.
-  // Public repos clone fine — no prompt is needed in the first place.
-  const gc = `GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true git -c safe.directory='*' -c credential.helper= -c http.connectTimeout=10 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=10`;
   const dir = config.repoDir;
 
   const requestedBranch = config.git?.repository?.branch;
@@ -247,10 +298,11 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
   let branchOnRemote: string | null = null;
   let branchToForkLocally: string | null = null;
   if (branch) {
-    // `branch` is config-supplied and interpolated into `sh -c` git commands
-    // below (ls-remote/clone/checkout) — same command-injection vector as
-    // `base` above (git permits shell metacharacters in ref names), so
-    // validate before it ever reaches a shell string.
+    // `branch` is config-supplied and flows into git argv below
+    // (ls-remote/clone/checkout). Argv can't be shell-injected, but a
+    // flag-shaped or ref-format-invalid name still has no business reaching
+    // git — same shared allowlist as the `base` check above and the
+    // checkout path (git/ref-name.ts).
     if (!isValidRemoteBranchName(branch)) {
       deps.onChunk(
         "setup",
@@ -259,7 +311,10 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
       return { code: 1 };
     }
     const probe = await runNetworkStep(
-      `${gc} ls-remote --exit-code --heads ${cloneUrl} ${branch}`,
+      git(
+        ["ls-remote", "--exit-code", "--heads", cloneUrl, branch],
+        askpassPath,
+      ),
       deps,
     );
     if (probe === 0) {
@@ -284,7 +339,7 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
   const deferBaseFetch =
     (branchOnRemoteForFetch: string) =>
     (onChunk: (source: "setup", data: string) => void) =>
-      fetchBaseBranch(gc, dir, cloneUrl, branchOnRemoteForFetch, {
+      fetchBaseBranch(askpassPath, dir, cloneUrl, branchOnRemoteForFetch, {
         ...deps,
         onChunk,
       });
@@ -295,18 +350,39 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
   // operates in-place and tolerates existing content.
   if (isNonEmptyWithoutGit(dir)) {
     const localSteps = [
-      `${gc} -C ${dir} init`,
-      `${gc} -C ${dir} remote add origin ${cloneUrl}`,
+      git(["init"], askpassPath, { cwd: dir }),
+      git(["remote", "add", "origin", cloneUrl], askpassPath, { cwd: dir }),
     ];
     for (const step of localSteps) {
       const code = await runStep(step, deps);
       if (code !== 0) return { code };
     }
-    const fetchRef = branchOnRemote
-      ? `+refs/heads/${branchOnRemote}:refs/remotes/origin/${branchOnRemote}`
+    // When no branch was requested (and none needs forking locally), `git
+    // clone` would land on the remote's default branch as a real local
+    // branch. Mirror that here by resolving the default branch name first —
+    // otherwise `checkout FETCH_HEAD` below leaves the working tree in
+    // detached HEAD, unlike the normal clone path (see clone.test.ts).
+    let defaultBranch: string | null = null;
+    if (!branchOnRemote && !branchToForkLocally) {
+      const { code: symrefCode, output } = await runNetworkStepCapture(
+        git(["ls-remote", "--symref", cloneUrl, "HEAD"], askpassPath),
+        deps,
+      );
+      const resolved =
+        symrefCode === 0
+          ? (output.match(/ref:\s+refs\/heads\/(\S+)\s+HEAD/)?.[1] ?? null)
+          : null;
+      if (resolved && isValidRemoteBranchName(resolved))
+        defaultBranch = resolved;
+    }
+    const branchToTrack = branchOnRemote ?? defaultBranch;
+    const fetchRef = branchToTrack
+      ? `+refs/heads/${branchToTrack}:refs/remotes/origin/${branchToTrack}`
       : "HEAD";
     const fetchCode = await runNetworkStep(
-      `${gc} -C ${dir} fetch --depth 1 origin ${fetchRef}`,
+      git(["fetch", "--depth", "1", "origin", fetchRef], askpassPath, {
+        cwd: dir,
+      }),
       deps,
     );
     if (fetchCode !== 0) return { code: fetchCode };
@@ -317,34 +393,44 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
     // overwritten"). Force lets the committed branch content win; only files
     // that collide with tracked paths are overwritten — `.decocms/daemon.json`
     // (not tracked on the branch) is left in place.
-    const checkoutCmd = branchOnRemote
-      ? `${gc} -C ${dir} checkout -f -B ${branchOnRemote} refs/remotes/origin/${branchOnRemote}`
-      : `${gc} -C ${dir} checkout -f FETCH_HEAD`;
+    const checkoutCmd = branchToTrack
+      ? git(
+          [
+            "checkout",
+            "-f",
+            "-B",
+            branchToTrack,
+            `refs/remotes/origin/${branchToTrack}`,
+          ],
+          askpassPath,
+          { cwd: dir },
+        )
+      : git(["checkout", "-f", "FETCH_HEAD"], askpassPath, { cwd: dir });
     const checkoutCode = await runStep(checkoutCmd, deps);
     if (checkoutCode !== 0) return { code: checkoutCode };
     if (branchToForkLocally) {
       return {
         code: await runStep(
-          `${gc} -C ${dir} checkout -B ${branchToForkLocally}`,
+          git(["checkout", "-B", branchToForkLocally], askpassPath, {
+            cwd: dir,
+          }),
           deps,
         ),
       };
     }
     return {
       code: 0,
-      ...(branchOnRemote ? { fetchBase: deferBaseFetch(branchOnRemote) } : {}),
+      ...(branchToTrack ? { fetchBase: deferBaseFetch(branchToTrack) } : {}),
     };
   }
 
-  const cloneCmd = branchOnRemote
-    ? `${gc} clone --depth 1 --branch ${branchOnRemote} ${cloneUrl} ${dir}`
-    : `${gc} clone --depth 1 ${cloneUrl} ${dir}`;
+  const cloneCmd = cloneCommand({ cloneUrl, dir, branchOnRemote, askpassPath });
   const cloneCode = await runNetworkStep(cloneCmd, deps);
   if (cloneCode !== 0) return { code: cloneCode };
   if (branchToForkLocally) {
     return {
       code: await runStep(
-        `${gc} -C ${dir} checkout -B ${branchToForkLocally}`,
+        git(["checkout", "-B", branchToForkLocally], askpassPath, { cwd: dir }),
         deps,
       ),
     };

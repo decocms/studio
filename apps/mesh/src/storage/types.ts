@@ -161,6 +161,7 @@ export interface OrganizationSettingsTable {
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
   commerce_discovery_only: boolean | null;
+  task_board_enabled: ColumnType<boolean, boolean | undefined, boolean>;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -173,6 +174,7 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   commerce_discovery_only: boolean | null;
+  task_board_enabled: boolean;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -1482,6 +1484,51 @@ export interface OrgSite {
   updatedAt: string;
 }
 
+export type TaskBoardItemStatus =
+  | "triage"
+  | "todo"
+  | "in_progress"
+  | "in_review"
+  | "done";
+
+export type TaskBoardItemPriority = "low" | "medium" | "high" | "urgent";
+
+export interface TaskBoardItemTable {
+  id: string;
+  organization_id: string;
+  title: string;
+  description: string | null;
+  status: ColumnType<
+    TaskBoardItemStatus,
+    TaskBoardItemStatus | undefined,
+    string
+  >;
+  priority: ColumnType<
+    TaskBoardItemPriority,
+    TaskBoardItemPriority | undefined,
+    string
+  >;
+  assignee_id: string | null;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface TaskBoardItem {
+  id: string;
+  organizationId: string;
+  title: string;
+  description: string | null;
+  status: TaskBoardItemStatus;
+  priority: TaskBoardItemPriority;
+  assigneeId: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
 // ============================================================================
 // Brand Context Table Definition
 // ============================================================================
@@ -1626,6 +1673,7 @@ export interface Database {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+  task_board_items: TaskBoardItemTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

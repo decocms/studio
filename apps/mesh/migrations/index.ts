@@ -124,7 +124,8 @@ import * as migration122splitwebresearchtier from "./122-split-web-research-tier
 import * as migration123connectioncredentialvault from "./123-connection-credential-vault.ts";
 import * as migration124dropthreadprojectedseq from "./124-drop-thread-projected-seq.ts";
 import * as migration125githubchildsingleparent from "./125-github-child-single-parent.ts";
-import * as migration126commercediscoveryonly from "./126-commerce-discovery-only.ts";
+import * as migration126taskboard from "./126-task-board.ts";
+import * as migration127commercediscoveryonly from "./127-commerce-discovery-only.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -274,7 +275,8 @@ const migrations: Record<string, Migration> = {
   "123-connection-credential-vault": migration123connectioncredentialvault,
   "124-drop-thread-projected-seq": migration124dropthreadprojectedseq,
   "125-github-child-single-parent": migration125githubchildsingleparent,
-  "126-commerce-discovery-only": migration126commercediscoveryonly,
+  "126-task-board": migration126taskboard,
+  "127-commerce-discovery-only": migration127commercediscoveryonly,
 };
 
 export default migrations;

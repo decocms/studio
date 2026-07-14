@@ -17,16 +17,25 @@ export function HeaderTabButton({
   icon,
   active,
   onClick,
+  disabled = false,
+  className,
 }: {
   title: string;
   icon: TabIcon;
   active: boolean;
   onClick: () => void;
+  /** Disables the button (e.g. the Chat toggle when it's the only panel). */
+  disabled?: boolean;
+  /** Extra classes merged onto the base metrics — lets non-tab consumers
+   *  (the Chat toggle) tweak height / drag behaviour while staying pixel-
+   *  identical to the tabs. */
+  className?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-pressed={active}
       aria-label={title}
       className={cn(
@@ -35,6 +44,7 @@ export function HeaderTabButton({
         active
           ? "bg-sidebar-accent text-sidebar-foreground"
           : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+        className,
       )}
     >
       <span className="flex size-5 items-center justify-center shrink-0">

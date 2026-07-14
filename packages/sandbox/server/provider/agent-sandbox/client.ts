@@ -20,6 +20,7 @@
  * "ensure ready" flows live on the runner, not here.
  */
 
+import { sleep } from "@decocms/std";
 import {
   type KubeConfig,
   type V1Status as V1StatusUpstream,
@@ -407,7 +408,7 @@ export async function waitForSandboxClaimGone(
         `SandboxClaim ${claimName} still terminating after ${timeoutMs}ms (deletionTimestamp=${since}, finalizers=[${finalizers.join(", ")}])`,
       );
     }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await sleep(intervalMs);
   }
 }
 

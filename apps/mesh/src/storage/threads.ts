@@ -383,6 +383,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.branch !== undefined) {
       updateData.branch = data.branch;
     }
+    if (data.virtual_mcp_id !== undefined) {
+      updateData.virtual_mcp_id = data.virtual_mcp_id;
+    }
     if (data.sandbox_provider_kind !== undefined) {
       updateData.sandbox_provider_kind = data.sandbox_provider_kind;
     }
