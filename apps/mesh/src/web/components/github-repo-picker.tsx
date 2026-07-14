@@ -23,8 +23,11 @@ import {
   useProjectContext,
   useMCPClient,
   useConnections,
+  useConnectionActions,
   SELF_MCP_ALIAS_ID,
 } from "@decocms/mesh-sdk";
+import { Button } from "@deco/ui/components/button.tsx";
+import { authenticateAndPersistOAuth } from "@/web/lib/authenticate-and-persist-oauth";
 import type { ConnectionEntity } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { toast } from "sonner";
@@ -593,11 +596,51 @@ function InstallationPicker({
     orgId,
     orgSlug,
   });
+  const queryClient = useQueryClient();
+  const connectionActions = useConnectionActions();
 
   const installationsQuery = useQuery({
     queryKey: KEYS.githubUserOrgs(orgId, connectionId),
     queryFn: () =>
       fetchGithubInstallations((req) => selfClient.callTool(req), connectionId),
+  });
+
+  // The load failure is usually an expired/revoked GitHub token. Re-run OAuth
+  // for this connection (authenticateAndPersistOAuth no-ops when the token is
+  // still valid, so it doubles as a plain retry), then refetch.
+  const reconnect = useMutation({
+    mutationFn: async () => {
+      const auth = await authenticateAndPersistOAuth({
+        connectionId,
+        orgId,
+        orgSlug,
+        persistFallback: (token) =>
+          connectionActions.update
+            .mutateAsync({
+              id: connectionId,
+              data: { connection_token: token },
+            })
+            .then(() => undefined),
+      });
+      if (auth.ran && !auth.ok) {
+        throw new Error(auth.error ?? "no token received");
+      }
+      const mcpProxyUrl = new URL(
+        `/api/${orgSlug}/mcp/${connectionId}`,
+        window.location.origin,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
+      });
+      await queryClient.invalidateQueries({ queryKey: KEYS.mcpClientPrefix() });
+      await installationsQuery.refetch();
+    },
+    onError: (err) => {
+      toast.error(
+        "Failed to reconnect GitHub: " +
+          (err instanceof Error ? err.message : "Unknown error"),
+      );
+    },
   });
 
   if (installationsQuery.isLoading) {
@@ -610,10 +653,27 @@ function InstallationPicker({
 
   if (installationsQuery.isError) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="text-sm text-destructive">
           Failed to load GitHub accounts
         </p>
+        <p className="text-xs text-muted-foreground max-w-[280px] leading-relaxed">
+          Your GitHub connection may have expired. Reconnect to restore access.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => reconnect.mutate()}
+          disabled={reconnect.isPending}
+        >
+          {reconnect.isPending ? (
+            <Loading01 size={14} className="animate-spin" />
+          ) : (
+            <GitHubIcon className="size-3.5" />
+          )}
+          Reconnect GitHub
+        </Button>
       </div>
     );
   }
