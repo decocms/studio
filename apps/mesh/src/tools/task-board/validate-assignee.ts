@@ -6,11 +6,12 @@ export async function assertValidAssignee(
   organizationId: string,
   assigneeId: string,
 ): Promise<void> {
-  const result = await ctx.boundAuth.organization.listMembers({
+  const { members } = await ctx.boundAuth.organization.listMembers({
     organizationId,
   });
-  const members = Array.isArray(result) ? result : [];
-  if (!members.some((member) => member.userId === assigneeId)) {
+  if (
+    !members.some((member: { userId: string }) => member.userId === assigneeId)
+  ) {
     throw new Error("assigneeId is not a member of the organization");
   }
 }

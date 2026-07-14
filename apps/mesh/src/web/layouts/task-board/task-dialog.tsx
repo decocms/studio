@@ -11,8 +11,6 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Input } from "@deco/ui/components/input.tsx";
-import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { ChevronDown, Trash01, User01 } from "@untitledui/icons";
 import { useMembers } from "@/web/hooks/use-members";
@@ -104,18 +102,18 @@ export function TaskBoardItemDialog({
         </DialogTitle>
 
         <div className="flex flex-col gap-3 px-4 pt-4">
-          <Input
+          <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Task title"
             autoFocus
-            className="border-0 px-0 text-base font-medium shadow-none focus-visible:ring-0"
+            className="w-full border-0 bg-transparent text-base font-medium text-foreground outline-none placeholder:text-muted-foreground/70"
           />
-          <Textarea
+          <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Add a description…"
-            className="min-h-[96px] resize-none border-0 px-0 text-sm shadow-none focus-visible:ring-0"
+            className="min-h-[96px] w-full resize-none border-0 bg-transparent text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70"
           />
         </div>
 
