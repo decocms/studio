@@ -258,6 +258,36 @@ describe("canCloseWorkspacePanel", () => {
 });
 
 describe("resolveWorkspacePanelAction", () => {
+  test("toggleChat opens and closes Chat with minimal updates", () => {
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "toggleChat" },
+        { chatOpen: false, blocksOpen: true, mainOpen: false },
+      ),
+    ).toEqual({ chat: 1 });
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "toggleChat" },
+        { chatOpen: true, blocksOpen: false, mainOpen: true },
+      ),
+    ).toEqual({ chat: 0 });
+  });
+
+  test("toggleMain opens and closes Main with minimal updates", () => {
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "toggleMain", openMainValue: "preview" },
+        { chatOpen: true, blocksOpen: false, mainOpen: false },
+      ),
+    ).toEqual({ main: "preview" });
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "toggleMain", openMainValue: "preview" },
+        { chatOpen: false, blocksOpen: true, mainOpen: true },
+      ),
+    ).toEqual({ main: "0" });
+  });
+
   test("toggleBlocks updates only the blocks search param", () => {
     expect(
       resolveWorkspacePanelAction(
