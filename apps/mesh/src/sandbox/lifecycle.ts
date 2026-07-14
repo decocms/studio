@@ -165,7 +165,7 @@ async function instantiate(
         previewGateway: readPreviewGateway(),
         sentinelToken: readSandboxSentinelToken(),
         meter,
-        mintCloneUrl: async (repo) => {
+        mintCloneUrl: async (repo, mintOpts) => {
           // Only connection-backed clones can be re-minted; buildCloneInfo
           // refreshes standard OAuth GitHub connections from db + vault alone.
           // Legacy repo-scoped tokens throw here (need an org-scoped ctx) and
@@ -179,6 +179,7 @@ async function instantiate(
             parsed.name,
             db,
             vault,
+            { bufferMs: mintOpts?.bufferMs },
           );
           return cloneUrl;
         },

@@ -185,7 +185,7 @@ function RepoSwitcherInner({ onAddNew }: { onAddNew: () => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <SidebarMenuButton>
+        <SidebarMenuButton tooltip="Add repo">
           <GitHubIcon />
           <span>Add repo</span>
         </SidebarMenuButton>

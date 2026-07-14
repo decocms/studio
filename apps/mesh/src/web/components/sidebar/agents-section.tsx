@@ -34,6 +34,7 @@ import { Check, Plus } from "@untitledui/icons";
 import {
   getWellKnownDecopilotVirtualMCP,
   isDecopilot,
+  isStudioPackAgent,
   useProjectContext,
   useVirtualMCPs,
 } from "@decocms/mesh-sdk";
@@ -175,6 +176,9 @@ function PinAgentPopoverContent({
   const userAgents = agents
     .filter((s) => !isDecopilot(s.id))
     .filter((s) => !devAgentIds.has(s.id))
+    // Studio Pack default agents (Usage/Automation/Agent/Connection/Store/Brand
+    // Manager) live only on the agents page, not this browse list.
+    .filter((s) => !isStudioPackAgent(s.id))
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
 
   // Decopilot — the "all threads / every agent" option in scope-picker mode.
@@ -182,6 +186,9 @@ function PinAgentPopoverContent({
   const decopilotAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const showDecopilot =
     !search || decopilotAgent.title.toLowerCase().includes(lowerSearch);
+  // Decopilot only renders in scope-picker mode; when it's shown the list is
+  // never truly empty, so the "No agents yet" hint would be misleading.
+  const decopilotRowShown = Boolean(onSelectAgent && showDecopilot);
 
   const selectAll = () => {
     onSelectAgent?.(null);
@@ -237,7 +244,7 @@ function PinAgentPopoverContent({
           />
         ))}
 
-        {userAgents.length === 0 && (
+        {userAgents.length === 0 && !decopilotRowShown && (
           <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
             {search ? "No agents found" : "No agents yet"}
           </div>

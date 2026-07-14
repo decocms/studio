@@ -26,6 +26,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import * as net from "node:net";
 import { PassThrough } from "node:stream";
+import { sleep } from "@decocms/std";
 import {
   type KubeConfig,
   KubeConfig as KubeConfigClass,
@@ -84,6 +85,7 @@ import {
   SandboxError,
 } from "./constants";
 import { watchClaimDeletions, watchClaimLifecycle } from "./lifecycle-watcher";
+import { refreshCredentialsByConnection } from "./credential-refresh";
 import type { ClaimPhase } from "../lifecycle-types";
 
 const RUNNER_KIND = "agent-sandbox" as const;
@@ -146,6 +148,16 @@ const RESERVED_ENV_KEYS = new Set([
 ]);
 
 const DEFAULT_IDLE_TTL_MS = 15 * 60 * 1000;
+
+// Periodic git-credential refresh for long-lived sandboxes. The clone token
+// expires ~55min after it's minted; a pod that stays alive that long with no
+// recovery event would otherwise push with a dead credential on shutdown and
+// lose the user's work. The sweep re-mints well before expiry: a token entering
+// the BUFFER window is re-minted within one INTERVAL, so the daemon's origin
+// token always keeps ≥ ~(BUFFER - INTERVAL) of life — never near the ~55min
+// expiry at an unpredictable SIGTERM. Requires BUFFER > INTERVAL.
+const CREDENTIAL_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+const CREDENTIAL_REFRESH_BUFFER_MS = 30 * 60 * 1000;
 
 /**
  * Handle shape: `<slug>-<hash5>` when a branch is supplied, `<hash5>`
@@ -377,9 +389,14 @@ export interface AgentSandboxProviderOptions {
    * origin on recovery. Returns null when it can't re-mint (no connection,
    * legacy repo-scoped token needing an org-scoped context, mint error); the
    * runner then falls back to the persisted URL. Must never throw.
+   *
+   * `opts.bufferMs` asks the minter to refresh the token when it has less than
+   * that many ms of life left — the periodic refresher passes a large value to
+   * keep long-lived sandboxes ahead of the ~55min expiry; recovery omits it.
    */
   mintCloneUrl?: (
     repo: NonNullable<EnsureOptions["repo"]>,
+    opts?: { bufferMs?: number },
   ) => Promise<string | null>;
 }
 
@@ -450,6 +467,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     this.sentinelToken = trimmedSentinel.length > 0 ? trimmedSentinel : null;
     this.mintCloneUrl = opts.mintCloneUrl;
     this.startClaimReaper();
+    this.startCredentialRefresher();
   }
 
   /**
@@ -1390,10 +1408,14 @@ export class AgentSandboxProvider implements SandboxProvider {
    */
   private async withFreshCloneUrl(
     repo: NonNullable<EnsureOptions["repo"]>,
+    bufferMs?: number,
   ): Promise<NonNullable<EnsureOptions["repo"]>> {
     if (!this.mintCloneUrl) return repo;
     try {
-      const fresh = await this.mintCloneUrl(repo);
+      const fresh = await this.mintCloneUrl(
+        repo,
+        bufferMs !== undefined ? { bufferMs } : undefined,
+      );
       return fresh ? { ...repo, cloneUrl: fresh } : repo;
     } catch (err) {
       console.warn(
@@ -1403,6 +1425,68 @@ export class AgentSandboxProvider implements SandboxProvider {
       );
       return repo;
     }
+  }
+
+  /**
+   * Keep the git credential fresh in long-lived sandboxes this replica serves.
+   * A pod alive past the clone token's ~55min expiry with no recovery event
+   * would push a dead credential on shutdown and lose the user's work; recovery
+   * (resume/adopt/resurrect) only re-mints on a claim/pod event, so a
+   * continuously-editing pod is otherwise never refreshed. Runs off the request
+   * path (zero hot-path cost); cancelled via `claimWatchAbort` on `close()`.
+   *
+   * Coverage is per-replica (`this.records` = sandboxes this replica holds
+   * warm). That's the replica whose port-forward drives the shutdown push too,
+   * so it's the right one in practice — a pod served only by another replica is
+   * refreshed by that replica instead.
+   */
+  private startCredentialRefresher(): void {
+    // No minter wired (tests / non-agent-sandbox deploys) → nothing to refresh.
+    if (!this.mintCloneUrl) return;
+    const { signal } = this.claimWatchAbort;
+    void (async () => {
+      while (!signal.aborted) {
+        await sleep(CREDENTIAL_REFRESH_INTERVAL_MS, { signal }).catch(() => {});
+        if (signal.aborted) break;
+        try {
+          await this.refreshAllGitCredentials();
+        } catch (err) {
+          console.warn(
+            `[${LOG_LABEL}] periodic credential refresh failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+    })();
+  }
+
+  /**
+   * Re-mint + rotate the git credential for every cached sandbox with a
+   * connection-backed repo. Grouping/serialization is in
+   * `refreshCredentialsByConnection`; this just supplies the per-record work.
+   */
+  private async refreshAllGitCredentials(): Promise<void> {
+    await refreshCredentialsByConnection(
+      this.records.values(),
+      (rec) => rec.ensureOpts?.repo?.connectionId,
+      async (rec) => {
+        if (this.claimWatchAbort.signal.aborted) return;
+        const repo = rec.ensureOpts?.repo;
+        if (!repo) return;
+        const fresh = await this.withFreshCloneUrl(
+          repo,
+          CREDENTIAL_REFRESH_BUFFER_MS,
+        );
+        await this.refreshDaemonGitCredential(rec, {
+          ...rec.ensureOpts,
+          repo: fresh,
+        });
+        // Keep the record's URL current so the next sweep sees the fresh token
+        // (a no-op) rather than re-deriving the stale one.
+        rec.ensureOpts = { ...rec.ensureOpts, repo: fresh };
+      },
+    );
   }
 
   /**

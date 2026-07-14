@@ -48,6 +48,7 @@ export class TaskBoardStorage {
     status?: TaskBoardItemStatus;
     priority?: TaskBoardItemPriority;
     assigneeId?: string | null;
+    dueDate?: string | null;
     by: string;
   }): Promise<TaskBoardItem> {
     const id = generatePrefixedId("board");
@@ -63,6 +64,7 @@ export class TaskBoardStorage {
         status: params.status ?? "triage",
         priority: params.priority ?? "medium",
         assignee_id: params.assigneeId ?? null,
+        due_date: params.dueDate ?? null,
         created_by: params.by,
         created_at: now,
         updated_by: params.by,
@@ -83,6 +85,7 @@ export class TaskBoardStorage {
       status?: TaskBoardItemStatus;
       priority?: TaskBoardItemPriority;
       assigneeId?: string | null;
+      dueDate?: string | null;
     },
     by: string,
   ): Promise<TaskBoardItem> {
@@ -98,6 +101,7 @@ export class TaskBoardStorage {
         ...(data.assigneeId !== undefined
           ? { assignee_id: data.assigneeId }
           : {}),
+        ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         updated_by: by,
         updated_at: new Date().toISOString(),
       })
@@ -125,6 +129,7 @@ export class TaskBoardStorage {
     status: string;
     priority: string;
     assignee_id: string | null;
+    due_date: string | Date | null;
     created_by: string;
     created_at: string | Date;
     updated_by: string;
@@ -138,6 +143,10 @@ export class TaskBoardStorage {
       status: row.status as TaskBoardItemStatus,
       priority: row.priority as TaskBoardItemPriority,
       assigneeId: row.assignee_id,
+      dueDate:
+        row.due_date instanceof Date
+          ? row.due_date.toISOString()
+          : row.due_date,
       createdBy: row.created_by,
       createdAt:
         row.created_at instanceof Date

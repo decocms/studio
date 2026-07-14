@@ -113,3 +113,36 @@ export async function buildClusterSandboxFs(
     canAutoRestart,
   });
 }
+
+/**
+ * Probe whether the attached sandbox is a Deco CMS site — i.e. its repo
+ * checkout contains a `.deco/` directory. Gates the CMS-content rules block in
+ * the coding-workspace prompt (see `DECO_CMS_CONTENT_RULES`) so non-deco repos
+ * don't carry it as dead weight.
+ *
+ * Runs `test -d .deco` from the daemon's default bash cwd (the repo root). It
+ * reuses `buildClusterSandboxFs`, so the sandbox `ensureSandbox` resolution is
+ * memoized: on an already-running sandbox (the common case for an active coding
+ * thread) this is a cheap proxied bash call; on the first turn it provisions
+ * the same sandbox the VM file tools will use moments later.
+ *
+ * Fails OPEN (returns `true`) on any error: an indeterminate probe must not
+ * strip the guardrails from a genuine deco site, whose whole failure mode is
+ * silent data loss (editing `*.gen.*` instead of `.deco/blocks/`).
+ */
+export async function sandboxIsDecoSite(
+  ctx: StudioContext,
+  vm: { virtualMcpId: string; branch: string; userId: string },
+): Promise<boolean> {
+  try {
+    const fs = await buildClusterSandboxFs(ctx, vm);
+    const { stdout } = await fs.onBash("test -d .deco && echo __DECO_SITE__");
+    return stdout.includes("__DECO_SITE__");
+  } catch (err) {
+    console.warn(
+      "[cluster-sandbox-fs] .deco probe failed; assuming deco site",
+      err,
+    );
+    return true;
+  }
+}

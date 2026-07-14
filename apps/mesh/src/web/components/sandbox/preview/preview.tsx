@@ -289,6 +289,26 @@ export function PreviewContent({
     Record<string, Record<string, string>>
   >({});
 
+  // Instant click feedback: set the moment a page/section is picked, cleared
+  // when the iframe's onLoad fires. Without this the click has no visible
+  // effect until the new page finishes fetching, so it feels unresponsive.
+  const [navigating, setNavigating] = useState(false);
+  const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const beginNavigation = () => {
+    setNavigating(true);
+    if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    // Safety net: clear the indicator even if onLoad never fires (network
+    // failure, cross-origin redirect) so it can't get stuck on forever.
+    navTimerRef.current = setTimeout(() => setNavigating(false), 15000);
+  };
+  const endNavigation = () => {
+    if (navTimerRef.current) {
+      clearTimeout(navTimerRef.current);
+      navTimerRef.current = null;
+    }
+    setNavigating(false);
+  };
+
   // SEO panel state
   const [cmsInitialEditSeo, setCmsInitialEditSeo] = useState(false);
   const [siteSeoOpen, setSiteSeoOpen] = useState(false);
@@ -666,15 +686,33 @@ export function PreviewContent({
   };
 
   const handleViewModeChange = (mode: PreviewInteractiveViewMode) => {
-    const prev = viewMode;
     setInteractiveViewMode(mode);
     setVisualElement(null);
     setCmsSelectedSectionIndex(null);
     setVariantOverrideParams(null);
-    if (prev === "visual") deactivateVisualEditor();
-    if (prev === "cms") deactivateCmsEditor();
-    if (mode === "visual") injectVisualEditor();
+    // The overlay is injected/torn down by the effect below, keyed on the
+    // resulting view mode — not here — so it also covers mode changes that
+    // don't originate from this handler (Preview↔Blocks tab switches, which
+    // now share one persisted iframe).
   };
+
+  // Keep the injected iframe overlay in sync with the active view mode. The
+  // iframe persists across the Preview↔Blocks tab switch (both surfaces render
+  // one PreviewContent), so a mode change no longer implies a reload — we
+  // inject/tear down here instead of relying solely on the iframe `onLoad`.
+  // `onLoad` still re-injects the current mode after genuine reloads (save,
+  // navigation), which this effect won't see (view mode unchanged). Both the
+  // CMS and visual scripts guard against double-activation, so an overlapping
+  // inject is a no-op.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs the injected iframe overlay (postMessage) to the view mode
+  useEffect(() => {
+    if (previewState.kind !== "iframe") return;
+    if (effectiveViewMode === "visual") injectVisualEditor();
+    else deactivateVisualEditor();
+    if (effectiveViewMode === "cms") injectCmsEditor();
+    else deactivateCmsEditor();
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- inject/deactivate helpers are fresh closures each render; sync only on mode/iframe changes
+  }, [effectiveViewMode, previewState.kind]);
 
   const handleRefresh = () => {
     if (!previewIframeRef.current || !iframeSrc) return;
@@ -752,7 +790,13 @@ export function PreviewContent({
   const navigatePreviewToPage = (page: PageEntry) => {
     // The iframe loads the template with any stored param values filled in.
     const params = pathParamsByPage[page.key] ?? {};
-    intendedPathRef.current = fillPathTemplate(page.path, params);
+    const target = fillPathTemplate(page.path, params);
+    // Show the loading indicator only when the iframe will actually reload —
+    // re-selecting the current page leaves `iframeSrc` unchanged (no onLoad).
+    if (activeGlobalSection || normPath(target) !== normPath(resolvedPath)) {
+      beginNavigation();
+    }
+    intendedPathRef.current = target;
     setActiveGlobalSection(null);
     setDirectPreviewUrl(null);
     setPinnedPageKey(page.key);
@@ -777,6 +821,7 @@ export function PreviewContent({
       toast.error("Preview metadata not ready yet");
       return;
     }
+    beginNavigation();
     intendedPathRef.current = null;
     const livePageRt = findLivePageResolveType(meta);
     const url = buildGlobalSectionPreviewUrl(
@@ -1292,6 +1337,12 @@ export function PreviewContent({
               "flex justify-center bg-muted/30",
           )}
         >
+          {navigating && previewState.kind === "iframe" && (
+            <div className="absolute inset-x-0 top-0 z-40 h-0.5 overflow-hidden bg-primary/15">
+              <div className="absolute inset-y-0 w-2/5 rounded-full bg-primary animate-preview-nav" />
+            </div>
+          )}
+
           {showBootingOverlay && (
             <div className="absolute inset-0 z-30">
               <SandboxStateCard
@@ -1404,6 +1455,9 @@ export function PreviewContent({
                 title="Dev Server Preview"
                 tabIndex={sectionsOpen ? -1 : undefined}
                 onLoad={() => {
+                  // The page finished loading — always clear the navigation
+                  // indicator first, before any of the early returns below.
+                  endNavigation();
                   // This is the VM dev-server preview (sandboxed running app),
                   // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
                   track("vm_preview_loaded", {

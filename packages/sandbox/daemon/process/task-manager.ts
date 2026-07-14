@@ -301,9 +301,10 @@ export class TaskManager {
    *  (a stuck subprocess or a shell with a trap can ignore the first signal). */
   private killWithEscalation(t: TaskInternal, signal: NodeJS.Signals): void {
     t.kill(signal);
-    setTimeout(() => {
+    const escalate = setTimeout(() => {
       if (t.status === "running") t.kill("SIGKILL");
     }, 3000);
+    escalate.unref?.();
   }
 
   delete(id: string): boolean {

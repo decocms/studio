@@ -39,6 +39,7 @@ import { streamText, type UIMessageChunk } from "ai";
 import { generateMessageId } from "../message-id";
 import { createCodexModel, resolveCodexModelId } from "./model";
 import { buildCodingWorkspacePrompt } from "../coding-workspace-prompt";
+import { localWorkspaceIsDecoSite } from "../coding-workspace-deco";
 import { effectiveCwd } from "../workspace-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
@@ -87,7 +88,14 @@ export function buildCodexDeveloperInstructions(input: {
   now?: Date;
 }): string | undefined {
   const parts = [
-    buildCodingWorkspacePrompt(input.workspace),
+    buildCodingWorkspacePrompt(
+      input.workspace
+        ? {
+            ...input.workspace,
+            isDecoSite: localWorkspaceIsDecoSite(input.workspace.cwd),
+          }
+        : input.workspace,
+    ),
     input.agentInstructions?.trim()
       ? `<agent-instructions>\n${input.agentInstructions.trim()}\n</agent-instructions>`
       : null,

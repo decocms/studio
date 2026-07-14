@@ -25,6 +25,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
+    dueDate: z.string().datetime().nullable().optional(),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),
   handler: async (input, ctx) => {
@@ -51,6 +52,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       status: input.status,
       priority: input.priority,
       assigneeId: input.assigneeId ?? null,
+      dueDate: input.dueDate ?? null,
       by: getUserId(ctx)!,
     });
 
