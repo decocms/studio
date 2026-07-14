@@ -36,7 +36,18 @@ export function safePath(
   userPath: string,
 ): string | null {
   const resolved = path.resolve(baseDir, userPath);
-  if (!resolved.startsWith(`${workspaceRoot}/`) && resolved !== workspaceRoot) {
+  // A plain `startsWith(workspaceRoot + "/")` check is POSIX-only: on win32
+  // path.resolve/path.join emit backslash-separated paths (and drive
+  // letters), so a hardcoded "/" separator never matches and every request
+  // gets rejected. `path.relative` is platform-correct: it returns a path
+  // that starts with ".." (or is itself absolute, e.g. a different drive
+  // letter on win32) whenever `resolved` falls outside `workspaceRoot` —
+  // regardless of which separator the platform uses.
+  const rel = path.relative(workspaceRoot, resolved);
+  if (
+    rel !== "" &&
+    (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel))
+  ) {
     return null;
   }
   return resolved;

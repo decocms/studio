@@ -10,6 +10,12 @@ import {
 } from "./checkout-branch";
 import { InvalidRemoteBranchNameError } from "./ref-name";
 
+/** `runGit` fake wired to the real `git -C <repoDir>` invocation for e2e-style tests. */
+function makeRunGit(repoDir: string) {
+  return (args: readonly string[]) =>
+    spawnSetupStep({ argv: ["git", ...args], cwd: repoDir }, () => {});
+}
+
 function setupBareRepo(): { url: string; root: string; cleanup: () => void } {
   const root = mkdtempSync(join(tmpdir(), "checkout-branch-"));
   const bare = join(root, "origin.git");
@@ -69,14 +75,12 @@ describe("spawnCheckoutBranch", () => {
     const { url, root, cleanup } = setupBareRepo();
     try {
       const repoDir = cloneWorkspace(url, root);
-      const gc = `git -C ${repoDir}`;
       const logs: string[] = [];
 
       await spawnCheckoutBranch({
         repoDir,
         branch: "deco/new-branch",
-        gc,
-        runStep: (cmd) => spawnSetupStep(cmd, () => {}),
+        runGit: makeRunGit(repoDir),
         log: (msg) => logs.push(msg),
       });
 
@@ -112,12 +116,10 @@ describe("spawnCheckoutBranch", () => {
         stdio: "ignore",
       });
 
-      const gc = `git -C ${repoDir}`;
       await spawnCheckoutBranch({
         repoDir,
         branch: "local-only",
-        gc,
-        runStep: (cmd) => spawnSetupStep(cmd, () => {}),
+        runGit: makeRunGit(repoDir),
         log: () => {},
       });
 
@@ -143,8 +145,7 @@ describe("spawnCheckoutBranch", () => {
         spawnCheckoutBranch({
           repoDir,
           branch: "does-not-exist-anywhere",
-          gc: `git -C ${repoDir}`,
-          runStep: (cmd) => spawnSetupStep(cmd, () => {}),
+          runGit: makeRunGit(repoDir),
           log: () => {},
         }),
       ).rejects.toThrow(InvalidRemoteBranchNameError);
@@ -159,15 +160,15 @@ describe("spawnCheckoutBranch", () => {
     const { url, root, cleanup } = setupBareRepo();
     try {
       const repoDir = cloneWorkspace(url, root);
-      // `branch` comes from the sandbox's git config and is interpolated
-      // into `sh -c` git commands (ls-remote/fetch/checkout) — same
-      // injection vector as origin/HEAD, just from a different source.
+      // `branch` comes from the sandbox's git config and flows into git argv
+      // (ls-remote/fetch/checkout) — argv form rules out shell injection, but
+      // `assertValidRemoteBranchName` should still reject this before it ever
+      // reaches a git invocation, same as the origin/HEAD case above.
       await expect(
         spawnCheckoutBranch({
           repoDir,
           branch: `pwn;touch\${IFS}${root}/INJECTED`,
-          gc: `git -C ${repoDir}`,
-          runStep: (cmd) => spawnSetupStep(cmd, () => {}),
+          runGit: makeRunGit(repoDir),
           log: () => {},
         }),
       ).rejects.toThrow(InvalidRemoteBranchNameError);
@@ -177,4 +178,112 @@ describe("spawnCheckoutBranch", () => {
       cleanup();
     }
   }, 30_000);
+});
+
+/** Minimal non-bare repo — just enough for the HEAD/show-ref checks that run outside `runGit`. */
+function setupLocalRepo(): { repoDir: string; cleanup: () => void } {
+  const repoDir = mkdtempSync(join(tmpdir(), "checkout-branch-argv-"));
+  const gitcfg = `-c init.defaultBranch=main -c user.email=test@example.com -c user.name=test -c commit.gpgsign=false`;
+  execSync(`git ${gitcfg} init ${repoDir}`, { stdio: "ignore" });
+  writeFileSync(join(repoDir, "README.md"), "hi\n");
+  execSync(`git ${gitcfg} -C ${repoDir} add .`, { stdio: "ignore" });
+  execSync(`git ${gitcfg} -C ${repoDir} commit -m initial`, {
+    stdio: "ignore",
+  });
+  return {
+    repoDir,
+    cleanup: () => rmSync(repoDir, { recursive: true, force: true }),
+  };
+}
+
+describe("spawnCheckoutBranch argv contract", () => {
+  it("issues exact argv for the branch-on-remote path", async () => {
+    const { repoDir, cleanup } = setupLocalRepo();
+    try {
+      const calls: string[][] = [];
+      const runGit = async (args: readonly string[]) => {
+        calls.push([...args]);
+        return 0; // ls-remote, fetch, checkout all succeed
+      };
+
+      await spawnCheckoutBranch({
+        repoDir,
+        branch: "my-branch",
+        runGit,
+        log: () => {},
+      });
+
+      expect(calls).toEqual([
+        ["ls-remote", "--exit-code", "--heads", "origin", "my-branch"],
+        [
+          "fetch",
+          "--depth",
+          "1",
+          "origin",
+          "+refs/heads/my-branch:refs/remotes/origin/my-branch",
+        ],
+        ["checkout", "-B", "my-branch", "refs/remotes/origin/my-branch"],
+      ]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("issues exact argv for the local-only branch path", async () => {
+    const { repoDir, cleanup } = setupLocalRepo();
+    try {
+      execSync(`git -C ${repoDir} branch local-only`, { stdio: "ignore" });
+      const calls: string[][] = [];
+      const runGit = async (args: readonly string[]) => {
+        calls.push([...args]);
+        return args[0] === "ls-remote" ? 2 : 0;
+      };
+
+      await spawnCheckoutBranch({
+        repoDir,
+        branch: "local-only",
+        runGit,
+        log: () => {},
+      });
+
+      expect(calls).toEqual([
+        ["ls-remote", "--exit-code", "--heads", "origin", "local-only"],
+        ["checkout", "local-only"],
+      ]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("issues exact argv for the default-branch fork path", async () => {
+    const { repoDir, cleanup } = setupLocalRepo();
+    try {
+      const calls: string[][] = [];
+      const runGit = async (args: readonly string[]) => {
+        calls.push([...args]);
+        return args[0] === "ls-remote" ? 2 : 0;
+      };
+
+      await spawnCheckoutBranch({
+        repoDir,
+        branch: "brand-new",
+        runGit,
+        log: () => {},
+      });
+
+      expect(calls).toEqual([
+        ["ls-remote", "--exit-code", "--heads", "origin", "brand-new"],
+        [
+          "fetch",
+          "--depth",
+          "1",
+          "origin",
+          "+refs/heads/main:refs/remotes/origin/main",
+        ],
+        ["checkout", "-B", "brand-new", "refs/remotes/origin/main"],
+      ]);
+    } finally {
+      cleanup();
+    }
+  });
 });

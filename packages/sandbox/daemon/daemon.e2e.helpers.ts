@@ -15,6 +15,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { expect } from "bun:test";
 
@@ -346,7 +347,12 @@ export function setupBareRepo(
   execSync(`git ${cfg} -C ${seed} push -u origin main`, o);
   execSync(`git ${cfg} -C ${bare} symbolic-ref HEAD refs/heads/main`, o);
   return {
-    url: `file://${bare}`,
+    // `file://${bare}` is POSIX-only: on win32 `bare` is a backslash,
+    // drive-lettered path (e.g. `D:\...\origin.git`), and naively prefixing
+    // "file://" produces a URL git can't parse. `pathToFileURL` emits the
+    // platform-correct form (`file:///D:/...` on win32, `file:///...` on
+    // POSIX).
+    url: pathToFileURL(bare).href,
     root,
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
