@@ -41,8 +41,4 @@ export class RingBuffer {
   isTruncated(): boolean {
     return this.dropped;
   }
-
-  byteLength(): number {
-    return this.size;
-  }
 }
