@@ -125,14 +125,24 @@ export function usePanelActions() {
         const next: Record<string, unknown> = { chat: 1 };
         if (virtualMcpId) next.virtualmcpid = virtualMcpId;
         else if (prev.virtualmcpid) next.virtualmcpid = prev.virtualmcpid;
+        // An agent switch (target vMCP differs from the current) must NOT carry
+        // the previous agent's view — those tabs are agent-specific. Carrying
+        // "overview" onto a repo agent, or "preview" onto the Super Agent
+        // ("No source to preview"), is exactly the stuck-view bug. Leaving
+        // `main` unset lets the new agent's own defaultMainView resolve.
+        const targetVmcp = virtualMcpId ?? prev.virtualmcpid;
+        const isAgentSwitch =
+          typeof prev.virtualmcpid === "string" &&
+          typeof targetVmcp === "string" &&
+          targetVmcp !== prev.virtualmcpid;
         // Explicit main tab takes priority (e.g. home tile → pinned view).
         if (opts?.main) {
           next.main = opts.main;
-        } else {
+        } else if (!isAgentSwitch) {
           // Preserve system-level panel tabs (git, preview, settings, …) across
-          // thread switches, but drop per-thread tabs (expanded tool views,
-          // web-page previews, automation details) that are specific to the
-          // previous task.
+          // thread switches WITHIN the same agent, but drop per-thread tabs
+          // (expanded tool views, web-page previews, automation details) that
+          // are specific to the previous task.
           const prevMain = prev.main;
           if (
             prevMain &&
