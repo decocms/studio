@@ -1,18 +1,14 @@
 import { type Kysely, sql } from "kysely";
 
 /**
- * `kanban_tasks` — org-owned kanban board cards. Independent of chat threads;
- * `assignee_id` references an org member's user id but has no hard FK (member
- * lookups are validated at the tool layer, matching how member references
- * work elsewhere in this codebase).
- *
- * Renamed to `task_board_items` by migration 128 — this migration's content
- * must stay unchanged since it may already be recorded as executed in some
- * environments.
+ * `task_board_items` — org-owned task board cards. Independent of chat
+ * threads; `assignee_id` references an org member's user id but has no hard
+ * FK (member lookups are validated at the tool layer, matching how member
+ * references work elsewhere in this codebase).
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
-    .createTable("kanban_tasks")
+    .createTable("task_board_items")
     .addColumn("id", "text", (col) => col.primaryKey().notNull())
     .addColumn("organization_id", "text", (col) =>
       col.notNull().references("organization.id").onDelete("cascade"),
@@ -33,12 +29,23 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .execute();
 
   await db.schema
-    .createIndex("idx_kanban_tasks_org")
-    .on("kanban_tasks")
+    .createIndex("idx_task_board_items_org")
+    .on("task_board_items")
     .column("organization_id")
+    .execute();
+
+  await db.schema
+    .alterTable("organization_settings")
+    .addColumn("task_board_enabled", "boolean", (col) =>
+      col.notNull().defaultTo(sql`false`),
+    )
     .execute();
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
-  await db.schema.dropTable("kanban_tasks").execute();
+  await db.schema
+    .alterTable("organization_settings")
+    .dropColumn("task_board_enabled")
+    .execute();
+  await db.schema.dropTable("task_board_items").execute();
 }

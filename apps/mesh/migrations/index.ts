@@ -124,10 +124,7 @@ import * as migration122splitwebresearchtier from "./122-split-web-research-tier
 import * as migration123connectioncredentialvault from "./123-connection-credential-vault.ts";
 import * as migration124dropthreadprojectedseq from "./124-drop-thread-projected-seq.ts";
 import * as migration125githubchildsingleparent from "./125-github-child-single-parent.ts";
-import * as migration126kanbantasks from "./126-kanban-tasks.ts";
-import * as migration127kanbanenabled from "./127-kanban-enabled.ts";
-import * as migration128renamekanbantaskstotaskboarditems from "./128-rename-kanban-tasks-to-task-board-items.ts";
-import * as migration129renamekanbanenabledtotaskboardenabled from "./129-rename-kanban-enabled-to-task-board-enabled.ts";
+import * as migration126taskboard from "./126-task-board.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -277,12 +274,7 @@ const migrations: Record<string, Migration> = {
   "123-connection-credential-vault": migration123connectioncredentialvault,
   "124-drop-thread-projected-seq": migration124dropthreadprojectedseq,
   "125-github-child-single-parent": migration125githubchildsingleparent,
-  "126-kanban-tasks": migration126kanbantasks,
-  "127-kanban-enabled": migration127kanbanenabled,
-  "128-rename-kanban-tasks-to-task-board-items":
-    migration128renamekanbantaskstotaskboarditems,
-  "129-rename-kanban-enabled-to-task-board-enabled":
-    migration129renamekanbanenabledtotaskboardenabled,
+  "126-task-board": migration126taskboard,
 };
 
 export default migrations;
