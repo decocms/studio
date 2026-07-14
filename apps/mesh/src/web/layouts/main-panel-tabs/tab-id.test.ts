@@ -477,4 +477,9 @@ describe("code tab id", () => {
     expect(parseCodeTabId(undefined)).toBeNull();
     expect(parseCodeTabId("codex")).toBeNull();
   });
+
+  test("an open code path is per-thread (scoped to the task's sandbox/branch), but the bare tab is not", () => {
+    expect(isPerThreadTab(formatCodeTabId("src/index.ts"))).toBe(true);
+    expect(isPerThreadTab("code")).toBe(false);
+  });
 });
