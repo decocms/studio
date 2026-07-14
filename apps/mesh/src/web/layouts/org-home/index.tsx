@@ -8,10 +8,23 @@
  */
 
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { Navigate } from "@tanstack/react-router";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { HomePage } from "@/web/layouts/home-page";
+import { useCommerceDiscoveryOnlyGate } from "@/web/hooks/use-organization-settings";
 
 export default function OrgHome() {
   const isMobile = useIsMobile();
+  const { org } = useProjectContext();
+  const commerceOnly = useCommerceDiscoveryOnlyGate();
+
+  // Commerce-discovery-only orgs have no home surface — send them straight to
+  // the commerce diagnostic panel (a standalone route with no product chrome).
+  if (commerceOnly) {
+    return (
+      <Navigate to="/commerce-onboarding" search={{ org: org.slug }} replace />
+    );
+  }
 
   if (isMobile) {
     return (

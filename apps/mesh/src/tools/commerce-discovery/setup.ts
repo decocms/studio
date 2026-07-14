@@ -241,6 +241,19 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       });
     }
 
+    // Default the "commerce discovery only" flag on for orgs onboarded through
+    // commerce — this collapses the product to the diagnostic panel. Only set
+    // it when it's never been set (NULL), so an org that later turns it off
+    // stays off across setup re-runs.
+    const settings = await ctx.storage.organizationSettings.get(
+      organization.id,
+    );
+    if (settings?.commerce_discovery_only == null) {
+      await ctx.storage.organizationSettings.upsert(organization.id, {
+        commerce_discovery_only: true,
+      });
+    }
+
     return {
       connection,
       virtualMcp,

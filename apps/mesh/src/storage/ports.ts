@@ -300,6 +300,7 @@ export interface OrganizationSettingsStoragePort {
         | "registry_config"
         | "simple_mode"
         | "default_home_agents"
+        | "commerce_discovery_only"
       >
     >,
   ): Promise<OrganizationSettings>;

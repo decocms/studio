@@ -26,6 +26,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     registry_config: RegistryConfigSchema.optional(),
     simple_mode: SimpleModeConfigSchema.optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.optional(),
+    commerce_discovery_only: z.boolean().optional(),
   }),
 
   outputSchema: z.object({
@@ -35,6 +36,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     registry_config: RegistryConfigSchema.nullable().optional(),
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
+    commerce_discovery_only: z.boolean().nullable().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
   }),
@@ -55,6 +57,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         registry_config: input.registry_config,
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,
+        commerce_discovery_only: input.commerce_discovery_only,
       },
     );
 

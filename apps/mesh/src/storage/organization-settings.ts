@@ -45,6 +45,7 @@ export class OrganizationSettingsStorage
           ? JSON.parse(record.default_home_agents)
           : record.default_home_agents
         : null,
+      commerce_discovery_only: record.commerce_discovery_only ?? null,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -60,6 +61,7 @@ export class OrganizationSettingsStorage
         | "registry_config"
         | "simple_mode"
         | "default_home_agents"
+        | "commerce_discovery_only"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -79,6 +81,13 @@ export class OrganizationSettingsStorage
     const defaultHomeAgentsJson = data?.default_home_agents
       ? JSON.stringify(data.default_home_agents)
       : null;
+    // Boolean flag: unlike the JSON columns above, an explicit `false` must
+    // persist, so `undefined` (field absent from the update) is the only value
+    // that skips the write — the "truthy-or-skip" trick would swallow `false`.
+    const commerceDiscoveryOnly =
+      data?.commerce_discovery_only === undefined
+        ? undefined
+        : data.commerce_discovery_only;
 
     await this.db
       .insertInto("organization_settings")
@@ -89,6 +98,7 @@ export class OrganizationSettingsStorage
         registry_config: registryConfigJson,
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
+        commerce_discovery_only: commerceDiscoveryOnly ?? null,
         createdAt: now,
         updatedAt: now,
       })
@@ -101,6 +111,7 @@ export class OrganizationSettingsStorage
           default_home_agents: defaultHomeAgentsJson
             ? defaultHomeAgentsJson
             : undefined,
+          commerce_discovery_only: commerceDiscoveryOnly,
           updatedAt: now,
         }),
       )
@@ -116,6 +127,7 @@ export class OrganizationSettingsStorage
         registry_config: data?.registry_config ?? null,
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
+        commerce_discovery_only: data?.commerce_discovery_only ?? null,
         createdAt: now,
         updatedAt: now,
       };

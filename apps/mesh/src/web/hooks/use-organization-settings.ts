@@ -3,6 +3,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  useSuspenseQuery,
   type MutateOptions,
   type UseMutationResult,
   type UseQueryResult,
@@ -41,6 +42,7 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
+  commerce_discovery_only: boolean | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -52,6 +54,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   registry_config: null,
   simple_mode: null,
   default_home_agents: null,
+  commerce_discovery_only: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -137,6 +140,7 @@ type OrgSettingsUpdateInput = Partial<
     | "registry_config"
     | "simple_mode"
     | "default_home_agents"
+    | "commerce_discovery_only"
   >
 >;
 
@@ -221,6 +225,42 @@ export function useUpdateSimpleMode() {
       config: SimpleModeConfig,
       options?: OrgSettingsMutateOptions,
     ) => mutation.mutateAsync({ simple_mode: config }, options),
+  };
+}
+
+/**
+ * Whether the org is collapsed to the commerce discovery panel (everything
+ * else in Studio hidden). Non-blocking read — used for cosmetic gating like
+ * hiding the sidebar, where a brief pre-resolution render is harmless.
+ */
+export function useCommerceDiscoveryOnly(): boolean {
+  const { data } = useOrganizationSettings(
+    (s) => s.commerce_discovery_only ?? false,
+  );
+  return data ?? false;
+}
+
+/**
+ * Suspense variant of {@link useCommerceDiscoveryOnly}. Blocks on the shared
+ * org-settings query (already warmed by the shell) so routing gates can decide
+ * to redirect without first flashing the full product surface.
+ */
+export function useCommerceDiscoveryOnlyGate(): boolean {
+  const { org } = useProjectContext();
+  const { data } = useSuspenseQuery(
+    organizationSettingsQueryOptions(org.slug, org.id),
+  );
+  return data.commerce_discovery_only ?? false;
+}
+
+export function useUpdateCommerceDiscoveryOnly() {
+  const mutation = useUpdateOrganizationSettings();
+  return {
+    ...mutation,
+    mutate: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
+      mutation.mutate({ commerce_discovery_only: enabled }, options),
+    mutateAsync: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
+      mutation.mutateAsync({ commerce_discovery_only: enabled }, options),
   };
 }
 
