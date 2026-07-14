@@ -159,7 +159,11 @@ export function ShellBreadcrumb() {
                   <button
                     type="button"
                     aria-label={`${org.name} — switch organization`}
-                    className="wco-no-drag flex items-center gap-1.5 shrink-0 rounded-md px-1.5 py-1.5 hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    // Extra left padding centers the org icon over the 56px
+                    // collapsed sidebar rail below it (icons sit at ~28px from
+                    // the shared left edge), so it lines up when the sidebar is
+                    // closed.
+                    className="wco-no-drag flex items-center gap-1.5 shrink-0 rounded-md pl-3 pr-1.5 py-1.5 hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     <OrgIcon org={org} size="sm" />
                     <ChevronDown

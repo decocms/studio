@@ -41,6 +41,7 @@ export function HeaderTabButton({
       className={cn(
         "shrink-0 flex items-center gap-1.5 h-8 rounded-md px-2",
         "[transition:background-color_180ms_ease,color_180ms_ease]",
+        "disabled:opacity-40 disabled:pointer-events-none",
         active
           ? "bg-sidebar-accent text-sidebar-foreground"
           : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",

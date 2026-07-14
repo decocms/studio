@@ -5,27 +5,27 @@ import { ErrorBoundary } from "../error-boundary";
 
 import { Chat } from "./index";
 import { useChatStream } from "./context";
+import { useNeedsRuntimeSetup } from "./use-needs-runtime-setup";
 import { ChatContextPanel } from "./context-panel";
 import { AgentHome } from "./agent-home";
 import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
-import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 
 // ---------- Panel content ----------
 
 function ChatPanelContent() {
   const { org } = useProjectContext();
-  const allKeys = useAiProviderKeys();
   const { isChatEmpty } = useChatStream();
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
 
-  // Always surface the provider-setup UI when the org has no AI provider — you
-  // can't run a chat without one, so prompt to connect rather than letting a
-  // send fail. (The empty state also points desktop users to `decocms link`.)
-  const showProviderEmptyState = allKeys.length === 0;
+  // Surface the provider-setup UI when there's no way to run a chat — no cloud
+  // AI provider AND no usable local runtime. The empty state itself offers the
+  // local Claude Code / Codex options as a one-click escape when a desktop is
+  // linked. Same signal gates the main-panel view tabs.
+  const showProviderEmptyState = useNeedsRuntimeSetup();
 
   if (showProviderEmptyState) {
     return (
