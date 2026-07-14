@@ -44,6 +44,7 @@ import {
   type StructuredCommand,
 } from "./structured-command";
 import { resolveShell } from "./resolve-shell";
+import { SIGNAL_NUMBERS } from "./signal-numbers";
 
 export { ShellNotFoundError } from "./structured-command";
 
@@ -410,15 +411,7 @@ function spawnFallback(opts: PtySpawnOpts): PtyHandle {
   child.stderr?.on("data", emit);
 
   child.on("exit", (code, signal) => {
-    // Map signal name to number via kill -l convention (best-effort).
-    const sigMap: Record<string, number> = {
-      SIGHUP: 1,
-      SIGINT: 2,
-      SIGQUIT: 3,
-      SIGKILL: 9,
-      SIGTERM: 15,
-    };
-    const sigNum = signal ? (sigMap[signal] ?? 1) : 0;
+    const sigNum = signal ? (SIGNAL_NUMBERS[signal] ?? 1) : 0;
     const exitCode = sigNum > 0 ? 128 + sigNum : (code ?? 0);
     for (const l of exitListeners) l(exitCode);
   });
