@@ -18,7 +18,7 @@ mock.module("./auth-client", () => ({
   fetchCommerceDiscoveryAuth: fetchAuthMock,
 }));
 
-const { COMMERCE_DISCOVERY_SETUP } = await import("./setup");
+const { REPORTS_SETUP } = await import("./setup");
 
 interface StubConnection {
   id: string;
@@ -79,7 +79,7 @@ function makeCtx(opts: {
   } as unknown as StudioContext;
 }
 
-describe("COMMERCE_DISCOVERY_SETUP", () => {
+describe("REPORTS_SETUP", () => {
   test("claims the site and syncs token + metadata even when a connection with a token already exists", async () => {
     fetchAuthMock.mockClear();
     const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
@@ -95,7 +95,7 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
       connectionUpdate: (id, data) => updates.push({ id, data }),
     });
 
-    await COMMERCE_DISCOVERY_SETUP.handler(
+    await REPORTS_SETUP.handler(
       { siteUrl: "https://new-site.com" },
       ctx,
     );

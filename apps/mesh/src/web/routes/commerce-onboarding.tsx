@@ -1,7 +1,7 @@
 import {
   isConnectionClaimedForSite,
-  normalizeCommerceSiteUrl,
-} from "@/commerce-discovery/site-url";
+  normalizeReportsSiteUrl,
+} from "@/reports/site-url";
 import { AuthEntry } from "@/web/components/auth-entry";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { AuthSplitLayout } from "@/web/components/auth-split-layout";
@@ -175,7 +175,7 @@ const COMMERCE_AUTH_COPY = {
 
 function siteUrlToHost(siteUrl?: string): string | null {
   if (!siteUrl) return null;
-  const normalized = normalizeCommerceSiteUrl(siteUrl);
+  const normalized = normalizeReportsSiteUrl(siteUrl);
   return normalized.ok ? new URL(normalized.value).hostname : null;
 }
 
@@ -797,7 +797,7 @@ function CommerceSetupContent({
   );
 
   const runSetup = (rawSiteUrl: string) => {
-    const normalized = normalizeCommerceSiteUrl(rawSiteUrl);
+    const normalized = normalizeReportsSiteUrl(rawSiteUrl);
     if (!normalized.ok) {
       setInlineError(commerceSiteUrlErrorPtBr(normalized.error));
       return;
@@ -817,7 +817,7 @@ function CommerceSetupContent({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const normalizedForTracking = normalizeCommerceSiteUrl(siteUrlInput);
+    const normalizedForTracking = normalizeReportsSiteUrl(siteUrlInput);
     if (normalizedForTracking.ok) {
       track("commerce_onboarding_site_url_submitted", {
         domain: new URL(normalizedForTracking.value).hostname,
@@ -844,7 +844,7 @@ function CommerceSetupContent({
     // Trigger the enriching run now that the user is done connecting. Await it so a
     // failure surfaces (generic message, stay put) instead of silently opening an
     // empty report. No resolvable site (legacy session) ⇒ nothing to trigger, just open.
-    const normalized = normalizeCommerceSiteUrl(currentSiteUrl);
+    const normalized = normalizeReportsSiteUrl(currentSiteUrl);
     if (normalized.ok) {
       try {
         const runResult = await runMutation.mutateAsync(normalized.value);
@@ -911,7 +911,7 @@ function CommerceSetupContent({
   }
 
   if (initialSiteUrl) {
-    const normalized = normalizeCommerceSiteUrl(initialSiteUrl);
+    const normalized = normalizeReportsSiteUrl(initialSiteUrl);
 
     if (!normalized.ok) {
       return (

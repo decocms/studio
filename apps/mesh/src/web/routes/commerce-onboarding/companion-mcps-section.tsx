@@ -1,4 +1,4 @@
-import { normalizeCommerceSiteUrl } from "@/commerce-discovery/site-url";
+import { normalizeReportsSiteUrl } from "@/reports/site-url";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { ScrollReveal } from "@/web/components/scroll-reveal";
 import { authClient } from "@/web/lib/auth-client";
@@ -120,7 +120,7 @@ function CompanionMcpsSectionContent({
 }) {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
-  const normalizedSite = siteUrl ? normalizeCommerceSiteUrl(siteUrl) : null;
+  const normalizedSite = siteUrl ? normalizeReportsSiteUrl(siteUrl) : null;
   let siteHost: string | undefined;
   if (normalizedSite?.ok) {
     try {

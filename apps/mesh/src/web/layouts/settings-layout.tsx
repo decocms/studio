@@ -474,7 +474,7 @@ export default function SettingsLayout() {
   // orgs — bounce any direct navigation back to the diagnostic panel.
   if (reportsOnly) {
     return (
-      <Navigate to="/reports-onboarding" search={{ org: org.slug }} replace />
+      <Navigate to="/commerce-onboarding" search={{ org: org.slug }} replace />
     );
   }
 

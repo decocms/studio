@@ -22,7 +22,7 @@ export default function OrgHome() {
   // the reports diagnostic panel (a standalone route with no product chrome).
   if (reportsOnly) {
     return (
-      <Navigate to="/reports-onboarding" search={{ org: org.slug }} replace />
+      <Navigate to="/commerce-onboarding" search={{ org: org.slug }} replace />
     );
   }
 

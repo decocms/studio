@@ -87,9 +87,7 @@ export class OrganizationSettingsStorage
     // persist, so `undefined` (field absent from the update) is the only value
     // that skips the write — the "truthy-or-skip" trick would swallow `false`.
     const reportsOnly =
-      data?.reports_only === undefined
-        ? undefined
-        : data.reports_only;
+      data?.reports_only === undefined ? undefined : data.reports_only;
 
     await this.db
       .insertInto("organization_settings")

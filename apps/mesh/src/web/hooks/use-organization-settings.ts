@@ -237,9 +237,7 @@ export function useUpdateSimpleMode() {
  * hiding the sidebar, where a brief pre-resolution render is harmless.
  */
 export function useReportsOnly(): boolean {
-  const { data } = useOrganizationSettings(
-    (s) => s.reports_only ?? false,
-  );
+  const { data } = useOrganizationSettings((s) => s.reports_only ?? false);
   return data ?? false;
 }
 
