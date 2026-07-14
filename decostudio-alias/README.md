@@ -214,11 +214,7 @@ No vendor lock-in. Runs on Docker, Kubernetes, AWS, GCP, or local runtimes.
 
 ## License
 
-**Sustainable Use License (SUL)** — see the [project repository](https://github.com/decocms/studio) for full terms.
-
-- Free to self-host for internal use
-- Free for client projects (agencies, SIs)
-- Commercial license required for SaaS or revenue-generating production systems
+**MIT** — see the [project repository](https://github.com/decocms/studio) for full terms.
 
 Questions? [builders@decocms.com](mailto:builders@decocms.com)
 
