@@ -1,12 +1,13 @@
 /**
  * useChatMainPanelState — Querystring-driven panel layout state for the
- * chat + main panels.
+ * chat + blocks + main panels.
  *
  * URL model:
  *   ?main=<tabId>    main panel open, tab active
  *   ?main=0          main panel closed
- *   ?main absent     default (open iff defaultMainView != null)
+ *   ?main absent     default (open for non-chat, non-blocks main views)
  *   ?chat=0|1        chat panel open state
+ *   ?blocks=0|1      blocks panel open state
  *   ?virtualmcpid    which MCP the chat + right panel are scoped to
  */
 
@@ -39,6 +40,7 @@ export interface ChatMainLayoutState {
   taskId: string;
   mainOpen: boolean;
   chatOpen: boolean;
+  blocksOpen: boolean;
   /** Current ?main value (undefined when param absent). "0" = closed. */
   mainParam: string | undefined;
 }
@@ -47,6 +49,7 @@ export interface ChatMainLayoutActions {
   setTaskId: (id: string, virtualMcpId?: string) => void;
   toggleMain: () => void;
   toggleChat: () => void;
+  toggleBlocks: () => void;
   openChat: () => void;
   createNewTask: () => void;
   openTab: (id: string) => void;
@@ -56,29 +59,96 @@ export interface ChatMainLayoutActions {
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
 
+export type WorkspacePanel = "chat" | "blocks" | "main";
+
+export interface WorkspaceVisibility {
+  chatOpen: boolean;
+  blocksOpen: boolean;
+  mainOpen: boolean;
+}
+
+export function canCloseWorkspacePanel(
+  panel: WorkspacePanel,
+  visibility: WorkspaceVisibility,
+): boolean {
+  const openPanelCount =
+    Number(visibility.chatOpen) +
+    Number(visibility.blocksOpen) +
+    Number(visibility.mainOpen);
+
+  if (openPanelCount <= 1) return false;
+
+  switch (panel) {
+    case "chat":
+      return visibility.chatOpen;
+    case "blocks":
+      return visibility.blocksOpen;
+    case "main":
+      return visibility.mainOpen;
+  }
+}
+
+function withWorkspaceFallback(
+  visibility: WorkspaceVisibility,
+): WorkspaceVisibility {
+  if (visibility.chatOpen || visibility.blocksOpen || visibility.mainOpen) {
+    return visibility;
+  }
+
+  return { ...visibility, chatOpen: true };
+}
+
+function parsePanelParam(
+  value: number | undefined,
+  defaultOpen: boolean,
+): boolean {
+  if (value === 1) return true;
+  if (value === 0) return false;
+  return defaultOpen;
+}
+
 export function resolveDefaultPanelState(ctx: {
   entityMetadata: EntityLayoutMetadata | null;
   mainParamPresent: boolean;
   mainParamValue?: string;
-}): { mainOpen: boolean; chatOpen: boolean } {
+  blocksParamPresent: boolean;
+  blocksParamValue?: number;
+}): WorkspaceVisibility {
   const def = ctx.entityMetadata?.defaultMainView ?? null;
   const defaultIsChat = def == null || def.type === "chat";
+  const defaultIsBlocks = def?.type === "blocks";
+  const legacyBlocksOnly =
+    !ctx.blocksParamPresent &&
+    ctx.mainParamPresent &&
+    ctx.mainParamValue === "blocks";
 
-  const mainOpen = ctx.mainParamPresent
-    ? ctx.mainParamValue !== "0"
-    : !defaultIsChat;
+  const mainOpen = legacyBlocksOnly
+    ? false
+    : ctx.mainParamPresent
+      ? ctx.mainParamValue !== "0"
+      : !defaultIsChat && !defaultIsBlocks;
 
   // Chat is always open when it IS the default view. Otherwise it opens
   // alongside the main view only when the agent's layout opts in via
   // chatDefaultOpen.
-  const chatOpen = defaultIsChat
+  const chatOpen =
+    legacyBlocksOnly || defaultIsBlocks
+      ? false
+      : defaultIsChat
+        ? true
+        : (ctx.entityMetadata?.chatDefaultOpen ?? false);
+  const blocksOpen = legacyBlocksOnly
     ? true
-    : (ctx.entityMetadata?.chatDefaultOpen ?? false);
+    : parsePanelParam(
+        ctx.blocksParamPresent ? ctx.blocksParamValue : undefined,
+        defaultIsBlocks,
+      );
 
-  return {
+  return withWorkspaceFallback({
     mainOpen,
     chatOpen,
-  };
+    blocksOpen,
+  });
 }
 
 export function computeChatMainSizes(
@@ -97,18 +167,10 @@ export function computeChatMainSizes(
 
 type PanelSearchParams = {
   chat?: number;
+  blocks?: number;
   main?: string;
   virtualmcpid?: string;
 };
-
-function parsePanelParam(
-  value: number | undefined,
-  defaultOpen: boolean,
-): boolean {
-  if (value === 1) return true;
-  if (value === 0) return false;
-  return defaultOpen;
-}
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -139,10 +201,16 @@ export function useChatMainPanelState(
     entityMetadata,
     mainParamPresent: search.main !== undefined,
     mainParamValue: search.main,
+    blocksParamPresent: search.blocks !== undefined,
+    blocksParamValue: search.blocks,
   });
 
-  const chatOpen = parsePanelParam(search.chat, defaults.chatOpen);
-  const mainOpen = defaults.mainOpen;
+  const { chatOpen, blocksOpen, mainOpen } = withWorkspaceFallback({
+    chatOpen: parsePanelParam(search.chat, defaults.chatOpen),
+    blocksOpen: parsePanelParam(search.blocks, defaults.blocksOpen),
+    mainOpen: defaults.mainOpen,
+  });
+  const visibility = { chatOpen, blocksOpen, mainOpen };
 
   const fallbackRef = useRef(crypto.randomUUID());
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
@@ -179,6 +247,7 @@ export function useChatMainPanelState(
 
   const toggleMain = () => {
     if (mainOpen) {
+      if (!canCloseWorkspacePanel("main", visibility)) return;
       navigateSearch({ main: "0" }, { replace: true });
     } else {
       navigateSearch(
@@ -189,7 +258,13 @@ export function useChatMainPanelState(
   };
 
   const toggleChat = () => {
+    if (chatOpen && !canCloseWorkspacePanel("chat", visibility)) return;
     navigateSearch({ chat: chatOpen ? 0 : 1 }, { replace: true });
+  };
+
+  const toggleBlocks = () => {
+    if (blocksOpen && !canCloseWorkspacePanel("blocks", visibility)) return;
+    navigateSearch({ blocks: blocksOpen ? 0 : 1 }, { replace: true });
   };
 
   const openChat = () => {
@@ -233,10 +308,12 @@ export function useChatMainPanelState(
     taskId,
     mainOpen,
     chatOpen,
+    blocksOpen,
     mainParam: search.main,
     setTaskId,
     toggleMain,
     toggleChat,
+    toggleBlocks,
     openChat,
     createNewTask,
     openTab,

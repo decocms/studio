@@ -250,6 +250,7 @@ const unifiedChatSearchSchema = z.object({
   tasks: z.number().optional(),
   mainOpen: z.number().optional(),
   chat: z.number().optional(),
+  blocks: z.number().optional(),
   autosend: z.string().optional(),
   /** Carried from the homepage composer so the new thread's first send
    *  inherits the "Run locally" toggle state. ChatPrefsProvider seeds
