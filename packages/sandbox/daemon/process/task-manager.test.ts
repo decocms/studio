@@ -108,6 +108,40 @@ describe("TaskManager killAll", () => {
   });
 });
 
+describe("TaskManager kill escalation timer", () => {
+  it("unrefs the SIGKILL escalation timer so a clean kill doesn't keep the process alive for 3s", async () => {
+    const tm = makeManager();
+    const t = await tm.spawn({
+      command: "sleep 30",
+      cwd: "/tmp",
+      mode: "pipe",
+    });
+    const finished = tm.finished(t.id)!;
+
+    const originalSetTimeout = globalThis.setTimeout;
+    let escalationTimer: ReturnType<typeof setTimeout> | undefined;
+    // @ts-expect-error test-only monkeypatch to capture the escalation timer
+    globalThis.setTimeout = (
+      fn: TimerHandler,
+      ms?: number,
+      ...args: unknown[]
+    ) => {
+      const timer = originalSetTimeout(fn as never, ms, ...args);
+      if (ms === 3000) escalationTimer = timer;
+      return timer;
+    };
+    try {
+      tm.kill(t.id, "SIGTERM");
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+
+    await finished;
+    expect(escalationTimer).toBeDefined();
+    expect(escalationTimer?.hasRef()).toBe(false);
+  });
+});
+
 describe("TaskManager summary truncation", () => {
   it("flags summary.truncated when output exceeds the ring buffer but not the tee cap", async () => {
     const tm = makeManager();
