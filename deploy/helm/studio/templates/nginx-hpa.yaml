@@ -1,0 +1,37 @@
+{{- if .Values.nginx.autoscaling.enabled }}
+{{/*
+HPA for the web/front-door tier. The web Deployment drops its static `replicas`
+when nginx.autoscaling.enabled is true, so this must exist or the tier silently
+scales to 1. Mirrors hpa.yaml / worker-hpa.yaml.
+*/}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-web
+  labels:
+    {{- include "chart-deco-studio.webLabels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "chart-deco-studio.fullname" . }}-web
+  minReplicas: {{ .Values.nginx.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.nginx.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.nginx.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.nginx.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.nginx.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.nginx.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

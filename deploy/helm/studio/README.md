@@ -52,14 +52,24 @@ Two Deployments, split by tier:
 - **Web** (`<release>-web`): nginx serving the baked SPA and reverse-proxying
   `/api`, `/mcp`, `/health`, … to the `<release>-api` Service. This is the front
   door — `nginx.frontDoorLabels` and the public `<release>` Service select these
-  pods. Config is rendered by the chart into a ConfigMap
-  (`<release>-nginx`) so the upstream points at the API Service.
+  pods. The proxy config is the `<release>-nginx` ConfigMap, derived from the
+  baked `files/api-nginx.conf` with only the upstream repointed at the API
+  Service (one source of truth for image and chart).
 
-Zero-downtime rollouts: the web Deployment uses `maxUnavailable=0` and a
-`wait-for-api` initContainer that blocks Ready until the API Service answers
-`/health/live`, so a rolling web pod never takes traffic before the API it
-proxies to is up (API rolls first, then web). See
+Zero-downtime rollouts: both Deployments use `maxUnavailable=0`, so a new pod is
+Ready before an old one goes away and the front door always has an endpoint. The
+web `wait-for-api` initContainer additionally holds a web pod from starting until
+the API Service answers `/health/live` — on a fresh install that orders API
+before web; on an upgrade both tiers roll concurrently and availability is
+carried by `maxUnavailable=0`, not by ordering. See
 `tests/zero-downtime-rollout.sh` (exercised in CI on kind).
+
+> **Upgrading from the pre-split chart (≤ 0.12.x → 0.13.0):** the front door
+> migrates from the old combo pods to the new `<release>-web` pods (both
+> `nginx.frontDoorLabels` and the `<release>` Service selector move). The
+> zero-downtime test covers steady-state rolls, not this one-time cutover, which
+> is timing-dependent. Roll it on staging first and watch the front-door
+> endpoint / LB target count stay ≥ 1 throughout the upgrade.
 
 Because API containers run with `MESH_DISPATCH_ROLE=api`, worker pods are
 required:
@@ -69,8 +79,8 @@ worker:
   enabled: true
 ```
 
-The main pod requests 2 CPU cores total by default: 500m for nginx and 750m for
-each Bun API container. The chart requires PostgreSQL for this split topology so
+Each API pod requests 750m by default (one Bun process); web pods request 50m
+(nginx is a thin proxy). The chart requires PostgreSQL for this split topology so
 API and worker pods share the DBOS run queue.
 
 ## Prerequisites

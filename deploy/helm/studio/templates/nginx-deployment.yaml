@@ -6,9 +6,11 @@ Zero-downtime contract:
   - RollingUpdate maxUnavailable=0 / maxSurge=1: a new web pod must become Ready
     before an old one is removed, so the front-door Service always has a serving
     endpoint.
-  - initContainer `wait-for-api` blocks Ready until the API Service answers
-    /health/live, so a freshly rolled web pod never takes traffic before the API
-    it proxies to exists (correct ordering: API first, then web).
+  - initContainer `wait-for-api` holds the container from starting until the API
+    Service answers /health/live, so on a FRESH install a web pod never starts
+    before the API exists. On an upgrade both tiers roll concurrently (old API
+    endpoints already satisfy the probe); availability across that is carried by
+    maxUnavailable=0 on both Deployments, not by start ordering.
   - preStop `nginx -s quit` + grace drains in-flight connections on the way out.
 */}}
 apiVersion: apps/v1
@@ -53,8 +55,9 @@ spec:
       securityContext:
         {{- include "chart-deco-studio.podSecurityContext" . | nindent 8 }}
       initContainers:
-        # Gate readiness on the API being reachable, so a new web pod never
-        # serves before the API Service has ready endpoints (ordered rollout).
+        # Hold container start until the API Service has ready endpoints, so a
+        # new web pod never boots before the API is reachable (guarantees API
+        # first on install; on upgrade both roll, held safe by maxUnavailable=0).
         - name: wait-for-api
           image: "{{ .Values.nginx.image.repository }}{{- if and .Values.nginx.image.tag (hasPrefix "sha256:" .Values.nginx.image.tag) }}@{{ .Values.nginx.image.tag }}{{- else }}:{{ .Values.nginx.image.tag | default .Chart.AppVersion }}{{- end }}"
           {{- with .Values.nginx.securityContext }}

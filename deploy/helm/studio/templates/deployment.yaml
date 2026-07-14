@@ -76,7 +76,7 @@ spec:
           {{- end }}
           ports:
             - name: http
-              containerPort: 3000
+              containerPort: {{ .Values.configMap.meshConfig.PORT | default "3000" | int }}
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -85,7 +85,7 @@ spec:
                 name: {{ include "chart-deco-studio.secretName" . }}
           env:
             - name: PORT
-              value: "3000"
+              value: {{ .Values.configMap.meshConfig.PORT | default "3000" | quote }}
             - name: POD_NAME
               valueFrom:
                 fieldRef:
