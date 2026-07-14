@@ -298,12 +298,23 @@ export function useMainPanelTabs(ctx: {
   // into a single detail view. On GitHub-linked vMCPs the contextual
   // work tabs (Preview, git) come first so they're closest to the panel;
   // Settings + Automations stay anchored at the right.
-  const systemTabs: Array<{ id: string; title: string }> = [];
+  // Leading work tabs, rendered first in the bar (right after the Chat toggle):
+  // Preview · Blocks · Code. Blocks (Sections editor) needs a live preview
+  // iframe to inject its CMS overlays; Code (file tree) only needs a clonable
+  // source — the daemon serves files even when the dev script has crashed.
+  const showBlocksTab = hasClonableSource && devServerReady && showContentTab;
+  const showCodeTab = hasClonableSource;
+  const leadingSystemTabs: Array<{ id: string; title: string }> = [];
   if (hasClonableSource) {
-    systemTabs.push({ id: "preview", title: "Preview" });
-    if (showContentTab) {
-      systemTabs.push({ id: "content", title: "Content" });
-    }
+    leadingSystemTabs.push({ id: "preview", title: "Preview" });
+    if (showBlocksTab)
+      leadingSystemTabs.push({ id: "blocks", title: "Blocks" });
+    if (showCodeTab) leadingSystemTabs.push({ id: "code", title: "Code" });
+  }
+
+  const systemTabs: Array<{ id: string; title: string }> = [];
+  if (hasClonableSource && showContentTab) {
+    systemTabs.push({ id: "content", title: "Content" });
   }
   if (gitTabVisible) {
     systemTabs.push({ id: "git", title: "Review changes" });
@@ -421,6 +432,16 @@ export function useMainPanelTabs(ctx: {
     : [];
 
   const tabs: Tab[] = [
+    ...leadingSystemTabs.map((t) => ({
+      id: t.id,
+      title: t.title,
+      kind: "system" as const,
+      icon: resolveTabIcon({
+        tabId: t.id,
+        kind: "system",
+        connections,
+      }),
+    })),
     ...fileTabs,
     ...deckTabs,
     ...libraryFileTabs,
@@ -476,7 +497,7 @@ export function useMainPanelTabs(ctx: {
     activeTab,
     mainOpen,
     setActiveTab,
-    systemTabs,
+    systemTabs: [...leadingSystemTabs, ...systemTabs],
     layoutTabs,
     expandedTools,
     automationTabParsed,
