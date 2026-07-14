@@ -2,6 +2,7 @@ import { MessageCircle01 } from "@untitledui/icons";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
 import { LibraryToggle } from "./library-toggle";
+import { TasksToggle } from "./tasks-toggle";
 
 export interface ToggleButtonsProps {
   chatOpen: boolean;
@@ -41,8 +42,11 @@ export function ToggleButtons({
           toggleChat();
         }}
       />
-      {/* Library is agent-independent, so it lives here in the left group next
-          to Chat rather than in the per-agent tab bar on the right. */}
+      {/* Tasks and Library are agent-independent, so they live here in the left
+          group next to Chat rather than in the per-agent tab bar on the right.
+          Both open next to the chat as main-panel overlays. Order: Chat · Tasks
+          · Library. */}
+      <TasksToggle />
       <LibraryToggle />
     </>
   );

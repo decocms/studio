@@ -12,6 +12,7 @@ import { Suspense, lazy } from "react";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
 import { OverviewTab } from "./overview-tab";
+import { TaskBoardPage } from "@/web/layouts/task-board";
 import { GitTab } from "@/web/components/thread/github/git-tab";
 import { PreviewBlocksTab } from "./preview-blocks-tab";
 import { CodeTab } from "./code-tab";
@@ -71,6 +72,16 @@ function TabBody({
 
   if (activeTab === "overview") {
     return <OverviewTab />;
+  }
+  if (activeTab === "board") {
+    // Task board opened next to chat via the Tasks toggle (`?main=board`).
+    // The main panel already supplies the card chrome, so render the inner
+    // page inside a full-height flex column (mirrors the standalone route).
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <TaskBoardPage />
+      </div>
+    );
   }
   if (isLegacySettingsTab(activeTab)) {
     return <SettingsTab virtualMcpId={virtualMcpId} />;
