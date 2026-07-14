@@ -4,7 +4,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
 import { GitBranch01 } from "@untitledui/icons";
 import { BranchPicker } from "../../thread/github/branch-picker";
 
@@ -21,22 +20,17 @@ interface Props {
   value: string | null | undefined;
   onChange: (branch: string) => void;
   locked: boolean;
-  placement?: "chat" | "header";
 }
 
 /**
- * Thin wrapper over `BranchPicker` that maps the chat-level `locked`
- * flag onto the picker's `disabled` prop. The picker still renders its
- * Button + Tooltip when disabled — the user just can't open the
- * popover.
+ * Thin wrapper over `BranchPicker` used by the toolbar breadcrumb
+ * (`ShellBreadcrumb` → `BranchCrumb`).
  *
- * When `locked` is true (chat has messages or is a thread-locked thread)
- * we replace the picker with a non-clickable lock chip so the user can
- * see the active branch without being able to change it.
+ * When `locked` is true (the thread's runtime is pinned — `harness_id` set) we
+ * replace the interactive picker with a non-clickable lock chip so the user can
+ * still see the active branch without being able to change it.
  */
-export function BranchPill({ locked, placement, value, ...props }: Props) {
-  const isHeader = placement === "header";
-
+export function BranchPill({ locked, value, ...props }: Props) {
   if (locked) {
     const branchLabel = value ?? "(no branch)";
     return (
@@ -45,21 +39,10 @@ export function BranchPill({ locked, placement, value, ...props }: Props) {
           <span
             data-testid="branch-picker-locked"
             aria-disabled="true"
-            className={cn(
-              "inline-flex items-center rounded-md font-mono text-xs",
-              "text-muted-foreground cursor-default min-w-0 max-w-[200px]",
-              isHeader ? "h-8 gap-1.5 px-2.5" : "h-9 gap-0 px-2",
-            )}
+            className="inline-flex items-center h-8 gap-1.5 px-2.5 rounded-md font-mono text-xs text-muted-foreground cursor-default min-w-0 max-w-[200px]"
           >
             <GitBranch01 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span
-              className={cn(
-                "min-w-0 truncate",
-                isHeader ? "" : "max-w-0 opacity-0",
-              )}
-            >
-              {branchLabel}
-            </span>
+            <span className="min-w-0 truncate">{branchLabel}</span>
           </span>
         </TooltipTrigger>
         <TooltipContent>
@@ -70,5 +53,5 @@ export function BranchPill({ locked, placement, value, ...props }: Props) {
     );
   }
 
-  return <BranchPicker {...props} value={value} placement={placement} />;
+  return <BranchPicker {...props} value={value} />;
 }

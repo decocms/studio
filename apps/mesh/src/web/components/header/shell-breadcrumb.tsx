@@ -113,12 +113,19 @@ function AgentCrumb({
  * Branch crumb — the last segment (`… › agent › branch`), shown only inside a
  * thread whose agent is a sandbox agent (imported from GitHub with an attached
  * connection). Non-sandbox agents have no branch concept, so this renders
- * nothing. Reuses the chat's `BranchPill` with `placement="header"`.
+ * nothing. Reuses `BranchPill` (header-styled ghost chip).
  *
  * The breadcrumb lives above the `ChatContextProvider`, so it can't read the
  * chat task context. It resolves the active thread's branch + lock state from
  * the ThreadManager store instead (`harness_id != null` ⇒ runtime pinned ⇒
  * branch locked, matching `ChatTaskContextValue.isThreadLocked`).
+ *
+ * That store only holds the panel-visible page (page 0). A thread opened by
+ * direct link / refresh beyond page 0 — or an archived one — isn't in it, and
+ * such threads are always locked (harness pinned). Rather than render a wrong
+ * "unlocked, no branch" picker (and let `setBranch` prepend a phantom row for
+ * an off-list id), we render nothing until the thread is in the store. Fresh,
+ * unlocked threads are always in page 0, so the interactive path is unaffected.
  */
 function BranchCrumb({ agentId, taskId }: { agentId: string; taskId: string }) {
   const entity = useVirtualMCP(agentId);
@@ -132,6 +139,8 @@ function BranchCrumb({ agentId, taskId }: { agentId: string; taskId: string }) {
   if (!githubRepo || !connectionId) return null;
 
   const activeTask = threads.find((t) => t.id === taskId);
+  if (!activeTask) return null;
+
   const userLabel = session?.user?.name ?? session?.user?.email?.split("@")[0];
 
   return (
@@ -146,10 +155,9 @@ function BranchCrumb({ agentId, taskId }: { agentId: string; taskId: string }) {
         owner={githubRepo.owner}
         repo={githubRepo.name}
         sandboxMap={entity?.metadata?.sandboxMap}
-        value={activeTask?.branch ?? null}
+        value={activeTask.branch ?? null}
         onChange={(next) => void setBranch(taskId, next)}
-        locked={activeTask?.harness_id != null}
-        placement="header"
+        locked={activeTask.harness_id != null}
       />
     </BreadcrumbItem>
   );

@@ -304,15 +304,14 @@ test.describe("Thread runtime is locked after first message", () => {
       );
 
       // Note: the branch-picker-locked chip is intentionally not asserted
-      // here. `ChatModeRow` gates `BranchPill` on
-      // `githubRepo && connectionId`, and this fixture deliberately omits
-      // `connectionId` (a public-clone-mode repo is enough to flip
-      // `agentHasClonableSource` for the mode picker, but the branch
-      // pill needs a real GH connection to mount). Covering the locked
-      // branch chip requires a fixture with an authenticated GH
-      // connection — out of scope for this test. The locked-state lookup
-      // itself is exercised by `BranchPill`'s own logic and by the
-      // server-side lock test above.
+      // here. The branch pill now lives in the toolbar breadcrumb
+      // (`BranchCrumb`), which gates on `githubRepo && connectionId`, and this
+      // fixture deliberately omits `connectionId` (a public-clone-mode repo is
+      // enough to flip `agentHasClonableSource` for the mode picker, but the
+      // branch pill needs a real GH connection to mount). Covering the locked
+      // branch chip requires a fixture with an authenticated GH connection —
+      // out of scope for this test. The locked-state lookup itself is exercised
+      // by `BranchPill`'s own logic and by the server-side lock test above.
 
       // Hard reload — locked affordance must survive a fresh mount.
       await page.reload();
