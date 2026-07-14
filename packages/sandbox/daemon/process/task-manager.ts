@@ -6,6 +6,7 @@ import { LogTee } from "./log-tee";
 import { spawnPty } from "./pty-spawn";
 import { resolveShell } from "./resolve-shell";
 import { RingBuffer } from "./ring-buffer";
+import { SIGNAL_NUMBERS } from "./signal-numbers";
 import type { PhaseManager } from "./phase-manager";
 
 const RING_BUFFER_BYTES = 256 * 1024;
@@ -13,15 +14,6 @@ const LOG_MAX_BYTES = 10 * 1024 * 1024;
 const DEFAULT_REAP_INTERVAL_MS = 60 * 1000;
 const DEFAULT_TTL_MS = 15 * 60 * 1000;
 const TASK_FILE_PREFIX = "task";
-// Signal name → number, shell `kill -l` convention. Used to map a
-// signal-terminated pipe-mode child to its `128 + signal` exit code.
-const SIGNAL_NUMBERS: Record<string, number> = {
-  SIGHUP: 1,
-  SIGINT: 2,
-  SIGQUIT: 3,
-  SIGKILL: 9,
-  SIGTERM: 15,
-};
 
 export type TaskStatus = "running" | "exited" | "failed" | "killed" | "timeout";
 
