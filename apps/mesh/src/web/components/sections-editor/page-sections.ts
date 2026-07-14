@@ -46,9 +46,14 @@ export function canMakeSectionReusable(section: {
 }
 
 export function suggestBlockId(label: string): string {
-  const cleaned = label.replace(/[^A-Za-z0-9_-]/g, "");
+  // Block keys may contain spaces (see deco-block-key.ts), so keep them for a
+  // readable default name — only strip characters that aren't allowed.
+  const cleaned = label
+    .replace(/[^A-Za-z0-9_ -]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (/^[A-Za-z]/.test(cleaned)) return cleaned;
-  if (cleaned) return `Block${cleaned}`;
+  if (cleaned) return `Block ${cleaned}`;
   return "";
 }
 
@@ -64,8 +69,8 @@ export function validateBlockId(
   if (Object.hasOwn(decofile, trimmed)) {
     return "A block with this name already exists.";
   }
-  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(trimmed)) {
-    return "Use letters, numbers, hyphens, or underscores. Must start with a letter.";
+  if (!/^[A-Za-z][A-Za-z0-9_ -]*$/.test(trimmed)) {
+    return "Use letters, numbers, spaces, hyphens, or underscores. Must start with a letter.";
   }
   return null;
 }
