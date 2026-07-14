@@ -142,6 +142,8 @@ export interface BoundAuthClient {
       organizationId?: string;
       limit?: number;
       offset?: number;
+      filterField?: string;
+      filterValue?: string;
     }): Promise<ListMembersResult>;
 
     updateMemberRole(data: {
