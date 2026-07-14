@@ -29,7 +29,10 @@ import {
 } from "./use-agent-mode";
 import { useChatPrefs, useOptionalChatTask } from "./context";
 import { useAgentOptionAvailability } from "./use-agent-availability";
-import type { AgentOption } from "./pills/agent-options";
+import {
+  type AgentOption,
+  preferredLocalAgentOption,
+} from "./pills/agent-options";
 import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
@@ -210,9 +213,10 @@ function RuntimeSection() {
   const isLocal =
     pendingHarnessId === "claude-code" || pendingHarnessId === "codex";
   const bothClis = availability.claudeCode && availability.codex;
-  const firstLocal: AgentOption = availability.claudeCode
-    ? "claude-code-desktop"
-    : "codex-desktop";
+  // This section only renders when a local CLI is present (TierTrigger gates on
+  // `hasLocal`), so the fallback is unreachable — but keep it total.
+  const firstLocal: AgentOption =
+    preferredLocalAgentOption(availability) ?? "claude-code-desktop";
 
   return (
     <div className="flex flex-col gap-1.5 p-1">

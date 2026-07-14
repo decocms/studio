@@ -34,7 +34,7 @@ import {
 import type { SandboxProviderKind } from "@decocms/mesh-sdk";
 import { useChatPrefs, useChatTask } from "../context";
 import { useAgentOptionAvailability } from "../use-agent-availability";
-import type { AgentOption } from "./agent-options";
+import { preferredLocalAgentOption } from "./agent-options";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
@@ -101,12 +101,8 @@ export function RuntimeSwitcher() {
 
   // "This device" only exists via a local CLI harness (there's no cloud-brain-
   // on-desktop option), so it's gated on a linked desktop with Claude Code or
-  // Codex. Default to whichever CLI is present.
-  const localOption: AgentOption | null = availability.claudeCode
-    ? "claude-code-desktop"
-    : availability.codex
-      ? "codex-desktop"
-      : null;
+  // Codex.
+  const localOption = preferredLocalAgentOption(availability);
 
   // Prefer the sandbox that's actually running, then the locked/pending choice.
   // When still unresolved, show the runtime that will actually be used: cloud

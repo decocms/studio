@@ -69,6 +69,21 @@ export interface AgentOptionAvailability {
   codex: boolean;
 }
 
+/**
+ * The local desktop `AgentOption` to default to for the current availability —
+ * Claude Code wins when both CLIs are present. Null when no local CLI is
+ * available. One canonical home for the "which local runtime" precedence, so
+ * the model-selector runtime toggle and the preview runtime switcher can't
+ * drift apart.
+ */
+export function preferredLocalAgentOption(
+  availability: AgentOptionAvailability,
+): AgentOption | null {
+  if (availability.claudeCode) return "claude-code-desktop";
+  if (availability.codex) return "codex-desktop";
+  return null;
+}
+
 /** Whether `option` can run given the current `availability`. */
 export function agentOptionIsAvailable(
   option: AgentOption,

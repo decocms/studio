@@ -22,9 +22,10 @@ interface PureProps {
  * Pure layout — used by tests. Renders the branch pill (when present) in the
  * parent flex flow. Returns null when there is nothing to show.
  *
- * The runtime (cloud org router vs. a local coding agent) is no longer a pill
- * here — it lives inside the model selector. This row is now just the GitHub
- * branch affordance.
+ * This pure component only handles the branch pill. The smart `ChatModeRow`
+ * below renders the sandbox-backed agent's `RuntimeSwitcher` (Cloud sandbox vs
+ * This device) alongside it; the chat model runtime itself is still chosen in
+ * the model selector.
  */
 export function ChatModeRowPure({ branchPill }: PureProps) {
   if (!branchPill) return null;

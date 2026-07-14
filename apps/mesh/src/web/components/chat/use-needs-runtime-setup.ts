@@ -1,5 +1,5 @@
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
-import { useChatPrefs } from "./context";
+import { useChatPrefs, useOptionalChatTask } from "./context";
 import { useAgentOptionAvailability } from "./use-agent-availability";
 
 /**
@@ -17,6 +17,13 @@ export function useNeedsRuntimeSetup(): boolean {
   const allKeys = useAiProviderKeys();
   const { pendingAgentOption } = useChatPrefs();
   const availability = useAgentOptionAvailability();
+  const task = useOptionalChatTask();
+
+  // A locked thread has already run — it has history and a runtime pinned for
+  // life. It must never be replaced by the setup empty state (which would hide
+  // the conversation) or gate its tabs, even if a linked desktop later drops
+  // offline in a keyless org. Setup only gates fresh, un-run threads.
+  if (task?.isThreadLocked) return false;
 
   const localRuntimeReady =
     (pendingAgentOption === "claude-code-desktop" && availability.claudeCode) ||
