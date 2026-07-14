@@ -12,16 +12,11 @@
  * selector exposes as "Cloud / This device" — it writes through the same
  * `pendingAgentOption`, so the two never disagree.
  *
- * The runtime locks to a thread on its first message. On a locked thread this
- * is read-only and warns a new chat is required — it never auto-spawns one.
+ * The runtime locks to a thread on its first message. On a locked thread the
+ * trigger is a disabled indicator; the tooltip explains a new chat is required
+ * to change it.
  */
-import {
-  AlertTriangle,
-  Check,
-  Cloud01,
-  Lock01,
-  Monitor01,
-} from "@untitledui/icons";
+import { Check, Cloud01, Lock01, Monitor01 } from "@untitledui/icons";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
@@ -100,7 +95,7 @@ function RuntimeItem({
 
 export function RuntimeSwitcher() {
   const { pendingSandboxProviderKind, setPendingAgentOption } = useChatPrefs();
-  const { isThreadLocked, lockedSandbox, createTask } = useChatTask();
+  const { isThreadLocked, lockedSandbox } = useChatTask();
   const { vmEntry } = useSandboxLifecycle();
   const availability = useAgentOptionAvailability();
 
@@ -128,6 +123,40 @@ export function RuntimeSwitcher() {
   const current = runtimeMeta(currentSandbox);
   const CurrentIcon = current.Icon;
 
+  const iconGlyph = (
+    <span className="relative inline-flex items-center justify-center">
+      <CurrentIcon size={16} />
+      {isThreadLocked && (
+        <Lock01
+          size={9}
+          className="absolute -bottom-1 -right-1.5 rounded-full bg-background"
+        />
+      )}
+    </span>
+  );
+
+  // Locked: the runtime can't change for this thread, so the trigger is just a
+  // disabled indicator — the tooltip explains why. No menu to open.
+  if (isThreadLocked) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            aria-disabled="true"
+            aria-label={`Runtime: ${current.label} (locked)`}
+            className="inline-flex size-9 cursor-default items-center justify-center rounded-md text-muted-foreground"
+          >
+            {iconGlyph}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          Locked to {current.label.toLowerCase()} for this chat. Start a new
+          chat to change.
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
   return (
     <DropdownMenu>
       <Tooltip>
@@ -139,68 +168,36 @@ export function RuntimeSwitcher() {
               aria-label={`Runtime: ${current.label}`}
               className="size-9 text-muted-foreground hover:text-foreground"
             >
-              <span className="relative inline-flex items-center justify-center">
-                <CurrentIcon size={16} />
-                {isThreadLocked && (
-                  <Lock01
-                    size={9}
-                    className="absolute -bottom-1 -right-1.5 rounded-full bg-background"
-                  />
-                )}
-              </span>
+              {iconGlyph}
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          {isThreadLocked
-            ? `Running on ${current.label.toLowerCase()} · locked to this chat`
-            : `Running on ${current.label.toLowerCase()}`}
+          Running on {current.label.toLowerCase()}
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="start" className="w-64 p-1">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
           Run on
         </DropdownMenuLabel>
-        {isThreadLocked ? (
-          <div className="flex flex-col gap-2 px-2 py-1.5">
-            <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-              <span>
-                This chat is locked to {current.label.toLowerCase()}. Start a
-                new chat to run it somewhere else.
-              </span>
-            </p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              onClick={() => createTask()}
-            >
-              New chat
-            </Button>
-          </div>
-        ) : (
-          <>
-            <RuntimeItem
-              icon={<Cloud01 size={14} />}
-              label="Cloud sandbox"
-              description="Runs in deco's cloud"
-              active={current.key === "cloud"}
-              available={availability.agentSandbox}
-              disabledHint="Not available on this deployment"
-              onSelect={() => setPendingAgentOption("decopilot")}
-            />
-            <RuntimeItem
-              icon={<Monitor01 size={14} />}
-              label="This device"
-              description="Runs on your machine via deco link"
-              active={current.key === "local"}
-              available={localOption !== null}
-              disabledHint="Run `decocms link` on your desktop"
-              onSelect={() => localOption && setPendingAgentOption(localOption)}
-            />
-          </>
-        )}
+        <RuntimeItem
+          icon={<Cloud01 size={14} />}
+          label="Cloud sandbox"
+          description="Runs in deco's cloud"
+          active={current.key === "cloud"}
+          available={availability.agentSandbox}
+          disabledHint="Not available on this deployment"
+          onSelect={() => setPendingAgentOption("decopilot")}
+        />
+        <RuntimeItem
+          icon={<Monitor01 size={14} />}
+          label="This device"
+          description="Runs on your machine via deco link"
+          active={current.key === "local"}
+          available={localOption !== null}
+          disabledHint="Run `decocms link` on your desktop"
+          onSelect={() => localOption && setPendingAgentOption(localOption)}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
