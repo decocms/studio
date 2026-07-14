@@ -114,23 +114,15 @@ const homeRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/",
   beforeLoad: async () => {
-    // Restore where the user last was. lastLocation is recorded on every
-    // org-scoped navigation (orgLayout writes the org; the thread route adds
-    // the taskId), so it's always current — including after an in-app org
-    // switch, which the queryFn-driven lastOrgSlug can miss when the new org
-    // is already cached. Reads are synchronous so cold entry stays instant. A
-    // stale org/thread self-heals: OrgAccessGate clears it and bounces back to
-    // "/", and an unknown taskId is re-fetched/created by useEnsureTask.
+    // Restore the last ORG the user was in, but always land on its HOME (the
+    // Super Agent) — never resume the last conversation. Cold entry / a fresh
+    // tab is a "start from home" gesture (ChatGPT-style), so we deliberately
+    // ignore any recorded taskId here. lastLocation's org is recorded on every
+    // org-scoped navigation (orgLayout.beforeLoad), so it's current even after
+    // an in-app org switch that the queryFn-driven lastOrgSlug can miss. Reads
+    // are synchronous so cold entry stays instant. A stale org self-heals:
+    // OrgAccessGate clears it and bounces back to "/".
     const lastLocation = readLastLocation();
-    if (lastLocation?.taskId) {
-      throw redirect({
-        to: "/$org/$taskId",
-        params: { org: lastLocation.org, taskId: lastLocation.taskId },
-        search: lastLocation.virtualmcpid
-          ? { virtualmcpid: lastLocation.virtualmcpid }
-          : {},
-      });
-    }
     if (lastLocation) {
       throw redirect({ to: "/$org", params: { org: lastLocation.org } });
     }

@@ -8,7 +8,6 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { Settings02, UserPlus01, ZapSquare } from "@untitledui/icons";
 import { useState } from "react";
-import { RepoSwitcher } from "@/web/components/sidebar/footer/repo-switcher";
 import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { useProjectContext } from "@decocms/mesh-sdk";
@@ -37,9 +36,9 @@ function SettingsFullButton() {
 
 /**
  * Sidebar footer actions — org-wide entry points that aren't tied to a single
- * agent: invite teammates, add a repo as an org-shared GitHub connection
- * (available to every agent), and add any connection. Rendered as full-width
- * rows above the account row.
+ * agent: invite teammates and add any connection. Rendered as full-width rows
+ * above the account row. (Repos are now imported as "code agents" from the
+ * agent selector's "Import from GitHub" button, not from here.)
  */
 function SidebarExtraActions() {
   const [connectionsOpen, setConnectionsOpen] = useState(false);
@@ -55,9 +54,6 @@ function SidebarExtraActions() {
               </SidebarMenuButton>
             }
           />
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <RepoSwitcher />
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton

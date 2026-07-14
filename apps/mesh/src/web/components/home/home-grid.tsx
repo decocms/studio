@@ -8,6 +8,7 @@ import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { Suspense } from "react";
 import {
   getHomeTiles,
+  isStudioPackAgent,
   mcpClientQueryOptions,
   useMCPClient,
   useMCPToolsListQuery,
@@ -413,7 +414,16 @@ function TileErrorFallback({
 
 export function HomeGrid({ isEditMode }: HomeGridProps) {
   const { org } = useProjectContext();
-  const { isLoading, prompts, tiles } = useHomeNextActions(org.slug);
+  const {
+    isLoading,
+    prompts: allPrompts,
+    tiles: allTiles,
+  } = useHomeNextActions(org.slug);
+  // Studio Pack onboarding agents (Brand Manager et al.) are no longer part of
+  // the default board — their prompt/tile cards are filtered out so the board
+  // is the native product tiles (Tasks / Coding / Analytics / Sales).
+  const prompts = allPrompts.filter((p) => !isStudioPackAgent(p.agentId));
+  const tiles = allTiles.filter((t) => !isStudioPackAgent(t.agentId));
   const homeIds = useDefaultHomeAgents()?.ids ?? [];
   const pinnedAgentIds = new Set(homeIds);
   const homeWriter = useHomeAgentsWriter();
@@ -464,6 +474,7 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
           id: c.id,
           defaultSize: c.data.defaultSize,
           minSize: c.data.minSize,
+          defaultHidden: c.data.defaultHidden,
         };
       }
       return {

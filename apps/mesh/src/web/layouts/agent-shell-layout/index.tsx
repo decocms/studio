@@ -200,6 +200,129 @@ function VmEventsBridge({
 }
 
 // ---------------------------------------------------------------------------
+// Task workspace — the chat + main-panel region, rendered inside
+// Chat.ActiveTaskProvider.
+//
+// The no-runtime state (no AI provider AND no usable local CLI) is handled
+// per-surface, not by unmounting the workspace: the chat panel shows the
+// provider-setup empty state, the view tabs disable themselves
+// (main-panel-tabs-bar), and the Overview view swaps to the setup prompt
+// (overview-tab). Sandbox-backed views (Preview / Settings / Deck / …) stay
+// available without a cloud provider.
+// ---------------------------------------------------------------------------
+
+type TaskLayout = ReturnType<typeof useChatMainPanelState>;
+
+function DesktopTaskWorkspace({
+  entity,
+  virtualMcpId,
+  layout,
+  onNewTaskRef,
+}: {
+  entity: VirtualMCPEntity;
+  virtualMcpId: string;
+  layout: TaskLayout;
+  onNewTaskRef: React.MutableRefObject<(() => void) | null>;
+}) {
+  return (
+    <>
+      <Toolbar.Toggles>
+        <ToggleButtons
+          chatOpen={layout.chatOpen}
+          toggleChat={layout.toggleChat}
+          // Chat is the only content when no main panel is open — block
+          // turning it off so the content area can't go blank.
+          disableChatToggle={layout.chatOpen && !layout.mainOpen}
+        />
+      </Toolbar.Toggles>
+      {/* Tabs must live under SandboxEventsProvider — useMainPanelTabs gates
+          Content on lifecycle.phase === "running" + decofile. */}
+      <Toolbar.Tabs>
+        <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={layout.taskId} />
+      </Toolbar.Tabs>
+      <NewTaskBridge
+        onNewTaskRef={onNewTaskRef}
+        createNewTask={layout.createNewTask}
+      />
+      <VirtualMcpHeaderInfo virtualMcp={entity} />
+      <Suspense fallback={<Chat.Skeleton />}>
+        <ChatMainPanelGroup
+          virtualMcpId={virtualMcpId}
+          taskId={layout.taskId}
+          chatOpen={layout.chatOpen}
+          mainOpen={layout.mainOpen}
+          chatContent={<ActiveTaskBoundary />}
+        />
+      </Suspense>
+    </>
+  );
+}
+
+function MobileTaskWorkspace({
+  virtualMcpId,
+  layout,
+  onNewTaskRef,
+}: {
+  virtualMcpId: string;
+  layout: TaskLayout;
+  onNewTaskRef: React.MutableRefObject<(() => void) | null>;
+}) {
+  const showMain = layout.mainOpen;
+
+  return (
+    <>
+      <Toolbar.Toggles>
+        <ToggleButtons
+          chatOpen={!layout.mainOpen}
+          toggleChat={layout.toggleMain}
+        />
+      </Toolbar.Toggles>
+      <Toolbar.Tabs>
+        <MobileMainPanelTabSelect
+          virtualMcpId={virtualMcpId}
+          taskId={layout.taskId}
+        />
+      </Toolbar.Tabs>
+      <NewTaskBridge
+        onNewTaskRef={onNewTaskRef}
+        createNewTask={layout.createNewTask}
+      />
+      <Suspense fallback={<Chat.Skeleton />}>
+        <div className="flex-1 min-h-0 overflow-hidden">
+          {showMain ? (
+            <ErrorBoundary
+              fallback={
+                <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                  Something went wrong. Try refreshing.
+                </div>
+              }
+            >
+              <Suspense
+                fallback={
+                  <div className="h-full flex items-center justify-center">
+                    <Loading01
+                      size={20}
+                      className="animate-spin text-muted-foreground"
+                    />
+                  </div>
+                }
+              >
+                <MainPanelWithDrawer
+                  taskId={layout.taskId}
+                  virtualMcpId={virtualMcpId}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          ) : (
+            <ActiveTaskBoundary />
+          )}
+        </div>
+      </Suspense>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AgentInsetProvider — resolves virtualMcpId, provides InsetContext,
 // wraps in Chat.Provider, renders the task-scoped chat+main panel group.
 // ---------------------------------------------------------------------------
@@ -341,56 +464,16 @@ function AgentInsetProvider() {
               hasActiveGithubRepo={hasActiveGithubRepo}
               sandboxMap={entity?.metadata?.sandboxMap}
             >
-              <NewTaskBridge
-                onNewTaskRef={onNewTask}
-                createNewTask={layout.createNewTask}
-              />
               <Chat.ActiveTaskProvider
                 key={layout.taskId}
                 taskId={layout.taskId}
               >
-                <Toolbar.Toggles>
-                  <ToggleButtons
-                    chatOpen={!layout.mainOpen}
-                    toggleChat={layout.toggleMain}
-                  />
-                </Toolbar.Toggles>
-                <Toolbar.Tabs>
-                  <MobileMainPanelTabSelect
-                    virtualMcpId={chatVirtualMcpId}
-                    taskId={layout.taskId}
-                  />
-                </Toolbar.Tabs>
                 <Suspense fallback={<Chat.Skeleton />}>
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    {layout.mainOpen ? (
-                      <ErrorBoundary
-                        fallback={
-                          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-                            Something went wrong. Try refreshing.
-                          </div>
-                        }
-                      >
-                        <Suspense
-                          fallback={
-                            <div className="h-full flex items-center justify-center">
-                              <Loading01
-                                size={20}
-                                className="animate-spin text-muted-foreground"
-                              />
-                            </div>
-                          }
-                        >
-                          <MainPanelWithDrawer
-                            taskId={layout.taskId}
-                            virtualMcpId={chatVirtualMcpId}
-                          />
-                        </Suspense>
-                      </ErrorBoundary>
-                    ) : (
-                      <ActiveTaskBoundary />
-                    )}
-                  </div>
+                  <MobileTaskWorkspace
+                    virtualMcpId={chatVirtualMcpId}
+                    layout={layout}
+                    onNewTaskRef={onNewTask}
+                  />
                 </Suspense>
               </Chat.ActiveTaskProvider>
             </VmEventsBridge>
@@ -406,16 +489,6 @@ function AgentInsetProvider() {
   return (
     <div className="flex-1 min-w-0 flex flex-col">
       <InsetContext value={insetContextValue}>
-        <Toolbar.Toggles>
-          <ToggleButtons
-            chatOpen={layout.chatOpen}
-            toggleChat={layout.toggleChat}
-            // Chat is the only content when no main panel is open — block
-            // turning it off so the content area can't go blank.
-            disableChatToggle={layout.chatOpen && !layout.mainOpen}
-          />
-        </Toolbar.Toggles>
-
         <Chat.Provider
           key={chatVirtualMcpId}
           virtualMcpId={chatVirtualMcpId}
@@ -426,27 +499,16 @@ function AgentInsetProvider() {
             hasActiveGithubRepo={hasActiveGithubRepo}
             sandboxMap={entity?.metadata?.sandboxMap}
           >
-            {/* Tabs must live under SandboxEventsProvider — useMainPanelTabs
-                gates Content on lifecycle.phase === "running" + decofile. */}
-            <Toolbar.Tabs>
-              <MainPanelTabsBar
-                virtualMcpId={virtualMcpId}
-                taskId={layout.taskId}
-              />
-            </Toolbar.Tabs>
-            <NewTaskBridge
-              onNewTaskRef={onNewTask}
-              createNewTask={layout.createNewTask}
-            />
+            {/* The toggles, tabs, header, and main panel all render inside
+                ActiveTaskProvider via DesktopTaskWorkspace so a single
+                locked-aware useNeedsRuntimeSetup() gates them together. */}
             <Chat.ActiveTaskProvider key={layout.taskId} taskId={layout.taskId}>
-              <VirtualMcpHeaderInfo virtualMcp={entity} />
               <Suspense fallback={<Chat.Skeleton />}>
-                <ChatMainPanelGroup
+                <DesktopTaskWorkspace
+                  entity={entity}
                   virtualMcpId={virtualMcpId}
-                  taskId={layout.taskId}
-                  chatOpen={layout.chatOpen}
-                  mainOpen={layout.mainOpen}
-                  chatContent={<ActiveTaskBoundary />}
+                  layout={layout}
+                  onNewTaskRef={onNewTask}
                 />
               </Suspense>
             </Chat.ActiveTaskProvider>
