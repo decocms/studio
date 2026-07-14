@@ -289,6 +289,26 @@ export function PreviewContent({
     Record<string, Record<string, string>>
   >({});
 
+  // Instant click feedback: set the moment a page/section is picked, cleared
+  // when the iframe's onLoad fires. Without this the click has no visible
+  // effect until the new page finishes fetching, so it feels unresponsive.
+  const [navigating, setNavigating] = useState(false);
+  const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const beginNavigation = () => {
+    setNavigating(true);
+    if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    // Safety net: clear the indicator even if onLoad never fires (network
+    // failure, cross-origin redirect) so it can't get stuck on forever.
+    navTimerRef.current = setTimeout(() => setNavigating(false), 15000);
+  };
+  const endNavigation = () => {
+    if (navTimerRef.current) {
+      clearTimeout(navTimerRef.current);
+      navTimerRef.current = null;
+    }
+    setNavigating(false);
+  };
+
   // SEO panel state
   const [cmsInitialEditSeo, setCmsInitialEditSeo] = useState(false);
   const [siteSeoOpen, setSiteSeoOpen] = useState(false);
@@ -770,7 +790,13 @@ export function PreviewContent({
   const navigatePreviewToPage = (page: PageEntry) => {
     // The iframe loads the template with any stored param values filled in.
     const params = pathParamsByPage[page.key] ?? {};
-    intendedPathRef.current = fillPathTemplate(page.path, params);
+    const target = fillPathTemplate(page.path, params);
+    // Show the loading indicator only when the iframe will actually reload —
+    // re-selecting the current page leaves `iframeSrc` unchanged (no onLoad).
+    if (activeGlobalSection || normPath(target) !== normPath(resolvedPath)) {
+      beginNavigation();
+    }
+    intendedPathRef.current = target;
     setActiveGlobalSection(null);
     setDirectPreviewUrl(null);
     setPinnedPageKey(page.key);
@@ -795,6 +821,7 @@ export function PreviewContent({
       toast.error("Preview metadata not ready yet");
       return;
     }
+    beginNavigation();
     intendedPathRef.current = null;
     const livePageRt = findLivePageResolveType(meta);
     const url = buildGlobalSectionPreviewUrl(
@@ -1310,6 +1337,12 @@ export function PreviewContent({
               "flex justify-center bg-muted/30",
           )}
         >
+          {navigating && previewState.kind === "iframe" && (
+            <div className="absolute inset-x-0 top-0 z-40 h-0.5 overflow-hidden bg-primary/15">
+              <div className="absolute inset-y-0 w-2/5 rounded-full bg-primary animate-preview-nav" />
+            </div>
+          )}
+
           {showBootingOverlay && (
             <div className="absolute inset-0 z-30">
               <SandboxStateCard
@@ -1422,6 +1455,9 @@ export function PreviewContent({
                 title="Dev Server Preview"
                 tabIndex={sectionsOpen ? -1 : undefined}
                 onLoad={() => {
+                  // The page finished loading — always clear the navigation
+                  // indicator first, before any of the early returns below.
+                  endNavigation();
                   // This is the VM dev-server preview (sandboxed running app),
                   // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
                   track("vm_preview_loaded", {
