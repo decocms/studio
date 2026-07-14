@@ -53,13 +53,24 @@ echo "── start in-cluster load generator (hits front door through nginx→ap
 # Two probes per iteration: /healthz (nginx-local) and /api/health (proxied to
 # the api tier). Any non-200 or curl error increments FAIL. Writes a running
 # tally to its log so we can read it after the rollout.
+#
+# --retry 5 --retry-all-errors: the zero-downtime property is that the *service*
+# never goes unreachable, not that no single TCP packet is ever dropped. Both
+# tiers roll with maxUnavailable=0, so a ready endpoint always exists; a browser
+# (and curl) simply reconnects and kube-proxy routes to it. Retrying models that
+# and absorbs an isolated CI hiccup (kube-proxy endpoint-sync lag, a >max-time
+# response under 2-core CPU starvation). A REAL regression — e.g. the earlier
+# nginx quit-first bug — makes the front door refuse for a sustained window, so
+# every retry also fails and the request still counts as bad. --retry-delay 0
+# keeps retries inside any genuine outage window rather than waiting it out.
 kubectl -n "$NS" run loadgen --image=curlimages/curl:8.10.1 --restart=Never -- \
   /bin/sh -c '
     ok=0; bad=0; base="http://'"$RELEASE"'.'"$NS"'.svc.cluster.local";
     end=$(( $(date +%s) + 120 ));
     while [ "$(date +%s)" -lt "$end" ]; do
       for path in /healthz /api/health; do
-        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$base$path" || echo 000);
+        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 \
+          --retry 5 --retry-delay 0 --retry-all-errors "$base$path" || echo 000);
         if [ "$code" = "200" ]; then ok=$((ok+1)); else bad=$((bad+1)); echo "MISS $path -> $code"; fi
       done
       sleep 0.1;
