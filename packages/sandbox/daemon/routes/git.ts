@@ -484,6 +484,12 @@ function pushBranch(repoDir: string, branch: string): void {
 
 export function publish(deps: GitDeps, message: string): { pushed: boolean } {
   const repoDir = deps.repoDir;
+  // The HTTP route guards with isGitRepo(); the shutdown handler calls publish()
+  // directly, so a never-cloned/empty dir would throw 128 ("not a git
+  // repository") on the rev-parse below. Nothing to publish — skip cleanly.
+  if (!isGitRepo(repoDir)) {
+    return { pushed: false };
+  }
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
     throw new Error("Cannot publish from a detached HEAD");
@@ -524,16 +530,15 @@ export function publish(deps: GitDeps, message: string): { pushed: boolean } {
   const cloneUrl = deps.getCloneUrl?.();
   if (typeof cloneUrl === "string" && cloneUrl.length > 0) {
     syncOriginRemote(repoDir, cloneUrl);
-  } else {
-    const originUrl = tryGit(repoDir, ["remote", "get-url", "origin"]) ?? "";
-    if (
-      originUrl.includes("github.com") &&
-      !cloneUrlHasCredentials(originUrl)
-    ) {
-      throw new Error(
-        "GitHub push requires an authenticated clone URL. Connect GitHub for this project and restart the sandbox.",
-      );
-    }
+  }
+  // Guard the *effective* origin. syncOriginRemote no-ops on a credential-less
+  // cloneUrl, so a non-empty-but-tokenless cloneUrl used to fall straight
+  // through to pushBranch and fail with an opaque "Invalid username or token".
+  const originUrl = tryGit(repoDir, ["remote", "get-url", "origin"]) ?? "";
+  if (originUrl.includes("github.com") && !cloneUrlHasCredentials(originUrl)) {
+    throw new Error(
+      "GitHub push requires an authenticated clone URL. Connect GitHub for this project and restart the sandbox.",
+    );
   }
 
   pushBranch(repoDir, branch);
