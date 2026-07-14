@@ -310,6 +310,9 @@ export class TaskManager {
       if (t.status === "running") {
         t.intentional = true;
         t.kill("SIGTERM");
+        setTimeout(() => {
+          if (t.status === "running") t.kill("SIGKILL");
+        }, 3000);
         count++;
       }
     }

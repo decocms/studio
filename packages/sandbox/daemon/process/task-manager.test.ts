@@ -1,3 +1,4 @@
+import { sleep } from "@decocms/std";
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -82,6 +83,28 @@ describe("TaskManager kill status", () => {
     tm.killAll();
     await finished;
     expect(tm.get(t.id)?.intentional).toBe(true);
+  });
+});
+
+describe("TaskManager killAll", () => {
+  it("escalates to SIGKILL when a task ignores SIGTERM", async () => {
+    const tm = makeManager();
+    const t = await tm.spawn({
+      // A busy-loop builtin (no subprocess) that traps and ignores SIGTERM —
+      // only SIGKILL can end it, unlike `sleep`, which dies on TERM by default
+      // regardless of a shell trap around it.
+      command: "trap '' TERM; while true; do :; done",
+      cwd: "/tmp",
+      mode: "pipe",
+    });
+    const finished = tm.finished(t.id)!;
+    // Give the shell time to install the trap before signaling it — otherwise
+    // SIGTERM can race the trap and land while TERM is still fatal.
+    await sleep(300);
+    const count = tm.killAll();
+    expect(count).toBe(1);
+    const result = await finished;
+    expect(result.status).toBe("killed");
   });
 });
 
