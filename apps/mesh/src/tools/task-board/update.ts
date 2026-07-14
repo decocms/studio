@@ -27,6 +27,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     status: TaskBoardItemStatusSchema.optional(),
     priority: TaskBoardItemPrioritySchema.optional(),
     assigneeId: z.string().nullable().optional(),
+    dueDate: z.string().datetime().nullable().optional(),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),
   handler: async (input, ctx) => {
@@ -55,6 +56,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         status: input.status,
         priority: input.priority,
         assigneeId: input.assigneeId,
+        dueDate: input.dueDate,
       },
       getUserId(ctx)!,
     );

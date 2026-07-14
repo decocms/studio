@@ -65,22 +65,26 @@ export const PRIORITIES: TaskBoardItemPriority[] = [
 
 export const PRIORITY_CONFIG: Record<
   TaskBoardItemPriority,
-  { label: string; badgeClassName: string }
+  { label: string; badgeClassName: string; flagClassName: string }
 > = {
   low: {
     label: "Low",
     badgeClassName: "bg-muted text-muted-foreground",
+    flagClassName: "text-muted-foreground",
   },
   medium: {
     label: "Medium",
     badgeClassName: "bg-blue-500/10 text-blue-600",
+    flagClassName: "text-blue-500",
   },
   high: {
     label: "High",
     badgeClassName: "bg-orange-500/10 text-orange-600",
+    flagClassName: "text-orange-500",
   },
   urgent: {
     label: "Urgent",
     badgeClassName: "bg-red-500/10 text-red-600",
+    flagClassName: "text-red-500",
   },
 };

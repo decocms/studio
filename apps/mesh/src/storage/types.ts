@@ -1507,6 +1507,11 @@ export interface TaskBoardItemTable {
     string
   >;
   assignee_id: string | null;
+  due_date: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
@@ -1521,6 +1526,7 @@ export interface TaskBoardItem {
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
   assigneeId: string | null;
+  dueDate: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;

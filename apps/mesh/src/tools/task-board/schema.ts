@@ -23,6 +23,7 @@ export const TaskBoardItemSchema = z.object({
   status: TaskBoardItemStatusSchema,
   priority: TaskBoardItemPrioritySchema,
   assigneeId: z.string().nullable(),
+  dueDate: z.string().datetime().nullable(),
   createdBy: z.string(),
   createdAt: z.string().datetime(),
   updatedBy: z.string(),
