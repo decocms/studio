@@ -7,7 +7,8 @@
  * sequentially — the first refresh mints, the rest see the token already fresh
  * and no-op — while distinct connections run in parallel. Items with no
  * connection id are skipped. Best-effort: one item's failure never blocks the
- * others (`allSettled`), so `refreshOne` should surface its own errors.
+ * others — including later items *in the same connection's queue* — so
+ * `refreshOne` should surface its own errors.
  */
 export async function refreshCredentialsByConnection<T>(
   items: Iterable<T>,
@@ -24,7 +25,11 @@ export async function refreshCredentialsByConnection<T>(
   }
   await Promise.allSettled(
     [...byConnection.values()].map(async (group) => {
-      for (const item of group) await refreshOne(item);
+      for (const item of group) {
+        // A throw here must not stop the rest of this connection's queue —
+        // `refreshOne` is expected to log its own errors (see docstring).
+        await refreshOne(item).catch(() => {});
+      }
     }),
   );
 }

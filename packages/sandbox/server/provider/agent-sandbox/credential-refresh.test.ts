@@ -80,4 +80,21 @@ describe("refreshCredentialsByConnection", () => {
     );
     expect(done).toEqual(["b"]);
   });
+
+  it("keeps processing later items in the same connection's queue after an earlier one throws", async () => {
+    const done: string[] = [];
+    await refreshCredentialsByConnection(
+      [
+        { id: "a1", conn: "A" },
+        { id: "a2", conn: "A" },
+        { id: "a3", conn: "A" },
+      ] as Item[],
+      (i) => i.conn,
+      async (i) => {
+        if (i.id === "a1") throw new Error("boom");
+        done.push(i.id);
+      },
+    );
+    expect(done).toEqual(["a2", "a3"]);
+  });
 });
