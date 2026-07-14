@@ -40,6 +40,7 @@ import {
 import type { SandboxProviderKind } from "@decocms/mesh-sdk";
 import { useChatPrefs, useChatTask } from "../context";
 import { useAgentOptionAvailability } from "../use-agent-availability";
+import { localHarnessBrand } from "../agent-icons";
 import { preferredLocalAgentOption } from "./agent-options";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 
@@ -107,7 +108,7 @@ export function RuntimeSwitcher({
   showLabel?: boolean;
 } = {}) {
   const { pendingSandboxProviderKind, setPendingAgentOption } = useChatPrefs();
-  const { isThreadLocked, lockedSandbox } = useChatTask();
+  const { isThreadLocked, lockedHarness, lockedSandbox } = useChatTask();
   const { vmEntry } = useSandboxLifecycle();
   const availability = useAgentOptionAvailability();
 
@@ -131,9 +132,18 @@ export function RuntimeSwitcher({
   const current = runtimeMeta(currentSandbox);
   const CurrentIcon = current.Icon;
 
+  // Once the thread locks, the harness is settled — name and draw *which* agent
+  // is pinned rather than the generic runtime glyph. Cloud has no CLI brand, so
+  // it keeps falling back to the runtime icon and reads as just its location.
+  const brand = isThreadLocked ? localHarnessBrand(lockedHarness) : null;
+  const BrandIcon = brand?.Icon;
+  const lockedRuntimeName = brand
+    ? `${brand.label} on ${current.label.toLowerCase()}`
+    : current.label.toLowerCase();
+
   const iconGlyph = (
     <span className="relative inline-flex items-center justify-center">
-      <CurrentIcon size={16} />
+      {BrandIcon ? <BrandIcon size={16} /> : <CurrentIcon size={16} />}
       {isThreadLocked && (
         <Lock01
           size={9}
@@ -152,7 +162,7 @@ export function RuntimeSwitcher({
           <span
             data-testid="runtime-switcher-locked"
             aria-disabled="true"
-            aria-label={`Runtime: ${current.label} (locked)`}
+            aria-label={`Runtime: ${lockedRuntimeName} (locked)`}
             className={cn(
               "inline-flex cursor-default items-center rounded-md text-muted-foreground",
               showLabel
@@ -165,8 +175,8 @@ export function RuntimeSwitcher({
           </span>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          Locked to {current.label.toLowerCase()} for this chat. Start a new
-          chat to change.
+          Locked to {lockedRuntimeName} for this chat. Start a new chat to
+          change.
         </TooltipContent>
       </Tooltip>
     );

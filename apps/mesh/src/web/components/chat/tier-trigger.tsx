@@ -316,12 +316,17 @@ export function TierTrigger() {
 
   let groups: TierGroup[];
   if (isLocal) {
-    // Show a CLI's group when it's detected, or when it's the active runtime
-    // (so the popover never renders empty if detection lags behind a locked
-    // thread's harness). Label the groups only when both are shown.
-    const showClaude =
-      availability.claudeCode || pendingHarnessId === "claude-code";
-    const showCodex = availability.codex || pendingHarnessId === "codex";
+    // A locked thread is pinned to one harness for its lifetime, so only that
+    // CLI's group is real — listing the other would offer a switch that can't
+    // happen. Otherwise show a CLI when it's detected, or when it's the active
+    // runtime (so the popover never renders empty if detection lags). Label the
+    // groups only when both are shown.
+    const showClaude = locked
+      ? pendingHarnessId === "claude-code"
+      : availability.claudeCode || pendingHarnessId === "claude-code";
+    const showCodex = locked
+      ? pendingHarnessId === "codex"
+      : availability.codex || pendingHarnessId === "codex";
     const bothShown = showClaude && showCodex;
     const built: TierGroup[] = [];
     if (showClaude) {
