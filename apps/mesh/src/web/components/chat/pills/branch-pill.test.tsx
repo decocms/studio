@@ -11,24 +11,7 @@ mock.module("../../thread/github/branch-picker", () => ({
   BranchPicker: () => <button type="button">branch-picker</button>,
 }));
 
-import { ChatModeRowPure } from "./chat-mode-row";
 import { BranchPill } from "./branch-pill";
-
-describe("ChatModeRowPure", () => {
-  it("returns null when the branch pill is null", () => {
-    const { container } = render(<ChatModeRowPure branchPill={null} />);
-    expect(container.firstChild).toBeNull();
-  });
-
-  it("renders the BranchPill when present", () => {
-    const { getByTestId } = render(
-      <ChatModeRowPure
-        branchPill={<span data-testid="branch-pill">branch</span>}
-      />,
-    );
-    expect(getByTestId("branch-pill")).toBeInTheDocument();
-  });
-});
 
 const BRANCH_PILL_PROPS = {
   orgId: "org-1",

@@ -670,14 +670,10 @@ export function ChatInput({
                       )}
                     </div>
 
-                    {/* Right Actions (branch/mode, model, mic, send) */}
+                    {/* Right Actions (runtime, model, mic, send). The branch
+                        selector now lives in the toolbar breadcrumb. */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      {showInlineModeRow && (
-                        <ChatModeRow
-                          virtualMcp={fullVm}
-                          currentBranch={taskCtx?.currentBranch ?? null}
-                        />
-                      )}
+                      {showInlineModeRow && <ChatModeRow virtualMcp={fullVm} />}
                       <TierTrigger />
 
                       {/* Microphone button — always enabled; the composer has

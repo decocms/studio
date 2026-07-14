@@ -38,7 +38,13 @@ import {
   OrgSwitcherPopover,
 } from "@/web/components/header/org-switcher";
 import { AgentScopePicker } from "@/web/components/sidebar/agents-section";
-import { useThreads } from "@/web/components/chat/store/hooks";
+import { BranchPill } from "@/web/components/chat/pills/branch-pill";
+import {
+  useThreadActions,
+  useThreads,
+} from "@/web/components/chat/store/hooks";
+import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { authClient } from "@/web/lib/auth-client";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { findReusableNewChat } from "@/web/lib/reusable-new-chat";
 import { usePendingInvitations } from "@/web/hooks/use-pending-invitations";
@@ -100,6 +106,52 @@ function AgentCrumb({
         }
       />
     </div>
+  );
+}
+
+/**
+ * Branch crumb — the last segment (`… › agent › branch`), shown only inside a
+ * thread whose agent is a sandbox agent (imported from GitHub with an attached
+ * connection). Non-sandbox agents have no branch concept, so this renders
+ * nothing. Reuses the chat's `BranchPill` with `placement="header"`.
+ *
+ * The breadcrumb lives above the `ChatContextProvider`, so it can't read the
+ * chat task context. It resolves the active thread's branch + lock state from
+ * the ThreadManager store instead (`harness_id != null` ⇒ runtime pinned ⇒
+ * branch locked, matching `ChatTaskContextValue.isThreadLocked`).
+ */
+function BranchCrumb({ agentId, taskId }: { agentId: string; taskId: string }) {
+  const entity = useVirtualMCP(agentId);
+  const { threads } = useThreads();
+  const { setBranch } = useThreadActions();
+  const { org } = useProjectContext();
+  const { data: session } = authClient.useSession();
+
+  const githubRepo = getActiveGithubRepo(entity);
+  const connectionId = githubRepo?.connectionId;
+  if (!githubRepo || !connectionId) return null;
+
+  const activeTask = threads.find((t) => t.id === taskId);
+  const userLabel = session?.user?.name ?? session?.user?.email?.split("@")[0];
+
+  return (
+    <BreadcrumbItem>
+      <BranchPill
+        orgId={org.id}
+        orgSlug={org.slug}
+        userId={session?.user?.id ?? ""}
+        userLabel={userLabel}
+        virtualMcpId={agentId}
+        connectionId={connectionId}
+        owner={githubRepo.owner}
+        repo={githubRepo.name}
+        sandboxMap={entity?.metadata?.sandboxMap}
+        value={activeTask?.branch ?? null}
+        onChange={(next) => void setBranch(taskId, next)}
+        locked={activeTask?.harness_id != null}
+        placement="header"
+      />
+    </BreadcrumbItem>
   );
 }
 
@@ -210,6 +262,13 @@ export function ShellBreadcrumb() {
             />
           </Suspense>
         </BreadcrumbItem>
+
+        {/* branch → only inside a thread on a sandbox agent; hidden otherwise */}
+        {params.taskId && (
+          <Suspense fallback={null}>
+            <BranchCrumb agentId={activeAgentId} taskId={params.taskId} />
+          </Suspense>
+        )}
       </BreadcrumbList>
     </Breadcrumb>
   );

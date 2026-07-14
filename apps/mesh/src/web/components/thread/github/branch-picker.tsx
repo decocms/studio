@@ -139,14 +139,14 @@ export function BranchPicker({
           <span className="inline-flex min-w-0 shrink">
             <PopoverTrigger asChild>
               <Button
-                variant={isHeader ? "outline" : "ghost"}
+                variant="ghost"
                 size={isHeader ? "sm" : "default"}
                 aria-label={label}
                 disabled={disabled}
                 className={cn(
                   "font-mono shrink min-w-0 max-w-[200px]",
                   isHeader
-                    ? "gap-1.5 text-xs"
+                    ? "gap-1.5 text-xs text-foreground hover:bg-accent/60"
                     : cn(
                         "text-xs text-muted-foreground hover:text-foreground transition-[gap] duration-200",
                         disabled
