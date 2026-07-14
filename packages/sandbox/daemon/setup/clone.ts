@@ -357,8 +357,27 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
       const code = await runStep(step, deps);
       if (code !== 0) return { code };
     }
-    const fetchRef = branchOnRemote
-      ? `+refs/heads/${branchOnRemote}:refs/remotes/origin/${branchOnRemote}`
+    // When no branch was requested (and none needs forking locally), `git
+    // clone` would land on the remote's default branch as a real local
+    // branch. Mirror that here by resolving the default branch name first —
+    // otherwise `checkout FETCH_HEAD` below leaves the working tree in
+    // detached HEAD, unlike the normal clone path (see clone.test.ts).
+    let defaultBranch: string | null = null;
+    if (!branchOnRemote && !branchToForkLocally) {
+      const { code: symrefCode, output } = await runNetworkStepCapture(
+        git(["ls-remote", "--symref", cloneUrl, "HEAD"], askpassPath),
+        deps,
+      );
+      const resolved =
+        symrefCode === 0
+          ? (output.match(/ref:\s+refs\/heads\/(\S+)\s+HEAD/)?.[1] ?? null)
+          : null;
+      if (resolved && isValidRemoteBranchName(resolved))
+        defaultBranch = resolved;
+    }
+    const branchToTrack = branchOnRemote ?? defaultBranch;
+    const fetchRef = branchToTrack
+      ? `+refs/heads/${branchToTrack}:refs/remotes/origin/${branchToTrack}`
       : "HEAD";
     const fetchCode = await runNetworkStep(
       git(["fetch", "--depth", "1", "origin", fetchRef], askpassPath, {
@@ -374,14 +393,14 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
     // overwritten"). Force lets the committed branch content win; only files
     // that collide with tracked paths are overwritten — `.decocms/daemon.json`
     // (not tracked on the branch) is left in place.
-    const checkoutCmd = branchOnRemote
+    const checkoutCmd = branchToTrack
       ? git(
           [
             "checkout",
             "-f",
             "-B",
-            branchOnRemote,
-            `refs/remotes/origin/${branchOnRemote}`,
+            branchToTrack,
+            `refs/remotes/origin/${branchToTrack}`,
           ],
           askpassPath,
           { cwd: dir },
@@ -401,7 +420,7 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
     }
     return {
       code: 0,
-      ...(branchOnRemote ? { fetchBase: deferBaseFetch(branchOnRemote) } : {}),
+      ...(branchToTrack ? { fetchBase: deferBaseFetch(branchToTrack) } : {}),
     };
   }
 
