@@ -45,7 +45,7 @@ export class OrganizationSettingsStorage
           ? JSON.parse(record.default_home_agents)
           : record.default_home_agents
         : null,
-      commerce_discovery_only: record.commerce_discovery_only ?? null,
+      reports_only: record.reports_only ?? null,
       task_board_enabled: record.task_board_enabled,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
@@ -62,7 +62,7 @@ export class OrganizationSettingsStorage
         | "registry_config"
         | "simple_mode"
         | "default_home_agents"
-        | "commerce_discovery_only"
+        | "reports_only"
         | "task_board_enabled"
       >
     >,
@@ -86,10 +86,10 @@ export class OrganizationSettingsStorage
     // Boolean flag: unlike the JSON columns above, an explicit `false` must
     // persist, so `undefined` (field absent from the update) is the only value
     // that skips the write — the "truthy-or-skip" trick would swallow `false`.
-    const commerceDiscoveryOnly =
-      data?.commerce_discovery_only === undefined
+    const reportsOnly =
+      data?.reports_only === undefined
         ? undefined
-        : data.commerce_discovery_only;
+        : data.reports_only;
 
     await this.db
       .insertInto("organization_settings")
@@ -100,7 +100,7 @@ export class OrganizationSettingsStorage
         registry_config: registryConfigJson,
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
-        commerce_discovery_only: commerceDiscoveryOnly ?? null,
+        reports_only: reportsOnly ?? null,
         task_board_enabled: data?.task_board_enabled,
         createdAt: now,
         updatedAt: now,
@@ -114,7 +114,7 @@ export class OrganizationSettingsStorage
           default_home_agents: defaultHomeAgentsJson
             ? defaultHomeAgentsJson
             : undefined,
-          commerce_discovery_only: commerceDiscoveryOnly,
+          reports_only: reportsOnly,
           task_board_enabled: data?.task_board_enabled,
           updatedAt: now,
         }),
@@ -131,7 +131,7 @@ export class OrganizationSettingsStorage
         registry_config: data?.registry_config ?? null,
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
-        commerce_discovery_only: data?.commerce_discovery_only ?? null,
+        reports_only: data?.reports_only ?? null,
         task_board_enabled: data?.task_board_enabled ?? false,
         createdAt: now,
         updatedAt: now,

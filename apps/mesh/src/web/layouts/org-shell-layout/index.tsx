@@ -38,7 +38,7 @@ import {
 } from "@/web/layouts/shell-controls";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
-import { useCommerceDiscoveryOnly } from "@/web/hooks/use-organization-settings";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
 
@@ -48,10 +48,10 @@ function RouteFallback() {
 
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
-  // Commerce-discovery-only orgs hide the whole navigation surface (agents,
+  // Reports-only orgs hide the whole navigation surface (agents,
   // threads, settings): the sidebar and its trigger are dropped so only the
-  // commerce diagnostic remains reachable.
-  const commerceOnly = useCommerceDiscoveryOnly();
+  // reports diagnostic remains reachable.
+  const reportsOnly = useReportsOnly();
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
     SIDEBAR_OPEN_STORAGE_KEY,
     false,
@@ -67,7 +67,7 @@ export default function OrgShellLayout() {
               {isMobile ? (
                 <Toolbar.Header className="grid-cols-1 px-1 pr-1">
                   <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto] items-center gap-2">
-                    {!commerceOnly && <SidebarTriggerButton />}
+                    {!reportsOnly && <SidebarTriggerButton />}
                     <ShellBreadcrumb />
                     <LinkedDesktopIndicator />
                     <div aria-hidden className="min-w-0" />
@@ -102,7 +102,7 @@ export default function OrgShellLayout() {
                   } as Record<string, string>
                 }
               >
-                {!isMobile && !commerceOnly && (
+                {!isMobile && !reportsOnly && (
                   <>
                     <StudioSidebar />
                     <SidebarResizeHandle
@@ -127,7 +127,7 @@ export default function OrgShellLayout() {
                   </div>
                 </SidebarInset>
               </SidebarLayout>
-              {isMobile && !commerceOnly && (
+              {isMobile && !reportsOnly && (
                 <MobileSidebarSheet
                   renderSidebar={({ onClose }) => (
                     <div className="flex h-full">

@@ -160,7 +160,7 @@ export interface OrganizationSettingsTable {
   registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
-  commerce_discovery_only: boolean | null;
+  reports_only: boolean | null;
   task_board_enabled: ColumnType<boolean, boolean | undefined, boolean>;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
@@ -173,7 +173,7 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
-  commerce_discovery_only: boolean | null;
+  reports_only: boolean | null;
   task_board_enabled: boolean;
   createdAt: Date | string;
   updatedAt: Date | string;

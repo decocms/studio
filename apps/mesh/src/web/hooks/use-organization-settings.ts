@@ -42,7 +42,7 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
-  commerce_discovery_only: boolean | null;
+  reports_only: boolean | null;
   task_board_enabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -55,7 +55,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   registry_config: null,
   simple_mode: null,
   default_home_agents: null,
-  commerce_discovery_only: null,
+  reports_only: null,
   task_board_enabled: false,
 };
 
@@ -142,7 +142,7 @@ type OrgSettingsUpdateInput = Partial<
     | "registry_config"
     | "simple_mode"
     | "default_home_agents"
-    | "commerce_discovery_only"
+    | "reports_only"
     | "task_board_enabled"
   >
 >;
@@ -232,38 +232,38 @@ export function useUpdateSimpleMode() {
 }
 
 /**
- * Whether the org is collapsed to the commerce discovery panel (everything
+ * Whether the org is collapsed to the reports panel (everything
  * else in Studio hidden). Non-blocking read — used for cosmetic gating like
  * hiding the sidebar, where a brief pre-resolution render is harmless.
  */
-export function useCommerceDiscoveryOnly(): boolean {
+export function useReportsOnly(): boolean {
   const { data } = useOrganizationSettings(
-    (s) => s.commerce_discovery_only ?? false,
+    (s) => s.reports_only ?? false,
   );
   return data ?? false;
 }
 
 /**
- * Suspense variant of {@link useCommerceDiscoveryOnly}. Blocks on the shared
+ * Suspense variant of {@link useReportsOnly}. Blocks on the shared
  * org-settings query (already warmed by the shell) so routing gates can decide
  * to redirect without first flashing the full product surface.
  */
-export function useCommerceDiscoveryOnlyGate(): boolean {
+export function useReportsOnlyGate(): boolean {
   const { org } = useProjectContext();
   const { data } = useSuspenseQuery(
     organizationSettingsQueryOptions(org.slug, org.id),
   );
-  return data.commerce_discovery_only ?? false;
+  return data.reports_only ?? false;
 }
 
-export function useUpdateCommerceDiscoveryOnly() {
+export function useUpdateReportsOnly() {
   const mutation = useUpdateOrganizationSettings();
   return {
     ...mutation,
     mutate: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
-      mutation.mutate({ commerce_discovery_only: enabled }, options),
+      mutation.mutate({ reports_only: enabled }, options),
     mutateAsync: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
-      mutation.mutateAsync({ commerce_discovery_only: enabled }, options),
+      mutation.mutateAsync({ reports_only: enabled }, options),
   };
 }
 

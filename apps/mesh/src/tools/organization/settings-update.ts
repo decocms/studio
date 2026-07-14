@@ -26,7 +26,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     registry_config: RegistryConfigSchema.optional(),
     simple_mode: SimpleModeConfigSchema.optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.optional(),
-    commerce_discovery_only: z.boolean().optional(),
+    reports_only: z.boolean().optional(),
     task_board_enabled: z.boolean().optional(),
   }),
 
@@ -59,7 +59,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         registry_config: input.registry_config,
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,
-        commerce_discovery_only: input.commerce_discovery_only,
+        reports_only: input.reports_only,
         task_board_enabled: input.task_board_enabled,
       },
     );

@@ -50,7 +50,7 @@ import {
   HardDrive,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { useCommerceDiscoveryOnlyGate } from "@/web/hooks/use-organization-settings";
+import { useReportsOnlyGate } from "@/web/hooks/use-organization-settings";
 import { useCapabilities, type CapabilityId } from "@/web/hooks/use-capability";
 import { usePendingJoinRequests } from "@/web/hooks/use-join-requests";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -468,13 +468,13 @@ function SettingsInset() {
 export default function SettingsLayout() {
   const isMobile = useIsMobile();
   const { org } = useProjectContext();
-  const commerceOnly = useCommerceDiscoveryOnlyGate();
+  const reportsOnly = useReportsOnlyGate();
 
-  // Settings is part of the product surface hidden for commerce-discovery-only
+  // Settings is part of the product surface hidden for reports-only
   // orgs — bounce any direct navigation back to the diagnostic panel.
-  if (commerceOnly) {
+  if (reportsOnly) {
     return (
-      <Navigate to="/commerce-onboarding" search={{ org: org.slug }} replace />
+      <Navigate to="/reports-onboarding" search={{ org: org.slug }} replace />
     );
   }
 
