@@ -5,6 +5,7 @@
  * against a local bare git repo (file:// — hermetic, no network) and waits for
  * the setup orchestrator to drain. Black-box throughout (see helpers).
  */
+import { execSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
 import {
@@ -144,6 +145,40 @@ describe("daemon e2e: git (cloned repo)", () => {
     expect(res.status).toBe(200);
     expect(((await res.json()) as { pushed: boolean }).pushed).toBe(true);
   });
+
+  // Windows Node can't deliver a catchable SIGTERM — kill("SIGTERM") tears the
+  // process down abruptly, so the shutdown handler never runs. Graceful
+  // termination is a POSIX/k8s concern (the daemon runs on Linux in prod).
+  it.skipIf(process.platform === "win32")(
+    "SIGTERM triggers a graceful publish to origin before exit",
+    async () => {
+      await writeRepoFile(d, "graceful.txt", "saved on shutdown\n");
+
+      // origin has no `sandbox-work` branch until the shutdown publish pushes.
+      const remoteRef = () =>
+        execSync(`git ls-remote ${repo.url} refs/heads/sandbox-work`, {
+          encoding: "utf8",
+        }).trim();
+      expect(remoteRef()).toBe("");
+
+      // Real OS signal — the same SIGTERM k8s delivers on a spot drain / node
+      // eviction (~120s grace). shutdown() must commit + push before exit(0),
+      // or the user's in-progress work dies with the pod.
+      const start = Date.now();
+      const exited = new Promise<void>((resolve) =>
+        d.proc.once("exit", () => resolve()),
+      );
+      d.proc.kill("SIGTERM");
+      await exited;
+      const elapsedMs = Date.now() - start;
+
+      // Well under the graceful-termination budget; a local push is ~instant.
+      expect(elapsedMs).toBeLessThan(30_000);
+      // The change reached origin — work survived the pod dying.
+      expect(remoteRef()).not.toBe("");
+    },
+    SETUP_TIMEOUT_MS,
+  );
 });
 
 // --- setup routes ------------------------------------------------------------
