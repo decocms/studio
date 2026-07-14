@@ -1,5 +1,9 @@
 import { useRef } from "react";
 import {
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
   Bold01,
   Heading01,
   Heading02,
@@ -11,6 +15,7 @@ import {
 } from "@untitledui/icons";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import TextAlign from "@tiptap/extension-text-align";
 import { Label } from "@deco/ui/components/label.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import type { FieldProps } from "./field-props";
@@ -63,6 +68,9 @@ export function RichTextField({
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
+      }),
+      TextAlign.configure({
+        types: ["heading", "paragraph"],
       }),
     ],
     content: strValue || "",
@@ -180,6 +188,37 @@ export function RichTextField({
             }}
           >
             <Link01 size={14} />
+          </ToolbarButton>
+
+          <div className="mx-0.5 h-4 w-px bg-border" />
+
+          <ToolbarButton
+            active={editor.isActive({ textAlign: "left" })}
+            label="Align left"
+            onClick={() => editor.chain().focus().setTextAlign("left").run()}
+          >
+            <AlignLeft size={14} />
+          </ToolbarButton>
+          <ToolbarButton
+            active={editor.isActive({ textAlign: "center" })}
+            label="Align center"
+            onClick={() => editor.chain().focus().setTextAlign("center").run()}
+          >
+            <AlignCenter size={14} />
+          </ToolbarButton>
+          <ToolbarButton
+            active={editor.isActive({ textAlign: "right" })}
+            label="Align right"
+            onClick={() => editor.chain().focus().setTextAlign("right").run()}
+          >
+            <AlignRight size={14} />
+          </ToolbarButton>
+          <ToolbarButton
+            active={editor.isActive({ textAlign: "justify" })}
+            label="Justify"
+            onClick={() => editor.chain().focus().setTextAlign("justify").run()}
+          >
+            <AlignJustify size={14} />
           </ToolbarButton>
         </div>
         <EditorContent editor={editor} />

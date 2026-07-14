@@ -38,7 +38,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "4.15.0",
+      "version": "4.22.3",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -65,6 +65,7 @@
         "@openrouter/ai-sdk-provider": "^2.9.1",
         "@opentelemetry/core": "^2.6.0",
         "@tanstack/react-virtual": "3.13.24",
+        "@tiptap/extension-text-align": "3.20.2",
         "@xterm/addon-fit": "^0.11.0",
         "@xterm/xterm": "^6.0.0",
         "embedded-postgres": "^18.3.0-beta.16",
@@ -206,7 +207,7 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "1.1.0",
+      "version": "1.2.1",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/sandbox": "workspace:*",
@@ -228,7 +229,7 @@
     },
     "packages/harness": {
       "name": "@decocms/harness",
-      "version": "2.1.0",
+      "version": "2.2.0",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.85",
         "@ai-sdk/google": "^3.0.83",
@@ -308,7 +309,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.14.4",
+      "version": "1.15.7",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/std": "workspace:*",
@@ -1633,6 +1634,8 @@
     "@tiptap/extension-strike": ["@tiptap/extension-strike@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-Jivcc5Hgw2moIDfVoLEuJumDtw38k2mzEMYt3oZQnvE5d0ttXhWWR0LbLm5LBX3oxlc74I3NSi+Q4ixQHiDtvA=="],
 
     "@tiptap/extension-text": ["@tiptap/extension-text@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-I1rVt6JTi/itgsFqXp+JfxWn9fEewIxiIaaaMUmaCJ6HChQSvYlVWy1B/RixmbCCPaL/FxybEa/Tg9MugyOJYA=="],
+
+    "@tiptap/extension-text-align": ["@tiptap/extension-text-align@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-ior4BAu+F0dn4ErqWlAmkyy/qTaIiaJ72VBwSvEUEuuXgX8Htyg9hfE38O8MXZw/KLpL2X7i0P6VbDHhaAWA4Q=="],
 
     "@tiptap/extension-underline": ["@tiptap/extension-underline@3.20.2", "", { "peerDependencies": { "@tiptap/core": "^3.20.2" } }, "sha512-oVszIGkRtg8NLhop/t5kco6suWlDUKW9cqhL6wwd19aLztr+tMU/u8+kPG2cjjYZ+XoMZOoKfkOt7he2iU5/0A=="],
 
