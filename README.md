@@ -17,6 +17,7 @@
 
 ## What is Deco CMS?
 
+[![SafeSkill 46/100](https://img.shields.io/badge/SafeSkill-46%2F100_Use%20with%20Caution-orange)](https://safeskill.dev/scan/decocms-studio)
 Studio is where you hire agents, connect tools, and organize them into projects that actually do things.
 
 Agents come with real skills and battle-tested prompts. Connections give them access to your tools — GitHub, Slack, Postgres, OpenRouter, anything that speaks MCP — set up through a web UI with one-click OAuth. Projects bring agents and connections together around a goal: each project gets its own sidebar and UI, shaped by what's inside it.
