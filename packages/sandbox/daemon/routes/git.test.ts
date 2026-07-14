@@ -10,6 +10,7 @@ import {
   makeGitPublishHandler,
   makeGitRebaseHandler,
   makeGitStatusHandler,
+  publish,
 } from "./git";
 
 function initRepo(): { appRoot: string; repoDir: string } {
@@ -347,6 +348,29 @@ describe("git routes", () => {
       return;
     }
     expect(res.status).toBe(200);
+  });
+
+  it("publish() skips cleanly on a never-cloned dir (shutdown path)", () => {
+    const appRoot = mkdtempSync(join(tmpdir(), "git-route-root-"));
+    const repoDir = join(appRoot, "app");
+    mkdirSync(repoDir, { recursive: true });
+    // The shutdown handler calls publish() directly, bypassing the handler's
+    // isGitRepo() guard — it must not throw "not a git repository".
+    expect(publish({ appRoot, repoDir }, "shutdown sync")).toEqual({
+      pushed: false,
+    });
+  });
+
+  it("publish() rejects a tokenless github origin with a clear error", () => {
+    const { appRoot, repoDir } = initRepo();
+    gitSync(["remote", "add", "origin", "https://github.com/owner/repo.git"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    writeFileSync(join(repoDir, "README.md"), "changed\n");
+    expect(() => publish({ appRoot, repoDir }, "no creds")).toThrow(
+      /authenticated clone URL/,
+    );
   });
 
   it("publish skips failing pre-commit hooks", async () => {
