@@ -146,7 +146,10 @@ describe("daemon e2e: git (cloned repo)", () => {
     expect(((await res.json()) as { pushed: boolean }).pushed).toBe(true);
   });
 
-  it(
+  // Windows Node can't deliver a catchable SIGTERM — kill("SIGTERM") tears the
+  // process down abruptly, so the shutdown handler never runs. Graceful
+  // termination is a POSIX/k8s concern (the daemon runs on Linux in prod).
+  it.skipIf(process.platform === "win32")(
     "SIGTERM triggers a graceful publish to origin before exit",
     async () => {
       await writeRepoFile(d, "graceful.txt", "saved on shutdown\n");
