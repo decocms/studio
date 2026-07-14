@@ -41,18 +41,25 @@ This Helm chart encapsulates all Kubernetes resources necessary to run the appli
 ### Architecture
 ![Infrastructure](./img/deco-studio-infra-arch.jpg)
 
-## API nginx front-door topology
+## Web / API topology
 
-The main Studio Deployment runs each API pod as three containers:
+Two Deployments, split by tier:
 
-- nginx: service-facing front door on the `http` port, serving built SPA assets
-  from the custom nginx image and proxying API/system paths to local Bun
-  upstreams.
-- api-0: Bun API process on `127.0.0.1:3000`.
-- api-1: Bun API process on `127.0.0.1:3001`.
+- **API** (`<release>`): one Bun process per pod on port `3000`
+  (`MESH_DISPATCH_ROLE=api`). Fronted by the internal `<release>-api` ClusterIP
+  Service. Scales horizontally by pod count (HPA); the mesh PDB and any selector
+  on `app.kubernetes.io/name=<name>` keep matching these pods.
+- **Web** (`<release>-web`): nginx serving the baked SPA and reverse-proxying
+  `/api`, `/mcp`, `/health`, … to the `<release>-api` Service. This is the front
+  door — `nginx.frontDoorLabels` and the public `<release>` Service select these
+  pods. Config is rendered by the chart into a ConfigMap
+  (`<release>-nginx`) so the upstream points at the API Service.
 
-The separate `web.enabled` Deployment topology has been removed. nginx is part
-of every API pod and the Service targets nginx through `targetPort: http`.
+Zero-downtime rollouts: the web Deployment uses `maxUnavailable=0` and a
+`wait-for-api` initContainer that blocks Ready until the API Service answers
+`/health/live`, so a rolling web pod never takes traffic before the API it
+proxies to is up (API rolls first, then web). See
+`tests/zero-downtime-rollout.sh` (exercised in CI on kind).
 
 Because API containers run with `MESH_DISPATCH_ROLE=api`, worker pods are
 required:

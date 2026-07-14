@@ -1,0 +1,23 @@
+{{- if .Values.nginx.pdb.enabled }}
+{{/*
+PodDisruptionBudget for the web/front-door tier. Keeps at least one nginx pod
+serving through voluntary disruptions (node drains, cluster upgrades), so the
+public LB always has a healthy target. Rollouts are already safe via the web
+Deployment's maxUnavailable=0 strategy; this covers involuntary/drain cases.
+*/}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-web
+  labels:
+    {{- include "chart-deco-studio.webLabels" . | nindent 4 }}
+spec:
+  {{- if .Values.nginx.pdb.minAvailable }}
+  minAvailable: {{ .Values.nginx.pdb.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ .Values.nginx.pdb.maxUnavailable | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "chart-deco-studio.webSelectorLabels" . | nindent 6 }}
+{{- end }}

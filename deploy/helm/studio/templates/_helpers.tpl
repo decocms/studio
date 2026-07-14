@@ -53,11 +53,35 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
-Selector labels
+Selector labels — the API/mesh tier. The main Deployment keeps these unchanged
+(name = chart/nameOverride) so its selector is never mutated on upgrade, and any
+external selector that already targets the mesh (e.g. a PodDisruptionBudget on
+app.kubernetes.io/name) keeps matching the API pods after the web tier is split
+out.
 */}}
 {{- define "chart-deco-studio.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+Web (nginx front-door) tier — distinct app.kubernetes.io/name ("<name>-web"),
+mirroring the worker tier, so the API selector, the API Service and any mesh PDB
+never match web pods and vice-versa.
+*/}}
+{{- define "chart-deco-studio.webSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-web
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{- define "chart-deco-studio.webLabels" -}}
+{{ include "chart-deco-studio.webSelectorLabels" . }}
+app.kubernetes.io/component: web
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+helm.sh/chart: {{ include "chart-deco-studio.chart" . }}
 {{- end }}
 
 {{/*

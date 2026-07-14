@@ -87,17 +87,41 @@ worker:
   # Extra env for worker pods only (merged after the shared envFrom).
   env: []
 
+# nginx runs as its own front-door Deployment (nginx-deployment.yaml): serves the
+# baked SPA and reverse-proxies to the API Service. The API tier is a separate
+# Deployment (deployment.yaml) with one Bun process per pod.
 nginx:
+  # Front-door replicas. nginx is stateless and cheap; a small fixed count is
+  # plenty. Enable autoscaling below if SPA/static traffic ever needs it.
+  replicaCount: 2
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 80
+  # Grace period for the web pods (nginx drains fast; no long-lived work).
+  terminationGracePeriodSeconds: 30
+  # PodDisruptionBudget for the web tier — keeps a front-door pod serving through
+  # node drains. Rollouts are already covered by maxUnavailable=0.
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+    # minAvailable: 1  # set instead of maxUnavailable if preferred
+  # The initContainer polls this API path until it answers before nginx starts,
+  # so a rolling web pod never takes traffic before the API is reachable.
+  apiWaitPath: /health/live
+  apiWaitMaxTries: 60
   image:
     repository: ghcr.io/decocms/studio/studio-nginx
     tag: ""
     pullPolicy: IfNotPresent
+  # nginx is a thin proxy/static server — small requests, real headroom in limit.
   resources:
     requests:
-      cpu: "500m"
-      memory: "128Mi"
+      cpu: "50m"
+      memory: "64Mi"
     limits:
-      memory: "256Mi"
+      memory: "128Mi"
   securityContext:
     runAsNonRoot: true
     allowPrivilegeEscalation: false
@@ -106,11 +130,11 @@ nginx:
         - ALL
     readOnlyRootFilesystem: false
   preStopSleepSeconds: 15
-  # Labels stamped onto the combo (nginx + API) pods so a front-door
-  # LoadBalancer (e.g. the deco-apps-cd NLB) can select them by a stable label
-  # instead of app.kubernetes.io/name. Applied to the combo deployment ONLY
-  # (never the worker), so the raw-API worker is never registered as a public
-  # target. Empty by default; set e.g. { decocms.com/frontdoor: "true" }.
+  # Labels stamped onto the web (front-door) pods so a LoadBalancer (e.g. the
+  # deco-apps-cd NLB) can select them by a stable label instead of
+  # app.kubernetes.io/name. Applied to the web Deployment ONLY (never the API or
+  # worker), so only the front door is registered as a public target. Empty by
+  # default; set e.g. { decocms.com/frontdoor: "true" }.
   frontDoorLabels: {}
 
 configMap:
@@ -206,7 +230,14 @@ readinessProbe:
 
 terminationGracePeriodSeconds: 120
 
-# Optional lifecycle hooks (preStop, postStart)
+# API pod preStop drain: seconds to keep serving after the pod is marked for
+# deletion, so kube-proxy removes it from the API Service endpoints before the
+# process shuts down (no connection lands on a draining pod). Ignored when
+# `lifecycle` below is set (that takes over the hook entirely).
+preStopSleepSeconds: 5
+
+# Optional lifecycle hooks (preStop, postStart). When set, replaces the default
+# preStop drain above.
 # lifecycle: {}
 
 nodeSelector:

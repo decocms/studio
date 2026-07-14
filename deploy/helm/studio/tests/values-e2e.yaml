@@ -1,0 +1,68 @@
+# Zero-downtime rollout e2e values. Uses stub images so the test validates the
+# CHART TOPOLOGY (web↔api split, Service selectors, init-container ordering,
+# maxUnavailable=0 rollout) without the real studio image or a database.
+#
+#   api tier  -> hashicorp/http-echo: 200s every path (incl. /health/live)
+#   web tier  -> stock nginx-unprivileged + the chart's rendered proxy config,
+#                so /healthz is served locally and /api/* is proxied to the api
+#                Service exactly as in prod.
+nameOverride: studio
+
+replicaCount: 2
+autoscaling:
+  enabled: false
+
+image:
+  repository: hashicorp/http-echo
+  tag: "1.0"
+  pullPolicy: IfNotPresent
+  command: ["/http-echo", "-listen=:3000", "-text=ok"]
+
+# http-echo answers 200 on every path, so the real probe paths just work.
+startupProbe:
+  httpGet: { path: /health/live, port: http }
+  failureThreshold: 30
+  periodSeconds: 2
+livenessProbe:
+  httpGet: { path: /health/live, port: http }
+readinessProbe:
+  httpGet: { path: /health/ready, port: http }
+
+nginx:
+  replicaCount: 2
+  image:
+    repository: nginxinc/nginx-unprivileged
+    tag: "1.27-alpine"
+    pullPolicy: IfNotPresent
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+
+worker:
+  # Required by chart validation (API-only main deployment). Runs the stub too;
+  # irrelevant to the front-door zero-downtime assertion.
+  enabled: true
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+nats:
+  enabled: false
+persistence:
+  enabled: false
+s3Sync:
+  enabled: false
+metrics:
+  scrape: false
+database:
+  # http-echo ignores this; the dummy URL only satisfies the chart validation
+  # that replicaCount>1 needs postgresql (or distributed storage).
+  engine: postgresql
+  url: "postgres://stub:stub@stub:5432/stub"
+
+# The chart default topologySpread selector hardcodes the chart name; drop it in
+# the single-node test cluster so pods aren't held Pending.
+topologySpreadConstraints: []
+# NOTE: the chart pins nodeSelector.kubernetes.io/arch=amd64. Helm deep-merges
+# maps, so it can't be cleared from a values file ({} merges to the default) —
+# the test script clears it with `--set nodeSelector=null` so pods schedule on
+# any-arch nodes (arm64 kind on Apple Silicon, amd64 in CI).

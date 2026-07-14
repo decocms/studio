@@ -152,3 +152,26 @@ jobs:
             --set database.url=postgresql://ci:ci@postgres.example.com:5432/studio \
             -f deploy/helm/studio/examples/values-clickhouse.yaml \
             > /dev/null
+
+  studio-zero-downtime:
+    name: studio zero-downtime rollout (kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      # Real cluster so we exercise the actual web↔api split, Service selectors,
+      # init-container ordering and the maxUnavailable=0 rollout — a `helm
+      # template` render can't prove zero-downtime.
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: studio-zdt
+
+      - name: Zero-downtime rollout test
+        run: bash deploy/helm/studio/tests/zero-downtime-rollout.sh

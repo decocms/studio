@@ -1,0 +1,25 @@
+{{/*
+Internal ClusterIP for the API tier. nginx (web Deployment) proxies to this
+Service; kube-proxy load-balances across the ready API pods. Not the public
+front door — that is the {{ include "chart-deco-studio.fullname" . }} Service,
+which selects the web pods.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-api
+  labels:
+    {{- include "chart-deco-studio.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.configMap.meshConfig.PORT | default "3000" | int }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "chart-deco-studio.selectorLabels" . | nindent 4 }}
+  {{- with .Values.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+  {{- end }}

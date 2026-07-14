@@ -1,0 +1,150 @@
+{{/*
+Web / front-door tier: nginx serving the baked SPA and reverse-proxying to the
+API Service. Split out of the combo Deployment so the API scales by pod count.
+
+Zero-downtime contract:
+  - RollingUpdate maxUnavailable=0 / maxSurge=1: a new web pod must become Ready
+    before an old one is removed, so the front-door Service always has a serving
+    endpoint.
+  - initContainer `wait-for-api` blocks Ready until the API Service answers
+    /health/live, so a freshly rolled web pod never takes traffic before the API
+    it proxies to exists (correct ordering: API first, then web).
+  - preStop `nginx -s quit` + grace drains in-flight connections on the way out.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-web
+  labels:
+    {{- include "chart-deco-studio.webLabels" . | nindent 4 }}
+spec:
+  {{- if not .Values.nginx.autoscaling.enabled }}
+  replicas: {{ .Values.nginx.replicaCount | default 2 }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "chart-deco-studio.webSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "chart-deco-studio.webLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        # The web tier IS the front door — the public LB selects these pods.
+        {{- with .Values.nginx.frontDoorLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # Roll the web pods whenever the proxy config changes.
+        checksum/nginx-config: {{ include (print $.Template.BasePath "/nginx-configmap.yaml") . | sha256sum }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.nginx.terminationGracePeriodSeconds | default 30 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "chart-deco-studio.serviceAccountName" . }}
+      securityContext:
+        {{- include "chart-deco-studio.podSecurityContext" . | nindent 8 }}
+      initContainers:
+        # Gate readiness on the API being reachable, so a new web pod never
+        # serves before the API Service has ready endpoints (ordered rollout).
+        - name: wait-for-api
+          image: "{{ .Values.nginx.image.repository }}{{- if and .Values.nginx.image.tag (hasPrefix "sha256:" .Values.nginx.image.tag) }}@{{ .Values.nginx.image.tag }}{{- else }}:{{ .Values.nginx.image.tag | default .Chart.AppVersion }}{{- end }}"
+          {{- with .Values.nginx.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              url="http://{{ include "chart-deco-studio.fullname" . }}-api:{{ .Values.configMap.meshConfig.PORT | default "3000" }}{{ .Values.nginx.apiWaitPath | default "/health/live" }}"
+              echo "waiting for API at $url ..."
+              i=0
+              until wget -q -T 2 -O /dev/null "$url"; do
+                i=$((i+1))
+                if [ "$i" -ge {{ .Values.nginx.apiWaitMaxTries | default 60 }} ]; then
+                  echo "API still not ready after $i tries; giving up"
+                  exit 1
+                fi
+                sleep 2
+              done
+              echo "API is ready"
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              memory: "32Mi"
+      containers:
+        - name: {{ .Chart.Name }}-web
+          {{- with .Values.nginx.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.nginx.image.repository }}{{- if and .Values.nginx.image.tag (hasPrefix "sha256:" .Values.nginx.image.tag) }}@{{ .Values.nginx.image.tag }}{{- else }}:{{ .Values.nginx.image.tag | default .Chart.AppVersion }}{{- end }}"
+          imagePullPolicy: {{ .Values.nginx.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          lifecycle:
+            preStop:
+              # Zero-downtime ordering: SLEEP FIRST while nginx keeps its listener
+              # open and serving, so kube-proxy removes this pod from the Service
+              # endpoints before it stops accepting — otherwise new connections
+              # race onto a pod that has already quit and get connection-refused.
+              # After preStop, the container's SIGQUIT stop-signal (nginx default)
+              # drains in-flight requests gracefully within terminationGracePeriod.
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - "sleep {{ .Values.nginx.preStopSleepSeconds | default 15 }}"
+          {{- with .Values.nginx.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: {{ include "chart-deco-studio.fullname" . }}-nginx
+            items:
+              - key: default.conf
+                path: default.conf
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
