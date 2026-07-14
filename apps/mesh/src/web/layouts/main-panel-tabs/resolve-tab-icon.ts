@@ -1,11 +1,13 @@
 import type { ComponentType, SVGProps } from "react";
 import {
+  Code02,
   Edit05,
   Folder,
   GitBranch01,
   Globe01,
   LayoutAlt04,
   Lightning01,
+  TextInput,
 } from "@untitledui/icons";
 import { getIconComponent, parseIconString } from "../../components/agent-icon";
 
@@ -22,6 +24,8 @@ export type SystemTabId =
   | "settings"
   | "automations"
   | "preview"
+  | "blocks"
+  | "code"
   | "content"
   | "git"
   | "files";
@@ -30,6 +34,8 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   settings: LayoutAlt04,
   automations: Lightning01,
   preview: Globe01,
+  blocks: TextInput,
+  code: Code02,
   content: Edit05,
   git: GitBranch01,
   files: Folder,
