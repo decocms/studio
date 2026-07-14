@@ -242,6 +242,7 @@ function defineWellKnownAgentVMCP(opts: {
   description: string;
   icon: string;
   instructions?: string | null;
+  ui?: VirtualMCPEntity["metadata"] extends { ui?: infer U } ? U : never;
 }): VirtualMCPEntity {
   return {
     id: opts.id,
@@ -254,7 +255,10 @@ function defineWellKnownAgentVMCP(opts: {
     updated_at: new Date().toISOString(),
     created_by: "system",
     updated_by: undefined,
-    metadata: { instructions: opts.instructions ?? null },
+    metadata: {
+      instructions: opts.instructions ?? null,
+      ...(opts.ui ? { ui: opts.ui } : {}),
+    },
     pinned: false,
     connections: [],
   };
@@ -288,6 +292,15 @@ export function getWellKnownDecopilotVirtualMCP(
     title: "Super Agent",
     description: "Default agent that aggregates all organization connections",
     icon: "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png",
+    // The org landing IS the Super Agent — it opens on the built-in Overview
+    // view (recent team activity) with chat alongside. No bespoke home screen;
+    // this is just an agent with a default view, like any other.
+    ui: {
+      layout: {
+        defaultMainView: { type: "overview" },
+        chatDefaultOpen: true,
+      },
+    },
   });
 }
 

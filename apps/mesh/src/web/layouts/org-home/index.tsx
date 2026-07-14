@@ -1,33 +1,49 @@
 /**
- * OrgHome — leaf component for /$org/. Renders HomePage inside the same
- * panel chrome the chat surface uses, full-bleed (no chat-main split).
+ * Org landing (`/$org`).
  *
- * No Chat.Provider, no ActiveTaskProvider — the home composer is wired
- * to the home submit path (URL autosend handoff) via Chat.Input's
- * optional-context fallback.
+ * There is no bespoke "home" screen anymore — the org landing is just the
+ * Super Agent, like every other agent. This resolver sends `/$org` to the
+ * Super Agent's home thread: it reuses the agent's existing empty "New chat"
+ * when there is one, otherwise mints a fresh id the agent shell will ensure via
+ * `useEnsureTask`. The Super Agent opens on its Overview default view (recent
+ * team activity) with chat alongside — driven entirely by its
+ * `metadata.ui.layout`, no special-casing here.
  */
-
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { HomePage } from "@/web/layouts/home-page";
+import { useState } from "react";
+import { Navigate } from "@tanstack/react-router";
+import {
+  getWellKnownDecopilotVirtualMCP,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
+import { useThreads } from "@/web/components/chat/store/hooks";
+import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 
 export default function OrgHome() {
-  const isMobile = useIsMobile();
+  const { org } = useProjectContext();
+  const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const { threads, status } = useThreads();
+  // Stable id for this mount, used only when there's no reusable "New chat".
+  const [freshId] = useState(() => crypto.randomUUID());
 
-  if (isMobile) {
-    return (
-      <div className="flex-1 min-h-0 flex flex-col bg-background overflow-hidden">
-        <HomePage />
-      </div>
-    );
-  }
+  // Wait for the open-thread list before deciding so a cold load reuses an
+  // existing Super Agent "New chat" instead of minting a duplicate.
+  if (status.kind === "loading") return <ShellRouteLoading />;
+
+  const existing = threads.find(
+    (t) =>
+      !t.hidden &&
+      t.virtual_mcp_id === decopilotId &&
+      t.title === "New chat" &&
+      (!t.status || t.status === "in_progress"),
+  );
+  const taskId = existing?.id ?? freshId;
 
   return (
-    <div className="flex-1 min-h-0 pb-1 pr-1 pl-0 pt-0">
-      <div className="h-full p-0.5 pt-0.25">
-        <div className="flex flex-col h-full bg-background overflow-hidden card-shadow rounded-[0.75rem]">
-          <HomePage />
-        </div>
-      </div>
-    </div>
+    <Navigate
+      to="/$org/$taskId"
+      params={{ org: org.slug, taskId }}
+      search={{ virtualmcpid: decopilotId }}
+      replace
+    />
   );
 }

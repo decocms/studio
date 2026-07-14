@@ -24,7 +24,7 @@ import { callStudioTool, useStudioTools } from "../../lib/studio-tools";
  * Query options for the org's AI provider keys. Shared with parallel-prefetch
  * batches so they warm the exact cache entry useAiProviderKeys reads.
  */
-export function aiProviderKeysQueryOptions(orgSlug: string, orgId: string) {
+function aiProviderKeysQueryOptions(orgSlug: string, orgId: string) {
   return {
     queryKey: KEYS.aiProviderKeys(orgId),
     staleTime: 60_000,

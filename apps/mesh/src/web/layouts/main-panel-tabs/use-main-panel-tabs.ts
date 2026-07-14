@@ -299,9 +299,15 @@ export function useMainPanelTabs(ctx: {
   // into a single detail view. On GitHub-linked vMCPs the contextual
   // work tabs (Preview, git) come first so they're closest to the panel;
   // Settings + Automations stay anchored at the right.
-  // Leading source tabs share one capability gate. Blocks resolves whether the
-  // current project supports CMS editing inside its own tab body.
-  const leadingSystemTabs = getSourceSystemTabs(hasClonableSource);
+  // The Overview view (the Super Agent's default) leads the bar so it reads as
+  // the agent's home. Data-driven off the configured default view — no
+  // per-agent special-case. Source tabs (Blocks · Preview · Code) share one
+  // capability gate via getSourceSystemTabs.
+  const leadingSystemTabs: Array<{ id: string; title: string }> = [];
+  if (effectiveDefaultMainView?.type === "overview") {
+    leadingSystemTabs.push({ id: "overview", title: "Overview" });
+  }
+  leadingSystemTabs.push(...getSourceSystemTabs(hasClonableSource));
 
   const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasClonableSource && showContentTab) {
