@@ -16,7 +16,13 @@
  * trigger is a disabled indicator; the tooltip explains a new chat is required
  * to change it.
  */
-import { Check, Cloud01, Lock01, Monitor01 } from "@untitledui/icons";
+import {
+  Check,
+  ChevronDown,
+  Cloud01,
+  Lock01,
+  Monitor01,
+} from "@untitledui/icons";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
@@ -93,7 +99,13 @@ function RuntimeItem({
   );
 }
 
-export function RuntimeSwitcher() {
+export function RuntimeSwitcher({
+  showLabel = false,
+}: {
+  /** Show the runtime name beside the icon. On: the spacious empty-chat
+   *  landing. Off (default): the dense in-conversation composer row. */
+  showLabel?: boolean;
+} = {}) {
   const { pendingSandboxProviderKind, setPendingAgentOption } = useChatPrefs();
   const { isThreadLocked, lockedSandbox } = useChatTask();
   const { vmEntry } = useSandboxLifecycle();
@@ -140,9 +152,15 @@ export function RuntimeSwitcher() {
           <span
             aria-disabled="true"
             aria-label={`Runtime: ${current.label} (locked)`}
-            className="inline-flex size-9 cursor-default items-center justify-center rounded-md text-muted-foreground"
+            className={cn(
+              "inline-flex cursor-default items-center rounded-md text-muted-foreground",
+              showLabel
+                ? "h-9 gap-1.5 px-2 text-xs font-medium"
+                : "size-9 justify-center",
+            )}
           >
             {iconGlyph}
+            {showLabel && <span className="truncate">{current.label}</span>}
           </span>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -160,11 +178,20 @@ export function RuntimeSwitcher() {
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              size="icon"
+              size={showLabel ? "sm" : "icon"}
               aria-label={`Runtime: ${current.label}`}
-              className="size-9 text-muted-foreground hover:text-foreground"
+              className={cn(
+                "text-muted-foreground hover:text-foreground",
+                showLabel ? "h-9 gap-1.5 px-2 text-xs font-medium" : "size-9",
+              )}
             >
               {iconGlyph}
+              {showLabel && (
+                <>
+                  <span className="truncate">{current.label}</span>
+                  <ChevronDown size={12} className="shrink-0 opacity-70" />
+                </>
+              )}
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>

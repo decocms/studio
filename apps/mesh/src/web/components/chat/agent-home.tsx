@@ -53,7 +53,11 @@ export function AgentHome({
           data-chat-above-row="true"
           className="@container/chat-bottom pb-1 flex justify-start gap-1"
         >
-          <ChatModeRow virtualMcp={fullVm} currentBranch={currentBranch} />
+          <ChatModeRow
+            virtualMcp={fullVm}
+            currentBranch={currentBranch}
+            showRuntimeLabel
+          />
         </div>
         <Chat.Input onOpenContextPanel={onOpenContextPanel} />
       </Chat.Footer>

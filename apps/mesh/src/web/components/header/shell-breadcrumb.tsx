@@ -38,6 +38,7 @@ import {
 import { AgentScopePicker } from "@/web/components/sidebar/agents-section";
 import { useThreads } from "@/web/components/chat/store/hooks";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { findReusableNewChat } from "@/web/lib/reusable-new-chat";
 
 const crumbBtnClass =
   "wco-no-drag inline-flex items-center gap-1.5 min-w-0 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
@@ -127,13 +128,8 @@ export function ShellBreadcrumb() {
     }
     // Reuse this agent's existing empty "New chat" if it has one, else start
     // one — so re-selecting the same agent focuses the empty chat instead of
-    // piling up duplicates. "New chat" is the never-auto-titled marker of an
-    // unused thread; we intentionally do NOT gate on status here (a fresh empty
-    // thread can carry any/no status), matching the org-home resolver. Gating
-    // on `in_progress` before is exactly what let duplicates accumulate.
-    const existing = threads.find(
-      (t) => !t.hidden && t.virtual_mcp_id === id && t.title === "New chat",
-    );
+    // piling up duplicates. See findReusableNewChat for why status isn't gated.
+    const existing = findReusableNewChat(threads, id);
     if (existing) {
       setTaskId(existing.id, id);
     } else {

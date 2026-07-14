@@ -70,6 +70,9 @@ function LockedRuntimeChip({ harness }: { harness: HarnessId }) {
 interface SmartProps {
   virtualMcp: VirtualMCPEntity | null | undefined;
   currentBranch: string | null;
+  /** Show the runtime switcher's full label. On for the spacious empty-chat
+   *  landing; off (default) for the dense in-conversation composer row. */
+  showRuntimeLabel?: boolean;
 }
 
 /**
@@ -81,7 +84,11 @@ interface SmartProps {
  *
  * Locked flag is derived from `useOptionalChatStream().messages.length > 0`.
  */
-export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
+export function ChatModeRow({
+  virtualMcp,
+  currentBranch,
+  showRuntimeLabel = false,
+}: SmartProps) {
   const stream = useOptionalChatStream();
   const taskCtx = useOptionalChatTask();
   const locked =
@@ -131,7 +138,11 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
 
   return (
     <>
-      {hasSandbox ? <RuntimeSwitcher /> : lockedRuntime}
+      {hasSandbox ? (
+        <RuntimeSwitcher showLabel={showRuntimeLabel} />
+      ) : (
+        lockedRuntime
+      )}
       <ChatModeRowPure branchPill={branchPill} />
     </>
   );

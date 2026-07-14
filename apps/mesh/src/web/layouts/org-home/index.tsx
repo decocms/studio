@@ -17,6 +17,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { useThreads } from "@/web/components/chat/store/hooks";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
+import { findReusableNewChat } from "@/web/lib/reusable-new-chat";
 
 export default function OrgHome() {
   const { org } = useProjectContext();
@@ -29,14 +30,9 @@ export default function OrgHome() {
   // existing Super Agent "New chat" instead of minting a duplicate.
   if (status.kind === "loading") return <ShellRouteLoading />;
 
-  // Reuse ANY existing Super Agent "New chat" (a thread that never got
-  // auto-titled — i.e. never completed a turn), regardless of status. Gating on
-  // `in_progress` before meant an errored/failed empty chat wasn't reused, so
-  // every visit minted a fresh one and they piled up in the sidebar.
-  const existing = threads.find(
-    (t) =>
-      !t.hidden && t.virtual_mcp_id === decopilotId && t.title === "New chat",
-  );
+  // Reuse the Super Agent's existing empty "New chat" so revisiting `/$org`
+  // doesn't pile up duplicates (see findReusableNewChat).
+  const existing = findReusableNewChat(threads, decopilotId);
   const taskId = existing?.id ?? freshId;
 
   return (
