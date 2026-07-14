@@ -1,5 +1,4 @@
 import { Suspense, useState, type ReactElement } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
@@ -31,7 +30,7 @@ import {
 } from "@deco/ui/components/drawer.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { CollectionSearch } from "@deco/ui/components/collection-search.tsx";
-import { Check, Globe02, Plus } from "@untitledui/icons";
+import { Check, Plus } from "@untitledui/icons";
 import {
   getWellKnownDecopilotVirtualMCP,
   isDecopilot,
@@ -39,21 +38,11 @@ import {
   useVirtualMCPs,
 } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
-import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
-import {
-  WEBSITE_TEMPLATE,
-  useCreateAgentFromTemplate,
-} from "@/web/hooks/use-create-website-agent";
 import { track } from "@/web/lib/posthog-client";
 import { AgentAvatar } from "@/web/components/agent-icon";
-import { GitHubIcon } from "@/web/components/icons/github-icon";
-import { ImportFromDecoDialog } from "@/web/components/import-from-deco-dialog.tsx";
-import { GitHubRepoPicker } from "@/web/components/github-repo-picker.tsx";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
 import { authClient } from "@/web/lib/auth-client";
-import { KEYS } from "@/web/lib/query-keys";
-import { usePublicConfig } from "@/web/hooks/use-public-config";
 import { getServerPinnedIds } from "@/web/hooks/use-navigate-to-agent";
 import { getDevAgentIds } from "@/web/lib/agent-capabilities";
 import {
@@ -73,22 +62,6 @@ function BrowseAgentsEmptyHint({ children }: { children: ReactElement }) {
       </TooltipContent>
     </Tooltip>
   );
-}
-
-function useIsDecoUser() {
-  const { enableDecoImport } = usePublicConfig();
-  const { data: session } = authClient.useSession();
-  const { data } = useQuery({
-    queryKey: KEYS.decoProfile(session?.user?.email),
-    queryFn: async () => {
-      const res = await fetch("/api/deco-sites/profile");
-      if (!res.ok) return { isDecoUser: false };
-      return res.json() as Promise<{ isDecoUser: boolean }>;
-    },
-    enabled: Boolean(enableDecoImport) && Boolean(session?.user?.email),
-    staleTime: 5 * 60_000,
-  });
-  return data?.isDecoUser ?? false;
 }
 
 /**
@@ -130,7 +103,7 @@ function useNavigateToNewTaskWithBranchCarry(orgSlug: string) {
   };
 }
 
-function AgentGridItem({
+function AgentRow({
   agent,
   selected,
   onClick,
@@ -144,43 +117,35 @@ function AgentGridItem({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex flex-col items-center gap-2 p-3 rounded-xl transition-colors cursor-pointer group",
+        "flex items-center gap-2.5 px-2 py-1.5 rounded-md transition-colors cursor-pointer text-left w-full",
         selected ? "bg-accent" : "hover:bg-accent",
       )}
     >
-      <div className="relative">
-        <AgentAvatar
-          icon={agent.icon}
-          name={agent.title}
-          size="md"
-          className="transition-transform group-hover:scale-105"
-        />
-        {selected && (
-          <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full border border-border bg-background">
-            <Check size={10} className="text-foreground" />
-          </span>
-        )}
-      </div>
-      <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground line-clamp-2 w-full">
+      <AgentAvatar
+        icon={agent.icon}
+        name={agent.title}
+        size="xs"
+        className="shrink-0"
+      />
+      <span className="flex-1 min-w-0 truncate text-sm text-foreground">
         {agent.title}
       </span>
+      {selected && (
+        <Check size={16} className="shrink-0 text-muted-foreground" />
+      )}
     </button>
   );
 }
 
 function PinAgentPopoverContent({
   onClose,
-  onOpenImportDeco,
-  onOpenGithubImport,
   onSelectAgent,
   selectedAgentId,
 }: {
   onClose: () => void;
-  onOpenImportDeco: () => void;
-  onOpenGithubImport: () => void;
   /** When provided (breadcrumb scope picker), selecting an agent sets the
-   * sidebar scope instead of opening a new task; `null` = all agents. The grid
-   * then leads with a Decopilot tile ("all threads") and marks the active one. */
+   * sidebar scope instead of opening a new task; `null` = all agents. The list
+   * then leads with a Decopilot row ("all threads") and marks the active one. */
   onSelectAgent?: (id: string | null) => void;
   /** The currently-scoped agent, for the check mark (picker mode). */
   selectedAgentId?: string | null;
@@ -193,12 +158,6 @@ function PinAgentPopoverContent({
   const sidebarUserId = session?.user?.id ?? "anon";
   const serverPinnedIds = getServerPinnedIds(allAgents);
   const bumpOrderRevision = useBumpSidebarOrderRevision();
-  const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
-    navigateOnCreate: true,
-  });
-  const { createFromTemplate, isCreating: isCreatingFromTemplate } =
-    useCreateAgentFromTemplate();
-  const isDecoUser = useIsDecoUser();
 
   const navigateToNewTask = useNavigateToNewTaskWithBranchCarry(org.slug);
 
@@ -259,90 +218,10 @@ function PinAgentPopoverContent({
             Agents
           </span>
         </div>
-        <div className="grid grid-cols-3 gap-1">
-          {/* Create new button */}
-          <button
-            type="button"
-            disabled={isCreating}
-            onClick={async () => {
-              track("agent_create_new_clicked", { source: "browse_popover" });
-              await createVirtualMCP();
-              onClose();
-            }}
-            className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <div className="w-12 h-12 rounded-xl border-2 border-dashed border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
-              <Plus size={16} className="text-muted-foreground" />
-            </div>
-            <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
-              Create new
-            </span>
-          </button>
-
-          <button
-            type="button"
-            disabled={isCreatingFromTemplate}
-            onClick={async () => {
-              track("agent_create_clicked", {
-                source: "browse_popover",
-                method: "website",
-              });
-              await createFromTemplate(WEBSITE_TEMPLATE);
-              onClose();
-            }}
-            className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <div className="w-12 h-12 rounded-xl border-2 border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
-              <Globe02 className="size-5 text-muted-foreground" />
-            </div>
-            <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
-              Start Website
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              track("agent_import_clicked", { source: "github" });
-              onOpenGithubImport();
-              onClose();
-            }}
-            className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group"
-          >
-            <div className="w-12 h-12 rounded-xl border-2 border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
-              <GitHubIcon className="size-5 text-muted-foreground" />
-            </div>
-            <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
-              Import GitHub
-            </span>
-          </button>
-
-          {isDecoUser && (
-            <button
-              type="button"
-              onClick={() => {
-                track("agent_import_clicked", { source: "deco" });
-                onOpenImportDeco();
-                onClose();
-              }}
-              className="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors hover:bg-accent cursor-pointer group"
-            >
-              <div className="w-12 h-12 rounded-xl border-2 border-border flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
-                <img
-                  src="/logos/deco%20logo.svg"
-                  alt=""
-                  className="size-5 object-contain"
-                />
-              </div>
-              <span className="text-xs leading-tight text-center text-muted-foreground group-hover:text-foreground">
-                Import deco.cx
-              </span>
-            </button>
-          )}
-
+        <div className="flex flex-col gap-0.5">
           {/* Scope-picker mode: Decopilot = all threads, every agent. */}
           {onSelectAgent && showDecopilot && decopilotAgent && (
-            <AgentGridItem
+            <AgentRow
               agent={decopilotAgent}
               selected={
                 !selectedAgentId || selectedAgentId === decopilotAgent.id
@@ -352,7 +231,7 @@ function PinAgentPopoverContent({
           )}
 
           {userAgents.map((agent) => (
-            <AgentGridItem
+            <AgentRow
               key={agent.id}
               agent={agent}
               selected={
@@ -363,7 +242,7 @@ function PinAgentPopoverContent({
           ))}
         </div>
 
-        {userAgents.length === 0 && !isCreating && (
+        {userAgents.length === 0 && (
           <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
             {search ? "No agents found" : "No agents yet"}
           </div>
@@ -403,8 +282,6 @@ function PinAgentPopover({
   align?: "start" | "center" | "end";
 } = {}) {
   const [open, setOpen] = useState(false);
-  const [importDecoOpen, setImportDecoOpen] = useState(false);
-  const [githubPickerOpen, setGithubPickerOpen] = useState(false);
   const isMobile = useIsMobile();
   const { setOpenMobile } = useSidebar();
   const highlightEmpty = useSidebarAgentGroupsEmpty();
@@ -432,11 +309,6 @@ function PinAgentPopover({
     >
       <PinAgentPopoverContent
         onClose={handleClose}
-        onOpenImportDeco={() => setImportDecoOpen(true)}
-        onOpenGithubImport={() => {
-          setGithubPickerOpen(true);
-          handleClose();
-        }}
         onSelectAgent={onSelectAgent}
         selectedAgentId={selectedAgentId}
       />
@@ -539,14 +411,6 @@ function PinAgentPopover({
           </PopoverContent>
         </Popover>
       )}
-      <ImportFromDecoDialog
-        open={importDecoOpen}
-        onOpenChange={setImportDecoOpen}
-      />
-      <GitHubRepoPicker
-        open={githubPickerOpen}
-        onOpenChange={setGithubPickerOpen}
-      />
     </>
   );
 }

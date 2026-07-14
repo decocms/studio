@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { appLogPath } from "../paths";
 import { LogTee } from "./log-tee";
 import { spawnPty } from "./pty-spawn";
+import { resolveShell } from "./resolve-shell";
 import { RingBuffer } from "./ring-buffer";
 import type { PhaseManager } from "./phase-manager";
 
@@ -456,14 +457,35 @@ export class TaskManager {
   }
 
   private startPipe(task: TaskInternal): void {
+    const isWin32 = process.platform === "win32";
+    let shell: string;
+    try {
+      shell = isWin32 ? resolveShell("bash") : "bash";
+    } catch (e) {
+      // resolveShell throws synchronously (ShellNotFoundError) when no
+      // usable shell can be found — mirror startPty's catch shape so the
+      // failure finalizes this task instead of propagating into the route
+      // handler (which would otherwise see an uncaught exception).
+      const msg = `spawn error: ${(e as Error).message}\n`;
+      task.stderr.append(msg);
+      task.tee.write(msg);
+      this.fanOut(task, { stream: "stderr", data: msg });
+      queueMicrotask(() =>
+        this.finalize(task, { exitCode: -1, timedOut: false }),
+      );
+      return;
+    }
     const opts: Parameters<typeof nodeSpawn>[2] = {
       cwd: task.spec.cwd,
       stdio: ["ignore", "pipe", "pipe"],
       env: task.spec.env,
-      detached: true,
+      // POSIX: detached so `-pgid` below can signal the whole process
+      // group. win32 has no process groups — `detached: true` there
+      // instead allocates the child a new console, which we don't want.
+      detached: !isWin32,
     };
     const child: ChildProcess = nodeSpawn(
-      "bash",
+      shell,
       ["-c", task.spec.command],
       opts,
     );
@@ -472,6 +494,24 @@ export class TaskManager {
 
     const killGroup = (signal: NodeJS.Signals) => {
       if (task.pgid === undefined) return;
+      if (isWin32) {
+        // No POSIX process groups and no distinct signal semantics on
+        // win32 — any signal here means "terminate". `taskkill /T` walks
+        // the whole child tree (bash -c's descendants included). Fire and
+        // forget: the process may already be gone, and there's no group
+        // fallback to retry with.
+        try {
+          nodeSpawn("taskkill", ["/pid", String(task.pgid), "/T", "/F"]).on(
+            "error",
+            () => {
+              /* taskkill itself failed to spawn — nothing more we can do */
+            },
+          );
+        } catch {
+          /* taskkill not spawnable */
+        }
+        return;
+      }
       try {
         process.kill(-task.pgid, signal);
       } catch {

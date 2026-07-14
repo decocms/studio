@@ -185,6 +185,40 @@ describe("desktop sandbox provider", () => {
     }
   });
 
+  it("carries projectName/branch on spawning and ready events", async () => {
+    const dataDir = tmpDataDir();
+    try {
+      const events: SandboxEvent[] = [];
+      let portCounter = 30000;
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        spawnDaemon: () => fakeDaemonSpawner(),
+        postConfig: async () => {},
+        waitForHealth: async () => {},
+        pickPort: () => portCounter++,
+        onEvent: (e) => events.push(e),
+      });
+      await provider.ensureSandbox({
+        handle: "abc",
+        repo: {
+          cloneUrl: "https://github.com/decocms/studio.git",
+          branch: "alpha-hydrae",
+        },
+      });
+      const lifecycle = events.filter((e) => e.handle === "abc");
+      for (const phase of ["spawning", "ready"] as const) {
+        expect(lifecycle.find((e) => e.phase === phase)).toEqual(
+          expect.objectContaining({
+            branch: "alpha-hydrae",
+            projectName: "studio",
+          }),
+        );
+      }
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("persists ready and deleted lifecycle transitions to the registry", async () => {
     const dataDir = tmpDataDir();
     try {

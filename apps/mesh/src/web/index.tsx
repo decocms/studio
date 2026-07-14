@@ -11,6 +11,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { SplashScreen } from "@/web/components/splash-screen";
+import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 import { ChunkErrorBoundary } from "@/web/components/error-boundary";
 import * as z from "zod";
 
@@ -231,6 +232,11 @@ const orgShellLayout = createRoute({
 const agentShellLayout = createRoute({
   getParentRoute: () => orgShellLayout,
   id: "agent-shell",
+  // Render the centered panel-area loader (matches the shell's own Suspense
+  // fallbacks) while this route loads, instead of the full-screen SplashScreen.
+  // The sidebar is already mounted by orgShellLayout, so the pending state
+  // covers only the main panel region — no off-center left flash on nav.
+  pendingComponent: ShellRouteLoading,
   component: lazyRouteComponent(
     () => import("./layouts/agent-shell-layout/index.tsx"),
   ),
@@ -286,6 +292,7 @@ const orgIndexRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/",
   validateSearch: orgIndexSearchSchema,
+  pendingComponent: ShellRouteLoading,
   component: lazyRouteComponent(() => import("./layouts/org-home/index.tsx")),
 });
 
@@ -303,6 +310,7 @@ const libraryRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/files",
   validateSearch: librarySearchSchema,
+  pendingComponent: ShellRouteLoading,
   component: lazyRouteComponent(() => import("./layouts/library/index.tsx")),
 });
 

@@ -71,8 +71,8 @@ export interface TenantConfig {
 
 /** In-memory enriched view: TenantConfig + derivations. */
 export interface EnrichedTenantConfig extends TenantConfig {
-  /** Computed from `application.runtime`. */
-  readonly runtimePathPrefix: string;
+  /** Computed from `application.runtime` — PATH dirs to prepend for structured commands. */
+  readonly runtimePathDirs: readonly string[];
 }
 
 /** What the rest of the daemon (orchestrator, routes) sees. */

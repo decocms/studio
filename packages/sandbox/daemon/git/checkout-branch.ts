@@ -32,9 +32,7 @@ function localBranchExists(repoDir: string, branch: string): boolean {
 export interface CheckoutBranchParams {
   repoDir: string;
   branch: string;
-  /** Prefixed git command, e.g. `git -C /repo`. */
-  gc: string;
-  runStep: (cmd: string) => Promise<number>;
+  runGit: (args: readonly string[]) => Promise<number>;
   log: (message: string) => void;
 }
 
@@ -47,11 +45,12 @@ export interface CheckoutBranchParams {
 export async function spawnCheckoutBranch(
   params: CheckoutBranchParams,
 ): Promise<void> {
-  const { repoDir, branch, gc, runStep, log } = params;
+  const { repoDir, branch, runGit, log } = params;
 
-  // `branch` is interpolated into `sh -c` git commands below (ls-remote,
-  // fetch, checkout) — same shell-injection vector as `defaultBranch` above,
-  // so it needs the same validation before ever reaching a shell string.
+  // `branch` flows into git argv below (ls-remote, fetch, checkout) — argv
+  // form means no shell interprets it, but a value starting with `-` could
+  // still be misread as a flag, so it still needs validation before ever
+  // reaching a git invocation.
   assertValidRemoteBranchName(branch);
 
   try {
@@ -63,20 +62,31 @@ export async function spawnCheckoutBranch(
     // No HEAD yet / not a repo — fall through and let checkout fail loudly.
   }
 
-  const probe = await runStep(
-    `${gc} ls-remote --exit-code --heads origin ${branch}`,
-  );
+  const probe = await runGit([
+    "ls-remote",
+    "--exit-code",
+    "--heads",
+    "origin",
+    branch,
+  ]);
 
   if (probe === 0) {
-    const fetchCode = await runStep(
-      `${gc} fetch --depth 1 origin +refs/heads/${branch}:refs/remotes/origin/${branch}`,
-    );
+    const fetchCode = await runGit([
+      "fetch",
+      "--depth",
+      "1",
+      "origin",
+      `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+    ]);
     if (fetchCode !== 0) {
       throw new Error(`git fetch origin ${branch} exited ${fetchCode}`);
     }
-    const checkoutCode = await runStep(
-      `${gc} checkout -B ${branch} refs/remotes/origin/${branch}`,
-    );
+    const checkoutCode = await runGit([
+      "checkout",
+      "-B",
+      branch,
+      `refs/remotes/origin/${branch}`,
+    ]);
     if (checkoutCode !== 0) {
       throw new Error(`git checkout -B ${branch} exited ${checkoutCode}`);
     }
@@ -88,30 +98,37 @@ export async function spawnCheckoutBranch(
       log(
         `[orchestrator] branch '${branch}' not on remote; checking out local branch\r\n`,
       );
-      const code = await runStep(`${gc} checkout ${branch}`);
+      const code = await runGit(["checkout", branch]);
       if (code !== 0) throw new Error(`git checkout ${branch} exited ${code}`);
       return;
     }
 
     const defaultBranch = resolveRemoteDefaultBranch(repoDir);
     // `defaultBranch` comes from the remote's own `origin/HEAD` symref (set by
-    // whoever controls that remote) and is interpolated into `sh -c` git
-    // commands below — git permits shell metacharacters (`;`, `$(…)`,
-    // backticks, …) in ref names, so an unvalidated value here is a command
-    // injection vector. Reject before it ever reaches a shell string.
+    // whoever controls that remote) and flows into git argv below — argv form
+    // means no shell interprets it, but ref-format garbage (or a value
+    // starting with `-`) could still confuse git, so it still needs
+    // validation before ever reaching a git invocation.
     assertValidRemoteBranchName(defaultBranch);
     log(
       `[orchestrator] branch '${branch}' not on remote; creating from default branch '${defaultBranch}'\r\n`,
     );
-    const fetchCode = await runStep(
-      `${gc} fetch --depth 1 origin +refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
-    );
+    const fetchCode = await runGit([
+      "fetch",
+      "--depth",
+      "1",
+      "origin",
+      `+refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
+    ]);
     if (fetchCode !== 0) {
       throw new Error(`git fetch origin ${defaultBranch} exited ${fetchCode}`);
     }
-    const checkoutCode = await runStep(
-      `${gc} checkout -B ${branch} refs/remotes/origin/${defaultBranch}`,
-    );
+    const checkoutCode = await runGit([
+      "checkout",
+      "-B",
+      branch,
+      `refs/remotes/origin/${defaultBranch}`,
+    ]);
     if (checkoutCode !== 0) {
       throw new Error(`git checkout -B ${branch} exited ${checkoutCode}`);
     }

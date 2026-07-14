@@ -18,7 +18,12 @@ export interface GitError extends Error {
 const DEFAULT_GIT_TIMEOUT_MS = 30_000;
 
 export function gitSync(args: string[], opts: GitSyncOpts): string {
-  const asUser = opts.asUser !== false;
+  // uid/gid: Linux-only concept, same gate as pty-spawn.ts. Setting them on
+  // win32 has no effect (Node docs: unsupported there); on macOS a non-root
+  // daemon can't setuid anyway — Bun's child_process shim currently swallows
+  // that as a silent no-op, but Node's does not (throws EPERM), so gate hard
+  // rather than depend on that runtime detail.
+  const asUser = opts.asUser !== false && process.platform === "linux";
   const spawnOpts: SpawnSyncOptions = {
     cwd: opts.cwd,
     env: opts.env,

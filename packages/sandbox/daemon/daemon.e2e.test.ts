@@ -47,7 +47,7 @@ describe("daemon e2e: swappable spawn target", () => {
   it("defaults to running the bundled daemon under bun when DAEMON_E2E_CMD is unset", () => {
     const cmd = resolveDaemonCmd(undefined);
     expect(cmd[0]).toBe("bun");
-    expect(cmd[1]).toMatch(/dist\/daemon\.js$/);
+    expect(cmd[1]).toMatch(/dist[\\/]daemon\.js$/);
     expect(cmd.length).toBe(2);
   });
 
