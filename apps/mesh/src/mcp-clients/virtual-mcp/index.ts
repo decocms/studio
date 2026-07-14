@@ -12,6 +12,7 @@ import { getMcpListCache } from "../mcp-list-cache";
 import type { StudioContext } from "../../core/studio-context";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { VirtualMCPEntity } from "../../tools/virtual/schema";
+import { isOrgSharedConnection } from "../../shared/github-repo-scope";
 import { PassthroughClient } from "./passthrough-client";
 import { renderSkillsCatalogBlock } from "./skills-instructions";
 import type { VirtualClientOptions } from "./types";
@@ -128,6 +129,29 @@ export async function createVirtualClientFrom(
   // aggregator's first-occurrence-wins dedup over any same-named tool.
   if (options?.additionalConnections?.length) {
     loadedConnections.unshift(...options.additionalConnections);
+  }
+
+  // Org-shared repo connections ("Add repo" in the sidebar) are available to
+  // every agent by default. Appended (not the agent's own, so all their tools
+  // are exposed), deduped, and guarded on a real org so the well-known agents
+  // (Decopilot/brand-context, which resolve with no org) don't fan them in.
+  // ponytail: one slug-filtered connections.list per client build; memoize in
+  // createRequestCachedVirtualMcps like virtualMcps.list if this path gets hot.
+  if (virtualMcp.organization_id) {
+    const existingIds = new Set(loadedConnections.map((c) => c.id));
+    const { items } = await ctx.storage.connections.list(
+      virtualMcp.organization_id,
+      { slug: "mcp-github" },
+    );
+    for (const conn of items) {
+      if (
+        conn.status === "active" &&
+        !existingIds.has(conn.id) &&
+        isOrgSharedConnection(conn)
+      ) {
+        loadedConnections.push(conn);
+      }
+    }
   }
 
   // Agent runtimes opt into the skill catalog: enumerate the org's skills now

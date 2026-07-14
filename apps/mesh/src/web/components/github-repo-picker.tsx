@@ -68,16 +68,25 @@ export interface GitHubImportPayload {
 export function GitHubRepoPicker({
   open,
   onOpenChange,
-  title = "Import from GitHub",
+  title,
   hideAutoRespondCheckbox = false,
   onImportComplete,
+  mode = "agent",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title?: string;
   hideAutoRespondCheckbox?: boolean;
   onImportComplete?: (payload: GitHubImportPayload) => void;
+  /**
+   * "agent" (default): pick a repo → provision a repo-scoped connection + a new
+   * agent bound to it. "connection": provision an org-shared repo connection
+   * only (available to every agent), no agent, no automations.
+   */
+  mode?: "agent" | "connection";
 }) {
+  const resolvedTitle =
+    title ?? (mode === "connection" ? "Add repo" : "Import from GitHub");
   const [selectedInstallation, setSelectedInstallation] =
     useState<GitHubInstallation | null>(null);
 
@@ -85,7 +94,7 @@ export function GitHubRepoPicker({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[560px] h-[85svh] sm:h-[520px] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="sr-only">
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle>{resolvedTitle}</DialogTitle>
         </DialogHeader>
         <div className="flex items-center h-12 border-b border-border px-4 gap-3 shrink-0">
           {selectedInstallation ? (
@@ -111,7 +120,7 @@ export function GitHubRepoPicker({
             <>
               <GitHubIcon className="size-4 text-foreground shrink-0" />
               <span className="text-sm font-medium text-foreground">
-                {title}
+                {resolvedTitle}
               </span>
             </>
           )}
@@ -132,8 +141,11 @@ export function GitHubRepoPicker({
               onComplete={() => onOpenChange(false)}
               selectedInstallation={selectedInstallation}
               onSelectInstallation={setSelectedInstallation}
-              hideAutoRespondCheckbox={hideAutoRespondCheckbox}
+              hideAutoRespondCheckbox={
+                hideAutoRespondCheckbox || mode === "connection"
+              }
               onImportComplete={onImportComplete}
+              mode={mode}
             />
           </Suspense>
         </div>
@@ -149,6 +161,7 @@ function PickerContent({
   onSelectInstallation,
   hideAutoRespondCheckbox,
   onImportComplete,
+  mode = "agent",
 }: {
   open: boolean;
   onComplete: () => void;
@@ -156,6 +169,7 @@ function PickerContent({
   onSelectInstallation: (inst: GitHubInstallation | null) => void;
   hideAutoRespondCheckbox?: boolean;
   onImportComplete?: (payload: GitHubImportPayload) => void;
+  mode?: "agent" | "connection";
 }) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
@@ -296,6 +310,29 @@ function PickerContent({
 
       const installationId = selectedInstallation.installationId;
 
+      // Connection-only ("Add repo"): provision an org-shared repo connection
+      // that every agent can use, then stop — no agent, no automations.
+      if (mode === "connection") {
+        const { childConnectionId } = await provisionRepoScopedGithubConnection(
+          {
+            orgSlug: org.slug,
+            sourceConnection: effectiveConnection,
+            installationId,
+            owner: repo.owner,
+            repo: repo.name,
+            githubCallTool: (req) => githubClient.callTool(req),
+            selfCallTool: (req) => selfClient.callTool(req),
+            orgShared: true,
+          },
+        );
+        return {
+          virtualMcpId: null,
+          repo,
+          connectionId: childConnectionId,
+          item: null,
+        };
+      }
+
       const { childConnectionId } = await provisionRepoScopedGithubConnection({
         orgSlug: org.slug,
         sourceConnection: effectiveConnection,
@@ -396,6 +433,12 @@ function PickerContent({
       }
     },
     onSuccess: ({ virtualMcpId, repo, connectionId, item }) => {
+      if (mode === "connection" || !virtualMcpId || !item) {
+        invalidateVirtualMcpQueries(queryClient, org.id);
+        toast.success(`Added ${repo.name}`);
+        onComplete();
+        return;
+      }
       queryClient.setQueryData(
         KEYS.collectionItem(
           selfClient,

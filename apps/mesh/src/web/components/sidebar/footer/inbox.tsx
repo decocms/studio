@@ -9,6 +9,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import {
@@ -17,8 +18,11 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { ArrowLeft, Inbox01, Settings02 } from "@untitledui/icons";
+import { ArrowLeft, Inbox01, Settings02, UserPlus01 } from "@untitledui/icons";
 import { useState, type ReactNode } from "react";
+import { GitHubIcon } from "@/web/components/icons/github-icon";
+import { GitHubRepoPicker } from "@/web/components/github-repo-picker";
+import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
@@ -222,6 +226,45 @@ function SettingsIconButton() {
   );
 }
 
+/**
+ * Sidebar footer actions — org-wide entry points that aren't tied to a single
+ * agent: invite teammates, and add a repo as an org-shared GitHub connection
+ * (available to every agent). Rendered as full-width rows above the account row.
+ */
+function SidebarExtraActions() {
+  const [repoOpen, setRepoOpen] = useState(false);
+  return (
+    <>
+      <SidebarMenu className="gap-0.5">
+        <SidebarMenuItem>
+          <InviteMemberDialog
+            trigger={
+              <SidebarMenuButton tooltip="Invite members">
+                <UserPlus01 />
+                <span>Invite members</span>
+              </SidebarMenuButton>
+            }
+          />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            tooltip="Add repo"
+            onClick={() => setRepoOpen(true)}
+          >
+            <GitHubIcon />
+            <span>Add repo</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+      <GitHubRepoPicker
+        open={repoOpen}
+        onOpenChange={setRepoOpen}
+        mode="connection"
+      />
+    </>
+  );
+}
+
 export function SidebarInboxFooter() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -251,7 +294,9 @@ export function SidebarInboxFooter() {
   }
 
   return (
-    <SidebarFooter className="px-2 pb-3">
+    <SidebarFooter className="px-2 pb-3 gap-1.5">
+      <SidebarExtraActions />
+      <SidebarSeparator className="mx-0" />
       <div className="flex items-center gap-1">
         <div className="flex-1 min-w-0">
           <SidebarMenu>
