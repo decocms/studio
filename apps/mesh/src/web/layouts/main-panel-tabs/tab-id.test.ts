@@ -314,6 +314,16 @@ describe("resolveTabClickTarget", () => {
     ).toBe("0");
   });
 
+  test("clicking active Blocks tab collapses to Preview, not closed", () => {
+    expect(
+      resolveTabClickTarget({
+        clickedId: "blocks",
+        activeTab: "blocks",
+        mainOpen: true,
+      }),
+    ).toBe("preview");
+  });
+
   test("clicking non-active tab while panel open → clicked id", () => {
     expect(
       resolveTabClickTarget({
