@@ -18,11 +18,18 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { ArrowLeft, Inbox01, Settings02, UserPlus01 } from "@untitledui/icons";
+import {
+  ArrowLeft,
+  Inbox01,
+  Settings02,
+  UserPlus01,
+  ZapSquare,
+} from "@untitledui/icons";
 import { useState, type ReactNode } from "react";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { GitHubRepoPicker } from "@/web/components/github-repo-picker";
 import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
+import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
@@ -228,11 +235,13 @@ function SettingsIconButton() {
 
 /**
  * Sidebar footer actions — org-wide entry points that aren't tied to a single
- * agent: invite teammates, and add a repo as an org-shared GitHub connection
- * (available to every agent). Rendered as full-width rows above the account row.
+ * agent: invite teammates, add a repo as an org-shared GitHub connection
+ * (available to every agent), and add any connection. Rendered as full-width
+ * rows above the account row.
  */
 function SidebarExtraActions() {
   const [repoOpen, setRepoOpen] = useState(false);
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
   return (
     <>
       <SidebarMenu className="gap-0.5">
@@ -255,11 +264,25 @@ function SidebarExtraActions() {
             <span>Add repo</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            tooltip="Add connection"
+            onClick={() => setConnectionsOpen(true)}
+          >
+            <ZapSquare />
+            <span>Add connection</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
       </SidebarMenu>
       <GitHubRepoPicker
         open={repoOpen}
         onOpenChange={setRepoOpen}
         mode="connection"
+      />
+      <AddConnectionDialog
+        open={connectionsOpen}
+        onOpenChange={setConnectionsOpen}
+        mode="browse"
       />
     </>
   );

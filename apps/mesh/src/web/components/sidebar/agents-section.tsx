@@ -117,8 +117,10 @@ function AgentRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2.5 px-2 py-1.5 rounded-md transition-colors cursor-pointer text-left w-full",
-        selected ? "bg-accent" : "hover:bg-accent",
+        "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-left w-full transition-colors",
+        selected
+          ? "bg-accent text-accent-foreground"
+          : "text-foreground hover:bg-accent/50",
       )}
     >
       <AgentAvatar
@@ -127,11 +129,16 @@ function AgentRow({
         size="xs"
         className="shrink-0"
       />
-      <span className="flex-1 min-w-0 truncate text-sm text-foreground">
-        {agent.title}
-      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{agent.title}</p>
+        {agent.description && (
+          <p className="text-xs text-muted-foreground truncate">
+            {agent.description}
+          </p>
+        )}
+      </div>
       {selected && (
-        <Check size={16} className="shrink-0 text-muted-foreground" />
+        <Check size={14} className="ml-auto text-muted-foreground shrink-0" />
       )}
     </button>
   );
@@ -211,36 +218,24 @@ function PinAgentPopoverContent({
       />
 
       {/* Scrollable content */}
-      <div className="overflow-y-auto flex-1 min-h-0 px-3 pb-3">
-        {/* Agents section */}
-        <div className="px-1 pt-3 pb-2">
-          <span className="text-xs font-medium text-muted-foreground">
-            Agents
-          </span>
-        </div>
-        <div className="flex flex-col gap-0.5">
-          {/* Scope-picker mode: Decopilot = all threads, every agent. */}
-          {onSelectAgent && showDecopilot && decopilotAgent && (
-            <AgentRow
-              agent={decopilotAgent}
-              selected={
-                !selectedAgentId || selectedAgentId === decopilotAgent.id
-              }
-              onClick={selectAll}
-            />
-          )}
+      <div className="overflow-y-auto flex-1 min-h-0 p-1.5 flex flex-col gap-1">
+        {/* Scope-picker mode: Decopilot = all threads, every agent. */}
+        {onSelectAgent && showDecopilot && decopilotAgent && (
+          <AgentRow
+            agent={decopilotAgent}
+            selected={!selectedAgentId || selectedAgentId === decopilotAgent.id}
+            onClick={selectAll}
+          />
+        )}
 
-          {userAgents.map((agent) => (
-            <AgentRow
-              key={agent.id}
-              agent={agent}
-              selected={
-                onSelectAgent ? selectedAgentId === agent.id : undefined
-              }
-              onClick={() => handleSelect(agent)}
-            />
-          ))}
-        </div>
+        {userAgents.map((agent) => (
+          <AgentRow
+            key={agent.id}
+            agent={agent}
+            selected={onSelectAgent ? selectedAgentId === agent.id : undefined}
+            onClick={() => handleSelect(agent)}
+          />
+        ))}
 
         {userAgents.length === 0 && (
           <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
