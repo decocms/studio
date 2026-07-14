@@ -377,7 +377,14 @@ function CommerceOnboardingContent({
             <OrganizationChoice
               organizations={activeOrganizations}
               selectLabel="Continuar"
-              onSelected={(organization) => setSelectedOrg(organization)}
+              onSelected={(organization) =>
+                // Persisted in the URL (not local state) so a refresh doesn't
+                // lose the pick and force reselecting among active orgs.
+                navigate({
+                  to: "/commerce-onboarding",
+                  search: { org: organization.slug, siteUrl },
+                })
+              }
             />
           </ScrollReveal>
         </div>
@@ -1042,6 +1049,10 @@ function CommerceDiscoveryReady({
   meetingVisual: ReactNode;
   siteUrl?: string;
 }) {
+  // Starts false (blocked) until the companions section reports whether any
+  // data source is connected — see onReadinessChange below.
+  const [hasConnectedSource, setHasConnectedSource] = useState(false);
+
   return (
     <CommerceOnboardingLayout align="fill" visual={meetingVisual}>
       {/* align="fill" hands us a flex column sized to the visible viewport, so we
@@ -1054,6 +1065,7 @@ function CommerceDiscoveryReady({
           org={org}
           cdConnectionId={reportApp.connectionId}
           siteUrl={siteUrl}
+          onReadinessChange={setHasConnectedSource}
         />
         <div className="flex shrink-0 flex-col gap-3 md:mt-8">
           {/* Right-side ScheduleMeetingVisual is hidden on mobile, so the human
@@ -1069,7 +1081,9 @@ function CommerceDiscoveryReady({
             size="xl"
             className="w-full rounded-2xl text-base font-medium"
             onClick={onOpenReport}
-            disabled={isSubmitting || !reportApp.virtualMcpId}
+            disabled={
+              isSubmitting || !reportApp.virtualMcpId || !hasConnectedSource
+            }
           >
             {isSubmitting ? "Abrindo relatório..." : "Ver relatório completo"}
             {!isSubmitting ? <ArrowRight size={18} /> : null}
