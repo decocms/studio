@@ -76,6 +76,13 @@ import {
   type VisualEditorPayload,
 } from "./visual-editor-script";
 import { CMS_EDITOR_SCRIPT, CmsEditorPayloadSchema } from "./cms-editor-script";
+import {
+  canToggleVisualEditor,
+  viewModeForSurface,
+  type PreviewInteractiveViewMode,
+  type PreviewSurface,
+  type PreviewViewMode,
+} from "./preview-surface";
 import { VisualEditorPrompt } from "./visual-editor-prompt";
 import {
   useSandboxEvents,
@@ -119,7 +126,6 @@ const SeoSheet = lazy(() =>
 /** Delay before reloading the preview iframe after a save, giving the dev server time to pick up file changes. */
 const DEV_SERVER_SETTLE_MS = 500;
 
-type PreviewViewMode = "preview" | "visual" | "cms";
 type PreviewDeviceSize = "mobile" | "tablet" | "desktop";
 
 const PREVIEW_DEVICE_WIDTHS: Record<PreviewDeviceSize, number | null> = {
@@ -216,9 +222,9 @@ function withDeviceHint(url: string, device: PreviewDeviceSize): string {
 }
 
 export function PreviewContent({
-  initialViewMode = "preview",
+  surface = "preview",
 }: {
-  initialViewMode?: "preview" | "cms";
+  surface?: PreviewSurface;
 } = {}) {
   const inset = useInsetContext();
   const navigate = useNavigate();
@@ -233,7 +239,9 @@ export function PreviewContent({
   };
 
   // Visual editor state
-  const [viewMode, setViewMode] = useState<PreviewViewMode>(initialViewMode);
+  const [interactiveViewMode, setInteractiveViewMode] =
+    useState<PreviewInteractiveViewMode>("preview");
+  const viewMode = viewModeForSurface(surface, interactiveViewMode);
   const [previewDeviceSize, setPreviewDeviceSize] =
     useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
@@ -656,18 +664,15 @@ export function PreviewContent({
     win.postMessage({ type: "cms-editor::deactivate" }, "*");
   };
 
-  const handleViewModeChange = (mode: PreviewViewMode) => {
+  const handleViewModeChange = (mode: PreviewInteractiveViewMode) => {
     const prev = viewMode;
-    setViewMode(mode);
+    setInteractiveViewMode(mode);
     setVisualElement(null);
-    if (mode !== "cms") {
-      setCmsSelectedSectionIndex(null);
-      setVariantOverrideParams(null);
-    }
+    setCmsSelectedSectionIndex(null);
+    setVariantOverrideParams(null);
     if (prev === "visual") deactivateVisualEditor();
     if (prev === "cms") deactivateCmsEditor();
     if (mode === "visual") injectVisualEditor();
-    if (mode === "cms") injectCmsEditor();
   };
 
   const handleRefresh = () => {
@@ -836,14 +841,13 @@ export function PreviewContent({
     }
   };
 
-  // visual + cms require a live iframe (they inject overlays into the dev
-  // server). `preview` is the base interactive view — the toggle buttons
-  // below flip a mode on, or back to `preview` when their mode is already
-  // active, so there is no dedicated "interactive" button.
-  const canVisualEdit = previewState.kind === "iframe";
+  // Visual mode belongs only to the Preview surface and requires a live
+  // iframe. The Blocks surface remains fixed in CMS mode.
+  const canVisualEdit =
+    previewState.kind === "iframe" && canToggleVisualEditor(surface);
   const canSectionsEdit =
     previewState.kind === "iframe" && hasEditableDecoContent(decofile, meta);
-  const toggleViewMode = (mode: PreviewViewMode) =>
+  const toggleViewMode = (mode: PreviewInteractiveViewMode) =>
     handleViewModeChange(viewMode === mode ? "preview" : mode);
 
   // Keep the shared secondary column in sync with whether the Sections editor

@@ -324,6 +324,23 @@ describe("resolveTabClickTarget", () => {
     ).toBe("preview");
   });
 
+  test("Preview and Blocks switch to their own tab ids", () => {
+    expect(
+      resolveTabClickTarget({
+        clickedId: "blocks",
+        activeTab: "preview",
+        mainOpen: true,
+      }),
+    ).toBe("blocks");
+    expect(
+      resolveTabClickTarget({
+        clickedId: "preview",
+        activeTab: "blocks",
+        mainOpen: true,
+      }),
+    ).toBe("preview");
+  });
+
   test("clicking any tab while panel closed → clicked id (open it)", () => {
     expect(
       resolveTabClickTarget({

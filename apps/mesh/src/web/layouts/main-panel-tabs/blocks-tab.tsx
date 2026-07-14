@@ -5,9 +5,9 @@ import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-life
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
+import { PreviewContent } from "@/web/components/sandbox/preview/preview";
 import { resolveBlocksTabState } from "./blocks-tab-state";
 import { MainPanelLoading } from "./main-panel-loading";
-import { PreviewTab } from "./preview-tab";
 import { BlocksEmptyState, BlocksErrorState } from "./blocks-tab-states";
 
 export function BlocksTab({ virtualMcpId }: { virtualMcpId: string }) {
@@ -39,7 +39,7 @@ export function BlocksTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   if (state.kind === "loading") return <MainPanelLoading />;
   if (state.kind === "content") {
-    return <PreviewTab virtualMcpId={virtualMcpId} initialViewMode="cms" />;
+    return <PreviewContent surface="blocks" />;
   }
   if (state.kind === "empty") return <BlocksEmptyState />;
 

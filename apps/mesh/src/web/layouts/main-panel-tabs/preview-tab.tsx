@@ -3,13 +3,7 @@ import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { AlertCircle } from "@untitledui/icons";
 
-export function PreviewTab({
-  virtualMcpId,
-  initialViewMode = "preview",
-}: {
-  virtualMcpId: string;
-  initialViewMode?: "preview" | "cms";
-}) {
+export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   const entity = useVirtualMCP(virtualMcpId);
   const hasClonableSource = agentHasClonableSource(entity?.metadata);
 
@@ -26,5 +20,5 @@ export function PreviewTab({
     );
   }
 
-  return <PreviewContent initialViewMode={initialViewMode} />;
+  return <PreviewContent surface="preview" />;
 }
