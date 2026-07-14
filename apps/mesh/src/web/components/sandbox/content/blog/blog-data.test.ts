@@ -4,7 +4,10 @@ import {
   blockComponentName,
   buildBlogBlock,
   discoverBlogBlockTypes,
+  getBlogPayload,
+  isPublishedStatus,
   listPostsWithMeta,
+  postStatusOf,
   removeCategoryFromPost,
   renameCategoryOnPost,
   replaceCategoryOnPost,
@@ -227,10 +230,29 @@ describe("listPostsWithMeta", () => {
         title: "Hello",
         slug: "hello",
         date: "2024-01-02",
+        status: "published",
         categorySlugs: ["news"],
         authorEmails: ["ada@x.com"],
       },
     ]);
+  });
+
+  test("legacy posts with no status are reported as published", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": { title: "Legacy", slug: "legacy" },
+    });
+    expect(listPostsWithMeta(decofile)[0]!.status).toBe("published");
+  });
+
+  test("reads an explicit status off the payload", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": {
+        title: "Draft",
+        slug: "draft",
+        status: "draft",
+      },
+    });
+    expect(listPostsWithMeta(decofile)[0]!.status).toBe("draft");
   });
 
   test("tolerates plain-string categories/authors and falls back to Untitled", () => {
@@ -438,5 +460,59 @@ describe("removeCategoryFromPost", () => {
     const payload = { categories: [{ name: "Old", slug: "old" }] };
     removeCategoryFromPost(payload, "old");
     expect(payload.categories).toEqual([{ name: "Old", slug: "old" }]);
+  });
+});
+
+describe("postStatusOf", () => {
+  test("defaults a status-less (legacy) payload to published", () => {
+    expect(postStatusOf({ title: "P" })).toBe("published");
+    expect(postStatusOf({ title: "P", status: "" })).toBe("published");
+  });
+
+  test("returns an explicit status verbatim", () => {
+    expect(postStatusOf({ status: "draft" })).toBe("draft");
+    expect(postStatusOf({ status: "archived" })).toBe("archived");
+  });
+
+  test("preserves an unknown status rather than rewriting it", () => {
+    expect(postStatusOf({ status: "custom_state" })).toBe(
+      "custom_state" as never,
+    );
+  });
+});
+
+describe("isPublishedStatus", () => {
+  test("legacy (undefined/empty) and published render on the live site", () => {
+    expect(isPublishedStatus(undefined)).toBe(true);
+    expect(isPublishedStatus("")).toBe(true);
+    expect(isPublishedStatus("published")).toBe(true);
+  });
+
+  test("any other status is hidden", () => {
+    expect(isPublishedStatus("draft")).toBe(false);
+    expect(isPublishedStatus("archived")).toBe(false);
+    expect(isPublishedStatus("awaiting_review")).toBe(false);
+  });
+});
+
+describe("status round-trips through buildBlogBlock", () => {
+  test("a status set on the payload survives a save + re-read", () => {
+    const block = buildBlogBlock("collections/blog/posts/a", "posts", {
+      title: "Hello",
+      slug: "hello",
+      status: "draft",
+    });
+    // The editor rebuilds the block from the payload on every save; status
+    // lives inside the `post` payload, so it must survive the round-trip.
+    expect(getBlogPayload(block, "posts").status).toBe("draft");
+  });
+
+  test("a legacy block with no status stays status-less after a round-trip", () => {
+    const block = buildBlogBlock("collections/blog/posts/a", "posts", {
+      title: "Legacy",
+      slug: "legacy",
+    });
+    expect(getBlogPayload(block, "posts").status).toBeUndefined();
+    expect(postStatusOf(getBlogPayload(block, "posts"))).toBe("published");
   });
 });

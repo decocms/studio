@@ -12,8 +12,10 @@ import {
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { ImageField } from "@/web/components/sections-editor/fields/image-field";
 import { StringField } from "@/web/components/sections-editor/fields/string-field";
+import type { SandboxConfig } from "@/web/components/sections-editor/fields/field-props";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { buildBlogBlock, getBlogPayload, listBlogPayloads } from "./blog-data";
+import { PostStatusBadge, PostStatusSelect } from "./post-status";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
@@ -78,12 +80,22 @@ export function PostEditor({
     previewBaseUrl,
   });
 
+  const sandbox: SandboxConfig = {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    previewUrl: previewBaseUrl ?? undefined,
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
-        <span className="truncate text-sm font-medium">
-          {str(post.title) || "Untitled post"}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium">
+            {str(post.title) || "Untitled post"}
+          </span>
+          <PostStatusBadge status={str(post.status) || "published"} />
+        </div>
         <div className="flex shrink-0 items-center gap-3">
           <SaveStatus isPending={save.isPending} isError={save.isError} />
           <Button
@@ -138,6 +150,7 @@ export function PostEditor({
                   onChange={(next) => setField("sections", next)}
                   meta={meta}
                   emptyMessage="This post has no content yet. Use ⊕ to add your first block."
+                  sandbox={sandbox}
                 />
               </div>
             </TabsContent>
@@ -169,6 +182,10 @@ function PostSettings({
 }) {
   return (
     <div className="space-y-5">
+      <PostStatusSelect
+        post={post}
+        onChange={(value) => onChange("status", value)}
+      />
       <div className="space-y-2">
         <Label htmlFor="post-excerpt">Excerpt</Label>
         <Textarea

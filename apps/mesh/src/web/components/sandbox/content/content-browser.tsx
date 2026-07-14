@@ -130,12 +130,18 @@ import {
   generateBlogKey,
   getBlogPayload,
   isBlogKind,
+  isPublishedStatus,
   listBlogPayloads,
   listPostsWithMeta,
+  POST_STATUS_LABELS,
+  POST_STATUSES,
+  type PostStatus,
   removeCategoryFromPost,
   replaceCategoryOnPost,
   scanBlogEntries,
 } from "./blog/blog-data";
+import { PostStatusBadge } from "./blog/post-status";
+import { useSearch } from "@tanstack/react-router";
 import {
   useDeleteBlogBlock,
   useSaveBlogBlock,
@@ -388,9 +394,26 @@ function ContentBrowserReady({
   const { data: decofile, isLoading: decofileLoading } =
     useDecofile(fetchParams);
 
+  // Deep-link: the Blog Manager's "Editar no Studio" redirect can pre-select a
+  // blog collection and open a specific post via the URL
+  // (?contentCollection=posts&contentItem=<blockKey>). Read once, to seed the
+  // initial collection + selection; normal navigation takes over afterwards.
+  const deepLink = useSearch({ strict: false }) as {
+    contentCollection?: string;
+    contentItem?: string;
+  };
+  const initialCollection: CollectionId =
+    deepLink.contentCollection &&
+    isBlogKind(deepLink.contentCollection as CollectionId)
+      ? (deepLink.contentCollection as CollectionId)
+      : "pages";
   const [activeCollection, setActiveCollection] =
-    useState<CollectionId>("pages");
-  const [selection, setSelection] = useState<Selection>(null);
+    useState<CollectionId>(initialCollection);
+  const [selection, setSelection] = useState<Selection>(
+    deepLink.contentItem && isBlogKind(initialCollection)
+      ? { collection: initialCollection as BlogKind, key: deepLink.contentItem }
+      : null,
+  );
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -399,6 +422,9 @@ function ContentBrowserReady({
     null,
   );
   const [postAuthorFilter, setPostAuthorFilter] = useState<string | null>(null);
+  const [postStatusFilter, setPostStatusFilter] = useState<PostStatus | null>(
+    null,
+  );
   const [postSort, setPostSort] = useState<PostSort>("date-desc");
   const [selectedPostKeys, setSelectedPostKeys] = useState<Set<string>>(
     () => new Set(),
@@ -422,6 +448,7 @@ function ContentBrowserReady({
     setSearchQuery("");
     setPostCategoryFilter(null);
     setPostAuthorFilter(null);
+    setPostStatusFilter(null);
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(null);
@@ -844,6 +871,7 @@ function ContentBrowserReady({
     setSearchQuery("");
     setPostCategoryFilter(null);
     setPostAuthorFilter(null);
+    setPostStatusFilter(null);
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(slug || null);
@@ -1011,6 +1039,7 @@ function ContentBrowserReady({
             onSearchChange={setSearchQuery}
             postCategoryFilter={postCategoryFilter}
             postAuthorFilter={postAuthorFilter}
+            postStatusFilter={postStatusFilter}
             postSort={postSort}
             onPostCategoryFilterChange={(slug) => {
               setPostCategoryFilter(slug);
@@ -1018,6 +1047,10 @@ function ContentBrowserReady({
             }}
             onPostAuthorFilterChange={(email) => {
               setPostAuthorFilter(email);
+              setSelectedPostKeys(new Set());
+            }}
+            onPostStatusFilterChange={(status) => {
+              setPostStatusFilter(status);
               setSelectedPostKeys(new Set());
             }}
             onPostSortChange={setPostSort}
@@ -1660,9 +1693,11 @@ function ItemList({
   onSearchChange,
   postCategoryFilter,
   postAuthorFilter,
+  postStatusFilter,
   postSort,
   onPostCategoryFilterChange,
   onPostAuthorFilterChange,
+  onPostStatusFilterChange,
   onPostSortChange,
   selectedPostKeys,
   postBulkPanelOpen,
@@ -1698,9 +1733,11 @@ function ItemList({
   onSearchChange: (q: string) => void;
   postCategoryFilter: string | null;
   postAuthorFilter: string | null;
+  postStatusFilter: PostStatus | null;
   postSort: PostSort;
   onPostCategoryFilterChange: (slug: string | null) => void;
   onPostAuthorFilterChange: (email: string | null) => void;
+  onPostStatusFilterChange: (status: PostStatus | null) => void;
   onPostSortChange: (sort: PostSort) => void;
   selectedPostKeys: Set<string>;
   /** The right-pane bulk panel is open (forces selection mode in the list). */
@@ -1822,6 +1859,7 @@ function ItemList({
     .filter(
       (p) => !postAuthorFilter || p.authorEmails.includes(postAuthorFilter),
     )
+    .filter((p) => !postStatusFilter || p.status === postStatusFilter)
     .sort((a, b) => {
       if (postSort === "az") return a.title.localeCompare(b.title);
       if (postSort === "za") return b.title.localeCompare(a.title);
@@ -1903,9 +1941,11 @@ function ItemList({
             authors={authorOptions}
             categoryFilter={postCategoryFilter}
             authorFilter={postAuthorFilter}
+            statusFilter={postStatusFilter}
             sort={postSort}
             onCategoryFilterChange={onPostCategoryFilterChange}
             onAuthorFilterChange={onPostAuthorFilterChange}
+            onStatusFilterChange={onPostStatusFilterChange}
             onSortChange={onPostSortChange}
           />
         ))}
@@ -2119,6 +2159,11 @@ function ItemList({
                     selectable
                     selectionActive={selectionActive}
                     selected={selectedPostKeys.has(post.key)}
+                    trailing={
+                      isPublishedStatus(post.status) ? undefined : (
+                        <PostStatusBadge status={post.status} />
+                      )
+                    }
                     onToggleSelect={() => onTogglePostSelect(post.key)}
                     onClick={() =>
                       selectionActive
@@ -2246,23 +2291,29 @@ function OptionCount({ count }: { count: number }) {
   );
 }
 
+const STATUS_FILTER_ALL = "__all__";
+
 function PostFilterBar({
   categories,
   authors,
   categoryFilter,
   authorFilter,
+  statusFilter,
   sort,
   onCategoryFilterChange,
   onAuthorFilterChange,
+  onStatusFilterChange,
   onSortChange,
 }: {
   categories: CategoryOption[];
   authors: AuthorOption[];
   categoryFilter: string | null;
   authorFilter: string | null;
+  statusFilter: PostStatus | null;
   sort: PostSort;
   onCategoryFilterChange: (slug: string | null) => void;
   onAuthorFilterChange: (email: string | null) => void;
+  onStatusFilterChange: (status: PostStatus | null) => void;
   onSortChange: (sort: PostSort) => void;
 }) {
   const activeCategory = categories.find((c) => c.slug === categoryFilter);
@@ -2349,7 +2400,37 @@ function PostFilterBar({
         <FilterClearButton label="Clear filter" onClick={clearFilter} />
       )}
 
-      <div className="ml-auto shrink-0">
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <FilterChipTrigger
+              icon={FilterFunnel01}
+              active={!!statusFilter}
+              value={statusFilter ? POST_STATUS_LABELS[statusFilter] : "Status"}
+              className="min-w-0 shrink"
+            />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuLabel>Status</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={statusFilter ?? STATUS_FILTER_ALL}
+              onValueChange={(v) =>
+                onStatusFilterChange(
+                  v === STATUS_FILTER_ALL ? null : (v as PostStatus),
+                )
+              }
+            >
+              <DropdownMenuRadioItem value={STATUS_FILTER_ALL}>
+                All statuses
+              </DropdownMenuRadioItem>
+              {POST_STATUSES.map((status) => (
+                <DropdownMenuRadioItem key={status} value={status}>
+                  {POST_STATUS_LABELS[status]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <FilterChipTrigger

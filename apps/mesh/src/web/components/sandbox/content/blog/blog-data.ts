@@ -201,6 +201,48 @@ export interface CategoryRef {
   slug: string;
 }
 
+/**
+ * Publication status stored on the post payload (`post.status`). Kept in sync
+ * with the deco-cms/blog app's `PostStatus` (deco-cx/apps#1603): the live site
+ * shows only `published` (or a legacy post with no status); everything else is
+ * hidden. Order here is the order shown in the editor's status selector.
+ */
+export const POST_STATUSES = [
+  "draft",
+  "published",
+  "archived",
+  "awaiting_review",
+  "generating",
+] as const;
+
+export type PostStatus = (typeof POST_STATUSES)[number];
+
+/** Human labels for each status, for badges and the selector. */
+export const POST_STATUS_LABELS: Record<PostStatus, string> = {
+  draft: "Draft",
+  published: "Published",
+  archived: "Archived",
+  awaiting_review: "Awaiting review",
+  generating: "Generating",
+};
+
+/**
+ * Read the publication status off a post payload. Legacy posts have no
+ * `status` field — they are treated as `published`, matching the live site
+ * (`isPublishedStatus` in the blog app). An unknown value is preserved as-is
+ * so the editor never silently rewrites data it doesn't recognize.
+ */
+export function postStatusOf(payload: Record<string, unknown>): PostStatus {
+  const raw = str(payload.status);
+  if (!raw) return "published";
+  return raw as PostStatus;
+}
+
+/** True when a post renders on the live site (published or legacy/no-status). */
+export function isPublishedStatus(status: string | undefined): boolean {
+  return !status || status === "published";
+}
+
 /** Compact metadata for a post, used by the posts list filters/sort. */
 export interface PostMeta {
   /** Decofile key (block id). */
@@ -209,6 +251,8 @@ export interface PostMeta {
   slug: string;
   /** Raw `date` string from the payload (ISO date, possibly empty). */
   date: string;
+  /** Publication status (`published` for legacy posts with no status). */
+  status: PostStatus;
   /** Slugs of the post's categories (denormalized). */
   categorySlugs: string[];
   /** Emails of the post's authors (denormalized). */
@@ -249,6 +293,7 @@ export function listPostsWithMeta(
     title: str(payload.title) || "Untitled post",
     slug: str(payload.slug),
     date: str(payload.date),
+    status: postStatusOf(payload),
     categorySlugs: toArray(payload.categories)
       .map(categorySlugOf)
       .filter(Boolean),
@@ -639,4 +684,9 @@ export function isBlogPostBlockResolveType(resolveType: string): boolean {
   return BLOG_POST_BLOCK_PREFIXES.some((prefix) =>
     resolveType.startsWith(prefix),
   );
+}
+
+/** True for built-in deco-cms/blog app blocks (not site-defined sections). */
+export function isBlogAppBlockResolveType(resolveType: string): boolean {
+  return resolveType.startsWith("blog/sections/blocks/");
 }
