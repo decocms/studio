@@ -1,3 +1,4 @@
+import { sleep } from "@decocms/std";
 import { useState, useRef, useEffect, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
@@ -821,7 +822,7 @@ export function PreviewContent({
       });
       setCreatePageDialogOpen(false);
       toast.success(`Page "${name}" created`);
-      await new Promise((resolve) => setTimeout(resolve, DEV_SERVER_SETTLE_MS));
+      await sleep(DEV_SERVER_SETTLE_MS);
       navigatePreviewToPage({
         key: result.key,
         name: result.name,

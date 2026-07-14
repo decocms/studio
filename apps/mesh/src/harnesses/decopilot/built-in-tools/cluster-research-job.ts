@@ -27,6 +27,7 @@
  */
 
 import { streamText } from "ai";
+import { sleep } from "@decocms/std";
 import {
   AsyncResearchTerminalError,
   type MeshProvider,
@@ -267,10 +268,7 @@ async function* runAsyncResearch({
       while (progressQueue.length > 0) {
         yield { progress: progressQueue.shift()! };
       }
-      await Promise.race([
-        resumePromise,
-        new Promise((resolve) => setTimeout(resolve, THROTTLE_MS)),
-      ]);
+      await Promise.race([resumePromise, sleep(THROTTLE_MS)]);
     }
     while (progressQueue.length > 0) {
       yield { progress: progressQueue.shift()! };
