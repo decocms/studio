@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { consumePreviewTabIntent, setPreviewTabIntent } from "./tab-intent";
+import { PreviewRuntimeSwitcher } from "./preview-runtime-switcher";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { useSecondaryPanel } from "@/web/layouts/agent-shell-layout/secondary-panel-context";
 import { useColumnResize } from "@/web/hooks/use-column-resize";
@@ -954,6 +955,12 @@ export function PreviewContent({
     <div className="flex flex-col w-full h-full">
       {daemonReady && previewState.kind === "iframe" && (
         <div className="relative flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
+          {/* Runtime switcher — where the preview (and its agent) runs:
+              Cloud sandbox vs This device. Absolutely positioned on the left so
+              the address bar below stays centered. */}
+          <div className="absolute left-3 top-1/2 z-10 -translate-y-1/2 md:left-4">
+            <PreviewRuntimeSwitcher />
+          </div>
           {/* Groups 2+3 only render when the iframe is live — they read
               `previewState.previewUrl` and steer the iframe directly. */}
           {previewState.kind === "iframe" && (
