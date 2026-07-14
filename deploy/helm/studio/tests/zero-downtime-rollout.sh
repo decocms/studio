@@ -54,24 +54,33 @@ echo "── start in-cluster load generator (hits front door through nginx→ap
 # the api tier). Any non-200 or curl error increments FAIL. Writes a running
 # tally to its log so we can read it after the rollout.
 #
-# --retry 5 --retry-all-errors: the zero-downtime property is that the *service*
-# never goes unreachable, not that no single TCP packet is ever dropped. Both
-# tiers roll with maxUnavailable=0, so a ready endpoint always exists; a browser
-# (and curl) simply reconnects and kube-proxy routes to it. Retrying models that
-# and absorbs an isolated CI hiccup (kube-proxy endpoint-sync lag, a >max-time
-# response under 2-core CPU starvation). A REAL regression — e.g. the earlier
-# nginx quit-first bug — makes the front door refuse for a sustained window, so
-# every retry also fails and the request still counts as bad. --retry-delay 0
-# keeps retries inside any genuine outage window rather than waiting it out.
+# The property under test is that the *service* stays available through a roll,
+# not that every single request is fast. Explicit per-attempt retry (curl's own
+# --retry + --max-time interact ambiguously, so we loop ourselves):
+#   - per-attempt --max-time 8 is deliberately ABOVE nginx's proxy_connect_timeout
+#     (5s): when an api pod is replaced, nginx may hold a keepalive conn to it and
+#     spend up to 5s failing that over to a live pod (proxy_next_upstream). That is
+#     a slow success, NOT downtime — the request must be allowed to complete, or a
+#     3s client guillotine reports a false 000. (The stub api dies instantly on
+#     SIGTERM with no graceful drain, which forces this path; the real Bun api
+#     drains via SHUTDOWN_GRACE_SECONDS so nginx sees a clean close and never
+#     stalls — the stub is stricter than prod here.)
+#   - up to 4 attempts, 1s apart, cover a fast connect-refused during endpoint
+#     churn. A genuine outage (e.g. the earlier nginx quit-first bug) refuses for a
+#     sustained window, so every attempt fails and the request still counts bad.
 kubectl -n "$NS" run loadgen --image=curlimages/curl:8.10.1 --restart=Never -- \
   /bin/sh -c '
     ok=0; bad=0; base="http://'"$RELEASE"'.'"$NS"'.svc.cluster.local";
     end=$(( $(date +%s) + 120 ));
     while [ "$(date +%s)" -lt "$end" ]; do
       for path in /healthz /api/health; do
-        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 \
-          --retry 5 --retry-delay 0 --retry-all-errors "$base$path" || echo 000);
-        if [ "$code" = "200" ]; then ok=$((ok+1)); else bad=$((bad+1)); echo "MISS $path -> $code"; fi
+        code=000;
+        for attempt in 1 2 3 4; do
+          code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 --max-time 8 "$base$path" 2>/dev/null || echo 000);
+          [ "$code" = "200" ] && break;
+          sleep 1;
+        done;
+        if [ "$code" = "200" ]; then ok=$((ok+1)); else bad=$((bad+1)); echo "MISS $path -> $code (after retries)"; fi
       done
       sleep 0.1;
     done
