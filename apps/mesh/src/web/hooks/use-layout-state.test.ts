@@ -83,7 +83,7 @@ describe("resolveDefaultPanelState", () => {
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "settings" } },
         mainParamPresent: true,
-        mainParamValue: "0",
+        mainParamValue: 0,
         blocksParamPresent: false,
       }),
     ).toEqual({ mainOpen: false, chatOpen: true, blocksOpen: false });
@@ -286,7 +286,7 @@ describe("resolveWorkspacePanelAction", () => {
         { type: "toggleMain", openMainValue: "preview" },
         { chatOpen: false, blocksOpen: true, mainOpen: true },
       ),
-    ).toEqual({ main: "0" });
+    ).toEqual({ main: 0 });
   });
 
   test("toggleBlocks updates only the blocks search param", () => {
@@ -381,12 +381,12 @@ describe("mobileSurfaceSearch", () => {
     expect(mobileSurfaceSearch("chat", "preview")).toEqual({
       chat: 1,
       blocks: 0,
-      main: "0",
+      main: 0,
     });
     expect(mobileSurfaceSearch("blocks", "preview")).toEqual({
       chat: 0,
       blocks: 1,
-      main: "0",
+      main: 0,
     });
     expect(mobileSurfaceSearch("main", "preview")).toEqual({
       chat: 0,

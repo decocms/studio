@@ -259,9 +259,10 @@ describe("resolveActiveTabAndOpen", () => {
   });
 
   test("?main=0 → closed, tab = default", () => {
-    expect(resolveActiveTabAndOpen({ mainParam: "0", metadata: meta })).toEqual(
-      { mainOpen: false, activeTab: "analytics" },
-    );
+    expect(resolveActiveTabAndOpen({ mainParam: 0, metadata: meta })).toEqual({
+      mainOpen: false,
+      activeTab: "analytics",
+    });
   });
 
   test("?main=settings → open, tab = 'settings'", () => {
@@ -320,14 +321,14 @@ describe("resolveActiveTabAndOpen", () => {
 });
 
 describe("resolveTabClickTarget", () => {
-  test("clicking active tab while panel open → close ('0')", () => {
+  test("clicking active tab while panel open → close (0)", () => {
     expect(
       resolveTabClickTarget({
         clickedId: "settings",
         activeTab: "settings",
         mainOpen: true,
       }),
-    ).toBe("0");
+    ).toBe(0);
   });
 
   test("clicking non-active tab while panel open → clicked id", () => {
@@ -424,13 +425,13 @@ describe("resolveAutomationsPillClickTarget", () => {
     ).toBe("automations");
   });
 
-  test("on list while panel open → close ('0')", () => {
+  test("on list while panel open → close (0)", () => {
     expect(
       resolveAutomationsPillClickTarget({
         activeTab: "automations",
         mainOpen: true,
       }),
-    ).toBe("0");
+    ).toBe(0);
   });
 
   test("on unrelated tab → open list", () => {

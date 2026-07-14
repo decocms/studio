@@ -209,9 +209,10 @@ export function usePanelActions() {
 
   const toggleMain = () =>
     nav((prev) => {
-      const isOpen = prev.main !== undefined && prev.main !== "0";
+      const isOpen =
+        prev.main !== undefined && prev.main !== 0 && prev.main !== "0";
       if (isOpen) {
-        return { ...prev, main: "0" };
+        return { ...prev, main: 0 };
       }
       const next: Record<string, unknown> = { ...prev };
       delete next.main;

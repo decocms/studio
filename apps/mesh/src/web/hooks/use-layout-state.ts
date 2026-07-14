@@ -77,7 +77,7 @@ export type WorkspacePanelAction =
 export type WorkspacePanelSearchUpdate = {
   chat?: 0 | 1;
   blocks?: 0 | 1;
-  main?: string;
+  main?: string | 0;
 };
 
 export function canCloseWorkspacePanel(
@@ -152,7 +152,7 @@ export function resolveWorkspacePanelAction(
     case "toggleMain":
       if (visibility.mainOpen) {
         if (!canCloseWorkspacePanel("main", visibility)) return null;
-        return { main: "0" };
+        return { main: 0 };
       }
       return { main: action.openMainValue };
     case "openChat":
@@ -163,20 +163,20 @@ export function resolveWorkspacePanelAction(
 export function resolveDefaultPanelState(ctx: {
   entityMetadata: EntityLayoutMetadata | null;
   mainParamPresent: boolean;
-  mainParamValue?: string;
+  mainParamValue?: string | 0;
   blocksParamPresent: boolean;
   blocksParamValue?: number;
 }): WorkspaceVisibility {
+  const mainParamValue = ctx.mainParamValue === 0 ? "0" : ctx.mainParamValue;
   const def = ctx.entityMetadata?.defaultMainView ?? null;
   const defaultIsChat = def == null || def.type === "chat";
   const defaultIsBlocks = def?.type === "blocks";
-  const legacyBlocksView =
-    ctx.mainParamPresent && ctx.mainParamValue === "blocks";
+  const legacyBlocksView = ctx.mainParamPresent && mainParamValue === "blocks";
 
   const mainOpen = legacyBlocksView
     ? false
     : ctx.mainParamPresent
-      ? ctx.mainParamValue !== "0"
+      ? mainParamValue !== "0"
       : !defaultIsChat && !defaultIsBlocks;
 
   // Chat is always open when it IS the default view. Otherwise it opens
@@ -230,9 +230,9 @@ export function mobileSurfaceSearch(
 ): Required<Pick<WorkspacePanelSearchUpdate, "chat" | "blocks" | "main">> {
   switch (surface) {
     case "chat":
-      return { chat: 1, blocks: 0, main: "0" };
+      return { chat: 1, blocks: 0, main: 0 };
     case "blocks":
-      return { chat: 0, blocks: 1, main: "0" };
+      return { chat: 0, blocks: 1, main: 0 };
     case "main":
       return { chat: 0, blocks: 0, main: mainTabId };
   }
@@ -245,7 +245,7 @@ export function mobileSurfaceSearch(
 type PanelSearchParams = {
   chat?: number;
   blocks?: number;
-  main?: string;
+  main?: string | 0;
   virtualmcpid?: string;
 };
 
@@ -273,11 +273,12 @@ export function useChatMainPanelState(
   const { locator } = useProjectContext();
 
   const { virtualMcpId, orgSlug, isAgentRoute } = routeCtx;
+  const mainParam = search.main === 0 ? "0" : search.main;
 
   const defaults = resolveDefaultPanelState({
     entityMetadata,
     mainParamPresent: search.main !== undefined,
-    mainParamValue: search.main,
+    mainParamValue: mainParam,
     blocksParamPresent: search.blocks !== undefined,
     blocksParamValue: search.blocks,
   });
@@ -350,8 +351,8 @@ export function useChatMainPanelState(
 
   const setMobileSurface = (surface: MobileWorkspaceSurface) => {
     const activeMainTab =
-      search.main && search.main !== "0" && search.main !== "blocks"
-        ? search.main
+      mainParam && mainParam !== "0" && mainParam !== "blocks"
+        ? mainParam
         : resolveDefaultTabId(entityMetadata);
     navigateSearch(mobileSurfaceSearch(surface, activeMainTab), {
       replace: true,
@@ -397,10 +398,10 @@ export function useChatMainPanelState(
   const openTab = (id: string) => {
     navigateSearch(
       {
-        ...(search.main === "blocks" && search.blocks === undefined
+        ...(mainParam === "blocks" && search.blocks === undefined
           ? { blocks: 1 }
           : {}),
-        main: id,
+        main: id === "0" ? 0 : id,
       },
       { replace: true },
     );
@@ -411,7 +412,7 @@ export function useChatMainPanelState(
     mainOpen,
     chatOpen,
     blocksOpen,
-    mainParam: search.main,
+    mainParam,
     setTaskId,
     toggleMain,
     toggleChat,

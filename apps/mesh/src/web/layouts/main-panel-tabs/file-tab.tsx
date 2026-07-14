@@ -101,7 +101,10 @@ export function FileTab({
   const handleClose = () =>
     navigate({
       to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main: "0" }),
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        main: 0 as const,
+      }),
       replace: true,
     });
 

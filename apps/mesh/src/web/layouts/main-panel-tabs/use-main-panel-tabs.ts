@@ -136,7 +136,7 @@ export function useMainPanelTabs(ctx: {
 }): MainPanelTabs {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as {
-    main?: string;
+    main?: string | 0;
   };
   const entity = useVirtualMCP(ctx.virtualMcpId);
   const metadata = useTaskMetadata(ctx.taskId);

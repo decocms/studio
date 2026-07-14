@@ -255,19 +255,20 @@ export function resolveDefaultTabId(
 }
 
 export function resolveActiveTabAndOpen(ctx: {
-  mainParam: string | undefined;
+  mainParam: string | 0 | undefined;
   metadata: EntityLayoutMetadata | null;
 }): { mainOpen: boolean; activeTab: string } {
+  const mainParam = ctx.mainParam === 0 ? "0" : ctx.mainParam;
   const def = resolveDefaultTabId(ctx.metadata);
 
-  if (isLegacyBlocksTab(ctx.mainParam)) {
+  if (isLegacyBlocksTab(mainParam)) {
     return { mainOpen: false, activeTab: def };
   }
 
-  if (ctx.mainParam === "0") {
+  if (mainParam === "0") {
     return { mainOpen: false, activeTab: def };
   }
-  if (ctx.mainParam === undefined) {
+  if (mainParam === undefined) {
     // Mirror resolveDefaultPanelState: a chat-default (or absent default)
     // keeps the main panel closed so the header tab bar doesn't highlight
     // a tab while the panel is 0px wide.
@@ -277,10 +278,10 @@ export function resolveActiveTabAndOpen(ctx: {
     return { mainOpen: !defaultIsChat && !defaultIsBlocks, activeTab: def };
   }
   // Legacy ids coming from URL state migrate to the unified settings tab.
-  if (LEGACY_SETTINGS_TABS.has(ctx.mainParam)) {
+  if (LEGACY_SETTINGS_TABS.has(mainParam)) {
     return { mainOpen: true, activeTab: "settings" };
   }
-  return { mainOpen: true, activeTab: ctx.mainParam };
+  return { mainOpen: true, activeTab: mainParam };
 }
 
 /**
@@ -293,8 +294,8 @@ export function resolveTabClickTarget(ctx: {
   clickedId: string;
   activeTab: string;
   mainOpen: boolean;
-}): string {
-  if (ctx.mainOpen && ctx.clickedId === ctx.activeTab) return "0";
+}): string | 0 {
+  if (ctx.mainOpen && ctx.clickedId === ctx.activeTab) return 0;
   return ctx.clickedId;
 }
 
@@ -315,14 +316,14 @@ export function isAutomationsPillActive(ctx: {
 /**
  * Click target for the Automations pill.
  *
- * - On the list with the panel open → close (`"0"`).
+ * - On the list with the panel open → close (`0`).
  * - On a detail view → navigate up to the list (`"automations"`).
  * - Otherwise (panel closed or on a different tab) → open the list.
  */
 export function resolveAutomationsPillClickTarget(ctx: {
   activeTab: string;
   mainOpen: boolean;
-}): string {
-  if (ctx.mainOpen && ctx.activeTab === "automations") return "0";
+}): string | 0 {
+  if (ctx.mainOpen && ctx.activeTab === "automations") return 0;
   return "automations";
 }
