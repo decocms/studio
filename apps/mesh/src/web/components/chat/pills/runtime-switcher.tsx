@@ -18,7 +18,6 @@
 import {
   AlertTriangle,
   Check,
-  ChevronDown,
   Cloud01,
   Lock01,
   Monitor01,
@@ -32,6 +31,11 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import type { SandboxProviderKind } from "@decocms/mesh-sdk";
 import { useChatPrefs, useChatTask } from "../context";
 import { useAgentOptionAvailability } from "../use-agent-availability";
@@ -126,20 +130,33 @@ export function RuntimeSwitcher() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          className="h-9 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-        >
-          <CurrentIcon size={14} className="shrink-0" />
-          <span className="truncate">{current.label}</span>
-          {isThreadLocked ? (
-            <Lock01 size={12} className="shrink-0 opacity-70" />
-          ) : (
-            <ChevronDown size={12} className="shrink-0 opacity-70" />
-          )}
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Runtime: ${current.label}`}
+              className="size-9 text-muted-foreground hover:text-foreground"
+            >
+              <span className="relative inline-flex items-center justify-center">
+                <CurrentIcon size={16} />
+                {isThreadLocked && (
+                  <Lock01
+                    size={9}
+                    className="absolute -bottom-1 -right-1.5 rounded-full bg-background"
+                  />
+                )}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {isThreadLocked
+            ? `Running on ${current.label.toLowerCase()} · locked to this chat`
+            : `Running on ${current.label.toLowerCase()}`}
+        </TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="start" className="w-64 p-1">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
           Run on
