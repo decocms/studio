@@ -172,10 +172,7 @@ export class TaskManager {
       for (const t of this.tasks.values()) {
         if (t.status !== "running" || t.spec.logName !== spec.logName) continue;
         t.intentional = true;
-        t.kill("SIGTERM");
-        setTimeout(() => {
-          if (t.status === "running") t.kill("SIGKILL");
-        }, 3000);
+        this.killWithEscalation(t, "SIGTERM");
         waiters.push(t.finishedPromise);
       }
       if (waiters.length > 0) await Promise.all(waiters);
@@ -277,12 +274,7 @@ export class TaskManager {
     // (dev script) task stopped this way isn't misread by the orchestrator's
     // onTaskExit as a crash (see task-manager's `intentional` field docs).
     t.intentional = true;
-    t.kill(signal);
-    setTimeout(() => {
-      if (t.status === "running") {
-        t.kill("SIGKILL");
-      }
-    }, 3000);
+    this.killWithEscalation(t, signal);
     return true;
   }
 
@@ -295,10 +287,7 @@ export class TaskManager {
     for (const t of this.tasks.values()) {
       if (t.status !== "running" || t.spec.logName !== logName) continue;
       if (opts?.intentional) t.intentional = true;
-      t.kill(signal);
-      setTimeout(() => {
-        if (t.status === "running") t.kill("SIGKILL");
-      }, 3000);
+      this.killWithEscalation(t, signal);
       count++;
     }
     return count;
@@ -309,14 +298,20 @@ export class TaskManager {
     for (const t of this.tasks.values()) {
       if (t.status === "running") {
         t.intentional = true;
-        t.kill("SIGTERM");
-        setTimeout(() => {
-          if (t.status === "running") t.kill("SIGKILL");
-        }, 3000);
+        this.killWithEscalation(t, "SIGTERM");
         count++;
       }
     }
     return count;
+  }
+
+  /** Signal a task, then escalate to SIGKILL after 3s if it's still running
+   *  (a stuck subprocess or a shell with a trap can ignore the first signal). */
+  private killWithEscalation(t: TaskInternal, signal: NodeJS.Signals): void {
+    t.kill(signal);
+    setTimeout(() => {
+      if (t.status === "running") t.kill("SIGKILL");
+    }, 3000);
   }
 
   delete(id: string): boolean {
