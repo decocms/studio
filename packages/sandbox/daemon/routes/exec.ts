@@ -9,6 +9,7 @@ import type { DaemonStatus } from "../events/types";
 import type { LifecycleManager } from "../lifecycle/manager";
 import type { TaskManager } from "../process/task-manager";
 import { discoverScripts } from "../process/script-discovery";
+import { withPathDirs } from "../process/structured-command";
 import { jsonResponse, parseJsonBody } from "./body-parser";
 import { awaitTaskResponse } from "./tasks";
 
@@ -97,13 +98,20 @@ export function makeExecHandler(deps: ExecDeps) {
     // a blocking response opt in via mode: "await".
     const mode: ExecMode = body.mode === "await" ? "await" : "background";
 
-    const env = buildDevEnv(config, { ...config.env, ...body.env });
-    const { cmd, label } = pmRunCommand(
-      config.runtimePathPrefix,
-      cwd,
-      pmConf.runPrefix,
-      name,
-    );
+    const { cmd, label } = pmRunCommand(cwd, pmConf.runPrefix, name);
+    // Runtime PATH dirs must win the PATH key specifically, but merge
+    // *after* config.env/body.env so a user-supplied PATH gets prepended to
+    // (not replaced) rather than the whole runtime PATH being clobbered by
+    // it — mirrors the old shell chain's `export PATH=/opt/bun/bin:$PATH`.
+    // When no user PATH override exists, fall back to the daemon's own PATH
+    // so the prepend never replaces the effective PATH outright.
+    const merged = buildDevEnv(config, { ...config.env, ...body.env });
+    const env = {
+      ...merged,
+      ...withPathDirs(config.runtimePathDirs, {
+        PATH: merged.PATH ?? process.env.PATH,
+      }),
+    };
 
     // Manually running a dev starter is explicit intent to (re)start the dev
     // server — the same WELL_KNOWN_STARTERS list whose non-zero exit wedges

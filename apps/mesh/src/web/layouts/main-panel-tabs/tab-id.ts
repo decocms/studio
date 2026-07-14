@@ -144,10 +144,38 @@ export function parseLibraryFileTabId(
   }
 }
 
+export interface CodeTabParsed {
+  /** File to open in the code tab, or null for the bare file-tree view. */
+  path: string | null;
+}
+
+/** Paths carry `/`, so the tab id encodes them to keep the
+ *  `<kind>:<rest>` grammar unambiguous in the `?main=` URL param. */
+export function formatCodeTabId(path: string): string {
+  return `code:${encodeURIComponent(path)}`;
+}
+
+export function parseCodeTabId(
+  tabId: string | undefined,
+): CodeTabParsed | null {
+  if (!tabId) return null;
+  if (tabId === "code") return { path: null };
+  if (!tabId.startsWith("code:")) return null;
+  const encoded = tabId.slice("code:".length);
+  if (!encoded) return null;
+  try {
+    return { path: decodeURIComponent(encoded) };
+  } catch {
+    return null;
+  }
+}
+
 export const FIXED_SYSTEM_TABS = [
   "settings",
   "automations",
   "preview",
+  "blocks",
+  "code",
   "content",
   "git",
 ] as const;

@@ -1,3 +1,4 @@
+import { Inbox01 } from "@untitledui/icons";
 import { TaskRow } from "@/web/layouts/tasks-panel/task-row";
 import type { Task } from "@/web/components/chat/task/types";
 import { groupThreadsByStatus } from "./group-threads";
@@ -25,6 +26,7 @@ export function MyThreadsSection({
   hasMore,
   isFetchingMore,
   onLoadMore,
+  filtersActive,
 }: {
   threads: Task[];
   groupBy: "flat" | "status";
@@ -35,7 +37,19 @@ export function MyThreadsSection({
   hasMore: boolean;
   isFetchingMore: boolean;
   onLoadMore: () => void;
+  filtersActive?: boolean;
 }) {
+  if (threads.length === 0 && !hasMore && !isFetchingMore) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center text-muted-foreground">
+        <Inbox01 className="size-6 opacity-60" />
+        <p className="text-sm">
+          {filtersActive ? "No threads match your filters" : "No threads yet"}
+        </p>
+      </div>
+    );
+  }
+
   if (groupBy === "status") {
     return (
       <>

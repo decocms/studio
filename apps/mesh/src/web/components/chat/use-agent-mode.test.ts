@@ -56,14 +56,16 @@ describe("resolveTierSubtitle", () => {
   });
 
   describe("local-codex: returns the versioned model label", () => {
-    it("fast → GPT-5.4 Mini", () => {
-      expect(resolveTierSubtitle("local-codex", "fast")).toBe("GPT-5.4 Mini");
+    it("fast → GPT-5.6 Luna", () => {
+      expect(resolveTierSubtitle("local-codex", "fast")).toBe("GPT-5.6 Luna");
     });
-    it("smart → GPT-5.4", () => {
-      expect(resolveTierSubtitle("local-codex", "smart")).toBe("GPT-5.4");
+    it("smart → GPT-5.6 Terra", () => {
+      expect(resolveTierSubtitle("local-codex", "smart")).toBe("GPT-5.6 Terra");
     });
-    it("thinking → GPT-5.5", () => {
-      expect(resolveTierSubtitle("local-codex", "thinking")).toBe("GPT-5.5");
+    it("thinking → GPT-5.6 Sol", () => {
+      expect(resolveTierSubtitle("local-codex", "thinking")).toBe(
+        "GPT-5.6 Sol",
+      );
     });
   });
 

@@ -13,6 +13,7 @@ import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
 import { GitTab } from "@/web/components/thread/github/git-tab";
 import { PreviewTab } from "./preview-tab";
+import { CodeTab } from "./code-tab";
 import { ContentTab } from "./content-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
@@ -23,6 +24,7 @@ import { LibraryTab } from "./library-tab";
 import { MainPanelLoading } from "./main-panel-loading";
 import {
   isLegacySettingsTab,
+  parseCodeTabId,
   parseDeckTabId,
   parseFileTabId,
   parseLibraryFileTabId,
@@ -77,6 +79,13 @@ function TabBody({
   }
   if (activeTab === "preview") {
     return <PreviewTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "blocks") {
+    return <PreviewTab virtualMcpId={virtualMcpId} initialViewMode="cms" />;
+  }
+  const codeTab = parseCodeTabId(activeTab);
+  if (codeTab) {
+    return <CodeTab openPath={codeTab.path} />;
   }
   if (activeTab === "content") {
     return <ContentTab virtualMcpId={virtualMcpId} />;

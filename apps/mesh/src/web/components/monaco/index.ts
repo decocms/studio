@@ -1,5 +1,6 @@
 import type { OnMount } from "@monaco-editor/react";
 import { loader } from "@monaco-editor/react";
+import { sleep } from "@decocms/std";
 
 export async function getReturnType(editor: Parameters<OnMount>[0]) {
   const model = editor.getModel();
@@ -68,7 +69,7 @@ declare const __outputValue: __InferredOutput;
     const client = await worker(model.uri);
 
     // Wait for TypeScript to process the modified code
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await sleep(100);
 
     const offset = model.getOffsetAt(position);
     const quickInfo = await client.getQuickInfoAtPosition(

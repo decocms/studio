@@ -5,6 +5,12 @@
  * point every command exits non-zero and we simply move on.
  */
 export function detachMount(mountPath: string, isMac: boolean): void {
+  // No org-fs mount is ever established on Windows (see mounter.ts's win32
+  // guard), and neither `umount` nor `fusermount` exist there — so this is
+  // reachable pre-mount too (entry.ts's exit handler calls it unconditionally
+  // for every tracked mount path). No-op rather than spawn a binary that
+  // doesn't exist.
+  if (process.platform === "win32") return;
   // NFS + FUSE both unmount via `umount`; on Linux `fusermount -u` is the
   // unprivileged path, so try it first there.
   const cmds: string[][] = isMac

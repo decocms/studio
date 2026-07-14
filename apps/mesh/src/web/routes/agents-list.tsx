@@ -12,7 +12,6 @@ import { useCapability } from "@/web/hooks/use-capability";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { useCreateVirtualMCP } from "@/web/hooks/use-create-virtual-mcp";
 import {
-  HYDROGEN_TEMPLATE,
   WEBSITE_TEMPLATE,
   useCreateAgentFromTemplate,
 } from "@/web/hooks/use-create-website-agent";
@@ -125,13 +124,6 @@ export default function AgentsListPage() {
                       });
                       createFromTemplate(WEBSITE_TEMPLATE);
                     }}
-                    onCreateHydrogenStore={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "hydrogen",
-                      });
-                      createFromTemplate(HYDROGEN_TEMPLATE);
-                    }}
                     onImportGitHub={() => {
                       track("agent_create_clicked", {
                         source: "agents_list",
@@ -192,13 +184,6 @@ export default function AgentsListPage() {
                             method: "website",
                           });
                           createFromTemplate(WEBSITE_TEMPLATE);
-                        }}
-                        onCreateHydrogenStore={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "hydrogen",
-                          });
-                          createFromTemplate(HYDROGEN_TEMPLATE);
                         }}
                         onImportGitHub={() => {
                           track("agent_create_clicked", {

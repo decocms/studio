@@ -32,20 +32,6 @@ export function useSidebarAgentGroupsEmpty(): boolean {
   return useContext(SidebarAgentGroupsContext)?.empty ?? false;
 }
 
-export function useSidebarOrderRevision(): number {
-  return useContext(SidebarAgentGroupsContext)?.orderRevision ?? 0;
-}
-
 export function useBumpSidebarOrderRevision(): () => void {
   return useContext(SidebarAgentGroupsContext)?.bumpOrderRevision ?? (() => {});
-}
-
-export function SyncSidebarAgentGroupsEmpty({ value }: { value: boolean }) {
-  const ctx = useContext(SidebarAgentGroupsContext);
-  const [prev, setPrev] = useState<boolean | null>(null);
-  if (ctx && prev !== value) {
-    ctx.setEmpty(value);
-    setPrev(value);
-  }
-  return null;
 }

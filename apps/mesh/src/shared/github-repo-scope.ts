@@ -107,3 +107,15 @@ export function getOrgGithubConnections<
 >(connections: T[] | undefined | null): T[] {
   return (connections ?? []).filter((c) => getRepoScope(c) === null);
 }
+
+/**
+ * An org-shared repo connection ("Add repo" in the sidebar): a repo-scoped
+ * child that is deliberately NOT bound to a single agent — it's injected into
+ * every agent's toolset. Distinct from the per-agent import child, which also
+ * has `repoScope` but no `orgShared` flag and stays private to its agent.
+ */
+export function isOrgSharedConnection(connection: {
+  metadata: Record<string, unknown> | null;
+}): boolean {
+  return connection.metadata?.orgShared === true;
+}

@@ -538,3 +538,19 @@ export function invalidateVirtualMcpQueries(
     },
   });
 }
+
+export function invalidateConnectionQueries(
+  queryClient: import("@tanstack/react-query").QueryClient,
+  orgId?: string,
+) {
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return (
+        (!orgId || key[1] === orgId) &&
+        key[3] === "collection" &&
+        key[4] === "CONNECTIONS"
+      );
+    },
+  });
+}

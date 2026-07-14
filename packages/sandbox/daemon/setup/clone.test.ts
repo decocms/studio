@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import { execSync } from "node:child_process";
 import {
   existsSync,
@@ -11,7 +11,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { computeBranchDivergence } from "../git/branch-divergence";
 import type { Config } from "../types";
-import { isSafeRefName, spawnClone } from "./clone";
+import { cloneCommand, spawnClone } from "./clone";
+
+const ASKPASS = "/data/askpass.sh";
 
 /**
  * Creates a bare "origin" git repo with two branches:
@@ -91,39 +93,51 @@ function makeConfig(
   } as unknown as Config;
 }
 
-describe("isSafeRefName", () => {
-  it("accepts real branch names", () => {
-    for (const name of [
+describe("cloneCommand", () => {
+  const askpass = "/data/askpass.sh";
+
+  test("branch-on-remote clone is a single argv with env, no shell tokens", () => {
+    const cmd = cloneCommand({
+      cloneUrl: "https://x@github.com/org/repo.git",
+      dir: "C:\\Users\\John Doe\\deco\\repo",
+      branchOnRemote: "main",
+      askpassPath: askpass,
+    });
+    expect(cmd.argv).toEqual([
+      "git",
+      "-c",
+      "safe.directory=*",
+      "-c",
+      "credential.helper=",
+      "-c",
+      "http.connectTimeout=10",
+      "-c",
+      "http.lowSpeedLimit=1",
+      "-c",
+      "http.lowSpeedTime=10",
+      "clone",
+      "--depth",
+      "1",
+      "--branch",
       "main",
-      "master",
-      "feature/x",
-      "release/1.0",
-      "feat-2.0_a",
-      "user/fix.bug",
-    ]) {
-      expect(isSafeRefName(name)).toBe(true);
-    }
+      "https://x@github.com/org/repo.git",
+      "C:\\Users\\John Doe\\deco\\repo",
+    ]);
+    expect(cmd.env).toEqual({
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_ASKPASS: askpass,
+    });
   });
 
-  it("rejects shell metacharacters and ref-format edge cases", () => {
-    for (const name of [
-      "x;whoami",
-      "a$(id)b",
-      "a`id`b",
-      "a|b",
-      "a&b",
-      "a>b",
-      "a b",
-      "-x",
-      "/x",
-      "x/",
-      "a..b",
-      "a//b",
-      "x.lock",
-      "",
-    ]) {
-      expect(isSafeRefName(name)).toBe(false);
-    }
+  test("default clone omits --branch", () => {
+    const cmd = cloneCommand({
+      cloneUrl: "https://g/r.git",
+      dir: "/tmp/repo dir",
+      branchOnRemote: null,
+      askpassPath: askpass,
+    });
+    expect(cmd.argv.slice(-2)).toEqual(["https://g/r.git", "/tmp/repo dir"]);
+    expect(cmd.argv).not.toContain("--branch");
   });
 });
 
@@ -134,6 +148,7 @@ describe("spawnClone", () => {
       const repoDir = join(root, "workspace");
       const { code } = await spawnClone({
         config: makeConfig(repoDir, url, "feature/x"),
+        askpassPath: ASKPASS,
         onChunk: () => {},
       });
       expect(code).toBe(0);
@@ -151,6 +166,7 @@ describe("spawnClone", () => {
       const repoDir = join(root, "workspace");
       const { code, fetchBase } = await spawnClone({
         config: makeConfig(repoDir, url, "feature/x"),
+        askpassPath: ASKPASS,
         onChunk: () => {},
       });
       expect(code).toBe(0);
@@ -194,6 +210,7 @@ describe("spawnClone", () => {
       // no-op (it early-returns without a second network fetch).
       const { code, fetchBase } = await spawnClone({
         config: makeConfig(repoDir, url, "main"),
+        askpassPath: ASKPASS,
         onChunk: () => {},
       });
       expect(code).toBe(0);
@@ -227,6 +244,7 @@ describe("spawnClone", () => {
       const repoDir = join(root, "workspace");
       const { code, fetchBase } = await spawnClone({
         config: makeConfig(repoDir, url, "feature/x"),
+        askpassPath: ASKPASS,
         onChunk: () => {},
       });
       // Best-effort: the clone still succeeds; it just skips the unsafe base.
@@ -248,12 +266,34 @@ describe("spawnClone", () => {
     }
   }, 30_000);
 
+  it("rejects a malicious requested branch instead of shelling it out", async () => {
+    const { url, root, cleanup } = setupBareRepo();
+    try {
+      const repoDir = join(root, "workspace");
+      // `branch` comes from tenant-supplied config and is interpolated into
+      // `sh -c` git commands (ls-remote/clone/checkout) before any other
+      // check runs — an unsafe name must be rejected before it ever reaches
+      // a shell string instead of executing as a second command.
+      const marker = join(root, "INJECTED");
+      const { code } = await spawnClone({
+        config: makeConfig(repoDir, url, `x;touch ${marker}`),
+        askpassPath: ASKPASS,
+        onChunk: () => {},
+      });
+      expect(code).not.toBe(0);
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+
   it("clones default and forks a local branch when target is missing on remote", async () => {
     const { url, root, cleanup } = setupBareRepo();
     try {
       const repoDir = join(root, "workspace");
       const { code } = await spawnClone({
         config: makeConfig(repoDir, url, "feature/new"),
+        askpassPath: ASKPASS,
         onChunk: () => {},
       });
       expect(code).toBe(0);
@@ -273,6 +313,7 @@ describe("spawnClone", () => {
       const repoDir = join(root, "workspace");
       const { code } = await spawnClone({
         config: makeConfig(repoDir, url),
+        askpassPath: ASKPASS,
         onChunk: () => {},
       });
       expect(code).toBe(0);
@@ -286,6 +327,7 @@ describe("spawnClone", () => {
     const chunks: string[] = [];
     const { code } = await spawnClone({
       config: makeConfig("relative/workspace", "file:///irrelevant.git"),
+      askpassPath: ASKPASS,
       onChunk: (_source, data) => chunks.push(data),
     });
     expect(code).toBe(1);
@@ -305,6 +347,7 @@ describe("spawnClone", () => {
           "file:///nonexistent/path/to/repo.git",
           "feature/x",
         ),
+        askpassPath: ASKPASS,
         onChunk: () => {},
       });
       expect(code).not.toBe(0);
@@ -325,12 +368,36 @@ describe("spawnClone", () => {
       writeFileSync(join(repoDir, "marker.txt"), "preexisting\n");
       const { code } = await spawnClone({
         config: makeConfig(repoDir, url, "feature/x"),
+        askpassPath: ASKPASS,
         onChunk: () => {},
       });
       expect(code).toBe(0);
       expect(currentBranch(repoDir)).toBe("feature/x");
       expect(existsSync(join(repoDir, "marker.txt"))).toBe(true);
       expect(existsSync(join(repoDir, "feature.txt"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+
+  it("lands on the default branch (not detached HEAD) via init+fetch when no branch is requested", async () => {
+    const { url, root, cleanup } = setupBareRepo();
+    try {
+      const repoDir = join(root, "workspace");
+      mkdirSync(repoDir);
+      // Same pre-populated-dir scenario as above, but with no branch
+      // requested — this must still land on a real local branch (`main`),
+      // matching what a plain `git clone` (no --branch) does, not a
+      // detached FETCH_HEAD checkout.
+      writeFileSync(join(repoDir, "marker.txt"), "preexisting\n");
+      const { code } = await spawnClone({
+        config: makeConfig(repoDir, url),
+        askpassPath: ASKPASS,
+        onChunk: () => {},
+      });
+      expect(code).toBe(0);
+      expect(currentBranch(repoDir)).toBe("main");
+      expect(existsSync(join(repoDir, "marker.txt"))).toBe(true);
     } finally {
       cleanup();
     }

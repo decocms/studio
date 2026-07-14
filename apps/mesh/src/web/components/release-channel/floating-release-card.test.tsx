@@ -56,7 +56,7 @@ mock.module("@/web/lib/auth-client", () => ({
   },
 }));
 
-import { SidebarReleaseCard } from "./sidebar-release-card";
+import { FloatingReleaseCard } from "./floating-release-card";
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
@@ -65,7 +65,7 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-describe("SidebarReleaseCard", () => {
+describe("FloatingReleaseCard", () => {
   beforeEach(() => {
     localStorage.clear();
     releasesRef.current = [];
@@ -82,28 +82,28 @@ describe("SidebarReleaseCard", () => {
   });
 
   it("renders nothing when RELEASES is empty", () => {
-    const { container } = render(<SidebarReleaseCard />, { wrapper });
+    const { container } = render(<FloatingReleaseCard />, { wrapper });
     expect(container.firstChild).toBeNull();
   });
 
   it("renders nothing when the newest release is older than 30 days", () => {
     releasesRef.current = [makeRelease({ id: "stale", date: OLD_DATE })];
-    const { container } = render(<SidebarReleaseCard />, { wrapper });
+    const { container } = render(<FloatingReleaseCard />, { wrapper });
     expect(container.firstChild).toBeNull();
   });
 
   it("renders the card when the newest release is fresh and unseen", () => {
     releasesRef.current = [makeRelease({ id: "fresh" })];
     const { getByRole, getByText, queryByRole } = render(
-      <SidebarReleaseCard />,
+      <FloatingReleaseCard />,
       { wrapper },
     );
     expect(getByText("Fresh Release")).toBeInTheDocument();
+    expect(getByRole("dialog", { name: "Release announcement" })).toHaveClass(
+      "fixed",
+    );
     expect(
-      getByRole("region", { name: "Release announcement" }),
-    ).not.toHaveClass("fixed");
-    expect(
-      queryByRole("dialog", { name: "Release announcement" }),
+      queryByRole("region", { name: "Release announcement" }),
     ).not.toBeInTheDocument();
   });
 
@@ -116,7 +116,7 @@ describe("SidebarReleaseCard", () => {
       },
     };
 
-    const { container } = render(<SidebarReleaseCard />, { wrapper });
+    const { container } = render(<FloatingReleaseCard />, { wrapper });
     expect(container.firstChild).toBeNull();
   });
 
@@ -129,7 +129,7 @@ describe("SidebarReleaseCard", () => {
       },
     };
 
-    const { getByText } = render(<SidebarReleaseCard />, { wrapper });
+    const { getByText } = render(<FloatingReleaseCard />, { wrapper });
     expect(getByText("Fresh Release")).toBeInTheDocument();
   });
 
@@ -139,13 +139,13 @@ describe("SidebarReleaseCard", () => {
       "studio.release-feed.v1",
       JSON.stringify({ fresh: { seenAt: new Date().toISOString() } }),
     );
-    const { container } = render(<SidebarReleaseCard />, { wrapper });
+    const { container } = render(<FloatingReleaseCard />, { wrapper });
     expect(container.firstChild).toBeNull();
   });
 
   it("clicking the dismiss button marks the release as seen and unmounts the card", () => {
     releasesRef.current = [makeRelease({ id: "fresh" })];
-    const { getByLabelText, queryByText } = render(<SidebarReleaseCard />, {
+    const { getByLabelText, queryByText } = render(<FloatingReleaseCard />, {
       wrapper,
     });
     fireEvent.click(getByLabelText("Dismiss release announcement"));

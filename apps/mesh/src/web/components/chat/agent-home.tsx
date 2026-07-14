@@ -1,4 +1,3 @@
-import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useThreads } from "@/web/components/chat/store/hooks";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { TaskRow } from "@/web/layouts/tasks-panel/task-row";
@@ -7,11 +6,11 @@ import {
   useProjectContext,
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
-import { Users03 } from "@untitledui/icons";
 import { authClient } from "@/web/lib/auth-client";
 import { Chat } from "./index";
-import { useChatPrefs } from "./context";
+import { useChatPrefs, useChatTask } from "./context";
 import { ChatModeRow } from "./pills/chat-mode-row";
+import { AgentHomeHeader } from "./agent-home-header";
 
 export function AgentHome({
   onOpenContextPanel,
@@ -20,6 +19,7 @@ export function AgentHome({
 }) {
   const { org } = useProjectContext();
   const { selectedVirtualMcp } = useChatPrefs();
+  const { currentBranch } = useChatTask();
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const agent = selectedVirtualMcp ?? defaultAgent;
   const fullVm = useVirtualMCP(agent.id);
@@ -44,18 +44,7 @@ export function AgentHome({
     <>
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* compact agent header */}
-        <div className="w-full max-w-2xl mx-auto px-4 pt-8 pb-4 flex items-center gap-3">
-          <IntegrationIcon
-            icon={agent.icon}
-            name={agent.title}
-            size="sm"
-            fallbackIcon={<Users03 size={16} />}
-            className="size-8 min-w-8 rounded-lg shrink-0"
-          />
-          <span className="font-medium text-base text-foreground truncate">
-            {agent.title}
-          </span>
-        </div>
+        <AgentHomeHeader agent={agent} currentBranch={currentBranch} />
       </div>
 
       {/* docked input */}
@@ -79,7 +68,7 @@ export function AgentHome({
           data-chat-above-row="true"
           className="@container/chat-bottom pb-1 flex justify-start gap-1"
         >
-          <ChatModeRow virtualMcp={fullVm} currentBranch={null} />
+          <ChatModeRow virtualMcp={fullVm} currentBranch={currentBranch} />
         </div>
         <Chat.Input onOpenContextPanel={onOpenContextPanel} />
       </Chat.Footer>
