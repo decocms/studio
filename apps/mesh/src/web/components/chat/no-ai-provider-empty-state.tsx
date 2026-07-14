@@ -23,6 +23,14 @@ import type { AgentOption } from "./pills/agent-options";
 interface NoAiProviderEmptyStateProps {
   title?: string;
   description?: string;
+  /**
+   * Called right after the user picks a local runtime (Claude Code / Codex).
+   * The component has already persisted the pick; this lets the host advance
+   * the UI — the chat panel uses it to open the agent's Overview, mirroring
+   * "new chat with this agent". Omitted by the model-selector popover, where
+   * picking a runtime should not navigate.
+   */
+  onLocalRuntimePicked?: (option: AgentOption) => void;
 }
 
 function useDefaultBrand(): BrandContext | null {
@@ -70,6 +78,7 @@ function extractPrimaryColor(brand: BrandContext): string | null {
 export function NoAiProviderEmptyState({
   title,
   description,
+  onLocalRuntimePicked,
 }: NoAiProviderEmptyStateProps = {}) {
   const { org } = useProjectContext();
   const { localMode } = useAuthConfig();
@@ -190,7 +199,10 @@ export function NoAiProviderEmptyState({
                 key={o.option}
                 variant="special"
                 className="gap-2"
-                onClick={() => setPendingAgentOption(o.option)}
+                onClick={() => {
+                  setPendingAgentOption(o.option);
+                  onLocalRuntimePicked?.(o.option);
+                }}
               >
                 {o.icon}
                 Use {o.label}

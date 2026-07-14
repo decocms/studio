@@ -12,12 +12,14 @@ import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
+import { usePanelActions } from "@/web/layouts/shell-layout";
 
 // ---------- Panel content ----------
 
 function ChatPanelContent() {
   const { org } = useProjectContext();
   const { isChatEmpty } = useChatStream();
+  const { openTab } = usePanelActions();
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
 
@@ -32,7 +34,11 @@ function ChatPanelContent() {
       <Chat className="animate-in fade-in-0 duration-200">
         <Chat.Main className="flex flex-col items-center">
           <Chat.EmptyState>
-            <Chat.NoAiProviderEmptyState />
+            <Chat.NoAiProviderEmptyState
+              // Picking a local runtime is the same gesture as opening a new
+              // chat with this agent: open its Overview alongside the composer.
+              onLocalRuntimePicked={() => openTab("overview")}
+            />
           </Chat.EmptyState>
         </Chat.Main>
       </Chat>
