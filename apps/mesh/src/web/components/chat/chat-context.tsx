@@ -48,7 +48,6 @@ import {
   agentOptionFor,
   type AgentOption,
 } from "./pills/agent-options";
-import { useAgentOptionAvailability } from "./use-agent-availability";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import {
   isDeepResearchModel,
@@ -602,24 +601,12 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
         )
       : null;
 
-  // Preserve the user's selected runtime — presence/capability probes are
-  // advisory and dispatch surfaces the real error if a choice can't run — with
-  // ONE exception: a persisted "cloud" pick where there's no cloud sandbox
-  // cluster (e.g. local dev, `agentSandbox: false`). Cloud isn't just degraded
-  // there, it's impossible: the sandbox would try to provision in the cloud and
-  // hang forever with no clear error. Fall back to an available local runtime
-  // (or null → server default) so the preview actually starts. This gates on
-  // the STABLE `agentSandbox` config flag, not the link probe, so it can't flap
-  // a local pick while the desktop link resolves.
-  const availability = useAgentOptionAvailability();
-  const selectedAgentOption: AgentOption | null =
-    pendingAgentOption === "decopilot" && !availability.agentSandbox
-      ? availability.claudeCode
-        ? "claude-code-desktop"
-        : availability.codex
-          ? "codex-desktop"
-          : null
-      : pendingAgentOption;
+  // Preserve the user's selected runtime exactly. Presence/capability probes are
+  // advisory only; dispatch should surface the real backend error if the choice
+  // cannot run. (Cloud chat via the org router works even where the cloud
+  // *sandbox* is unavailable, so we must not rewrite the harness here — the
+  // preview's cloud-vs-local fallback is handled at the sandbox layer.)
+  const selectedAgentOption = pendingAgentOption;
 
   // When the thread is locked, the agent option is dictated by the persisted
   // (harness, sandbox) pair — period. Otherwise, fall through to the user's
