@@ -42,6 +42,22 @@ describe("TaskManager intentional flag", () => {
   });
 });
 
+describe("TaskManager kill status", () => {
+  it("reports status 'killed' (not 'exited') for a pipe-mode task killed via kill()", async () => {
+    const tm = makeManager();
+    const t = await tm.spawn({
+      command: "sleep 30",
+      cwd: "/tmp",
+      mode: "pipe",
+    });
+    const finished = tm.finished(t.id)!;
+    tm.kill(t.id, "SIGTERM");
+    const result = await finished;
+    expect(result.status).toBe("killed");
+    expect(tm.get(t.id)?.status).toBe("killed");
+  });
+});
+
 describe("TaskManager replaceByLogName", () => {
   it("kills the running task with the same logName, awaits exit, then spawns", async () => {
     const tm = makeManager();

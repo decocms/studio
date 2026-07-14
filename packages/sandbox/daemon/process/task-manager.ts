@@ -13,6 +13,15 @@ const LOG_MAX_BYTES = 10 * 1024 * 1024;
 const DEFAULT_REAP_INTERVAL_MS = 60 * 1000;
 const DEFAULT_TTL_MS = 15 * 60 * 1000;
 const TASK_FILE_PREFIX = "task";
+// Signal name → number, shell `kill -l` convention. Used to map a
+// signal-terminated pipe-mode child to its `128 + signal` exit code.
+const SIGNAL_NUMBERS: Record<string, number> = {
+  SIGHUP: 1,
+  SIGINT: 2,
+  SIGQUIT: 3,
+  SIGKILL: 9,
+  SIGTERM: 15,
+};
 
 export type TaskStatus = "running" | "exited" | "failed" | "killed" | "timeout";
 
@@ -541,12 +550,21 @@ export class TaskManager {
       }, task.spec.timeoutMs);
     }
 
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       if (task.timer) clearTimeout(task.timer);
       // Reap survivors of any backgrounded children.
       killGroup("SIGKILL");
+      // A signal-terminated child (e.g. our own SIGTERM/SIGKILL via
+      // kill()/killByLogName()) reports `code: null` here — mapping that
+      // to `1` collapsed every explicit kill into status "exited" instead
+      // of "killed". Map to the shell convention (128 + signal number),
+      // matching pty mode's shellExitCode, so finalize()'s `> 128` check
+      // classifies it correctly.
+      const exitCode = signal
+        ? 128 + (SIGNAL_NUMBERS[signal] ?? 1)
+        : (code ?? 1);
       this.finalize(task, {
-        exitCode: code ?? 1,
+        exitCode,
         timedOut: task.timedOut,
       });
     });
