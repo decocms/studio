@@ -1,4 +1,5 @@
 import { MessageCircle01 } from "@untitledui/icons";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
 import { LibraryToggle } from "./library-toggle";
@@ -25,6 +26,8 @@ export function ToggleButtons({
   toggleChat,
   disableChatToggle = false,
 }: ToggleButtonsProps) {
+  // Reports-only orgs collapse the toolbar to just the chat toggle.
+  const reportsOnly = useReportsOnly();
   return (
     <>
       <HeaderTabButton
@@ -43,7 +46,7 @@ export function ToggleButtons({
       />
       {/* Library is agent-independent, so it lives here in the left group next
           to Chat rather than in the per-agent tab bar on the right. */}
-      <LibraryToggle />
+      {!reportsOnly && <LibraryToggle />}
     </>
   );
 }

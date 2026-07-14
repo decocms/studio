@@ -68,29 +68,37 @@ export default function OrgShellLayout() {
                 <Toolbar.Header className="grid-cols-1 px-1 pr-1">
                   <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto] items-center gap-2">
                     {!reportsOnly && <SidebarTriggerButton />}
-                    <ShellBreadcrumb />
-                    <LinkedDesktopIndicator />
+                    {!reportsOnly && <ShellBreadcrumb />}
+                    {!reportsOnly && <LinkedDesktopIndicator />}
                     <div aria-hidden className="min-w-0" />
                     <Toolbar.TogglesSlot />
-                    <Toolbar.TabsSlot className="min-w-0 justify-self-end" />
+                    {!reportsOnly && (
+                      <Toolbar.TabsSlot className="min-w-0 justify-self-end" />
+                    )}
                   </div>
-                  <Toolbar.CenterSlot />
-                  <Toolbar.RightSlot />
+                  {!reportsOnly && <Toolbar.CenterSlot />}
+                  {!reportsOnly && <Toolbar.RightSlot />}
                 </Toolbar.Header>
               ) : (
                 <Toolbar.Header>
                   <Toolbar.LeftColumn>
-                    <ShellBreadcrumb />
+                    {!reportsOnly && <ShellBreadcrumb />}
                     {/* Chat toggle sits on the left — it controls the left
-                        chat panel; the main-panel view tabs stay on the right. */}
+                        chat panel; the main-panel view tabs stay on the right.
+                        Reports-only orgs keep ONLY this toggle: no breadcrumb,
+                        no view tabs, no right-side actions. */}
                     <Toolbar.TogglesSlot />
                   </Toolbar.LeftColumn>
-                  <Toolbar.CenterSlot />
+                  {reportsOnly ? <div aria-hidden /> : <Toolbar.CenterSlot />}
                   <Toolbar.RightColumn>
-                    <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
-                      <Toolbar.TabsSlot />
-                    </div>
-                    <Toolbar.RightSlot />
+                    {!reportsOnly && (
+                      <>
+                        <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
+                          <Toolbar.TabsSlot />
+                        </div>
+                        <Toolbar.RightSlot />
+                      </>
+                    )}
                   </Toolbar.RightColumn>
                 </Toolbar.Header>
               )}
