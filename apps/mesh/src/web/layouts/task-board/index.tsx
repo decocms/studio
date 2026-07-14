@@ -77,7 +77,7 @@ function DueDatePill({ iso }: { iso: string }) {
   );
 }
 
-function TaskBoardPage() {
+export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const { data: membersData } = useMembers();
