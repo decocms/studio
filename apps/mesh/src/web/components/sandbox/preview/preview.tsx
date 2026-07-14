@@ -89,6 +89,7 @@ import {
   type LastPreviewPage,
 } from "./last-preview-page";
 import { derivePhaseProgress } from "./derive-phase-progress";
+import { ideDeepLink } from "../ide-deep-link";
 import {
   detectPickerKind,
   PICKER_LOADER_RESOLVE_TYPE,
@@ -1220,9 +1221,7 @@ export function PreviewContent({
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() =>
-                              window.open(
-                                `vscode://file${repoDir}?windowId=_blank`,
-                              )
+                              window.open(ideDeepLink("vscode", repoDir))
                             }
                           >
                             <img
@@ -1235,9 +1234,7 @@ export function PreviewContent({
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() =>
-                              window.open(
-                                `cursor://file${repoDir}?windowId=_blank`,
-                              )
+                              window.open(ideDeepLink("cursor", repoDir))
                             }
                           >
                             <img
