@@ -42,7 +42,7 @@ export const STATUS_CONFIG: Record<
   in_progress: {
     label: "In Progress",
     icon: Loading02,
-    iconClassName: "text-blue-500 animate-spin",
+    iconClassName: "text-blue-500",
   },
   in_review: {
     label: "In Review",
