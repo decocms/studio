@@ -13,8 +13,8 @@
  *     pinned row values. We assert the row stays at the first-message values
  *     after sending a conflicting body.
  *
- *   - Task 5 / Task 6 (UI affordance): on a locked thread the harness pill
- *     and branch chip render as `mode-picker-locked` /
+ *   - Task 5 / Task 6 (UI affordance): on a locked thread the runtime
+ *     indicator and branch chip render as `runtime-switcher-locked` /
  *     `branch-picker-locked` with the original values, and the same is true
  *     after a hard reload.
  *
@@ -254,7 +254,7 @@ test.describe("Thread runtime is locked after first message", () => {
     try {
       // Seed an AI provider key so the thread route renders the
       // composer instead of `NoAiProviderEmptyState`. Without this,
-      // `mode-picker-locked` never mounts because the chat input
+      // `runtime-switcher-locked` never mounts because the chat input
       // itself is short-circuited away.
       await seedAiProviderKey(api, orgSlug);
 
@@ -285,12 +285,17 @@ test.describe("Thread runtime is locked after first message", () => {
       // harness/branch pickers entirely.
       await page.goto(`/${orgSlug}/${threadId}?virtualmcpid=${agentId}`);
 
-      const lockedHarness = page.getByTestId("mode-picker-locked");
-      await expect(lockedHarness).toBeVisible({ timeout: 60_000 });
-      await expect(lockedHarness).toHaveAccessibleName(/claude code/i);
+      // A sandbox-backed agent (this fixture has a `githubRepo`) renders the
+      // RuntimeSwitcher, which supersedes the plain LockedRuntimeChip. Its
+      // locked state is a disabled indicator keyed by the runtime kind
+      // ("This device" for user-desktop), not the harness name — the harness
+      // picker was collapsed into a single Cloud/This-device runtime control.
+      const lockedRuntime = page.getByTestId("runtime-switcher-locked");
+      await expect(lockedRuntime).toBeVisible({ timeout: 60_000 });
+      await expect(lockedRuntime).toHaveAccessibleName(/this device/i);
 
-      // The unlocked-state harness trigger must NOT be present — that
-      // would mean the lock chip is shadowed by the live picker.
+      // The unlocked-state switcher trigger must NOT be present — that would
+      // mean the lock indicator is shadowed by the live (enabled) control.
       await expect(page.getByTestId("mode-picker")).toHaveCount(0);
 
       // Note: the branch-picker-locked chip is intentionally not asserted
@@ -306,7 +311,7 @@ test.describe("Thread runtime is locked after first message", () => {
 
       // Hard reload — locked affordance must survive a fresh mount.
       await page.reload();
-      await expect(page.getByTestId("mode-picker-locked")).toBeVisible({
+      await expect(page.getByTestId("runtime-switcher-locked")).toBeVisible({
         timeout: 60_000,
       });
     } finally {

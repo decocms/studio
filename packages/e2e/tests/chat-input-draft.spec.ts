@@ -303,16 +303,24 @@ test.describe("chat input draft persistence", () => {
 
   test("drafts are isolated per thread", async ({ authedPage }) => {
     const { page, orgSlug } = authedPage;
-    const taskA = await openNewThread(page, orgSlug, "thread a");
-    await gotoThreadIdle(page, orgSlug, taskA);
+    // Two distinct, client-minted thread ids reached by direct navigation
+    // instead of two home-composer submits. The org-home resolver reuses the
+    // Super Agent's existing untitled "New chat" (findReusableNewChat), and a
+    // thread only gets titled after a real model turn — which never happens in
+    // e2e — so a second home submit would land back on the FIRST thread and
+    // collapse this test to one. Direct navigation guarantees two separate
+    // threads, which is all per-thread draft isolation (sessionStorage keyed by
+    // thread id) actually needs; no submit required.
+    const taskA = crypto.randomUUID();
+    const taskB = crypto.randomUUID();
+
+    await page.goto(`/${orgSlug}/${taskA}`);
+    await waitForChatInput(page);
     await clearComposer(page);
     await typeInComposer(page, "draft for A");
 
-    // Start a second thread via the home composer. Then land on it in idle
-    // state so we can type without the streaming-disabled editor swallowing
-    // input.
-    const taskB = await openNewThread(page, orgSlug, "thread b");
-    await gotoThreadIdle(page, orgSlug, taskB);
+    await page.goto(`/${orgSlug}/${taskB}`);
+    await waitForChatInput(page);
     await clearComposer(page);
     await typeInComposer(page, "draft for B");
 

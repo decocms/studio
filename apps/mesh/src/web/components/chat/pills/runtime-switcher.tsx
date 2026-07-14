@@ -150,6 +150,7 @@ export function RuntimeSwitcher({
       <Tooltip>
         <TooltipTrigger asChild>
           <span
+            data-testid="runtime-switcher-locked"
             aria-disabled="true"
             aria-label={`Runtime: ${current.label} (locked)`}
             className={cn(
