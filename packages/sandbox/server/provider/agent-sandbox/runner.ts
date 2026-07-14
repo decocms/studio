@@ -367,6 +367,20 @@ export interface AgentSandboxProviderOptions {
     name: string;
     namespace: string;
   };
+  /**
+   * Re-mint a fresh credentialed clone URL for a repo. The cloneUrl persisted
+   * in `ensureOpts` embeds a ~55min GitHub App token from first provision; on
+   * autonomous recovery (a warm-pool pod recreated under a live claim without a
+   * new SANDBOX_START) that token has usually lapsed, so replaying it would
+   * clone/push with a dead credential — the cause of "Invalid username or
+   * token" on shutdown. The runner calls this before re-cloning / rotating
+   * origin on recovery. Returns null when it can't re-mint (no connection,
+   * legacy repo-scoped token needing an org-scoped context, mint error); the
+   * runner then falls back to the persisted URL. Must never throw.
+   */
+  mintCloneUrl?: (
+    repo: NonNullable<EnsureOptions["repo"]>,
+  ) => Promise<string | null>;
 }
 
 export class AgentSandboxProvider implements SandboxProvider {
@@ -405,6 +419,8 @@ export class AgentSandboxProvider implements SandboxProvider {
    * silently flip modes with an unusable token.
    */
   private readonly sentinelToken: string | null;
+  /** See {@link AgentSandboxProviderOptions.mintCloneUrl}. */
+  private readonly mintCloneUrl: AgentSandboxProviderOptions["mintCloneUrl"];
   private closed = false;
   /** Aborts the background SandboxClaim-deletion watch on `close()`. */
   private readonly claimWatchAbort = new AbortController();
@@ -432,6 +448,7 @@ export class AgentSandboxProvider implements SandboxProvider {
         : null;
     const trimmedSentinel = opts.sentinelToken?.trim() ?? "";
     this.sentinelToken = trimmedSentinel.length > 0 ? trimmedSentinel : null;
+    this.mintCloneUrl = opts.mintCloneUrl;
     this.startClaimReaper();
   }
 
@@ -1364,6 +1381,31 @@ export class AgentSandboxProvider implements SandboxProvider {
   }
 
   /**
+   * Return `repo` with a freshly-minted credentialed cloneUrl, or unchanged
+   * when no minter is wired or it declines. The persisted cloneUrl embeds a
+   * ~55min GitHub App token from first provision; on recovery (pod recreation
+   * under a live claim) that token has usually lapsed, so replaying it clones /
+   * pushes with a dead credential. Best-effort — a mint failure must not block
+   * recovery, so this falls back to the persisted URL.
+   */
+  private async withFreshCloneUrl(
+    repo: NonNullable<EnsureOptions["repo"]>,
+  ): Promise<NonNullable<EnsureOptions["repo"]>> {
+    if (!this.mintCloneUrl) return repo;
+    try {
+      const fresh = await this.mintCloneUrl(repo);
+      return fresh ? { ...repo, cloneUrl: fresh } : repo;
+    } catch (err) {
+      console.warn(
+        `[${LOG_LABEL}] clone credential re-mint failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return repo;
+    }
+  }
+
+  /**
    * Warm-pool re-bootstrap. A pool pod recreated under a live claim (operator
    * rebind, node churn, idle-TTL reap) boots back on the SandboxTemplate
    * sentinel and is "unclaimed": it rejects our persisted per-claim token and
@@ -1575,10 +1617,18 @@ export class AgentSandboxProvider implements SandboxProvider {
     // so a bootId change there is informational only.
     if (state.daemonBootId && state.daemonBootId !== live.bootId) {
       if (this.sentinelToken !== null) {
+        // Re-clone with a live credential — the persisted cloneUrl's token has
+        // usually lapsed by the time a pool pod is recreated under the claim.
+        const rebootstrapOpts: EnsureOptions | null = state.ensureOpts?.repo
+          ? {
+              ...state.ensureOpts,
+              repo: await this.withFreshCloneUrl(state.ensureOpts.repo),
+            }
+          : (state.ensureOpts ?? null);
         const ok = await this.rebootstrapDaemon(
           live.daemonUrl,
           state.token,
-          state.ensureOpts ?? null,
+          rebootstrapOpts,
         );
         if (!ok) {
           this.closeForwarder(live.daemonForward);
@@ -1759,11 +1809,20 @@ export class AgentSandboxProvider implements SandboxProvider {
     if (!row) return null;
     const persistedOpts = (row.state as Partial<PersistedK8sState>).ensureOpts;
     if (!persistedOpts) return null;
+    // The persisted cloneUrl carries the first-provision token, long expired by
+    // now. Re-mint so the reprovision (and the downstream credential rotation)
+    // uses a live credential instead of the dead one.
+    const opts: EnsureOptions = persistedOpts.repo
+      ? {
+          ...persistedOpts,
+          repo: await this.withFreshCloneUrl(persistedOpts.repo),
+        }
+      : persistedOpts;
     // ensure() is idempotent + advisory-locked, so concurrent resurrections
     // for the same handle collapse to a single provision. The lock is keyed
     // on (userId, projectRef, kind), the same identity our state-store row
     // is keyed on.
-    await this.ensure(row.id, persistedOpts);
+    await this.ensure(row.id, opts);
     return this.records.get(handle) ?? null;
   }
 
