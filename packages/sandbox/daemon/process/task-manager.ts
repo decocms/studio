@@ -272,6 +272,11 @@ export class TaskManager {
     const t = this.tasks.get(id);
     if (!t) return false;
     if (t.status !== "running") return false;
+    // The only caller is the single-task Stop route — always a deliberate
+    // user stop, never an internal/automatic kill. Flag it so a WELL_KNOWN_STARTERS
+    // (dev script) task stopped this way isn't misread by the orchestrator's
+    // onTaskExit as a crash (see task-manager's `intentional` field docs).
+    t.intentional = true;
     t.kill(signal);
     setTimeout(() => {
       if (t.status === "running") {
@@ -303,6 +308,7 @@ export class TaskManager {
     let count = 0;
     for (const t of this.tasks.values()) {
       if (t.status === "running") {
+        t.intentional = true;
         t.kill("SIGTERM");
         count++;
       }

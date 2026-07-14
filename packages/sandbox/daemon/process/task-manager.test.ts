@@ -56,6 +56,33 @@ describe("TaskManager kill status", () => {
     expect(result.status).toBe("killed");
     expect(tm.get(t.id)?.status).toBe("killed");
   });
+
+  it("flags intentional=true for a single-task kill() (the Stop-by-id route) — a dev-script task stopped this way must not be misread as a crash", async () => {
+    const tm = makeManager();
+    const t = await tm.spawn({
+      command: "sleep 30",
+      cwd: "/tmp",
+      mode: "pipe",
+      logName: "dev",
+    });
+    const finished = tm.finished(t.id)!;
+    tm.kill(t.id, "SIGTERM");
+    await finished;
+    expect(tm.get(t.id)?.intentional).toBe(true);
+  });
+
+  it("flags intentional=true on every task stopped via killAll()", async () => {
+    const tm = makeManager();
+    const t = await tm.spawn({
+      command: "sleep 30",
+      cwd: "/tmp",
+      mode: "pipe",
+    });
+    const finished = tm.finished(t.id)!;
+    tm.killAll();
+    await finished;
+    expect(tm.get(t.id)?.intentional).toBe(true);
+  });
 });
 
 describe("TaskManager replaceByLogName", () => {
