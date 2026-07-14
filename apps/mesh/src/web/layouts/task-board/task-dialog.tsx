@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@deco/ui/components/dialog.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -134,17 +138,17 @@ export function TaskBoardItemDialog({
   const assignee = members.find((m) => m.userId === assigneeId);
 
   return (
-    <Sheet open={open} onOpenChange={(next) => !next && close()}>
-      <SheetContent
-        side="right"
-        className="flex w-full flex-col gap-0 p-0 sm:!max-w-[640px]"
+    <Dialog open={open} onOpenChange={(next) => !next && close()}>
+      <DialogContent
+        className="flex h-[85vh] max-h-[720px] flex-col gap-0 overflow-hidden p-0 sm:max-w-[820px]"
+        closeButtonClassName="hidden"
       >
-        <SheetTitle className="sr-only">
+        <DialogTitle className="sr-only">
           {item ? "Edit task" : "New task"}
-        </SheetTitle>
+        </DialogTitle>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="flex flex-col gap-4 border-b border-border px-6 pt-14 pb-5">
+          <div className="flex flex-col gap-4 border-b border-border px-6 pt-6 pb-5">
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -345,7 +349,7 @@ export function TaskBoardItemDialog({
             {item ? "Save" : "Create task"}
           </Button>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
