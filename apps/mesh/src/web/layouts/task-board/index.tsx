@@ -5,6 +5,7 @@
  */
 
 import { useState } from "react";
+import { getInitials } from "@/web/lib/get-initials";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
@@ -46,16 +47,6 @@ export default function TaskBoard() {
       </div>
     </div>
   );
-}
-
-function getInitials(name?: string | null) {
-  if (!name) return "?";
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
 }
 
 const DATE_FMT = new Intl.DateTimeFormat(undefined, {
