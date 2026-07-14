@@ -197,7 +197,7 @@ export function NoAiProviderEmptyState({
             {localOptions.map((o) => (
               <Button
                 key={o.option}
-                variant="special"
+                variant="default"
                 className="gap-2"
                 onClick={() => {
                   setPendingAgentOption(o.option);
