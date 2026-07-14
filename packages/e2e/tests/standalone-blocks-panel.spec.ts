@@ -133,22 +133,28 @@ test.describe("standalone Blocks panel", () => {
       exact: true,
     });
     await expect(chatToggle).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("chat-panel")).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(chatToggle).toHaveAttribute("aria-pressed", "true");
+    await expect(chatToggle).toBeDisabled();
     await expect(page.getByTestId("blocks-panel-shell")).toHaveCount(0);
     await expect(page.getByTestId("main-panel")).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Blocks", exact: true }).click();
+    const blocksToggle = page.getByRole("button", {
+      name: "Blocks",
+      exact: true,
+    });
+    await blocksToggle.click();
     await expect(page).toHaveURL(/chat=0/);
     await expect(page).toHaveURL(/blocks=1/);
+    await expect(chatToggle).toHaveAttribute("aria-pressed", "false");
+    await expect(blocksToggle).toHaveAttribute("aria-pressed", "true");
+    await expect(blocksToggle).toBeDisabled();
     await expect(page.getByTestId("blocks-panel-shell")).toBeVisible();
-    await expect(page.getByTestId("chat-panel")).toHaveCount(0);
 
     await page.getByRole("combobox", { name: "Main panel tab" }).click();
     await page.getByRole("option", { name: "Settings" }).click();
     await expect(page).toHaveURL(/blocks=0/);
     await expect(page).toHaveURL(/main=settings/);
+    await expect(blocksToggle).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByTestId("main-panel")).toBeVisible();
     await expect(page.getByTestId("blocks-panel-shell")).toHaveCount(0);
   });
