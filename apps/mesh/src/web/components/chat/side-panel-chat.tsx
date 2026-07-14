@@ -10,9 +10,7 @@ import { AgentHome } from "./agent-home";
 import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
-import { hasLocalCliHarness } from "@/web/lib/agent-capabilities";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
-import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 
 // ---------- Panel content ----------
@@ -23,12 +21,11 @@ function ChatPanelContent() {
   const { isChatEmpty } = useChatStream();
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
-  const link = useCurrentLink();
 
-  // No cloud provider key needed when an online desktop CLI harness
-  // (Claude Code / Codex) can back the chat instead.
-  const showProviderEmptyState =
-    allKeys.length === 0 && !hasLocalCliHarness(link);
+  // Always surface the provider-setup UI when the org has no AI provider — you
+  // can't run a chat without one, so prompt to connect rather than letting a
+  // send fail. (The empty state also points desktop users to `decocms link`.)
+  const showProviderEmptyState = allKeys.length === 0;
 
   if (showProviderEmptyState) {
     return (

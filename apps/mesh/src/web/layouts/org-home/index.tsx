@@ -29,12 +29,13 @@ export default function OrgHome() {
   // existing Super Agent "New chat" instead of minting a duplicate.
   if (status.kind === "loading") return <ShellRouteLoading />;
 
+  // Reuse ANY existing Super Agent "New chat" (a thread that never got
+  // auto-titled — i.e. never completed a turn), regardless of status. Gating on
+  // `in_progress` before meant an errored/failed empty chat wasn't reused, so
+  // every visit minted a fresh one and they piled up in the sidebar.
   const existing = threads.find(
     (t) =>
-      !t.hidden &&
-      t.virtual_mcp_id === decopilotId &&
-      t.title === "New chat" &&
-      (!t.status || t.status === "in_progress"),
+      !t.hidden && t.virtual_mcp_id === decopilotId && t.title === "New chat",
   );
   const taskId = existing?.id ?? freshId;
 
