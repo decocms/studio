@@ -732,9 +732,58 @@ export function resolveSchema(
           };
         }
 
+        // A union branch is a real module/block (loader, section, saved block)
+        // only when its resolved def carries a `__resolveType` or a saved-block
+        // title. Deco also emits plain *data* unions (e.g. `Location | Map`) as
+        // an anyOf of `$ref`s to bare object defs with none of those — those must
+        // render as an inline branch selector, NOT as a block picker (which would
+        // find no resolveType, drop every branch at the `continue` below, and
+        // return an empty block-ref that renders as `[object Object]`).
+        const branchHasModuleIdentity = (branch: RawSchema): boolean => {
+          const def = resolveBranchDef(branch);
+          if (
+            typeof def.title === "string" &&
+            parseSavedBlockSchemaTitle(def.title)
+          ) {
+            return true;
+          }
+          const rtEnum = (
+            (def.properties as RawSchema | undefined)?.__resolveType as
+              | RawSchema
+              | undefined
+          )?.enum;
+          if (Array.isArray(rtEnum) && typeof rtEnum[0] === "string") {
+            return true;
+          }
+          if (Array.isArray(def.allOf)) {
+            for (const part of def.allOf as RawSchema[]) {
+              const e = (
+                (part.properties as RawSchema | undefined)?.__resolveType as
+                  | RawSchema
+                  | undefined
+              )?.enum;
+              if (Array.isArray(e) && typeof e[0] === "string") return true;
+            }
+          }
+          return false;
+        };
+        // A plain-data union (Location | Map): every branch — inline or behind a
+        // `$ref` — resolves to a bare object with no module identity.
+        const branchIsPlainDataObject = (branch: RawSchema): boolean => {
+          if (branchHasModuleIdentity(branch)) return false;
+          const def = resolveBranchDef(branch);
+          return def.type === "object" || Boolean(def.properties);
+        };
+        const isChoiceUnion =
+          Array.isArray(resolved.anyOf) || Array.isArray(resolved.oneOf);
+        const isPlainDataUnion =
+          isChoiceUnion &&
+          depth < MAX_BUILD_PROPERTY_DEPTH &&
+          nonNull.every(branchIsPlainDataObject);
+
         // All branches are $refs to block/loader defs
         const allRefs = nonNull.every((a) => typeof a.$ref === "string");
-        if (allRefs) {
+        if (allRefs && !isPlainDataUnion) {
           const anyOfRefs: SchemaAnyOfRef[] = [];
           for (const branch of nonNull) {
             const def = resolveRef(branch.$ref as string);
@@ -814,18 +863,10 @@ export function resolveSchema(
         //
         // Only `anyOf`/`oneOf` are choices — `allOf` is an intersection meant to
         // MERGE all branches, so it must fall through to the object-merge path.
-        const isChoiceUnion =
-          Array.isArray(resolved.anyOf) || Array.isArray(resolved.oneOf);
-        const allInlineObjects = nonNull.every(
-          (b) =>
-            typeof b.$ref !== "string" &&
-            (b.type === "object" || Boolean(b.properties)),
-        );
-        if (
-          isChoiceUnion &&
-          allInlineObjects &&
-          depth < MAX_BUILD_PROPERTY_DEPTH
-        ) {
+        // `isPlainDataUnion` (computed above) already requires a choice union of
+        // bare object branches (inline or behind a `$ref`) with no module
+        // identity — exactly the `Location | Map` / const-tagged-union shape.
+        if (isPlainDataUnion) {
           const constValue = (
             p: RawSchema,
           ): string | number | boolean | undefined => {
@@ -849,7 +890,8 @@ export function resolveSchema(
           };
           const inlineUnionBranches = nonNull.map((branch, index) => {
             const branchProps =
-              (branch.properties as RawSchema | undefined) ?? {};
+              (resolveBranchDef(branch).properties as RawSchema | undefined) ??
+              {};
             const discriminators: Record<string, string | number | boolean> =
               {};
             for (const [key, prop] of Object.entries(branchProps)) {
