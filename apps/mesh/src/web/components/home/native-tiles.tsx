@@ -32,8 +32,8 @@ export const NATIVE_TILES: NativeTileDef[] = [
   {
     id: RECENT_CONVERSATIONS_TILE_ID,
     title: "Recent conversations",
-    // Full width (grid is 4 cols) × 2 rows, sitting under the agent tiles.
-    defaultSize: { w: 4, h: 2 },
+    // Full width (grid is 4 cols) × 4 rows, sitting under the agent tiles.
+    defaultSize: { w: 4, h: 4 },
     minSize: { w: 2, h: 2 },
   },
 ];
