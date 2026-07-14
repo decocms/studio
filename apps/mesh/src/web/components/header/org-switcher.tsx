@@ -147,7 +147,7 @@ function InvitationRow({ invitation }: { invitation: Invitation }) {
       <div className="flex shrink-0 items-center gap-1">
         <Button
           size="sm"
-          variant="special"
+          variant="default"
           className="h-7 text-xs"
           onClick={accept}
           disabled={busy}
