@@ -100,14 +100,6 @@ export function RuntimeSwitcher() {
   const { vmEntry } = useSandboxLifecycle();
   const availability = useAgentOptionAvailability();
 
-  // Prefer the sandbox that's actually running; fall back to the locked/pending
-  // choice before the VM entry resolves so the label never flashes wrong.
-  const currentSandbox =
-    (vmEntry?.sandboxProviderKind as SandboxProviderKind | null | undefined) ??
-    (isThreadLocked ? lockedSandbox : pendingSandboxProviderKind);
-  const current = runtimeMeta(currentSandbox);
-  const CurrentIcon = current.Icon;
-
   // "This device" only exists via a local CLI harness (there's no cloud-brain-
   // on-desktop option), so it's gated on a linked desktop with Claude Code or
   // Codex. Default to whichever CLI is present.
@@ -116,6 +108,21 @@ export function RuntimeSwitcher() {
     : availability.codex
       ? "codex-desktop"
       : null;
+
+  // Prefer the sandbox that's actually running, then the locked/pending choice.
+  // When still unresolved, show the runtime that will actually be used: cloud
+  // when it's available, otherwise "This device". Without this the label reads
+  // "Cloud sandbox" (the null default) even where cloud can't run.
+  const currentSandbox: SandboxProviderKind | null =
+    (vmEntry?.sandboxProviderKind as SandboxProviderKind | null | undefined) ??
+    (isThreadLocked ? lockedSandbox : pendingSandboxProviderKind) ??
+    (availability.agentSandbox
+      ? "agent-sandbox"
+      : localOption
+        ? "user-desktop"
+        : null);
+  const current = runtimeMeta(currentSandbox);
+  const CurrentIcon = current.Icon;
 
   return (
     <DropdownMenu>
