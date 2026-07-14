@@ -152,9 +152,10 @@ const DEFAULT_IDLE_TTL_MS = 15 * 60 * 1000;
 // Periodic git-credential refresh for long-lived sandboxes. The clone token
 // expires ~55min after it's minted; a pod that stays alive that long with no
 // recovery event would otherwise push with a dead credential on shutdown and
-// lose the user's work. The sweep re-mints well before expiry: BUFFER > INTERVAL
-// guarantees a token entering the refresh window is re-minted within one sweep,
-// so the daemon's origin token never ages past ~(INTERVAL + a bit) < 55min.
+// lose the user's work. The sweep re-mints well before expiry: a token entering
+// the BUFFER window is re-minted within one INTERVAL, so the daemon's origin
+// token always keeps ≥ ~(BUFFER - INTERVAL) of life — never near the ~55min
+// expiry at an unpredictable SIGTERM. Requires BUFFER > INTERVAL.
 const CREDENTIAL_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const CREDENTIAL_REFRESH_BUFFER_MS = 30 * 60 * 1000;
 
