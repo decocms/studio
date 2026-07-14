@@ -9,14 +9,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   ArrowLeft,
@@ -31,17 +25,13 @@ import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
-import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item";
 import { JoinRequestItem } from "@/web/components/sidebar/footer/join-request-item";
 import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
 import { ReleaseCard } from "@/web/components/release-channel/release-card";
 import { useInboxFeed } from "@/web/hooks/use-inbox-feed";
-import {
-  SidebarTopActions,
-  SidebarTopActionsInline,
-} from "@/web/components/sidebar/top-actions";
+import { SidebarTopActions } from "@/web/components/sidebar/top-actions";
 
 function InboxPopover({ children }: { children: ReactNode }) {
   const { items, markReleaseSeen } = useInboxFeed();
@@ -169,27 +159,6 @@ function InboxFullButton() {
   );
 }
 
-function InboxIconButton() {
-  const hasUnread = useHasUnreadInbox();
-  return (
-    <InboxPopover>
-      <Tooltip delayDuration={300}>
-        <PopoverTrigger asChild>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton aria-label="Inbox">
-              <Inbox01 className="size-4" />
-              {hasUnread && (
-                <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 pointer-events-none" />
-              )}
-            </ToolbarIconButton>
-          </TooltipTrigger>
-        </PopoverTrigger>
-        <TooltipContent side="top">Inbox</TooltipContent>
-      </Tooltip>
-    </InboxPopover>
-  );
-}
-
 function SettingsFullButton() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
@@ -206,29 +175,6 @@ function SettingsFullButton() {
       <Settings02 />
       <span>Settings</span>
     </SidebarMenuButton>
-  );
-}
-
-function SettingsIconButton() {
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
-  return (
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <ToolbarIconButton
-          aria-label="Settings"
-          onClick={() =>
-            navigate({
-              to: "/$org/settings",
-              params: { org: org.slug },
-            })
-          }
-        >
-          <Settings02 className="size-4" />
-        </ToolbarIconButton>
-      </TooltipTrigger>
-      <TooltipContent side="top">Settings</TooltipContent>
-    </Tooltip>
   );
 }
 
@@ -282,15 +228,18 @@ export function SidebarInboxFooter() {
   if (isCollapsed) {
     return (
       <SidebarFooter className="px-2 pb-3 gap-1">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <InboxFullButton />
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <SidebarExtraActions />
         <SidebarTopActions />
         <SidebarMenu>
           <SidebarMenuItem>
             <div className="flex justify-center">
               <LinkedDesktopIndicator />
             </div>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <InboxFullButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SettingsFullButton />
@@ -304,22 +253,25 @@ export function SidebarInboxFooter() {
   }
 
   return (
-    <SidebarFooter className="px-2 pb-3 gap-1.5">
+    <SidebarFooter className="px-2 pb-3 gap-0.5">
+      <SidebarMenu className="gap-0.5">
+        <SidebarMenuItem>
+          <InboxFullButton />
+        </SidebarMenuItem>
+      </SidebarMenu>
       <SidebarExtraActions />
-      <SidebarSeparator className="mx-0" />
-      <div className="flex items-center gap-1">
-        <div className="flex-1 min-w-0">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <AccountPopover />
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </div>
-        <SettingsIconButton />
-        <InboxIconButton />
-        <LinkedDesktopIndicator />
-        <SidebarTopActionsInline />
-      </div>
+      <SidebarTopActions />
+      <SidebarMenu className="gap-0.5">
+        <SidebarMenuItem>
+          <LinkedDesktopIndicator variant="full" />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SettingsFullButton />
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <AccountPopover />
+        </SidebarMenuItem>
+      </SidebarMenu>
     </SidebarFooter>
   );
 }
