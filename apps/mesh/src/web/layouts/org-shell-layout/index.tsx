@@ -79,11 +79,11 @@ export default function OrgShellLayout() {
                   </Toolbar.LeftColumn>
                   <Toolbar.CenterSlot />
                   <Toolbar.RightColumn>
-                    <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end">
+                    <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
+                      <Toolbar.TogglesSlot />
                       <Toolbar.TabsSlot />
                     </div>
                     <Toolbar.RightSlot />
-                    <Toolbar.TogglesSlot />
                   </Toolbar.RightColumn>
                 </Toolbar.Header>
               )}
