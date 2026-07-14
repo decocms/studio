@@ -10,7 +10,6 @@ import { authClient } from "@/web/lib/auth-client";
 import { Chat } from "./index";
 import { useChatPrefs, useChatTask } from "./context";
 import { ChatModeRow } from "./pills/chat-mode-row";
-import { AgentHomeHeader } from "./agent-home-header";
 
 export function AgentHome({
   onOpenContextPanel,
@@ -42,10 +41,9 @@ export function AgentHome({
 
   return (
     <>
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        {/* compact agent header */}
-        <AgentHomeHeader agent={agent} currentBranch={currentBranch} />
-      </div>
+      {/* spacer — the agent name/branch already show in the breadcrumb, so
+          the empty chat just docks its input at the bottom */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden" />
 
       {/* docked input */}
       <Chat.Footer>
