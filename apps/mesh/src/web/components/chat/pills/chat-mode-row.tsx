@@ -8,6 +8,7 @@ import {
 import type { HarnessId } from "@/harnesses";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { BranchPill } from "./branch-pill";
+import { RuntimeSwitcher } from "./runtime-switcher";
 import { ClaudeCodeIcon, CodexIcon } from "../agent-icons";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { useProjectContext } from "@decocms/mesh-sdk";
@@ -95,6 +96,11 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
 
   const githubRepo = getActiveGithubRepo(virtualMcp);
   const connectionId = githubRepo?.connectionId;
+  // Sandbox-backed agents (imported from a repo) get the runtime switcher —
+  // Cloud sandbox vs This device — right next to the branch pill, so you can
+  // pick where it runs even before the sandbox starts. It also renders the
+  // locked-runtime state itself, so it supersedes the LockedRuntimeChip here.
+  const hasSandbox = !!githubRepo;
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
@@ -124,7 +130,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
 
   return (
     <>
-      {lockedRuntime}
+      {hasSandbox ? <RuntimeSwitcher /> : lockedRuntime}
       <ChatModeRowPure branchPill={branchPill} />
     </>
   );

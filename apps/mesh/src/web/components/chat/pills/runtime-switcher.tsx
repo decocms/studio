@@ -1,16 +1,19 @@
 /**
- * PreviewRuntimeSwitcher — where the preview (and the agent that drives it)
- * runs: deco's Cloud sandbox, or **This device** via `decocms link`.
+ * RuntimeSwitcher — where the agent (and the preview it drives) runs: deco's
+ * Cloud sandbox, or **This device** via `decocms link`.
+ *
+ * Lives in the chat's branch-pill row, NOT the preview toolbar: the preview
+ * toolbar only exists once the sandbox is up, so if a sandbox can't start you'd
+ * be locked out of the one control that could unstick you. Here it's always
+ * reachable — you can pick the runtime before (or while) the sandbox starts.
  *
  * The agent and its preview share ONE sandbox (the agent edits files, the dev
- * server serves them), so this is the same underlying choice the chat's model
- * selector exposes as "Cloud / This device" — surfaced here because the preview
- * is where you actually care about it. It writes through the same
- * `pendingAgentOption`, so the two controls never disagree.
+ * server serves them), so this is the same underlying choice the chat model
+ * selector exposes as "Cloud / This device" — it writes through the same
+ * `pendingAgentOption`, so the two never disagree.
  *
  * The runtime locks to a thread on its first message. On a locked thread this
- * is read-only and warns that a new chat is required — it never silently
- * re-spawns one.
+ * is read-only and warns a new chat is required — it never auto-spawns one.
  */
 import {
   AlertTriangle,
@@ -30,9 +33,9 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import type { SandboxProviderKind } from "@decocms/mesh-sdk";
-import { useChatPrefs, useChatTask } from "@/web/components/chat/context";
-import { useAgentOptionAvailability } from "@/web/components/chat/use-agent-availability";
-import type { AgentOption } from "@/web/components/chat/pills/agent-options";
+import { useChatPrefs, useChatTask } from "../context";
+import { useAgentOptionAvailability } from "../use-agent-availability";
+import type { AgentOption } from "./agent-options";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
@@ -91,7 +94,7 @@ function RuntimeItem({
   );
 }
 
-export function PreviewRuntimeSwitcher() {
+export function RuntimeSwitcher() {
   const { pendingSandboxProviderKind, setPendingAgentOption } = useChatPrefs();
   const { isThreadLocked, lockedSandbox, createTask } = useChatTask();
   const { vmEntry } = useSandboxLifecycle();
@@ -119,24 +122,20 @@ export function PreviewRuntimeSwitcher() {
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="sm"
-          className="h-8 gap-1.5 px-2 text-[13px] font-medium"
+          className="h-9 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
         >
-          <CurrentIcon size={14} />
-          <span>{current.label}</span>
+          <CurrentIcon size={14} className="shrink-0" />
+          <span className="truncate">{current.label}</span>
           {isThreadLocked ? (
-            <Lock01 size={12} className="text-muted-foreground" />
+            <Lock01 size={12} className="shrink-0 opacity-70" />
           ) : (
-            <ChevronDown
-              size={12}
-              className="text-muted-foreground opacity-70"
-            />
+            <ChevronDown size={12} className="shrink-0 opacity-70" />
           )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64 p-1">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-          Run preview on
+          Run on
         </DropdownMenuLabel>
         {isThreadLocked ? (
           <div className="flex flex-col gap-2 px-2 py-1.5">
@@ -144,7 +143,7 @@ export function PreviewRuntimeSwitcher() {
               <AlertTriangle size={13} className="mt-0.5 shrink-0" />
               <span>
                 This chat is locked to {current.label.toLowerCase()}. Start a
-                new chat to run the preview somewhere else.
+                new chat to run it somewhere else.
               </span>
             </p>
             <Button
