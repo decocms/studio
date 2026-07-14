@@ -304,6 +304,9 @@ export class TaskManager {
     for (const t of this.tasks.values()) {
       if (t.status === "running") {
         t.kill("SIGTERM");
+        setTimeout(() => {
+          if (t.status === "running") t.kill("SIGKILL");
+        }, 3000);
         count++;
       }
     }
