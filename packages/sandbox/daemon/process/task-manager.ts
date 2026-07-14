@@ -653,7 +653,8 @@ function summarize(t: TaskInternal): TaskSummary {
     startedAt: t.startedAt,
     finishedAt: t.finishedAt,
     timedOut: t.timedOut,
-    truncated: t.tee.isTruncated(),
+    truncated:
+      t.stdout.isTruncated() || t.stderr.isTruncated() || t.tee.isTruncated(),
     logName: t.spec.logName,
     intentional: t.intentional,
   };

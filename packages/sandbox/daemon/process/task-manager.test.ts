@@ -108,6 +108,22 @@ describe("TaskManager killAll", () => {
   });
 });
 
+describe("TaskManager summary truncation", () => {
+  it("flags summary.truncated when output exceeds the ring buffer but not the tee cap", async () => {
+    const tm = makeManager();
+    // Ring buffer caps at 256KB per stream; the on-disk tee caps at 10MB.
+    // 300KB of output overflows the former but not the latter, so
+    // summarize() must reflect the ring buffer's drop, not just the tee's.
+    const t = await tm.spawn({
+      command: "yes | head -c 300000",
+      cwd: "/tmp",
+      mode: "pipe",
+    });
+    await tm.finished(t.id);
+    expect(tm.get(t.id)?.truncated).toBe(true);
+  });
+});
+
 describe("TaskManager replaceByLogName", () => {
   it("kills the running task with the same logName, awaits exit, then spawns", async () => {
     const tm = makeManager();
