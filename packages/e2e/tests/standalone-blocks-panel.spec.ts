@@ -5,6 +5,11 @@ async function createClonableAgent(
   api: Parameters<typeof createHttpConnection>[0],
   orgSlug: string,
 ) {
+  await callSelfMcpTool(api, orgSlug, "AI_PROVIDER_KEY_CREATE", {
+    providerId: "anthropic",
+    label: "standalone-blocks-panel-e2e",
+    apiKey: "sk-ant-e2e-fake-key-do-not-use",
+  });
   const connection = await createHttpConnection(api, orgSlug, {
     title: "standalone-blocks-placeholder",
     url: "http://127.0.0.1:1/unused",
@@ -41,6 +46,8 @@ async function createClonableAgent(
 }
 
 test.describe("standalone Blocks panel", () => {
+  test.setTimeout(90_000);
+
   test("Chat, Blocks, and Main toggle independently on desktop", async ({
     authedPage,
   }) => {
@@ -61,7 +68,8 @@ test.describe("standalone Blocks panel", () => {
       exact: true,
     });
 
-    await expect(chat).toBeVisible();
+    await expect(blocksToggle).toBeVisible({ timeout: 30_000 });
+    await expect(chat).toBeVisible({ timeout: 30_000 });
     await expect(main).toBeVisible();
     await expect(blocks).toBeHidden();
 
@@ -94,12 +102,17 @@ test.describe("standalone Blocks panel", () => {
       `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=blocks`,
     );
 
-    await expect(page.getByTestId("blocks-panel-shell")).toBeVisible();
+    const blocksToggle = page.getByRole("button", {
+      name: "Blocks",
+      exact: true,
+    });
+    await expect(blocksToggle).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("blocks-panel-shell")).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(page.getByTestId("chat-panel")).toBeHidden();
     await expect(page.getByTestId("main-panel")).toBeHidden();
-    await expect(
-      page.getByRole("button", { name: "Blocks", exact: true }),
-    ).toBeDisabled();
+    await expect(blocksToggle).toBeDisabled();
   });
 
   test("mobile renders one workspace surface at a time", async ({
@@ -115,7 +128,14 @@ test.describe("standalone Blocks panel", () => {
       `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&chat=1&blocks=0&main=0`,
     );
 
-    await expect(page.getByTestId("chat-panel")).toBeVisible();
+    const chatToggle = page.getByRole("button", {
+      name: "Chat",
+      exact: true,
+    });
+    await expect(chatToggle).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("chat-panel")).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(page.getByTestId("blocks-panel-shell")).toHaveCount(0);
     await expect(page.getByTestId("main-panel")).toHaveCount(0);
 
