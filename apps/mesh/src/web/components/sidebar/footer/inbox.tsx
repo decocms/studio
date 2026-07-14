@@ -228,16 +228,16 @@ export function SidebarInboxFooter() {
   if (isCollapsed) {
     return (
       <SidebarFooter className="px-2 pb-3 gap-1">
-        <SidebarTopActions />
         <SidebarExtraActions />
+        <SidebarTopActions />
         <SidebarMenu>
+          <SidebarMenuItem>
+            <InboxFullButton />
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <div className="flex justify-center">
               <LinkedDesktopIndicator />
             </div>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <InboxFullButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SettingsFullButton />
@@ -259,10 +259,10 @@ export function SidebarInboxFooter() {
           <InboxFullButton />
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SettingsFullButton />
+          <LinkedDesktopIndicator variant="full" />
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <LinkedDesktopIndicator variant="full" />
+          <SettingsFullButton />
         </SidebarMenuItem>
         <SidebarMenuItem>
           <AccountPopover />
