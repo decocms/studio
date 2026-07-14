@@ -125,7 +125,7 @@ test.describe("standalone Blocks panel", () => {
       orgSlug,
     );
     await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&chat=1&blocks=0&main=0`,
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&chat=0&blocks=0&main=settings`,
     );
 
     const chatToggle = page.getByRole("button", {
@@ -133,6 +133,11 @@ test.describe("standalone Blocks panel", () => {
       exact: true,
     });
     await expect(chatToggle).toBeVisible({ timeout: 30_000 });
+    await expect(chatToggle).toHaveAttribute("aria-pressed", "false");
+    await chatToggle.click();
+    await expect(page).toHaveURL(/chat=1/);
+    await expect(page).toHaveURL(/blocks=0/);
+    await expect(page).toHaveURL(/main=0/);
     await expect(chatToggle).toHaveAttribute("aria-pressed", "true");
     await expect(chatToggle).toBeDisabled();
     await expect(page.getByTestId("blocks-panel-shell")).toHaveCount(0);
