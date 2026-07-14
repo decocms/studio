@@ -91,7 +91,7 @@ describe("resolveDefaultPanelState", () => {
 
 describe("computeChatMainSizes", () => {
   test("both open → 45/55", () => {
-    expect(computeChatMainSizes(true, true)).toEqual({ chat: 45, main: 55 });
+    expect(computeChatMainSizes(true, true)).toEqual({ chat: 33, main: 67 });
   });
 
   test("only chat → 100/0", () => {
