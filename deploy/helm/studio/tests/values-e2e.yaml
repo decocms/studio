@@ -18,6 +18,13 @@ image:
   pullPolicy: IfNotPresent
   command: ["/http-echo", "-listen=:3000", "-text=ok"]
 
+# Tiny requests so everything (incl. the maxSurge=1 rollout pod) fits a 2-core
+# CI kind node. The chart default (750m/api) × 3 surged api pods + web + worker
+# overflows a single GitHub runner and stalls the rollout.
+resources:
+  requests: { cpu: "20m", memory: "32Mi" }
+  limits: { memory: "64Mi" }
+
 # http-echo answers 200 on every path, so the real probe paths just work.
 startupProbe:
   httpGet: { path: /health/live, port: http }
@@ -34,6 +41,9 @@ nginx:
     repository: nginxinc/nginx-unprivileged
     tag: "1.27-alpine"
     pullPolicy: IfNotPresent
+  resources:
+    requests: { cpu: "20m", memory: "32Mi" }
+    limits: { memory: "64Mi" }
   pdb:
     enabled: true
     maxUnavailable: 1
@@ -45,6 +55,9 @@ worker:
   replicaCount: 1
   autoscaling:
     enabled: false
+  resources:
+    requests: { cpu: "20m", memory: "32Mi" }
+    limits: { memory: "64Mi" }
 nats:
   enabled: false
 persistence:
