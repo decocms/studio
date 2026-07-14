@@ -126,6 +126,10 @@ describe("resolveMountPath", () => {
     expect(resolveMountPath("/ws", "/ws/org/x")).toBe("/ws/org/x");
     expect(resolveMountPath("/ws", "/etc/passwd")).toBeNull();
   });
+  it("rejects absolute paths that use .. to escape appRoot despite matching its prefix", () => {
+    expect(resolveMountPath("/ws", "/ws/../etc/passwd")).toBeNull();
+    expect(resolveMountPath("/ws", "/ws/org/../../../etc/passwd")).toBeNull();
+  });
 });
 
 describe("MountManager", () => {

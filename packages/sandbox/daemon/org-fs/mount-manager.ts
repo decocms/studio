@@ -126,8 +126,12 @@ function freePort(): Promise<number> {
  */
 export function resolveMountPath(appRoot: string, p: string): string | null {
   const orgRoot = join(appRoot, "org");
+  // Route absolute paths through the same resolve-then-clamp check relative
+  // paths get below — a raw `startsWith(appRoot)` never normalizes `..`
+  // segments, so e.g. "<appRoot>/../../etc" passes the prefix check while
+  // actually resolving outside appRoot.
   if (isAbsolute(p)) {
-    return p.startsWith(`${appRoot}/`) || p === appRoot ? p : null;
+    return safePath(appRoot, appRoot, p);
   }
   return safePath(appRoot, orgRoot, p);
 }
