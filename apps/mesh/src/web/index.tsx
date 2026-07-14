@@ -314,6 +314,14 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./layouts/library/index.tsx")),
 });
 
+// Task board (/$org/board) — org-owned task board, gated behind the org's
+// task_board_enabled setting.
+const boardRoute = createRoute({
+  getParentRoute: () => orgShellLayout,
+  path: "/board",
+  component: lazyRouteComponent(() => import("./layouts/task-board/index.tsx")),
+});
+
 // ============================================
 // SETTINGS LAYOUT (/$org/settings)
 // ============================================
@@ -569,6 +577,7 @@ const agentShellWithChildren = agentShellLayout.addChildren([unifiedChatRoute]);
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
   libraryRoute,
+  boardRoute,
   agentShellWithChildren,
 ]);
 

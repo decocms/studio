@@ -37,6 +37,10 @@ export const KEYS = {
   myCapabilities: (locator: ProjectLocator) =>
     [locator, "my-capabilities"] as const,
 
+  // Task board items (scoped by org)
+  taskBoardItems: (locator: ProjectLocator) =>
+    [locator, "task-board-items"] as const,
+
   // Connections (scoped by project)
   connections: (locator: ProjectLocator) => [locator, "connections"] as const,
   connectionsByBinding: (locator: ProjectLocator, binding: string) =>

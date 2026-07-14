@@ -41,6 +41,7 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
+  task_board_enabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -52,6 +53,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   registry_config: null,
   simple_mode: null,
   default_home_agents: null,
+  task_board_enabled: false,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -137,6 +139,7 @@ type OrgSettingsUpdateInput = Partial<
     | "registry_config"
     | "simple_mode"
     | "default_home_agents"
+    | "task_board_enabled"
   >
 >;
 
@@ -221,6 +224,24 @@ export function useUpdateSimpleMode() {
       config: SimpleModeConfig,
       options?: OrgSettingsMutateOptions,
     ) => mutation.mutateAsync({ simple_mode: config }, options),
+  };
+}
+
+export function useTaskBoardEnabled(): boolean {
+  const { data } = useOrganizationSettings(
+    (s) => s.task_board_enabled ?? false,
+  );
+  return data ?? false;
+}
+
+export function useUpdateTaskBoardEnabled() {
+  const mutation = useUpdateOrganizationSettings();
+  return {
+    ...mutation,
+    mutate: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
+      mutation.mutate({ task_board_enabled: enabled }, options),
+    mutateAsync: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
+      mutation.mutateAsync({ task_board_enabled: enabled }, options),
   };
 }
 
