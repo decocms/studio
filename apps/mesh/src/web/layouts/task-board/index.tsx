@@ -77,7 +77,7 @@ function DueDatePill({ iso }: { iso: string }) {
   );
 }
 
-function TaskBoardPage() {
+export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const { data: membersData } = useMembers();
@@ -114,7 +114,7 @@ function TaskBoardPage() {
           layout === "board" ? "max-w-[1400px]" : "max-w-[900px]",
         )}
       >
-        <h1 className="text-xl font-medium text-foreground">Board</h1>
+        <h1 className="text-xl font-medium text-foreground">Tasks</h1>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={openCreate}>
