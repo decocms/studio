@@ -17,7 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { BrandContext } from "@/storage/types";
 import { ConnectDesktopDialog } from "./connect-desktop-dialog";
 import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
-import { useChatPrefs } from "./context";
+import { useOptionalChatPrefs } from "./context";
 import type { AgentOption } from "./pills/agent-options";
 
 interface NoAiProviderEmptyStateProps {
@@ -84,7 +84,11 @@ export function NoAiProviderEmptyState({
   const { localMode } = useAuthConfig();
   const brand = useDefaultBrand();
   const link = useCurrentLink();
-  const { setPendingAgentOption } = useChatPrefs();
+  // Optional: this empty state also renders inside the standalone model
+  // selector (settings / automations), which mounts outside ChatContextProvider.
+  // The local-runtime buttons only appear in the chat panel anyway, where the
+  // provider is present.
+  const chatPrefs = useOptionalChatPrefs();
   const [pendingProvider, setPendingProvider] =
     useState<ProviderSelection | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
@@ -118,7 +122,10 @@ export function NoAiProviderEmptyState({
       });
     }
   }
-  const hasLocalOptions = localOptions.length > 0;
+  // Local runtime buttons write the pending agent option into chat prefs, so
+  // they only make sense where a chat context exists (the chat panel). Outside
+  // it (standalone model selector), fall back to the connect-a-provider grid.
+  const hasLocalOptions = localOptions.length > 0 && chatPrefs !== null;
 
   const orgName = org.name;
   const primaryColor = brand ? extractPrimaryColor(brand) : null;
@@ -200,7 +207,7 @@ export function NoAiProviderEmptyState({
                 variant="default"
                 className="gap-2"
                 onClick={() => {
-                  setPendingAgentOption(o.option);
+                  chatPrefs?.setPendingAgentOption(o.option);
                   onLocalRuntimePicked?.(o.option);
                 }}
               >

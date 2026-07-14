@@ -7,6 +7,7 @@ import {
   type AgentPins,
   agentOptionFor,
   agentOptionIsAvailable,
+  preferredLocalAgentOption,
 } from "./agent-options";
 
 const ALL_AVAILABLE: AgentOptionAvailability = {
@@ -110,5 +111,29 @@ describe("agentOptionIsAvailable", () => {
         codex: false,
       }),
     ).toBe(false);
+  });
+});
+
+describe("preferredLocalAgentOption", () => {
+  test("Claude Code wins when both CLIs are present", () => {
+    expect(preferredLocalAgentOption(ALL_AVAILABLE)).toBe(
+      "claude-code-desktop",
+    );
+  });
+
+  test("falls back to Codex when only Codex is present", () => {
+    expect(
+      preferredLocalAgentOption({ ...ALL_AVAILABLE, claudeCode: false }),
+    ).toBe("codex-desktop");
+  });
+
+  test("null when no local CLI is available", () => {
+    expect(
+      preferredLocalAgentOption({
+        ...ALL_AVAILABLE,
+        claudeCode: false,
+        codex: false,
+      }),
+    ).toBeNull();
   });
 });

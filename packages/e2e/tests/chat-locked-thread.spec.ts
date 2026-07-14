@@ -295,8 +295,13 @@ test.describe("Thread runtime is locked after first message", () => {
       await expect(lockedRuntime).toHaveAccessibleName(/this device/i);
 
       // The unlocked-state switcher trigger must NOT be present — that would
-      // mean the lock indicator is shadowed by the live (enabled) control.
-      await expect(page.getByTestId("mode-picker")).toHaveCount(0);
+      // mean the lock indicator is shadowed by the live (enabled) control. The
+      // locked indicator is a disabled <span> (no button role); the unlocked
+      // switcher is a real dropdown-trigger button labelled "Runtime: …", so
+      // asserting no such button exists enforces the intent.
+      await expect(page.getByRole("button", { name: /^Runtime:/ })).toHaveCount(
+        0,
+      );
 
       // Note: the branch-picker-locked chip is intentionally not asserted
       // here. `ChatModeRow` gates `BranchPill` on
