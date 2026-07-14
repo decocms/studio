@@ -79,6 +79,8 @@ describe("page-sections", () => {
       "Must start with a letter",
     );
     expect(validateBlockId("MyNewBlock", decofile)).toBeNull();
+    // Block keys may contain spaces (see deco-block-key.ts).
+    expect(validateBlockId("PLP Air Fryer", decofile)).toBeNull();
   });
 
   it("canMakeSectionReusable rejects saved, multivariate, and hidden sections", () => {
@@ -90,7 +92,9 @@ describe("page-sections", () => {
 
   it("suggestBlockId sanitizes labels", () => {
     expect(suggestBlockId("Hero")).toBe("Hero");
-    expect(suggestBlockId("Variants of Hero")).toBe("VariantsofHero");
-    expect(suggestBlockId("FAQ Section")).toBe("FAQSection");
+    expect(suggestBlockId("Variants of Hero")).toBe("Variants of Hero");
+    expect(suggestBlockId("FAQ Section")).toBe("FAQ Section");
+    // Disallowed characters are stripped; spaces are collapsed and trimmed.
+    expect(suggestBlockId("  PLP / Air  Fryer!  ")).toBe("PLP Air Fryer");
   });
 });

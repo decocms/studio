@@ -1,5 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, Globe01 } from "@untitledui/icons";
+import {
+  ChevronDown,
+  ChevronRight,
+  DotsHorizontal,
+  Globe01,
+  LayoutAlt01,
+} from "@untitledui/icons";
 import {
   Select,
   SelectContent,
@@ -7,6 +13,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import {
   Tooltip,
@@ -27,9 +40,12 @@ import {
   isEmbeddedUnionResolveType,
 } from "../block-type-utils";
 import { labelFromResolveType } from "../section-types";
+import { suggestBlockId, validateBlockId } from "../page-sections";
 import type { SchemaProperty } from "../resolve-schema";
 import type { FieldProps } from "./field-props";
 
+import { toast } from "sonner";
+import { MakeReusableModal } from "../make-reusable-modal";
 import { SchemaForm } from "../schema-form";
 import { unwrapBlockReference } from "../unwrap-section";
 
@@ -78,6 +94,8 @@ function CollapsibleLoaderConfig({
   nested,
   nestedBlockRef,
   globalBlockKey,
+  onDetach,
+  onMakeGlobal,
 }: {
   path: string;
   open: boolean;
@@ -86,6 +104,8 @@ function CollapsibleLoaderConfig({
   nested: ReactNode;
   nestedBlockRef?: boolean;
   globalBlockKey?: string;
+  onDetach?: () => void;
+  onMakeGlobal?: () => void;
 }) {
   const contentId = `${path}-loader-config`;
 
@@ -96,23 +116,54 @@ function CollapsibleLoaderConfig({
         nestedBlockRef && "ml-1",
       )}
     >
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={contentId}
-        onClick={() => onOpenChange(!open)}
-        className="group flex w-full min-w-0 items-center gap-2 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-accent/50"
-      >
-        <span className="flex size-6 shrink-0 items-center justify-center text-muted-foreground transition-colors group-hover:text-foreground">
-          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        </span>
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            {title}
+      <div className="group flex w-full min-w-0 items-center gap-1 rounded-lg pr-2 transition-colors hover:bg-accent/50">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={contentId}
+          onClick={() => onOpenChange(!open)}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2.5 text-left"
+        >
+          <span className="flex size-6 shrink-0 items-center justify-center text-muted-foreground transition-colors group-hover:text-foreground">
+            {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </span>
-          {globalBlockKey && <GlobalLoaderBadge blockKey={globalBlockKey} />}
-        </span>
-      </button>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              {title}
+            </span>
+            {globalBlockKey && <GlobalLoaderBadge blockKey={globalBlockKey} />}
+          </span>
+        </button>
+        {(onDetach || onMakeGlobal) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Loader actions"
+                className="h-7 w-7 shrink-0 text-muted-foreground"
+              >
+                <DotsHorizontal size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {globalBlockKey && onDetach && (
+                <DropdownMenuItem onClick={onDetach}>
+                  <LayoutAlt01 className="h-4 w-4" />
+                  Detach
+                </DropdownMenuItem>
+              )}
+              {!globalBlockKey && onMakeGlobal && (
+                <DropdownMenuItem onClick={onMakeGlobal}>
+                  <Globe01 className="h-4 w-4" />
+                  Make global
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
       {open && (
         <div
           id={contentId}
@@ -205,6 +256,7 @@ export function AnyOfField({
   const [loaderConfigOpen, setLoaderConfigOpen] = useState(() =>
     blockRefLoaderConfigHasData(editorValue, savedRef?.blockKey),
   );
+  const [makeGlobalOpen, setMakeGlobalOpen] = useState(false);
 
   // ── block-ref mode (anyOfRefs from schema resolution) ─────────────
   if (refs.length > 0) {
@@ -310,6 +362,52 @@ export function AnyOfField({
 
     const isNestedBlockRef = path.includes(".");
 
+    // Detach: convert a global (saved-block) loader into a local, inline copy.
+    // Mirrors the section-level "Detach" — the resolved block data is written
+    // back inline (minus the saved block's `name`), so edits no longer touch
+    // the shared decofile entry referenced elsewhere on the site.
+    const handleDetach = savedRef
+      ? () => {
+          const { name: _name, ...inlineData } = savedRef.data;
+          onChange(inlineData);
+        }
+      : undefined;
+
+    // Make global: save the current inline loader as a reusable decofile block
+    // and point this field at it. Mirrors the section-level "Save as global".
+    // Only offered for a local module loader (not already global, not a Lazy
+    // wrapper, and an actual module resolveType — not an embedded union variant).
+    const canMakeGlobal =
+      !savedRef &&
+      !lazyInner &&
+      !!onSaveReferencedBlock &&
+      isModuleLoaderUnion &&
+      !isEmbeddedUnionResolveType(activeRt) &&
+      activeRt.includes("/");
+    const currentLoaderData =
+      boundValue && typeof boundValue === "object" && !Array.isArray(boundValue)
+        ? (boundValue as Record<string, unknown>)
+        : {};
+    const handleMakeGlobalSubmit = (blockId: string) => {
+      if (!onSaveReferencedBlock) return;
+      const trimmed = blockId.trim();
+      const validationError = decofile
+        ? validateBlockId(trimmed, decofile)
+        : null;
+      if (validationError) {
+        toast.error(validationError);
+        return;
+      }
+      onSaveReferencedBlock(trimmed, {
+        ...currentLoaderData,
+        __resolveType: activeRt,
+        name: trimmed,
+      });
+      onChange({ __resolveType: trimmed });
+      setMakeGlobalOpen(false);
+      toast.success(`Saved global block "${trimmed}"`);
+    };
+
     return (
       <div className="space-y-3">
         <div className="space-y-1.5">
@@ -353,10 +451,22 @@ export function AnyOfField({
               nested={nestedProps}
               nestedBlockRef={isNestedBlockRef}
               globalBlockKey={savedRef?.blockKey}
+              onDetach={handleDetach}
+              onMakeGlobal={
+                canMakeGlobal ? () => setMakeGlobalOpen(true) : undefined
+              }
             />
           ) : (
             nestedProps
           ))}
+        {canMakeGlobal && (
+          <MakeReusableModal
+            open={makeGlobalOpen}
+            onOpenChange={setMakeGlobalOpen}
+            defaultBlockId={suggestBlockId(labelFromResolveType(activeRt))}
+            onSubmit={handleMakeGlobalSubmit}
+          />
+        )}
       </div>
     );
   }
