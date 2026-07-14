@@ -304,6 +304,10 @@ export function useMainPanelTabs(ctx: {
   // per-agent special-case. Source tabs (Blocks · Preview · Code) share one
   // capability gate via getSourceSystemTabs.
   const leadingSystemTabs: Array<{ id: string; title: string }> = [];
+  // Library leads the bar and never changes with the agent — an org-level,
+  // agent-independent anchor pinned leftmost so it doesn't shuffle as the
+  // per-agent views (Overview / Preview / Blocks / Code) come and go.
+  leadingSystemTabs.push({ id: "files", title: "Library" });
   if (effectiveDefaultMainView?.type === "overview") {
     leadingSystemTabs.push({ id: "overview", title: "Overview" });
   }
@@ -316,11 +320,11 @@ export function useMainPanelTabs(ctx: {
   if (gitTabVisible) {
     systemTabs.push({ id: "git", title: "Review changes" });
   }
+  systemTabs.push({ id: "automations", title: "Automations" });
+  // Settings is always the last tab (Library moved to the leading anchor above).
   if (canManageAgents) {
     systemTabs.push({ id: "settings", title: "Settings" });
   }
-  systemTabs.push({ id: "automations", title: "Automations" });
-  systemTabs.push({ id: "files", title: "Library" });
 
   // Merge pinned views + per-task expanded tools into a single list keyed
   // by the pinned-view tab id. Pinned views win on dedupe so the
