@@ -8,9 +8,16 @@
 import { useProjectContext, useVirtualMCPs } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { useNavigate } from "@tanstack/react-router";
+import { useSyncExternalStore } from "react";
 import { authClient } from "@/web/lib/auth-client";
 import { appendAgentToPersonalOrder } from "@/web/components/sidebar/task-groups/stable-order";
 import { useBumpSidebarOrderRevision } from "@/web/components/sidebar/sidebar-agent-groups-context";
+import { useOptionalThreadManager } from "@/web/components/chat/store/hooks";
+import type { Task } from "@/web/components/chat/task/types";
+import { findReusableNewChat } from "@/web/lib/reusable-new-chat";
+
+const NO_THREADS: Task[] = [];
+const noopSubscribe = () => () => {};
 
 interface NavigateToAgentOptions {
   search?: Record<string, unknown>;
@@ -31,6 +38,16 @@ export function useNavigateToAgent() {
   const serverPinnedIds = getServerPinnedIds(allAgents);
   const bumpOrderRevision = useBumpSidebarOrderRevision();
 
+  // Read the open-thread list (when a ThreadManagerProvider is in scope) so we
+  // can reuse an agent's empty "New chat" instead of minting a duplicate every
+  // time it's navigated to. Falls back to an empty list off-provider.
+  const manager = useOptionalThreadManager();
+  const threads = useSyncExternalStore(
+    manager?.threads.subscribe ?? noopSubscribe,
+    manager?.threads.get ?? (() => NO_THREADS),
+    manager?.threads.get ?? (() => NO_THREADS),
+  );
+
   return (virtualMcpId: string, options?: NavigateToAgentOptions) => {
     appendAgentToPersonalOrder(
       { orgId: org.id, userId: sidebarUserId },
@@ -38,7 +55,10 @@ export function useNavigateToAgent() {
       serverPinnedIds,
     );
     bumpOrderRevision();
-    const taskId = crypto.randomUUID();
+    // Focus the agent's existing empty chat if it has one; otherwise a fresh id
+    // (the route loader's ensure-fallback creates the thread on landing).
+    const taskId =
+      findReusableNewChat(threads, virtualMcpId)?.id ?? crypto.randomUUID();
     navigate({
       to: "/$org/$taskId",
       params: { org: org.slug, taskId },

@@ -86,6 +86,9 @@ export function CompanionMcpsSection(props: {
   org: CompanionOrg;
   cdConnectionId: string;
   siteUrl?: string;
+  /** Called once cards resolve with whether at least one is connected (or
+   *  none are required). Lets the report CTA above this section gate on it. */
+  onReadinessChange?: (hasConnectedSource: boolean) => void;
 }) {
   return (
     <QueryErrorResetBoundary>
@@ -113,10 +116,12 @@ function CompanionMcpsSectionContent({
   org,
   cdConnectionId,
   siteUrl,
+  onReadinessChange,
 }: {
   org: CompanionOrg;
   cdConnectionId: string;
   siteUrl?: string;
+  onReadinessChange?: (hasConnectedSource: boolean) => void;
 }) {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
@@ -156,6 +161,11 @@ function CompanionMcpsSectionContent({
   const [autoOpenConfigFieldKey, setAutoOpenConfigFieldKey] = useState<
     string | null
   >(null);
+
+  // Nothing required, or at least one connected → the report CTA may proceed.
+  // Called during render (derived from query data, not an effect) so the
+  // parent's button re-enables the same render pass a source connects.
+  onReadinessChange?.(cards.length === 0 || cards.some((c) => c.satisfied));
 
   // Empty: nothing to connect → render nothing (the parent footer still shows
   // the report CTA).

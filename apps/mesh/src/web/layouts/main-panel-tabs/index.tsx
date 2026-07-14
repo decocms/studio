@@ -11,6 +11,7 @@
 import { Suspense, lazy } from "react";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
+import { OverviewTab } from "./overview-tab";
 import { GitTab } from "@/web/components/thread/github/git-tab";
 import { PreviewBlocksTab } from "./preview-blocks-tab";
 import { CodeTab } from "./code-tab";
@@ -68,6 +69,9 @@ function TabBody({
     throw new Error(`forced tab error: ${activeTab}`);
   }
 
+  if (activeTab === "overview") {
+    return <OverviewTab />;
+  }
   if (isLegacySettingsTab(activeTab)) {
     return <SettingsTab virtualMcpId={virtualMcpId} />;
   }

@@ -36,9 +36,11 @@ rules:
   - apiGroups: ["extensions.agents.x-k8s.io"]
     resources: ["sandboxclaims"]
     verbs: ["get", "list", "patch", "delete"]
+  # list = idle-probe pod-IP lookup; delete = Failed-pod GC (sidecar SIGKILL
+  # leaves an orphaned phase=Failed pod its deleted Sandbox can't reap).
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["list"]
+    verbs: ["list", "delete"]
   # Reap events outlive the claim object — used for post-mortem.
   # events.k8s.io/v1 is the current API; legacy `[""] events` is deprecated.
   # `kubectl get events` aggregates from both, so consumers are unaffected.

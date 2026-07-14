@@ -1,7 +1,10 @@
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 
-const DEFAULT_CHAT_PANEL_WIDTH = 45;
+// Chat takes ~1/3 by default so the main panel (the agent's app / the Super
+// Agent's Overview) gets most of the space. Users who drag it keep their
+// persisted width.
+const DEFAULT_CHAT_PANEL_WIDTH = 33;
 
 /** react-resizable-panels requires numeric defaultSize; localStorage may hold strings. */
 function normalizePanelSizePercent(

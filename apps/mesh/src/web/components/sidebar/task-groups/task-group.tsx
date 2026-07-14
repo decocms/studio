@@ -15,6 +15,7 @@ function StatusExpandedBody({
   activeTaskId,
   onSelectTask,
   onArchiveTask,
+  canArchive,
   filters,
 }: {
   status: StatusGroupData["status"];
@@ -22,6 +23,7 @@ function StatusExpandedBody({
   activeTaskId: string | null;
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
+  canArchive: boolean;
   filters: SidebarFilters;
 }) {
   const { isFetching, isProbing, loadMore, hasMore, serverHasMore } =
@@ -50,7 +52,7 @@ function StatusExpandedBody({
           isActive={activeTaskId === task.id}
           onClick={() => onSelectTask(task)}
           onArchive={
-            task.created_by === filters.currentUserId
+            canArchive && task.created_by === filters.currentUserId
               ? () => onArchiveTask(task)
               : undefined
           }
@@ -77,6 +79,7 @@ export function StatusGroup({
   activeTaskId,
   onSelectTask,
   onArchiveTask,
+  canArchive,
   filters,
 }: {
   status: StatusGroupData["status"];
@@ -84,6 +87,7 @@ export function StatusGroup({
   activeTaskId: string | null;
   onSelectTask: (task: Task) => void;
   onArchiveTask: (task: Task) => void;
+  canArchive: boolean;
   filters: SidebarFilters;
 }) {
   const config = STATUS_CONFIG[status];
@@ -133,6 +137,7 @@ export function StatusGroup({
             activeTaskId={activeTaskId}
             onSelectTask={onSelectTask}
             onArchiveTask={onArchiveTask}
+            canArchive={canArchive}
             filters={filters}
           />
         </div>

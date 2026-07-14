@@ -10,7 +10,7 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 
-export function SidebarInboxFooterMobile() {
+export function SidebarAccountFooterMobile() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const { setOpenMobile } = useSidebar();

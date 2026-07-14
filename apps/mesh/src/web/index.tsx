@@ -281,9 +281,10 @@ const unifiedChatRoute = createRoute({
   component: () => null,
 });
 
-// Org index renders the home landing page (single-panel + HomePage), no
-// agent shell. `main` opens a side panel over the home (e.g. "files" = the
-// Library) without leaving `/$org`, mirroring the thread's main-panel tabs.
+// Org index (`/$org`) resolves to the Super Agent's home thread — there's no
+// bespoke landing page anymore (see org-home). The `main` search param is kept
+// so a deep link into a side panel (e.g. "files" = the Library) survives the
+// redirect, mirroring the thread's main-panel tabs.
 const orgIndexSearchSchema = z.object({
   main: z.string().optional(),
 });

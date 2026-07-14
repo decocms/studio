@@ -5,37 +5,40 @@ import { ErrorBoundary } from "../error-boundary";
 
 import { Chat } from "./index";
 import { useChatStream } from "./context";
+import { useNeedsRuntimeSetup } from "./use-needs-runtime-setup";
 import { ChatContextPanel } from "./context-panel";
 import { AgentHome } from "./agent-home";
 import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
-import { hasLocalCliHarness } from "@/web/lib/agent-capabilities";
-import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
-import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
+import { usePanelActions } from "@/web/layouts/shell-layout";
 
 // ---------- Panel content ----------
 
 function ChatPanelContent() {
   const { org } = useProjectContext();
-  const allKeys = useAiProviderKeys();
   const { isChatEmpty } = useChatStream();
+  const { openTab } = usePanelActions();
   const [activePanel, setActivePanel] = useState<"chat" | "context">("chat");
   const deco = useDecoCredits();
-  const link = useCurrentLink();
 
-  // No cloud provider key needed when an online desktop CLI harness
-  // (Claude Code / Codex) can back the chat instead.
-  const showProviderEmptyState =
-    allKeys.length === 0 && !hasLocalCliHarness(link);
+  // Surface the provider-setup UI when there's no way to run a chat — no cloud
+  // AI provider AND no usable local runtime. The empty state itself offers the
+  // local Claude Code / Codex options as a one-click escape when a desktop is
+  // linked. Same signal gates the main-panel view tabs.
+  const showProviderEmptyState = useNeedsRuntimeSetup();
 
   if (showProviderEmptyState) {
     return (
       <Chat className="animate-in fade-in-0 duration-200">
         <Chat.Main className="flex flex-col items-center">
           <Chat.EmptyState>
-            <Chat.NoAiProviderEmptyState />
+            <Chat.NoAiProviderEmptyState
+              // Picking a local runtime is the same gesture as opening a new
+              // chat with this agent: open its Overview alongside the composer.
+              onLocalRuntimePicked={() => openTab("overview")}
+            />
           </Chat.EmptyState>
         </Chat.Main>
       </Chat>

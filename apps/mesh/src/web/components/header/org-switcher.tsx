@@ -8,15 +8,26 @@
  */
 import { type ReactNode, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
-import { Check, Plus, SearchMd } from "@untitledui/icons";
+import { Button } from "@deco/ui/components/button.tsx";
+import { Check, Plus, SearchMd, XClose } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useActiveOrganizations } from "@/web/lib/auth-client";
+import {
+  authClient,
+  invalidateOrganizationListCache,
+  useActiveOrganizations,
+} from "@/web/lib/auth-client";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
+import {
+  type Invitation,
+  usePendingInvitations,
+} from "@/web/hooks/use-pending-invitations";
 
 function getOrgColorStyle(name: string): {
   backgroundColor: string;
@@ -62,6 +73,102 @@ export function OrgIcon({
   );
 }
 
+/**
+ * A pending cross-org invitation, rendered as a row in the switcher right
+ * alongside the orgs you already belong to — accepting joins the org and
+ * navigates there. This is where invitations live now (the old global "inbox"
+ * was removed); org-admin join-requests still live in Settings.
+ */
+function InvitationRow({ invitation }: { invitation: Invitation }) {
+  const [busy, setBusy] = useState(false);
+  const queryClient = useQueryClient();
+  const name = invitation.organizationName ?? "Unknown organization";
+
+  const accept = async () => {
+    setBusy(true);
+    try {
+      const res = await authClient.organization.acceptInvitation({
+        invitationId: invitation.id,
+      });
+      if (res.error) {
+        toast.error(res.error.message);
+        setBusy(false);
+        return;
+      }
+    } catch {
+      toast.error("Failed to accept invitation");
+      setBusy(false);
+      return;
+    }
+    toast.success(`Joined ${name}`);
+    // Membership changed — drop the cached org list, then navigate into the
+    // newly joined org (hard nav so the org-scoped loaders re-run cleanly).
+    invalidateOrganizationListCache();
+    let slug: string | undefined;
+    try {
+      const org = await authClient.organization.getFullOrganization({
+        query: { organizationId: invitation.organizationId },
+      });
+      slug = org?.data?.slug;
+    } catch {
+      // fall through to root
+    }
+    window.location.href = slug ? `/${slug}` : "/";
+  };
+
+  const decline = async () => {
+    setBusy(true);
+    try {
+      const res = await authClient.organization.rejectInvitation({
+        invitationId: invitation.id,
+      });
+      if (res.error) {
+        toast.error(res.error.message);
+        setBusy(false);
+        return;
+      }
+      toast.success("Invitation declined");
+      queryClient.invalidateQueries();
+    } catch {
+      toast.error("Failed to decline invitation");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 rounded-md border border-dashed border-border px-3 py-2.5">
+      <OrgIcon org={{ name }} size="sm" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{name}</p>
+        <p className="truncate text-xs text-muted-foreground">
+          Invited to join
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <Button
+          size="sm"
+          variant="default"
+          className="h-7 text-xs"
+          onClick={accept}
+          disabled={busy}
+        >
+          Accept
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-7 text-muted-foreground"
+          onClick={decline}
+          disabled={busy}
+          aria-label={`Decline invitation to ${name}`}
+        >
+          <XClose size={14} />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function OrganizationsPanel({
   orgParam,
   onSelectOrg,
@@ -76,6 +183,7 @@ function OrganizationsPanel({
   // deferred until the switcher is actually opened — it no longer fires on
   // every page load.
   const { data: organizations } = useActiveOrganizations();
+  const pendingInvitations = usePendingInvitations();
   const sortedOrgs = [...(organizations ?? [])].sort((a, b) => {
     if (a.slug === orgParam) return -1;
     if (b.slug === orgParam) return 1;
@@ -115,6 +223,12 @@ function OrganizationsPanel({
         </button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-1.5 flex flex-col gap-1">
+        {/* Pending invitations lead the list — new orgs you can join with one
+            click. Hidden while searching (they're not "your" orgs to filter). */}
+        {!query &&
+          pendingInvitations.map((invitation) => (
+            <InvitationRow key={invitation.id} invitation={invitation} />
+          ))}
         {filtered.length === 0 && (
           <p className="px-3 py-4 text-sm text-muted-foreground/60 text-center">
             {query

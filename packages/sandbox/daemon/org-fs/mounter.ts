@@ -211,8 +211,13 @@ async function waitForMount(
   throw new Error(`rclone ${subcommand} not ready for ${mountPath} in time`);
 }
 
+/** Cap on how long we wait for rclone to exit after SIGTERM before SIGKILLing.
+ *  Well under the pod's terminationGracePeriod so all mounts can drain in
+ *  parallel and still leave slack. */
+const RCLONE_EXIT_TIMEOUT_MS = 5_000;
+
 function makeHandle(
-  proc: { kill: () => void; exited: Promise<number> },
+  proc: { kill: (signal?: number) => void; exited: Promise<number> },
   mountPath: string,
   isMac: boolean,
 ): MountHandle {
@@ -228,7 +233,25 @@ function makeHandle(
       } catch {
         // already gone
       }
-      await proc.exited.catch(() => {});
+      // rclone flushes its --vfs-cache-mode full write-back cache on SIGTERM;
+      // against a slow or unreachable mesh that flush can outlast the pod's
+      // terminationGracePeriod and hang shutdown → the sidecar is SIGKILLed
+      // (exit 137). Bound the wait, then SIGKILL rclone so teardown always
+      // makes progress. Unflushed writes at teardown are best-effort anyway.
+      const exited = proc.exited.catch(() => {});
+      const timeout = Symbol("timeout");
+      const outcome = await Promise.race([
+        exited.then(() => null),
+        sleep(RCLONE_EXIT_TIMEOUT_MS).then(() => timeout),
+      ]);
+      if (outcome === timeout) {
+        try {
+          proc.kill(9);
+        } catch {
+          // already gone
+        }
+        await exited;
+      }
     },
   };
 }

@@ -45,6 +45,8 @@ import {
   useHomeAgentsWriter,
 } from "@/web/hooks/use-organization-settings";
 import { useHomeNextActions } from "@/web/hooks/use-home-next-actions";
+import { useHomeEdit } from "./home-edit-context";
+import { NATIVE_TILES, nativeCandidateId } from "./native-tiles";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
@@ -61,6 +63,7 @@ import {
   ChevronDown,
   DotsGrid,
   Loading01,
+  MessageChatCircle,
   Minus,
   Plus,
   SearchSm,
@@ -245,8 +248,64 @@ function DrawerBody({ search }: { search: string }) {
   return (
     <>
       <OnHomeSection home={home} agents={onHome} />
+      {!lower && <NativeTilesSection />}
       <AvailableSection home={home} agents={available} hasSearch={!!lower} />
     </>
+  );
+}
+
+const NATIVE_TILE_ICON: Record<string, typeof MessageChatCircle> = {
+  "recent-conversations": MessageChatCircle,
+};
+
+/**
+ * Built-in (native) tiles — views like recent conversations that aren't
+ * agents. Their on-home state rides the board's `hidden` set, so toggling here
+ * stages into the same edit draft the rest of the board uses.
+ */
+function NativeTilesSection() {
+  const { layout, commitLayout } = useHomeEdit();
+  const hidden = new Set(layout.hidden);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <SectionHeader title="Built-in tiles" />
+      {NATIVE_TILES.map((tile) => {
+        const candidateId = nativeCandidateId(tile.id);
+        const onHome = !hidden.has(candidateId);
+        const Icon = NATIVE_TILE_ICON[tile.id] ?? MessageChatCircle;
+        return (
+          <div
+            key={tile.id}
+            className="flex items-center gap-3 rounded-lg border border-border/60 px-3 py-2.5"
+          >
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              <Icon size={16} />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+              {tile.title}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant={onHome ? "outline" : "special"}
+              className="h-8 gap-1.5"
+              onClick={() =>
+                commitLayout({
+                  ...layout,
+                  hidden: onHome
+                    ? [...layout.hidden, candidateId]
+                    : layout.hidden.filter((id) => id !== candidateId),
+                })
+              }
+            >
+              {onHome ? <Minus size={14} /> : <Plus size={14} />}
+              {onHome ? "Remove" : "Add"}
+            </Button>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

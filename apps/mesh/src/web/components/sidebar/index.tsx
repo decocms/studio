@@ -3,8 +3,8 @@ import { useProjectSidebarItems } from "@/web/hooks/use-project-sidebar-items";
 import { Suspense } from "react";
 import { NavigationSidebar } from "./navigation";
 import { MobileNavigationSidebar } from "./navigation-mobile";
-import { SidebarInboxFooter } from "./footer/inbox";
-import { SidebarInboxFooterMobile } from "./footer/inbox-mobile";
+import { SidebarAccountFooter } from "./footer/sidebar-footer";
+import { SidebarAccountFooterMobile } from "./footer/sidebar-footer-mobile";
 import { TaskGroupsList } from "./task-groups/task-groups-list";
 import { TaskGroupsSkeleton } from "./task-groups/task-groups-skeleton";
 import { SidebarAgentGroupsProvider } from "./sidebar-agent-groups-context";
@@ -23,7 +23,7 @@ export function StudioSidebar() {
     <SidebarAgentGroupsProvider>
       <NavigationSidebar
         sections={sections}
-        footer={<SidebarInboxFooter />}
+        footer={<SidebarAccountFooter />}
         additionalContent={
           <ErrorBoundary>
             <Suspense fallback={<TaskGroupsSkeleton />}>
@@ -44,7 +44,7 @@ export function StudioSidebarMobile({ onClose }: { onClose: () => void }) {
       <MobileNavigationSidebar
         sections={sections}
         onClose={onClose}
-        footer={<SidebarInboxFooterMobile />}
+        footer={<SidebarAccountFooterMobile />}
         additionalContent={
           <ErrorBoundary>
             <Suspense fallback={<TaskGroupsSkeleton />}>

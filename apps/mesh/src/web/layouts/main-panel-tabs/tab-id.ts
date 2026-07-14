@@ -171,6 +171,7 @@ export function parseCodeTabId(
 }
 
 export const FIXED_SYSTEM_TABS = [
+  "overview",
   "settings",
   "automations",
   "preview",

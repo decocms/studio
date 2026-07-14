@@ -75,10 +75,7 @@ const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
  * and non-suspense hooks below and by parallel-prefetch batches, so all callers
  * build the same query key + queryFn and read one cache entry.
  */
-export function organizationSettingsQueryOptions(
-  orgSlug: string,
-  orgId: string,
-) {
+function organizationSettingsQueryOptions(orgSlug: string, orgId: string) {
   return {
     queryKey: KEYS.organizationSettings(orgId),
     queryFn: async (): Promise<OrganizationSettings> => {
