@@ -15,7 +15,9 @@ import {
   Atom01,
   ChevronDown,
   Check,
+  Cloud01,
   Lightning01,
+  Monitor01,
   Stars01,
 } from "@untitledui/icons";
 import type { ChatTier } from "@/tools/organization/schema";
@@ -25,6 +27,10 @@ import {
   useChatTier,
   useSetChatTier,
 } from "./use-agent-mode";
+import { useChatPrefs, useOptionalChatTask } from "./context";
+import { useAgentOptionAvailability } from "./use-agent-availability";
+import type { AgentOption } from "./pills/agent-options";
+import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
 const TIER_LABELS: Record<ChatTier, string> = {
@@ -40,6 +46,8 @@ interface PureProps {
    *  popover row. Omit for a label-only treatment. */
   iconFor?: (tier: ChatTier) => ReactNode;
   onSelect: (tier: ChatTier) => void;
+  /** Optional content rendered above the tier rows (the runtime toggle). */
+  header?: ReactNode;
 }
 
 /**
@@ -54,6 +62,7 @@ export function TierTriggerPure({
   subtitleFor,
   iconFor,
   onSelect,
+  header,
 }: PureProps) {
   const [open, setOpen] = useState(false);
   const handleSelect = (t: ChatTier) => {
@@ -96,7 +105,10 @@ export function TierTriggerPure({
         </TooltipTrigger>
         <TooltipContent>{TIER_LABELS[tier]}</TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" className="p-1 w-56">
+      <PopoverContent align="end" className="p-1 w-64">
+        {header && (
+          <div className="mb-1 border-b border-border/60 pb-1">{header}</div>
+        )}
         <div role="menu" className="flex flex-col">
           {TIER_ORDER.map((t) => {
             const subtitle = subtitleFor(t);
@@ -152,14 +164,114 @@ function tierIconFor(tier: ChatTier): ReactNode {
   return <Stars01 size={16} />;
 }
 
+const SEG_BTN =
+  "flex items-center justify-center gap-1.5 flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors min-w-0";
+const SEG_ACTIVE = "bg-background text-foreground shadow-sm";
+const SEG_INACTIVE = "text-muted-foreground hover:text-foreground";
+
+function Segmented({
+  options,
+}: {
+  options: Array<{
+    key: string;
+    icon: ReactNode;
+    label: string;
+    active: boolean;
+    onSelect: () => void;
+  }>;
+}) {
+  return (
+    <div className="flex items-center gap-1 p-1 rounded-lg bg-muted">
+      {options.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          onClick={o.onSelect}
+          className={cn(SEG_BTN, o.active ? SEG_ACTIVE : SEG_INACTIVE)}
+        >
+          {o.icon}
+          <span className="truncate">{o.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Runtime chooser shown at the top of the tier popover when a desktop is
+ * linked with a coding agent: Cloud (org router) ⟷ This device, and — when
+ * both local CLIs are present — Claude ⟷ Codex. Writes the (harness, sandbox)
+ * choice through `pendingAgentOption`; the tier rows below then map to that
+ * runtime's models. Hidden on a locked thread (the runtime can't change).
+ */
+function RuntimeSection() {
+  const { pendingHarnessId, setPendingAgentOption } = useChatPrefs();
+  const availability = useAgentOptionAvailability();
+  const isLocal =
+    pendingHarnessId === "claude-code" || pendingHarnessId === "codex";
+  const bothClis = availability.claudeCode && availability.codex;
+  const firstLocal: AgentOption = availability.claudeCode
+    ? "claude-code-desktop"
+    : "codex-desktop";
+
+  return (
+    <div className="flex flex-col gap-1.5 p-1">
+      <Segmented
+        options={[
+          {
+            key: "cloud",
+            icon: <Cloud01 size={14} />,
+            label: "Cloud",
+            active: !isLocal,
+            onSelect: () => setPendingAgentOption("decopilot"),
+          },
+          {
+            key: "local",
+            icon: <Monitor01 size={14} />,
+            label: "This device",
+            active: isLocal,
+            onSelect: () => setPendingAgentOption(firstLocal),
+          },
+        ]}
+      />
+      {isLocal && bothClis && (
+        <Segmented
+          options={[
+            {
+              key: "claude",
+              icon: <ClaudeCodeIcon size={14} />,
+              label: "Claude",
+              active: pendingHarnessId === "claude-code",
+              onSelect: () => setPendingAgentOption("claude-code-desktop"),
+            },
+            {
+              key: "codex",
+              icon: <CodexIcon size={14} />,
+              label: "Codex",
+              active: pendingHarnessId === "codex",
+              onSelect: () => setPendingAgentOption("codex-desktop"),
+            },
+          ]}
+        />
+      )}
+    </div>
+  );
+}
+
 /**
  * Smart wrapper used by `Chat.Input`. Reads current tier + mode, builds
- * the per-tier subtitle resolver, and writes through `useSetChatTier`.
+ * the per-tier subtitle resolver, and writes through `useSetChatTier`. When a
+ * desktop is linked (and the thread isn't locked) it also surfaces the runtime
+ * chooser above the tiers — this is where "use local models" lives in chat.
  */
 export function TierTrigger() {
   const tier = useChatTier();
   const setTier = useSetChatTier();
   const mode = useAgentMode();
+  const availability = useAgentOptionAvailability();
+  const taskCtx = useOptionalChatTask();
+  const locked = taskCtx?.isThreadLocked ?? false;
+  const hasLocal = availability.claudeCode || availability.codex;
 
   const subtitleFor = (t: ChatTier): string | null =>
     resolveTierSubtitle(mode, t);
@@ -170,6 +282,7 @@ export function TierTrigger() {
       subtitleFor={subtitleFor}
       iconFor={tierIconFor}
       onSelect={setTier}
+      header={hasLocal && !locked ? <RuntimeSection /> : undefined}
     />
   );
 }
