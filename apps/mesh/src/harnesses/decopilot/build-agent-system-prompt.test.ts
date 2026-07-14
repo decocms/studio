@@ -77,7 +77,7 @@ describe("buildAgentSystemPrompt", () => {
       isDecopilot: true,
     });
     const joined = JSON.stringify(out);
-    expect(joined).toContain("Decopilot");
+    expect(joined).toContain("Super Agent");
   });
 
   test("includes shared coding workspace prompt while preserving Decopilot-only blocks", async () => {
@@ -114,7 +114,7 @@ describe("buildAgentSystemPrompt", () => {
       isDecopilot: false,
     });
     const joined = JSON.stringify(out);
-    expect(joined).not.toContain("Decopilot");
+    expect(joined).not.toContain("Super Agent");
   });
 
   test("planMode is ignored for kind: 'subagent'", async () => {

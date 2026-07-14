@@ -1,16 +1,16 @@
 ---
 title: Context e tasks
-description: Como o Decopilot gerencia memory e como usar subtasks para trabalhos pesados
+description: Como o Super Agent gerencia memory e como usar subtasks para trabalhos pesados
 icon: Layers
 ---
 
 import Callout from "../../../../../components/ui/Callout.astro";
 
-O Decopilot organiza o trabalho como **tasks** (suas conversas) e **subtasks** (conversas paralelas focadas que se ramificam). Entender como elas compartilham memory ajuda você a fazer mais em uma única sessão.
+O Super Agent organiza o trabalho como **tasks** (suas conversas) e **subtasks** (conversas paralelas focadas que se ramificam). Entender como elas compartilham memory ajuda você a fazer mais em uma única sessão.
 
 ## O que é uma task?
 
-Uma **task** é sua conversa com o Decopilot — onde você conversa, o Decopilot usa tools e o trabalho é feito. Toda task roda em um escopo (org ou agent — veja [Visão geral](/pt-br/studio/decopilot/overview)) que determina quais instruções e tools são carregadas.
+Uma **task** é sua conversa com o Super Agent — onde você conversa, o Super Agent usa tools e o trabalho é feito. Toda task roda em um escopo (org ou agent — veja [Visão geral](/pt-br/studio/decopilot/overview)) que determina quais instruções e tools são carregadas.
 
 Toda task tem um destes quatro estados:
 
@@ -27,20 +27,20 @@ Tasks expiram após **30 minutos de inatividade**. Se você está trabalhando em
 
 Todo model de IA tem um limite de quanto pode reter em memory ao mesmo tempo — suas instruções, as tools disponíveis e todo o histórico da conversa contam para esse limite. Quanto mais você discutiu, mais memory é ocupada.
 
-Quando uma task começa, o Decopilot carrega:
+Quando uma task começa, o Super Agent carrega:
 
 - Suas instruções e comportamentos centrais
 - Diretrizes do seu escopo atual
 - As tools disponíveis nesse escopo
 - Seu histórico de conversa até o momento
 
-Conforme a conversa cresce, o histórico ocupa mais espaço. Quando fica muito cheio, o Decopilot automaticamente resume as partes mais antigas e mantém o resumo no lugar — liberando espaço sem perder o context importante.
+Conforme a conversa cresce, o histórico ocupa mais espaço. Quando fica muito cheio, o Super Agent automaticamente resume as partes mais antigas e mantém o resumo no lugar — liberando espaço sem perder o context importante.
 
 ### A regra 40/80
 
 - **Abaixo de 40% cheio** — bastante espaço, nenhuma ação necessária
 - **40–80% cheio** — ainda funcionando bem, mas vale a pena encerrar a fase atual
-- **Acima de 80% cheio** — o Decopilot compacta automaticamente o histórico da conversa
+- **Acima de 80% cheio** — o Super Agent compacta automaticamente o histórico da conversa
 
 Você pode acionar isso manualmente com o comando `/compact` — útil antes de iniciar uma nova fase de trabalho complexo.
 
@@ -91,7 +91,7 @@ Você pode rodar uma subtask com um [agent](/pt-br/studio/agents) específico �
 
 **Use subtasks para trabalho pesado** — pesquisa, análise de dados, code reviews e qualquer coisa que gere saídas longas deve acontecer em subtasks. Mantenha os resumos na sua conversa principal.
 
-**Seja seletivo com tools** — o Decopilot carrega tools na memory. Não habilite tools que você não precisa para a task atual.
+**Seja seletivo com tools** — o Super Agent carrega tools na memory. Não habilite tools que você não precisa para a task atual.
 
 **Rode coisas em paralelo** — se duas subtasks não dependem uma da outra, inicie-as ao mesmo tempo.
 

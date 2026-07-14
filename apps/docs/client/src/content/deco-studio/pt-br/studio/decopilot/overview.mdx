@@ -6,62 +6,62 @@ icon: Sparkles
 
 import Callout from "../../../../../components/ui/Callout.astro";
 
-## O que é o Decopilot?
+## O que é o Super Agent?
 
-O **Decopilot** é o assistente de IA integrado ao deco Studio — o **pilot da org**. É o chat que aparece na Home e que tem visibilidade sobre toda a sua organização: cada agent, cada connection, cada tool. Não é um chatbot pregado de lado; é roteador e executor ao mesmo tempo.
+O **Super Agent** é o assistente de IA integrado ao deco Studio — o **pilot da org**. É o chat que aparece na Home e que tem visibilidade sobre toda a sua organização: cada agent, cada connection, cada tool. Não é um chatbot pregado de lado; é roteador e executor ao mesmo tempo.
 
-Você inicia uma conversa e o Decopilot trabalha em segundo plano. Quando precisa do seu input, ele pergunta. Caso contrário, segue em frente — respondendo ali mesmo, alcançando suas tools conectadas ou passando um trabalho focado para um [agent](/pt-br/studio/agents) especialista. Cada conversa fica salva em **Decopilot** na sidebar.
+Você inicia uma conversa e o Super Agent trabalha em segundo plano. Quando precisa do seu input, ele pergunta. Caso contrário, segue em frente — respondendo ali mesmo, alcançando suas tools conectadas ou passando um trabalho focado para um [agent](/pt-br/studio/agents) especialista. Cada conversa fica salva em **Super Agent** na sidebar.
 
 ## Como funciona
 
-O Decopilot segue um ciclo simples: entender a tarefa → executar uma ação → verificar o resultado → repetir. Ele lê dos seus serviços conectados, chama as tools certas e se adapta com base no que aprende.
+O Super Agent segue um ciclo simples: entender a tarefa → executar uma ação → verificar o resultado → repetir. Ele lê dos seus serviços conectados, chama as tools certas e se adapta com base no que aprende.
 
 O que o diferencia de um chat de IA comum é que ele consegue alcançar os apps onde seu trabalho realmente acontece — não está limitado a responder perguntas. Ele pode consultar pedidos, atualizar registros, enviar notificações e coordenar workflows em múltiplos serviços de uma só vez.
 
 ## Ele pode operar a plataforma por você
 
-O Decopilot não serve só para usar suas tools — ele pode **configurar o Studio por você**, direto do chat. Peça em linguagem natural e ele cuida da configuração que um power user normalmente clicaria à mão:
+O Super Agent não serve só para usar suas tools — ele pode **configurar o Studio por você**, direto do chat. Peça em linguagem natural e ele cuida da configuração que um power user normalmente clicaria à mão:
 
 - **Criar e configurar agents** — "crie um agent que faz a triagem do e-mail de suporte"
 - **Montar automations** — "rode isso todo dia útil às 9h"
-- **Conectar novas tools** — "conecte nossa loja Shopify"; se faltar uma connection no meio da tarefa, o Decopilot mostra um prompt ali mesmo para adicioná-la e continua assim que você aprovar
+- **Conectar novas tools** — "conecte nossa loja Shopify"; se faltar uma connection no meio da tarefa, o Super Agent mostra um prompt ali mesmo para adicioná-la e continua assim que você aprovar
 - **Navegar e instalar a partir da [Store](/pt-br/studio/store)** — encontre e adicione MCP servers do catálogo
 - **Gerenciar sua organização** — convidar membros, ajustar configurações
 
-Por baixo dos panos, o Decopilot delega cada uma dessas tarefas a um **manager agent** built-in — um para agents, um para automations, connections, a Store, brand e usage — mas, do seu lado, isso simplesmente acontece na conversa. É isso que torna o Studio acessível: um usuário novo e não técnico consegue realizar trabalho de verdade só perguntando, sem precisar aprender onde fica cada configuração.
+Por baixo dos panos, o Super Agent delega cada uma dessas tarefas a um **manager agent** built-in — um para agents, um para automations, connections, a Store, brand e usage — mas, do seu lado, isso simplesmente acontece na conversa. É isso que torna o Studio acessível: um usuário novo e não técnico consegue realizar trabalho de verdade só perguntando, sem precisar aprender onde fica cada configuração.
 
 ## Escopo: onde você está trabalhando determina o que está disponível
 
-O Decopilot se adapta ao lugar onde você está no Studio:
+O Super Agent se adapta ao lugar onde você está no Studio:
 
-- **Escopo de organização** — você está na tela inicial sem nenhum agent aberto. O Decopilot tem acesso às tools built-in de toda a org (gerenciar connections, agents, membros) e ao seu catálogo completo de agents.
-- **Escopo de agent** — você abriu um agent específico. O Decopilot passa a usar as tools e instruções *daquele agent*, com o histórico de thread do agent como contexto.
+- **Escopo de organização** — você está na tela inicial sem nenhum agent aberto. O Super Agent tem acesso às tools built-in de toda a org (gerenciar connections, agents, membros) e ao seu catálogo completo de agents.
+- **Escopo de agent** — você abriu um agent específico. O Super Agent passa a usar as tools e instruções *daquele agent*, com o histórico de thread do agent como contexto.
 
 Para trocar, basta abrir ou fechar um agent pela sidebar. Não há nada extra para configurar.
 
 ## Modos de chat
 
-A entrada de chat tem um seletor de modo que define como o Decopilot aborda uma rodada. Você pode trocar de modo a qualquer momento sem perder sua conversa.
+A entrada de chat tem um seletor de modo que define como o Super Agent aborda uma rodada. Você pode trocar de modo a qualquer momento sem perder sua conversa.
 
 | Modo | O que muda |
 |---|---|
-| **Padrão** | Chat normal — o Decopilot escolhe as tools por conta própria. |
-| **Plan** | O Decopilot deve encerrar a rodada com uma chamada `propose_plan`. Tools destrutivas são bloqueadas até você aprovar um plano; apenas tools somente leitura podem ser habilitadas. Útil antes de fazer algo arriscado. |
+| **Padrão** | Chat normal — o Super Agent escolhe as tools por conta própria. |
+| **Plan** | O Super Agent deve encerrar a rodada com uma chamada `propose_plan`. Tools destrutivas são bloqueadas até você aprovar um plano; apenas tools somente leitura podem ser habilitadas. Útil antes de fazer algo arriscado. |
 | **Web search** | O primeiro passo é forçado a chamar `web_search`, que transmite um resultado de busca rápida diretamente para você. Requer um modelo de web search em [AI Providers](/pt-br/studio/ai-providers). |
 | **Deep research** | O primeiro passo é forçado a chamar `deep_research`, que executa uma pesquisa assíncrona e multi-fonte aprofundada. Requer um modelo de deep research em [AI Providers](/pt-br/studio/ai-providers). |
 | **Gen image** | O primeiro passo é forçado a chamar `generate_image`. Requer um modelo de imagem. |
 
 ## Modelos
 
-O Decopilot funciona com múltiplos provedores de IA — Anthropic, Google, OpenRouter, o Deco AI Gateway e modelos self-hosted. Escolha um modelo mais robusto para tarefas complexas e um mais rápido para operações simples. Veja [AI Providers](/pt-br/studio/ai-providers).
+O Super Agent funciona com múltiplos provedores de IA — Anthropic, Google, OpenRouter, o Deco AI Gateway e modelos self-hosted. Escolha um modelo mais robusto para tarefas complexas e um mais rápido para operações simples. Veja [AI Providers](/pt-br/studio/ai-providers).
 
 ## Agents e subtasks
 
-Quando uma tarefa precisa de um trabalho focado — uma pergunta de atendimento ao cliente, uma pesquisa aprofundada, uma análise de dados — o Decopilot pode delegá-la a um [agent](/pt-br/studio/agents) especialista em uma **subtask**. A subtask roda de forma independente com seu próprio contexto limpo, e então reporta um resumo de volta. Sua conversa principal permanece limpa.
+Quando uma tarefa precisa de um trabalho focado — uma pergunta de atendimento ao cliente, uma pesquisa aprofundada, uma análise de dados — o Super Agent pode delegá-la a um [agent](/pt-br/studio/agents) especialista em uma **subtask**. A subtask roda de forma independente com seu próprio contexto limpo, e então reporta um resumo de volta. Sua conversa principal permanece limpa.
 
 ## Tools built-in
 
-O Decopilot vem com tools para coordenar trabalho em qualquer escopo:
+O Super Agent vem com tools para coordenar trabalho em qualquer escopo:
 
 | Tool | O que faz |
 |---|---|
@@ -76,7 +76,7 @@ O Decopilot vem com tools para coordenar trabalho em qualquer escopo:
 | `generate_image` | Cria uma imagem com o modelo de imagem configurado |
 | `propose_plan` | Propõe um plano para sua aprovação (somente no plan mode) |
 
-Quando um agent é apoiado por um sandbox (um repo do GitHub vinculado), o Decopilot também recebe seis **VM tools** — `bash`, `read`, `write`, `edit`, `grep`, `glob` — para que possa executar e modificar código nesse sandbox.
+Quando um agent é apoiado por um sandbox (um repo do GitHub vinculado), o Super Agent também recebe seis **VM tools** — `bash`, `read`, `write`, `edit`, `grep`, `glob` — para que possa executar e modificar código nesse sandbox.
 
 Sandboxes também montam o **filesystem da organização** em `org/`: `org/home/` é a home compartilhada da org — editável, livre, compartilhada entre todos os membros, agents e runs, onde os agents registram conhecimento durável e checam contexto antes de começar a trabalhar; `org/upload` guarda os arquivos anexados à conversa atual (anexos do chat caem ali automaticamente — sem etapa de cópia); `org/output` é a pasta de saída compartilhada da run atual; e `org/public/<set>` expõe skill sets somente leitura e curados, sincronizados a partir de repos versionados. Arquivos escritos na pasta home e em `org/output` sincronizam com o cloud storage da sua organização e ficam visíveis para todos os membros e agents; mudanças externas aparecem dentro do sandbox em cerca de um segundo.
 

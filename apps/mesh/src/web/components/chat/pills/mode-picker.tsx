@@ -42,7 +42,7 @@ import {
  * appears.
  */
 const HARNESS_LABEL: Record<HarnessId, string> = {
-  decopilot: "Decopilot",
+  decopilot: "Super Agent",
   "claude-code": "Claude Code",
   codex: "Codex",
 };
@@ -52,7 +52,7 @@ function DecopilotIcon({ compact = false }: { compact?: boolean }) {
   return (
     <AgentAvatar
       icon={DECOPILOT_ICON}
-      name="Decopilot"
+      name="Super Agent"
       size="2xs"
       className={cn(compact ? "size-3.5 rounded-sm" : "size-4 rounded-sm")}
     />
@@ -87,7 +87,7 @@ interface ModeRow {
 
 const ROW_DECOPILOT: ModeRow = {
   mode: "cloud-decopilot",
-  label: "Decopilot",
+  label: "Super Agent",
   description: "Runs in an agent sandbox",
   group: "cloud",
   icon: <DecopilotIcon />,
@@ -96,7 +96,7 @@ const ROW_DECOPILOT: ModeRow = {
 
 const ROW_LOCAL_DECOPILOT: ModeRow = {
   mode: "local-decopilot",
-  label: "Decopilot",
+  label: "Super Agent",
   description: "Runs on your desktop",
   group: "local",
   icon: <DecopilotIcon />,
@@ -158,12 +158,12 @@ function harnessPillLabel(mode: AgentMode): {
   text: string;
 } {
   if (mode === "local-decopilot")
-    return { icon: <DecopilotIcon compact />, text: "Decopilot" };
+    return { icon: <DecopilotIcon compact />, text: "Super Agent" };
   if (mode === "local-claude-code")
     return { icon: <ClaudeCodeIcon size={14} />, text: "Claude Code" };
   if (mode === "local-codex")
     return { icon: <CodexIcon size={14} />, text: "Codex" };
-  return { icon: <DecopilotIcon compact />, text: "Decopilot" };
+  return { icon: <DecopilotIcon compact />, text: "Super Agent" };
 }
 
 function editablePillLabel(mode: AgentMode): {

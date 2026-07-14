@@ -6,62 +6,62 @@ icon: Sparkles
 
 import Callout from "../../../../../components/ui/Callout.astro";
 
-## What is Decopilot?
+## What is Super Agent?
 
-**Decopilot** is the AI assistant built into deco Studio — the **org's pilot**. It's the chat you land on at Home, and it has visibility across your entire organization: every agent, every connection, every tool. It's not a chatbot bolted on the side; it's a router and executor in one.
+**Super Agent** is the AI assistant built into deco Studio — the **org's pilot**. It's the chat you land on at Home, and it has visibility across your entire organization: every agent, every connection, every tool. It's not a chatbot bolted on the side; it's a router and executor in one.
 
-You start a conversation and Decopilot works in the background. When it needs your input, it asks. Otherwise it keeps going — answering inline, reaching into your connected tools, or handing focused work to a specialist [agent](/en/studio/agents). Every conversation is saved under **Decopilot** in the sidebar.
+You start a conversation and Super Agent works in the background. When it needs your input, it asks. Otherwise it keeps going — answering inline, reaching into your connected tools, or handing focused work to a specialist [agent](/en/studio/agents). Every conversation is saved under **Super Agent** in the sidebar.
 
 ## How it works
 
-Decopilot follows a simple loop: understand the task → take action → check the result → repeat. It reads from your connected services, calls the right tools, and adapts based on what it learns.
+Super Agent follows a simple loop: understand the task → take action → check the result → repeat. It reads from your connected services, calls the right tools, and adapts based on what it learns.
 
 What makes it different from a regular AI chat is that it can reach into the apps where your actual work lives — it's not limited to answering questions. It can look up orders, update records, send notifications, and coordinate workflows across multiple services in one go.
 
 ## It can run the platform for you
 
-Decopilot isn't just for using your tools — it can **set Studio up for you**, straight from the chat. Ask in plain language and it handles the configuration that a power user would otherwise click through by hand:
+Super Agent isn't just for using your tools — it can **set Studio up for you**, straight from the chat. Ask in plain language and it handles the configuration that a power user would otherwise click through by hand:
 
 - **Create and configure agents** — "make me an agent that triages support email"
 - **Set up automations** — "run this every weekday at 9am"
-- **Connect new tools** — "connect our Shopify store"; if a connection is missing mid-task, Decopilot surfaces an inline prompt to add it and continues once you approve
+- **Connect new tools** — "connect our Shopify store"; if a connection is missing mid-task, Super Agent surfaces an inline prompt to add it and continues once you approve
 - **Browse and install from the [Store](/en/studio/store)** — find and add MCP servers from the catalog
 - **Manage your organization** — invite members, adjust settings
 
-Under the hood, Decopilot delegates each of these to a built-in **manager agent** — one each for agents, automations, connections, the Store, brand, and usage — but from your seat it simply happens in the conversation. This is what makes Studio approachable: a new, non-technical user can get real work done by asking, without learning where every setting lives.
+Under the hood, Super Agent delegates each of these to a built-in **manager agent** — one each for agents, automations, connections, the Store, brand, and usage — but from your seat it simply happens in the conversation. This is what makes Studio approachable: a new, non-technical user can get real work done by asking, without learning where every setting lives.
 
 ## Scope: where you're working determines what's available
 
-Decopilot adapts to where you are in Studio:
+Super Agent adapts to where you are in Studio:
 
-- **Organization scope** — you're at the home screen with no agent open. Decopilot has access to org-wide built-in tools (managing connections, agents, members) and your full agent catalog.
-- **Agent scope** — you've opened a specific agent. Decopilot now uses *that agent's* tools and instructions, with the agent's thread history as context.
+- **Organization scope** — you're at the home screen with no agent open. Super Agent has access to org-wide built-in tools (managing connections, agents, members) and your full agent catalog.
+- **Agent scope** — you've opened a specific agent. Super Agent now uses *that agent's* tools and instructions, with the agent's thread history as context.
 
 To switch, just open or close an agent from the sidebar. There's nothing extra to configure.
 
 ## Chat modes
 
-The chat input has a mode selector that shapes how Decopilot approaches a turn. You can switch modes at any time without losing your conversation.
+The chat input has a mode selector that shapes how Super Agent approaches a turn. You can switch modes at any time without losing your conversation.
 
 | Mode | What changes |
 |---|---|
-| **Default** | Normal chat — Decopilot picks tools on its own. |
-| **Plan** | Decopilot must end the turn with a `propose_plan` call. Destructive tools are blocked until you approve a plan; only read-only tools can be enabled. Useful before doing something risky. |
+| **Default** | Normal chat — Super Agent picks tools on its own. |
+| **Plan** | Super Agent must end the turn with a `propose_plan` call. Destructive tools are blocked until you approve a plan; only read-only tools can be enabled. Useful before doing something risky. |
 | **Web search** | The first step is forced to call `web_search`, which streams a quick search result directly to you. Requires a web-search model under [AI Providers](/en/studio/ai-providers). |
 | **Deep research** | The first step is forced to call `deep_research`, which runs a slow, multi-source async research pass. Requires a deep-research model under [AI Providers](/en/studio/ai-providers). |
 | **Gen image** | The first step is forced to call `generate_image`. Requires an image model. |
 
 ## Models
 
-Decopilot works with multiple AI providers — Anthropic, Google, OpenRouter, the Deco AI Gateway, and self-hosted models. Pick a stronger model for complex tasks and a faster one for simple operations. See [AI Providers](/en/studio/ai-providers).
+Super Agent works with multiple AI providers — Anthropic, Google, OpenRouter, the Deco AI Gateway, and self-hosted models. Pick a stronger model for complex tasks and a faster one for simple operations. See [AI Providers](/en/studio/ai-providers).
 
 ## Agents and subtasks
 
-When a task needs focused work — a customer-support question, a research pass, a data analysis — Decopilot can hand it off to a specialist [agent](/en/studio/agents) in a **subtask**. The subtask runs independently with its own clean context, then reports a summary back. Your main conversation stays clean.
+When a task needs focused work — a customer-support question, a research pass, a data analysis — Super Agent can hand it off to a specialist [agent](/en/studio/agents) in a **subtask**. The subtask runs independently with its own clean context, then reports a summary back. Your main conversation stays clean.
 
 ## Built-in tools
 
-Decopilot ships with tools for coordinating work across any scope:
+Super Agent ships with tools for coordinating work across any scope:
 
 | Tool | What it does |
 |---|---|
@@ -76,7 +76,7 @@ Decopilot ships with tools for coordinating work across any scope:
 | `generate_image` | Creates an image with the configured image model |
 | `propose_plan` | Proposes a plan for your approval (plan mode only) |
 
-When an agent is backed by a sandbox (a linked GitHub repo), Decopilot also gets six **VM tools** — `bash`, `read`, `write`, `edit`, `grep`, `glob` — so it can execute and modify code in that sandbox.
+When an agent is backed by a sandbox (a linked GitHub repo), Super Agent also gets six **VM tools** — `bash`, `read`, `write`, `edit`, `grep`, `glob` — so it can execute and modify code in that sandbox.
 
 Sandboxes also mount the **organization filesystem** under `org/`: `org/home/` is the org's shared home — editable, free-form, shared across every member, agent, and run, where agents record durable knowledge and check for context before starting work; `org/upload` holds the files attached to the current conversation (chat attachments land there automatically — no copy step); `org/output` is the current run's shared output folder; and `org/public/<set>` exposes curated read-only skill sets synced from versioned repositories. Files written to the home folder and `org/output` sync to your organization's cloud storage and are visible to every member and agent; external changes appear inside the sandbox within about a second.
 

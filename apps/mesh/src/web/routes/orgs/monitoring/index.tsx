@@ -621,7 +621,7 @@ function MonitoringDashboardContent({
   });
   const virtualMcpOptions = allVirtualMcps.map((vm) => {
     const icon = vm.icon;
-    const name = vm.title ?? "Decopilot";
+    const name = vm.title ?? "Super Agent";
     return {
       value: vm.id ?? "",
       label: name,

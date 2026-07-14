@@ -1,12 +1,12 @@
 ---
 title: Tools
-description: O que o Decopilot pode fazer e os dois tipos de tools a que ele tem acesso
+description: O que o Super Agent pode fazer e os dois tipos de tools a que ele tem acesso
 icon: Wrench
 ---
 
 ## Dois tipos de tools
 
-O Decopilot tem acesso a dois tipos de tools:
+O Super Agent tem acesso a dois tipos de tools:
 
 **Tools built-in** — sempre disponíveis, usadas para gerenciar trabalho, delegar tarefas e ler contexto. As mesmas independentemente do escopo.
 
@@ -16,7 +16,7 @@ O Decopilot tem acesso a dois tipos de tools:
 
 ## Tools built-in
 
-Essas são as tools que o agent Decopilot usa internamente para gerenciar o próprio trabalho — não uma API HTTP pública que você chama de fora. Para a superfície externa, "traga seu próprio client" (endpoints MCP, a REST API de threads do Decopilot), veja a [API Reference](/pt-br/studio/api-reference/connection-proxy).
+Essas são as tools que o agent Super Agent usa internamente para gerenciar o próprio trabalho — não uma API HTTP pública que você chama de fora. Para a superfície externa, "traga seu próprio client" (endpoints MCP, a REST API de threads do Super Agent), veja a [API Reference](/pt-br/studio/api-reference/connection-proxy).
 
 | Tool | Disponível em subtasks | O que faz |
 |---|:---:|---|
@@ -34,7 +34,7 @@ Subtasks têm acesso restrito — não podem iniciar subtasks adicionais nem faz
 
 ### Agents apoiados por sandbox recebem VM tools
 
-Quando um agent tem um sandbox (um repo do GitHub vinculado, veja [Agents](/pt-br/studio/agents)), o Decopilot também recebe seis **VM tools** que operam dentro desse sandbox:
+Quando um agent tem um sandbox (um repo do GitHub vinculado, veja [Agents](/pt-br/studio/agents)), o Super Agent também recebe seis **VM tools** que operam dentro desse sandbox:
 
 | Tool | O que faz |
 |---|---|
@@ -64,12 +64,12 @@ Quais tools estão disponíveis depende das connections anexadas ao agent atual.
 
 ---
 
-## Como o Decopilot usa tools
+## Como o Super Agent usa tools
 
-O Decopilot começa cada tarefa apenas com suas tools built-in. Ele vê as scope tools listadas em suas instruções e as utiliza conforme necessário para completar sua solicitação.
+O Super Agent começa cada tarefa apenas com suas tools built-in. Ele vê as scope tools listadas em suas instruções e as utiliza conforme necessário para completar sua solicitação.
 
 Para trabalhos complexos, pode delegar a uma subtask (usando `subtask`) ou carregar contexto adicional primeiro (usando `read_resource` ou `read_prompt`) antes de agir.
 
 ---
 
-**A seguir:** veja [Contexto e tarefas](/pt-br/studio/decopilot/context-and-tasks) para entender como o Decopilot gerencia memória.
+**A seguir:** veja [Contexto e tarefas](/pt-br/studio/decopilot/context-and-tasks) para entender como o Super Agent gerencia memória.

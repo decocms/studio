@@ -60,7 +60,7 @@ function AgentCrumb({
   onPick: (id: string | null) => void;
 }) {
   const entity = useVirtualMCP(agentId);
-  const title = entity?.title ?? "Decopilot";
+  const title = entity?.title ?? "Super Agent";
   return (
     <div className="flex items-center gap-0.5">
       <button

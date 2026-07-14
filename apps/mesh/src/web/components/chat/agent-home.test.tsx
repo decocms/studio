@@ -12,13 +12,13 @@ describe("AgentHomeHeader", () => {
       <AgentHomeHeader
         agent={{
           icon: null,
-          title: "Decopilot",
+          title: "Super Agent",
         }}
         currentBranch="feature/chat-empty-branch"
       />,
     );
 
-    expect(getByText("Decopilot")).toBeInTheDocument();
+    expect(getByText("Super Agent")).toBeInTheDocument();
     expect(getByText("/")).toHaveClass("text-muted-foreground");
     expect(getByText("feature/chat-empty-branch")).toHaveClass(
       "text-muted-foreground",
@@ -30,7 +30,7 @@ describe("AgentHomeHeader", () => {
       <AgentHomeHeader
         agent={{
           icon: null,
-          title: "Decopilot",
+          title: "Super Agent",
         }}
         currentBranch={null}
       />,

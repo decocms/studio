@@ -56,7 +56,7 @@ Esses três deployments são separados e escalam por conta própria. A camada de
 | Camada | Deployment | Responsabilidade |
 | --- | --- | --- |
 | **Web** | nginx | Serve a SPA em React e faz reverse-proxy de `/api`, `/mcp`, `/oauth-proxy`, `/.well-known` para o Service da API. Porta 8080. |
-| **API** | Hono, `MESH_DISPATCH_ROLE=api` | Rotas HTTP, Better Auth, o MCP proxy, controle de acesso. **Enfileira** runs do Decopilot nas queues do DBOS e acompanha o NATS para fazer streaming do output de volta para a UI. Stateless. **Não roda o agent loop.** |
+| **API** | Hono, `MESH_DISPATCH_ROLE=api` | Rotas HTTP, Better Auth, o MCP proxy, controle de acesso. **Enfileira** runs do Super Agent nas queues do DBOS e acompanha o NATS para fazer streaming do output de volta para a UI. Stateless. **Não roda o agent loop.** |
 | **Worker** | Hono, `MESH_DISPATCH_ROLE=worker` | **Desenfileira** as queues do DBOS (via `listenQueues`) e **roda o agent loop** (`streamText`: model → tool → repete). Limitado por CPU. São os executores de run; escalam horizontalmente. |
 
 <Callout type="note">
@@ -76,7 +76,7 @@ O conjunto de queues que um pod worker escuta é configurado por env (`listenQue
   **O event bus está dormente.** O *recurso* de pub/sub de CloudEvents (`EVENT_PUBLISH`/`EVENT_SUBSCRIBE`, a queue de eventos durável, os subscribers `ON_EVENTS`) só é consumido pelo plugin de workflow, que não está em uso. O NATS em si **não** está dormente — ele serve as tarefas ao vivo listadas acima. Não confunda as duas coisas.
 </Callout>
 
-## O ciclo de vida de um run do Decopilot
+## O ciclo de vida de um run do Super Agent
 
 1. Uma mensagem (`POST /messages`) ou o disparo de uma automation cria um **run** em uma thread.
 2. A **API** o enfileira em uma queue do DBOS no Postgres:

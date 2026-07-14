@@ -56,7 +56,7 @@ describe("ModePickerPure", () => {
       />,
     );
     expect(
-      getByRole("button", { name: "Decopilot on cloud" }),
+      getByRole("button", { name: "Super Agent on cloud" }),
     ).toBeInTheDocument();
   });
 
@@ -116,7 +116,7 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    fireEvent.click(getByRole("button", { name: /Decopilot/i }));
+    fireEvent.click(getByRole("button", { name: /Super Agent/i }));
 
     const localHeader = getByTestId("local-section-header");
     expect(localHeader).toHaveClass("text-success");
@@ -147,7 +147,7 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    const button = getByRole("button", { name: /Decopilot/i });
+    const button = getByRole("button", { name: /Super Agent/i });
     expect(button).toBeDisabled();
   });
 
@@ -225,7 +225,7 @@ describe("ModePickerPure", () => {
       />,
     );
     const button = getByTestId("mode-picker-locked");
-    expect(button).toHaveAttribute("aria-label", "Decopilot on cloud");
+    expect(button).toHaveAttribute("aria-label", "Super Agent on cloud");
   });
 
   it("opens the popover and shows stitched rows in order", () => {
@@ -242,11 +242,11 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    fireEvent.click(getByRole("button", { name: /Decopilot/i }));
+    fireEvent.click(getByRole("button", { name: /Super Agent/i }));
     const items = getAllByRole("menuitem");
     expect(items.map((i) => i.textContent)).toEqual([
-      expect.stringMatching(/Decopilot/),
-      expect.stringMatching(/Decopilot/),
+      expect.stringMatching(/Super Agent/),
+      expect.stringMatching(/Super Agent/),
       expect.stringMatching(/Claude Code/),
       expect.stringMatching(/Codex/),
     ]);
@@ -267,7 +267,7 @@ describe("ModePickerPure", () => {
         onSelect={onSelect}
       />,
     );
-    fireEvent.click(getByRole("button", { name: /Decopilot/i }));
+    fireEvent.click(getByRole("button", { name: /Super Agent/i }));
     // Local rows are teasers, not omitted — discoverability is the point.
     const items = getAllByRole("menuitem");
     expect(items).toHaveLength(4);
@@ -296,7 +296,7 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    fireEvent.click(getByRole("button", { name: /Decopilot/i }));
+    fireEvent.click(getByRole("button", { name: /Super Agent/i }));
     // No agent sandbox (e.g. local/dev mode) → cloud Decopilot can't run and
     // isn't fixable from the menu, so it's omitted. Local runtimes remain.
     const items = getAllByRole("menuitem");
@@ -321,7 +321,7 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    fireEvent.click(getByRole("button", { name: /Decopilot/i }));
+    fireEvent.click(getByRole("button", { name: /Super Agent/i }));
     for (const name of [/Claude Code/, /Codex/]) {
       const row = getByRole("menuitem", { name });
       expect(row).not.toHaveAttribute("aria-disabled");
@@ -329,7 +329,7 @@ describe("ModePickerPure", () => {
     }
     expect(
       getByRole("menuitem", { name: /Runs on your desktop/ }),
-    ).toHaveTextContent("Decopilot");
+    ).toHaveTextContent("Super Agent");
   });
 
   it("keeps the selected checkmark on an unavailable current row", () => {
@@ -369,7 +369,7 @@ describe("ModePickerPure", () => {
         onSelect={onSelect}
       />,
     );
-    fireEvent.click(getByRole("button", { name: /Decopilot/i }));
+    fireEvent.click(getByRole("button", { name: /Super Agent/i }));
     fireEvent.click(getByRole("menuitem", { name: /Claude Code/ }));
     expect(onSelect).toHaveBeenCalledWith("local-claude-code");
     expect(queryAllByRole("menuitem")).toHaveLength(0);
