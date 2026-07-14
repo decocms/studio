@@ -76,11 +76,13 @@ export default function OrgShellLayout() {
                 <Toolbar.Header>
                   <Toolbar.LeftColumn>
                     <ShellBreadcrumb />
+                    {/* Chat toggle sits on the left — it controls the left
+                        chat panel; the main-panel view tabs stay on the right. */}
+                    <Toolbar.TogglesSlot />
                   </Toolbar.LeftColumn>
                   <Toolbar.CenterSlot />
                   <Toolbar.RightColumn>
                     <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
-                      <Toolbar.TogglesSlot />
                       <Toolbar.TabsSlot />
                     </div>
                     <Toolbar.RightSlot />

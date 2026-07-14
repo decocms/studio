@@ -1,3 +1,4 @@
+import { useParams } from "@tanstack/react-router";
 import { useThreads } from "@/web/components/chat/store/hooks";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { TaskRow } from "@/web/layouts/tasks-panel/task-row";
@@ -27,12 +28,19 @@ export function AgentHome({
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
   const { setTaskId } = usePanelActions();
+  const { taskId: currentTaskId } = useParams({ strict: false }) as {
+    taskId?: string;
+  };
 
   const agentThreads = allThreads
     .filter(
       (t) =>
         !t.hidden &&
         t.virtual_mcp_id === agent.id &&
+        // Don't list the thread you're already in — you're looking at it. This
+        // is what keeps the Super Agent home from showing its own empty
+        // "New chat" as a row above the composer.
+        t.id !== currentTaskId &&
         // Owner-scoped; empty until the session resolves rather than leaking
         // every member's threads.
         t.created_by === currentUserId,
