@@ -5,11 +5,7 @@ import {
   type SandboxProviderKind,
 } from "@decocms/mesh-sdk";
 
-export type AgentOption =
-  | "decopilot"
-  | "decopilot-desktop"
-  | "claude-code-desktop"
-  | "codex-desktop";
+export type AgentOption = "decopilot" | "claude-code-desktop" | "codex-desktop";
 
 export interface AgentPins {
   harness: HarnessId;
@@ -24,7 +20,6 @@ export interface AgentPins {
  */
 export const AGENT_OPTION_PINS: Record<AgentOption, AgentPins> = {
   decopilot: { harness: "decopilot", sandbox: "agent-sandbox" },
-  "decopilot-desktop": { harness: "decopilot", sandbox: "user-desktop" },
   "claude-code-desktop": { harness: "claude-code", sandbox: "user-desktop" },
   "codex-desktop": { harness: "codex", sandbox: "user-desktop" },
 };
@@ -82,8 +77,6 @@ export function agentOptionIsAvailable(
   switch (option) {
     case "decopilot":
       return availability.agentSandbox;
-    case "decopilot-desktop":
-      return availability.userDesktop;
     case "claude-code-desktop":
       return availability.userDesktop && availability.claudeCode;
     case "codex-desktop":

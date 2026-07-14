@@ -32,10 +32,11 @@ describe("agentOptionFor", () => {
     expect(agentOptionFor("decopilot", "cluster")).toBe("decopilot");
   });
 
-  test("maps decopilot harness with user-desktop sandbox to decopilot-desktop option", () => {
-    expect(agentOptionFor("decopilot", "user-desktop")).toBe(
-      "decopilot-desktop",
-    );
+  test("decopilot harness with user-desktop sandbox has no option (retired)", () => {
+    // "local decopilot" was removed — the cloud router is the only decopilot
+    // runtime. A legacy thread persisted with this pair maps to no known
+    // option and is treated as locked-unknown.
+    expect(agentOptionFor("decopilot", "user-desktop")).toBeNull();
   });
 
   test("maps legacy decopilot harness with null sandbox to decopilot option", () => {
@@ -85,12 +86,6 @@ describe("agentOptionIsAvailable", () => {
   });
 
   test("desktop options require the link to be online", () => {
-    expect(agentOptionIsAvailable("decopilot-desktop", ALL_AVAILABLE)).toBe(
-      true,
-    );
-    expect(agentOptionIsAvailable("decopilot-desktop", DESKTOP_OFFLINE)).toBe(
-      false,
-    );
     expect(agentOptionIsAvailable("claude-code-desktop", DESKTOP_OFFLINE)).toBe(
       false,
     );

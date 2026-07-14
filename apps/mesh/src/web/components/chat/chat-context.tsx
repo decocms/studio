@@ -240,9 +240,9 @@ export interface ChatPrefsContextValue {
   setSimpleModeTier: (tier: SimpleTier) => void;
   /**
    * The agent option the chat will use for the next first message
-   * (`Decopilot` / `Decopilot desktop` / `Claude Code desktop` /
-   * `Codex desktop`). Single source of truth for the (harness, sandbox)
-   * pair — see `AGENT_OPTION_PINS` in `./pills/agent-options`.
+   * (cloud org router / Claude Code on desktop / Codex on desktop). Single
+   * source of truth for the (harness, sandbox) pair — see `AGENT_OPTION_PINS`
+   * in `./pills/agent-options`. Chosen inside the model selector.
    *
    * This is the **effective** value: the user's persisted pick filtered
    * through what the active agent can actually run. If the user picked a
@@ -564,9 +564,8 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   };
 
   // Pending agent — single source of truth for the user's pre-message
-  // pick (`Decopilot` / `Decopilot desktop` / `Claude Code desktop` /
-  // `Codex desktop`). Persisted to localStorage so the choice survives
-  // page reloads.
+  // pick (cloud org router / Claude Code on desktop / Codex on desktop).
+  // Persisted to localStorage so the choice survives page reloads.
   //
   // Scoped per `locator` (like the image-model and tier prefs) so a desktop
   // pick made in one org doesn't leak into another — runtime availability is

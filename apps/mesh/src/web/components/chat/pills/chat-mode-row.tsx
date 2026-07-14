@@ -1,31 +1,67 @@
 import type { ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
+import type { HarnessId } from "@/harnesses";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
-import { ModePicker } from "./mode-picker";
 import { BranchPill } from "./branch-pill";
+import { ClaudeCodeIcon, CodexIcon } from "../agent-icons";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { authClient } from "@/web/lib/auth-client";
 
 interface PureProps {
   branchPill: ReactNode;
-  modePicker: ReactNode;
 }
 
 /**
- * Pure layout — used by tests. Each slot renders independently; the
- * component returns null only when BOTH are null.
+ * Pure layout — used by tests. Renders the branch pill (when present) in the
+ * parent flex flow. Returns null when there is nothing to show.
  *
- * Renders as a fragment (no wrapping div) so the pills sit in the
- * parent flex flow with the same gap as their siblings.
+ * The runtime (cloud org router vs. a local coding agent) is no longer a pill
+ * here — it lives inside the model selector. This row is now just the GitHub
+ * branch affordance.
  */
-export function ChatModeRowPure({ branchPill, modePicker }: PureProps) {
-  if (!branchPill && !modePicker) return null;
+export function ChatModeRowPure({ branchPill }: PureProps) {
+  if (!branchPill) return null;
+  return <>{branchPill}</>;
+}
+
+const LOCAL_RUNTIME: Partial<
+  Record<HarnessId, { label: string; icon: ReactNode }>
+> = {
+  "claude-code": { label: "Claude Code", icon: <ClaudeCodeIcon size={14} /> },
+  codex: { label: "Codex", icon: <CodexIcon size={14} /> },
+};
+
+/**
+ * Read-only chip shown once a thread is locked to a local coding agent. The
+ * runtime is normally chosen (and re-chosen) inside the model selector, but a
+ * locked thread can't switch runtimes — this tells the user which local agent
+ * the chat is bound to and why the model selector no longer offers the toggle.
+ * Only local CLIs surface it; a cloud thread stays chrome-free.
+ */
+function LockedRuntimeChip({ harness }: { harness: HarnessId }) {
+  const runtime = LOCAL_RUNTIME[harness];
+  if (!runtime) return null;
+  const message = `This chat is using ${runtime.label}. Start a new chat to use a different runtime.`;
   return (
-    <>
-      {modePicker}
-      {branchPill}
-    </>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          data-testid="mode-picker-locked"
+          aria-label={message}
+          className="inline-flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground"
+        >
+          {runtime.icon}
+          <span className="truncate">{runtime.label}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{message}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -35,19 +71,13 @@ interface SmartProps {
 }
 
 /**
- * Smart wrapper. Composes BranchPill + ModePicker. Each pill is gated
- * by its own capability check:
+ * Smart wrapper. Renders the BranchPill for agents imported from GitHub —
+ * `metadata.githubRepo` exists AND has an attached `connectionId` (an
+ * authenticated user repo, not a public-template clone). Start Website agents
+ * populate `metadata.githubRepo.url` for the template but leave `connectionId`
+ * unset; branches aren't meaningful there.
  *
- *   - BranchPill:  agent was imported from GitHub — `metadata.githubRepo`
- *     exists AND has an attached `connectionId` (authenticated user
- *     repo, not a public-template clone). Start Website agents
- *     populate `metadata.githubRepo.url` for the template but leave
- *     `connectionId` unset; branches aren't meaningful there.
- *   - ModePicker:  runtime availability is decided inside the picker from
- *     server runtime config plus the user's linked desktop capabilities.
- *
- * Locked flag is derived once here from
- * `useOptionalChatStream().messages.length > 0` and passed to both.
+ * Locked flag is derived from `useOptionalChatStream().messages.length > 0`.
  */
 export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const stream = useOptionalChatStream();
@@ -55,6 +85,13 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const locked =
     (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
   const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
+
+  // Once a thread is locked to a local coding agent, the model selector hides
+  // its runtime toggle — surface a read-only chip so the binding stays legible.
+  const lockedRuntime =
+    taskCtx?.isThreadLocked && taskCtx.lockedHarness ? (
+      <LockedRuntimeChip harness={taskCtx.lockedHarness} />
+    ) : null;
 
   const githubRepo = getActiveGithubRepo(virtualMcp);
   const connectionId = githubRepo?.connectionId;
@@ -85,13 +122,10 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
       />
     ) : null;
 
-  const modePicker = (
-    <ModePicker
-      locked={locked}
-      currentBranch={currentBranch}
-      virtualMcpId={virtualMcp?.id ?? ""}
-    />
+  return (
+    <>
+      {lockedRuntime}
+      <ChatModeRowPure branchPill={branchPill} />
+    </>
   );
-
-  return <ChatModeRowPure branchPill={branchPill} modePicker={modePicker} />;
 }

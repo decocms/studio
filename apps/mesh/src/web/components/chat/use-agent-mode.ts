@@ -4,36 +4,23 @@ import { useChatPrefs } from "./context";
 import type { AgentOption } from "./pills/agent-options";
 
 /**
- * The (location, harness) mode the chat input is bound to. Mutually
- * exclusive — one of these values is always the answer.
+ * The (location, harness) mode a chat is bound to. Mutually exclusive — one of
+ * these values is always the answer. Cloud = the org router; the two `local-*`
+ * modes run on the user's linked desktop via that CLI. Derived from the
+ * persisted `pendingAgentOption`; the runtime is chosen inside the model
+ * selector, not a standalone picker.
  *
  * Named `AgentMode` (not `ChatMode`) to avoid colliding with
  * `ChatPrefsContextValue.chatMode`, which is a different concept
  * (interaction mode: "default" | ...).
  */
-export type AgentMode =
-  | "cloud-decopilot"
-  | "local-decopilot"
-  | "local-claude-code"
-  | "local-codex";
-
-const MODE_TO_OPTION: Record<AgentMode, AgentOption> = {
-  "cloud-decopilot": "decopilot",
-  "local-decopilot": "decopilot-desktop",
-  "local-claude-code": "claude-code-desktop",
-  "local-codex": "codex-desktop",
-};
+export type AgentMode = "cloud-decopilot" | "local-claude-code" | "local-codex";
 
 const OPTION_TO_MODE: Record<AgentOption, AgentMode> = {
   decopilot: "cloud-decopilot",
-  "decopilot-desktop": "local-decopilot",
   "claude-code-desktop": "local-claude-code",
   "codex-desktop": "local-codex",
 };
-
-export function agentOptionFromMode(mode: AgentMode): AgentOption {
-  return MODE_TO_OPTION[mode];
-}
 
 export function agentModeFromOption(option: AgentOption | null): AgentMode {
   if (option === null) return "cloud-decopilot";
@@ -46,12 +33,6 @@ export function useAgentMode(): AgentMode {
   return agentModeFromOption(pendingAgentOption);
 }
 
-/** Persist a new agent mode (writes through to `pendingAgentOption`). */
-export function useSetAgentMode(): (mode: AgentMode) => void {
-  const { setPendingAgentOption } = useChatPrefs();
-  return (mode: AgentMode) => setPendingAgentOption(agentOptionFromMode(mode));
-}
-
 /** Current chat tier from prefs. Defaults to "smart" via prefs. */
 export function useChatTier(): ChatTier {
   return useChatPrefs().simpleModeTier;
@@ -62,13 +43,12 @@ export function useSetChatTier(): (tier: ChatTier) => void {
 }
 
 /**
- * User-friendly tier descriptions shown under each tier row in the
- * Decopilot popover. Decopilot users are typically non-technical and
- * benefit from intent labels ("Quicker responses") over model names —
- * the actual model the server picks depends on org settings + provider
- * keys and would be noise here.
+ * User-friendly tier descriptions shown under each tier row for the org
+ * router (cloud). These users are typically non-technical and benefit from
+ * intent labels ("Quicker responses") over model names — the actual model the
+ * server picks depends on org settings + provider keys and would be noise here.
  */
-const DECOPILOT_TIER_DESCRIPTIONS: Record<ChatTier, string> = {
+const CLOUD_TIER_DESCRIPTIONS: Record<ChatTier, string> = {
   fast: "Quicker responses",
   smart: "Balanced quality",
   thinking: "Deeper reasoning",
@@ -82,9 +62,9 @@ const DECOPILOT_TIER_DESCRIPTIONS: Record<ChatTier, string> = {
  *   with version (e.g. "Sonnet 5", "GPT-5.5") from
  *   `ai-providers/agent-tiers.ts`. Desktop-CLI users are technical and
  *   want to know which model is about to run.
- * - Decopilot (cloud or local): returns a non-technical intent description
- *   from `DECOPILOT_TIER_DESCRIPTIONS`. The server picks the actual model
- *   via `resolveTier` at send time based on org admin config.
+ * - Cloud (org router): returns a non-technical intent description from
+ *   `CLOUD_TIER_DESCRIPTIONS`. The server picks the actual model via
+ *   `resolveTier` at send time based on org admin config.
  */
 export function resolveTierSubtitle(
   mode: AgentMode,
@@ -96,5 +76,5 @@ export function resolveTierSubtitle(
   if (mode === "local-codex") {
     return resolveAgentTier("codex", tier)?.label ?? null;
   }
-  return DECOPILOT_TIER_DESCRIPTIONS[tier];
+  return CLOUD_TIER_DESCRIPTIONS[tier];
 }
