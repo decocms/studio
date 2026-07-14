@@ -2,12 +2,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import { Globe02, Users03 } from "@untitledui/icons";
+import { Users03 } from "@untitledui/icons";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 
 interface CreateAgentDropdownContentProps {
   onCreateFromScratch: () => void;
-  onCreateWebsite: () => void;
   onImportGitHub: () => void;
   onImportDeco: () => void;
   isCreating?: boolean;
@@ -18,7 +17,6 @@ interface CreateAgentDropdownContentProps {
 
 export function CreateAgentDropdownContent({
   onCreateFromScratch,
-  onCreateWebsite,
   onImportGitHub,
   onImportDeco,
   isCreating,
@@ -31,10 +29,6 @@ export function CreateAgentDropdownContent({
       <DropdownMenuItem disabled={isCreating} onClick={onCreateFromScratch}>
         <Users03 size={14} />
         Create from scratch
-      </DropdownMenuItem>
-      <DropdownMenuItem disabled={isCreating} onClick={onCreateWebsite}>
-        <Globe02 size={14} />
-        Start Website
       </DropdownMenuItem>
       <DropdownMenuItem onClick={onImportGitHub}>
         <GitHubIcon className="size-3.5" />
