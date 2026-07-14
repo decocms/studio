@@ -15,7 +15,10 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
+import {
+  invalidateConnectionQueries,
+  invalidateVirtualMcpQueries,
+} from "@/web/lib/query-keys";
 import {
   useProjectContext,
   useMCPClient,
@@ -435,6 +438,7 @@ function PickerContent({
     onSuccess: ({ virtualMcpId, repo, connectionId, item }) => {
       if (mode === "connection" || !virtualMcpId || !item) {
         invalidateVirtualMcpQueries(queryClient, org.id);
+        invalidateConnectionQueries(queryClient, org.id);
         toast.success(`Added ${repo.name}`);
         onComplete();
         return;
