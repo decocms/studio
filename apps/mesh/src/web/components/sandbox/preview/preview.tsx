@@ -666,15 +666,33 @@ export function PreviewContent({
   };
 
   const handleViewModeChange = (mode: PreviewInteractiveViewMode) => {
-    const prev = viewMode;
     setInteractiveViewMode(mode);
     setVisualElement(null);
     setCmsSelectedSectionIndex(null);
     setVariantOverrideParams(null);
-    if (prev === "visual") deactivateVisualEditor();
-    if (prev === "cms") deactivateCmsEditor();
-    if (mode === "visual") injectVisualEditor();
+    // The overlay is injected/torn down by the effect below, keyed on the
+    // resulting view mode — not here — so it also covers mode changes that
+    // don't originate from this handler (Preview↔Blocks tab switches, which
+    // now share one persisted iframe).
   };
+
+  // Keep the injected iframe overlay in sync with the active view mode. The
+  // iframe persists across the Preview↔Blocks tab switch (both surfaces render
+  // one PreviewContent), so a mode change no longer implies a reload — we
+  // inject/tear down here instead of relying solely on the iframe `onLoad`.
+  // `onLoad` still re-injects the current mode after genuine reloads (save,
+  // navigation), which this effect won't see (view mode unchanged). Both the
+  // CMS and visual scripts guard against double-activation, so an overlapping
+  // inject is a no-op.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs the injected iframe overlay (postMessage) to the view mode
+  useEffect(() => {
+    if (previewState.kind !== "iframe") return;
+    if (effectiveViewMode === "visual") injectVisualEditor();
+    else deactivateVisualEditor();
+    if (effectiveViewMode === "cms") injectCmsEditor();
+    else deactivateCmsEditor();
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- inject/deactivate helpers are fresh closures each render; sync only on mode/iframe changes
+  }, [effectiveViewMode, previewState.kind]);
 
   const handleRefresh = () => {
     if (!previewIframeRef.current || !iframeSrc) return;
