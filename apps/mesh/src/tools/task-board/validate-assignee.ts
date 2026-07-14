@@ -6,8 +6,14 @@ export async function assertValidAssignee(
   organizationId: string,
   assigneeId: string,
 ): Promise<void> {
+  // Filter server-side on the exact userId rather than paging through every
+  // member — an unfiltered listMembers() caps at 100 rows (Better Auth's
+  // default membershipLimit), so it would silently miss a valid assignee in
+  // an organization with more than 100 members.
   const { members } = await ctx.boundAuth.organization.listMembers({
     organizationId,
+    filterField: "userId",
+    filterValue: assigneeId,
   });
   if (
     !members.some((member: { userId: string }) => member.userId === assigneeId)
