@@ -372,6 +372,7 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
       branch={branch}
       previewUrl={previewUrl}
       mode={mode}
+      devServerReady={vmEvents.lifecycle.phase === "running"}
     />
   );
 }
@@ -400,17 +401,21 @@ function ContentBrowserReady({
   branch,
   previewUrl,
   mode,
+  devServerReady,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   previewUrl: string | null;
   mode: "content" | "blocks";
+  devServerReady: boolean;
 }) {
   const workspace = useBlocksPreviewWorkspace();
   const fetchParams = { orgSlug, virtualMcpId, branch, previewUrl };
-  const { data: decofile, isLoading: decofileLoading } =
-    useDecofile(fetchParams);
+  const { data: decofile, isLoading: decofileLoading } = useDecofile(
+    fetchParams,
+    { fetchEnabled: devServerReady },
+  );
 
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
@@ -508,6 +513,7 @@ function ContentBrowserReady({
     isLoading: metaLoading,
     isFetching: metaFetching,
   } = useLiveMeta(fetchParams, {
+    fetchEnabled: devServerReady,
     refetchInterval: (query) => {
       const currentMeta = query.state.data;
 

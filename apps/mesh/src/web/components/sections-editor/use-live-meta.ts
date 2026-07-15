@@ -1,6 +1,7 @@
 import { type Query, useQuery } from "@tanstack/react-query";
 import { exponentialBackoffWithJitter } from "@decocms/std";
 import { KEYS } from "@/web/lib/query-keys";
+import { readCommittedJson } from "./read-committed-file";
 import type { LiveMeta } from "./resolve-schema";
 
 interface UseLiveMetaParams {
@@ -28,22 +29,38 @@ export function useLiveMeta(
   return useQuery({
     queryKey: KEYS.liveMeta(key),
     queryFn: async () => {
-      const url = new URL("/live/_meta", previewUrl!).href;
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) {
-        const err = new Error(`Failed to fetch live meta: ${res.status}`);
-        (err as { status?: number }).status = res.status;
+      const readCommitted = () =>
+        readCommittedJson<LiveMeta>(params!, ".deco/meta.gen.json");
+      // Prefer the live `/live/_meta` when the dev server is up; otherwise (or on
+      // failure) read the committed `.deco/meta.gen.json` snapshot so the CMS
+      // schema is available even without a working preview.
+      if (fetchEnabled && previewUrl) {
+        const url = new URL("/live/_meta", previewUrl).href;
+        const res = await fetch(url, { cache: "no-store" }).catch(() => null);
+        if (res?.ok) return (await res.json()) as LiveMeta;
+        const committed = await readCommitted();
+        if (committed) return committed;
+        const err = new Error(
+          `Failed to fetch live meta: ${res?.status ?? "network error"}`,
+        );
+        (err as { status?: number }).status = res?.status ?? 502;
         throw err;
       }
-      return (await res.json()) as LiveMeta;
+      const committed = await readCommitted();
+      if (committed) return committed;
+      const err = new Error(
+        "live meta unavailable (preview down, no committed snapshot)",
+      );
+      (err as { status?: number }).status = 502;
+      throw err;
     },
-    enabled: !!params && !!previewUrl && fetchEnabled,
+    enabled: !!params,
     refetchInterval: options?.refetchInterval,
     refetchIntervalInBackground: false,
     staleTime: 300_000,
-    // 502 = preview unreachable (sandbox starting or down). The SSE lifecycle
-    // re-enables this query when the preview is back, so retrying just hammers
-    // a known-down endpoint and spams 5xx logs.
+    // 502 = preview unreachable / nothing available yet. The sandbox lifecycle
+    // re-invalidates this query when the dev server comes up (see
+    // sandbox-events-context), so retrying just hammers a known-down endpoint.
     retry: (failureCount, error) =>
       (error as { status?: number }).status !== 502 && failureCount < 3,
     retryDelay: (attempt) =>

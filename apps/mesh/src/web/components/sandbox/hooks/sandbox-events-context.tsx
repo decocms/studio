@@ -232,6 +232,10 @@ export function SandboxEventsProvider({
     let decofileDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     let studioEs: EventSource | null = null;
     let directEs: EventSource | null = null;
+    // Tracks the dev-server lifecycle so we can invalidate the CMS queries once
+    // it comes up (switching them from the committed `.deco/*.gen.json` snapshot
+    // to the live `/.decofile` + `/live/_meta` routes).
+    let prevLifecyclePhase: string | null = null;
 
     const handleClaimPhase = (e: MessageEvent) => {
       try {
@@ -299,6 +303,27 @@ export function SandboxEventsProvider({
           case "lifecycle": {
             const lp = payload as DaemonEventPayload<"lifecycle">;
             setLifecycle(lp.state);
+            // Dev server just came up: swap the CMS queries off the committed
+            // `.deco/*.gen.json` snapshot and onto the live routes. This is the
+            // trigger they rely on (they're enabled as soon as the daemon is up,
+            // so the `enabled` flip no longer does it) — see use-decofile /
+            // use-live-meta.
+            if (
+              lp.state.phase === "running" &&
+              prevLifecyclePhase !== "running"
+            ) {
+              const cacheKey = `${org.slug}/${virtualMcpId}/${branch}`;
+              void queryClient.invalidateQueries({
+                queryKey: KEYS.decofile(cacheKey),
+              });
+              void queryClient.invalidateQueries({
+                predicate: (query) =>
+                  query.queryKey[0] === "live-meta" &&
+                  typeof query.queryKey[1] === "string" &&
+                  query.queryKey[1].startsWith(`${cacheKey}/`),
+              });
+            }
+            prevLifecyclePhase = lp.state.phase;
             // Detect dev server port change (running phase carries port);
             // reload iframe so it picks up the new backend.
             const newPort = lp.state.phase === "running" ? lp.state.port : null;
