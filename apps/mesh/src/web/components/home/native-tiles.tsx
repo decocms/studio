@@ -487,7 +487,7 @@ function SalesTileBody() {
         open={open}
         onOpenChange={setOpen}
         defaultTab="all"
-        initialSearch="Shopify"
+        initialSearch="shopify vtex"
       />
     </>
   );
