@@ -16,6 +16,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Clock,
   DotsHorizontal,
   Flag01,
   GitBranch01,
@@ -25,9 +26,6 @@ import { PRIORITY_CONFIG, STATUS_CONFIG } from "../config";
 import { CmsEditorDialog } from "./cms-editor";
 import { type DemoSession, type DemoTask, SOURCE_LABEL } from "./data";
 import { DecoAvatar, SourceIcon } from "./icons";
-
-const CHIP_CLASS =
-  "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground";
 
 export function TaskDetailDialog({
   task,
@@ -50,51 +48,13 @@ export function TaskDetailDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-        <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogContent className="flex max-h-[85vh] flex-row gap-0 overflow-hidden p-0 sm:max-w-4xl">
           <DialogTitle className="sr-only">{task.title}</DialogTitle>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-6">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                {task.key}
-              </span>
-              <span className={CHIP_CLASS}>
-                <StatusIcon size={13} className={statusConfig.iconClassName} />
-                {statusConfig.label}
-              </span>
-              <span className={CHIP_CLASS}>
-                <Flag01 size={13} className={priorityConfig.flagClassName} />
-                {priorityConfig.label}
-              </span>
-              <span className={CHIP_CLASS}>
-                <SourceIcon source={task.source} size={13} />
-                {SOURCE_LABEL[task.source]}
-              </span>
-              <span className={CHIP_CLASS}>
-                {takenByAgent ? (
-                  <>
-                    <DecoAvatar />
-                    Deco
-                  </>
-                ) : (
-                  <>
-                    <User01 size={13} className="text-muted-foreground" />
-                    Unassigned
-                  </>
-                )}
-              </span>
-              {task.labels.map((label) => (
-                <Badge
-                  key={label}
-                  className="bg-muted text-[10px] text-muted-foreground"
-                >
-                  {label}
-                </Badge>
-              ))}
-              <span className="text-[11px] text-muted-foreground/70">
-                Est. {task.effort}
-              </span>
-            </div>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-6">
+            <span className="text-xs font-medium text-muted-foreground">
+              {task.key}
+            </span>
 
             <h2 className="text-xl font-semibold text-foreground">
               {task.title}
@@ -119,6 +79,57 @@ export function TaskDetailDialog({
               </div>
             )}
           </div>
+
+          <aside className="flex w-56 shrink-0 flex-col gap-4 overflow-y-auto border-l border-border px-5 py-6">
+            <h3 className="text-xs font-medium text-muted-foreground">
+              Properties
+            </h3>
+            <PropertyRow
+              icon={
+                <StatusIcon size={15} className={statusConfig.iconClassName} />
+              }
+            >
+              {statusConfig.label}
+            </PropertyRow>
+            <PropertyRow
+              icon={
+                <Flag01 size={15} className={priorityConfig.flagClassName} />
+              }
+            >
+              {priorityConfig.label}
+            </PropertyRow>
+            <PropertyRow
+              icon={
+                takenByAgent ? (
+                  <DecoAvatar />
+                ) : (
+                  <User01 size={15} className="text-muted-foreground" />
+                )
+              }
+            >
+              {takenByAgent ? "Deco" : "Unassigned"}
+            </PropertyRow>
+            <PropertyRow icon={<SourceIcon source={task.source} size={15} />}>
+              {SOURCE_LABEL[task.source]}
+            </PropertyRow>
+            <PropertyRow
+              icon={<Clock size={15} className="text-muted-foreground" />}
+            >
+              Est. {task.effort}
+            </PropertyRow>
+            {task.labels.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {task.labels.map((label) => (
+                  <Badge
+                    key={label}
+                    className="bg-muted text-[10px] text-muted-foreground"
+                  >
+                    {label}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </aside>
         </DialogContent>
       </Dialog>
 
@@ -130,6 +141,23 @@ export function TaskDetailDialog({
         />
       )}
     </>
+  );
+}
+
+function PropertyRow({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 text-sm text-foreground">
+      <span className="flex size-5 shrink-0 items-center justify-center">
+        {icon}
+      </span>
+      <span className="min-w-0 truncate">{children}</span>
+    </div>
   );
 }
 
