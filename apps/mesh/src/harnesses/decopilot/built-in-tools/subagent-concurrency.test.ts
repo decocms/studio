@@ -96,6 +96,16 @@ describe("createConcurrencyGate", () => {
     expect(gate.active).toBe(0);
   });
 
+  it("coerces a non-finite max (e.g. an unparsed env value) up to 1 instead of deadlocking", async () => {
+    const gate = createConcurrencyGate(Number("not-a-number"));
+    await gate.acquire();
+    expect(gate.active).toBe(1);
+    let admitted = false;
+    void gate.acquire().then(() => (admitted = true));
+    await Promise.resolve();
+    expect(admitted).toBe(false);
+  });
+
   it("coerces a sub-1 max up to 1", async () => {
     const gate = createConcurrencyGate(0);
     await gate.acquire();
