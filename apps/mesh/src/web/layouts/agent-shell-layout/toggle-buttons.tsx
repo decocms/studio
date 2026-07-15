@@ -1,4 +1,4 @@
-import { MessageCircle01, TextInput } from "@untitledui/icons";
+import { MessageCircle01 } from "@untitledui/icons";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
@@ -9,7 +9,6 @@ import type { SidePanelKind } from "@/web/hooks/use-layout-state";
 export interface ToggleButtonsProps {
   sidePanel: SidePanelKind | null;
   toggleSidePanel: (sidePanel: SidePanelKind) => void;
-  blocksAvailable?: boolean;
   /**
    * When true, the active side-panel toggle is disabled because closing it
    * would leave a blank content area.
@@ -27,7 +26,6 @@ export interface ToggleButtonsProps {
 export function ToggleButtons({
   sidePanel,
   toggleSidePanel,
-  blocksAvailable = false,
   disableActiveSidePanelToggle = false,
 }: ToggleButtonsProps) {
   // Reports-only orgs collapse the toolbar to just the chat toggle.
@@ -48,22 +46,6 @@ export function ToggleButtons({
           toggleSidePanel("chat");
         }}
       />
-      {!reportsOnly && blocksAvailable && (
-        <HeaderTabButton
-          title="Blocks"
-          icon={{ kind: "component", Component: TextInput }}
-          active={sidePanel === "blocks"}
-          disabled={disableActiveSidePanelToggle && sidePanel === "blocks"}
-          className="wco-no-drag h-10 md:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
-          onClick={() => {
-            track("agent_toolbar_toggled", {
-              button: "blocks",
-              next_state: sidePanel === "blocks" ? "closed" : "open",
-            });
-            toggleSidePanel("blocks");
-          }}
-        />
-      )}
       {/* Tasks and Library are agent-independent overlays; hidden for
           reports-only orgs along with everything else but Chat. */}
       {!reportsOnly && (

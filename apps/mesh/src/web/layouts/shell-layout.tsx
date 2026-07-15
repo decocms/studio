@@ -111,7 +111,7 @@ export function usePanelActions() {
     replace = true,
   ) => navWith(currentTaskId, searchFn, replace);
 
-  const openSidePanel = (sidePanel: "chat" | "blocks") =>
+  const openSidePanel = (sidePanel: "chat") =>
     nav((prev) => ({ ...prev, sidepanel: sidePanel }));
 
   const setTaskId = (

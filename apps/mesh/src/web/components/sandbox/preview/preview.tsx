@@ -2,10 +2,10 @@ import { sleep } from "@decocms/std";
 import { useState, useRef, useEffect, Suspense, lazy } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/web/layouts/main-panel-tabs/tab-id";
-import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
+import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 
 import {
   ChevronDown,
@@ -19,6 +19,7 @@ import {
   Plus,
   SearchLg,
   CreditCardSearch,
+  TextInput,
   Monitor04,
   Phone02,
   RefreshCw01,
@@ -95,6 +96,18 @@ import { manifestLoaderResolveTypes } from "@/web/components/sandbox/content/run
 import { track } from "@/web/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
 import { useBlocksPreviewWorkspace } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
+import { BlocksPanel } from "@/web/components/sandbox/blocks/blocks-panel";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  type ImperativePanelHandle,
+} from "@/web/components/resizable";
+import {
+  togglePreviewEditorMode,
+  type PreviewEditingMode,
+  type PreviewEditorMode,
+} from "./editing-mode";
 
 const VSCODE_ICON_URL =
   "https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png";
@@ -111,7 +124,6 @@ const SeoSheet = lazy(() =>
 const DEV_SERVER_SETTLE_MS = 500;
 
 type PreviewDeviceSize = "mobile" | "tablet" | "desktop";
-type PreviewViewMode = "preview" | "visual";
 
 const PREVIEW_DEVICE_WIDTHS: Record<PreviewDeviceSize, number | null> = {
   mobile: 375,
@@ -206,8 +218,8 @@ function withDeviceHint(url: string, device: PreviewDeviceSize): string {
   return parsed.href;
 }
 
-export function PreviewContent() {
-  const inset = useInsetContext();
+export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { currentBranch: branch } = useChatTask();
   const workspace = useBlocksPreviewWorkspace();
@@ -220,13 +232,15 @@ export function PreviewContent() {
     });
   };
 
-  // Visual editor state
-  const [viewMode, setViewMode] = useState<PreviewViewMode>("preview");
+  // Editing mode is singular: Visual editor and Blocks cannot be active
+  // together. Device size is independent and survives mode switches.
+  const [editingMode, setEditingMode] = useState<PreviewEditingMode>("preview");
   const [previewDeviceSize, setPreviewDeviceSize] =
     useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
+  const blocksPanelRef = useRef<ImperativePanelHandle>(null);
 
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
@@ -271,7 +285,6 @@ export function PreviewContent() {
   // SEO panel state
   const [siteSeoOpen, setSiteSeoOpen] = useState(false);
 
-  const virtualMcpId = inset?.entity?.id ?? null;
   const { org } = useProjectContext();
 
   const vmEvents = useSandboxEvents();
@@ -538,11 +551,12 @@ export function PreviewContent() {
     !appPaused &&
     (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
 
-  // Visual mode requires a live iframe. When it is gone, fall back to Preview.
-  const effectiveViewMode: PreviewViewMode =
-    previewState.kind !== "iframe" && viewMode === "visual"
+  // Visual mode requires a live iframe. Blocks can stay open while the
+  // sandbox restarts so its loading/error state remains actionable.
+  const effectiveEditingMode: PreviewEditingMode =
+    previewState.kind !== "iframe" && editingMode === "visual"
       ? "preview"
-      : viewMode;
+      : editingMode;
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
   useEffect(() => {
@@ -593,12 +607,20 @@ export function PreviewContent() {
     win.postMessage({ type: "visual-editor::deactivate" }, "*");
   };
 
-  const handleViewModeChange = (mode: PreviewViewMode) => {
-    const prev = viewMode;
-    setViewMode(mode);
+  const activateEditingMode = (mode: PreviewEditingMode) => {
+    const previousMode = editingMode;
+    if (!isMobile && mode !== previousMode) {
+      if (mode === "blocks") blocksPanelRef.current?.resize(40);
+      else blocksPanelRef.current?.collapse();
+    }
+    setEditingMode(mode);
     setVisualElement(null);
-    if (prev === "visual") deactivateVisualEditor();
+    if (previousMode === "visual") deactivateVisualEditor();
     if (mode === "visual") injectVisualEditor();
+  };
+
+  const toggleEditingMode = (mode: PreviewEditorMode) => {
+    activateEditingMode(togglePreviewEditorMode(editingMode, mode));
   };
 
   const handleRefresh = () => {
@@ -770,14 +792,7 @@ export function PreviewContent() {
         name: result.name,
         path: result.path,
       });
-      navigate({
-        to: ".",
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          sidepanel: "blocks" as const,
-        }),
-        replace: true,
-      });
+      activateEditingMode("blocks");
     } catch (error) {
       setCreatePageError(
         error instanceof Error ? error.message : "Failed to create page",
@@ -786,8 +801,63 @@ export function PreviewContent() {
   };
 
   const canVisualEdit = previewState.kind === "iframe";
-  const toggleViewMode = (mode: PreviewViewMode) =>
-    handleViewModeChange(viewMode === mode ? "preview" : mode);
+  const floatingPreviewControls =
+    canVisualEdit || editingMode === "blocks" ? (
+      <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
+        <div className="flex items-center gap-0.5 rounded-full border bg-background/90 p-1 shadow-lg backdrop-blur-sm">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                onClick={() => toggleEditingMode("visual")}
+                aria-pressed={editingMode === "visual"}
+                aria-label="Visual editor"
+                active={editingMode === "visual"}
+                disabled={!canVisualEdit}
+              >
+                <CursorClick01 size={16} />
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent side="top">Visual editor</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                data-testid="preview-blocks-toggle"
+                onClick={() => toggleEditingMode("blocks")}
+                aria-pressed={editingMode === "blocks"}
+                aria-label="Blocks editor"
+                active={editingMode === "blocks"}
+              >
+                <TextInput size={16} />
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent side="top">Blocks editor</TooltipContent>
+          </Tooltip>
+          <div className="mx-0.5 h-5 w-px bg-border" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                onClick={handleDeviceToggle}
+                aria-label={DEVICE_LABELS[previewDeviceSize]}
+                disabled={!canVisualEdit}
+              >
+                <span
+                  key={previewDeviceSize}
+                  className="flex items-center justify-center animate-device-icon-pop"
+                >
+                  {previewDeviceSize === "mobile" && <Phone02 size={16} />}
+                  {previewDeviceSize === "tablet" && <Tablet01 size={16} />}
+                  {previewDeviceSize === "desktop" && <Monitor04 size={16} />}
+                </span>
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {DEVICE_LABELS[previewDeviceSize]}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    ) : null;
 
   return (
     <div className="flex flex-col w-full h-full">
@@ -1103,14 +1173,7 @@ export function PreviewContent() {
                                   key: currentPageKey,
                                   path: currentPath,
                                 });
-                                navigate({
-                                  to: ".",
-                                  search: (prev: Record<string, unknown>) => ({
-                                    ...prev,
-                                    sidepanel: "blocks" as const,
-                                  }),
-                                  replace: true,
-                                });
+                                activateEditingMode("blocks");
                               }}
                             >
                               <CreditCardSearch size={14} />
@@ -1183,182 +1246,179 @@ export function PreviewContent() {
         </div>
       )}
 
-      <div className="flex-1 flex overflow-hidden">
-        <div
-          className={cn(
-            "flex-1 relative overflow-hidden",
-            previewDeviceSize !== "desktop" &&
-              previewState.kind === "iframe" &&
-              "flex justify-center bg-muted/30",
-          )}
-        >
-          {navigating && previewState.kind === "iframe" && (
-            <div className="absolute inset-x-0 top-0 z-40 h-0.5 overflow-hidden bg-primary/15">
-              <div className="absolute inset-y-0 w-2/5 rounded-full bg-primary animate-preview-nav" />
-            </div>
-          )}
-
-          {showBootingOverlay && (
-            <div className="absolute inset-0 z-30">
-              <SandboxStateCard
-                kind="starting"
-                progress={progress}
-                claimPhase={claimPhase}
-              />
-            </div>
-          )}
-
-          {previewState.kind === "suspended" && (
-            <div className="absolute inset-0 z-30">
-              <SandboxStateCard kind="suspended" onResume={lifecycle.resume} />
-            </div>
-          )}
-
-          {previewState.kind === "errored" && (
-            <div className="absolute inset-0 z-30">
-              <SandboxStateCard
-                kind="errored"
-                error={previewState.error}
-                onRetry={lifecycle.retry}
-                connectionsHref={`/${org.slug}/settings/connections`}
-              />
-            </div>
-          )}
-
-          {effectiveViewMode === "visual" && !visualElement && (
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
-              <CursorClick01 size={12} />
-              Click any element to ask the AI
-            </div>
-          )}
-          {effectiveViewMode === "visual" && visualElement && (
-            <VisualEditorPrompt
-              element={visualElement}
-              onDismiss={() => setVisualElement(null)}
-            />
-          )}
-
-          {/* Floating preview controls — a centered pill at the bottom of the
-              preview (Visual editor toggle + device switcher), à la Lovable. */}
-          {canVisualEdit && (
-            <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
-              <div className="flex items-center gap-0.5 rounded-full border bg-background/90 p-1 shadow-lg backdrop-blur-sm">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <ToolbarIconButton
-                      onClick={() => toggleViewMode("visual")}
-                      aria-pressed={viewMode === "visual"}
-                      aria-label="Visual editor"
-                      active={viewMode === "visual"}
-                    >
-                      <CursorClick01 size={16} />
-                    </ToolbarIconButton>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Visual editor</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <ToolbarIconButton
-                      onClick={handleDeviceToggle}
-                      aria-label={DEVICE_LABELS[previewDeviceSize]}
-                    >
-                      <span
-                        key={previewDeviceSize}
-                        className="flex items-center justify-center animate-device-icon-pop"
-                      >
-                        {previewDeviceSize === "mobile" && (
-                          <Phone02 size={16} />
-                        )}
-                        {previewDeviceSize === "tablet" && (
-                          <Tablet01 size={16} />
-                        )}
-                        {previewDeviceSize === "desktop" && (
-                          <Monitor04 size={16} />
-                        )}
-                      </span>
-                    </ToolbarIconButton>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    {DEVICE_LABELS[previewDeviceSize]}
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
-          )}
-
-          {previewState.kind === "iframe" && iframeSrc && (
-            <div
+      <div className="flex-1 overflow-hidden">
+        {isMobile && effectiveEditingMode === "blocks" ? (
+          <div className="relative h-full min-h-0 overflow-hidden">
+            <BlocksPanel virtualMcpId={virtualMcpId} />
+            {floatingPreviewControls}
+          </div>
+        ) : (
+          <ResizablePanelGroup direction="horizontal">
+            <ResizablePanel
+              ref={blocksPanelRef}
+              id="preview-blocks-editor"
+              order={1}
+              defaultSize={effectiveEditingMode === "blocks" ? 40 : 0}
+              minSize={30}
+              collapsible
+              collapsedSize={0}
               className={cn(
-                "h-full transition-[width] duration-250 [transition-timing-function:var(--ease-in-out-cubic)]",
-                previewDeviceSize !== "desktop" &&
-                  "w-full max-w-full border-x border-border bg-background shadow-sm",
+                "overflow-hidden",
+                effectiveEditingMode === "blocks" ? "min-w-[320px]" : "min-w-0",
               )}
-              style={{
-                width:
-                  previewDeviceSize === "desktop"
-                    ? "100%"
-                    : `${PREVIEW_DEVICE_WIDTHS[previewDeviceSize]}px`,
-              }}
             >
-              <iframe
-                // Key on previewUrl: remount when the VM base URL changes (branch
-                // switch). Path navigation is driven by `iframeSrc` state.
-                key={previewState.previewUrl}
-                ref={previewIframeRef}
-                src={iframeSrc}
-                className="w-full h-full border-0"
-                title="Dev Server Preview"
-                onLoad={() => {
-                  // The page finished loading — always clear the navigation
-                  // indicator first, before any of the early returns below.
-                  endNavigation();
-                  // This is the VM dev-server preview (sandboxed running app),
-                  // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
-                  track("vm_preview_loaded", {
-                    view_mode: viewMode,
-                    vm_id: vmEntry?.sandboxHandle ?? null,
-                    // Intentionally excluding the full previewUrl — it can contain
-                    // ephemeral tokens / user data in the query string.
-                  });
-                  // Sync currentPath when the user navigates inside the iframe.
-                  // Skip while a programmatic navigation is pending — stale
-                  // onLoad events from the previous URL would reset us to "/".
-                  if (!activeGlobalSection) {
-                    try {
-                      const iframePath =
-                        previewIframeRef.current?.contentWindow?.location
-                          ?.pathname;
-                      if (!iframePath) return;
-                      const intended = intendedPathRef.current;
-                      if (intended !== null) {
-                        intendedPathRef.current = null;
-                        // Stale onLoad from the previous URL — ignore.
-                        if (normPath(iframePath) !== normPath(intended)) {
-                          return;
+              {effectiveEditingMode === "blocks" && (
+                <BlocksPanel virtualMcpId={virtualMcpId} />
+              )}
+            </ResizablePanel>
+            <ResizableHandle
+              withHandle
+              className={cn(effectiveEditingMode !== "blocks" && "hidden")}
+            />
+            <ResizablePanel
+              id="preview-canvas"
+              order={2}
+              defaultSize={effectiveEditingMode === "blocks" ? 60 : 100}
+              minSize={35}
+              className="min-w-0 overflow-hidden"
+            >
+              <div
+                className={cn(
+                  "h-full relative overflow-hidden",
+                  previewDeviceSize !== "desktop" &&
+                    previewState.kind === "iframe" &&
+                    "flex justify-center bg-muted/30",
+                )}
+              >
+                {navigating && previewState.kind === "iframe" && (
+                  <div className="absolute inset-x-0 top-0 z-40 h-0.5 overflow-hidden bg-primary/15">
+                    <div className="absolute inset-y-0 w-2/5 rounded-full bg-primary animate-preview-nav" />
+                  </div>
+                )}
+
+                {showBootingOverlay && (
+                  <div className="absolute inset-0 z-30">
+                    <SandboxStateCard
+                      kind="starting"
+                      progress={progress}
+                      claimPhase={claimPhase}
+                    />
+                  </div>
+                )}
+
+                {previewState.kind === "suspended" && (
+                  <div className="absolute inset-0 z-30">
+                    <SandboxStateCard
+                      kind="suspended"
+                      onResume={lifecycle.resume}
+                    />
+                  </div>
+                )}
+
+                {previewState.kind === "errored" && (
+                  <div className="absolute inset-0 z-30">
+                    <SandboxStateCard
+                      kind="errored"
+                      error={previewState.error}
+                      onRetry={lifecycle.retry}
+                      connectionsHref={`/${org.slug}/settings/connections`}
+                    />
+                  </div>
+                )}
+
+                {effectiveEditingMode === "visual" && !visualElement && (
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
+                    <CursorClick01 size={12} />
+                    Click any element to ask the AI
+                  </div>
+                )}
+                {effectiveEditingMode === "visual" && visualElement && (
+                  <VisualEditorPrompt
+                    element={visualElement}
+                    onDismiss={() => setVisualElement(null)}
+                  />
+                )}
+
+                {floatingPreviewControls}
+
+                {previewState.kind === "iframe" && iframeSrc && (
+                  <div
+                    className={cn(
+                      "h-full transition-[width] duration-250 [transition-timing-function:var(--ease-in-out-cubic)]",
+                      previewDeviceSize !== "desktop" &&
+                        "w-full max-w-full border-x border-border bg-background shadow-sm",
+                    )}
+                    style={{
+                      width:
+                        previewDeviceSize === "desktop"
+                          ? "100%"
+                          : `${PREVIEW_DEVICE_WIDTHS[previewDeviceSize]}px`,
+                    }}
+                  >
+                    <iframe
+                      // Key on previewUrl: remount when the VM base URL changes (branch
+                      // switch). Path navigation is driven by `iframeSrc` state.
+                      key={previewState.previewUrl}
+                      ref={previewIframeRef}
+                      src={iframeSrc}
+                      className="w-full h-full border-0"
+                      title="Dev Server Preview"
+                      onLoad={() => {
+                        // The page finished loading — always clear the navigation
+                        // indicator first, before any of the early returns below.
+                        endNavigation();
+                        // This is the VM dev-server preview (sandboxed running app),
+                        // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
+                        track("vm_preview_loaded", {
+                          view_mode: editingMode,
+                          vm_id: vmEntry?.sandboxHandle ?? null,
+                          // Intentionally excluding the full previewUrl — it can contain
+                          // ephemeral tokens / user data in the query string.
+                        });
+                        // Sync currentPath when the user navigates inside the iframe.
+                        // Skip while a programmatic navigation is pending — stale
+                        // onLoad events from the previous URL would reset us to "/".
+                        if (!activeGlobalSection) {
+                          try {
+                            const iframePath =
+                              previewIframeRef.current?.contentWindow?.location
+                                ?.pathname;
+                            if (!iframePath) return;
+                            const intended = intendedPathRef.current;
+                            if (intended !== null) {
+                              intendedPathRef.current = null;
+                              // Stale onLoad from the previous URL — ignore.
+                              if (normPath(iframePath) !== normPath(intended)) {
+                                return;
+                              }
+                            }
+                            // Keep the template as currentPath when the loaded
+                            // path is just the template with params filled in —
+                            // otherwise the page match and param inputs are lost.
+                            if (
+                              normPath(iframePath) === normPath(resolvedPath)
+                            ) {
+                              return;
+                            }
+                            setCurrentPath(iframePath);
+                            persistLastPage({
+                              path: iframePath,
+                              pageKey: pinnedPageKey,
+                              params: pathParamValues,
+                            });
+                          } catch {
+                            // Cross-origin — can't read, keep current value
+                          }
                         }
-                      }
-                      // Keep the template as currentPath when the loaded
-                      // path is just the template with params filled in —
-                      // otherwise the page match and param inputs are lost.
-                      if (normPath(iframePath) === normPath(resolvedPath)) {
-                        return;
-                      }
-                      setCurrentPath(iframePath);
-                      persistLastPage({
-                        path: iframePath,
-                        pageKey: pinnedPageKey,
-                        params: pathParamValues,
-                      });
-                    } catch {
-                      // Cross-origin — can't read, keep current value
-                    }
-                  }
-                  if (viewMode === "visual") injectVisualEditor();
-                }}
-              />
-            </div>
-          )}
-        </div>
+                        if (editingMode === "visual") injectVisualEditor();
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        )}
       </div>
       <CreatePageModal
         open={createPageDialogOpen}

@@ -45,10 +45,10 @@ async function createClonableAgent(
   return { agentId: agent.item.id, threadId: thread.item.id };
 }
 
-test.describe("standalone Blocks panel", () => {
+test.describe("Blocks preview mode", () => {
   test.setTimeout(90_000);
 
-  test("Chat and Blocks share the side panel beside Main on desktop", async ({
+  test("desktop keeps Chat independent and removes Blocks from the workspace toolbar", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -61,58 +61,21 @@ test.describe("standalone Blocks panel", () => {
     );
 
     const chat = page.getByTestId("chat-panel");
-    const blocks = page.getByTestId("blocks-panel-shell");
     const main = page.getByTestId("main-panel");
-    const blocksToggle = page.getByRole("button", {
+    const legacyBlocksToggle = page.getByRole("button", {
       name: "Blocks",
       exact: true,
     });
 
-    await expect(blocksToggle).toBeVisible({ timeout: 30_000 });
     await expect(chat).toBeVisible({ timeout: 30_000 });
     await expect(main).toBeVisible();
-    await expect(blocks).toHaveCount(0);
-
-    await blocksToggle.click();
-    await expect(page).toHaveURL(/sidepanel=blocks/);
-    await expect(page).toHaveURL(/main=settings/);
-    await expect(chat).toHaveCount(0);
-    await expect(blocks).toBeVisible();
-    await expect(main).toBeVisible();
+    await expect(legacyBlocksToggle).toHaveCount(0);
+    await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
 
     await page.getByRole("button", { name: "Preview", exact: true }).click();
     await expect(page).toHaveURL(/main=preview/);
-    await expect(blocks).toBeVisible();
-
-    await blocksToggle.click();
-    await expect(page).toHaveURL(/sidepanel=0/);
+    await expect(chat).toBeVisible();
     await expect(main).toBeVisible();
-    await expect(blocks).toHaveCount(0);
-  });
-
-  test("a Blocks-only workspace preserves the final visible panel guard", async ({
-    authedPage,
-  }) => {
-    const { page, orgSlug } = authedPage;
-    const { agentId, threadId } = await createClonableAgent(
-      page.context().request,
-      orgSlug,
-    );
-    await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=blocks&main=0`,
-    );
-
-    const blocksToggle = page.getByRole("button", {
-      name: "Blocks",
-      exact: true,
-    });
-    await expect(blocksToggle).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("blocks-panel-shell")).toBeVisible({
-      timeout: 30_000,
-    });
-    await expect(page.getByTestId("chat-panel")).toBeHidden();
-    await expect(page.getByTestId("main-panel")).toBeHidden();
-    await expect(blocksToggle).toBeDisabled();
   });
 
   test("mobile renders one workspace surface at a time", async ({
@@ -139,26 +102,14 @@ test.describe("standalone Blocks panel", () => {
     await expect(page).toHaveURL(/main=0/);
     await expect(chatToggle).toHaveAttribute("aria-pressed", "true");
     await expect(chatToggle).toBeDisabled();
-    await expect(page.getByTestId("blocks-panel-shell")).toHaveCount(0);
+    await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
     await expect(page.getByTestId("main-panel")).toHaveCount(0);
-
-    const blocksToggle = page.getByRole("button", {
-      name: "Blocks",
-      exact: true,
-    });
-    await blocksToggle.click();
-    await expect(page).toHaveURL(/sidepanel=blocks/);
-    await expect(chatToggle).toHaveAttribute("aria-pressed", "false");
-    await expect(blocksToggle).toHaveAttribute("aria-pressed", "true");
-    await expect(blocksToggle).toBeDisabled();
-    await expect(page.getByTestId("blocks-panel-shell")).toBeVisible();
 
     await page.getByRole("combobox", { name: "Main panel tab" }).click();
     await page.getByRole("option", { name: "Settings" }).click();
     await expect(page).toHaveURL(/sidepanel=0/);
     await expect(page).toHaveURL(/main=settings/);
-    await expect(blocksToggle).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByTestId("main-panel")).toBeVisible();
-    await expect(page.getByTestId("blocks-panel-shell")).toHaveCount(0);
+    await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
   });
 });

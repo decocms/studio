@@ -57,13 +57,13 @@ describe("resolveDefaultPanelState", () => {
       resolveDefaultPanelState({
         entityMetadata: {
           defaultMainView: { type: "overview" },
-          chatDefaultOpen: true,
+          chatDefaultOpen: false,
         },
         mainParamPresent: false,
         sidePanelParamPresent: true,
-        sidePanelParamValue: "blocks",
+        sidePanelParamValue: "chat",
       }),
-    ).toEqual({ sidePanel: "blocks", mainOpen: true });
+    ).toEqual({ sidePanel: "chat", mainOpen: true });
   });
 
   test("sidepanel=0 keeps a non-Chat default Main-only", () => {
@@ -91,18 +91,6 @@ describe("resolveDefaultPanelState", () => {
     ).toEqual({ sidePanel: "chat", mainOpen: true });
   });
 
-  test("sidepanel=blocks&main=0 produces a Blocks-only workspace", () => {
-    expect(
-      resolveDefaultPanelState({
-        entityMetadata: null,
-        mainParamPresent: true,
-        mainParamValue: 0,
-        sidePanelParamPresent: true,
-        sidePanelParamValue: "blocks",
-      }),
-    ).toEqual({ sidePanel: "blocks", mainOpen: false });
-  });
-
   test("an all-closed state falls back to Chat", () => {
     expect(
       resolveDefaultPanelState({
@@ -126,7 +114,7 @@ describe("canCloseWorkspacePanel", () => {
   test("does not allow closing the final open panel", () => {
     expect(
       canCloseWorkspacePanel("side", {
-        sidePanel: "blocks",
+        sidePanel: "chat",
         mainOpen: false,
       }),
     ).toBe(false);
@@ -137,13 +125,13 @@ describe("canCloseWorkspacePanel", () => {
 });
 
 describe("resolveWorkspacePanelAction", () => {
-  test("switches the shared side panel directly between Chat and Blocks", () => {
+  test("opens Chat when only Main is visible", () => {
     expect(
       resolveWorkspacePanelAction(
-        { type: "toggleSidePanel", sidePanel: "blocks" },
-        { sidePanel: "chat", mainOpen: false },
+        { type: "toggleSidePanel", sidePanel: "chat" },
+        { sidePanel: null, mainOpen: true },
       ),
-    ).toEqual({ sidepanel: "blocks" });
+    ).toEqual({ sidepanel: "chat" });
   });
 
   test("closes the active side panel when Main remains open", () => {
@@ -158,8 +146,8 @@ describe("resolveWorkspacePanelAction", () => {
   test("refuses to close the active side panel when it is the final panel", () => {
     expect(
       resolveWorkspacePanelAction(
-        { type: "toggleSidePanel", sidePanel: "blocks" },
-        { sidePanel: "blocks", mainOpen: false },
+        { type: "toggleSidePanel", sidePanel: "chat" },
+        { sidePanel: "chat", mainOpen: false },
       ),
     ).toBeNull();
   });
@@ -185,7 +173,7 @@ describe("resolveWorkspacePanelAction", () => {
     ).toBeNull();
   });
 
-  test("openSidePanel is idempotent and can switch side-panel content", () => {
+  test("openSidePanel is idempotent and opens Chat when it is closed", () => {
     expect(
       resolveWorkspacePanelAction(
         { type: "openSidePanel", sidePanel: "chat" },
@@ -195,7 +183,7 @@ describe("resolveWorkspacePanelAction", () => {
     expect(
       resolveWorkspacePanelAction(
         { type: "openSidePanel", sidePanel: "chat" },
-        { sidePanel: "blocks", mainOpen: true },
+        { sidePanel: null, mainOpen: true },
       ),
     ).toEqual({ sidepanel: "chat" });
   });
@@ -208,7 +196,7 @@ describe("computeWorkspacePanelSizes", () => {
       { side: 100, main: 0 },
     ],
     [
-      { sidePanel: "blocks" as const, mainOpen: true },
+      { sidePanel: "chat" as const, mainOpen: true },
       { side: 33, main: 67 },
     ],
     [
@@ -224,10 +212,6 @@ describe("mobileSurfaceSearch", () => {
   test("selects exactly one mobile surface", () => {
     expect(mobileSurfaceSearch("chat", "preview")).toEqual({
       sidepanel: "chat",
-      main: 0,
-    });
-    expect(mobileSurfaceSearch("blocks", "preview")).toEqual({
-      sidepanel: "blocks",
       main: 0,
     });
     expect(mobileSurfaceSearch("main", "preview")).toEqual({

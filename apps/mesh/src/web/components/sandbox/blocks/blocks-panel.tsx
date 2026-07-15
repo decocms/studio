@@ -67,8 +67,8 @@ export function BlocksPanel({ virtualMcpId }: { virtualMcpId: string }) {
     return <BlocksErrorState source={state.source} onRetry={retry} />;
   }
 
-  // Blocks edits whatever page Preview is on. The shared workspace target is
-  // published by Preview; when Preview hasn't run yet (e.g. Main showing Code),
+  // Blocks edits whatever page its sibling Preview canvas is on. The shared
+  // workspace target is published by Preview; when Preview hasn't run yet,
   // fall back to the last visited page persisted for this project + branch.
   const target = workspace.state.target;
   const saved =

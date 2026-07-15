@@ -90,13 +90,7 @@ export function WorkspacePanelGroup({
         }
       >
         <PanelCard testId="side-panel">
-          {sidePanel !== null && (
-            <SidePanel
-              kind={sidePanel}
-              virtualMcpId={virtualMcpId}
-              chatContent={chatContent}
-            />
-          )}
+          {sidePanel !== null && <SidePanel chatContent={chatContent} />}
         </PanelCard>
       </ResizablePanel>
 

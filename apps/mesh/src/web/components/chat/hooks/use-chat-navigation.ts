@@ -44,11 +44,7 @@ export function useChatNavigation(): ChatNavigation {
           !isPerThreadTab(prevMain)
         )
           next.main = prevMain;
-        if (
-          prev.sidepanel === "chat" ||
-          prev.sidepanel === "blocks" ||
-          prev.sidepanel === 0
-        ) {
+        if (prev.sidepanel === "chat" || prev.sidepanel === 0) {
           next.sidepanel = prev.sidepanel;
         }
         if (opts?.autosend) next.autosend = AUTOSEND_QUERY_VALUE;
