@@ -1,27 +1,11 @@
-import { useLocalStorage } from "@/web/hooks/use-local-storage";
+import { usePanelWidthPercent } from "@/web/hooks/use-panel-width-percent";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 
 const DEFAULT_BLOCKS_PANEL_WIDTH = 40;
 
-function normalizePanelSizePercent(
-  value: unknown,
-  fallback = DEFAULT_BLOCKS_PANEL_WIDTH,
-): number {
-  const numeric = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0 || numeric >= 100) {
-    return fallback;
-  }
-  return numeric;
-}
-
-function blocksPanelWidthInitializer(existing: number | undefined): number {
-  return normalizePanelSizePercent(existing);
-}
-
 export function useBlocksPanelWidth(): [number, (width: number) => void] {
-  const [stored, setStored] = useLocalStorage(
+  return usePanelWidthPercent(
     LOCALSTORAGE_KEYS.blocksPanelWidth(),
-    blocksPanelWidthInitializer,
+    DEFAULT_BLOCKS_PANEL_WIDTH,
   );
-  return [normalizePanelSizePercent(stored), setStored];
 }
