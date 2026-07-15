@@ -65,9 +65,6 @@ export function buildDescription(repos: RepoOption[]): string {
     "Calling this switches the active repo: it stops the current sandbox and " +
     "the next file/bash tool call boots a fresh sandbox that clones the " +
     "selected repo — the switch takes effect on the following message.";
-  if (repos.length === 0) {
-    return `${base} No repositories have been imported into this organization yet; import one from the app first.`;
-  }
   const list = repos
     .map((r) => `- ${r.owner}/${r.repo} (connectionId: ${r.connectionId})`)
     .join("\n");
@@ -83,6 +80,8 @@ export async function createLoadRepoTool(opts: {
 }) {
   const { ctx, orgId, virtualMcpId, branch, userId } = opts;
   const repos = await listOrgRepos(ctx, orgId);
+  // Nothing to switch between — don't expose the tool at all.
+  if (repos.length === 0) return null;
   const byConnId = new Map(repos.map((r) => [r.connectionId, r]));
 
   return tool({

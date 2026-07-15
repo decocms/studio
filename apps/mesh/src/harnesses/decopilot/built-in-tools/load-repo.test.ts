@@ -12,8 +12,3 @@ test("buildDescription lists each repo with its connectionId", () => {
   expect(desc).toContain("connectionId of the repo to load");
 });
 
-test("buildDescription handles the empty case without listing", () => {
-  const desc = buildDescription([]);
-  expect(desc).toContain("No repositories have been imported");
-  expect(desc).not.toContain("connectionId:");
-});
