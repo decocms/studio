@@ -1,6 +1,7 @@
 import {
   normalizePagePath,
   splitPathTemplate,
+  type PathToken,
 } from "@/web/components/sections-editor/page-path-utils";
 
 /** Entity kind a path param can be filled from. */
@@ -378,18 +379,48 @@ function safeDecode(value: string): string {
   }
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Builds a regex that matches a template's tokens against a real pathname,
+ * capturing each param/catch-all in token order. A non-catch-all param
+ * matches one path segment (`[^/]+`); the catch-all matches the rest
+ * (`.+`, so it keeps internal slashes). Anchored to the whole pathname, so
+ * an earlier param in the template consumes exactly its own segment(s)
+ * instead of bleeding into a later param's match.
+ */
+function templateMatcher(tokens: PathToken[]): {
+  pattern: RegExp;
+  order: string[];
+} {
+  const order: string[] = [];
+  let source = "^";
+  for (const token of tokens) {
+    if (token.type === "text") {
+      source += escapeRegExp(token.text);
+    } else {
+      order.push(token.name);
+      source += token.name === "*" ? "(.+)" : "([^/]+)";
+    }
+  }
+  return { pattern: new RegExp(`${source}$`), order };
+}
+
 /**
  * The value to commit into `paramName` for an entity URL, derived RELATIVE to
- * the page template — no `/p` or provider-specific shape assumed. The template's
- * static text before and after the param is stripped from the entity pathname;
- * the remainder is the value:
+ * the page template — no `/p` or provider-specific shape assumed. Matches the
+ * entity pathname against the whole template (every param/catch-all consumes
+ * its own segment), then reads out `paramName`'s captured group:
  *
- * - `/apple-watch/p`            on `/:slug/p`        → `apple-watch`
- * - `/eau-de-toilette-100ml`    on `/*`              → `eau-de-toilette-100ml`
- * - `/granado/x`                on `/granado/:slug`  → `x`
+ * - `/apple-watch/p`             on `/:slug/p`             → `apple-watch`
+ * - `/eau-de-toilette-100ml`     on `/*`                   → `eau-de-toilette-100ml`
+ * - `/granado/x`                 on `/granado/:slug`       → `x`
+ * - `/electronics/apple-watch/p` on `/:category/:slug/p`   → `apple-watch`
  *
  * Catch-all values keep internal slashes (multi-segment). Returns null when the
- * URL is unusable.
+ * URL is unusable or the pathname doesn't match the template's shape.
  */
 export function valueFromEntityUrl(
   url: unknown,
@@ -406,29 +437,12 @@ export function valueFromEntityUrl(
   // Drop a trailing slash so it matches the normalized template's static text.
   pathname = pathname.replace(/\/+$/, "");
   const tokens = splitPathTemplate(normalizePagePath(template));
-  const idx = tokens.findIndex(
-    (t) => t.type === "param" && t.name === paramName,
-  );
-  if (idx === -1) return null;
-  const before = tokens
-    .slice(0, idx)
-    .map((t) => (t.type === "text" ? t.text : ""))
-    .join("");
-  const after = tokens
-    .slice(idx + 1)
-    .map((t) => (t.type === "text" ? t.text : ""))
-    .join("");
-  // Strip the trailing static text first, then the leading — a shared boundary
-  // slash (e.g. `/p` after `/:slug`) must not be consumed twice.
-  let rest = pathname;
-  if (after && rest.endsWith(after)) {
-    rest = rest.slice(0, rest.length - after.length);
-  }
-  rest =
-    before && rest.startsWith(before)
-      ? rest.slice(before.length)
-      : rest.replace(/^\/+/, "");
-  rest = rest.replace(/^\/+|\/+$/g, "");
+  const { pattern, order } = templateMatcher(tokens);
+  const paramIdx = order.indexOf(paramName);
+  if (paramIdx === -1) return null;
+  const match = pathname.match(pattern);
+  if (!match) return null;
+  const rest = match[paramIdx + 1]?.replace(/^\/+|\/+$/g, "");
   return rest ? safeDecode(rest) : null;
 }
 

@@ -256,6 +256,23 @@ describe("valueFromEntityUrl", () => {
     expect(valueFromEntityUrl("/p", "/:slug/p", "slug")).toBeNull();
     expect(valueFromEntityUrl("/x/p", "/*", "missing")).toBeNull();
   });
+
+  test("a leading dynamic param doesn't bleed into a later param's value", () => {
+    expect(
+      valueFromEntityUrl(
+        "/electronics/apple-watch/p",
+        "/:category/:slug/p",
+        "slug",
+      ),
+    ).toBe("apple-watch");
+    expect(
+      valueFromEntityUrl(
+        "/electronics/apple-watch/p",
+        "/:category/:slug/p",
+        "category",
+      ),
+    ).toBe("electronics");
+  });
 });
 
 describe("productOptionsFromPayload", () => {
