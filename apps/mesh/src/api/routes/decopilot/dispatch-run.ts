@@ -1323,7 +1323,7 @@ async function prepareRun(
     //   - `prepareLinkWorkDispatch` returns it verbatim so the thread gate can
     //     publish it as the link work item's `harnessInput`.
 
-    // Resolve mesh-storage: URIs to fresh presigned URLs for the current user
+    // Resolve studio-storage: URIs to fresh presigned URLs for the current user
     // message only. The v3 harness contract carries one wire-ready userMessage;
     // long-lived CLI context is represented separately by harness.sessionId.
     const wireUserMessage = materializedRequestMessage

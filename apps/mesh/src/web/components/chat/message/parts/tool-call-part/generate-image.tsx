@@ -14,10 +14,10 @@ import { getToolPartErrorText, safeStringifyFormatted } from "../utils.ts";
 import { ImageLightbox } from "../../../image-lightbox.tsx";
 import type { UsageStats } from "@/web/lib/usage-utils.ts";
 import { formatDuration } from "@/web/lib/format-time.ts";
-import { parseMeshStorageKey } from "@/api/routes/decopilot/mesh-storage-uri";
+import { parseStudioStorageKey } from "@/api/routes/decopilot/studio-storage-uri";
 
 function resolveImageSrc(uri: string, orgSlug: string): string {
-  const key = parseMeshStorageKey(uri);
+  const key = parseStudioStorageKey(uri);
   if (key !== null) return `/api/${orgSlug}/files/${key}`;
   // data: URIs or any other URL — use as-is
   return uri;
@@ -72,7 +72,7 @@ function ReferenceImageChip({
 }) {
   const src = resolveImageSrc(uri, orgSlug);
   const label =
-    parseMeshStorageKey(uri) !== null
+    parseStudioStorageKey(uri) !== null
       ? uri.slice(uri.lastIndexOf("/") + 1)
       : "reference";
 

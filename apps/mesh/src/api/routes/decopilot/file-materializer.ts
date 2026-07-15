@@ -4,19 +4,19 @@
  * Two-phase pipeline for handling file attachments in chat messages:
  *
  * Phase 1 — uploadFileParts (called once, before saving to DB)
- *   data: URL  →  org-fs uploads volume  →  mesh-storage:{key}  stored in DB
- *   The stable `mesh-storage:` URI never expires and is safe to persist.
+ *   data: URL  →  org-fs uploads volume  →  studio-storage:{key}  stored in DB
+ *   The stable `studio-storage:` URI never expires and is safe to persist.
  *   Bytes land in the `uploads` volume under the thread's folder
  *   (`uploads/<threadId>/<filename>`) — the Library lists them and, on
  *   deployments that mount org-fs into sandboxes, the agent sees them at
  *   `org/upload/<filename>` via the per-run symlink (no copy step). The
- *   mesh-storage URI points at the volume's object key (`_fs/uploads/...`),
+ *   studio-storage URI points at the volume's object key (`_fs/uploads/...`),
  *   so the presign pipeline below works unchanged. The legacy
  *   `chat-uploads/<uuid>` keyspace is read-only legacy: old threads' keys
  *   still resolve, new writes never go there.
  *
  * Phase 2 — resolveStorageRefs (called every turn, before the model)
- *   mesh-storage:{key}  →  fresh presigned GET URL  (in-memory only)
+ *   studio-storage:{key}  →  fresh presigned GET URL  (in-memory only)
  *   File parts get a live URL the AI SDK / vision model can fetch.
  *   The text annotation also has a stable redirect URL the LLM can hand
  *   to downstream MCP tools.
@@ -28,10 +28,10 @@ import { fsObjectKey } from "@/file-storage/org-fs-path";
 import { detectContentType, toFilesUrl } from "@/object-storage/key-utils";
 import type { ChatMessage } from "./types";
 import {
-  toMeshStorageUri,
-  parseMeshStorageKey,
-  meshStorageRegex,
-} from "./mesh-storage-uri";
+  toStudioStorageUri,
+  parseStudioStorageKey,
+  studioStorageRegex,
+} from "./studio-storage-uri";
 
 /**
  * MIME types we never hand to providers as native file parts.
@@ -256,8 +256,8 @@ async function storeAttachment(
 
 /**
  * Upload file parts that carry `data:` URLs to org-scoped storage.
- * Stores stable `mesh-storage:{key}` URIs in the message — safe to persist to DB.
- * The text annotation also uses stable `mesh-storage:` URIs and a redirect URL
+ * Stores stable `studio-storage:{key}` URIs in the message — safe to persist to DB.
+ * The text annotation also uses stable `studio-storage:` URIs and a redirect URL
  * so the caller can reconstruct them without further DB writes.
  *
  * Only the last user message is processed — historical messages are skipped
@@ -342,7 +342,7 @@ export async function uploadFileParts(
 
       return {
         dataUrl,
-        meshStorageUrl: toMeshStorageUri(stored.key),
+        studioStorageUrl: toStudioStorageUri(stored.key),
         redirectUrl: toFilesUrl(ctx.baseUrl, orgSlug, stored.key),
         filename,
         sandboxPath: stored.sandboxPath,
@@ -360,7 +360,7 @@ export async function uploadFileParts(
       return {
         // No data: URL to swap — the inline text part stays untouched.
         dataUrl: null,
-        meshStorageUrl: toMeshStorageUri(stored.key),
+        studioStorageUrl: toStudioStorageUri(stored.key),
         redirectUrl: toFilesUrl(ctx.baseUrl, orgSlug, stored.key),
         filename,
         sandboxPath: stored.sandboxPath,
@@ -373,25 +373,25 @@ export async function uploadFileParts(
   );
   if (successful.length === 0) return messages;
 
-  // Annotation stored in DB uses stable mesh-storage: URIs. Files in the
+  // Annotation stored in DB uses stable studio-storage: URIs. Files in the
   // uploads volume also carry their in-sandbox path so the model reads them
   // directly instead of reaching for a copy tool.
   const urlAnnotations = successful
     .map((r) =>
       r.sandboxPath
-        ? `- ${r.filename}: ${r.sandboxPath} (tool URL: ${r.meshStorageUrl})`
-        : `- ${r.filename}: ${r.meshStorageUrl}`,
+        ? `- ${r.filename}: ${r.sandboxPath} (tool URL: ${r.studioStorageUrl})`
+        : `- ${r.filename}: ${r.studioStorageUrl}`,
     )
     .join("\n");
   const annotationText = successful.some((r) => r.sandboxPath)
     ? `[Attached files — already inside your sandbox; read them at the given path. The tool URL is only for tools that take a URL argument]\n${urlAnnotations}`
     : `[Uploaded files — use these URLs when calling tools]\n${urlAnnotations}`;
 
-  // Replace data: URLs with mesh-storage: in file parts (inline text
+  // Replace data: URLs with studio-storage: in file parts (inline text
   // attachments have no data: URL — their text part stays untouched).
-  const dataUrlToMeshStorage = new Map<string, string>(
+  const dataUrlToStudioStorage = new Map<string, string>(
     successful.flatMap((r) =>
-      r.dataUrl ? [[r.dataUrl, r.meshStorageUrl] as const] : [],
+      r.dataUrl ? [[r.dataUrl, r.studioStorageUrl] as const] : [],
     ),
   );
 
@@ -403,9 +403,9 @@ export async function uploadFileParts(
     ) {
       return part;
     }
-    const meshUrl = dataUrlToMeshStorage.get(part.url);
-    if (!meshUrl) return part;
-    return { ...part, url: meshUrl };
+    const storageUrl = dataUrlToStudioStorage.get(part.url);
+    if (!storageUrl) return part;
+    return { ...part, url: storageUrl };
   });
 
   // Inject annotation into the first text part
@@ -438,9 +438,9 @@ export async function uploadFileParts(
 // ============================================================================
 
 /**
- * Resolve `mesh-storage:` URIs in file parts to fresh presigned GET URLs so
+ * Resolve `studio-storage:` URIs in file parts to fresh presigned GET URLs so
  * the AI SDK / vision model can fetch the image. Text parts are left unchanged
- * — they keep the opaque `mesh-storage:` references that the LLM passes
+ * — they keep the opaque `studio-storage:` references that the LLM passes
  * verbatim to tool arguments. The tool-call interceptor (resolveArgsStorageRefs)
  * converts those references to presigned URLs at call time.
  *
@@ -465,7 +465,7 @@ export async function resolveStorageRefs(
       : { ...msg, parts: filteredParts };
   });
 
-  // Collect unique mesh-storage: keys from remaining file parts (not text)
+  // Collect unique studio-storage: keys from remaining file parts (not text)
   const keysToResolve = new Set<string>();
   for (const msg of filtered) {
     for (const part of msg.parts) {
@@ -474,7 +474,7 @@ export async function resolveStorageRefs(
         "url" in part &&
         typeof part.url === "string"
       ) {
-        const key = parseMeshStorageKey(part.url);
+        const key = parseStudioStorageKey(part.url);
         if (key) keysToResolve.add(key);
       }
     }
@@ -527,11 +527,11 @@ export async function resolveStorageRefs(
   );
 
   if (keyToResolved.size === 0) {
-    // No mesh-storage: refs in remaining file parts — safety net for legacy data: URLs
+    // No studio-storage: refs in remaining file parts — safety net for legacy data: URLs
     return legacyMaterialize(filtered, ctx);
   }
 
-  // Replace mesh-storage: in file part URLs only; leave text parts untouched
+  // Replace studio-storage: in file part URLs only; leave text parts untouched
   const resolved = filtered.map((msg) => {
     const newParts = msg.parts.map((part) => {
       if (
@@ -539,7 +539,7 @@ export async function resolveStorageRefs(
         "url" in part &&
         typeof part.url === "string"
       ) {
-        const key = parseMeshStorageKey(part.url);
+        const key = parseStudioStorageKey(part.url);
         if (key) {
           const entry = keyToResolved.get(key);
           if (entry?.kind === "url") return { ...part, url: entry.url };
@@ -568,7 +568,7 @@ export async function resolveStorageRefs(
 
 /**
  * Deep-walk a tool-call arguments object and replace every string value that
- * contains a `mesh-storage:` URI with a fresh presigned GET URL.
+ * contains a `studio-storage:` URI with a fresh presigned GET URL.
  *
  * Called by the tool middleware in helpers.ts before forwarding the call to
  * the MCP client, so tools always receive a real fetchable URL regardless of
@@ -578,9 +578,9 @@ export async function resolveArgsStorageRefs(
   args: Record<string, unknown>,
   ctx: StudioContext,
 ): Promise<Record<string, unknown>> {
-  // Collect all mesh-storage: keys present anywhere in the args tree
+  // Collect all studio-storage: keys present anywhere in the args tree
   const keysFound = new Set<string>();
-  collectMeshStorageKeys(args, keysFound);
+  collectStudioStorageKeys(args, keysFound);
   if (keysFound.size === 0) return args;
 
   // Resolve all keys to fresh presigned URLs in one batch
@@ -596,16 +596,16 @@ export async function resolveArgsStorageRefs(
   return substituteValues(args, keyToPresigned) as Record<string, unknown>;
 }
 
-function collectMeshStorageKeys(value: unknown, out: Set<string>): void {
+function collectStudioStorageKeys(value: unknown, out: Set<string>): void {
   if (typeof value === "string") {
-    for (const match of value.matchAll(meshStorageRegex())) {
+    for (const match of value.matchAll(studioStorageRegex())) {
       out.add(match[1]!);
     }
   } else if (Array.isArray(value)) {
-    for (const item of value) collectMeshStorageKeys(item, out);
+    for (const item of value) collectStudioStorageKeys(item, out);
   } else if (value !== null && typeof value === "object") {
     for (const v of Object.values(value as Record<string, unknown>)) {
-      collectMeshStorageKeys(v, out);
+      collectStudioStorageKeys(v, out);
     }
   }
 }
@@ -616,8 +616,8 @@ function substituteValues(
 ): unknown {
   if (typeof value === "string") {
     return value.replace(
-      meshStorageRegex(),
-      (_, key: string) => keyToPresigned.get(key) ?? toMeshStorageUri(key),
+      studioStorageRegex(),
+      (_, key: string) => keyToPresigned.get(key) ?? toStudioStorageUri(key),
     );
   }
   if (Array.isArray(value)) {
@@ -640,7 +640,7 @@ function substituteValues(
 
 /**
  * Upload any remaining `data:` URLs in the last user message.
- * Only runs when resolveStorageRefs finds no mesh-storage: refs —
+ * Only runs when resolveStorageRefs finds no studio-storage: refs —
  * i.e. for threads created before the stable-key pipeline was deployed.
  */
 async function legacyMaterialize(
