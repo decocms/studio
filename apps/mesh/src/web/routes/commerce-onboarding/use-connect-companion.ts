@@ -139,6 +139,14 @@ export function useConnectCompanion({
         card.bindingType,
         id,
       );
+      // GitHub carries a free-standing github_repo string on the CD state that is
+      // NOT tied to this connection id (unlike the binding value). A stale repo
+      // left over from a previous store would silently leak into the next run's
+      // report, so (re)connecting GitHub resets it — the user re-picks the repo in
+      // the config form against the just-connected account.
+      if (card.bindingType === "github") {
+        delete merged.github_repo;
+      }
       await updateConnection(cdConnectionId, { configuration_state: merged });
 
       // Step 3: refresh (flip to Connected).
