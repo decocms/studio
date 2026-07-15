@@ -125,6 +125,7 @@ export function BlocksPanel({ virtualMcpId }: { virtualMcpId: string }) {
           }
           onExitSeo={workspace.consumeEditSeo}
           onSaved={workspace.notifySaved}
+          onVariantPreviewOverride={workspace.setVariantOverride}
         />
       </Suspense>
     </div>

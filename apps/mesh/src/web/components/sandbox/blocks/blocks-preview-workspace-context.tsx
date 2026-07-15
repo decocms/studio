@@ -12,6 +12,7 @@ interface BlocksPreviewWorkspaceContextValue {
   editSeo: (target: Extract<BlocksTarget, { kind: "page" }>) => void;
   consumeEditSeo: () => void;
   notifySaved: () => void;
+  setVariantOverride: (params: string[] | null) => void;
 }
 
 const BlocksPreviewWorkspaceContext =
@@ -35,6 +36,8 @@ export function BlocksPreviewWorkspaceProvider({
         editSeo: (target) => dispatch({ type: "edit-seo", target }),
         consumeEditSeo: () => dispatch({ type: "consume-edit-seo" }),
         notifySaved: () => dispatch({ type: "saved" }),
+        setVariantOverride: (params) =>
+          dispatch({ type: "variant-override", params }),
       }}
     >
       {children}
