@@ -27,8 +27,22 @@
 
 import { createConcurrencyGate } from "@/harnesses/decopilot/built-in-tools/subagent-concurrency";
 
-const gate = createConcurrencyGate(
-  Number(process.env.DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS ?? 3),
-);
+// A non-finite / non-positive env value would make the gate never block (fail
+// OPEN — the exact unbounded OOM this file prevents), so guard the default.
+const parsed = Number(process.env.DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS);
+const MAX = Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
 
-export const acquireHostedRunSlot = (): Promise<() => void> => gate.acquire();
+const gate = createConcurrencyGate(MAX);
+
+export const acquireHostedRunSlot = (): Promise<() => void> => {
+  // Log when a run parks so a saturating pod is visible in prod — the whole
+  // point of the cap. (gate exposes active/pending for exactly this.)
+  if (gate.active >= MAX) {
+    console.log("[hostedHarness] run parked at concurrency cap", {
+      active: gate.active,
+      pending: gate.pending,
+      max: MAX,
+    });
+  }
+  return gate.acquire();
+};
