@@ -63,7 +63,7 @@ function parsePositiveInteger(raw: unknown): number | undefined {
  * malformed) so callers can branch on it safely.
  */
 export function getRepoScope(connection: {
-  metadata: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
 }): RepoScopeRecipe | null {
   const raw = connection.metadata?.repoScope as
     | Partial<RepoScopeRecipe>

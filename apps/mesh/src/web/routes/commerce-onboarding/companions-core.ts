@@ -1,4 +1,5 @@
 import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
+import { getRepoScope } from "@/shared/github-repo-scope";
 import type { CompanionCopy } from "./companions.ts";
 
 export interface BindingRequirement {
@@ -13,6 +14,7 @@ export interface CandidateConnection {
   connection_token?: string | null;
   oauth_config?: unknown | null;
   configuration_state?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
   status?: string | null;
   updated_at?: string | null;
 }
@@ -214,8 +216,12 @@ export function resolveCandidate(
 ): string | null {
   const matches = connections.filter(
     (c) =>
-      c.app_name === bindingType ||
-      (!!registryAppId && c.app_id === registryAppId),
+      (c.app_name === bindingType ||
+        (!!registryAppId && c.app_id === registryAppId)) &&
+      // Repo-scoped github children (per-agent import / "Add repo") share the
+      // deco/mcp-github identity but can't list installations — linking one
+      // breaks the repo picker. Only org-level connections are valid candidates.
+      getRepoScope(c) === null,
   );
   if (matches.length === 0) return null;
   matches.sort((a, b) => {
