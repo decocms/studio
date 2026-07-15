@@ -49,6 +49,24 @@ export async function getStaticPaths() {
           ) === index,
       ),
 
+    // Old "mcp-mesh" slugs (renamed to "studio") — keep legacy URLs redirecting
+    ...allDocs
+      .filter(
+        (doc) =>
+          doc.id.startsWith("deco-chat/") && doc.id.split("/")[2] === "studio",
+      )
+      .map((doc) => {
+        const parts = doc.id.split("/");
+        return {
+          params: {
+            version: "deco-chat",
+            locale: parts[1],
+            slug: ["mcp-mesh", ...parts.slice(3)].join("/"),
+          },
+          props: { doc: null, version: "deco-chat" },
+        };
+      }),
+
     // Actual versioned paths
     ...VERSION_IDS.flatMap((version) => [
       // Root version paths
@@ -96,6 +114,11 @@ if (version === "latest") {
 }
 
 // Legacy redirects
+if (slug?.startsWith("mcp-mesh/")) {
+  return Astro.redirect(
+    `/${version}/${lang}/${slug.replace(/^mcp-mesh\//, "studio/")}`,
+  );
+}
 if (slug === "getting-started/context-engineers") {
   return Astro.redirect(`/${version}/${lang}/getting-started/developers`);
 }

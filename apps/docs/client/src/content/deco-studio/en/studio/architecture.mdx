@@ -134,7 +134,7 @@ It is wired on **both** providers, with different mount mechanics:
 | | Cloud sandbox | Desktop sandbox |
 | --- | --- | --- |
 | Who mounts | a **privileged sidecar** container (the unprivileged daemon can't mount) | the **daemon directly** (it has full permissions) |
-| Config delivery | post-bind: mesh `POST /_sandbox/orgfs-config`; the daemon relays it to a shared control volume the sidecar watches (warm-pool claims reject `spec.env`) | boot env: `ORGFS_CONFIG`, mounted at daemon startup |
+| Config delivery | post-bind: Studio `POST /_sandbox/orgfs-config`; the daemon relays it to a shared control volume the sidecar watches (warm-pool claims reject `spec.env`) | boot env: `ORGFS_CONFIG`, mounted at daemon startup |
 | Propagation | `rclone` with `allowOther` so the mount propagates to the main container | single client — no propagation needed |
 
 ## Desktop

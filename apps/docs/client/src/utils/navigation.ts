@@ -12,7 +12,7 @@ export async function getNavigationLinks(
   locale: string,
 ): Promise<{ previous?: NavigationLink; next?: NavigationLink }> {
   const allDocs = await getCollection("docs");
-  // doc.id format: "version/locale/...path" (e.g. "latest/en/mcp-mesh/overview")
+  // doc.id format: "version/locale/...path" (e.g. "deco-studio/en/studio/overview")
   const [docVersion, docLocale] = currentDocId.split("/");
   const isLatest = docVersion === LATEST_VERSION.id;
   const legacyPrefixes = ["no-code-guides/", "full-code-guides/"];
@@ -80,20 +80,20 @@ export async function getNavigationLinks(
     // Introduction
     "introduction",
 
-    // MCP Mesh section
-    "mcp-mesh/overview",
-    "mcp-mesh/quickstart",
-    "mcp-mesh/concepts",
-    "mcp-mesh/connect-clients",
-    "mcp-mesh/authentication",
-    "mcp-mesh/authorization-and-roles",
-    "mcp-mesh/mcp-servers",
-    "mcp-mesh/mcp-gateways",
-    "mcp-mesh/api-keys",
-    "mcp-mesh/monitoring",
-    "mcp-mesh/api-reference",
-    "mcp-mesh/deploy/local-docker-compose",
-    "mcp-mesh/deploy/kubernetes-helm-chart",
+    // Studio section
+    "studio/overview",
+    "studio/quickstart",
+    "studio/concepts",
+    "studio/connect-clients",
+    "studio/authentication",
+    "studio/authorization-and-roles",
+    "studio/mcp-servers",
+    "studio/mcp-gateways",
+    "studio/api-keys",
+    "studio/monitoring",
+    "studio/api-reference",
+    "studio/deploy/local-docker-compose",
+    "studio/deploy/kubernetes-helm-chart",
 
     // MCP Studio
     "mcp-studio/overview",
