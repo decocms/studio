@@ -362,18 +362,20 @@ export function matchGscSite(
   if (!contextSiteUrl) return null;
 
   const normalize = (url: string): string => {
-    // Strip sc-domain: prefix
-    if (url.startsWith("sc-domain:")) return url.substring(10);
-    // Parse URL and extract hostname
-    try {
-      const parsed = new URL(url.startsWith("http") ? url : `https://${url}`);
-      let host = parsed.hostname || "";
-      // Remove leading www.
-      if (host.startsWith("www.")) host = host.substring(4);
-      return host;
-    } catch {
-      return url;
-    }
+    // Strip sc-domain: prefix, then fall through to the same www-stripping
+    // as the URL branch below so both formats compare equal.
+    const host = url.startsWith("sc-domain:")
+      ? url.substring(10)
+      : (() => {
+          try {
+            return new URL(url.startsWith("http") ? url : `https://${url}`)
+              .hostname;
+          } catch {
+            return null;
+          }
+        })();
+    if (host === null) return url;
+    return host.startsWith("www.") ? host.substring(4) : host;
   };
 
   const contextNorm = normalize(contextSiteUrl);

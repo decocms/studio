@@ -421,6 +421,13 @@ describe("matchGscSite", () => {
   it("returns null when sites is empty", () => {
     expect(matchGscSite("example.com", [])).toBeNull();
   });
+  it("matches a www sc-domain site against a non-www https site (www stripping must apply to both formats)", () => {
+    const site = matchGscSite("sc-domain:www.example.com", [
+      { siteUrl: "https://example.com/" },
+      { siteUrl: "https://other.com/" },
+    ]);
+    expect(site).toBe("https://example.com/");
+  });
   it("falls back to the raw string instead of throwing on an unparseable siteUrl", () => {
     const site = matchGscSite("not a valid url", [
       { siteUrl: "not a valid url" },
