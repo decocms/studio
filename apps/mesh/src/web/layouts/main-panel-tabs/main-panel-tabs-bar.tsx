@@ -27,7 +27,6 @@ import { selectTabSlots } from "./select-tab-slots";
 import { HeaderTabButton } from "./header-tab-button";
 import { TabOverflowMenu } from "./tab-overflow-menu";
 import { track } from "@/web/lib/posthog-client";
-import { useNeedsRuntimeSetup } from "@/web/components/chat/use-needs-runtime-setup";
 
 const MAX_VISIBLE_TABS = 6;
 
@@ -45,11 +44,6 @@ export function MainPanelTabsBar({
     virtualMcpId,
     taskId,
   });
-
-  // While the org has no usable runtime, you can't open any view — the app is
-  // gated behind connecting a provider (or picking a local coding agent) in the
-  // chat panel. Disable the whole tab strip so it isn't a dead-end open.
-  const needsSetup = useNeedsRuntimeSetup();
 
   const automationsActive = isAutomationsPillActive({ activeTab, mainOpen });
 
@@ -104,11 +98,11 @@ export function MainPanelTabsBar({
           title={tab.title}
           icon={tab.icon}
           active={isTabActive(tab)}
-          disabled={needsSetup || (disableActiveMainToggle && isTabActive(tab))}
+          locked={disableActiveMainToggle && isTabActive(tab)}
           onClick={() => handleSelect(tab.id)}
         />
       ))}
-      {overflow.length > 0 && !needsSetup && (
+      {overflow.length > 0 && (
         <TabOverflowMenu overflow={overflow} onSelect={handleSelect} />
       )}
     </div>
