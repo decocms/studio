@@ -1,7 +1,8 @@
 import type { Task } from "@/web/components/chat/task/types";
 
 /**
- * The agent's existing empty "New chat" thread, or undefined if it has none.
+ * The current user's existing empty "New chat" thread for this agent, or
+ * undefined if they have none.
  *
  * `"New chat"` is the marker of a never-auto-titled thread — a thread gets
  * titled once it completes a *successful* turn. We do NOT gate on `status`
@@ -12,19 +13,24 @@ import type { Task } from "@/web/components/chat/task/types";
  * non-empty, runtime-locked thread — stranding the user on a broken
  * conversation. `harness_id` is pinned on the first message, so `!harness_id`
  * means the thread is genuinely empty. That excludes failed/in-flight threads
- * while still reusing real empty chats. Every entry point that navigates to an
- * agent (the breadcrumb picker, the org-home resolver, the repo switcher, …)
- * reuses this so re-selecting an agent focuses its empty chat instead of
- * minting another.
+ * while still reusing real empty chats. `created_by` scopes the match to the
+ * current user — the thread list is org-wide (it includes teammates' threads
+ * for the activity view), so without this we'd reuse a teammate's empty "New
+ * chat" and strand the user on a read-only thread that isn't theirs. Every
+ * entry point that navigates to an agent (the breadcrumb picker, the org-home
+ * resolver, the repo switcher, …) reuses this so re-selecting an agent focuses
+ * its empty chat instead of minting another.
  */
 export function findReusableNewChat(
   threads: Task[],
   agentId: string,
+  userId: string | undefined,
 ): Task | undefined {
   return threads.find(
     (t) =>
       !t.hidden &&
       t.virtual_mcp_id === agentId &&
+      t.created_by === userId &&
       t.title === "New chat" &&
       !t.harness_id,
   );

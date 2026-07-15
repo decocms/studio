@@ -58,7 +58,8 @@ export function useNavigateToAgent() {
     // Focus the agent's existing empty chat if it has one; otherwise a fresh id
     // (the route loader's ensure-fallback creates the thread on landing).
     const taskId =
-      findReusableNewChat(threads, virtualMcpId)?.id ?? crypto.randomUUID();
+      findReusableNewChat(threads, virtualMcpId, session?.user?.id)?.id ??
+      crypto.randomUUID();
     navigate({
       to: "/$org/$taskId",
       params: { org: org.slug, taskId },

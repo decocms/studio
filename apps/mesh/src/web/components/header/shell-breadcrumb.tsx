@@ -41,6 +41,7 @@ import { AgentScopePicker } from "@/web/components/sidebar/agents-section";
 import { useThreads } from "@/web/components/chat/store/hooks";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { findReusableNewChat } from "@/web/lib/reusable-new-chat";
+import { authClient } from "@/web/lib/auth-client.ts";
 import { usePendingInvitations } from "@/web/hooks/use-pending-invitations";
 
 const crumbBtnClass =
@@ -113,6 +114,7 @@ export function ShellBreadcrumb() {
   };
   const search = useSearch({ strict: false }) as { virtualmcpid?: string };
   const { threads } = useThreads();
+  const { data: session } = authClient.useSession();
   const { setTaskId, createNewTask } = usePanelActions();
   // Pending cross-org invitations surface inside the org switcher; show a dot on
   // its trigger so they're noticed without opening it.
@@ -137,7 +139,7 @@ export function ShellBreadcrumb() {
     // Reuse this agent's existing empty "New chat" if it has one, else start
     // one — so re-selecting the same agent focuses the empty chat instead of
     // piling up duplicates. See findReusableNewChat for why status isn't gated.
-    const existing = findReusableNewChat(threads, id);
+    const existing = findReusableNewChat(threads, id, session?.user?.id);
     if (existing) {
       setTaskId(existing.id, id);
     } else {
