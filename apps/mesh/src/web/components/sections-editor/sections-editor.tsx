@@ -2542,6 +2542,22 @@ export function SectionsEditor({
             )}
           >
             <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+              {headerCrumbs.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => handleBreadcrumbClick(headerCrumbs.length - 2)}
+                  title="Back"
+                  aria-label="Back"
+                  className={cn(
+                    "shrink-0 inline-flex size-6 items-center justify-center rounded-md transition-colors",
+                    showGlobalBanner
+                      ? "text-foreground/80 hover:bg-global-section/15"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                  )}
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+              )}
               {!isGlobalBlockMode && hasMultipleVariants && activeVariant && (
                 <button
                   type="button"
