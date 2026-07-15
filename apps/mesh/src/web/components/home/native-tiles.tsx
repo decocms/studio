@@ -10,7 +10,7 @@
  * the user to connect the backing integration). Recent conversations is still
  * available but `defaultHidden` — re-add it from Customize.
  */
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
@@ -30,6 +30,7 @@ import { useMembers } from "@/web/hooks/use-members";
 import { useTaskBoardItems } from "@/web/hooks/use-task-board-items";
 import { STATUS_CONFIG } from "@/web/layouts/task-board/config";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
+import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { KEYS } from "@/web/lib/query-keys";
 
 const TASKS_TILE_ID = "tasks";
@@ -264,19 +265,26 @@ function TasksTileBody() {
 
 // ---------------------------------------------------------------------------
 // Mock tiles — Coding / Analytics / Sales. Static sample data; a hover overlay
-// invites the user to connect the real integration (not wired yet).
+// opens the connection catalog pre-filtered to the backing integration.
 // ---------------------------------------------------------------------------
 
 function MockConnectOverlay({
   label,
   icon,
+  onConnect,
 }: {
   label: string;
   icon: React.ReactNode;
+  onConnect: () => void;
 }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-background/70 opacity-0 backdrop-blur-sm transition-opacity duration-150 group-hover/mock:opacity-100">
-      <Button size="sm" variant="secondary" className="gap-2 shadow-sm">
+      <Button
+        size="sm"
+        variant="secondary"
+        className="gap-2 shadow-sm"
+        onClick={onConnect}
+      >
         {icon}
         {label}
       </Button>
@@ -284,19 +292,34 @@ function MockConnectOverlay({
   );
 }
 
+/** Opens the connection catalog pre-filtered to the tile's integration. */
 function MockTile({
   children,
   connectLabel,
   connectIcon,
+  connectSearch,
 }: {
   children: React.ReactNode;
   connectLabel: string;
   connectIcon: React.ReactNode;
+  connectSearch: string;
 }) {
+  const [open, setOpen] = useState(false);
   return (
     <div className="group/mock relative flex h-full flex-col overflow-hidden">
       <div className="flex flex-1 flex-col p-3">{children}</div>
-      <MockConnectOverlay label={connectLabel} icon={connectIcon} />
+      <MockConnectOverlay
+        label={connectLabel}
+        icon={connectIcon}
+        onConnect={() => setOpen(true)}
+      />
+      <AddConnectionDialog
+        mode="browse"
+        open={open}
+        onOpenChange={setOpen}
+        defaultTab="all"
+        initialSearch={connectSearch}
+      />
     </div>
   );
 }
@@ -341,6 +364,7 @@ function CodingTileBody() {
     <MockTile
       connectLabel="Connect GitHub"
       connectIcon={<GitHubIcon className="size-4" />}
+      connectSearch="GitHub"
     >
       <ContributionsGrid />
       <div className="mt-3 flex flex-col gap-1.5">
@@ -405,6 +429,7 @@ function AnalyticsTileBody() {
     <MockTile
       connectLabel="Connect Google Analytics"
       connectIcon={<BarChart10 className="size-4" />}
+      connectSearch="Google Analytics"
     >
       <div className="flex gap-6">
         <StatNumber value="12.4k" label="Pageviews" />
@@ -438,6 +463,7 @@ function SalesTileBody() {
     <MockTile
       connectLabel="Connect VTEX or Shopify"
       connectIcon={<ShoppingCart01 className="size-4" />}
+      connectSearch="Shopify"
     >
       <div className="flex gap-6">
         <StatNumber value="$8,240" label="Revenue" />
