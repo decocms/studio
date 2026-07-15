@@ -237,7 +237,6 @@ export {
   getWellKnownCommunityRegistryConnection,
   getWellKnownSelfConnection,
   getWellKnownDevAssetsConnection,
-  getWellKnownMcpStudioConnection,
   getWellKnownCommerceDiscoveryConnection,
   // Virtual MCP factory functions
   getWellKnownDecopilotVirtualMCP,
