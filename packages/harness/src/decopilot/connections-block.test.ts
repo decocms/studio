@@ -31,9 +31,9 @@ describe("buildConnectionsBlock", () => {
       ]),
     );
     expect(result).toContain("<available-connections>");
-    expect(result).toContain("name,tools");
-    expect(result).toContain(`Gmail,"send_email; list_inbox"`);
-    expect(result).toContain(`Slack,post_message`);
+    expect(result).toContain("id,name,tools");
+    expect(result).toContain(`conn_gmail,Gmail,"send_email; list_inbox"`);
+    expect(result).toContain(`conn_slack,Slack,post_message`);
     expect(result).toContain("<connections-usage>");
     expect(result).toContain("enable_tool");
   });
@@ -49,8 +49,8 @@ describe("buildConnectionsBlock", () => {
         ["conn_outlook", "Outlook"],
       ]),
     );
-    expect(result).toContain(`Gmail,conn_gmail_send_email`);
-    expect(result).toContain(`Outlook,conn_outlook_send_email`);
+    expect(result).toContain(`conn_gmail,Gmail,conn_gmail_send_email`);
+    expect(result).toContain(`conn_outlook,Outlook,conn_outlook_send_email`);
   });
 
   test("falls back to the connection id when no title is mapped", () => {
@@ -58,7 +58,7 @@ describe("buildConnectionsBlock", () => {
       [tool("ping", "ping", "conn_unknown")],
       titleMap([]),
     );
-    expect(result).toContain(`conn_unknown,ping`);
+    expect(result).toContain(`conn_unknown,conn_unknown,ping`);
   });
 
   test("sorts connections lexicographically by title for cache stability", () => {
@@ -88,9 +88,9 @@ describe("buildConnectionsBlock", () => {
         ["conn_c", "C\nnewline"],
       ]),
     );
-    expect(result).toContain(`"A, comma",send`);
-    expect(result).toContain(`"B ""quote""",post`);
-    expect(result).toContain(`"C\nnewline",call`);
+    expect(result).toContain(`conn_a,"A, comma",send`);
+    expect(result).toContain(`conn_b,"B ""quote""",post`);
+    expect(result).toContain(`conn_c,"C\nnewline",call`);
   });
 
   test("does not split tool names that contain underscores", () => {
@@ -101,6 +101,8 @@ describe("buildConnectionsBlock", () => {
       ],
       titleMap([["conn_slack", "Slack"]]),
     );
-    expect(result).toContain(`Slack,"delete_message; list_channels"`);
+    expect(result).toContain(
+      `conn_slack,Slack,"delete_message; list_channels"`,
+    );
   });
 });

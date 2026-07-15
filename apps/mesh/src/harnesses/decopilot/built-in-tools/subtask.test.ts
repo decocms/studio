@@ -43,6 +43,15 @@ describe("SubtaskInputSchema", () => {
       expect(result.success).toBe(true);
     });
 
+    test("accepts a concrete MCP connection id as agent_id", () => {
+      const result = SubtaskInputSchema.safeParse({
+        prompt: "Inspect the latest orders",
+        agent_id: "conn_orders",
+      });
+
+      expect(result.success).toBe(true);
+    });
+
     test("accepts prompt at max length boundary", () => {
       const input = {
         prompt: "a".repeat(50_000),

@@ -369,7 +369,7 @@ async function runSubtaskStep(
     ...(models.webSearch ? { webSearch: models.webSearch } : {}),
     ...(models.deepResearch ? { deepResearch: models.deepResearch } : {}),
   };
-  const { mcpClient, targetRef } = await resolveSubagent(
+  const { mcpClient, targetKind, targetRef } = await resolveSubagent(
     meshCtx,
     ctx.orgId,
     targetId,
@@ -404,16 +404,20 @@ async function runSubtaskStep(
     isPlanMode: false,
     passthroughClient: mcpClient as never,
     pendingImages: [],
-    // Self-clone shares the parent's sandbox (same virtualMcpId/branch/userId);
-    // a cross-agent delegate has a different sandbox identity but the same keying.
-    vmContext: {
-      virtualMcpId: targetRef.id,
-      branch: targetRef.repo
-        ? (ctx.branch ?? `thread:${ctx.threadId}`)
-        : "ephemeral",
-      userId: ctx.userId,
-      threadId: ctx.threadId,
-    },
+    // Persisted agents may own a sandbox. A concrete MCP target is deliberately
+    // connection-only: provisioning VM tools would reintroduce the Virtual MCP
+    // row requirement this ephemeral path is designed to remove.
+    vmContext:
+      targetKind === "virtual-mcp"
+        ? {
+            virtualMcpId: targetRef.id,
+            branch: targetRef.repo
+              ? (ctx.branch ?? `thread:${ctx.threadId}`)
+              : "ephemeral",
+            userId: ctx.userId,
+            threadId: ctx.threadId,
+          }
+        : null,
     taskId: ctx.threadId,
     agentId: targetRef.id,
     // Depth-1: a backgrounded subagent can't itself background/re-delegate.
@@ -438,6 +442,7 @@ async function runSubtaskStep(
       provider,
       models: harnessModels,
       messages: [{ role: "user", content: input.prompt }],
+      systemAgentInstructions: targetRef.instructions,
       abortSignal: abort.signal,
       stepLimit: SUBAGENT_STEP_LIMIT,
       toolApprovalLevel: "auto",

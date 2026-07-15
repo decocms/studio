@@ -55,6 +55,7 @@ export interface RunAgentLoopOptions {
     id: string;
     instructions?: string;
     repo?: GithubRepo;
+    delegationTargetIds?: string[] | null;
   };
   mcpClient: Client;
   provider: MeshProvider;

@@ -77,11 +77,13 @@ Subtasks can't ask you questions and can't create additional subtasks — they r
 
 **Parallel work** — if two pieces of work don't depend on each other, run them as separate subtasks at the same time.
 
-### Using specialist agents in subtasks
+### Using specialist agents and connections in subtasks
 
 You can run a subtask with a specific [agent](/en/studio/agents) — one configured for a particular domain. The agent brings its own focused toolset and instructions without affecting your main conversation.
 
-**Example**: Your main task is coordinating order fulfillment. You start subtasks using an **Inventory Agent** to check stock, a **Shipping Agent** to plan logistics, and a **Customer Service Agent** to prepare support notes. Each runs independently; your main task gets the summaries and coordinates the outcome.
+You can also target a concrete MCP connection directly. Decopilot creates an ephemeral subagent for that run with the connection's tools, so you don't need to create a dedicated agent first.
+
+**Example**: Your main task is coordinating order fulfillment. You start subtasks using an **Inventory Agent** to check stock, a ShipStation MCP connection directly to plan logistics, and a **Customer Service Agent** to prepare support notes. Each runs independently; your main task gets the summaries and coordinates the outcome.
 
 ---
 

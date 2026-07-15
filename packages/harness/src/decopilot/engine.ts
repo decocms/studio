@@ -90,7 +90,11 @@ export interface HarnessAssembledTools {
  */
 export interface RunEngineArgs {
   kind: "agent" | "subagent";
-  virtualMcp: { id: string; repo?: GithubRepo };
+  virtualMcp: {
+    id: string;
+    repo?: GithubRepo;
+    delegationTargetIds?: string[] | null;
+  };
   mcpClient: Client;
   provider: MeshProvider;
   models: ModelsConfig;
