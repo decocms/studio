@@ -25,7 +25,9 @@ import {
   MessageChatCircle,
   ShoppingCart01,
 } from "@untitledui/icons";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useConnections, useProjectContext } from "@decocms/mesh-sdk";
+import { getOrgGithubConnections } from "@/shared/github-repo-scope";
+import { useGithubRecentPrs } from "@/web/hooks/use-github-recent-prs";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { useMembers } from "@/web/hooks/use-members";
 import { useTaskBoardItems } from "@/web/hooks/use-task-board-items";
@@ -266,10 +268,37 @@ function TasksTileBody() {
 }
 
 // ---------------------------------------------------------------------------
-// Mock tiles — Coding / Analytics / Sales. Static sample data; a hover overlay
-// connects the backing integration. GitHub / Google Analytics connect directly
-// (single known app); Sales opens the catalog (VTEX or Shopify — user picks).
+// Product tiles — Coding / Analytics / Sales.
+//
+// Disconnected: sample data behind a hover "Connect" overlay (GitHub / Google
+// Analytics connect directly; Sales opens the catalog for VTEX or Shopify).
+// Connected: Coding shows real recent PRs; Analytics / Sales show a "live data
+// coming soon" placeholder until their reporting tools are wired.
 // ---------------------------------------------------------------------------
+
+function TileSkeleton() {
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      {Array.from({ length: 4 }, (_, i) => (
+        <div
+          key={`tile-skeleton-${i}`}
+          className="h-6 w-full animate-pulse rounded-md bg-muted/40"
+        />
+      ))}
+    </div>
+  );
+}
+
+function ComingSoonPanel({ label }: { label: string }) {
+  return (
+    <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+      <CheckCircle className="size-6 text-success/60" />
+      <p className="text-xs text-muted-foreground">
+        {label} connected. Live data coming soon.
+      </p>
+    </div>
+  );
+}
 
 function MockConnectOverlay({
   label,
@@ -361,6 +390,25 @@ const MOCK_PRS = [
 ];
 
 function CodingTileBody() {
+  return (
+    <Suspense fallback={<TileSkeleton />}>
+      <CodingTileInner />
+    </Suspense>
+  );
+}
+
+function CodingTileInner() {
+  const connection = getOrgGithubConnections(
+    useConnections({ slug: "mcp-github" }),
+  )[0];
+  return connection ? (
+    <CodingConnected connectionId={connection.id} />
+  ) : (
+    <CodingMock />
+  );
+}
+
+function CodingMock() {
   const { connect, isConnecting } = useConnectApp("deco/mcp-github");
   return (
     <MockTile
@@ -389,6 +437,45 @@ function CodingTileBody() {
         ))}
       </div>
     </MockTile>
+  );
+}
+
+function CodingConnected({ connectionId }: { connectionId: string }) {
+  const { data, isLoading } = useGithubRecentPrs(connectionId);
+  if (isLoading) return <TileSkeleton />;
+  if (!data || data.prs.length === 0) return <ComingSoonPanel label="Coding" />;
+  return (
+    <div className="flex h-full flex-col overflow-y-auto p-3">
+      {data.repo && (
+        <div className="mb-2 truncate text-xs text-muted-foreground">
+          {data.repo}
+        </div>
+      )}
+      <div className="flex flex-col gap-0.5">
+        {data.prs.map((pr) => (
+          <a
+            key={pr.number}
+            href={pr.htmlUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-accent/60"
+          >
+            <GitBranch01 className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate text-foreground">{pr.title}</span>
+            <span
+              className={cn(
+                "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                pr.merged
+                  ? "bg-success/10 text-success"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              #{pr.number}
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -428,6 +515,19 @@ function StatNumber({ value, label }: { value: string; label: string }) {
 }
 
 function AnalyticsTileBody() {
+  return (
+    <Suspense fallback={<TileSkeleton />}>
+      <AnalyticsTileInner />
+    </Suspense>
+  );
+}
+
+function AnalyticsTileInner() {
+  const connected = useConnections({ slug: "google-analytics" }).length > 0;
+  return connected ? <ComingSoonPanel label="Analytics" /> : <AnalyticsMock />;
+}
+
+function AnalyticsMock() {
   const { connect, isConnecting } = useConnectApp("deco/google-analytics");
   return (
     <MockTile
@@ -464,6 +564,22 @@ function BarChartMock() {
 }
 
 function SalesTileBody() {
+  return (
+    <Suspense fallback={<TileSkeleton />}>
+      <SalesTileInner />
+    </Suspense>
+  );
+}
+
+function SalesTileInner() {
+  // Sales is backed by either provider — connected if either is present.
+  const vtex = useConnections({ slug: "vtex" });
+  const shopify = useConnections({ slug: "shopify" });
+  const connected = vtex.length > 0 || shopify.length > 0;
+  return connected ? <ComingSoonPanel label="Sales" /> : <SalesMock />;
+}
+
+function SalesMock() {
   // VTEX or Shopify — the user picks, so open the catalog rather than
   // connecting a single app directly.
   const [open, setOpen] = useState(false);

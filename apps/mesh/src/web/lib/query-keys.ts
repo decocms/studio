@@ -41,6 +41,9 @@ export const KEYS = {
   taskBoardItems: (locator: ProjectLocator) =>
     [locator, "task-board-items"] as const,
 
+  homeGithubRecentPrs: (orgId: string, connectionId: string) =>
+    ["home-github-recent-prs", orgId, connectionId] as const,
+
   // Connections (scoped by project)
   connections: (locator: ProjectLocator) => [locator, "connections"] as const,
   connectionsByBinding: (locator: ProjectLocator, binding: string) =>
