@@ -65,7 +65,7 @@ async function invokeLoader(
  * tree, filtered locally) so their key ignores the term; both the chip's modal
  * query and preview.tsx's auto-fill query use this, sharing one cache entry.
  */
-export function pickerInvokeKey(
+function pickerInvokeKey(
   ref: RunBlockSandboxRef,
   source: OptionSource,
   term: string,
@@ -81,7 +81,7 @@ export function pickerInvokeKey(
  * calls (e.g. product ids + name query); they run in parallel and merge in
  * order, deduped. Partial failures are tolerated as long as one call succeeds.
  */
-export async function fetchOptions(
+async function fetchOptions(
   ref: RunBlockSandboxRef,
   source: OptionSource,
   term: string,
