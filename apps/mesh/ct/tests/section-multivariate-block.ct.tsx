@@ -21,29 +21,31 @@ const HEADER = "site/sections/Header.tsx";
  * `__resolveType` (the realistic path).
  */
 function multivariateMeta(): LiveMeta {
+  const flagSchema: Record<string, unknown> = {
+    type: "object",
+    properties: {
+      variants: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            value: { type: "object" },
+            rule: { type: "object", properties: {} },
+          },
+        },
+      },
+    },
+  };
+  const headerSchema: Record<string, unknown> = {
+    type: "object",
+    properties: { title: { type: "string", title: "Heading" } },
+  };
   return {
     manifest: {
       blocks: {
         sections: {
-          [SECTION_MULTIVARIATE]: {
-            type: "object",
-            properties: {
-              variants: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    value: { type: "object" },
-                    rule: { type: "object", properties: {} },
-                  },
-                },
-              },
-            },
-          },
-          [HEADER]: {
-            type: "object",
-            properties: { title: { type: "string", title: "Heading" } },
-          },
+          [SECTION_MULTIVARIATE]: flagSchema,
+          [HEADER]: headerSchema,
         },
       },
     },
