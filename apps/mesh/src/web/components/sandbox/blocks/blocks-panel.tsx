@@ -1,11 +1,17 @@
+import { Suspense, lazy } from "react";
+import { Loading01 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useChatTask } from "@/web/components/chat/context";
-import { ContentBrowser } from "@/web/components/sandbox/content/content-browser";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
+import {
+  lastPreviewPageKey,
+  readLastPreviewPage,
+} from "@/web/components/sandbox/preview/last-preview-page";
+import { useBlocksPreviewWorkspace } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
 import { resolveBlocksTabState } from "@/web/layouts/main-panel-tabs/blocks-tab-state";
 import {
   BlocksEmptyState,
@@ -13,19 +19,27 @@ import {
 } from "@/web/layouts/main-panel-tabs/blocks-tab-states";
 import { MainPanelLoading } from "@/web/layouts/main-panel-tabs/main-panel-loading";
 
+const SectionsEditor = lazy(() =>
+  import("@/web/components/sections-editor/sections-editor").then((m) => ({
+    default: m.SectionsEditor,
+  })),
+);
+
 export function BlocksPanel({ virtualMcpId }: { virtualMcpId: string }) {
   const { org } = useProjectContext();
   const { currentBranch } = useChatTask();
   const sandboxEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
+  const workspace = useBlocksPreviewWorkspace();
   const devServerReady = sandboxEvents.lifecycle.phase === "running";
+  const previewUrl = lifecycle.previewUrl;
   const fetchParams =
     currentBranch && devServerReady
       ? {
           orgSlug: org.slug,
           virtualMcpId,
           branch: currentBranch,
-          previewUrl: lifecycle.previewUrl,
+          previewUrl,
         }
       : null;
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
@@ -53,9 +67,66 @@ export function BlocksPanel({ virtualMcpId }: { virtualMcpId: string }) {
     return <BlocksErrorState source={state.source} onRetry={retry} />;
   }
 
+  // Blocks edits whatever page Preview is on. The shared workspace target is
+  // published by Preview; when Preview hasn't run yet (e.g. Main showing Code),
+  // fall back to the last visited page persisted for this project + branch.
+  const target = workspace.state.target;
+  const saved =
+    target || !currentBranch
+      ? null
+      : readLastPreviewPage(
+          lastPreviewPageKey(org.slug, virtualMcpId, currentBranch),
+        );
+
+  let currentPath = "/";
+  let activePageBlockKey: string | null = null;
+  let activeGlobalBlockKey: string | null = null;
+  if (target?.kind === "page") {
+    currentPath = target.path;
+    activePageBlockKey = target.key;
+  } else if (target?.kind === "section") {
+    activeGlobalBlockKey = target.key;
+  } else if (saved) {
+    currentPath = saved.path;
+    activePageBlockKey = saved.pageKey;
+  }
+
+  const editorKey = activePageBlockKey
+    ? `page:${activePageBlockKey}`
+    : activeGlobalBlockKey
+      ? `section:${activeGlobalBlockKey}`
+      : `path:${currentPath}`;
+
   return (
     <div data-testid="blocks-panel" className="h-full min-h-0 overflow-hidden">
-      <ContentBrowser mode="blocks" />
+      <Suspense
+        fallback={
+          <div className="h-full flex items-center justify-center">
+            <Loading01
+              size={20}
+              className="animate-spin text-muted-foreground"
+            />
+          </div>
+        }
+      >
+        <SectionsEditor
+          key={editorKey}
+          orgSlug={org.slug}
+          virtualMcpId={virtualMcpId}
+          branch={currentBranch ?? ""}
+          previewReady
+          previewUrl={previewUrl ?? undefined}
+          currentPath={currentPath}
+          activePageBlockKey={activePageBlockKey}
+          activeGlobalBlockKey={activeGlobalBlockKey}
+          initialEditSeo={
+            !!activePageBlockKey &&
+            workspace.state.editSeoPageKey === activePageBlockKey
+          }
+          onExitSeo={workspace.consumeEditSeo}
+          onSaved={workspace.notifySaved}
+        />
+      </Suspense>
     </div>
   );
 }

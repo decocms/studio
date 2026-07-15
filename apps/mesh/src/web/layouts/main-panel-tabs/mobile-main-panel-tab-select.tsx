@@ -5,7 +5,6 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@deco/ui/components/select.tsx";
-import { mobileSurfaceSearch } from "@/web/hooks/use-layout-state";
 import { isAutomationsPillActive } from "./tab-id";
 import { useMainPanelTabs, type Tab } from "./use-main-panel-tabs";
 import { TabIconGlyph } from "./tab-icon-glyph";
@@ -59,13 +58,26 @@ export function MobileMainPanelTabSelect({
         id === "automations" ? automationsActive : mainOpen && activeTab === id,
       source: "mobile_select",
     });
-    // Mobile shows one surface at a time, so picking a tab collapses the left
-    // panel onto Main.
+    if (id === "automations") {
+      navigate({
+        to: ".",
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          chat: 0,
+          blocks: 0,
+          main: "automations",
+        }),
+        replace: true,
+      });
+      return;
+    }
     navigate({
       to: ".",
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        ...mobileSurfaceSearch("main", id),
+        chat: 0,
+        blocks: 0,
+        main: id,
       }),
       replace: true,
     });

@@ -17,7 +17,6 @@
  */
 
 import { useNavigate } from "@tanstack/react-router";
-import { carryLegacyBlocksMainView } from "@/web/hooks/use-layout-state";
 import {
   isAutomationsPillActive,
   resolveAutomationsPillClickTarget,
@@ -80,7 +79,9 @@ export function MainPanelTabsBar({
         to: ".",
         search: (prev: Record<string, unknown>) => ({
           ...prev,
-          ...carryLegacyBlocksMainView(prev),
+          ...(prev.main === "blocks" && prev.blocks === undefined
+            ? { blocks: 1 }
+            : {}),
           main: target,
         }),
         replace: true,

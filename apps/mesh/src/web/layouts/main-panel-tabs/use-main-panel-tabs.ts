@@ -11,7 +11,6 @@
  */
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { carryLegacyBlocksMainView } from "@/web/hooks/use-layout-state";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement, useSyncExternalStore } from "react";
@@ -490,7 +489,9 @@ export function useMainPanelTabs(ctx: {
       to: ".",
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        ...carryLegacyBlocksMainView(prev),
+        ...(prev.main === "blocks" && prev.blocks === undefined
+          ? { blocks: 1 }
+          : {}),
         main: target,
       }),
       replace: true,

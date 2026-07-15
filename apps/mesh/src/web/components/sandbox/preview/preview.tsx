@@ -1,7 +1,6 @@
 import { sleep } from "@decocms/std";
 import { useState, useRef, useEffect, Suspense, lazy } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { sidePanelSearch } from "@/web/hooks/use-layout-state";
 import { formatCodeTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { useChatTask } from "@/web/components/chat/context";
@@ -331,6 +330,7 @@ export function PreviewContent() {
     ? activeGlobalSection.name
     : currentPage?.name;
   const currentPageKey = currentPage?.key ?? null;
+  const currentPagePath = currentPage?.path ?? null;
 
   // Path templates: pages like `/blog/:slug` expose inline inputs in the URL
   // bar. `currentPath` keeps the template (so the page stays matched); the
@@ -453,6 +453,31 @@ export function PreviewContent() {
     }
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- derived helpers must not retrigger selection synchronization every render
   }, [sharedTarget, previewUrl, meta, pathParamsByPage]);
+
+  // Publish the page Preview is showing to the shared workspace so the Blocks
+  // panel follows it — Blocks has no page navigator, it edits whatever page
+  // Preview is on. navigatePreviewToPage already publishes on explicit page
+  // switches; this covers the initial restore (last visited page), where
+  // pinnedPageKey is set but the target was never published. Guarded against
+  // the target→Preview sync above: dispatches only when the current page
+  // actually differs from the target, so the two effects converge, never loop.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- publishes Preview's current page to the shared Blocks selection
+  useEffect(() => {
+    if (!currentPageKey || currentPagePath === null) return;
+    if (
+      sharedTarget?.kind === "page" &&
+      sharedTarget.key === currentPageKey &&
+      sharedTarget.path === currentPagePath
+    ) {
+      return;
+    }
+    workspace.selectTarget({
+      kind: "page",
+      key: currentPageKey,
+      path: currentPagePath,
+    });
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- workspace handle is recreated each render; publish keyed on page + target only
+  }, [currentPageKey, currentPagePath, sharedTarget]);
 
   // When the VM preview base URL appears or changes (first boot, branch
   // switch, etc.), restore the last visited page for this project+branch;
@@ -736,10 +761,7 @@ export function PreviewContent() {
       });
       navigate({
         to: ".",
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          ...sidePanelSearch("blocks"),
-        }),
+        search: (prev: Record<string, unknown>) => ({ ...prev, blocks: 1 }),
         replace: true,
       });
     } catch (error) {
@@ -1055,7 +1077,7 @@ export function PreviewContent() {
                                   to: ".",
                                   search: (prev: Record<string, unknown>) => ({
                                     ...prev,
-                                    ...sidePanelSearch("blocks"),
+                                    blocks: 1,
                                   }),
                                   replace: true,
                                 });
