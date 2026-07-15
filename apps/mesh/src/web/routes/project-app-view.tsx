@@ -46,7 +46,7 @@ function AppRenderer({
 }) {
   const { sendMessage } = useChatStream();
   const { setAppContext, clearAppContext } = useChatPrefs();
-  const { setChatOpen, openTab } = usePanelActions();
+  const { openSidePanel, openTab } = usePanelActions();
   const sourceId = `${connectionId}:${tool.name}`;
 
   const handleRequestDisplayMode = (
@@ -78,7 +78,7 @@ function AppRenderer({
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
     const doc = contentBlocksToTiptapDoc(params.content);
     if (doc.content.length > 0) {
-      setChatOpen(true);
+      openSidePanel("chat");
       sendMessage({ tiptapDoc: doc });
     }
   };

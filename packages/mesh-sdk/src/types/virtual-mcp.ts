@@ -90,10 +90,10 @@ export const VirtualMcpUILayoutSchema = z.object({
     .nullable()
     .optional(),
   /**
-   * When true, the chat panel is open alongside the main view on first
-   * load. Ignored when `defaultMainView.type === "chat"` (chat is always
-   * open in that case). Absent / null / false → chat is closed unless the
-   * default view is chat.
+   * When true, Chat is selected in the side panel alongside the main view on
+   * first load. Ignored when `defaultMainView.type === "chat"` (Chat is always
+   * selected in that case). Absent / null / false → the side panel is closed
+   * unless the default view is Chat.
    */
   chatDefaultOpen: z.boolean().nullable().optional(),
   tabs: z.array(VirtualMcpUILayoutTabSchema).optional(),

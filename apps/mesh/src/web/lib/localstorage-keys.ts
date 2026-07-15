@@ -20,8 +20,7 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:chat:autosend:${locator}:${taskId}`,
   chatDraft: (locator: ProjectLocator | string, taskKey: string) =>
     `mesh:chat:draft:${locator}:${taskKey}`,
-  decoChatPanelWidth: () => `mesh:decochat:panel-width`,
-  blocksPanelWidth: () => `mesh:blocks:panel-width`,
+  sidePanelWidth: () => `mesh:side-panel:width`,
   sidebarOpen: () => `mesh:sidebar-open`,
   preferences: () => `mesh:user:preferences`,
   lastOrgSlug: () => `mesh:last-org-slug`,

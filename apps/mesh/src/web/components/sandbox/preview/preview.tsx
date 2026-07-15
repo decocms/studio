@@ -772,7 +772,10 @@ export function PreviewContent() {
       });
       navigate({
         to: ".",
-        search: (prev: Record<string, unknown>) => ({ ...prev, blocks: 1 }),
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          sidepanel: "blocks" as const,
+        }),
         replace: true,
       });
     } catch (error) {
@@ -1104,7 +1107,7 @@ export function PreviewContent() {
                                   to: ".",
                                   search: (prev: Record<string, unknown>) => ({
                                     ...prev,
-                                    blocks: 1,
+                                    sidepanel: "blocks" as const,
                                   }),
                                   replace: true,
                                 });

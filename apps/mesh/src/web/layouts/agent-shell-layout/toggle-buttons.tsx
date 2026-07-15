@@ -4,19 +4,17 @@ import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button
 import { track } from "@/web/lib/posthog-client";
 import { LibraryToggle } from "./library-toggle";
 import { TasksToggle } from "./tasks-toggle";
+import type { SidePanelKind } from "@/web/hooks/use-layout-state";
 
 export interface ToggleButtonsProps {
-  chatOpen: boolean;
-  toggleChat: () => void;
+  sidePanel: SidePanelKind | null;
+  toggleSidePanel: (sidePanel: SidePanelKind) => void;
   blocksAvailable?: boolean;
-  blocksOpen?: boolean;
-  toggleBlocks?: () => void;
   /**
-   * When true, the chat toggle is disabled — chat is the only visible panel,
-   * so turning it off would leave a blank content area.
+   * When true, the active side-panel toggle is disabled because closing it
+   * would leave a blank content area.
    */
-  disableChatToggle?: boolean;
-  disableBlocksToggle?: boolean;
+  disableActiveSidePanelToggle?: boolean;
 }
 
 /**
@@ -27,13 +25,10 @@ export interface ToggleButtonsProps {
  * the sidebar toolbar, next to the thread list.)
  */
 export function ToggleButtons({
-  chatOpen,
-  toggleChat,
+  sidePanel,
+  toggleSidePanel,
   blocksAvailable = false,
-  blocksOpen = false,
-  toggleBlocks,
-  disableChatToggle = false,
-  disableBlocksToggle = false,
+  disableActiveSidePanelToggle = false,
 }: ToggleButtonsProps) {
   // Reports-only orgs collapse the toolbar to just the chat toggle.
   const reportsOnly = useReportsOnly();
@@ -42,30 +37,30 @@ export function ToggleButtons({
       <HeaderTabButton
         title="Chat"
         icon={{ kind: "component", Component: MessageCircle01 }}
-        active={chatOpen}
-        disabled={disableChatToggle}
+        active={sidePanel === "chat"}
+        disabled={disableActiveSidePanelToggle && sidePanel === "chat"}
         className="wco-no-drag h-10 md:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
         onClick={() => {
           track("agent_toolbar_toggled", {
             button: "chat",
-            next_state: !chatOpen ? "open" : "closed",
+            next_state: sidePanel === "chat" ? "closed" : "open",
           });
-          toggleChat();
+          toggleSidePanel("chat");
         }}
       />
-      {!reportsOnly && blocksAvailable && toggleBlocks && (
+      {!reportsOnly && blocksAvailable && (
         <HeaderTabButton
           title="Blocks"
           icon={{ kind: "component", Component: TextInput }}
-          active={blocksOpen}
-          disabled={disableBlocksToggle}
+          active={sidePanel === "blocks"}
+          disabled={disableActiveSidePanelToggle && sidePanel === "blocks"}
           className="wco-no-drag h-10 md:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
           onClick={() => {
             track("agent_toolbar_toggled", {
               button: "blocks",
-              next_state: !blocksOpen ? "open" : "closed",
+              next_state: sidePanel === "blocks" ? "closed" : "open",
             });
-            toggleBlocks();
+            toggleSidePanel("blocks");
           }}
         />
       )}

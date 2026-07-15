@@ -438,14 +438,14 @@ test.describe("Commerce onboarding route isolation", () => {
     await page.goto("/commerce-onboarding?siteUrl=example.com");
     await page.getByRole("button", { name: "Ver relatório completo" }).click();
 
-    // No chat param: the vMCP's chatDefaultOpen metadata decides the panel.
+    // No sidepanel param: chatDefaultOpen selects Chat in the side panel.
     await page.waitForURL(
       (url) =>
         url.pathname.startsWith(`/${user.orgSlug}/`) &&
         url.searchParams.get("virtualmcpid") === virtualMcpId &&
         url.searchParams.get("main") ===
           `app:${connectionId}:get_my_diagnostic` &&
-        url.searchParams.get("chat") === null,
+        url.searchParams.get("sidepanel") === null,
       { timeout: 20_000 },
     );
 

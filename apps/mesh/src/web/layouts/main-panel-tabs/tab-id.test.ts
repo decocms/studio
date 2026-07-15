@@ -7,7 +7,6 @@ import {
   formatLibraryFileTabId,
   parseCodeTabId,
   isLegacySettingsTab,
-  isLegacyBlocksTab,
   isPerThreadTab,
   parseAutomationTabId,
   parseDeckTabId,
@@ -303,21 +302,6 @@ describe("resolveActiveTabAndOpen", () => {
       resolveActiveTabAndOpen({ mainParam: "git", metadata: meta }),
     ).toEqual({ mainOpen: true, activeTab: "git" });
   });
-
-  test("legacy ?main=blocks closes Main and preserves a valid active tab", () => {
-    expect(
-      resolveActiveTabAndOpen({ mainParam: "blocks", metadata: meta }),
-    ).toEqual({ mainOpen: false, activeTab: "analytics" });
-  });
-
-  test("a legacy Blocks default closes Main", () => {
-    expect(
-      resolveActiveTabAndOpen({
-        mainParam: undefined,
-        metadata: { defaultMainView: { type: "blocks" } },
-      }),
-    ).toEqual({ mainOpen: false, activeTab: "settings" });
-  });
 });
 
 describe("resolveTabClickTarget", () => {
@@ -447,7 +431,6 @@ describe("resolveAutomationsPillClickTarget", () => {
 describe("code tab id", () => {
   test("keeps Blocks out of the fixed system tabs", () => {
     expect(FIXED_SYSTEM_TABS).not.toContain("blocks");
-    expect(isLegacyBlocksTab("blocks")).toBe(true);
     expect(FIXED_SYSTEM_TABS).toContain("code");
   });
 

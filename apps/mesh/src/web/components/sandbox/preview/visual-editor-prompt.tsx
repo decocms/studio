@@ -93,13 +93,13 @@ export function VisualEditorPrompt({
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const { sendMessage } = useChatStream();
-  const { setChatOpen } = usePanelActions();
+  const { openSidePanel } = usePanelActions();
 
   const handleSend = () => {
     if (!input.trim()) return;
 
     const text = formatVisualEditorMessage(element, input);
-    setChatOpen(true);
+    openSidePanel("chat");
     sendMessage({ parts: [{ type: "text", text }] });
     onDismiss();
   };

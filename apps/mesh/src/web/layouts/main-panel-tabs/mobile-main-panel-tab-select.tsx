@@ -63,8 +63,7 @@ export function MobileMainPanelTabSelect({
         to: ".",
         search: (prev: Record<string, unknown>) => ({
           ...prev,
-          chat: 0,
-          blocks: 0,
+          sidepanel: 0 as const,
           main: "automations",
         }),
         replace: true,
@@ -75,8 +74,7 @@ export function MobileMainPanelTabSelect({
       to: ".",
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        chat: 0,
-        blocks: 0,
+        sidepanel: 0 as const,
         main: id,
       }),
       replace: true,

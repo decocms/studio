@@ -48,7 +48,7 @@ async function createClonableAgent(
 test.describe("standalone Blocks panel", () => {
   test.setTimeout(90_000);
 
-  test("Chat, Blocks, and Main toggle independently on desktop", async ({
+  test("Chat and Blocks share the side panel beside Main on desktop", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -57,7 +57,7 @@ test.describe("standalone Blocks panel", () => {
       orgSlug,
     );
     await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&chat=1&blocks=0&main=settings`,
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=chat&main=settings`,
     );
 
     const chat = page.getByTestId("chat-panel");
@@ -71,12 +71,12 @@ test.describe("standalone Blocks panel", () => {
     await expect(blocksToggle).toBeVisible({ timeout: 30_000 });
     await expect(chat).toBeVisible({ timeout: 30_000 });
     await expect(main).toBeVisible();
-    await expect(blocks).toBeHidden();
+    await expect(blocks).toHaveCount(0);
 
     await blocksToggle.click();
-    await expect(page).toHaveURL(/blocks=1/);
+    await expect(page).toHaveURL(/sidepanel=blocks/);
     await expect(page).toHaveURL(/main=settings/);
-    await expect(chat).toBeVisible();
+    await expect(chat).toHaveCount(0);
     await expect(blocks).toBeVisible();
     await expect(main).toBeVisible();
 
@@ -85,12 +85,12 @@ test.describe("standalone Blocks panel", () => {
     await expect(blocks).toBeVisible();
 
     await blocksToggle.click();
-    await expect(page).toHaveURL(/blocks=0/);
+    await expect(page).toHaveURL(/sidepanel=0/);
     await expect(main).toBeVisible();
-    await expect(blocks).toBeHidden();
+    await expect(blocks).toHaveCount(0);
   });
 
-  test("legacy Blocks-only links preserve the final visible panel guard", async ({
+  test("a Blocks-only workspace preserves the final visible panel guard", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -99,7 +99,7 @@ test.describe("standalone Blocks panel", () => {
       orgSlug,
     );
     await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=blocks`,
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=blocks&main=0`,
     );
 
     const blocksToggle = page.getByRole("button", {
@@ -125,7 +125,7 @@ test.describe("standalone Blocks panel", () => {
       orgSlug,
     );
     await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&chat=0&blocks=0&main=settings`,
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=0&main=settings`,
     );
 
     const chatToggle = page.getByRole("button", {
@@ -135,8 +135,7 @@ test.describe("standalone Blocks panel", () => {
     await expect(chatToggle).toBeVisible({ timeout: 30_000 });
     await expect(chatToggle).toHaveAttribute("aria-pressed", "false");
     await chatToggle.click();
-    await expect(page).toHaveURL(/chat=1/);
-    await expect(page).toHaveURL(/blocks=0/);
+    await expect(page).toHaveURL(/sidepanel=chat/);
     await expect(page).toHaveURL(/main=0/);
     await expect(chatToggle).toHaveAttribute("aria-pressed", "true");
     await expect(chatToggle).toBeDisabled();
@@ -148,8 +147,7 @@ test.describe("standalone Blocks panel", () => {
       exact: true,
     });
     await blocksToggle.click();
-    await expect(page).toHaveURL(/chat=0/);
-    await expect(page).toHaveURL(/blocks=1/);
+    await expect(page).toHaveURL(/sidepanel=blocks/);
     await expect(chatToggle).toHaveAttribute("aria-pressed", "false");
     await expect(blocksToggle).toHaveAttribute("aria-pressed", "true");
     await expect(blocksToggle).toBeDisabled();
@@ -157,7 +155,7 @@ test.describe("standalone Blocks panel", () => {
 
     await page.getByRole("combobox", { name: "Main panel tab" }).click();
     await page.getByRole("option", { name: "Settings" }).click();
-    await expect(page).toHaveURL(/blocks=0/);
+    await expect(page).toHaveURL(/sidepanel=0/);
     await expect(page).toHaveURL(/main=settings/);
     await expect(blocksToggle).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByTestId("main-panel")).toBeVisible();
