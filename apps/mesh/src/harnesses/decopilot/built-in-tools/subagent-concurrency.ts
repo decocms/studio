@@ -34,17 +34,24 @@ export function createConcurrencyGate(max: number): ConcurrencyGate {
 
   return {
     async acquire() {
-      if (active >= limit) {
+      if (active < limit) {
+        active++;
+      } else {
+        // Parked: the eventual release() hands this slot off directly
+        // (active is never decremented for it), so no increment here either.
         await new Promise<void>((resolve) => waiters.push(resolve));
       }
-      active++;
 
       let released = false;
       return () => {
         if (released) return;
         released = true;
-        active--;
-        waiters.shift()?.();
+        const next = waiters.shift();
+        if (next) {
+          next();
+        } else {
+          active--;
+        }
       };
     },
     get active() {
