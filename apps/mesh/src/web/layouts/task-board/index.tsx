@@ -10,15 +10,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Badge } from "@deco/ui/components/badge.tsx";
-import {
-  Calendar,
-  Columns03,
-  Flag01,
-  List,
-  Loading01,
-  Plus,
-  User01,
-} from "@untitledui/icons";
+import { Calendar, Columns03, List, Loading01, Plus } from "@untitledui/icons";
 import { useMembers } from "@/web/hooks/use-members";
 import {
   useTaskBoardItemActions,
@@ -318,76 +310,44 @@ function TaskCard({
         e.dataTransfer.effectAllowed = "move";
       }}
       onClick={onOpen}
-      className="flex cursor-grab flex-col gap-2.5 rounded-[10px] border border-border bg-card px-3.5 py-3 text-left transition-colors hover:border-ring/40 active:cursor-grabbing"
+      className="flex cursor-grab flex-col gap-1.5 rounded-[10px] border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-ring/40 active:cursor-grabbing"
+      title={item.title}
     >
-      <span className="min-w-0 truncate text-[13px] font-medium leading-snug text-foreground">
-        {item.title}
-      </span>
-
-      <div className="flex flex-col gap-1.5 text-[12px] text-muted-foreground">
-        <CardMetaRow
-          icon={
-            assignee ? (
-              <Avatar
-                url={assignee.user?.image ?? undefined}
-                fallback={getInitials(assignee.user?.name)}
-                shape="circle"
-                size="2xs"
-              />
-            ) : (
-              <User01 size={13} className="text-muted-foreground/60" />
-            )
-          }
-          value={assignee?.user?.name}
-        />
-        <CardMetaRow
-          icon={
-            <Calendar
-              size={13}
-              className={cn(
-                due?.overdue ? "text-red-500" : "text-muted-foreground/60",
-              )}
-            />
-          }
-          value={due?.label}
-          valueClassName={due?.overdue ? "text-red-600" : undefined}
-        />
-        <CardMetaRow
-          icon={<Flag01 size={13} className={priorityConfig.flagClassName} />}
-          value={priorityConfig.label}
-        />
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0 flex-1 truncate text-[12px] font-medium leading-snug text-foreground">
+          {item.title}
+        </span>
+        {assignee && (
+          <Avatar
+            url={assignee.user?.image ?? undefined}
+            fallback={getInitials(assignee.user?.name)}
+            shape="circle"
+            size="2xs"
+          />
+        )}
       </div>
 
-      <span className="text-[10px] text-muted-foreground/60">
-        {formatTimeAgo(new Date(item.createdAt))}
-      </span>
-    </button>
-  );
-}
-
-function CardMetaRow({
-  icon,
-  value,
-  valueClassName,
-}: {
-  icon: React.ReactNode;
-  value?: string | null;
-  valueClassName?: string;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        {icon}
-      </span>
-      <span
-        className={cn(
-          "min-w-0 truncate",
-          value ? valueClassName : "text-muted-foreground/50",
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={cn(
+            "inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+            priorityConfig.badgeClassName,
+          )}
+        >
+          {priorityConfig.label}
+        </span>
+        {due && (
+          <span
+            className={cn(
+              "text-[11px] text-muted-foreground",
+              due.overdue && "text-red-600",
+            )}
+          >
+            {due.label}
+          </span>
         )}
-      >
-        {value ?? "—"}
-      </span>
-    </div>
+      </div>
+    </button>
   );
 }
 
