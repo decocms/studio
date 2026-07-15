@@ -854,12 +854,29 @@ function CommerceSetupContent({
     const normalized = normalizeReportsSiteUrl(currentSiteUrl);
     if (normalized.ok) {
       try {
-        const runResult = await runMutation.mutateAsync(normalized.value);
-        // triggered:false means the site was never claimed for this org
-        // (not_upgraded — see triggerCommerceDiscoveryRun). Opening the report
-        // anyway would render whatever the connection's token still points at
-        // (a previously-claimed site's diagnostic). Surface the error and stay
-        // put instead of showing the wrong store's report.
+        let runResult = await runMutation.mutateAsync(normalized.value);
+        // triggered:false means the site isn't claimed for this org on the
+        // Commerce Discovery side (not_upgraded — see triggerCommerceDiscoveryRun).
+        // This can diverge from the studio connection's metadata.siteUrl (which
+        // gates setupReady): the connection looks claimed here, so setup is
+        // skipped on load, the report token is never refreshed, and every run
+        // 409s — a dead end where "reload" changes nothing. Reconcile by
+        // re-running setup (idempotent /upgrade re-claims the site AND persists a
+        // fresh connection token, which also fixes the CD proxy 401s), then retry
+        // the run once before giving up.
+        if (!runResult.triggered) {
+          track("commerce_onboarding_run_reclaim", {
+            domain: siteUrlToHost(currentSiteUrl) ?? undefined,
+            organization_id: org.id,
+            reason: runResult.reason ?? "not_upgraded",
+          });
+          await setupMutation.mutateAsync(normalized.value);
+          runResult = await runMutation.mutateAsync(normalized.value);
+        }
+        // Still not claimed after re-upgrading (e.g. the site belongs to another
+        // org). Opening the report anyway would render whatever the connection's
+        // token still points at (a previously-claimed site's diagnostic), so
+        // surface the error and stay put instead of showing the wrong store.
         if (!runResult.triggered) {
           track("commerce_onboarding_run_failed", {
             domain: siteUrlToHost(currentSiteUrl) ?? undefined,
