@@ -357,8 +357,8 @@ export function getWellKnownCommerceDiscoveryConnection(
 ): ConnectionCreateData {
   return {
     id: WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
-    title: "Commerce Discovery",
-    description: "Commerce report and diagnostics",
+    title: "Store Report",
+    description: "Your store's report and diagnostics",
     connection_type: "HTTP",
     connection_url: COMMERCE_DISCOVERY_MCP_URL,
     icon: COMMERCE_DISCOVERY_ICON,
@@ -394,7 +394,7 @@ export function getWellKnownCommerceDiscoveryVirtualMCP(
           {
             connectionId,
             toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-            label: "Commerce Discovery",
+            label: "Report",
             icon: COMMERCE_DISCOVERY_ICON,
           },
         ],
