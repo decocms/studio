@@ -85,6 +85,7 @@ import type { StudioContext } from "@/core/studio-context";
 
 export { HOSTED_HARNESS_QUEUE } from "./queue-names";
 import { HOSTED_HARNESS_QUEUE } from "./queue-names";
+import { acquireHostedRunSlot } from "./hosted-run-concurrency";
 
 // These types mirror the thread-gate runtime's shapes. They're defined locally
 // (rather than imported from `./thread-gate-workflow`) to avoid an import cycle
@@ -209,11 +210,19 @@ export async function runHostedHarness(
   // explicit cancellation and the reaper's force-fail.
   const abortController = new AbortController();
 
-  await rt.dispatchRunFn(
-    { ...request, abortSignal: abortController.signal },
-    meshCtx,
-    rt.deps,
-  );
+  // Cap concurrent agent loops per pod (see hosted-run-concurrency.ts). The
+  // slot is held only for the loop itself, not the ctx resolution above; excess
+  // runs park here until a slot frees.
+  const releaseSlot = await acquireHostedRunSlot();
+  try {
+    await rt.dispatchRunFn(
+      { ...request, abortSignal: abortController.signal },
+      meshCtx,
+      rt.deps,
+    );
+  } finally {
+    releaseSlot();
+  }
 }
 
 /**
