@@ -95,6 +95,27 @@ export function parseBindingRequirements(
   return reqs;
 }
 
+/**
+ * Static binding requirements for the four Commerce Discovery companions — a
+ * fallback for when the CD connection's live MCP_CONFIGURATION schema can't be
+ * fetched (e.g. the CD proxy returns 401 because the connection lost its
+ * credential to reach commerce-skills). Without this the schema fetch is a hard
+ * dependency: one 401 collapses the whole integrations section to an error and
+ * the user can neither connect nor disconnect anything.
+ *
+ * `fieldKey` is the CD `configuration_state` key and `bindingType` is the
+ * binding `__type` (== the curated COMMERCE_COMPANION_MCPS key). Kept in sync
+ * with commerce-discovery's CONNECTION_PROVIDERS (vtex/ga4/gsc/github); if the
+ * CD schema gains a binding it still appears via the live schema — this
+ * fallback only applies when the schema is unreachable.
+ */
+export const FALLBACK_COMPANION_REQUIREMENTS: BindingRequirement[] = [
+  { fieldKey: "vtex", bindingType: "vtex" },
+  { fieldKey: "ga4", bindingType: "google-analytics" },
+  { fieldKey: "gsc", bindingType: "google-search-console" },
+  { fieldKey: "github", bindingType: "github" },
+];
+
 /** Build a registry LIST `where` matching items by id-set OR server-name-set.
  * `["id"]` is the top-level column; `["name"]` maps to the virtual server_json->>'name'. */
 export function buildRegistryWhere(
