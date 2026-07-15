@@ -1,6 +1,7 @@
 import { sleep } from "@decocms/std";
 import { useState, useRef, useEffect, Suspense, lazy } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { sidePanelSearch } from "@/web/hooks/use-layout-state";
 import { formatCodeTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { useChatTask } from "@/web/components/chat/context";
@@ -735,7 +736,10 @@ export function PreviewContent() {
       });
       navigate({
         to: ".",
-        search: (prev: Record<string, unknown>) => ({ ...prev, blocks: 1 }),
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          ...sidePanelSearch("blocks"),
+        }),
         replace: true,
       });
     } catch (error) {
@@ -1036,7 +1040,7 @@ export function PreviewContent() {
                                   to: ".",
                                   search: (prev: Record<string, unknown>) => ({
                                     ...prev,
-                                    blocks: 1,
+                                    ...sidePanelSearch("blocks"),
                                   }),
                                   replace: true,
                                 });
