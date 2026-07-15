@@ -1,6 +1,9 @@
 /**
- * Hook to install an MCP Server from registry by binding type.
+ * Hook to install an MCP Server from the registry catalog by binding type.
  * Provides inline installation without navigation.
+ *
+ * Resolves the catalog item over REST (`GET /api/registry/items/:id`) and turns
+ * it into a connection via `extractConnectionData` (unchanged).
  */
 
 import { toast } from "sonner";
@@ -12,13 +15,6 @@ import {
   type ConnectionEntity,
 } from "@decocms/mesh-sdk";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
-import {
-  inferRegistryListToolName,
-  extractItemsFromResponse,
-  callRegistryTool,
-} from "@/web/utils/registry-utils";
-import { useRegistryConnections } from "./use-registry-connections";
-import { useIsRegistryEnabled } from "./use-organization-settings";
 
 interface InstallResult {
   id: string;
@@ -38,17 +34,30 @@ interface UseInstallFromRegistryResult {
 }
 
 /**
- * Normalize MCP Server name format, ensuring @ prefix is present
- * @example
- * - "@deco/database" -> "@deco/database" (unchanged)
- * - "deco/database" -> "@deco/database" (adds @)
+ * Normalize an MCP Server identifier into the catalog item id.
+ * Catalog ids are `<scope>/<name>` (no leading `@`); binding types arrive as
+ * `@deco/database` or `deco/database`, so we strip a leading `@`.
  */
-function parseServerName(serverName: string): string {
-  return serverName.startsWith("@") ? serverName : `@${serverName}`;
+function toCatalogIdentifier(bindingType: string): string {
+  return bindingType.replace(/^@/, "");
+}
+
+async function fetchCatalogItem(
+  identifier: string,
+): Promise<RegistryItem | null> {
+  const res = await fetch(
+    `/api/registry/items/${encodeURIComponent(identifier)}`,
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Failed to resolve registry item: ${res.status}`);
+  }
+  const data = (await res.json()) as { item?: RegistryItem };
+  return data.item ?? null;
 }
 
 /**
- * Hook that provides inline MCP Server installation from registry.
+ * Hook that provides inline MCP Server installation from the registry catalog.
  * Use this when you want to install a specific MCP Server without navigating away.
  */
 export function useInstallFromRegistry(): UseInstallFromRegistryResult {
@@ -56,14 +65,6 @@ export function useInstallFromRegistry(): UseInstallFromRegistryResult {
   const { data: session } = authClient.useSession();
   const actions = useConnectionActions();
 
-  // Get registry connections from registry_config, filtered to enabled only
-  const registryConnections = useRegistryConnections();
-  const isRegistryEnabled = useIsRegistryEnabled();
-  const enabledRegistries = registryConnections.filter((c) =>
-    isRegistryEnabled(c.id),
-  );
-
-  // Installation function - queries registries directly with MCP Server name filter
   const installByBinding = async (
     bindingType: string,
   ): Promise<InstallResult | undefined> => {
@@ -72,39 +73,13 @@ export function useInstallFromRegistry(): UseInstallFromRegistryResult {
       return undefined;
     }
 
-    const parsedServerName = parseServerName(bindingType);
-
-    // Query all registries in parallel to find the MCP Server
-    const results = await Promise.all(
-      enabledRegistries.map(async (registryConnection) => {
-        const listToolName = inferRegistryListToolName(
-          registryConnection.id,
-          org.id,
-        );
-
-        try {
-          const result = await callRegistryTool(
-            registryConnection.id,
-            org.id,
-            org.slug,
-            listToolName,
-            {
-              where: { appName: parsedServerName },
-            },
-          );
-          const items = extractItemsFromResponse<RegistryItem>(result ?? []);
-          return items[0] ?? null;
-        } catch {
-          // Silently fail for individual registries - we'll try others
-          return null;
-        }
-      }),
-    );
-
-    // Find the first successful result
-    const registryItem = results.find(
-      (item): item is RegistryItem => item !== null,
-    );
+    let registryItem: RegistryItem | null;
+    try {
+      registryItem = await fetchCatalogItem(toCatalogIdentifier(bindingType));
+    } catch {
+      toast.error("Failed to reach the registry");
+      return undefined;
+    }
 
     if (!registryItem) {
       toast.error(`MCP Server not found in registry: ${bindingType}`);

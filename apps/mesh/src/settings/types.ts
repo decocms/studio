@@ -68,6 +68,11 @@ export interface Settings {
   aiGatewayEnabled: boolean;
   aiGatewayUrl: string;
 
+  // Registry catalog (the MCP store). URL of the first-party `registry.json`
+  // flat catalog. Defaults to the decocms/mcps catalog (see resolve-config);
+  // set to an empty string to disable the store catalog.
+  registryCatalogUrl: string | undefined;
+
   // Feature Flags
   enableDecoImport: boolean;
   /** MCP read/list caching. On by default in production, off in development;

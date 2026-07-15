@@ -55,6 +55,31 @@ function toBoolWithDefault(
  * Determine if a URL points to a non-local host (i.e., an external service).
  * Returns the URL string if external, null if local or not set.
  */
+/**
+ * Validate an optional config URL as HTTPS (localhost may use http for dev).
+ * Returns the URL string, or undefined when unset. Throws on malformed / non-https.
+ */
+function httpsUrlOrUndefined(
+  name: string,
+  value: string | undefined,
+): string | undefined {
+  if (value === undefined || value === "") return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${name} is not a valid URL: ${value}`);
+  }
+  const isLocal =
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "::1";
+  if (parsed.protocol !== "https:" && !isLocal) {
+    throw new Error(`${name} must use https (got ${parsed.protocol})`);
+  }
+  return value;
+}
+
 function externalUrlOrNull(url: string | undefined): string | null {
   if (!url) return null;
   try {
@@ -161,6 +186,15 @@ export function resolveConfig(
     // AI Gateway
     aiGatewayEnabled: toBool(envVars.DECO_AI_GATEWAY_ENABLED),
     aiGatewayUrl: envVars.DECO_AI_GATEWAY_URL || "https://ai-site.deco.site",
+
+    // Registry catalog (the MCP store). Defaults to the first-party catalog
+    // published by decocms/mcps; override via REGISTRY_CATALOG_URL (e.g. a
+    // commit-pinned URL or a CDN). Public, first-party, fail-soft.
+    registryCatalogUrl: httpsUrlOrUndefined(
+      "REGISTRY_CATALOG_URL",
+      envVars.REGISTRY_CATALOG_URL ??
+        "https://raw.githubusercontent.com/decocms/mcps/main/registry.json",
+    ),
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
