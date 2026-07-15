@@ -36,7 +36,7 @@ type RepoOption = {
  * `repoScope` recipe (per-agent import children AND org-shared "Add repo"
  * connections both qualify — both are repo-scoped).
  */
-export async function listOrgRepos(
+async function listOrgRepos(
   ctx: StudioContext,
   orgId: string,
 ): Promise<RepoOption[]> {
