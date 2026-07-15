@@ -1,4 +1,4 @@
-export type CommerceSiteUrlResult =
+export type ReportsSiteUrlResult =
   | {
       ok: true;
       value: string;
@@ -13,7 +13,7 @@ const URL_SCHEME_WITH_AUTHORITY_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//;
 const BARE_HOST_WITH_PORT_PATTERN = /^[^\s/:?#]+\.[^\s/:?#]+:\d+(?:[/?#]|$)/;
 const DNS_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
 
-export function normalizeCommerceSiteUrl(input: string): CommerceSiteUrlResult {
+export function normalizeReportsSiteUrl(input: string): ReportsSiteUrlResult {
   const trimmed = input.trim();
 
   if (!trimmed) {
@@ -74,13 +74,13 @@ export function normalizeCommerceSiteUrl(input: string): CommerceSiteUrlResult {
 }
 
 /**
- * True when an already-provisioned Commerce Discovery connection's claimed
+ * True when an already-provisioned Reports connection's claimed
  * site matches the one currently requested.
  *
  * An empty `requestedSite` means no site was specified (a returning session
  * with no `?siteUrl`) — trust the existing claim. A non-empty but malformed
  * `requestedSite` must NOT be treated the same as "no site requested": both
- * fail `normalizeCommerceSiteUrl`, but only the empty case should bypass the
+ * fail `normalizeReportsSiteUrl`, but only the empty case should bypass the
  * match check — otherwise a garbled site param silently skips re-claiming
  * and surfaces whatever site the connection happens to already be claimed
  * for.
@@ -90,8 +90,8 @@ export function isConnectionClaimedForSite(
   claimedSiteUrl: string | undefined,
 ): boolean {
   if (!requestedSite.trim()) return true;
-  const requested = normalizeCommerceSiteUrl(requestedSite);
+  const requested = normalizeReportsSiteUrl(requestedSite);
   if (!requested.ok || !claimedSiteUrl) return false;
-  const claimed = normalizeCommerceSiteUrl(claimedSiteUrl);
+  const claimed = normalizeReportsSiteUrl(claimedSiteUrl);
   return claimed.ok && claimed.value === requested.value;
 }

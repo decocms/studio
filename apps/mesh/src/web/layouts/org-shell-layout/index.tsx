@@ -38,6 +38,7 @@ import {
 } from "@/web/layouts/shell-controls";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
 
@@ -47,6 +48,10 @@ function RouteFallback() {
 
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
+  // Reports-only orgs hide the whole navigation surface (agents,
+  // threads, settings): the sidebar and its trigger are dropped so only the
+  // reports diagnostic remains reachable.
+  const reportsOnly = useReportsOnly();
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
     SIDEBAR_OPEN_STORAGE_KEY,
     false,
@@ -62,30 +67,38 @@ export default function OrgShellLayout() {
               {isMobile ? (
                 <Toolbar.Header className="grid-cols-1 px-1 pr-1">
                   <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto] items-center gap-2">
-                    <SidebarTriggerButton />
-                    <ShellBreadcrumb />
-                    <LinkedDesktopIndicator />
+                    {!reportsOnly && <SidebarTriggerButton />}
+                    {!reportsOnly && <ShellBreadcrumb />}
+                    {!reportsOnly && <LinkedDesktopIndicator />}
                     <div aria-hidden className="min-w-0" />
                     <Toolbar.TogglesSlot />
-                    <Toolbar.TabsSlot className="min-w-0 justify-self-end" />
+                    {!reportsOnly && (
+                      <Toolbar.TabsSlot className="min-w-0 justify-self-end" />
+                    )}
                   </div>
-                  <Toolbar.CenterSlot />
-                  <Toolbar.RightSlot />
+                  {!reportsOnly && <Toolbar.CenterSlot />}
+                  {!reportsOnly && <Toolbar.RightSlot />}
                 </Toolbar.Header>
               ) : (
                 <Toolbar.Header>
                   <Toolbar.LeftColumn>
-                    <ShellBreadcrumb />
+                    {!reportsOnly && <ShellBreadcrumb />}
                     {/* Chat toggle sits on the left — it controls the left
-                        chat panel; the main-panel view tabs stay on the right. */}
+                        chat panel; the main-panel view tabs stay on the right.
+                        Reports-only orgs keep ONLY this toggle: no breadcrumb,
+                        no view tabs, no right-side actions. */}
                     <Toolbar.TogglesSlot />
                   </Toolbar.LeftColumn>
-                  <Toolbar.CenterSlot />
+                  {reportsOnly ? <div aria-hidden /> : <Toolbar.CenterSlot />}
                   <Toolbar.RightColumn>
-                    <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
-                      <Toolbar.TabsSlot />
-                    </div>
-                    <Toolbar.RightSlot />
+                    {!reportsOnly && (
+                      <>
+                        <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
+                          <Toolbar.TabsSlot />
+                        </div>
+                        <Toolbar.RightSlot />
+                      </>
+                    )}
                   </Toolbar.RightColumn>
                 </Toolbar.Header>
               )}
@@ -99,7 +112,7 @@ export default function OrgShellLayout() {
                   } as Record<string, string>
                 }
               >
-                {!isMobile && (
+                {!isMobile && !reportsOnly && (
                   <>
                     <StudioSidebar />
                     <SidebarResizeHandle
@@ -124,7 +137,7 @@ export default function OrgShellLayout() {
                   </div>
                 </SidebarInset>
               </SidebarLayout>
-              {isMobile && (
+              {isMobile && !reportsOnly && (
                 <MobileSidebarSheet
                   renderSidebar={({ onClose }) => (
                     <div className="flex h-full">

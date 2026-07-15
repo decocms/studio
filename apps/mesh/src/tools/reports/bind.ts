@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { normalizeCommerceSiteUrl } from "../../commerce-discovery/site-url";
+import { normalizeReportsSiteUrl } from "../../reports/site-url";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { bindCommerceDiscoveryResource } from "./auth-client";
@@ -53,7 +53,7 @@ export const COMMERCE_DISCOVERY_BIND = defineTool({
     // wire; ctx.access.check enforces which member of the org may bind.
     await ctx.access.check();
 
-    const normalized = normalizeCommerceSiteUrl(input.siteUrl);
+    const normalized = normalizeReportsSiteUrl(input.siteUrl);
     if (!normalized.ok) {
       throw new Error(normalized.error);
     }

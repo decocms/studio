@@ -36,6 +36,7 @@ import {
   Image01,
   Link01,
   Loading01,
+  Paperclip,
   Plus,
   Settings04,
   ShieldTick,
@@ -43,6 +44,7 @@ import {
 } from "@untitledui/icons";
 import { Suspense, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { track } from "@/web/lib/posthog-client";
 import {
   PromptArgsDialog,
@@ -111,6 +113,7 @@ export function ToolsPopover({
   const playSwitchSound = useSound(switch005Sound);
   const { org } = useProjectContext();
   const { editor } = useCurrentEditor();
+  const reportsOnly = useReportsOnly();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const supportsFiles = modelSupportsFiles(selectedModel);
 
@@ -292,17 +295,54 @@ export function ToolsPopover({
   const isWebSearchActive = chatMode === "web-search";
   const isDeepResearchActive = chatMode === "deep-research";
 
+  const hiddenFileInput = (
+    <input
+      ref={fileInputRef}
+      type="file"
+      multiple
+      accept={getAcceptedMimeTypesForModel(selectedModel ?? null)}
+      className="hidden"
+      onChange={handleFileSelect}
+      disabled={isStreaming}
+    />
+  );
+
+  // Reports-only orgs collapse the Tools menu down to its one relevant
+  // action: attaching a file. Same hidden input, no dropdown.
+  if (reportsOnly) {
+    return (
+      <>
+        {hiddenFileInput}
+        <Button
+          type="button"
+          variant="ghost"
+          size="default"
+          disabled={disabled || !supportsFiles || isStreaming}
+          title="Add file"
+          aria-label="Add file"
+          onClick={handleAddFileClick}
+          className={cn(
+            "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
+            "gap-0 @[320px]/chat-bottom:gap-1.5",
+          )}
+        >
+          <Paperclip size={14} />
+          <span
+            className={cn(
+              "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+              "@[320px]/chat-bottom:max-w-24 @[320px]/chat-bottom:opacity-100",
+            )}
+          >
+            Add file
+          </span>
+        </Button>
+      </>
+    );
+  }
+
   return (
     <>
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept={getAcceptedMimeTypesForModel(selectedModel ?? null)}
-        className="hidden"
-        onChange={handleFileSelect}
-        disabled={isStreaming}
-      />
+      {hiddenFileInput}
 
       <DropdownMenu
         open={open}

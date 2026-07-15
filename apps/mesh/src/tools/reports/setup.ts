@@ -8,7 +8,7 @@ import {
   WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
 import { z } from "zod";
-import { normalizeCommerceSiteUrl } from "../../commerce-discovery/site-url";
+import { normalizeReportsSiteUrl } from "../../reports/site-url";
 import type { StudioContext } from "../../core/studio-context";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -22,6 +22,14 @@ import { fetchCommerceDiscoveryAuth } from "./auth-client";
 
 const REPORT_TOOL_NAME =
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME as "get_my_diagnostic";
+
+/**
+ * How recently an org must have been created for COMMERCE_DISCOVERY_SETUP to
+ * treat it as "created by this onboarding flow" and default reports_only on.
+ * Generous enough for a slow onboarding session; far below the age of any
+ * established org.
+ */
+const FRESH_ORG_WINDOW_MS = 60 * 60 * 1000;
 
 const CommerceDiscoverySetupInputSchema = z.object({
   siteUrl: z.string().min(1).describe("Website URL to configure."),
@@ -94,7 +102,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       throw new Error("User ID required to set up Commerce Discovery");
     }
 
-    const normalized = normalizeCommerceSiteUrl(input.siteUrl);
+    const normalized = normalizeReportsSiteUrl(input.siteUrl);
     if (!normalized.ok) {
       throw new Error(normalized.error);
     }
@@ -111,11 +119,11 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
     // deterministic per org, so the URL is fully known here at /upgrade time.
     //   main="app:<connectionId>:<toolName>" — pinned-view tab grammar
     //   (web/layouts/main-panel-tabs/tab-id.ts:formatPinnedViewTabId).
-    //   chat=0 keeps the chat panel closed (report-first), matching the button.
+    //   No chat param: the vMCP's chatDefaultOpen metadata decides, matching
+    //   the onboarding button.
     const reportSearch = new URLSearchParams({
       virtualmcpid: virtualMcpId,
       main: `app:${connectionId}:${REPORT_TOOL_NAME}`,
-      chat: "0",
     });
     const claimContact = {
       email: ctx.auth.user?.email,
@@ -239,6 +247,33 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       virtualMcp = await ctx.storage.virtualMcps.update(virtualMcp.id, userId, {
         pinned: true,
       });
+    }
+
+    // Default the "reports only" flag on ONLY for orgs the onboarding flow
+    // just created — an established org (already using other agents/MCPs)
+    // doing its first commerce onboarding must NOT be collapsed to the
+    // report surface. The org row's createdAt is the server-side signal
+    // that the org was minted moments ago by the flow's ensure-organization
+    // step; unlike a client-provided "isNewOrg" input it can't be spoofed,
+    // and unlike a created.connection guard it survives setup retries.
+    // Only set when never set (NULL), so an org that turns it off stays off.
+    const orgRow = await ctx.db
+      .selectFrom("organization")
+      .select(["createdAt"])
+      .where("id", "=", organization.id)
+      .executeTakeFirst();
+    const orgAgeMs = orgRow
+      ? Date.now() - new Date(orgRow.createdAt).getTime()
+      : Number.POSITIVE_INFINITY;
+    if (orgAgeMs < FRESH_ORG_WINDOW_MS) {
+      const settings = await ctx.storage.organizationSettings.get(
+        organization.id,
+      );
+      if (settings?.reports_only == null) {
+        await ctx.storage.organizationSettings.upsert(organization.id, {
+          reports_only: true,
+        });
+      }
     }
 
     return {

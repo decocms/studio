@@ -13,7 +13,7 @@ import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import * as ApiKeyTools from "./apiKeys";
-import * as CommerceDiscoveryTools from "./commerce-discovery";
+import * as CommerceDiscoveryTools from "./reports";
 import * as ConnectionTools from "./connection";
 import * as DatabaseTools from "./database";
 import * as VirtualMCPTools from "./virtual";

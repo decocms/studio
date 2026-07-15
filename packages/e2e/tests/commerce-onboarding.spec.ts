@@ -300,7 +300,7 @@ test.describe("Commerce onboarding route isolation", () => {
     expect(concrete.rows[0]).toMatchObject({
       connection_url: "https://commerce-skills.deco-cx.workers.dev/api/v2/mcp",
       connection_type: "HTTP",
-      title: "Commerce Discovery",
+      title: "Store Report",
     });
     // Setup must mint and persist a client token (stored encrypted at rest) —
     // a non-null token guards against the old stub silently creating a
@@ -321,7 +321,7 @@ test.describe("Commerce onboarding route isolation", () => {
     expect(virtual.rows[0]).toMatchObject({
       connection_url: `virtual://${virtualMcpId}`,
       connection_type: "VIRTUAL",
-      title: "Commerce Discovery",
+      title: "Report Agent",
       pinned: true,
     });
   });
@@ -424,7 +424,7 @@ test.describe("Commerce onboarding route isolation", () => {
     });
   });
 
-  test("opens the full Commerce Discovery report with app tab and chat closed", async ({
+  test("opens the full Commerce Discovery report with app tab", async ({
     page,
   }) => {
     const user = await signUpViaApi(page.context().request, {
@@ -438,13 +438,14 @@ test.describe("Commerce onboarding route isolation", () => {
     await page.goto("/commerce-onboarding?siteUrl=example.com");
     await page.getByRole("button", { name: "Ver relatório completo" }).click();
 
+    // No chat param: the vMCP's chatDefaultOpen metadata decides the panel.
     await page.waitForURL(
       (url) =>
         url.pathname.startsWith(`/${user.orgSlug}/`) &&
         url.searchParams.get("virtualmcpid") === virtualMcpId &&
         url.searchParams.get("main") ===
           `app:${connectionId}:get_my_diagnostic` &&
-        url.searchParams.get("chat") === "0",
+        url.searchParams.get("chat") === null,
       { timeout: 20_000 },
     );
 

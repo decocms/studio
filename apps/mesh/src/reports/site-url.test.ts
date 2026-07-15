@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
   isConnectionClaimedForSite,
-  normalizeCommerceSiteUrl,
+  normalizeReportsSiteUrl,
 } from "./site-url.ts";
 
-describe("normalizeCommerceSiteUrl", () => {
+describe("normalizeReportsSiteUrl", () => {
   test("adds https to bare hostnames", () => {
-    expect(normalizeCommerceSiteUrl("example.com")).toEqual({
+    expect(normalizeReportsSiteUrl("example.com")).toEqual({
       ok: true,
       value: "https://example.com",
     });
@@ -14,7 +14,7 @@ describe("normalizeCommerceSiteUrl", () => {
 
   test("returns origin only for URLs with path query and hash", () => {
     expect(
-      normalizeCommerceSiteUrl("https://example.com/path?q=1#section"),
+      normalizeReportsSiteUrl("https://example.com/path?q=1#section"),
     ).toEqual({
       ok: true,
       value: "https://example.com",
@@ -22,35 +22,35 @@ describe("normalizeCommerceSiteUrl", () => {
   });
 
   test("upgrades http URLs to https", () => {
-    expect(normalizeCommerceSiteUrl("http://example.com")).toEqual({
+    expect(normalizeReportsSiteUrl("http://example.com")).toEqual({
       ok: true,
       value: "https://example.com",
     });
   });
 
   test("preserves explicit ports", () => {
-    expect(normalizeCommerceSiteUrl("https://example.com:8443/path")).toEqual({
+    expect(normalizeReportsSiteUrl("https://example.com:8443/path")).toEqual({
       ok: true,
       value: "https://example.com:8443",
     });
   });
 
   test("accepts bare hostnames with ports", () => {
-    expect(normalizeCommerceSiteUrl("example.com:8443")).toEqual({
+    expect(normalizeReportsSiteUrl("example.com:8443")).toEqual({
       ok: true,
       value: "https://example.com:8443",
     });
   });
 
   test("accepts bare hostnames with default https ports and paths", () => {
-    expect(normalizeCommerceSiteUrl("store.example.com:443/path")).toEqual({
+    expect(normalizeReportsSiteUrl("store.example.com:443/path")).toEqual({
       ok: true,
       value: "https://store.example.com",
     });
   });
 
   test("rejects non-http protocols", () => {
-    expect(normalizeCommerceSiteUrl("ftp://example.com")).toEqual({
+    expect(normalizeReportsSiteUrl("ftp://example.com")).toEqual({
       ok: false,
       error: "Use an HTTP or HTTPS website URL.",
     });
@@ -61,7 +61,7 @@ describe("normalizeCommerceSiteUrl", () => {
       "mailto:owner@example.com",
       "custom:foo@example.com",
     ]) {
-      expect(normalizeCommerceSiteUrl(siteUrl)).toEqual({
+      expect(normalizeReportsSiteUrl(siteUrl)).toEqual({
         ok: false,
         error: "Use an HTTP or HTTPS website URL.",
       });
@@ -69,21 +69,21 @@ describe("normalizeCommerceSiteUrl", () => {
   });
 
   test("rejects empty input", () => {
-    expect(normalizeCommerceSiteUrl("")).toEqual({
+    expect(normalizeReportsSiteUrl("")).toEqual({
       ok: false,
       error: "Enter a website URL.",
     });
   });
 
   test("rejects invalid hostnames", () => {
-    expect(normalizeCommerceSiteUrl("not a url")).toEqual({
+    expect(normalizeReportsSiteUrl("not a url")).toEqual({
       ok: false,
       error: "Enter a valid website URL.",
     });
   });
 
   test("rejects hostnames without a dot", () => {
-    expect(normalizeCommerceSiteUrl("localhost")).toEqual({
+    expect(normalizeReportsSiteUrl("localhost")).toEqual({
       ok: false,
       error: "Enter a valid website URL.",
     });
@@ -96,7 +96,7 @@ describe("normalizeCommerceSiteUrl", () => {
       ".com",
       "example..com",
     ]) {
-      expect(normalizeCommerceSiteUrl(siteUrl)).toEqual({
+      expect(normalizeReportsSiteUrl(siteUrl)).toEqual({
         ok: false,
         error: "Enter a valid website URL.",
       });
@@ -127,7 +127,7 @@ describe("isConnectionClaimedForSite", () => {
   });
 
   test("a malformed non-empty request is NOT treated like an empty one", () => {
-    // Regression: both "" and "not-a-url" fail normalizeCommerceSiteUrl, but
+    // Regression: both "" and "not-a-url" fail normalizeReportsSiteUrl, but
     // only the empty case should bypass the site-match check — otherwise a
     // garbled ?siteUrl param would silently reuse whatever site the
     // connection happens to already be claimed for.
