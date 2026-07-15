@@ -3,7 +3,7 @@
  *
  * Launched as a Playwright `webServer` so the mesh server can complete
  * `COMMERCE_DISCOVERY_SETUP` end-to-end without reaching the real production
- * worker (https://commerce-skills.deco-cx.workers.dev). The mesh server is
+ * reports service (https://reports.decocms.com). The mesh server is
  * pointed here via `COMMERCE_DISCOVERY_INTERNAL_API_URL` in the Playwright
  * config.
  *
