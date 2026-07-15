@@ -8,6 +8,8 @@
  * the block from the prompt entirely.
  */
 
+import { csvField } from "./csv";
+
 export interface ConnectionsBlockTool {
   /** Original MCP tool name (with gateway prefix). */
   rawName: string;
@@ -39,19 +41,6 @@ On errors:
   call enable_tool again if the tool is not present there at all.
 - Schema validation — re-check the tool's input schema
 </connections-usage>`;
-
-function csvField(s: string | null | undefined): string {
-  if (s == null || s === "") return "";
-  if (
-    s.includes(",") ||
-    s.includes('"') ||
-    s.includes("\n") ||
-    s.includes(";")
-  ) {
-    return `"${s.replaceAll('"', '""')}"`;
-  }
-  return s;
-}
 
 export function buildConnectionsBlock(
   tools: ConnectionsBlockTool[],
