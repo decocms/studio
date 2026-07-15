@@ -33,6 +33,7 @@ import {
   useRef,
   use,
   Suspense,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { Chat, useChatTask } from "@/web/components/chat/index";
@@ -81,6 +82,11 @@ import { OrgFileOpenProvider } from "@/web/components/chat/org-file-open-context
 import { BlocksPreviewWorkspaceProvider } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
 import { BlocksPanel } from "@/web/components/sandbox/blocks/blocks-panel";
 import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
+import { DemoAgentChatPanel } from "@/web/layouts/task-board/demo/agent-chat";
+import {
+  getSnapshot as getDemoSnapshot,
+  subscribe as subscribeDemo,
+} from "@/web/layouts/task-board/demo/store";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -238,6 +244,12 @@ function DesktopTaskWorkspace({
   // Chat and Blocks share the side panel, so a toggle only ever collapses the
   // panel when it is already showing that surface and Main can carry the view.
   const canCollapseSide = canCollapsePanel(layout);
+  const demoState = useSyncExternalStore(
+    subscribeDemo,
+    getDemoSnapshot,
+    getDemoSnapshot,
+  );
+  const activeDemoSession = demoState.activeChatSession;
 
   return (
     <>
@@ -274,7 +286,13 @@ function DesktopTaskWorkspace({
           taskId={layout.taskId}
           sidePanel={layout.sidePanel}
           mainOpen={layout.mainOpen}
-          chatContent={<ActiveTaskBoundary />}
+          chatContent={
+            activeDemoSession ? (
+              <DemoAgentChatPanel session={activeDemoSession} />
+            ) : (
+              <ActiveTaskBoundary />
+            )
+          }
         />
       </Suspense>
     </>

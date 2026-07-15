@@ -5,7 +5,6 @@
  */
 
 import { lazy, Suspense, useState } from "react";
-import { useSearch } from "@tanstack/react-router";
 import { getInitials } from "@/web/lib/get-initials";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -49,18 +48,13 @@ function BoardLoading() {
 }
 
 export default function TaskBoard() {
-  const search = useSearch({ strict: false }) as { demo?: boolean };
   return (
     <div className="min-h-0 flex-1 pt-0 pr-1 pb-1 pl-0">
       <div className="h-full p-0.5 pt-0.25">
         <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
-          {search.demo ? (
-            <Suspense fallback={<BoardLoading />}>
-              <DemoTaskBoard />
-            </Suspense>
-          ) : (
-            <TaskBoardPage />
-          )}
+          <Suspense fallback={<BoardLoading />}>
+            <DemoTaskBoard />
+          </Suspense>
         </div>
       </div>
     </div>

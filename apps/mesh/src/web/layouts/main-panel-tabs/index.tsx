@@ -10,9 +10,10 @@
 
 import { Suspense, lazy } from "react";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
+
+const DemoTaskBoard = lazy(() => import("@/web/layouts/task-board/demo/index"));
 import { SettingsTab } from "./settings-tab";
 import { OverviewTab } from "./overview-tab";
-import { TaskBoardPage } from "@/web/layouts/task-board";
 import { GitTab } from "@/web/components/thread/github/git-tab";
 import { PreviewTab } from "./preview-tab";
 import { CodeTab } from "./code-tab";
@@ -75,11 +76,13 @@ function TabBody({
   }
   if (activeTab === "board") {
     // Task board opened next to chat via the Tasks toggle (`?main=board`).
-    // The main panel already supplies the card chrome, so render the inner
-    // page inside a full-height flex column (mirrors the standalone route).
+    // Renders the scripted demo board (Generate backlog, etc.) so it matches
+    // the standalone /$org/board route.
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
-        <TaskBoardPage />
+        <Suspense fallback={<MainPanelLoading />}>
+          <DemoTaskBoard />
+        </Suspense>
       </div>
     );
   }

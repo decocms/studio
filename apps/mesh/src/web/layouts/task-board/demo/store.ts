@@ -6,8 +6,13 @@
  */
 
 import { sleep } from "@decocms/std";
-import type { TaskBoardItemStatus } from "../config";
-import { DEMO_TASK_SEEDS, type DemoTask } from "./data";
+import type { TaskBoardItemPriority, TaskBoardItemStatus } from "../config";
+import {
+  DEMO_TASK_SEEDS,
+  type DemoAssignee,
+  type DemoSession,
+  type DemoTask,
+} from "./data";
 
 export type DemoPhase = "idle" | "generating" | "running" | "done";
 
@@ -15,16 +20,21 @@ export interface DemoState {
   phase: DemoPhase;
   autoMerge: boolean;
   tasks: DemoTask[];
+  activeChatSession: DemoSession | null;
 }
 
-const INITIAL_STATE: DemoState = { phase: "idle", autoMerge: false, tasks: [] };
+const INITIAL_STATE: DemoState = {
+  phase: "idle",
+  autoMerge: false,
+  tasks: [],
+  activeChatSession: null,
+};
 
 /** How many tasks the Deco agent works on at the same time. */
 const CONCURRENCY = 3;
 const STREAM_DELAY_MS = 140;
 const MERGE_DELAY_MS = 1200;
 const MERGE_STAGGER_MS = 400;
-const PUBLISH_MS = 1500;
 
 let state: DemoState = INITIAL_STATE;
 /** Bumped on reset so in-flight async scripts from a previous run stop. */
@@ -68,12 +78,7 @@ export async function generateBacklog() {
   for (const seed of DEMO_TASK_SEEDS) {
     await sleep(STREAM_DELAY_MS);
     if (run !== epoch) return;
-    const task: DemoTask = {
-      ...seed,
-      status: seed.initialStatus,
-      published: false,
-      publishState: "idle",
-    };
+    const task: DemoTask = { ...seed, status: seed.initialStatus };
     emit({ ...state, tasks: [...state.tasks, task] });
   }
 
@@ -115,18 +120,24 @@ export function toggleAutoMerge(on: boolean) {
   });
 }
 
-/** Publishes a task's change from the CMS editor. Resolves once published. */
-export async function publishTask(id: string) {
-  const task = state.tasks.find((t) => t.id === id);
-  if (!task || task.publishState !== "idle") return;
-  patchTask(id, { publishState: "publishing" });
-  await sleep(PUBLISH_MS);
-  patchTask(id, { publishState: "published", published: true });
-  if (state.autoMerge) void mergeAfter(id, MERGE_STAGGER_MS);
-}
-
 export function moveTask(id: string, status: TaskBoardItemStatus) {
   patchTask(id, { status });
+}
+
+export function setPriority(id: string, priority: TaskBoardItemPriority) {
+  patchTask(id, { priority });
+}
+
+export function setAssignee(id: string, assignee: DemoAssignee | null) {
+  patchTask(id, { assignee });
+}
+
+export function setActiveChatSession(session: DemoSession) {
+  emit({ ...state, activeChatSession: session });
+}
+
+export function clearActiveChatSession() {
+  emit({ ...state, activeChatSession: null });
 }
 
 export function reset() {

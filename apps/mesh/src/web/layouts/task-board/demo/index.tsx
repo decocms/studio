@@ -27,15 +27,15 @@ import {
   STATUSES,
   type TaskBoardItemStatus,
 } from "../config";
-import type { DemoTask } from "./data";
-import { DecoAvatar, SourceIcon } from "./icons";
+import type { DemoSession, DemoTask } from "./data";
+import { DecoAvatar } from "./icons";
 import {
-  type DemoPhase,
   type DemoState,
   generateBacklog,
   getSnapshot,
   moveTask,
   reset,
+  setActiveChatSession,
   subscribe,
   toggleAutoMerge,
 } from "./store";
@@ -45,34 +45,16 @@ function useDemoStore(): DemoState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-function statusLine(phase: DemoPhase, workingCount: number): string | null {
-  switch (phase) {
-    case "idle":
-      return null;
-    case "generating":
-      return "Analyzing GA4, Search Console and GitHub signals";
-    case "running":
-      return workingCount > 0
-        ? `Deco is working on ${workingCount} ${workingCount === 1 ? "task" : "tasks"}`
-        : "Deco is picking up the next tasks";
-    case "done":
-      return "Deco finished this run: PRs are ready for review";
-    default: {
-      const exhaustive: never = phase;
-      return exhaustive;
-    }
-  }
-}
-
 export default function DemoTaskBoard() {
   const state = useDemoStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const workingCount = state.tasks.filter(
-    (t) => t.status === "in_progress",
-  ).length;
-  const line = statusLine(state.phase, workingCount);
   const selected = state.tasks.find((t) => t.id === selectedId);
+
+  const handleOpenChat = (session: DemoSession) => {
+    setActiveChatSession(session);
+    setSelectedId(null);
+  };
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -95,15 +77,6 @@ export default function DemoTaskBoard() {
               <Check size={16} className="text-green-600" />
               Backlog generated
             </Button>
-          )}
-
-          {line && (
-            <span className="flex items-center gap-2 text-xs text-muted-foreground">
-              {state.phase !== "done" && (
-                <span className="size-1.5 animate-pulse rounded-full bg-blue-500" />
-              )}
-              {line}
-            </span>
           )}
 
           {state.phase !== "idle" && (
@@ -152,6 +125,7 @@ export default function DemoTaskBoard() {
           task={selected}
           open
           onClose={() => setSelectedId(null)}
+          onOpenChat={handleOpenChat}
         />
       )}
     </div>
@@ -258,7 +232,6 @@ function DemoTaskCard({
       </span>
 
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <SourceIcon source={task.source} size={12} />
         <Flag01 size={12} className={priorityConfig.flagClassName} />
 
         {task.status === "in_progress" && (
