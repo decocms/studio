@@ -8,6 +8,7 @@ import { SidebarAccountFooterMobile } from "./footer/sidebar-footer-mobile";
 import { TaskGroupsList } from "./task-groups/task-groups-list";
 import { TaskGroupsSkeleton } from "./task-groups/task-groups-skeleton";
 import { SidebarAgentGroupsProvider } from "./sidebar-agent-groups-context";
+import { SidebarSwitcherHeader } from "./sidebar-switcher-header";
 
 export type {
   NavigationSidebarItem,
@@ -23,6 +24,7 @@ export function StudioSidebar() {
     <SidebarAgentGroupsProvider>
       <NavigationSidebar
         sections={sections}
+        header={<SidebarSwitcherHeader />}
         footer={<SidebarAccountFooter />}
         additionalContent={
           <ErrorBoundary>

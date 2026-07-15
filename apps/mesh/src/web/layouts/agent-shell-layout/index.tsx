@@ -3,14 +3,11 @@
  *
  * Desktop layout:
  *   SidebarInset
- *   ├── Toolbar                            (outside Suspense)
- *   │   • Toolbar.TabsSlot    (portal target — main-panel tab bar)
- *   │   • Toolbar.TogglesSlot (portal target — chat / new-task)
  *   └── Suspense
  *       └── AgentInsetProvider
  *           • useVirtualMCP (suspends here)
- *           • Toolbar.Toggles → portal into slot
- *           • Toolbar.Tabs → portal into slot
+ *           • DesktopAgentRailProvider
+ *           • DesktopAgentRail
  *           • Chat.Provider
  *             └── VmEventsBridge
  *                 └── Chat.ActiveTaskProvider
@@ -60,10 +57,8 @@ import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { Toolbar } from "./toolbar";
 import { WorkspacePanelGroup } from "./workspace-panel-group";
 import { ToggleButtons } from "./toggle-buttons";
-import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { MobileMainPanelTabSelect } from "@/web/layouts/main-panel-tabs/mobile-main-panel-tab-select";
 import { MainPanelWithDrawer } from "@/web/layouts/main-panel-tabs/main-panel-with-drawer";
-import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-events-context.tsx";
 import {
   SandboxLifecycleProvider,
@@ -76,6 +71,10 @@ import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/web/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
 import { SidePanel } from "./side-panel";
+import {
+  DesktopAgentRail,
+  DesktopAgentRailProvider,
+} from "./desktop-agent-rail";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -231,28 +230,19 @@ function DesktopTaskWorkspace({
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
 }) {
   return (
-    <>
-      <Toolbar.Toggles>
-        <ToggleButtons
-          sidePanel={layout.sidePanel}
-          toggleSidePanel={layout.toggleSidePanel}
-          disableActiveSidePanelToggle={!layout.mainOpen}
-        />
-      </Toolbar.Toggles>
-      {/* Tabs must live under SandboxEventsProvider — useMainPanelTabs gates
-          Content on lifecycle.phase === "running" + decofile. */}
-      <Toolbar.Tabs>
-        <MainPanelTabsBar
-          virtualMcpId={virtualMcpId}
-          taskId={layout.taskId}
-          disableActiveMainToggle={layout.sidePanel === null}
-        />
-      </Toolbar.Tabs>
+    <DesktopAgentRailProvider>
       <NewTaskBridge
         onNewTaskRef={onNewTaskRef}
         createNewTask={layout.createNewTask}
       />
-      <VirtualMcpHeaderInfo virtualMcp={entity} />
+      <DesktopAgentRail
+        entity={entity}
+        virtualMcpId={virtualMcpId}
+        taskId={layout.taskId}
+        sidePanel={layout.sidePanel}
+        mainOpen={layout.mainOpen}
+        toggleSidePanel={layout.toggleSidePanel}
+      />
       <Suspense fallback={<Chat.Skeleton />}>
         <WorkspacePanelGroup
           virtualMcpId={virtualMcpId}
@@ -262,7 +252,7 @@ function DesktopTaskWorkspace({
           chatContent={<ActiveTaskBoundary />}
         />
       </Suspense>
-    </>
+    </DesktopAgentRailProvider>
   );
 }
 
@@ -493,7 +483,7 @@ function AgentInsetProvider() {
     );
   }
 
-  // Desktop — portal toggle buttons into outer toolbar, render chat+main group.
+  // Desktop — render the full-height chat+main group and floating control rail.
   // The org-wide tasks column is owned by org-shell-layout, outside this
   // Suspense boundary, so it stays mounted while this task-scoped content loads.
   return (
@@ -533,9 +523,9 @@ function AgentInsetProvider() {
 // ---------------------------------------------------------------------------
 // Default export — the per-task content for /$org/$taskId.
 //
-// Sidebar, toolbar shell, and ChatPrefsProvider live in `org-shell-layout`
-// (the parent route). This component just renders the per-task chrome inside
-// the flex-row Outlet on desktop, or directly inside SidebarInset on mobile.
+// Sidebar and ChatPrefsProvider live in `org-shell-layout` (the parent route).
+// This component renders the per-task chrome inside the flex-row Outlet on
+// desktop, or directly inside SidebarInset under the mobile toolbar.
 // ---------------------------------------------------------------------------
 
 export default function AgentShellLayout() {

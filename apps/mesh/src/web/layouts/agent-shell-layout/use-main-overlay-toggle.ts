@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 
 /**
- * A left-toolbar overlay toggle (Library, Tasks) — swaps the main panel's
+ * A global overlay toggle (Library, Tasks) — swaps the main panel's
  * active tab for an agent-independent view (`?main=<overlayTabId>`).
  *
  * Toggling OFF restores whatever tab was showing when the overlay opened
@@ -12,7 +12,7 @@ import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
  * falls back to the agent's default view by dropping the `main` param.
  *
  * The remembered tab lives in a ref, which survives `?main` changes because the
- * toolbar stays mounted for the life of the task route.
+ * floating rail stays mounted for the life of the task route.
  */
 export function useMainOverlayToggle(overlayTabId: string): {
   active: boolean;

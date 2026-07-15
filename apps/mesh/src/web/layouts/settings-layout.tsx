@@ -4,8 +4,8 @@
  * Wraps `/$org/settings/...` routes. Mirrors the org shell shape:
  *   SidebarProvider
  *   └── app-shell-root (flex-col, h-dvh)
- *       ├── Toolbar.Header           — full-width, "← Settings" + trigger + back/forward
- *       └── SidebarLayout            — body row
+ *       ├── Toolbar.Header           — mobile only
+ *       └── SidebarLayout            — full-height desktop body row
  *           ├── SettingsSidebar      — desktop only
  *           └── SidebarInset         — content card with routed children
  *   + MobileSidebarSheet for the mobile sidebar
@@ -60,6 +60,8 @@ import { authClient } from "@/web/lib/auth-client";
 import { track } from "@/web/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/web/lib/query-persist";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
+import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
+import { SidebarSwitcherHeader } from "@/web/components/sidebar/sidebar-switcher-header";
 import {
   MobileSidebarSheet,
   SidebarTriggerButton,
@@ -244,6 +246,7 @@ export function SettingsSidebar() {
 
   return (
     <Sidebar variant="sidebar">
+      <SidebarSwitcherHeader />
       <SidebarContent className="flex flex-col flex-1 mt-2 px-2 pb-2 gap-0 overflow-y-auto">
         {groups.map((group, i) => (
           <SidebarGroup
@@ -451,6 +454,7 @@ function SettingsInset() {
       <div
         className={cn(
           "flex flex-col h-full min-h-0 bg-background overflow-hidden",
+          "desktop-wco-safe-content",
           "card-shadow",
           "rounded-[0.75rem]",
         )}
@@ -479,47 +483,52 @@ export default function SettingsLayout() {
   }
 
   return (
-    <Toolbar.Provider>
-      <SidebarProvider defaultOpen={true}>
-        <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
-          <Toolbar.Header>
-            <Toolbar.LeftColumn>
-              <Toolbar.LogoLink />
-              {isMobile && <SidebarTriggerButton />}
-            </Toolbar.LeftColumn>
-            <Toolbar.CenterSlot />
-            <Toolbar.RightColumn>
-              <span />
-            </Toolbar.RightColumn>
-          </Toolbar.Header>
-          <SidebarLayout
-            className="flex-1 bg-sidebar min-h-0"
-            style={
-              {
-                "--sidebar-width-icon": "3.5rem",
-              } as Record<string, string>
-            }
-          >
-            {!isMobile && <SettingsSidebar />}
-            <SidebarInset
-              className="flex flex-col"
-              style={{
-                background: "transparent",
-                containerType: "inline-size",
-              }}
+    <ThreadManagerProvider>
+      <Toolbar.Provider>
+        <SidebarProvider defaultOpen={true}>
+          <div className="app-shell-root desktop-shell-wco relative flex h-dvh flex-col overflow-hidden">
+            {isMobile && (
+              <Toolbar.Header>
+                <Toolbar.LeftColumn>
+                  <Toolbar.LogoLink />
+                  <SidebarTriggerButton />
+                </Toolbar.LeftColumn>
+                <Toolbar.CenterSlot />
+                <Toolbar.RightColumn>
+                  <span />
+                </Toolbar.RightColumn>
+              </Toolbar.Header>
+            )}
+            {!isMobile && <div className="desktop-titlebar-drag-region" />}
+            <SidebarLayout
+              className="flex-1 bg-sidebar min-h-0"
+              style={
+                {
+                  "--sidebar-width-icon": "3.5rem",
+                } as Record<string, string>
+              }
             >
-              <SettingsInset />
-            </SidebarInset>
-          </SidebarLayout>
-          {isMobile && (
-            <MobileSidebarSheet
-              renderSidebar={({ onClose }) => (
-                <SettingsSidebarMobile onClose={onClose} />
-              )}
-            />
-          )}
-        </div>
-      </SidebarProvider>
-    </Toolbar.Provider>
+              {!isMobile && <SettingsSidebar />}
+              <SidebarInset
+                className="flex flex-col"
+                style={{
+                  background: "transparent",
+                  containerType: "inline-size",
+                }}
+              >
+                <SettingsInset />
+              </SidebarInset>
+            </SidebarLayout>
+            {isMobile && (
+              <MobileSidebarSheet
+                renderSidebar={({ onClose }) => (
+                  <SettingsSidebarMobile onClose={onClose} />
+                )}
+              />
+            )}
+          </div>
+        </SidebarProvider>
+      </Toolbar.Provider>
+    </ThreadManagerProvider>
   );
 }

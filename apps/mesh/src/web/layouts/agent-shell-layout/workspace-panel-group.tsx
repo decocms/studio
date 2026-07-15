@@ -31,7 +31,9 @@ function PanelCard({
         data-testid={testId}
         className="h-full min-h-0 overflow-hidden rounded-[0.75rem] bg-background card-shadow"
       >
-        {children}
+        <div className="desktop-wco-safe-content h-full min-h-0">
+          {children}
+        </div>
       </div>
     </div>
   );

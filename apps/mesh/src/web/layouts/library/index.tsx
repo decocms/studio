@@ -21,14 +21,12 @@ import {
   Eye,
   Globe01,
   Home01,
-  Palette,
   Plus,
   RefreshCw01,
   SearchLg,
   Stars01,
   Upload01,
   XClose,
-  Zap,
 } from "@untitledui/icons";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
@@ -55,9 +53,6 @@ import { Input } from "@deco/ui/components/input.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { homeDisplayName } from "@/file-storage/home-mount";
 import { ErrorBoundary } from "@/web/components/error-boundary";
-import { FileTypeIcon } from "@/web/components/file-type-icon";
-import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
-import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { KEYS } from "@/web/lib/query-keys";
 import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
 import {
@@ -1087,7 +1082,7 @@ export default function Library() {
     >
       <ResizablePanel order={1} minSize={30} defaultSize={55}>
         <div className="h-full p-0.5 pt-0.25">
-          <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
+          <div className="desktop-wco-safe-content card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
             <ErrorBoundary>
               <LibraryPage />
             </ErrorBoundary>
@@ -1096,30 +1091,10 @@ export default function Library() {
       </ResizablePanel>
       {right && (
         <>
-          {/* Mirror the chat: the open preview surfaces as a pill in the
-              shared top-right tab slot; clicking it closes the panel. */}
-          <Toolbar.Tabs>
-            <HeaderTabButton
-              title={basename(right.path)}
-              icon={{
-                kind: "component",
-                Component: (props) =>
-                  right.key === "preview" ? (
-                    <FileTypeIcon filename={basename(right.path)} {...props} />
-                  ) : right.key === "skill" ? (
-                    <Zap {...props} />
-                  ) : (
-                    <Palette {...props} />
-                  ),
-              }}
-              active
-              onClick={() => clearParam(right.key)}
-            />
-          </Toolbar.Tabs>
           <ResizableHandle className="bg-sidebar" />
           <ResizablePanel order={2} minSize={25} defaultSize={45}>
             <div className="h-full p-0.5 pt-0.25">
-              <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
+              <div className="desktop-wco-safe-content card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
                 <ErrorBoundary>{right.panel}</ErrorBoundary>
               </div>
             </div>

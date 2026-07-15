@@ -4,6 +4,7 @@ import {
   agentHasClonableSource,
   agentHasConnectedGithub,
   agentShowsGithubHeaderActions,
+  findDevPartner,
   hasLocalCliHarness,
 } from "./agent-capabilities";
 
@@ -203,5 +204,34 @@ describe("hasLocalCliHarness", () => {
         link({ online: true, capabilities: ["claude-code", "codex"] }),
       ),
     ).toBe(true);
+  });
+});
+
+describe("findDevPartner", () => {
+  const live = { id: "live", metadata: {} } as any;
+  const dev = {
+    id: "dev",
+    metadata: { liveAgentId: "live" },
+  } as any;
+  const agents = [live, dev];
+
+  it("resolves the live counterpart from a dev agent", () => {
+    expect(findDevPartner(dev, agents)).toEqual({
+      mode: "dev",
+      targetId: "live",
+    });
+  });
+
+  it("reverse-resolves the dev counterpart from a live agent", () => {
+    expect(findDevPartner(live, agents)).toEqual({
+      mode: "live",
+      targetId: "dev",
+    });
+  });
+
+  it("returns null for agents outside a dev/live pair", () => {
+    expect(findDevPartner({ id: "plain", metadata: {} } as any, agents)).toBe(
+      null,
+    );
   });
 });

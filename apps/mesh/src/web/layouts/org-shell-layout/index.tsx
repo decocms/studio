@@ -2,13 +2,12 @@
  * Org Shell Layout
  *
  * Shared parent for `/$org/` (home) and `/$org/$taskId` (chat). Owns the
- * full-width toolbar header, the sidebar row beneath it, and
- * ChatPrefsProvider.
+ * mobile toolbar, full-height desktop sidebar row, and ChatPrefsProvider.
  *
  * Shell shape:
  *   SidebarProvider
  *   └── app-shell-root (flex-col, h-dvh)
- *       ├── Toolbar.Header           — full-width, fixed left zone
+ *       ├── Toolbar.Header           — mobile only
  *       └── SidebarLayout            — body row
  *           ├── StudioSidebar (desktop only)
  *           ├── SidebarResizeHandle (desktop only)
@@ -63,7 +62,7 @@ export default function OrgShellLayout() {
       <Toolbar.Provider>
         <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <ChatPrefsProvider>
-            <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
+            <div className="app-shell-root desktop-shell-wco relative flex h-dvh flex-col overflow-hidden">
               {isMobile ? (
                 <Toolbar.Header className="grid-cols-1 px-1 pr-1">
                   <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto] items-center gap-2">
@@ -79,32 +78,11 @@ export default function OrgShellLayout() {
                   {!reportsOnly && <Toolbar.CenterSlot />}
                   {!reportsOnly && <Toolbar.RightSlot />}
                 </Toolbar.Header>
-              ) : (
-                <Toolbar.Header>
-                  <Toolbar.LeftColumn>
-                    {!reportsOnly && <ShellBreadcrumb />}
-                    {/* Chat toggle sits on the left — it controls the left
-                        Chat side-panel view; the main-panel tabs stay on the right.
-                        Reports-only orgs keep ONLY this toggle: no breadcrumb,
-                        no view tabs, no right-side actions. */}
-                    <Toolbar.TogglesSlot />
-                  </Toolbar.LeftColumn>
-                  {reportsOnly ? <div aria-hidden /> : <Toolbar.CenterSlot />}
-                  <Toolbar.RightColumn>
-                    {!reportsOnly && (
-                      <>
-                        <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
-                          <Toolbar.TabsSlot />
-                        </div>
-                        <Toolbar.RightSlot />
-                      </>
-                    )}
-                  </Toolbar.RightColumn>
-                </Toolbar.Header>
-              )}
+              ) : null}
+              {!isMobile && <div className="desktop-titlebar-drag-region" />}
               <SidebarLayout
                 ref={wrapperRef}
-                className="flex-1 bg-sidebar relative min-h-0"
+                className="relative min-h-0 flex-1 bg-sidebar"
                 style={
                   {
                     "--sidebar-width": `${width}px`,

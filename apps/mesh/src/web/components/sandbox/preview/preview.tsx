@@ -33,6 +33,8 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { FloatingRailIconButton } from "@/web/components/floating-rail";
+import { PreviewRailPortal } from "@/web/layouts/agent-shell-layout/desktop-agent-rail";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -801,51 +803,79 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const canVisualEdit = previewState.kind === "iframe";
-  const floatingPreviewControls = canVisualEdit ? (
-    <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
-      <div className="flex items-center gap-0.5 rounded-full border bg-background/90 p-1 shadow-lg backdrop-blur-sm">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton
-              onClick={() => toggleEditingMode("visual")}
-              aria-pressed={editingMode === "visual"}
-              aria-label="Visual editor"
-              active={editingMode === "visual"}
-              disabled={!canVisualEdit}
-            >
-              <CursorClick01 size={16} />
-            </ToolbarIconButton>
-          </TooltipTrigger>
-          <TooltipContent side="top">Visual editor</TooltipContent>
-        </Tooltip>
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton
-              onClick={handleDeviceToggle}
-              aria-label={DEVICE_LABELS[previewDeviceSize]}
-              disabled={!canVisualEdit}
-            >
-              <span
-                key={previewDeviceSize}
-                className="flex items-center justify-center animate-device-icon-pop"
+  const floatingPreviewControls =
+    canVisualEdit && isMobile ? (
+      <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
+        <div className="flex items-center gap-0.5 rounded-full border bg-background/90 p-1 shadow-lg backdrop-blur-sm">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                onClick={() => toggleEditingMode("visual")}
+                aria-pressed={editingMode === "visual"}
+                aria-label="Visual editor"
+                active={editingMode === "visual"}
+                disabled={!canVisualEdit}
               >
-                {previewDeviceSize === "mobile" && <Phone02 size={16} />}
-                {previewDeviceSize === "tablet" && <Tablet01 size={16} />}
-                {previewDeviceSize === "desktop" && <Monitor04 size={16} />}
-              </span>
-            </ToolbarIconButton>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            {DEVICE_LABELS[previewDeviceSize]}
-          </TooltipContent>
-        </Tooltip>
+                <CursorClick01 size={16} />
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent side="top">Visual editor</TooltipContent>
+          </Tooltip>
+          <div className="mx-0.5 h-5 w-px bg-border" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                onClick={handleDeviceToggle}
+                aria-label={DEVICE_LABELS[previewDeviceSize]}
+                disabled={!canVisualEdit}
+              >
+                <span
+                  key={previewDeviceSize}
+                  className="flex items-center justify-center animate-device-icon-pop"
+                >
+                  {previewDeviceSize === "mobile" && <Phone02 size={16} />}
+                  {previewDeviceSize === "tablet" && <Tablet01 size={16} />}
+                  {previewDeviceSize === "desktop" && <Monitor04 size={16} />}
+                </span>
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {DEVICE_LABELS[previewDeviceSize]}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
-    </div>
-  ) : null;
+    ) : null;
+
+  const desktopPreviewControls =
+    canVisualEdit && !isMobile ? (
+      <PreviewRailPortal>
+        <FloatingRailIconButton
+          label="Visual editor"
+          active={editingMode === "visual"}
+          onClick={() => toggleEditingMode("visual")}
+        >
+          <CursorClick01 size={16} />
+        </FloatingRailIconButton>
+        <FloatingRailIconButton
+          label={DEVICE_LABELS[previewDeviceSize]}
+          onClick={handleDeviceToggle}
+        >
+          <span
+            key={previewDeviceSize}
+            className="flex items-center justify-center animate-device-icon-pop"
+          >
+            {previewDeviceSize === "mobile" && <Phone02 size={16} />}
+            {previewDeviceSize === "tablet" && <Tablet01 size={16} />}
+            {previewDeviceSize === "desktop" && <Monitor04 size={16} />}
+          </span>
+        </FloatingRailIconButton>
+      </PreviewRailPortal>
+    ) : null;
 
   return (
     <div className="flex flex-col w-full h-full">
+      {desktopPreviewControls}
       {/* Auto-select the first entity for a picker param with no value yet, so
           navigating to a bare dynamic-route template lands on a real page.
           Each helper renders nothing and unmounts once its param is filled. */}

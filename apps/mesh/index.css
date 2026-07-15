@@ -69,6 +69,34 @@
   .wco-hide {
     display: none !important;
   }
+
+  /* Desktop pages no longer reserve a visible shell toolbar. Keep the card
+     backgrounds full-height while moving interactive content below the native
+     window controls and retaining an invisible drag strip. */
+  .desktop-shell-wco .desktop-titlebar-drag-region {
+    display: block;
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 60;
+    height: env(titlebar-area-height, 3rem);
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+
+  .desktop-shell-wco .desktop-wco-safe-header {
+    box-sizing: border-box;
+    height: calc(3rem + env(titlebar-area-height, 3rem));
+    padding-top: env(titlebar-area-height, 3rem);
+  }
+
+  .desktop-shell-wco .desktop-wco-safe-content {
+    box-sizing: border-box;
+    padding-top: env(titlebar-area-height, 3rem);
+  }
+}
+
+.desktop-titlebar-drag-region {
+  display: none;
 }
 
 @layer components {

@@ -304,8 +304,8 @@ export function useMainPanelTabs(ctx: {
   // per-agent special-case. Source tabs (Preview · Code) share one capability
   // gate via getSourceSystemTabs; Blocks is an editing mode inside Preview.
   const leadingSystemTabs: Array<{ id: string; title: string }> = [];
-  // Library is agent-independent, so it lives in the LEFT toolbar group next to
-  // the Chat toggle (see LibraryToggle), NOT in this per-agent tab bar.
+  // Library is agent-independent, so it lives in the floating rail's global
+  // group next to Chat, NOT in this per-agent tab list.
   if (effectiveDefaultMainView?.type === "overview") {
     leadingSystemTabs.push({ id: "overview", title: "Overview" });
   }
@@ -319,7 +319,7 @@ export function useMainPanelTabs(ctx: {
     systemTabs.push({ id: "git", title: "Review changes" });
   }
   systemTabs.push({ id: "automations", title: "Automations" });
-  // Settings is always the last tab (Library moved to the leading anchor above).
+  // Settings is always the last tab.
   if (canManageAgents) {
     systemTabs.push({ id: "settings", title: "Settings" });
   }

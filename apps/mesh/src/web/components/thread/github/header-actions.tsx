@@ -13,6 +13,16 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { useState, useRef } from "react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle,
+  Eye,
+  GitBranch01,
+  MessageCircle01,
+  RefreshCw01,
+  Upload01,
+} from "@untitledui/icons";
 import { toast } from "sonner";
 import { authClient } from "@/web/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
@@ -34,9 +44,14 @@ import { resolveSandboxBranchFromMap } from "./resolve-sandbox-branch.ts";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
+import {
+  FloatingRailIconButton,
+  type FloatingRailSemantic,
+} from "@/web/components/floating-rail";
 
 interface Props {
   virtualMcpId: string;
+  variant?: "header" | "rail";
 }
 
 const LOADING_BRANCH_BUTTON: HeaderButton = {
@@ -48,17 +63,17 @@ const LOADING_BRANCH_BUTTON: HeaderButton = {
 };
 
 /**
- * HeaderActions renders the next-action button for the current branch + PR
- * state, plus a persistent green "Publish" button beside it while there is
- * local work not yet merged. Submit-for-review and squash-merge call GitHub
- * MCP tools directly (via the publish dialog); other actions send chat prompts.
+ * HeaderActions renders the next action for the current branch + PR state,
+ * plus a persistent green Publish action while there is local work not yet
+ * merged. The desktop rail uses icon controls; the legacy header variant keeps
+ * the labelled renderer available to other surfaces.
  *
  * Mounted for `attached` and `detached` repos (see resolveGithubAttachment).
  * When attached the button always renders — disabled status pills (Loading…,
  * Up to date, Published, …) cover cases with no actionable next step. When
  * detached it renders a reconnect pill rather than nothing.
  */
-export function HeaderActions({ virtualMcpId }: Props) {
+export function HeaderActions({ virtualMcpId, variant = "header" }: Props) {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
@@ -142,6 +157,18 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // Render a reconnect pill instead of nothing so the user has a recovery path
   // (a stale/mid-mutation aggregation must never leave the header blank).
   if (attachment.status === "detached") {
+    if (variant === "rail") {
+      return (
+        <FloatingRailIconButton
+          label="Reconnect GitHub"
+          tooltip="GitHub connection was removed — relink the repository in Settings to save changes"
+          semantic="destructive"
+          disabled
+        >
+          <AlertCircle className="size-4" />
+        </FloatingRailIconButton>
+      );
+    }
     return (
       <WithTooltip label="GitHub connection was removed — relink the repository in Settings to save changes">
         <Button size="sm" variant="outline" disabled>
@@ -313,6 +340,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   return (
     <>
       <HeaderButtonRenderer
+        variant={variant}
         button={button}
         actionBusy={actionBusy}
         githubActionPending={githubActionPending}
@@ -366,6 +394,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 }
 
 function HeaderButtonRenderer(props: {
+  variant: "header" | "rail";
   button: HeaderButton;
   actionBusy: boolean;
   githubActionPending: boolean;
@@ -392,6 +421,75 @@ function HeaderButtonRenderer(props: {
   const tooltipLabel = chatBlocksAction
     ? "Chat is running"
     : (button.tooltip ?? null);
+  const railLabel = tooltipLabel
+    ? `${button.label} — ${tooltipLabel}`
+    : button.label;
+
+  if (props.variant === "rail") {
+    if (
+      button.action === "merge-split" &&
+      props.prNumber != null &&
+      props.prBase != null
+    ) {
+      return (
+        <>
+          <FloatingRailIconButton
+            label={button.label}
+            tooltip={`${button.label} — ${button.tooltip ?? `Publish into ${props.prBase}`}`}
+            semantic="success"
+            disabled={disabled}
+            onClick={() => void props.onSquashMerge(props.prNumber!)}
+          >
+            {loading ? (
+              <Spinner size="xs" variant="default" />
+            ) : (
+              <CheckCircle className="size-4" />
+            )}
+          </FloatingRailIconButton>
+          {props.onReview && (
+            <FloatingRailIconButton
+              label="Review pull request"
+              semantic="primary"
+              disabled={disabled}
+              onClick={props.onReview}
+            >
+              <Eye className="size-4" />
+            </FloatingRailIconButton>
+          )}
+        </>
+      );
+    }
+
+    return (
+      <>
+        <FloatingRailIconButton
+          label={button.label}
+          tooltip={railLabel}
+          semantic={railButtonSemantic(button)}
+          disabled={disabled}
+          onClick={() => {
+            if (button.action) props.onActivate(button.action);
+          }}
+        >
+          {loading ? (
+            <Spinner size="xs" variant="default" />
+          ) : (
+            railButtonIcon(button)
+          )}
+        </FloatingRailIconButton>
+        {props.showPublishSide && (
+          <FloatingRailIconButton
+            label="Publish directly, skipping review"
+            semantic="success"
+            disabled={props.githubActionPending}
+            onClick={props.onPublishSide}
+          >
+            <Upload01 className="size-4" />
+          </FloatingRailIconButton>
+        )}
+      </>
+    );
+  }
 
   if (
     button.action === "merge-split" &&
@@ -440,6 +538,48 @@ function HeaderButtonRenderer(props: {
       ) : null}
     </div>
   );
+}
+
+function railButtonSemantic(button: HeaderButton): FloatingRailSemantic {
+  if (/failed|removed|disconnected/i.test(button.label)) return "destructive";
+  if (button.action === "merge-split" || button.label === "Published") {
+    return "success";
+  }
+  if (
+    button.action === "rebase" ||
+    button.action === "fix-checks" ||
+    button.action === "resolve-comments"
+  ) {
+    return "warning";
+  }
+  if (button.action) return "primary";
+  return "neutral";
+}
+
+function railButtonIcon(button: HeaderButton) {
+  switch (button.action) {
+    case "create-pr":
+      return <Upload01 className="size-4" />;
+    case "reopen":
+    case "rebase":
+      return <RefreshCw01 className="size-4" />;
+    case "fix-checks":
+      return <AlertTriangle className="size-4" />;
+    case "mark-ready":
+      return <CheckCircle className="size-4" />;
+    case "resolve-comments":
+      return <MessageCircle01 className="size-4" />;
+    case "merge-split":
+      return <CheckCircle className="size-4" />;
+    default:
+      return /failed/i.test(button.label) ? (
+        <AlertCircle className="size-4" />
+      ) : /published|up to date/i.test(button.label) ? (
+        <CheckCircle className="size-4" />
+      ) : (
+        <GitBranch01 className="size-4" />
+      );
+  }
 }
 
 function WithTooltip({

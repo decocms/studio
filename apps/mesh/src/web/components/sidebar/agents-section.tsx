@@ -49,6 +49,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { getServerPinnedIds } from "@/web/hooks/use-navigate-to-agent";
 import {
   agentHasClonableSource,
+  findDevPartner,
   getDevAgentIds,
 } from "@/web/lib/agent-capabilities";
 import {
@@ -223,6 +224,16 @@ function PinAgentPopoverContent({
   // Decopilot — the "all threads / every agent" option in scope-picker mode.
   // The well-known agent isn't in the collection list, so build it directly.
   const decopilotAgent = getWellKnownDecopilotVirtualMCP(org.id);
+  const selectedAgent =
+    selectedAgentId === decopilotAgent.id
+      ? decopilotAgent
+      : agents.find((agent) => agent.id === selectedAgentId);
+  const devPartner = selectedAgent
+    ? findDevPartner(selectedAgent, agents)
+    : null;
+  const devPartnerAgent = devPartner
+    ? agents.find((agent) => agent.id === devPartner.targetId)
+    : null;
   const showDecopilot =
     !search || decopilotAgent.title.toLowerCase().includes(lowerSearch);
   // Decopilot only renders in scope-picker mode; when it's shown the list is
@@ -265,6 +276,37 @@ function PinAgentPopoverContent({
 
       {/* Scrollable content */}
       <div className="overflow-y-auto flex-1 min-h-0 p-1.5 flex flex-col gap-0.5">
+        {onSelectAgent && devPartner && devPartnerAgent && (
+          <div className="mb-1 flex items-center justify-between gap-3 rounded-lg bg-muted/70 px-3 py-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              Mode
+            </span>
+            <div className="inline-flex items-center rounded-md border border-border bg-background p-0.5 text-xs font-medium">
+              {(["dev", "live"] as const).map((mode) => {
+                const active = devPartner.mode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => {
+                      if (!active) handleSelect(devPartnerAgent);
+                    }}
+                    className={cn(
+                      "rounded px-2 py-1 capitalize transition-colors",
+                      active
+                        ? "bg-accent text-accent-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {mode === "dev" ? "Develop" : "Live"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Scope-picker mode: Decopilot = all threads, every agent. */}
         {onSelectAgent && showDecopilot && decopilotAgent && (
           <AgentRow
