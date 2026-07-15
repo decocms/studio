@@ -89,5 +89,6 @@ export function useGithubRecentPrs(connectionId: string) {
       return { prs, repo: top.full_name };
     },
     staleTime: 60_000,
+    retry: false,
   });
 }
