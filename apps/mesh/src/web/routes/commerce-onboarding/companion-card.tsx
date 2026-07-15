@@ -17,7 +17,12 @@ import {
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@decocms/mesh-sdk";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, Loading01, Settings01 } from "@untitledui/icons";
+import {
+  CheckCircle,
+  LinkBroken01,
+  Loading01,
+  Settings01,
+} from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import type { CompanionCardModel } from "./companions-core.ts";
@@ -56,8 +61,10 @@ const AREA_BADGE_CLASS =
 export function CompanionCard({
   card,
   connecting,
+  disconnecting,
   disabled,
   onConnect,
+  onDisconnect,
   org,
   selfClient,
   siteUrl,
@@ -66,8 +73,10 @@ export function CompanionCard({
 }: {
   card: CompanionCardModel;
   connecting: boolean;
+  disconnecting: boolean;
   disabled: boolean;
   onConnect: () => void;
+  onDisconnect: () => void;
   org: { id: string; slug: string };
   selfClient: Client;
   siteUrl?: string;
@@ -116,6 +125,28 @@ export function CompanionCard({
             onAutoOpenHandled={onAutoOpenConfigHandled}
           />
         </Suspense>
+        {/* Unlink to revalidate: reverts the card to "Conectar" so a wrong or
+            stale link (e.g. a repo-scoped GitHub connection) can be replaced. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 text-muted-foreground hover:text-destructive"
+              disabled={disabled || disconnecting}
+              onClick={onDisconnect}
+              aria-label={`Desconectar ${card.title}`}
+            >
+              {disconnecting ? (
+                <Loading01 size={16} className="animate-spin" />
+              ) : (
+                <LinkBroken01 size={16} />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Desconectar</TooltipContent>
+        </Tooltip>
       </div>
     ) : (
       <Button

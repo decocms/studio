@@ -149,6 +149,8 @@ function CompanionMcpsSectionContent({
   const {
     connect,
     connectingFieldKey,
+    disconnect,
+    disconnectingFieldKey,
     error: connectError,
   } = useConnectCompanion({
     selfClient,
@@ -173,7 +175,7 @@ function CompanionMcpsSectionContent({
     return null;
   }
 
-  const busy = connectingFieldKey !== null;
+  const busy = connectingFieldKey !== null || disconnectingFieldKey !== null;
 
   return (
     // Mobile: fill the parent's remaining height — the header + intro copy stay
@@ -208,7 +210,12 @@ function CompanionMcpsSectionContent({
                 key={card.fieldKey}
                 card={card}
                 connecting={connectingFieldKey === card.fieldKey}
-                disabled={busy && connectingFieldKey !== card.fieldKey}
+                disconnecting={disconnectingFieldKey === card.fieldKey}
+                disabled={
+                  busy &&
+                  connectingFieldKey !== card.fieldKey &&
+                  disconnectingFieldKey !== card.fieldKey
+                }
                 org={org}
                 selfClient={selfClient}
                 siteUrl={siteUrl}
@@ -219,6 +226,7 @@ function CompanionMcpsSectionContent({
                   )
                 }
                 onConnect={() => void handleConnect()}
+                onDisconnect={() => void disconnect(card)}
               />
             );
           })}
