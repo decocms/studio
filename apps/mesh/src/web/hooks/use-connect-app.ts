@@ -1,18 +1,20 @@
 /**
  * Click-triggered "connect this app" flow: fetch the registry app by id,
- * create a connection, and run OAuth — no dialog. Generalized from
- * use-auto-install-github.ts (which auto-fires); this one exposes a `connect()`
- * you call on a button press.
- *
- * ponytail: no dedup — a repeat click on an already-connected app creates
- * another instance (same as the catalog "Connect" button). Add a slug lookup
- * if duplicates become a problem.
+ * reuse an existing connection for it (or create one), and run OAuth — no
+ * dialog. Generalized from use-auto-install-github.ts (which auto-fires); this
+ * one exposes a `connect()` you call on a button press.
  */
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useConnectionActions, useProjectContext } from "@decocms/mesh-sdk";
+import {
+  SELF_MCP_ALIAS_ID,
+  useConnectionActions,
+  useMCPClient,
+  useProjectContext,
+  type ConnectionEntity,
+} from "@decocms/mesh-sdk";
 import { authenticateAndPersistOAuth } from "@/web/lib/authenticate-and-persist-oauth";
 import { authClient } from "@/web/lib/auth-client";
 import { useRegistryApp } from "@/web/hooks/use-registry-app";
@@ -24,6 +26,11 @@ export function useConnectApp(appId: string) {
   const { data: session } = authClient.useSession();
   const actions = useConnectionActions();
   const queryClient = useQueryClient();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
   const [isConnecting, setIsConnecting] = useState(false);
 
   // Deferred — the tile shouldn't hit the registry on every home render. The
@@ -53,7 +60,15 @@ export function useConnectApp(appId: string) {
         return;
       }
 
-      const { id } = await actions.create.mutateAsync(connectionData);
+      // Reuse an existing connection for this app instead of creating a
+      // duplicate every click. app_name is the canonical per-app identifier.
+      const existing = connectionData.app_name
+        ? await findConnectionByAppName(client, connectionData.app_name)
+        : null;
+
+      const created = !existing;
+      const id =
+        existing?.id ?? (await actions.create.mutateAsync(connectionData)).id;
 
       const auth = await authenticateAndPersistOAuth({
         connectionId: id,
@@ -66,17 +81,20 @@ export function useConnectApp(appId: string) {
       });
 
       if (auth.ran && !auth.ok) {
-        try {
-          await actions.delete.mutateAsync(id);
-        } catch {
-          // best-effort cleanup
+        // Only roll back what we created — never delete a pre-existing one.
+        if (created) {
+          try {
+            await actions.delete.mutateAsync(id);
+          } catch {
+            // best-effort cleanup
+          }
         }
         toast.error(`Authentication failed: ${auth.error ?? "no token"}`);
         return;
       }
 
       invalidateVirtualMcpQueries(queryClient, org.id);
-      toast.success("Connected successfully");
+      toast.success(created ? "Connected successfully" : "Already connected");
     } catch (error) {
       toast.error(
         `Failed to connect: ${error instanceof Error ? error.message : String(error)}`,
@@ -87,4 +105,20 @@ export function useConnectApp(appId: string) {
   };
 
   return { connect, isConnecting };
+}
+
+async function findConnectionByAppName(
+  client: ReturnType<typeof useMCPClient>,
+  appName: string,
+): Promise<ConnectionEntity | null> {
+  const res = await client.callTool({
+    name: "COLLECTION_CONNECTIONS_LIST",
+    arguments: {
+      where: { field: ["app_name"], operator: "eq", value: appName },
+      limit: 1,
+    },
+  });
+  const items = (res.structuredContent as { items?: ConnectionEntity[] })
+    ?.items;
+  return items?.[0] ?? null;
 }
