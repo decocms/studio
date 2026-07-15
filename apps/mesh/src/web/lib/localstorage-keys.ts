@@ -6,12 +6,6 @@ import type { ProjectLocator } from "@decocms/mesh-sdk";
  * This is used to avoid inline key definitions and to ensure consistency.
  */
 export const LOCALSTORAGE_KEYS = {
-  assistantChatTasks: (locator: ProjectLocator) =>
-    `mesh:assistant-chat:tasks:${locator}`,
-  messages: (locator: ProjectLocator, taskId: string) =>
-    `mesh:messages:${locator}:${taskId}`,
-  chatSelectedMode: (locator: ProjectLocator) =>
-    `mesh:chat:selectedMode:${locator}`,
   chatSelectedImageModel: (locator: ProjectLocator) =>
     `mesh:chat:selectedImageModel:${locator}`,
   chatSelectedWebSearchModel: (locator: ProjectLocator) =>
@@ -26,17 +20,10 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:chat:autosend:${locator}:${taskId}`,
   chatDraft: (locator: ProjectLocator | string, taskKey: string) =>
     `mesh:chat:draft:${locator}:${taskKey}`,
-  assistantChatActiveTask: (locator: ProjectLocator) =>
-    `mesh:assistant-chat:active-task:${locator}`,
   decoChatPanelWidth: () => `mesh:decochat:panel-width`,
   blocksPanelWidth: () => `mesh:blocks:panel-width`,
-  tasksPanelWidth: () => `mesh:tasks-panel:width`,
   sidebarOpen: () => `mesh:sidebar-open`,
-  orgHomeQuickstart: (org: string) => `mesh:org-home:quickstart:${org}`,
-  storeShowStdio: () => `mesh:store:show-stdio`,
   preferences: () => `mesh:user:preferences`,
-  pluginConnection: (org: string, pluginId: string) =>
-    `mesh:plugin:connection:${org}:${pluginId}`,
   lastOrgSlug: () => `mesh:last-org-slug`,
   lastLocation: () => `mesh:last-location`,
   connectionsTab: (org: string) => `mesh:connections:tab:${org}`,
@@ -44,5 +31,4 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:chat:task-last-viewed:${locator}`,
   sidebarGroupOrder: (orgId: string, userId: string) =>
     `sidebar.group-order.${orgId}.${userId}`,
-  sidebarOrgPinnedOrder: (orgId: string) => `sidebar.org-pinned-order.${orgId}`,
 } as const;
