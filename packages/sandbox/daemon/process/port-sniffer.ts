@@ -32,8 +32,11 @@ export interface PortSniffer {
   /**
    * Inspect a log chunk. No-op when not a starter source, when a port is
    * already locked in, or when the chunk has no recognizable bind URL.
+   * Returns true only on the chunk that first locks a port in — that bind
+   * announcement is the dev server telling us it's ready, so the caller can
+   * kick the probe immediately instead of waiting for its next poll tick.
    */
-  observe(source: string, data: string): void;
+  observe(source: string, data: string): boolean;
   /** Currently sniffed port, or null if nothing's been detected. */
   current(): number | null;
   /** Drop the locked-in port — the next observe() can sniff again. */
@@ -44,19 +47,21 @@ export function createPortSniffer(): PortSniffer {
   let port: number | null = null;
   return {
     observe(source, data) {
-      if (port !== null) return;
+      if (port !== null) return false;
       if (
         !WELL_KNOWN_STARTERS.includes(
           source as (typeof WELL_KNOWN_STARTERS)[number],
         )
       )
-        return;
+        return false;
       const stripped = data.replace(ANSI, "");
       const match = stripped.match(URL_PATTERN);
-      if (!match) return;
+      if (!match) return false;
       const parsed = Number(match[1]);
-      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) return;
+      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535)
+        return false;
       port = parsed;
+      return true;
     },
     current() {
       return port;

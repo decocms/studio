@@ -141,9 +141,13 @@ const broadcaster = new Broadcaster(REPLAY_BYTES);
 // stdout and feed THAT to the probe; the configured port stays as a
 // fallback for tools that do honor PORT.
 const portSniffer = createPortSniffer();
+// Assigned once the probe is started below; the moment the sniffer locks a
+// port (dev server announced its bind URL = ready) we kick the probe so it
+// confirms and flips to `running` immediately instead of on its next tick.
+let kickProbe = (): void => {};
 const broadcastChunkRaw = broadcaster.broadcastChunk.bind(broadcaster);
 broadcaster.broadcastChunk = (source, data, opts) => {
-  portSniffer.observe(source, data);
+  if (portSniffer.observe(source, data)) kickProbe();
   broadcastChunkRaw(source, data, opts);
 };
 
@@ -248,7 +252,7 @@ let baselineTimer: ReturnType<typeof setTimeout> | null = null;
 // sibling sandbox on the same host) so we hold at `crashed` and require
 // an explicit restart.
 let lastRunningPort: number | null = null;
-const lastProbe = startUpstreamProbe({
+const { state: lastProbe, checkNow: probeCheckNow } = startUpstreamProbe({
   getPort: () =>
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
     portSniffer.current() ?? store.read()?.application?.port ?? null,
@@ -312,6 +316,7 @@ resetProbeState = () => {
   lastProbe.port = null;
   lastProbe.htmlSupport = false;
 };
+kickProbe = probeCheckNow;
 
 // HTTP/WS proxy forwards to the same port the probe is HEAD-checking.
 // `application.port` is what mesh configured, but vite/etc. routinely

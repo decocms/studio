@@ -121,12 +121,23 @@ async function head(
   }
 }
 
-/**
- * Returns a live `ProbeState` reference — the fields are mutated in place
- * on every change so the SSE handshake (`getLastStatus`) sees fresh values
- * without a getter.
- */
-export function startUpstreamProbe(deps: ProbeDeps): ProbeState {
+export interface ProbeHandle {
+  /**
+   * Live `ProbeState` reference — the fields are mutated in place on every
+   * change so the SSE handshake (`getLastStatus`) sees fresh values without a
+   * getter.
+   */
+  state: ProbeState;
+  /**
+   * Run a probe tick right now instead of waiting for the next scheduled one.
+   * Called when the port sniffer catches a dev server's bind announcement, so
+   * we confirm-and-go-online within a loopback round-trip rather than up to
+   * PROBE_FAST_MS later.
+   */
+  checkNow: () => void;
+}
+
+export function startUpstreamProbe(deps: ProbeDeps): ProbeHandle {
   const state: ProbeState = {
     status: "booting",
     port: null,
@@ -211,5 +222,11 @@ export function startUpstreamProbe(deps: ProbeDeps): ProbeState {
   }
 
   schedule();
-  return state;
+  return {
+    state,
+    checkNow: () => {
+      if (timer) clearTimeout(timer);
+      void tick();
+    },
+  };
 }
