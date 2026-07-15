@@ -160,9 +160,9 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
       decoAiGatewayAdapter.provisionKey
     ) {
       try {
-        const meshJwt = await mintGatewayJwt(createdBy);
+        const studioJwt = await mintGatewayJwt(createdBy);
         const apiKey = await decoAiGatewayAdapter.provisionKey(
-          meshJwt,
+          studioJwt,
           organizationId,
         );
         const aiProviderKeyStorage = new AIProviderKeyStorage(

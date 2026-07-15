@@ -6,7 +6,11 @@
  */
 
 import { extractConnectionPermissions } from "@/auth/configuration-scopes";
-import { issueMeshToken } from "@/auth/jwt";
+import {
+  issueStudioToken,
+  LEGACY_STUDIO_TOKEN_HEADER,
+  STUDIO_TOKEN_HEADER,
+} from "@/auth/jwt";
 import type { StudioContext } from "@/core/studio-context";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
@@ -108,7 +112,7 @@ async function _buildRequestHeaders(
   // creator. Better solution: create a dedicated "Decopilot" service user per organization
   // for automated actions, so they're properly distinguished from real user activity.
   const [configurationToken, error] = userId
-    ? await issueMeshToken({
+    ? await issueStudioToken({
         sub: userId,
         user: {
           id: userId,
@@ -200,7 +204,10 @@ async function _buildRequestHeaders(
 
   // Add configuration token if issued
   if (configurationToken) {
-    headers["x-mesh-token"] = configurationToken;
+    headers[STUDIO_TOKEN_HEADER] = configurationToken;
+    // ponytail: dual-send the legacy header while deployed downstream apps
+    // still read x-mesh-token; drop after the deprecation window.
+    headers[LEGACY_STUDIO_TOKEN_HEADER] = configurationToken;
   }
 
   return headers;

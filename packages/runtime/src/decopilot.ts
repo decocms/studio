@@ -134,6 +134,8 @@ export async function streamAgent(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "x-studio-token": token,
+      // Legacy header, dual-sent so older Studio deployments keep working.
       "x-mesh-token": token,
       Authorization: `Bearer ${token}`,
     },
