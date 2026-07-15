@@ -59,6 +59,27 @@ export function isManifestRunnableResolveType(
 }
 
 /**
+ * All manifest resolveTypes of the given runnable kind (loaders/actions). Unlike
+ * {@link listAvailableRunnables} this is the raw set — no hidden/preview
+ * filtering — for callers that need to pattern-match against every registered
+ * loader (e.g. discovering a store's product-search loader dynamically).
+ */
+export function manifestLoaderResolveTypes(
+  meta: LiveMeta,
+  kind: RunnableKind,
+): Set<string> {
+  const resolveTypes = new Set<string>();
+  const blocks = meta.manifest?.blocks ?? {};
+  for (const [blockType, blockMap] of Object.entries(blocks)) {
+    if (!blockType.includes(kind)) continue;
+    for (const resolveType of Object.keys(blockMap)) {
+      resolveTypes.add(resolveType);
+    }
+  }
+  return resolveTypes;
+}
+
+/**
  * Tanstack manifests register most modules twice: a bare invoke-by-key alias
  * (`site/loaders/CheckStock`) plus the real module path
  * (`site/loaders/CheckStock.ts`). Only the suffixed entry carries the
