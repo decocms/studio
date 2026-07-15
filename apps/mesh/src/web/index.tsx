@@ -317,6 +317,11 @@ const boardRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/board",
   component: lazyRouteComponent(() => import("./layouts/task-board/index.tsx")),
+  validateSearch: z.lazy(() =>
+    z.object({
+      demo: z.boolean().optional(),
+    }),
+  ),
 });
 
 // ============================================

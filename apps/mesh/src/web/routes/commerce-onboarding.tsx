@@ -30,8 +30,8 @@ import {
   useMutation,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowRight } from "@untitledui/icons";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { ArrowRight, Columns03 } from "@untitledui/icons";
 import { createContext, Suspense, useContext, useRef, useState } from "react";
 import type { ComponentProps, FormEvent, ReactNode } from "react";
 import {
@@ -502,32 +502,62 @@ function EnsureOrganizationRecovery({
   );
 }
 
+/**
+ * Secondary entry into the org task board's demo mode
+ * (/$org/board?demo=true). Rendered only when an org slug is available.
+ */
+function TaskBoardLink({
+  orgSlug,
+  size = "sm",
+  className,
+}: {
+  orgSlug: string;
+  size?: "sm" | "xl";
+  className?: string;
+}) {
+  return (
+    <Button variant="outline" size={size} asChild className={className}>
+      <Link to="/$org/board" params={{ org: orgSlug }} search={{ demo: true }}>
+        <Columns03 size={size === "xl" ? 18 : 14} />
+        Task board
+      </Link>
+    </Button>
+  );
+}
+
 function CommerceHeader({
   title,
   description,
+  boardOrgSlug,
 }: {
   title?: string;
   description?: string;
+  boardOrgSlug?: string;
 }) {
   const siteHost = useCommerceSiteHost();
   return (
     <div className="grid gap-10">
-      {siteHost ? (
-        <SiteBadge host={siteHost} />
-      ) : (
-        <div>
-          <img
-            src="/logos/deco logo.svg"
-            alt="Deco"
-            className="h-12 w-12 dark:hidden"
-          />
-          <img
-            src="/logos/deco logo negative.svg"
-            alt="Deco"
-            className="h-12 w-12 hidden dark:block"
-          />
-        </div>
-      )}
+      <div className="flex items-start justify-between gap-4">
+        {siteHost ? (
+          <SiteBadge host={siteHost} />
+        ) : (
+          <div>
+            <img
+              src="/logos/deco logo.svg"
+              alt="Deco"
+              className="h-12 w-12 dark:hidden"
+            />
+            <img
+              src="/logos/deco logo negative.svg"
+              alt="Deco"
+              className="h-12 w-12 hidden dark:block"
+            />
+          </div>
+        )}
+        {boardOrgSlug ? (
+          <TaskBoardLink orgSlug={boardOrgSlug} className="shrink-0" />
+        ) : null}
+      </div>
       {(title || description) && (
         <div className="space-y-2">
           {title && <h1 className="text-2xl font-medium leading-8">{title}</h1>}
@@ -926,6 +956,7 @@ function CommerceSetupContent({
             <CommerceHeader
               title="Diagnóstico de commerce"
               description={`A configuração de commerce continuará em ${org.name}.`}
+              boardOrgSlug={org.slug}
             />
             <InlineError message={commerceSiteUrlErrorPtBr(normalized.error)} />
             <SiteUrlForm
@@ -946,6 +977,7 @@ function CommerceSetupContent({
           <CommerceHeader
             title="Diagnóstico de commerce"
             description={`O Commerce Discovery está sendo preparado para ${normalized.value}.`}
+            boardOrgSlug={org.slug}
           />
           {inlineError ? (
             <>
@@ -972,6 +1004,7 @@ function CommerceSetupContent({
         <CommerceHeader
           title="Diagnóstico de commerce"
           description={`A configuração de commerce continuará em ${org.name}.`}
+          boardOrgSlug={org.slug}
         />
         <SiteUrlForm
           siteUrl={siteUrlInput}
@@ -1061,7 +1094,7 @@ function CommerceDiscoveryReady({
           the footer (report CTA + talk-to-a-human banner) pinned to the bottom.
           On md+ it collapses back to a natural block (right panel has the card). */}
       <div className="flex min-h-0 flex-1 flex-col gap-6 md:grid md:gap-4">
-        <CommerceHeader />
+        <CommerceHeader boardOrgSlug={org.slug} />
         <CompanionMcpsSection
           org={org}
           cdConnectionId={reportApp.connectionId}
@@ -1089,6 +1122,11 @@ function CommerceDiscoveryReady({
             {isSubmitting ? "Abrindo relatório..." : "Ver relatório completo"}
             {!isSubmitting ? <ArrowRight size={18} /> : null}
           </Button>
+          <TaskBoardLink
+            orgSlug={org.slug}
+            size="xl"
+            className="w-full rounded-2xl text-base font-medium"
+          />
         </div>
       </div>
     </CommerceOnboardingLayout>
