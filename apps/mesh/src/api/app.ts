@@ -168,6 +168,7 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
+import { hostedRunStats } from "../dispatch-queue/hosted-run-concurrency";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
@@ -1236,6 +1237,16 @@ export async function createApp(options: CreateAppOptions = {}) {
       status: "ENQUEUED",
     });
     return c.json({ queue_length: queued.length });
+  });
+
+  // Hosted-run gate backlog on THIS pod, for a KEDA metrics-api trigger:
+  // `{ "pending": <n> }`. Distinct from /dbos-queue-depth (ENQUEUED count) —
+  // gate-parked runs are already DEQUEUED (PENDING) and pinned to this pod, so
+  // queue depth can't see them (see hosted-run-concurrency.ts). Per-pod, so the
+  // trigger must aggregate across worker pods.
+  app.get(SYSTEM_PATHS.HOSTED_RUN_PENDING, (c) => {
+    const { active, pending, max } = hostedRunStats();
+    return c.json({ pending, active, max });
   });
 
   // ============================================================================
