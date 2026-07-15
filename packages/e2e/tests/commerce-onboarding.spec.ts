@@ -298,7 +298,7 @@ test.describe("Commerce onboarding route isolation", () => {
       [connectionId],
     );
     expect(concrete.rows[0]).toMatchObject({
-      connection_url: "https://commerce-skills.deco-cx.workers.dev/api/v2/mcp",
+      connection_url: "https://reports.decocms.com/api/v2/mcp",
       connection_type: "HTTP",
       title: "Store Report",
     });
