@@ -3,7 +3,7 @@ import type { StudioContext } from "../../core/studio-context";
 
 /**
  * Attribution set by token-authenticated legacy handlers (e.g.
- * `/api/trigger-callback`) that don't resolve a session-based `meshContext`,
+ * `/api/trigger-callback`) that don't resolve a session-based `studioContext`,
  * so their org/connection can still appear in the deprecation log. The handler
  * sets this via `c.set("deprecatedRouteAttribution", ...)` after validating its
  * own token; the middleware reads it after `next()`.
@@ -14,7 +14,7 @@ export interface DeprecatedRouteAttribution {
 }
 
 type Variables = {
-  meshContext: StudioContext;
+  studioContext: StudioContext;
   deprecatedRouteAttribution?: DeprecatedRouteAttribution;
 };
 
@@ -84,7 +84,7 @@ const buildLogDeprecatedRoute =
       return;
     }
 
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     const attribution = c.get("deprecatedRouteAttribution");
     console.log("deprecated route", {
       route: c.req.routePath,

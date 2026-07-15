@@ -18,7 +18,7 @@ import { fetchToolsFromMCP } from "../../tools/connection/fetch-tools";
 import { tenantStorageDescriptor } from "../../file-storage/tenant-credentials";
 import { isValidSiteSlug } from "../../shared/site-slug";
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 
 interface SupabaseSite {
   name: string;
@@ -313,7 +313,7 @@ const requireAuth = async (
   c: import("hono").Context<{ Variables: Variables }>,
   next: () => Promise<void>,
 ) => {
-  const ctx = c.get("meshContext");
+  const ctx = c.get("studioContext");
   if (!ctx.auth.user?.id) {
     return c.json({ error: "Unauthorized" }, 401);
   }
@@ -424,7 +424,7 @@ export const createDecoSitesUserRoutes = () => {
    * Used to conditionally show deco.cx onboarding UI without fetching all sites.
    */
   app.get("/profile", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     const email = ctx.auth.user?.email;
     if (!email) return c.json({ error: "Unauthorized" }, 401);
 
@@ -462,7 +462,7 @@ export const createDecoSitesOrgRoutes = () => {
    * The deco.cx API key is intentionally NOT returned — it remains server-side.
    */
   app.get("/", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
 
     const email = ctx.auth.user?.email;
     if (!email) {
@@ -517,7 +517,7 @@ export const createDecoSitesOrgRoutes = () => {
    * project-linking tool calls can reference it without an extra round-trip.
    */
   app.post("/connection", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     const organization = requireOrganization(ctx);
 
     const email = ctx.auth.user?.email;

@@ -54,7 +54,7 @@ export class OrgScopedThreadStorage {
   /**
    * Rebind this storage to a different org id.
    * Called by `resolveOrgFromPath` middleware after the org is resolved from
-   * the URL slug — meshContext is constructed eagerly, so when no `x-org-id`
+   * the URL slug — studioContext is constructed eagerly, so when no `x-org-id`
    * header is present the storage starts with `organizationId = undefined`
    * and must be updated in-place once the path-resolved org is known.
    */

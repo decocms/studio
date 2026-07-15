@@ -29,9 +29,9 @@ function withSettings(overrides: Partial<Settings>): void {
 }
 
 function createApp(userId: string | null) {
-  const app = new Hono<{ Variables: { meshContext: StudioContext } }>();
+  const app = new Hono<{ Variables: { studioContext: StudioContext } }>();
   app.use("*", async (c, next) => {
-    c.set("meshContext", {
+    c.set("studioContext", {
       auth: userId ? { user: { id: userId } } : undefined,
     } as unknown as StudioContext);
     await next();

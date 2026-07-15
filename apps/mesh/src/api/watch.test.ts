@@ -45,7 +45,7 @@ function makeWatchApp(opts?: {
 
   const app = new Hono<Env>();
   app.use("*", async (c, next) => {
-    c.set("meshContext", ctx);
+    c.set("studioContext", ctx);
     await next();
   });
   app.get("/watch", watchHandler);

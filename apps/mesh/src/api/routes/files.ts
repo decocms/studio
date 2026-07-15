@@ -22,7 +22,7 @@ import { generatePresignedGetUrl } from "./decopilot/file-materializer";
 import { usesLocalObjectStorage } from "@/tools/connection/dev-assets";
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 
 const app = new Hono<{ Variables: Variables }>();
 
@@ -62,7 +62,7 @@ function applyContentPolicy(headers: Headers, contentType: string): void {
 }
 
 app.get("/:org/files/*", async (c) => {
-  const ctx = c.get("meshContext");
+  const ctx = c.get("studioContext");
 
   const orgId = ctx.organization?.id;
 

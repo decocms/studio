@@ -412,10 +412,10 @@ function convertFinishReason(
 // Route Handler
 // ============================================================================
 
-const app = new Hono<{ Variables: { meshContext: StudioContext } }>();
+const app = new Hono<{ Variables: { studioContext: StudioContext } }>();
 
 app.post("/:org/v1/chat/completions", async (c) => {
-  const ctx = c.get("meshContext");
+  const ctx = c.get("studioContext");
   const orgSlug = c.req.param("org");
 
   try {

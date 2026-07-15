@@ -141,7 +141,7 @@ export function createAutomationWebhookRoutes() {
   });
 
   const handle = async (c: Context<Env>, pathToken: string | undefined) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     if (!ctx?.organization) {
       return c.json({ error: "Organization context missing" }, 500);
     }

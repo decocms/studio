@@ -190,8 +190,8 @@ export class AuthTransport extends WrapperTransport {
       return false;
     }
 
-    const meshMeta = tool._meta[MCP_MESH_KEY];
-    return meshMeta?.public_tool === true;
+    const studioMeta = tool._meta[MCP_MESH_KEY];
+    return studioMeta?.public_tool === true;
   }
 
   private stripMetaFromArguments(request: JSONRPCRequest): void {

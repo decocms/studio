@@ -5,9 +5,9 @@ import type { BoundObjectStorage } from "@/object-storage/bound-object-storage";
 import { createObjectStorageRoutes } from "./object-storage";
 
 function createApp(objectStorage: BoundObjectStorage | null) {
-  const app = new Hono<{ Variables: { meshContext: StudioContext } }>();
+  const app = new Hono<{ Variables: { studioContext: StudioContext } }>();
   app.use("*", async (c, next) => {
-    c.set("meshContext", {
+    c.set("studioContext", {
       auth: { user: { id: "user-1" } },
       organization: { id: "org-1", slug: "acme" },
       objectStorage,

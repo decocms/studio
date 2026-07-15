@@ -34,13 +34,13 @@ import {
   buildObjectKey,
 } from "@/file-storage/upload-policy";
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 
 export const createFileUploadRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
 
   app.post("/file-configs/:id/upload", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     const userId = ctx.auth?.user?.id;
     if (!userId) {
       throw new HTTPException(401, { message: "Unauthorized" });
