@@ -59,6 +59,38 @@ describe("blocksPreviewWorkspaceReducer", () => {
       target: { kind: "page", key: "pages-home", path: "/" },
       editSeoPageKey: null,
       previewRevision: 0,
+      variantOverride: null,
     });
+  });
+
+  test("records variant override params for the preview iframe", () => {
+    const next = blocksPreviewWorkspaceReducer(
+      INITIAL_BLOCKS_PREVIEW_WORKSPACE,
+      {
+        type: "variant-override",
+        params: ["pages-home@sections.variants.1.rule=1"],
+      },
+    );
+
+    expect(next.variantOverride).toEqual([
+      "pages-home@sections.variants.1.rule=1",
+    ]);
+  });
+
+  test("selecting a new target clears a stale variant override", () => {
+    const withOverride = blocksPreviewWorkspaceReducer(
+      INITIAL_BLOCKS_PREVIEW_WORKSPACE,
+      {
+        type: "variant-override",
+        params: ["pages-home@sections.variants.1.rule=1"],
+      },
+    );
+
+    const next = blocksPreviewWorkspaceReducer(withOverride, {
+      type: "select",
+      target: { kind: "page", key: "pages-about", path: "/about" },
+    });
+
+    expect(next.variantOverride).toBeNull();
   });
 });

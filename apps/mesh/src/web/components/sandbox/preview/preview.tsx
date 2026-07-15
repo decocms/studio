@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
+import { withVariantMatcherOverride } from "@/web/components/sections-editor/variant-matcher-override";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
@@ -413,10 +414,13 @@ export function PreviewContent() {
 
   const iframeSrc =
     previewState.kind === "iframe"
-      ? withDeviceHint(
-          directPreviewUrl ??
-            new URL(resolvedPath, previewState.previewUrl).href,
-          previewDeviceSize,
+      ? withVariantMatcherOverride(
+          withDeviceHint(
+            directPreviewUrl ??
+              new URL(resolvedPath, previewState.previewUrl).href,
+            previewDeviceSize,
+          ),
+          workspace.state.variantOverride ?? [],
         )
       : null;
 

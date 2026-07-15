@@ -6,6 +6,12 @@ export interface BlocksPreviewWorkspaceState {
   target: BlocksTarget | null;
   editSeoPageKey: string | null;
   previewRevision: number;
+  /**
+   * `x-deco-matchers-override` params published by the Blocks panel so the
+   * (independent) Preview iframe renders the variant currently selected in the
+   * sections editor. `null` clears any prior override.
+   */
+  variantOverride: string[] | null;
 }
 
 export type BlocksPreviewWorkspaceAction =
@@ -15,12 +21,14 @@ export type BlocksPreviewWorkspaceAction =
       target: Extract<BlocksTarget, { kind: "page" }>;
     }
   | { type: "consume-edit-seo" }
-  | { type: "saved" };
+  | { type: "saved" }
+  | { type: "variant-override"; params: string[] | null };
 
 export const INITIAL_BLOCKS_PREVIEW_WORKSPACE: BlocksPreviewWorkspaceState = {
   target: null,
   editSeoPageKey: null,
   previewRevision: 0,
+  variantOverride: null,
 };
 
 export function blocksPreviewWorkspaceReducer(
@@ -29,7 +37,9 @@ export function blocksPreviewWorkspaceReducer(
 ): BlocksPreviewWorkspaceState {
   switch (action.type) {
     case "select":
-      return { ...state, target: action.target };
+      // A new target's variant override is unknown until the editor emits it;
+      // drop the previous target's params so they don't bleed across pages.
+      return { ...state, target: action.target, variantOverride: null };
     case "edit-seo":
       return {
         ...state,
@@ -40,5 +50,7 @@ export function blocksPreviewWorkspaceReducer(
       return { ...state, editSeoPageKey: null };
     case "saved":
       return { ...state, previewRevision: state.previewRevision + 1 };
+    case "variant-override":
+      return { ...state, variantOverride: action.params };
   }
 }
