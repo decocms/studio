@@ -10,7 +10,7 @@ const LOCALHOST_ENDPOINTS = ["localhost", "127.0.0.1", "0.0.0.0"];
  */
 export async function findRunningAddr(port: number): Promise<string | null> {
   for (const host of LOCALHOST_ENDPOINTS) {
-    const inUse = await isInUse(host, port);
+    const inUse = await isPortInUse(port, host);
     if (inUse) return host;
   }
   return null;
@@ -34,7 +34,7 @@ export async function waitForPort(
   }
 }
 
-function isInUse(host: string, port: number): Promise<boolean> {
+export function isPortInUse(port: number, host: string): Promise<boolean> {
   return new Promise((resolve) => {
     const srv = createServer();
     srv.once("error", (err: NodeJS.ErrnoException) => {

@@ -16,6 +16,12 @@ import { join } from "node:path";
 import { ensureSession } from "../lib/ensure-session";
 import { startLinkDaemon, type LinkDaemonMonitor } from "../../link-daemon";
 import { formatLogLine } from "../format-log-line";
+import { isPortInUse } from "../lib/port-wait";
+import {
+  formatPortInUseMessage,
+  isAddressInUseError,
+  PortInUseError,
+} from "../lib/port-in-use";
 import {
   openLinkSandboxRegistry,
   registryPathForDataDir,
@@ -137,6 +143,10 @@ export async function runLinkCommand(
     }
   };
   try {
+    if (await isPortInUse(port, "127.0.0.1")) {
+      throw new PortInUseError(port);
+    }
+
     const sandboxRoot = join(dataDir, "sandboxes");
     registry = openLinkSandboxRegistry({
       path: registryPathForDataDir(dataDir),
@@ -248,7 +258,13 @@ export async function runLinkCommand(
     // Restore BEFORE printing so a fatal error is visible on real stderr,
     // not swallowed into the TUI footer.
     restoreConsole?.();
-    console.error(err instanceof Error ? err.message : String(err));
+    console.error(
+      isAddressInUseError(err)
+        ? formatPortInUseMessage(port)
+        : err instanceof Error
+          ? err.message
+          : String(err),
+    );
     return 1;
   } finally {
     // Backstop: console must never leak patched, regardless of exit path.
