@@ -381,8 +381,8 @@ export function getWellKnownCommerceDiscoveryVirtualMCP(
   connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
 ): VirtualMCPCreateData {
   return {
-    title: "Commerce Discovery",
-    description: "Commerce report and diagnostics",
+    title: "Report Agent",
+    description: "Ask anything about your store's report",
     icon: COMMERCE_DISCOVERY_ICON,
     status: "active",
     pinned: true,
