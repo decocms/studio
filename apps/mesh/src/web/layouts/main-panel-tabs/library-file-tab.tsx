@@ -16,7 +16,10 @@ export function LibraryFileTab({ path }: { path: string }) {
   const onClose = () =>
     navigate({
       to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main: "0" }),
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        main: 0 as const,
+      }),
       replace: true,
     });
   return (

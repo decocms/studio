@@ -33,9 +33,11 @@ const MAX_VISIBLE_TABS = 6;
 export function MainPanelTabsBar({
   virtualMcpId,
   taskId,
+  disableActiveMainToggle = false,
 }: {
   virtualMcpId: string;
   taskId: string;
+  disableActiveMainToggle?: boolean;
 }) {
   const navigate = useNavigate();
   const { tabs, activeTab, mainOpen, setActiveTab } = useMainPanelTabs({
@@ -66,6 +68,7 @@ export function MainPanelTabsBar({
 
   const handleSelect = (id: string) => {
     const clicked = tabs.find((t) => t.id === id);
+    if (disableActiveMainToggle && clicked && isTabActive(clicked)) return;
     const wasActive = effectiveActiveId === id && mainOpen;
     track("main_panel_tab_clicked", {
       virtual_mcp_id: virtualMcpId,
@@ -80,7 +83,13 @@ export function MainPanelTabsBar({
       });
       navigate({
         to: ".",
-        search: (prev: Record<string, unknown>) => ({ ...prev, main: target }),
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          ...(prev.main === "blocks" && prev.blocks === undefined
+            ? { blocks: 1 }
+            : {}),
+          main: target,
+        }),
         replace: true,
       });
       return;
@@ -96,7 +105,7 @@ export function MainPanelTabsBar({
           title={tab.title}
           icon={tab.icon}
           active={isTabActive(tab)}
-          disabled={needsSetup}
+          disabled={needsSetup || (disableActiveMainToggle && isTabActive(tab))}
           onClick={() => handleSelect(tab.id)}
         />
       ))}

@@ -24,7 +24,7 @@ export function useMainOverlayToggle(overlayTabId: string): {
     org?: string;
     taskId?: string;
   };
-  const search = useSearch({ strict: false }) as { main?: string };
+  const search = useSearch({ strict: false }) as { main?: string | 0 };
   const active = search.main === overlayTabId;
   const prevTab = useRef<string | undefined>(undefined);
 
@@ -46,7 +46,7 @@ export function useMainOverlayToggle(overlayTabId: string): {
           if (restore && restore !== overlayTabId) next.main = restore;
           else delete next.main;
         } else {
-          prevTab.current = search.main;
+          prevTab.current = search.main === 0 ? undefined : search.main;
           next.main = overlayTabId;
         }
         return next;

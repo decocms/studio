@@ -143,6 +143,8 @@ import {
 import { PageJsonDialog } from "@/web/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
+import { useBlocksPreviewWorkspace } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
+import type { BlocksTarget } from "@/web/components/sandbox/blocks/blocks-preview-workspace-state";
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
@@ -221,6 +223,20 @@ type Selection =
   | { collection: BlogKind; key: string }
   | null;
 
+function selectionFromBlocksTarget(target: BlocksTarget | null): Selection {
+  if (!target) return null;
+  return target.kind === "page"
+    ? { collection: "pages", key: target.key, path: target.path }
+    : { collection: "sections", key: target.key };
+}
+
+function blocksTargetKey(target: BlocksTarget | null): string | null {
+  if (!target) return null;
+  return target.kind === "page"
+    ? `page:${target.key}:${target.path}`
+    : `section:${target.key}`;
+}
+
 /** A raw manifest section the user can customize and save as a global block. */
 export interface AvailableSectionEntry {
   resolveType: string;
@@ -277,7 +293,11 @@ type DeleteTarget =
 
 type PostSort = "date-desc" | "date-asc" | "az" | "za";
 
-export function ContentBrowser() {
+export interface ContentBrowserProps {
+  mode?: "content" | "blocks";
+}
+
+export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
   const inset = useInsetContext();
   const { data: session } = authClient.useSession();
   const { currentBranch: branch } = useChatTask();
@@ -351,6 +371,7 @@ export function ContentBrowser() {
       virtualMcpId={virtualMcpId}
       branch={branch}
       previewUrl={previewUrl}
+      mode={mode}
     />
   );
 }
@@ -378,21 +399,62 @@ function ContentBrowserReady({
   virtualMcpId,
   branch,
   previewUrl,
+  mode,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   previewUrl: string | null;
+  mode: "content" | "blocks";
 }) {
+  const workspace = useBlocksPreviewWorkspace();
   const fetchParams = { orgSlug, virtualMcpId, branch, previewUrl };
   const { data: decofile, isLoading: decofileLoading } =
     useDecofile(fetchParams);
 
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
-  const [selection, setSelection] = useState<Selection>(null);
+  const [selection, setSelection] = useState<Selection>(() =>
+    mode === "blocks"
+      ? selectionFromBlocksTarget(workspace.state.target)
+      : null,
+  );
   // Page that should open with the inline SEO form in SectionsEditor.
-  const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
+  const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(() =>
+    mode === "blocks" ? workspace.state.editSeoPageKey : null,
+  );
+  const currentWorkspaceTargetKey = blocksTargetKey(workspace.state.target);
+  const [handledWorkspaceTargetKey, setHandledWorkspaceTargetKey] = useState(
+    currentWorkspaceTargetKey,
+  );
+  if (
+    mode === "blocks" &&
+    handledWorkspaceTargetKey !== currentWorkspaceTargetKey
+  ) {
+    setHandledWorkspaceTargetKey(currentWorkspaceTargetKey);
+    const next = selectionFromBlocksTarget(workspace.state.target);
+    setSelection(next);
+    if (next?.collection === "pages" || next?.collection === "sections") {
+      setActiveCollection(next.collection);
+    }
+  }
+  const [handledSeoPageKey, setHandledSeoPageKey] = useState(
+    workspace.state.editSeoPageKey,
+  );
+  if (
+    mode === "blocks" &&
+    handledSeoPageKey !== workspace.state.editSeoPageKey
+  ) {
+    setHandledSeoPageKey(workspace.state.editSeoPageKey);
+    if (workspace.state.editSeoPageKey) {
+      const target = workspace.state.target;
+      if (target?.kind === "page") {
+        setActiveCollection("pages");
+        setSelection(selectionFromBlocksTarget(target));
+        setOpenPageSeoKey(target.key);
+      }
+    }
+  }
   const [searchQuery, setSearchQuery] = useState("");
   // Posts-only filter/sort + bulk selection state.
   const [postCategoryFilter, setPostCategoryFilter] = useState<string | null>(
@@ -413,6 +475,20 @@ function ContentBrowserReady({
   const clearSelection = () => {
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(null);
+  };
+  const selectItem = (next: Selection) => {
+    setSelection(next);
+    setOpenPageSeoKey(null);
+    if (mode !== "blocks" || !next) return;
+    if (next.collection === "pages") {
+      workspace.selectTarget({
+        kind: "page",
+        key: next.key,
+        path: next.path,
+      });
+    } else if (next.collection === "sections") {
+      workspace.selectTarget({ kind: "section", key: next.key });
+    }
   };
   // Reset search + post filters/selection when switching collections
   // (derived-state sync pattern).
@@ -983,22 +1059,25 @@ function ContentBrowserReady({
         : (deleteTarget?.kind ?? "item");
   return (
     <div className="flex h-full w-full">
-      <CollectionsSidebar
-        active={activeCollection}
-        counts={counts}
-        showBlog={showBlog}
-        onSelect={(id) => {
-          setActiveCollection(id);
-          setSelection(null);
-          setOpenPageSeoKey(null);
-        }}
-      />
+      {mode === "content" && (
+        <CollectionsSidebar
+          active={activeCollection}
+          counts={counts}
+          showBlog={showBlog}
+          onSelect={(id) => {
+            setActiveCollection(id);
+            setSelection(null);
+            setOpenPageSeoKey(null);
+          }}
+        />
+      )}
       {activeCollection !== "seo" &&
         activeCollection !== "site" &&
         activeCollection !== "calendar" &&
         activeCollection !== "loaders" &&
         activeCollection !== "actions" && (
           <ItemList
+            blocksMode={mode === "blocks"}
             activeCollection={activeCollection}
             pages={pages}
             sections={globalSections}
@@ -1035,8 +1114,10 @@ function ContentBrowserReady({
               })
             }
             selection={selection}
-            onSelect={(next) => {
-              setSelection(next);
+            onSelect={selectItem}
+            onCollectionSelect={(collection) => {
+              setActiveCollection(collection);
+              setSelection(null);
               setOpenPageSeoKey(null);
             }}
             onCreate={() => {
@@ -1053,12 +1134,20 @@ function ContentBrowserReady({
               setDeleteTarget({ kind: "page", key: page.key, label: page.name })
             }
             onEditPageSeo={(page) => {
-              setSelection({
+              const target = {
                 collection: "pages",
                 key: page.key,
                 path: page.path,
-              });
+              } as const;
+              setSelection(target);
               setOpenPageSeoKey(page.key);
+              if (mode === "blocks") {
+                workspace.editSeo({
+                  kind: "page",
+                  key: page.key,
+                  path: page.path,
+                });
+              }
             }}
             onViewPageJson={(page) => setJsonPageKey(page.key)}
             onDuplicateSection={handleDuplicateSection}
@@ -1257,7 +1346,13 @@ function ContentBrowserReady({
                     selection.collection === "pages" &&
                     openPageSeoKey === selection.key
                   }
-                  onExitSeo={() => setOpenPageSeoKey(null)}
+                  onExitSeo={() => {
+                    setOpenPageSeoKey(null);
+                    if (mode === "blocks") workspace.consumeEditSeo();
+                  }}
+                  onSaved={
+                    mode === "blocks" ? workspace.notifySaved : undefined
+                  }
                 />
               )
             ) : (
@@ -1648,6 +1743,7 @@ function CollectionRow({
 }
 
 function ItemList({
+  blocksMode,
   activeCollection,
   pages,
   sections,
@@ -1673,6 +1769,7 @@ function ItemList({
   onBulkDeletePosts,
   selection,
   onSelect,
+  onCollectionSelect,
   onCreate,
   onDuplicatePage,
   onRenamePage,
@@ -1686,6 +1783,7 @@ function ItemList({
   onDuplicateBlog,
   onDeleteBlog,
 }: {
+  blocksMode: boolean;
   activeCollection: CollectionId;
   pages: PageEntry[];
   sections: GlobalSectionEntry[];
@@ -1714,6 +1812,7 @@ function ItemList({
   onBulkDeletePosts: () => void;
   selection: Selection;
   onSelect: (next: Selection) => void;
+  onCollectionSelect: (collection: "pages" | "sections") => void;
   onCreate: () => void;
   onDuplicatePage: (page: PageEntry) => void;
   onRenamePage: (page: PageEntry) => void;
@@ -1855,7 +1954,34 @@ function ItemList({
     activeCollection !== "apps" && activeCollection !== "sections";
 
   return (
-    <div className="w-[300px] shrink-0 border-r flex flex-col min-h-0">
+    <div
+      className={cn(
+        "shrink-0 border-r flex flex-col min-h-0",
+        blocksMode ? "w-[240px]" : "w-[300px]",
+      )}
+    >
+      {blocksMode && (
+        <div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
+          <Button
+            variant={activeCollection === "pages" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 flex-1"
+            onClick={() => onCollectionSelect("pages")}
+          >
+            <LayoutAlt01 size={14} />
+            Pages
+          </Button>
+          <Button
+            variant={activeCollection === "sections" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 flex-1"
+            onClick={() => onCollectionSelect("sections")}
+          >
+            <Globe02 size={14} />
+            Sections
+          </Button>
+        </div>
+      )}
       <div className="px-2 h-12 flex items-center gap-1 border-b shrink-0">
         <div className="flex flex-1 items-center gap-2 pl-1">
           <SearchLg

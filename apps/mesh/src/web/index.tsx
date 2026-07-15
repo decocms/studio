@@ -241,7 +241,7 @@ const agentShellLayout = createRoute({
 const unifiedChatSearchSchema = z.object({
   virtualmcpid: z.string().optional(),
   tab: z.string().optional(),
-  main: z.string().optional(),
+  main: z.union([z.string(), z.literal(0)]).optional(),
   /** Open the Library file-preview overlay over the chat (browse-grammar path
    *  "<volume>/<path…>"). Set by clickable org-file refs in agent messages. */
   preview: z.string().optional(),
@@ -250,6 +250,7 @@ const unifiedChatSearchSchema = z.object({
   tasks: z.number().optional(),
   mainOpen: z.number().optional(),
   chat: z.number().optional(),
+  blocks: z.number().optional(),
   autosend: z.string().optional(),
   /** Carried from the homepage composer so the new thread's first send
    *  inherits the "Run locally" toggle state. ChatPrefsProvider seeds

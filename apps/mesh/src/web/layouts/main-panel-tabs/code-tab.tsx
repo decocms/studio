@@ -2,7 +2,7 @@
  * CodeTab — standalone file-explorer main-panel tab (`?main=code` /
  * `?main=code:<encoded path>`).
  *
- * Unlike the Preview/Blocks tabs it needs no live dev-server iframe: it talks
+ * Unlike Preview it needs no live dev-server iframe: it talks
  * to the sandbox daemon's FS endpoints directly, so it keeps working even when
  * the dev script has crashed. Renders the IDE (VSCode/Cursor) affordances when
  * a user-desktop sandbox exposes a local repo directory.
