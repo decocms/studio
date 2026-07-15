@@ -885,6 +885,21 @@ export function PreviewContent() {
                           type="text"
                           value={pagesSearch}
                           onChange={(e) => setPagesSearch(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return;
+                            const query = pagesSearch.trim();
+                            if (!query) return;
+                            // Enter only navigates when the typed path matches an
+                            // existing page exactly; otherwise it does nothing.
+                            const target = filteredPages.find(
+                              (p) => normPath(p.path) === normPath(query),
+                            );
+                            if (!target) return;
+                            e.preventDefault();
+                            setPagesOpen(false);
+                            setPagesSearch("");
+                            navigatePreviewToPage(target);
+                          }}
                           placeholder="Search pages and components..."
                           className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                           autoFocus
