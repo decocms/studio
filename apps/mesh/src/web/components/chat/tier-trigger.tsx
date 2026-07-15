@@ -35,7 +35,7 @@ import {
   type AgentOption,
   preferredLocalAgentOption,
 } from "./pills/agent-options";
-import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
+import { ClaudeCodeIcon, CodexIcon, localHarnessBrand } from "./agent-icons";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
 const TIER_LABELS: Record<ChatTier, string> = {
@@ -56,13 +56,12 @@ interface TierRow {
 
 /**
  * A labelled cluster of rows. The `label` is the small-font runtime heading
- * (e.g. "Claude", "Codex") rendered above its tiers; omit it for a single
+ * (e.g. "Claude Code", "Codex") rendered above its tiers; omit it for a single
  * ungrouped list (Cloud, or a lone local CLI).
  */
 interface TierGroup {
   key: string;
   label?: string;
-  labelIcon?: ReactNode;
   rows: TierRow[];
 }
 
@@ -71,6 +70,8 @@ interface PureProps {
   tier: ChatTier;
   /** Optional glyph rendered on the closed pill next to the tier label. */
   pillIcon?: ReactNode;
+  /** Accessible label and tooltip for the closed pill. Defaults to the tier. */
+  pillLabel?: string;
   /** Runtime × tier options, grouped by runtime. */
   groups: TierGroup[];
   /** Optional content rendered above the groups (the runtime toggle). */
@@ -85,7 +86,13 @@ interface PureProps {
  * block per group (optional heading + its rows). Selecting a row runs its
  * `onSelect` and closes the popover.
  */
-export function TierTriggerPure({ tier, pillIcon, groups, header }: PureProps) {
+export function TierTriggerPure({
+  tier,
+  pillIcon,
+  pillLabel = TIER_LABELS[tier],
+  groups,
+  header,
+}: PureProps) {
   const [open, setOpen] = useState(false);
   const handleSelect = (row: TierRow) => {
     row.onSelect();
@@ -102,7 +109,7 @@ export function TierTriggerPure({ tier, pillIcon, groups, header }: PureProps) {
                 type="button"
                 variant="ghost"
                 size="default"
-                aria-label={TIER_LABELS[tier]}
+                aria-label={pillLabel}
                 className={cn(
                   "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
                   "gap-0 @[320px]/chat-bottom:gap-1.5",
@@ -125,7 +132,7 @@ export function TierTriggerPure({ tier, pillIcon, groups, header }: PureProps) {
             </PopoverTrigger>
           </span>
         </TooltipTrigger>
-        <TooltipContent>{TIER_LABELS[tier]}</TooltipContent>
+        <TooltipContent>{pillLabel}</TooltipContent>
       </Tooltip>
       <PopoverContent align="end" className="p-1 w-64">
         {header && (
@@ -136,7 +143,6 @@ export function TierTriggerPure({ tier, pillIcon, groups, header }: PureProps) {
             <div key={group.key} className="flex flex-col">
               {group.label && (
                 <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground">
-                  {group.labelIcon}
                   <span className="truncate">{group.label}</span>
                 </div>
               )}
@@ -181,10 +187,9 @@ export function TierTriggerPure({ tier, pillIcon, groups, header }: PureProps) {
 }
 
 /**
- * Per-tier intent glyph (Lightning / Stars / Atom). The same affordance
- * lands on every tier row regardless of the active runtime — the brand
- * glyph for the harness (Claude, Codex) rides on the group heading, not the
- * row.
+ * Per-tier intent glyph (Lightning / Stars / Atom) used by the cloud runtime.
+ * Local runtimes use their harness glyph on every tier instead, keeping the
+ * active runtime legible from both the closed trigger and each menu row.
  */
 function tierIconFor(tier: ChatTier): ReactNode {
   if (tier === "fast") return <Lightning01 size={16} />;
@@ -271,7 +276,7 @@ function RuntimeToggle() {
 function localGroup(params: {
   key: string;
   label: string | undefined;
-  labelIcon: ReactNode;
+  icon: ReactNode;
   mode: AgentMode;
   option: AgentOption;
   isActiveRuntime: boolean;
@@ -282,10 +287,9 @@ function localGroup(params: {
   return {
     key: params.key,
     label: params.label,
-    labelIcon: params.labelIcon,
     rows: TIER_ORDER.map((t) => ({
       key: `${params.key}-${t}`,
-      icon: tierIconFor(t),
+      icon: params.icon,
       title: TIER_LABELS[t],
       subtitle: resolveTierSubtitle(params.mode, t),
       active: params.isActiveRuntime && params.currentTier === t,
@@ -336,8 +340,8 @@ export function TierTrigger() {
       built.push(
         localGroup({
           key: "claude-code",
-          label: bothShown ? "Claude" : undefined,
-          labelIcon: <ClaudeCodeIcon size={14} />,
+          label: bothShown ? "Claude Code" : undefined,
+          icon: <ClaudeCodeIcon size={16} />,
           mode: "local-claude-code",
           option: "claude-code-desktop",
           isActiveRuntime: pendingHarnessId === "claude-code",
@@ -352,7 +356,7 @@ export function TierTrigger() {
         localGroup({
           key: "codex",
           label: bothShown ? "Codex" : undefined,
-          labelIcon: <CodexIcon size={14} />,
+          icon: <CodexIcon size={16} />,
           mode: "local-codex",
           option: "codex-desktop",
           isActiveRuntime: pendingHarnessId === "codex",
@@ -381,10 +385,20 @@ export function TierTrigger() {
 
   if (reportsOnly) return null;
 
+  const localBrand = isLocal ? localHarnessBrand(pendingHarnessId) : null;
+  const LocalBrandIcon = localBrand?.Icon;
+
   return (
     <TierTriggerPure
       tier={tier}
-      pillIcon={tierIconFor(tier)}
+      pillIcon={
+        LocalBrandIcon ? <LocalBrandIcon size={16} /> : tierIconFor(tier)
+      }
+      pillLabel={
+        localBrand
+          ? `${localBrand.label} ${TIER_LABELS[tier]}`
+          : TIER_LABELS[tier]
+      }
       groups={groups}
       header={hasLocal && !locked ? <RuntimeToggle /> : undefined}
     />

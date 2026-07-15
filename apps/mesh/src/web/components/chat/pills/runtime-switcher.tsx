@@ -12,17 +12,10 @@
  * selector exposes as "Cloud / This device" — it writes through the same
  * `pendingAgentOption`, so the two never disagree.
  *
- * The runtime locks to a thread on its first message. On a locked thread the
- * trigger is a disabled indicator; the tooltip explains a new chat is required
- * to change it.
+ * The runtime locks to a thread on its first message, at which point this
+ * control disappears instead of occupying space with a disabled indicator.
  */
-import {
-  Check,
-  ChevronDown,
-  Cloud01,
-  Lock01,
-  Monitor01,
-} from "@untitledui/icons";
+import { Check, ChevronDown, Cloud01, Monitor01 } from "@untitledui/icons";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
@@ -40,7 +33,6 @@ import {
 import type { SandboxProviderKind } from "@decocms/mesh-sdk";
 import { useChatPrefs, useChatTask } from "../context";
 import { useAgentOptionAvailability } from "../use-agent-availability";
-import { localHarnessBrand } from "../agent-icons";
 import { preferredLocalAgentOption } from "./agent-options";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 
@@ -108,9 +100,13 @@ export function RuntimeSwitcher({
   showLabel?: boolean;
 } = {}) {
   const { pendingSandboxProviderKind, setPendingAgentOption } = useChatPrefs();
-  const { isThreadLocked, lockedHarness, lockedSandbox } = useChatTask();
+  const { isThreadLocked } = useChatTask();
   const { vmEntry } = useSandboxLifecycle();
   const availability = useAgentOptionAvailability();
+
+  // The persisted thread state remains the source of truth after the first
+  // message, so there is no useful action or status for this control to show.
+  if (isThreadLocked) return null;
 
   // "This device" only exists via a local CLI harness (there's no cloud-brain-
   // on-desktop option), so it's gated on a linked desktop with Claude Code or
@@ -123,64 +119,15 @@ export function RuntimeSwitcher({
   // "Cloud sandbox" (the null default) even where cloud can't run.
   const currentSandbox: SandboxProviderKind | null =
     (vmEntry?.sandboxProviderKind as SandboxProviderKind | null | undefined) ??
-    (isThreadLocked ? lockedSandbox : pendingSandboxProviderKind) ??
+    pendingSandboxProviderKind ??
     (availability.agentSandbox
       ? "agent-sandbox"
       : localOption
         ? "user-desktop"
         : null);
+
   const current = runtimeMeta(currentSandbox);
   const CurrentIcon = current.Icon;
-
-  // Once the thread locks, the harness is settled — name and draw *which* agent
-  // is pinned rather than the generic runtime glyph. Cloud has no CLI brand, so
-  // it keeps falling back to the runtime icon and reads as just its location.
-  const brand = isThreadLocked ? localHarnessBrand(lockedHarness) : null;
-  const BrandIcon = brand?.Icon;
-  const lockedRuntimeName = brand
-    ? `${brand.label} on ${current.label.toLowerCase()}`
-    : current.label.toLowerCase();
-
-  const iconGlyph = (
-    <span className="relative inline-flex items-center justify-center">
-      {BrandIcon ? <BrandIcon size={16} /> : <CurrentIcon size={16} />}
-      {isThreadLocked && (
-        <Lock01
-          size={9}
-          className="absolute -bottom-1 -right-1.5 rounded-full bg-background"
-        />
-      )}
-    </span>
-  );
-
-  // Locked: the runtime can't change for this thread, so the trigger is just a
-  // disabled indicator — the tooltip explains why. No menu to open.
-  if (isThreadLocked) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            data-testid="runtime-switcher-locked"
-            aria-disabled="true"
-            aria-label={`Runtime: ${lockedRuntimeName} (locked)`}
-            className={cn(
-              "inline-flex cursor-default items-center rounded-md text-muted-foreground",
-              showLabel
-                ? "h-9 gap-1.5 px-2 text-xs font-medium"
-                : "size-9 justify-center",
-            )}
-          >
-            {iconGlyph}
-            {showLabel && <span className="truncate">{current.label}</span>}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          Locked to {lockedRuntimeName} for this chat. Start a new chat to
-          change.
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
 
   return (
     <DropdownMenu>
@@ -196,7 +143,7 @@ export function RuntimeSwitcher({
                 showLabel ? "h-9 gap-1.5 px-2 text-xs font-medium" : "size-9",
               )}
             >
-              {iconGlyph}
+              <CurrentIcon size={16} />
               {showLabel && (
                 <>
                   <span className="truncate">{current.label}</span>

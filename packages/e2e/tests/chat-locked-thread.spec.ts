@@ -13,10 +13,9 @@
  *     pinned row values. We assert the row stays at the first-message values
  *     after sending a conflicting body.
  *
- *   - Task 5 / Task 6 (UI affordance): on a locked thread the runtime
- *     indicator and branch chip render as `runtime-switcher-locked` /
- *     `branch-picker-locked` with the original values, and the same is true
- *     after a hard reload.
+ *   - Task 5 / Task 6 (UI affordance): on a locked local thread the redundant
+ *     runtime indicator disappears and the tier selector carries the harness
+ *     identity. The same is true after a hard reload.
  *
  * Driven via the real /api/:org/decopilot/threads/:threadId/messages route —
  * same pattern as decopilot-messages.spec.ts. We avoid the UI for the submit
@@ -242,7 +241,7 @@ test.describe("Thread runtime is locked after first message", () => {
     }
   });
 
-  test("locked-state chips render on the thread page after first message", async ({
+  test("locked local runtime is represented by the tier selector", async ({
     authedPage,
   }) => {
     const { page, orgSlug, user } = authedPage;
@@ -252,10 +251,8 @@ test.describe("Thread runtime is locked after first message", () => {
       "claude-code",
     ]);
     try {
-      // Seed an AI provider key so the thread route renders the
-      // composer instead of `NoAiProviderEmptyState`. Without this,
-      // `runtime-switcher-locked` never mounts because the chat input
-      // itself is short-circuited away.
+      // Seed an AI provider key so the thread route renders the composer
+      // instead of `NoAiProviderEmptyState`.
       await seedAiProviderKey(api, orgSlug);
 
       const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
@@ -277,7 +274,7 @@ test.describe("Thread runtime is locked after first message", () => {
       );
       expect(first.status()).toBe(202);
 
-      // Navigate to the thread URL and confirm the locked chips render.
+      // Navigate to the thread URL and confirm the locked UI renders.
       // Include `?virtualmcpid=` so `useChatNavigation` resolves the
       // chat input against THIS agent (with its `metadata.githubRepo`)
       // instead of falling back to the well-known decopilot agent,
@@ -285,20 +282,14 @@ test.describe("Thread runtime is locked after first message", () => {
       // harness/branch pickers entirely.
       await page.goto(`/${orgSlug}/${threadId}?virtualmcpid=${agentId}`);
 
-      // A sandbox-backed agent (this fixture has a `githubRepo`) renders the
-      // RuntimeSwitcher, which supersedes the plain LockedRuntimeChip. Its
-      // locked state is a disabled indicator keyed by the runtime kind
-      // ("This device" for user-desktop), not the harness name — the harness
-      // picker was collapsed into a single Cloud/This-device runtime control.
-      const lockedRuntime = page.getByTestId("runtime-switcher-locked");
-      await expect(lockedRuntime).toBeVisible({ timeout: 60_000 });
-      await expect(lockedRuntime).toHaveAccessibleName(/this device/i);
-
-      // The unlocked-state switcher trigger must NOT be present — that would
-      // mean the lock indicator is shadowed by the live (enabled) control. The
-      // locked indicator is a disabled <span> (no button role); the unlocked
-      // switcher is a real dropdown-trigger button labelled "Runtime: …", so
-      // asserting no such button exists enforces the intent.
+      // The tier selector now owns the local harness identity for every tier,
+      // so the separate locked runtime indicator and the unlocked runtime
+      // trigger should both be absent.
+      const tierSelector = page.getByRole("button", {
+        name: /^Claude Code (Fast|Smart|Thinking)$/,
+      });
+      await expect(tierSelector).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByTestId("runtime-switcher-locked")).toHaveCount(0);
       await expect(page.getByRole("button", { name: /^Runtime:/ })).toHaveCount(
         0,
       );
@@ -314,11 +305,10 @@ test.describe("Thread runtime is locked after first message", () => {
       // itself is exercised by `BranchPill`'s own logic and by the
       // server-side lock test above.
 
-      // Hard reload — locked affordance must survive a fresh mount.
+      // Hard reload — the consolidated affordance must survive a fresh mount.
       await page.reload();
-      await expect(page.getByTestId("runtime-switcher-locked")).toBeVisible({
-        timeout: 60_000,
-      });
+      await expect(tierSelector).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByTestId("runtime-switcher-locked")).toHaveCount(0);
     } finally {
       await daemon.close();
     }

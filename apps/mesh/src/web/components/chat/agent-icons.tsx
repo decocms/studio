@@ -1,8 +1,8 @@
 /**
  * Brand identity (name + glyph) for the desktop-CLI agents shown in the
  * chat-input tier popover and the settings-flow model selector. Lifted out of
- * `select-model/agent-models.tsx` so the same paths can be reused
- * by `tier-trigger.tsx` without duplicating the SVG data.
+ * `select-model/agent-models.tsx` so the same paths can be reused by the tier
+ * trigger without duplicating the SVG data.
  */
 import type { ReactNode } from "react";
 import type { HarnessId } from "@/harnesses";
@@ -47,9 +47,9 @@ export function CodexIcon({ size = 16 }: { size?: number }) {
 
 /**
  * Product name + glyph for each desktop CLI harness — the one place these live,
- * so the locked runtime chip, the runtime switcher and the tier popover can't
- * drift on what a harness is called or what it looks like. `Icon` is the
- * component (not rendered JSX) so each call site picks its own size.
+ * so the tier trigger and popover can't drift on what a harness is called or
+ * what it looks like. `Icon` is the component (not rendered JSX) so each call
+ * site picks its own size.
  *
  * Keyed by the harnesses that *have* a brand: `decopilot` is deliberately
  * absent — it's the cloud runtime, described by where it runs rather than by a
