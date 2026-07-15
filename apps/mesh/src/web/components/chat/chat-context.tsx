@@ -127,7 +127,10 @@ import {
 import { textFromParts } from "./queue-items";
 import { useMessageQueueActions } from "./use-message-queue";
 import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
-import { useSimpleMode } from "../../hooks/use-organization-settings";
+import {
+  useReportsOnly,
+  useSimpleMode,
+} from "../../hooks/use-organization-settings";
 
 // ============================================================================
 // Context Types
@@ -431,7 +434,9 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     LOCALSTORAGE_KEYS.chatSimpleModeTier(locator),
     null,
   );
-  const activeTier = resolveActiveTier(storedTier);
+  // Reports-only orgs are locked to the fast tier (the selector is hidden).
+  const reportsOnly = useReportsOnly();
+  const activeTier = reportsOnly ? "fast" : resolveActiveTier(storedTier);
 
   // AI provider keys + models
   const keys = useAiProviderKeys();
