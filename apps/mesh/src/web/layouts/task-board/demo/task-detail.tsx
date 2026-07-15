@@ -14,14 +14,13 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Check,
-  ChevronDown,
   ChevronRight,
   Clock,
   DotsHorizontal,
   Flag01,
-  GitBranch01,
   User01,
 } from "@untitledui/icons";
+import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { PRIORITY_CONFIG, STATUS_CONFIG } from "../config";
 import { CmsEditorDialog } from "./cms-editor";
 import { type DemoSession, type DemoTask, SOURCE_LABEL } from "./data";
@@ -64,18 +63,23 @@ export function TaskDetailDialog({
               {task.description}
             </p>
 
-            {task.pr && task.prStatus && (
-              <PrCard task={task} onEdit={() => setCmsOpen(true)} />
-            )}
-
-            {takenByAgent && task.sessions && task.sessions.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <h3 className="text-xs font-medium text-muted-foreground">
-                  Agent sessions
+            {((task.pr && task.prStatus) ||
+              (takenByAgent && task.sessions && task.sessions.length > 0)) && (
+              <div className="flex flex-col gap-3 border-t border-border pt-5">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Activity
                 </h3>
-                {task.sessions.map((s, i) => (
-                  <SessionCard key={s.startedAgo + i} session={s} task={task} />
-                ))}
+                {task.pr && task.prStatus && (
+                  <PrCard task={task} onEdit={() => setCmsOpen(true)} />
+                )}
+                {takenByAgent &&
+                  task.sessions?.map((s, i) => (
+                    <SessionCard
+                      key={s.startedAgo + i}
+                      session={s}
+                      task={task}
+                    />
+                  ))}
               </div>
             )}
           </div>
@@ -162,26 +166,30 @@ function PropertyRow({
 }
 
 function PrCard({ task, onEdit }: { task: DemoTask; onEdit: () => void }) {
-  const [filesOpen, setFilesOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const pr = task.pr;
   if (!pr) return null;
   const merged = task.prStatus === "merged";
 
   return (
-    <div className="flex flex-col gap-3">
-      <h3 className="text-xs font-medium text-muted-foreground">
-        Pull request
-      </h3>
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <GitBranch01 size={14} className="shrink-0 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">
+    <div className="rounded-xl border border-border bg-card">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full flex-col gap-2 px-4 py-3 text-left"
+      >
+        <div className="flex w-full items-center gap-2">
+          <GitHubIcon size={16} className="shrink-0 text-foreground" />
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
             {pr.title}
           </span>
-          <span className="text-xs text-muted-foreground">#{pr.number}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            #{pr.number}
+          </span>
+          <span className="flex-1" />
           <Badge
             className={cn(
-              "text-[10px]",
+              "shrink-0 text-[10px]",
               merged
                 ? "bg-purple-500/10 text-purple-600"
                 : "bg-green-500/10 text-green-600",
@@ -191,55 +199,26 @@ function PrCard({ task, onEdit }: { task: DemoTask; onEdit: () => void }) {
           </Badge>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-            {pr.branch}
-          </span>
-          <span className="font-medium text-green-600">+{pr.additions}</span>
-          <span className="font-medium text-red-600">-{pr.deletions}</span>
-          {task.published && (
-            <span className="inline-flex items-center gap-1 text-green-600">
-              <Check size={12} />
-              Published via CMS
-            </span>
+        <div
+          className={cn(
+            "relative overflow-hidden",
+            !expanded && "max-h-[2.5rem]",
+          )}
+        >
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {pr.summary.join(". ")}.
+          </p>
+          {!expanded && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-card to-transparent" />
           )}
         </div>
+      </button>
 
-        <ul className="flex list-disc flex-col gap-1 pl-5 text-xs text-muted-foreground">
-          {pr.summary.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-
-        <button
-          type="button"
-          onClick={() => setFilesOpen((v) => !v)}
-          className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          {filesOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          Files changed ({pr.files.length})
-        </button>
-
-        {filesOpen && (
-          <div className="flex flex-col gap-1 rounded-lg bg-muted/40 p-3">
-            {pr.files.map((file) => (
-              <div
-                key={file.path}
-                className="flex items-center gap-2 font-mono text-[11px]"
-              >
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                  {file.path}
-                </span>
-                <span className="text-green-600">+{file.additions}</span>
-                <span className="text-red-600">-{file.deletions}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="flex items-center gap-2">
+      {expanded && (
+        <div className="flex items-center gap-2 px-4 pb-3">
           <Button variant="outline" size="sm" asChild>
             <a href="#" onClick={(e) => e.preventDefault()}>
+              <GitHubIcon size={14} />
               View on GitHub
             </a>
           </Button>
@@ -248,8 +227,14 @@ function PrCard({ task, onEdit }: { task: DemoTask; onEdit: () => void }) {
               Edit
             </Button>
           )}
+          {task.published && (
+            <span className="inline-flex items-center gap-1 text-xs text-green-600">
+              <Check size={12} />
+              Published via CMS
+            </span>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
