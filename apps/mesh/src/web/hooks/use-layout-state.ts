@@ -3,7 +3,7 @@
  * panel and the tabbed main panel.
  *
  * URL model:
- *   ?sidepanel=chat|blocks  side panel open with that view selected
+ *   ?sidepanel=chat         chat side panel open
  *   ?sidepanel=0            side panel closed
  *   ?sidepanel absent       agent-configured default
  *   ?main=<tabId>           main panel open, tab active
@@ -23,7 +23,7 @@ import { useThreadActions } from "@/web/components/chat/store/hooks";
 // Types
 // ---------------------------------------------------------------------------
 
-export type SidePanelKind = "chat" | "blocks";
+export type SidePanelKind = "chat";
 
 export interface EntityLayoutMetadata {
   defaultMainView?: {

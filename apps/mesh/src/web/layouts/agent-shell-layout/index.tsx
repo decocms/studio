@@ -75,7 +75,6 @@ import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/web/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
-import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { SidePanel } from "./side-panel";
 
 // ---------------------------------------------------------------------------
@@ -237,7 +236,6 @@ function DesktopTaskWorkspace({
         <ToggleButtons
           sidePanel={layout.sidePanel}
           toggleSidePanel={layout.toggleSidePanel}
-          blocksAvailable={agentHasClonableSource(entity.metadata)}
           disableActiveSidePanelToggle={!layout.mainOpen}
         />
       </Toolbar.Toggles>
@@ -272,12 +270,10 @@ function MobileTaskWorkspace({
   virtualMcpId,
   layout,
   onNewTaskRef,
-  blocksAvailable,
 }: {
   virtualMcpId: string;
   layout: TaskLayout;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
-  blocksAvailable: boolean;
 }) {
   const mobileSurface = layout.mainOpen ? "main" : (layout.sidePanel ?? "chat");
 
@@ -287,7 +283,6 @@ function MobileTaskWorkspace({
         <ToggleButtons
           sidePanel={mobileSurface === "main" ? null : mobileSurface}
           toggleSidePanel={layout.setMobileSurface}
-          blocksAvailable={blocksAvailable}
           disableActiveSidePanelToggle={mobileSurface !== "main"}
         />
       </Toolbar.Toggles>
@@ -330,11 +325,7 @@ function MobileTaskWorkspace({
               </Suspense>
             </ErrorBoundary>
           ) : (
-            <SidePanel
-              kind={mobileSurface}
-              virtualMcpId={virtualMcpId}
-              chatContent={<ActiveTaskBoundary />}
-            />
+            <SidePanel chatContent={<ActiveTaskBoundary />} />
           )}
         </div>
       </Suspense>
@@ -385,8 +376,6 @@ function AgentInsetProvider() {
     : null;
 
   const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
-  const hasClonableSource = agentHasClonableSource(entity?.metadata);
-
   const layout = useWorkspaceLayoutState(entityMetadata, {
     virtualMcpId,
     orgSlug,
@@ -494,7 +483,6 @@ function AgentInsetProvider() {
                     virtualMcpId={chatVirtualMcpId}
                     layout={layout}
                     onNewTaskRef={onNewTask}
-                    blocksAvailable={hasClonableSource}
                   />
                 </Suspense>
               </Chat.ActiveTaskProvider>
