@@ -314,9 +314,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // agent-sandbox, whose daemon reports a container-internal path ("/app/repo").
   const repoDir = isDesktopSandbox ? rawRepoDir : null;
 
-  // Decofile pages for the URL bar dropdown — fetch only after dev server is up.
+  // Decofile pages/global sections for the URL bar dropdown. Not gated on the
+  // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
+  // so the dropdown still lists pages; the live routes take over once it's up.
+  // (The inline CMS overlay still needs the dev server — it edits the page
+  // rendered inside the iframe, which the dev server serves.)
   const decofileParams =
-    virtualMcpId && branch && devServerReady
+    virtualMcpId && branch
       ? { orgSlug: org.slug, virtualMcpId, branch, previewUrl }
       : null;
   const { data: decofile } = useDecofile(decofileParams, {
