@@ -33,6 +33,9 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   enable_tool: { readOnly: true, destructive: false },
   todo_write: { readOnly: false, destructive: false },
   update_interests: { readOnly: false, destructive: false },
+  search_threads: { readOnly: true, destructive: false },
+  get_thread: { readOnly: true, destructive: false },
+  list_thread_messages: { readOnly: true, destructive: false },
 };
 import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
@@ -57,6 +60,7 @@ import {
 import { createScrapeUrlTool } from "@decocms/harness/decopilot/built-in-tools/scrape-url";
 import { createInspectPageTool } from "@decocms/harness/decopilot/built-in-tools/inspect-page";
 import { buildPortableBuiltInTools } from "@decocms/harness/decopilot/built-in-tools/portable-built-ins";
+import { createThreadTools } from "./thread-tools";
 import { BROWSERLESS_BASE_URL } from "@decocms/harness/decopilot/built-in-tools/constants";
 import type { ModelsConfig } from "@decocms/harness/types";
 import type { MeshProvider } from "@/ai-providers/types";
@@ -202,6 +206,9 @@ async function buildAllTools(
       userId,
     });
   }
+  // Thread search built-ins — always available so the Super Agent can recall
+  // past org conversations regardless of the passthrough MCP allowlist.
+  Object.assign(tools, createThreadTools(ctx));
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses
