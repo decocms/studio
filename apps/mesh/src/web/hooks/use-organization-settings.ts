@@ -252,10 +252,7 @@ export function useReportsOnlyGate(): boolean {
 }
 
 export function useTaskBoardEnabled(): boolean {
-  const { data } = useOrganizationSettings(
-    (s) => s.task_board_enabled ?? false,
-  );
-  return data ?? false;
+  return true;
 }
 
 export function useUpdateTaskBoardEnabled() {

@@ -77,7 +77,7 @@ export function OrgAiProvidersPage() {
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>AI Providers</Page.Title>
+            <Page.Title>Models</Page.Title>
             <ErrorBoundary
               fallback={({ error }) => (
                 <ErrorFallback

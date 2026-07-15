@@ -10,31 +10,22 @@
  * `metadata.ui.layout`, no special-casing here.
  */
 import { useState } from "react";
-import { Navigate } from "@tanstack/react-router";
+import { Navigate, useSearch } from "@tanstack/react-router";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { useThreads } from "@/web/components/chat/store/hooks";
-import { useReportsOnlyGate } from "@/web/hooks/use-organization-settings";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 import { findReusableNewChat } from "@/web/lib/reusable-new-chat";
 
 export default function OrgHome() {
   const { org } = useProjectContext();
-  const reportsOnly = useReportsOnlyGate();
+  const { connect } = useSearch({ strict: false });
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const { threads, status } = useThreads();
   // Stable id for this mount, used only when there's no reusable "New chat".
   const [freshId] = useState(() => crypto.randomUUID());
-
-  // Reports-only orgs have no home surface — send them straight to
-  // the reports diagnostic panel (a standalone route with no product chrome).
-  if (reportsOnly) {
-    return (
-      <Navigate to="/commerce-onboarding" search={{ org: org.slug }} replace />
-    );
-  }
 
   // Wait for the open-thread list before deciding so a cold load reuses an
   // existing Super Agent "New chat" instead of minting a duplicate.
@@ -49,7 +40,10 @@ export default function OrgHome() {
     <Navigate
       to="/$org/$taskId"
       params={{ org: org.slug, taskId }}
-      search={{ virtualmcpid: decopilotId }}
+      search={{
+        virtualmcpid: decopilotId,
+        ...(connect ? { connect } : {}),
+      }}
       replace
     />
   );

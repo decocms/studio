@@ -10,7 +10,7 @@
  * the user to connect the backing integration). Recent conversations is still
  * available but `defaultHidden` — re-add it from Customize.
  */
-import { Suspense } from "react";
+import { Suspense, useId } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
@@ -23,6 +23,8 @@ import {
   GitBranch01,
   MessageChatCircle,
   ShoppingCart01,
+  TrendDown01,
+  TrendUp01,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
@@ -342,6 +344,17 @@ function CodingTileBody() {
       connectLabel="Connect GitHub"
       connectIcon={<GitHubIcon className="size-4" />}
     >
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex flex-col">
+          <span className="text-2xl font-semibold tracking-tight tabular-nums text-foreground">
+            128
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Contributions this month
+          </span>
+        </div>
+        <TrendDelta delta={18} />
+      </div>
       <ContributionsGrid />
       <div className="mt-3 flex flex-col gap-1.5">
         {MOCK_PRS.map((pr) => (
@@ -365,40 +378,109 @@ function CodingTileBody() {
   );
 }
 
-const MOCK_SPARKLINE = [8, 12, 10, 16, 14, 20, 18, 26, 24, 30];
-function Sparkline() {
-  const max = Math.max(...MOCK_SPARKLINE);
-  const pts = MOCK_SPARKLINE.map((v, i) => {
-    const x = (i / (MOCK_SPARKLINE.length - 1)) * 100;
-    const y = 32 - (v / max) * 30;
-    return `${x},${y}`;
-  }).join(" ");
+/** A soft area sparkline: neutral line with a faint gradient fill. Scales to
+ *  its container; a unique gradient id keeps multiple charts independent. */
+function AreaSparkline({
+  data,
+  className,
+}: {
+  data: number[];
+  className?: string;
+}) {
+  const gradientId = useId();
+  const W = 100;
+  const H = 40;
+  const PAD = 3;
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * W;
+    const y = H - PAD - ((v - min) / range) * (H - PAD * 2);
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  });
+  const line = pts.join(" ");
+  const area = `0,${H} ${line} ${W},${H}`;
   return (
     <svg
-      viewBox="0 0 100 32"
+      viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
-      className="h-10 w-full text-foreground/70"
+      className={cn("w-full text-foreground/70", className)}
       aria-hidden
     >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="currentColor" stopOpacity={0.16} />
+          <stop offset="100%" stopColor="currentColor" stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill={`url(#${gradientId})`} stroke="none" />
       <polyline
-        points={pts}
+        points={line}
         fill="none"
         stroke="currentColor"
         strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
       />
     </svg>
   );
 }
 
-function StatNumber({ value, label }: { value: string; label: string }) {
+/** Trend pill: green up / red down, next to a metric's headline number. */
+function TrendDelta({ delta }: { delta: number }) {
+  const up = delta >= 0;
+  const Icon = up ? TrendUp01 : TrendDown01;
   return (
-    <div className="flex flex-col">
-      <span className="text-lg font-semibold text-foreground">{value}</span>
-      <span className="text-xs text-muted-foreground">{label}</span>
+    <span
+      className={cn(
+        "inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums",
+        up ? "text-success" : "text-destructive",
+      )}
+    >
+      <Icon className="size-3" />
+      {up ? "+" : ""}
+      {delta}%
+    </span>
+  );
+}
+
+/** One KPI: label + trend, a big number, and its own sparkline. Shared by the
+ *  Analytics and Sales tiles so every metric reads the same way. */
+function MetricStat({
+  label,
+  value,
+  delta,
+  data,
+}: {
+  label: string;
+  value: string;
+  delta: number;
+  data: number[];
+}) {
+  return (
+    <div className="flex flex-1 flex-col gap-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <TrendDelta delta={delta} />
+      </div>
+      <span className="text-2xl font-semibold tracking-tight tabular-nums text-foreground">
+        {value}
+      </span>
+      <AreaSparkline data={data} className="mt-1 h-12" />
     </div>
   );
 }
+
+const PAGEVIEWS_SERIES = [
+  8.9, 9.4, 9.1, 10.2, 10.8, 11.1, 11.6, 11.9, 12.1, 12.4,
+];
+const SESSIONS_SERIES = [3.4, 3.3, 3.5, 3.2, 3.4, 3.1, 3.3, 3.0, 3.1, 3.2];
+const REVENUE_SERIES = [
+  5200, 5600, 5400, 6100, 5900, 6800, 7200, 7000, 7900, 8240,
+];
+const ORDERS_SERIES = [98, 105, 101, 118, 112, 126, 131, 128, 138, 142];
 
 function AnalyticsTileBody() {
   return (
@@ -406,30 +488,22 @@ function AnalyticsTileBody() {
       connectLabel="Connect Google Analytics"
       connectIcon={<BarChart10 className="size-4" />}
     >
-      <div className="flex gap-6">
-        <StatNumber value="12.4k" label="Pageviews" />
-        <StatNumber value="3.2k" label="Sessions" />
-      </div>
-      <div className="mt-auto pt-3">
-        <Sparkline />
+      <div className="flex flex-1 flex-col gap-4">
+        <MetricStat
+          label="Pageviews"
+          value="12.4k"
+          delta={5}
+          data={PAGEVIEWS_SERIES}
+        />
+        <div className="h-px bg-border/60" />
+        <MetricStat
+          label="Sessions"
+          value="3.2k"
+          delta={-2}
+          data={SESSIONS_SERIES}
+        />
       </div>
     </MockTile>
-  );
-}
-
-const MOCK_BARS = [40, 65, 50, 80, 70, 95, 60];
-function BarChartMock() {
-  const max = Math.max(...MOCK_BARS);
-  return (
-    <div className="flex h-12 items-end gap-1.5">
-      {MOCK_BARS.map((v, i) => (
-        <div
-          key={`bar-${i}`}
-          className="flex-1 rounded-t-sm bg-foreground/60"
-          style={{ height: `${(v / max) * 100}%` }}
-        />
-      ))}
-    </div>
   );
 }
 
@@ -439,12 +513,15 @@ function SalesTileBody() {
       connectLabel="Connect VTEX or Shopify"
       connectIcon={<ShoppingCart01 className="size-4" />}
     >
-      <div className="flex gap-6">
-        <StatNumber value="$8,240" label="Revenue" />
-        <StatNumber value="142" label="Orders" />
-      </div>
-      <div className="mt-auto pt-3">
-        <BarChartMock />
+      <div className="flex flex-1 flex-col gap-4">
+        <MetricStat
+          label="Revenue"
+          value="$8,240"
+          delta={12}
+          data={REVENUE_SERIES}
+        />
+        <div className="h-px bg-border/60" />
+        <MetricStat label="Orders" value="142" delta={8} data={ORDERS_SERIES} />
       </div>
     </MockTile>
   );

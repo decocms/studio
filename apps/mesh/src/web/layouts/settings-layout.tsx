@@ -14,7 +14,6 @@
 import {
   Outlet,
   Link,
-  Navigate,
   useRouterState,
   useParams,
 } from "@tanstack/react-router";
@@ -41,7 +40,6 @@ import {
   Loading01,
   Lock01,
   LogOut01,
-  PackageCheck,
   Shield01,
   User01,
   Users03,
@@ -50,7 +48,6 @@ import {
   HardDrive,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { useReportsOnlyGate } from "@/web/hooks/use-organization-settings";
 import { useCapabilities, type CapabilityId } from "@/web/hooks/use-capability";
 import { usePendingJoinRequests } from "@/web/hooks/use-join-requests";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -108,11 +105,16 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
         },
         {
           key: "ai-providers",
-          label: "AI Providers",
+          label: "Models",
           icon: <CpuChip01 size={14} />,
           to: "/$org/settings/ai-providers",
           requires: "ai-providers:manage",
         },
+      ],
+    },
+    {
+      label: "Advanced",
+      items: [
         {
           key: "secrets",
           label: "Secrets",
@@ -128,37 +130,6 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           icon: <HardDrive size={14} />,
           to: "/$org/settings/buckets",
           requires: "file-configs:manage",
-        },
-      ],
-    },
-    {
-      label: "Build",
-      items: [
-        {
-          key: "connections",
-          label: "Connections",
-          icon: <ZapSquare size={14} />,
-          to: "/$org/settings/connections",
-        },
-        {
-          key: "agents",
-          label: "Agents",
-          icon: <Users03 size={14} />,
-          to: "/$org/settings/agents",
-        },
-        {
-          key: "automations",
-          label: "Automations",
-          icon: <Zap size={14} />,
-          to: "/$org/settings/automations",
-          requires: "automations:manage",
-        },
-        {
-          key: "store",
-          label: "Store",
-          icon: <PackageCheck size={14} />,
-          to: "/$org/settings/store",
-          requires: "registry:manage",
         },
       ],
     },
@@ -194,6 +165,30 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           icon: <Lock01 size={14} />,
           to: "/$org/settings/sso",
           requires: "org:manage",
+        },
+      ],
+    },
+    {
+      label: "Build",
+      items: [
+        {
+          key: "connections",
+          label: "Connections",
+          icon: <ZapSquare size={14} />,
+          to: "/$org/settings/connections",
+        },
+        {
+          key: "agents",
+          label: "Agents",
+          icon: <Users03 size={14} />,
+          to: "/$org/settings/agents",
+        },
+        {
+          key: "automations",
+          label: "Automations",
+          icon: <Zap size={14} />,
+          to: "/$org/settings/automations",
+          requires: "automations:manage",
         },
       ],
     },
@@ -467,17 +462,6 @@ function SettingsInset() {
 
 export default function SettingsLayout() {
   const isMobile = useIsMobile();
-  const { org } = useProjectContext();
-  const reportsOnly = useReportsOnlyGate();
-
-  // Settings is part of the product surface hidden for reports-only
-  // orgs — bounce any direct navigation back to the diagnostic panel.
-  if (reportsOnly) {
-    return (
-      <Navigate to="/commerce-onboarding" search={{ org: org.slug }} replace />
-    );
-  }
-
   return (
     <Toolbar.Provider>
       <SidebarProvider defaultOpen={true}>

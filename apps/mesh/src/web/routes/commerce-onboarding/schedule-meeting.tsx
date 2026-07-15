@@ -15,7 +15,7 @@ const SCHEDULE_MEETING_URL = "https://decocms.com/agendar";
 
 const HEADLINE = "Precisa de ajuda? Fale conosco";
 const BODY =
-  "Agende uma chamada de 20 minutos e rodamos o diagnóstico com você, ao vivo.";
+  "Agende uma chamada de 20 minutos e ajudamos você a conectar suas ferramentas.";
 
 const TEAM = [
   {

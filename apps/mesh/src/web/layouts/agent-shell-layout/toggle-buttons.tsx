@@ -1,9 +1,8 @@
 import { MessageCircle01, TextInput } from "@untitledui/icons";
-import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
-import { LibraryToggle } from "./library-toggle";
 import { TasksToggle } from "./tasks-toggle";
+import { SIDEBAR_NAV_BUTTONS } from "@/web/flags";
 
 export interface ToggleButtonsProps {
   chatOpen: boolean;
@@ -19,13 +18,6 @@ export interface ToggleButtonsProps {
   disableBlocksToggle?: boolean;
 }
 
-/**
- * Top-toolbar chat toggle. Renders through the shared HeaderTabButton so it
- * stays pixel-identical to the Main panel tabs (same height, icon and
- * label metrics, active/hover styling) — the only extras are the PWA titlebar
- * drag opt-out and a taller mobile touch target. (The New task action lives in
- * the sidebar toolbar, next to the thread list.)
- */
 export function ToggleButtons({
   chatOpen,
   toggleChat,
@@ -35,8 +27,6 @@ export function ToggleButtons({
   disableChatToggle = false,
   disableBlocksToggle = false,
 }: ToggleButtonsProps) {
-  // Reports-only orgs collapse the toolbar to just the chat toggle.
-  const reportsOnly = useReportsOnly();
   return (
     <>
       <HeaderTabButton
@@ -53,7 +43,7 @@ export function ToggleButtons({
           toggleChat();
         }}
       />
-      {!reportsOnly && blocksAvailable && toggleBlocks && (
+      {blocksAvailable && toggleBlocks && (
         <HeaderTabButton
           title="Blocks"
           icon={{ kind: "component", Component: TextInput }}
@@ -69,14 +59,7 @@ export function ToggleButtons({
           }}
         />
       )}
-      {/* Tasks and Library are agent-independent overlays; hidden for
-          reports-only orgs along with everything else but Chat. */}
-      {!reportsOnly && (
-        <>
-          <TasksToggle />
-          <LibraryToggle />
-        </>
-      )}
+      {!SIDEBAR_NAV_BUTTONS && <TasksToggle />}
     </>
   );
 }

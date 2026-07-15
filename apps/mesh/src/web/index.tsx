@@ -178,6 +178,37 @@ const onboardingRoute = createRoute({
 const commerceOnboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/commerce-onboarding",
+  // Users reaching commerce onboarding already have an org, so drop them into
+  // it with the connect modal auto-opened (`connect=1`) — the product shows
+  // behind the blurred modal. Falls through to the standalone modal-on-backdrop
+  // component only when no org can be resolved.
+  beforeLoad: async () => {
+    const lastLocation = readLastLocation();
+    if (lastLocation) {
+      throw redirect({
+        to: "/$org",
+        params: { org: lastLocation.org },
+        search: { connect: "1" },
+      });
+    }
+    const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+    if (lastOrgSlug) {
+      throw redirect({
+        to: "/$org",
+        params: { org: lastOrgSlug },
+        search: { connect: "1" },
+      });
+    }
+    const { data: orgs } = await listOrganizationsCached();
+    const firstOrg = orgs?.[0];
+    if (firstOrg) {
+      throw redirect({
+        to: "/$org",
+        params: { org: firstOrg.slug },
+        search: { connect: "1" },
+      });
+    }
+  },
   component: lazyRouteComponent(
     () => import("./routes/commerce-onboarding.tsx"),
   ),
@@ -259,6 +290,9 @@ const unifiedChatSearchSchema = z.object({
    *  inherits the "Run locally" toggle state. ChatPrefsProvider seeds
    *  runLocally from this on mount. */
   runLocally: z.string().optional(),
+  /** When "1", the Overview tab opens the connect-tools modal on mount
+   *  (forwarded from /commerce-onboarding via org-home). */
+  connect: z.string().optional(),
 });
 
 const unifiedChatRoute = createRoute({
@@ -283,6 +317,9 @@ const unifiedChatRoute = createRoute({
 // redirect, mirroring the thread's main-panel tabs.
 const orgIndexSearchSchema = z.object({
   main: z.string().optional(),
+  // Set by /commerce-onboarding to auto-open the connect-tools modal on the
+  // org home; forwarded into the resolved thread by org-home.
+  connect: z.string().optional(),
 });
 
 const orgIndexRoute = createRoute({

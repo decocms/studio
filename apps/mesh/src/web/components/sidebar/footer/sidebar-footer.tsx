@@ -6,71 +6,44 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
-import { Settings02, UserPlus01, ZapSquare } from "@untitledui/icons";
-import { useState } from "react";
+import { Settings02, UserPlus01 } from "@untitledui/icons";
 import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
-import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { SidebarTopActions } from "@/web/components/sidebar/top-actions";
 
-function SettingsFullButton() {
+function SettingsIconButton() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
   return (
-    <SidebarMenuButton
-      tooltip="Settings"
+    <button
+      type="button"
+      aria-label="Settings"
       onClick={() =>
-        navigate({
-          to: "/$org/settings",
-          params: { org: org.slug },
-        })
+        navigate({ to: "/$org/settings", params: { org: org.slug } })
       }
+      className="shrink-0 flex items-center justify-center size-7 rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
     >
-      <Settings02 />
-      <span>Settings</span>
-    </SidebarMenuButton>
+      <Settings02 size={15} />
+    </button>
   );
 }
 
-/**
- * Sidebar footer actions — org-wide entry points that aren't tied to a single
- * agent: invite teammates and add any connection. Rendered as full-width rows
- * above the account row. (Repos are now imported as "code agents" from the
- * agent selector's "Import from GitHub" button, not from here.)
- */
 function SidebarExtraActions() {
-  const [connectionsOpen, setConnectionsOpen] = useState(false);
   return (
-    <>
-      <SidebarMenu className="gap-0.5">
-        <SidebarMenuItem>
-          <InviteMemberDialog
-            trigger={
-              <SidebarMenuButton tooltip="Invite members">
-                <UserPlus01 />
-                <span>Invite members</span>
-              </SidebarMenuButton>
-            }
-          />
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="Add connection"
-            onClick={() => setConnectionsOpen(true)}
-          >
-            <ZapSquare />
-            <span>Add connection</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-      <AddConnectionDialog
-        open={connectionsOpen}
-        onOpenChange={setConnectionsOpen}
-        mode="browse"
-      />
-    </>
+    <SidebarMenu className="gap-0.5">
+      <SidebarMenuItem>
+        <InviteMemberDialog
+          trigger={
+            <SidebarMenuButton tooltip="Invite members">
+              <UserPlus01 />
+              <span>Invite members</span>
+            </SidebarMenuButton>
+          }
+        />
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }
 
@@ -95,9 +68,6 @@ export function SidebarAccountFooter() {
             </div>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SettingsFullButton />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
             <AccountPopover />
           </SidebarMenuItem>
         </SidebarMenu>
@@ -114,10 +84,12 @@ export function SidebarAccountFooter() {
           <LinkedDesktopIndicator variant="full" />
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SettingsFullButton />
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <AccountPopover />
+          <div className="flex items-center gap-1">
+            <div className="flex-1 min-w-0">
+              <AccountPopover />
+            </div>
+            <SettingsIconButton />
+          </div>
         </SidebarMenuItem>
       </SidebarMenu>
     </SidebarFooter>

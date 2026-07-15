@@ -2,10 +2,9 @@
  * Org Shell Layout
  *
  * Shared parent for `/$org/` (home) and `/$org/$taskId` (chat). Owns the
- * full-width toolbar header, the sidebar row beneath it, and
- * ChatPrefsProvider.
+ * toolbar header, the sidebar row, and ChatPrefsProvider.
  *
- * Shell shape:
+ * Shell shape (default):
  *   SidebarProvider
  *   └── app-shell-root (flex-col, h-dvh)
  *       ├── Toolbar.Header           — full-width, fixed left zone
@@ -13,6 +12,12 @@
  *           ├── StudioSidebar (desktop only)
  *           ├── SidebarResizeHandle (desktop only)
  *           └── SidebarInset         — routed content
+ *
+ * When SIDEBAR_NAV_BUTTONS is on (desktop), the sidebar owns the full height
+ * and the toolbar header moves INTO the right column so it only spans above
+ * the panels — the org selector + collapse toggle live in the sidebar's own
+ * header instead of the top bar.
+ *
  *   + Sheet for mobile sidebar (rendered alongside, portal-based)
  */
 
@@ -38,7 +43,7 @@ import {
 } from "@/web/layouts/shell-controls";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
-import { useReportsOnly } from "@/web/hooks/use-organization-settings";
+import { SIDEBAR_NAV_BUTTONS } from "@/web/flags";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
 
@@ -48,15 +53,65 @@ function RouteFallback() {
 
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
-  // Reports-only orgs hide the whole navigation surface (agents,
-  // threads, settings): the sidebar and its trigger are dropped so only the
-  // reports diagnostic remains reachable.
-  const reportsOnly = useReportsOnly();
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
     SIDEBAR_OPEN_STORAGE_KEY,
     false,
   );
   const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
+
+  // With the sidebar nav experiment on (desktop only), the header lives in the
+  // right column above the panels rather than full-width above the sidebar.
+  const headerInRightColumn = SIDEBAR_NAV_BUTTONS && !isMobile;
+
+  const desktopHeader = (
+    <Toolbar.Header>
+      <Toolbar.LeftColumn>
+        {!SIDEBAR_NAV_BUTTONS && <ShellBreadcrumb />}
+        {!SIDEBAR_NAV_BUTTONS && <SidebarTriggerButton />}
+        <Toolbar.TogglesSlot />
+      </Toolbar.LeftColumn>
+      <Toolbar.CenterSlot />
+      <Toolbar.RightColumn>
+        <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
+          <Toolbar.TabsSlot />
+        </div>
+        <Toolbar.RightSlot />
+      </Toolbar.RightColumn>
+    </Toolbar.Header>
+  );
+
+  const mobileHeader = (
+    <Toolbar.Header className="grid-cols-1 px-1 pr-1">
+      <div className="flex w-full items-center gap-2">
+        <SidebarTriggerButton />
+        <ShellBreadcrumb />
+        <LinkedDesktopIndicator />
+        <div aria-hidden className="flex-1 min-w-0" />
+        <Toolbar.TogglesSlot />
+        <Toolbar.TabsSlot className="min-w-0" />
+      </div>
+      <Toolbar.CenterSlot />
+      <Toolbar.RightSlot />
+    </Toolbar.Header>
+  );
+
+  const inset = (
+    <SidebarInset
+      className="flex flex-col min-h-0"
+      style={{
+        background: "transparent",
+        containerType: "inline-size",
+      }}
+    >
+      <div className="flex flex-col h-full min-h-0">
+        <div className="relative flex-1 min-h-0 flex flex-row">
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
+        </div>
+      </div>
+    </SidebarInset>
+  );
 
   return (
     <ThreadManagerProvider>
@@ -64,44 +119,10 @@ export default function OrgShellLayout() {
         <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <ChatPrefsProvider>
             <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
-              {isMobile ? (
-                <Toolbar.Header className="grid-cols-1 px-1 pr-1">
-                  <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto] items-center gap-2">
-                    {!reportsOnly && <SidebarTriggerButton />}
-                    {!reportsOnly && <ShellBreadcrumb />}
-                    {!reportsOnly && <LinkedDesktopIndicator />}
-                    <div aria-hidden className="min-w-0" />
-                    <Toolbar.TogglesSlot />
-                    {!reportsOnly && (
-                      <Toolbar.TabsSlot className="min-w-0 justify-self-end" />
-                    )}
-                  </div>
-                  {!reportsOnly && <Toolbar.CenterSlot />}
-                  {!reportsOnly && <Toolbar.RightSlot />}
-                </Toolbar.Header>
-              ) : (
-                <Toolbar.Header>
-                  <Toolbar.LeftColumn>
-                    {!reportsOnly && <ShellBreadcrumb />}
-                    {/* Chat toggle sits on the left — it controls the left
-                        chat panel; the main-panel view tabs stay on the right.
-                        Reports-only orgs keep ONLY this toggle: no breadcrumb,
-                        no view tabs, no right-side actions. */}
-                    <Toolbar.TogglesSlot />
-                  </Toolbar.LeftColumn>
-                  {reportsOnly ? <div aria-hidden /> : <Toolbar.CenterSlot />}
-                  <Toolbar.RightColumn>
-                    {!reportsOnly && (
-                      <>
-                        <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
-                          <Toolbar.TabsSlot />
-                        </div>
-                        <Toolbar.RightSlot />
-                      </>
-                    )}
-                  </Toolbar.RightColumn>
-                </Toolbar.Header>
-              )}
+              {/* Header on top: mobile always, desktop unless the sidebar owns
+                  the full height. */}
+              {!headerInRightColumn &&
+                (isMobile ? mobileHeader : desktopHeader)}
               <SidebarLayout
                 ref={wrapperRef}
                 className="flex-1 bg-sidebar relative min-h-0"
@@ -112,7 +133,7 @@ export default function OrgShellLayout() {
                   } as Record<string, string>
                 }
               >
-                {!isMobile && !reportsOnly && (
+                {!isMobile && (
                   <>
                     <StudioSidebar />
                     <SidebarResizeHandle
@@ -121,23 +142,16 @@ export default function OrgShellLayout() {
                     />
                   </>
                 )}
-                <SidebarInset
-                  className="flex flex-col"
-                  style={{
-                    background: "transparent",
-                    containerType: "inline-size",
-                  }}
-                >
-                  <div className="flex flex-col h-full min-h-0">
-                    <div className="relative flex-1 min-h-0 flex flex-row">
-                      <Suspense fallback={<RouteFallback />}>
-                        <Outlet />
-                      </Suspense>
-                    </div>
+                {headerInRightColumn ? (
+                  <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full">
+                    {desktopHeader}
+                    {inset}
                   </div>
-                </SidebarInset>
+                ) : (
+                  inset
+                )}
               </SidebarLayout>
-              {isMobile && !reportsOnly && (
+              {isMobile && (
                 <MobileSidebarSheet
                   renderSidebar={({ onClose }) => (
                     <div className="flex h-full">

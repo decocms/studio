@@ -4,12 +4,18 @@ import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { ScrollFade } from "./scroll-fade";
 import {
   Activity,
+  Columns03,
   Edit05,
   FilterLines,
+  Globe01,
+  Home02,
   LayoutLeft,
   Rows01,
   SearchSm,
 } from "@untitledui/icons";
+import { SIDEBAR_NAV_BUTTONS } from "@/web/flags";
+import { useTaskBoardEnabled } from "@/web/hooks/use-organization-settings";
+import { useMainOverlayToggle } from "@/web/layouts/agent-shell-layout/use-main-overlay-toggle";
 import {
   Tooltip,
   TooltipContent,
@@ -27,6 +33,7 @@ import {
 } from "@deco/ui/components/toggle-group.tsx";
 import {
   SidebarMenu,
+  SidebarSeparator,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
@@ -50,9 +57,79 @@ import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { AgentAvatar } from "@/web/components/agent-icon";
-import { SidebarTriggerButton } from "@/web/layouts/shell-controls";
 import { MyThreadsSection } from "./my-threads-section";
 import type { SidebarFilters } from "./next-page-offset";
+
+function SidebarNavButtons() {
+  const { setChatOpen, createNewTask, openTab } = usePanelActions();
+  const { org } = useProjectContext();
+  const search = useSearch({ strict: false }) as {
+    virtualmcpid?: string;
+    main?: string;
+  };
+  const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const agentId = search.virtualmcpid ?? decopilotId;
+  const taskBoardEnabled = useTaskBoardEnabled();
+  const {
+    active: tasksActive,
+    enabled: tasksEnabled,
+    toggle: toggleTasks,
+  } = useMainOverlayToggle("board");
+
+  const overviewActive = search.main === "overview";
+  const previewActive = search.main === "preview";
+
+  const handleNewChat = () => {
+    setChatOpen(true);
+    createNewTask(agentId);
+  };
+
+  return (
+    <>
+      <SidebarMenu className="gap-0.5 mb-1">
+        <SidebarMenuItem>
+          <SidebarMenuButton tooltip="New chat" onClick={handleNewChat}>
+            <Edit05 size={16} />
+            <span>New chat</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={overviewActive}
+            tooltip="Overview"
+            onClick={() => openTab("overview")}
+          >
+            <Home02 size={16} />
+            <span>Overview</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={previewActive}
+            tooltip="Preview"
+            onClick={() => openTab("preview")}
+          >
+            <Globe01 size={16} />
+            <span>Preview</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        {taskBoardEnabled && tasksEnabled && (
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              isActive={tasksActive}
+              tooltip="Tasks"
+              onClick={toggleTasks}
+            >
+              <Columns03 size={16} />
+              <span>Tasks</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
+      </SidebarMenu>
+      <SidebarSeparator className="my-1" />
+    </>
+  );
+}
 
 type TypeFilter = "all" | "manual" | "automation";
 type GroupBy = "flat" | "status";
@@ -303,17 +380,19 @@ export function TaskGroupsList({
       (id === decopilotId ? decopilot : undefined);
     return (
       <SidebarMenu className="min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {/* Toggle first, then new thread, then the threads themselves. All
-            SidebarMenuButtons so they share the rail's default sizing/padding. */}
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            aria-label="Toggle sidebar"
-            tooltip="Toggle sidebar"
-            onClick={toggleSidebar}
-          >
-            <LayoutLeft size={16} />
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        {/* With the nav experiment on, the sidebar owns the full height and the
+            top bar has no collapse toggle, so the rail carries its own. */}
+        {SIDEBAR_NAV_BUTTONS && (
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              aria-label="Toggle sidebar"
+              tooltip="Toggle sidebar"
+              onClick={toggleSidebar}
+            >
+              <LayoutLeft size={16} />
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
         <SidebarMenuItem>
           <SidebarMenuButton
             tooltip="New thread"
@@ -412,11 +491,8 @@ export function TaskGroupsList({
           mobile ? "h-10" : "h-10 md:h-7 mb-2",
         )}
       >
-        {/* Left: toggle + filter popover. */}
-        <div className="flex items-center gap-0.5">
-          {!mobile && <SidebarTriggerButton />}
-          {filterPopover}
-        </div>
+        {/* Left: filter popover. */}
+        <div className="flex items-center gap-0.5">{filterPopover}</div>
         {/* Right: search + new thread. */}
         <div className="flex items-center gap-0.5">
           <ToolbarTooltipButton
@@ -470,6 +546,7 @@ export function TaskGroupsList({
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      {SIDEBAR_NAV_BUTTONS && <SidebarNavButtons />}
       {toolbar(false)}
       <div className="flex-1 min-h-0 flex flex-col gap-0.5 -mr-2 pr-2">
         <ScrollFade

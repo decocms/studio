@@ -40,7 +40,6 @@ import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
-import { useCapability } from "@/web/hooks/use-capability";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -60,6 +59,7 @@ import {
 } from "./tab-id";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
 import { getSourceSystemTabs } from "./source-system-tabs";
+import { SIDEBAR_NAV_BUTTONS } from "@/web/flags";
 
 export type AgentTabDef = {
   id: string;
@@ -187,7 +187,6 @@ export function useMainPanelTabs(ctx: {
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
   const hasActiveGithubRepo = agentHasConnectedGithub(entity);
   const hasClonableSource = agentHasClonableSource(entity?.metadata);
-  const { granted: canManageAgents } = useCapability("agents:manage");
   const connections = useConnections({ includeVirtual: true });
 
   // Show "Content" only when decofile/meta confirm editable pages or sections
@@ -307,10 +306,17 @@ export function useMainPanelTabs(ctx: {
   const leadingSystemTabs: Array<{ id: string; title: string }> = [];
   // Library is agent-independent, so it lives in the LEFT toolbar group next to
   // the Chat toggle (see LibraryToggle), NOT in this per-agent tab bar.
-  if (effectiveDefaultMainView?.type === "overview") {
+  if (!SIDEBAR_NAV_BUTTONS && effectiveDefaultMainView?.type === "overview") {
     leadingSystemTabs.push({ id: "overview", title: "Overview" });
   }
-  leadingSystemTabs.push(...getSourceSystemTabs(hasClonableSource));
+  // With the sidebar nav experiment on, Preview lives in the sidebar next to
+  // Overview, so drop it from the top bar to avoid a duplicate entry.
+  const sourceSystemTabs = getSourceSystemTabs(hasClonableSource);
+  leadingSystemTabs.push(
+    ...(SIDEBAR_NAV_BUTTONS
+      ? sourceSystemTabs.filter((t) => t.id !== "preview")
+      : sourceSystemTabs),
+  );
 
   const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasClonableSource && showContentTab) {
@@ -318,11 +324,6 @@ export function useMainPanelTabs(ctx: {
   }
   if (gitTabVisible) {
     systemTabs.push({ id: "git", title: "Review changes" });
-  }
-  systemTabs.push({ id: "automations", title: "Automations" });
-  // Settings is always the last tab (Library moved to the leading anchor above).
-  if (canManageAgents) {
-    systemTabs.push({ id: "settings", title: "Settings" });
   }
 
   // Merge pinned views + per-task expanded tools into a single list keyed

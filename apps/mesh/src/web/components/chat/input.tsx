@@ -62,7 +62,6 @@ import { ToolsPopover } from "./tools-popover";
 import { SessionStats } from "./usage-stats";
 import { authClient } from "@/web/lib/auth-client.ts";
 import { track } from "@/web/lib/posthog-client";
-import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { useSound } from "@/web/hooks/use-sound.ts";
 import { question004Sound } from "@deco/ui/lib/question-004.ts";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
@@ -276,9 +275,6 @@ export function ChatInput({
   const userId = session?.user?.id;
 
   const { org, locator } = useProjectContext();
-  // Reports-only orgs get a simplified composer (short placeholder, no
-  // prompt/agent affordances to hint at).
-  const reportsOnly = useReportsOnly();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const fullVm = useVirtualMCP(selectedVirtualMcp?.id ?? decopilotId);
   const playSwitchSound = useSound(question004Sound);
@@ -490,7 +486,7 @@ export function ChatInput({
             setTiptapDoc={setTiptapDoc}
             disabled={false}
             enterToSubmit={true}
-            placeholder={reportsOnly ? "Ask anything" : undefined}
+            placeholder={undefined}
             onSubmit={handleSubmit}
           >
             <form

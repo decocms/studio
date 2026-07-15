@@ -1,27 +1,3 @@
-/**
- * MainPanelTabsBar — horizontal tab strip rendered in the agent-shell
- * header via `Toolbar.Tabs` (portal).
- *
- * Rendering pipeline:
- *   1. Normalize tabs via useMainPanelTabs (system / agent / expanded).
- *   2. Compute the per-tab active flag; the Automations system tab uses
- *      isAutomationsPillActive so it lights up on list + detail URLs.
- *   3. Promote the active tab into the visible slice when needed via
- *      selectTabSlots (cap = 6).
- *   4. Render each visible tab as <HeaderTabButton>. If there is
- *      overflow, append a <TabOverflowMenu>.
- *
- * Click routing: the Automations pill uses resolveAutomationsPillClickTarget
- * (list/detail collapse); every other tab uses the hook's setActiveTab,
- * which already routes through resolveTabClickTarget (click active → close).
- */
-
-import { useNavigate } from "@tanstack/react-router";
-import { carryLegacyBlocksMainView } from "@/web/hooks/use-layout-state";
-import {
-  isAutomationsPillActive,
-  resolveAutomationsPillClickTarget,
-} from "./tab-id";
 import { useMainPanelTabs, type Tab } from "./use-main-panel-tabs";
 import { selectTabSlots } from "./select-tab-slots";
 import { HeaderTabButton } from "./header-tab-button";
@@ -40,7 +16,6 @@ export function MainPanelTabsBar({
   taskId: string;
   disableActiveMainToggle?: boolean;
 }) {
-  const navigate = useNavigate();
   const { tabs, activeTab, mainOpen, setActiveTab } = useMainPanelTabs({
     virtualMcpId,
     taskId,
@@ -51,12 +26,7 @@ export function MainPanelTabsBar({
   // chat panel. Disable the whole tab strip so it isn't a dead-end open.
   const needsSetup = useNeedsRuntimeSetup();
 
-  const automationsActive = isAutomationsPillActive({ activeTab, mainOpen });
-
-  const isTabActive = (tab: Tab) => {
-    if (tab.id === "automations") return automationsActive;
-    return mainOpen && tab.id === activeTab;
-  };
+  const isTabActive = (tab: Tab) => mainOpen && tab.id === activeTab;
 
   const activeFromTabs = tabs.find((t) => isTabActive(t));
   const effectiveActiveId = activeFromTabs?.id ?? null;
@@ -77,22 +47,6 @@ export function MainPanelTabsBar({
       tab_kind: clicked?.kind ?? null,
       was_active: wasActive,
     });
-    if (id === "automations") {
-      const target = resolveAutomationsPillClickTarget({
-        activeTab,
-        mainOpen,
-      });
-      navigate({
-        to: ".",
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          ...carryLegacyBlocksMainView(prev),
-          main: target,
-        }),
-        replace: true,
-      });
-      return;
-    }
     setActiveTab(id);
   };
 
