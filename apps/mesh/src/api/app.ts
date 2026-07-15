@@ -49,6 +49,11 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
+import {
+  ADMIN_API_PREFIX,
+  createAdminRoutes,
+  fenceRawAdminSurface,
+} from "./routes/admin";
 import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
@@ -1261,6 +1266,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom", authRoutes);
 
+  // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
+  // external callers — see fenceRawAdminSurface's doc in routes/admin.ts for
+  // why this must exist whenever deploymentAdminUserIds does.
+  app.all("/api/auth/admin/*", fenceRawAdminSurface);
+
   // All Better Auth routes (OAuth, session management, etc.)
   app.all("/api/auth/*", async (c) => {
     return await auth.handler(c.req.raw);
@@ -1732,7 +1742,11 @@ export async function createApp(options: CreateAppOptions = {}) {
       path.startsWith("/api/org-sso/") ||
       path.startsWith("/api/auth/") ||
       path.startsWith("/api/tools/management") ||
-      path.startsWith("/oauth-proxy/")
+      path.startsWith("/oauth-proxy/") ||
+      // Instance-level operator surface — not governed by any single org's SSO
+      // policy. Without this, an admin whose active org enforces SSO gets 403'd
+      // off the whole dashboard, and the UI reads that as "not an admin".
+      path.startsWith(`${ADMIN_API_PREFIX}/`)
     ) {
       return next();
     }
@@ -2049,6 +2063,16 @@ export async function createApp(options: CreateAppOptions = {}) {
   // resolve their own org and bypass `resolveOrgFromPath`).
   app.post("/api/:org/registry/publish-request", publishRequestHandler);
   app.all("/api/:org/registry/*", publicMCPHandler);
+
+  // Deployment admin dashboard. Static segment — must register before the
+  // `:org` catch-all below, same trick as the registry mounts above. That
+  // registration order is the real no-collision guarantee: ORGANIZATION_CREATE
+  // rejects slugs outside `^[a-z0-9-]+$`, but the raw better-auth
+  // organization/create endpoint enforces no charset, so an `_admin`-slugged
+  // org CAN exist — mounting first means such an org gets shadowed, never the
+  // admin surface. The `_` prefix just keeps well-behaved slugs from ever
+  // wanting the name (a bare `admin` is a legal, live slug).
+  app.route(ADMIN_API_PREFIX, createAdminRoutes());
 
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup

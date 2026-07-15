@@ -42,6 +42,11 @@ export interface SignUpResult {
   orgSlug: string;
 }
 
+/** Every test principal shares this password. Exported so specs that sign an
+ *  existing fixed identity back in (e.g. deployment-admin.spec.ts under
+ *  `reuseExistingServer` reruns) can't drift from what sign-up used. */
+export const TEST_PASSWORD = "Playwright123!";
+
 function generateTestUser(overrides?: { email?: string; name?: string }) {
   const suffix = Date.now() + Math.floor(Math.random() * 100000);
   // The unique suffix must lead the name: the signup hook derives the default
@@ -50,7 +55,7 @@ function generateTestUser(overrides?: { email?: string; name?: string }) {
   return {
     name: overrides?.name ?? `T${suffix} User`,
     email: overrides?.email ?? `test-${suffix}@playwright.local`,
-    password: "Playwright123!",
+    password: TEST_PASSWORD,
   };
 }
 

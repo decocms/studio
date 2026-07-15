@@ -452,6 +452,10 @@ The aggregator that mounts every org-scoped sub-router lives at
 Org slugs are **immutable** — `ORGANIZATION_UPDATE` rejects slug changes — so URLs remain
 stable.
 
+Instance-level routes (no org context, e.g. the deployment-admin surface) use an
+underscore-prefixed namespace like `/api/_admin/...`, mounted before the `/api/:org`
+catch-all so the static segment wins over the slug param.
+
 ## License
 
 MIT License — see LICENSE.md for details.

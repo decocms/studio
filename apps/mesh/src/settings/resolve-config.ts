@@ -134,6 +134,10 @@ export function resolveConfig(
     localMode,
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,
+    deploymentAdminEmails: (envVars.DEPLOYMENT_ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
 
     // Observability
     clickhouseUrl: envVars.CLICKHOUSE_URL,

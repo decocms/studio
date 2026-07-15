@@ -105,6 +105,39 @@ const scopes = Object.values(getToolsByCategory())
   .map((tool) => tool.map((t) => `self:${t.name}`))
   .flat();
 
+/**
+ * Deployment admin user IDs, resolved lazily from `deploymentAdminEmails` by
+ * the `/api/_admin/*` middleware (apps/mesh/src/api/routes/admin.ts) on each
+ * verified admin's first request. Better Auth's admin plugin shallow-spreads
+ * the options object it's given at plugin-init time, so `adminUserIds` below
+ * keeps a reference to THIS array — `hasPermission` (better-auth 1.4.22,
+ * plugins/admin/has-permission.mjs) reads `options.adminUserIds.includes(id)`
+ * at call time, so pushing here is visible immediately. Push-only and
+ * per-process: it rebuilds empty on every restart, so revocation (removing an
+ * email from config) is exactly as fresh as a restart. Re-verify this note on
+ * any better-auth upgrade that touches the admin plugin's options handling.
+ *
+ * IMPORTANT: this makes the id a full admin for the ENTIRE admin plugin, so the
+ * raw `/api/auth/admin/*` HTTP surface (set-role, set-user-password, ...) is
+ * fenced off in app.ts — everything the dashboard needs goes through the
+ * curated `/api/_admin/*` routes, which call `auth.api.*` in-process and
+ * re-check the email allowlist on every request. Without that fence a pushed id
+ * could mint a persistent, restart-surviving admin via set-role.
+ */
+const deploymentAdminUserIds: string[] = [];
+
+/**
+ * Register a verified, allowlisted operator's id for the raw admin-plugin
+ * privilege (see above). The `/api/_admin/*` middleware calls this on each such
+ * request; the grant logic and the shallow-spread caveat live here in one place
+ * rather than the route poking the module array directly. Push-only + deduped.
+ */
+export function grantDeploymentAdmin(userId: string): void {
+  if (!deploymentAdminUserIds.includes(userId)) {
+    deploymentAdminUserIds.push(userId);
+  }
+}
+
 export const authConfig = getConfig().auth;
 
 let sendInvitationEmail: OrganizationOptions["sendInvitationEmail"] = undefined;
@@ -286,6 +319,7 @@ const plugins = [
       ...systemDefaultRoles,
       owner: systemAdminAc,
     },
+    adminUserIds: deploymentAdminUserIds,
   }),
 
   // OpenAPI plugin for API documentation
@@ -357,7 +391,7 @@ const database = getDbDialect(databaseUrl);
 const baseUrl = getBaseUrl();
 
 // Build trusted origins: include both localhost and 127.0.0.1 variants
-function getTrustedOrigins(): string[] {
+export function getTrustedOrigins(): string[] {
   const origins = [baseUrl];
   try {
     const url = new URL(baseUrl);

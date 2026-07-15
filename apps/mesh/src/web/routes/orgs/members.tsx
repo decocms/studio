@@ -7,6 +7,7 @@ import { ErrorBoundary } from "@/web/components/error-boundary";
 import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
 import { JoinRequestsSection } from "@/web/components/settings/join-requests-section";
 import { track } from "@/web/lib/posthog-client";
+import { formatDate } from "@/web/lib/format-time";
 import { getInitials } from "@/web/lib/get-initials";
 import { useMembers } from "@/web/hooks/use-members";
 import {
@@ -121,15 +122,6 @@ function createRoleColorMap(
   }
 
   return colorMap;
-}
-
-function formatJoinedDate(dateString: string | Date): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 }
 
 interface RoleSelectorProps {
@@ -731,9 +723,7 @@ function OrgMembersContent() {
         if (row.type === "member") {
           return (
             <span className="text-sm text-foreground">
-              {row.data.createdAt
-                ? formatJoinedDate(row.data.createdAt)
-                : "N/A"}
+              {row.data.createdAt ? formatDate(row.data.createdAt) : "N/A"}
             </span>
           );
         }

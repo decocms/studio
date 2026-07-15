@@ -100,6 +100,47 @@ const oauthCallbackAiProviderRoute = createRoute({
 });
 
 // ============================================
+// DEPLOYMENT ADMIN DASHBOARD (instance-level, not org-scoped)
+// ============================================
+
+// Mounted at `/_admin`, not `/admin`. TanStack ranks the static `/_admin`
+// segment above the `$org` param, so this route wins even if an `_admin`
+// slug were ever minted (ORGANIZATION_CREATE rejects `_`, but the raw
+// better-auth endpoint enforces no charset) — the org gets shadowed, never
+// this surface. A bare `/admin` would shadow a legal, live slug.
+const adminLayout = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/_admin",
+  component: lazyRouteComponent(() => import("./routes/admin/layout.tsx")),
+});
+
+const adminIndexRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/",
+  beforeLoad: () => {
+    throw redirect({ to: "/_admin/users" });
+  },
+});
+
+const adminUsersRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/users",
+  component: lazyRouteComponent(() => import("./routes/admin/users.tsx")),
+});
+
+const adminOrgsRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/orgs",
+  component: lazyRouteComponent(() => import("./routes/admin/orgs.tsx")),
+});
+
+const adminLayoutWithChildren = adminLayout.addChildren([
+  adminIndexRoute,
+  adminUsersRoute,
+  adminOrgsRoute,
+]);
+
+// ============================================
 // SHELL LAYOUT (authenticated wrapper)
 // ============================================
 
@@ -587,6 +628,7 @@ const shellRouteTree = shellLayout.addChildren([
 
 const routeTree = rootRoute.addChildren([
   shellRouteTree,
+  adminLayoutWithChildren,
   onboardingRoute,
   commerceOnboardingRoute,
   loginRoute,
