@@ -142,23 +142,24 @@ function ConnectionDialogContent({
     orgSlug: org.slug,
   });
 
-  const where = deferredSearch?.trim()
-    ? {
-        operator: "or" as const,
-        conditions: [
-          {
-            field: ["title"],
-            operator: "contains" as const,
-            value: deferredSearch.trim(),
-          },
-          {
-            field: ["description"],
-            operator: "contains" as const,
-            value: deferredSearch.trim(),
-          },
-        ],
-      }
-    : undefined;
+  // Split on whitespace into keywords, each OR'd across title/description — so
+  // "vtex shopify" matches connections for either provider (union).
+  const searchTokens =
+    deferredSearch?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const where =
+    searchTokens.length > 0
+      ? {
+          operator: "or" as const,
+          conditions: searchTokens.flatMap((token) => [
+            { field: ["title"], operator: "contains" as const, value: token },
+            {
+              field: ["description"],
+              operator: "contains" as const,
+              value: token,
+            },
+          ]),
+        }
+      : undefined;
 
   const toolArguments = {
     ...(where && { where }),
@@ -265,7 +266,10 @@ function ConnectionDialogContent({
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
-        return haystack.includes(searchLower);
+        // Match any keyword (union), mirroring the server-side where clause.
+        return searchTokens.some((token) =>
+          haystack.includes(token.toLowerCase()),
+        );
       })
     : [];
 
