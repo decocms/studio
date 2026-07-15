@@ -10,7 +10,7 @@ import {
 } from "@deco/ui/components/sheet.tsx";
 import type { ToolSubtaskMetadata } from "../../use-filter-parts.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon";
-import { useVirtualMCP, type ToolDefinition } from "@decocms/mesh-sdk";
+import { useConnection, type ToolDefinition } from "@decocms/mesh-sdk";
 import { ArrowUpRight, Tool02, Users03 } from "@untitledui/icons";
 import type { TextUIPart } from "ai";
 import type { SubtaskToolPart } from "../../../types.ts";
@@ -440,11 +440,13 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
 }
 
 /**
- * Suspends on the agent fetch (useVirtualMCP). MUST be wrapped in
+ * Suspends on the delegation-target fetch. Agents are stored as VIRTUAL
+ * connections, so the connection collection resolves both persisted agents
+ * and concrete MCP targets through one query. MUST be wrapped in
  * <Suspense fallback={<SubtaskPartFallback ... />}> by the caller.
  */
 export function SubtaskPart(props: SubtaskPartProps) {
-  const agent = useVirtualMCP(props.part.input?.agent_id);
+  const target = useConnection(props.part.input?.agent_id);
   if (isBackgroundStart(props.part.output))
     return <BackgroundSubtaskCard {...props} />;
   const { fallbackTitle, summary, usage, state } = buildSubtaskRowConfig(props);
@@ -453,14 +455,14 @@ export function SubtaskPart(props: SubtaskPartProps) {
     <SubtaskCard
       icon={
         <IntegrationIcon
-          icon={agent?.icon}
-          name={agent?.title ?? "Subtask"}
+          icon={target?.icon}
+          name={target?.title ?? "Subtask"}
           size="2xs"
           className="rounded-xs"
           fallbackIcon={<Users03 />}
         />
       }
-      title={agent?.title ?? fallbackTitle}
+      title={target?.title ?? fallbackTitle}
       summary={summary}
       state={state}
       usage={usage}

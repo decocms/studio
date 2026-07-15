@@ -581,7 +581,7 @@ export const VirtualMCPEntitySchema = z.object({
         .nullable()
         .optional()
         .describe(
-          "Allowlist of Virtual MCP (agent) IDs this agent may delegate to via subtask. null/absent = all active org agents; empty array = itself only (no cross-agent delegation).",
+          "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
         ),
       liveAgentId: z
         .string()
@@ -679,7 +679,7 @@ export const VirtualMCPCreateDataSchema = z.object({
         .nullable()
         .optional()
         .describe(
-          "Allowlist of Virtual MCP (agent) IDs this agent may delegate to via subtask. null/absent = all active org agents; empty array = itself only (no cross-agent delegation).",
+          "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
         ),
       liveAgentId: z
         .string()
@@ -758,7 +758,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .nullable()
         .optional()
         .describe(
-          "Allowlist of Virtual MCP (agent) IDs this agent may delegate to via subtask. null/absent = all active org agents; empty array = itself only (no cross-agent delegation).",
+          "Allowlist of Virtual MCP (agent) or concrete MCP connection IDs this agent may delegate to via subtask. Concrete connections create ephemeral subagents. null/absent = all active org targets; empty array = itself only.",
         ),
       liveAgentId: z
         .string()

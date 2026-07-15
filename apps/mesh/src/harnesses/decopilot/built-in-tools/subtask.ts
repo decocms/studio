@@ -36,9 +36,10 @@ export const SubtaskInputSchema = z.object({
     .max(128)
     .optional()
     .describe(
-      "The ID of the agent (Virtual MCP) to delegate to. Must exist and be " +
-        "active in the current organization. OMIT to clone yourself — a fresh " +
-        "subagent with your exact tools and instructions but an empty context.",
+      "The ID of an agent (Virtual MCP) or concrete MCP connection to delegate " +
+        "to. A concrete connection creates an ephemeral subagent scoped to that " +
+        "connection. OMIT to clone yourself — a fresh subagent with your exact " +
+        "tools and instructions but an empty context.",
     ),
 });
 
@@ -51,7 +52,8 @@ const SUBTASK_DESCRIPTION =
   "context on the digging and hands back just the answer, keeping yours focused and cheap. A single, " +
   "targeted lookup you already know the shape of stays inline.\n\n" +
   "OMIT agent_id to clone yourself (a fresh subagent with your exact tools and instructions, empty context). " +
-  "Pass agent_id to delegate to a different, specialized agent instead.\n\n" +
+  "Pass agent_id to delegate to a different specialized agent, or to create an ephemeral subagent for a " +
+  "concrete MCP connection. Use IDs exactly as listed in <available-agents> or <available-connections>.\n\n" +
   "Usage notes:\n" +
   "- Every subtask call starts FRESH — no conversation history, no prior runs. Always include full context in the prompt and state exactly what to return (the specific answer/list/paths you need, not a raw dump); never use continuation phrases like 'continue' or 'as before'.\n" +
   "- Clearly tell the subagent whether you expect it to take action or just research.\n" +
@@ -215,9 +217,11 @@ export function createSubtaskTool(
         return;
       }
 
-      // 1. Enforce the caller's sub-agent allowlist for cross-agent delegation
-      //    BEFORE resolving the target. Self-clones are always allowed (isSelf
-      //    short-circuits). An empty/absent allowlist means "all agents".
+      // 1. Enforce the caller's delegation allowlist BEFORE resolving the
+      //    target. It may contain persisted agent ids or concrete MCP
+      //    connection ids. Self-clones are always allowed (isSelf
+      //    short-circuits). An empty array means self-only; absent means all
+      //    active organization targets.
       if (!isSelf && self) {
         const caller = await ctx.storage.virtualMcps.findById(
           self.id,
@@ -225,27 +229,27 @@ export function createSubtaskTool(
         );
         const allow = caller?.metadata?.subAgents;
         // An allowlist array (even empty = itself only) gates cross-agent
-        // delegation. A null/absent allowlist means all agents are allowed.
+        // delegation. A null/absent allowlist means all targets are allowed.
         if (Array.isArray(allow) && !allow.includes(targetId)) {
-          // Point at the catalog ONLY when the allowlist permits some other
-          // agent. An empty allowlist (self-only) has no <available-agents>
-          // table, so directing the model there just makes it invent ids.
+          // Point at the catalogs ONLY when the allowlist permits some other
+          // target. An empty allowlist (self-only) has no delegable catalog,
+          // so directing the model there just makes it invent ids.
           const catalogHint =
             allow.length > 0
-              ? " Or pass an agent id from <available-agents>."
+              ? " Or pass an id from <available-agents> or <available-connections>."
               : "";
           yield {
             text: "",
-            error: `Agent '${targetId}' is not in this agent's delegation allowlist (allow=${JSON.stringify(allow)}).${cloneHint}${catalogHint}`,
+            error: `Target '${targetId}' is not in this agent's delegation allowlist (allow=${JSON.stringify(allow)}).${cloneHint}${catalogHint}`,
             finishReason: "error",
           };
           return;
         }
       }
 
-      // 2. Validate the target and open its passthrough client. A self-clone
-      //    uses superUser so its tool scope mirrors the parent loop. Resolution
-      //    errors ("Agent not found" / "not active") are also recoverable.
+      // 2. Validate the agent/connection target and open its passthrough
+      //    client. A self-clone uses superUser so its tool scope mirrors the
+      //    parent loop. Resolution errors are recoverable.
       let resolved: Awaited<ReturnType<typeof resolveSubagent>>;
       try {
         resolved = await resolveSubagent(ctx, organization.id, targetId, {
@@ -301,6 +305,7 @@ export function createSubtaskTool(
           provider,
           models,
           messages: [{ role: "user", content: prompt }],
+          systemAgentInstructions: targetRef.instructions,
           abortSignal: abortSignal ?? new AbortController().signal,
           stepLimit: SUBAGENT_STEP_LIMIT,
           toolApprovalLevel: "auto",

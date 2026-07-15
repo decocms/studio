@@ -39,9 +39,10 @@ export const SubtaskInputSchema = z.object({
     .max(128)
     .optional()
     .describe(
-      "The ID of the agent (Virtual MCP) to delegate to. Must exist and be " +
-        "active in the current organization. OMIT to clone yourself — a fresh " +
-        "subagent with your exact tools and instructions but an empty context.",
+      "The ID of an agent (Virtual MCP) or concrete MCP connection to delegate " +
+        "to. A concrete connection creates an ephemeral subagent scoped to that " +
+        "connection. OMIT to clone yourself — a fresh subagent with your exact " +
+        "tools and instructions but an empty context.",
     ),
 });
 
@@ -54,7 +55,8 @@ const SUBTASK_DESCRIPTION =
   "context on the digging and hands back just the answer, keeping yours focused and cheap. A single, " +
   "targeted lookup you already know the shape of stays inline.\n\n" +
   "OMIT agent_id to clone yourself (a fresh subagent with your exact tools and instructions, empty context). " +
-  "Pass agent_id to delegate to a different, specialized agent instead.\n\n" +
+  "Pass agent_id to delegate to a different specialized agent, or to create an ephemeral subagent for a " +
+  "concrete MCP connection. Use IDs exactly as listed in <available-agents> or <available-connections>.\n\n" +
   "Usage notes:\n" +
   "- Every subtask call starts FRESH — no conversation history, no prior runs. Always include full context in the prompt and state exactly what to return (the specific answer/list/paths you need, not a raw dump); never use continuation phrases like 'continue' or 'as before'.\n" +
   "- Clearly tell the subagent whether you expect it to take action or just research.\n" +

@@ -443,6 +443,7 @@ export async function* runDecopilotStream(
   const vmMetadata = runContext?.virtualMcp.metadata as
     | {
         githubRepo?: import("@decocms/mesh-sdk").GithubRepo | null;
+        subAgents?: string[] | null;
       }
     | undefined;
   const codingWorkspace =
@@ -459,6 +460,7 @@ export async function* runDecopilotStream(
     virtualMcp: {
       id: input.agent.id,
       repo: vmMetadata?.githubRepo ?? undefined,
+      delegationTargetIds: vmMetadata?.subAgents,
     },
     mcpClient: tools.passthroughClient,
     provider,

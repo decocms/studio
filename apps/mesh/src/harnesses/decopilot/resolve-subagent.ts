@@ -1,21 +1,23 @@
 /**
- * Shared delegation-target resolution for the two `subtask` surfaces:
- * the in-process `subtask` built-in (`built-in-tools/subtask.ts`) and the
- * cluster-side `SUBTASK_MCP` tool (`tools/decopilot-mcp/subtask-tool.ts`).
+ * Shared delegation-target resolution for the inline `subtask` built-in and
+ * the durable background-subtask workflow.
  *
- * Both validate the target Virtual MCP identically (existence + org scope +
- * active status), open a passthrough client, and build the `targetRef` that
- * `runAgentLoop` expects. Keeping it here stops the two surfaces from drifting
- * on the error strings (`"Agent not found"` / `"Agent is not active"`) or the
- * targetRef shape.
+ * A target may be a persisted Virtual MCP or a concrete MCP connection. The
+ * latter becomes an ephemeral subagent whose MCP scope contains exactly that
+ * connection; no Virtual MCP row is created. Both paths enforce organization
+ * scope + active status and return the same runtime target shape.
  */
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { StudioContext } from "@/core/studio-context";
-import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
+import {
+  createConnectionClient,
+  createVirtualClientFrom,
+} from "@/mcp-clients/virtual-mcp";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
 
 export interface ResolvedSubagent {
   mcpClient: PassthroughClient;
+  targetKind: "virtual-mcp" | "connection";
   targetRef: {
     id: string;
     instructions: string | undefined;
@@ -26,42 +28,69 @@ export interface ResolvedSubagent {
 /**
  * Validate a delegation target, open a passthrough client for it, and build the
  * targetRef. `superUser` mirrors the parent loop's passthrough scope (used by
- * self-clones); leave it false for cross-agent delegation.
+ * self-clones); leave it false for cross-target delegation.
  *
- * @throws Error("Agent not found") when the id doesn't resolve in the org.
- * @throws Error("Agent is not active") when the agent exists but is inactive.
+ * @throws when the id doesn't resolve to an agent or concrete connection in
+ * the organization, or when the resolved target is inactive.
  */
 export async function resolveSubagent(
   ctx: StudioContext,
   organizationId: string,
-  agentId: string,
+  targetId: string,
   { superUser = false }: { superUser?: boolean } = {},
 ): Promise<ResolvedSubagent> {
   const virtualMcp = await ctx.storage.virtualMcps.findById(
-    agentId,
+    targetId,
     organizationId,
   );
-  if (!virtualMcp || virtualMcp.organization_id !== organizationId) {
-    throw new Error("Agent not found");
-  }
-  if (virtualMcp.status !== "active") {
-    throw new Error("Agent is not active");
+  if (virtualMcp?.organization_id === organizationId) {
+    if (virtualMcp.status !== "active") {
+      throw new Error("Agent is not active");
+    }
+
+    const mcpClient = await createVirtualClientFrom(
+      virtualMcp,
+      ctx,
+      "passthrough",
+      superUser,
+      { includeSkillsCatalog: true },
+    );
+
+    return {
+      mcpClient,
+      targetKind: "virtual-mcp",
+      targetRef: {
+        id: virtualMcp.id,
+        instructions: mcpClient.getInstructions(),
+        repo: virtualMcp.metadata?.githubRepo ?? undefined,
+      },
+    };
   }
 
-  const mcpClient = await createVirtualClientFrom(
-    virtualMcp,
-    ctx,
-    "passthrough",
-    superUser,
-    { includeSkillsCatalog: true },
+  const connection = await ctx.storage.connections.findById(
+    targetId,
+    organizationId,
   );
+  if (
+    !connection ||
+    connection.organization_id !== organizationId ||
+    connection.connection_type === "VIRTUAL"
+  ) {
+    throw new Error("Agent or MCP connection not found");
+  }
+  if (connection.status !== "active") {
+    throw new Error("MCP connection is not active");
+  }
+
+  const mcpClient = createConnectionClient(connection, ctx, superUser);
 
   return {
     mcpClient,
+    targetKind: "connection",
     targetRef: {
-      id: virtualMcp.id,
+      id: connection.id,
       instructions: mcpClient.getInstructions(),
-      repo: virtualMcp.metadata?.githubRepo ?? undefined,
+      repo: undefined,
     },
   };
 }

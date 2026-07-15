@@ -4,8 +4,9 @@
  * Each decopilot run executes inside a single Virtual MCP. The usage
  * guidance is ALWAYS emitted because every agent can delegate to itself
  * (`subtask({ prompt })` clones the current agent with a fresh context).
- * When other active Virtual MCPs exist in the organization they are also
- * listed so the model can delegate cross-agent work via `subtask({ agent_id })`.
+ * When other active Virtual MCPs or concrete MCP connections are available,
+ * the usage block explains how `agent_id` selects either a persisted agent or
+ * an ephemeral connection-scoped subagent.
  *
  * The block is stable per organization so the prompt prefix can be
  * cached across steps.
@@ -32,17 +33,26 @@ Launch multiple subtask calls in one message to run independent searches in
 parallel.
 </agents-usage>`;
 
-// Emitted when other delegable agents exist: documents both the self-clone and
-// the cross-agent form, and points at the <available-agents> catalog below.
-const FULL_USAGE = `<agents-usage>
+function buildDelegationUsage(
+  hasAgents: boolean,
+  hasConnections: boolean,
+): string {
+  const targetDescription =
+    hasAgents && hasConnections
+      ? "delegate to a DIFFERENT agent from <available-agents>, or create an ephemeral subagent scoped to a concrete MCP connection id from <available-connections>."
+      : hasAgents
+        ? "delegate to a DIFFERENT agent from <available-agents>, which has its own tools and instructions."
+        : "create an ephemeral subagent scoped to a concrete MCP connection id from <available-connections>.";
+
+  return `<agents-usage>
 Delegate self-contained work to a subagent with the subtask tool.
 
 - subtask({ prompt }) — clone YOURSELF: a fresh subagent with your exact tools
   and instructions but an empty context window.
-- subtask({ agent_id, prompt }) — delegate to a DIFFERENT agent (see
-  <available-agents>), which has its own tools and instructions.
+- subtask({ agent_id, prompt }) — ${targetDescription}
 
 ${USAGE_TAIL}`;
+}
 
 // Emitted when there is NO catalog (self-only). Must NOT reference
 // <available-agents> or the agent_id form — that block isn't in context, and a
@@ -74,6 +84,7 @@ export function buildAgentsBlock(
   agents: AgentsBlockEntry[],
   currentVirtualMcpId: string,
   allowedIds?: string[] | null,
+  connectionIds: string[] = [],
 ): string {
   let others = agents.filter(
     (a) => a.id !== currentVirtualMcpId && a.status === "active",
@@ -85,12 +96,16 @@ export function buildAgentsBlock(
   if (allowedIds) {
     const allow = new Set(allowedIds);
     others = others.filter((a) => allow.has(a.id));
+    connectionIds = connectionIds.filter((id) => allow.has(id));
   }
 
-  // Self-delegation is always available, so the usage guidance is always
-  // emitted. The <available-agents> table is added only when other active
-  // agents exist to delegate to.
-  if (others.length === 0) {
+  const concreteConnectionIds = [...new Set(connectionIds)].filter(
+    (id) => id !== currentVirtualMcpId,
+  );
+
+  // Self-delegation is always available. The strict self-only wording is valid
+  // only when neither an agent nor a concrete connection can be targeted.
+  if (others.length === 0 && concreteConnectionIds.length === 0) {
     return `\n\n${SELF_ONLY_USAGE}`;
   }
 
@@ -99,8 +114,13 @@ export function buildAgentsBlock(
     return `${csvField(a.id)},${csvField(a.name)},${csvField(desc)}`;
   });
 
-  return (
-    `\n\n<available-agents>\nid,name,description\n${rows.join("\n")}\n</available-agents>` +
-    `\n\n${FULL_USAGE}`
-  );
+  const agentsCatalog =
+    rows.length > 0
+      ? `\n\n<available-agents>\nid,name,description\n${rows.join("\n")}\n</available-agents>`
+      : "";
+
+  return `${agentsCatalog}\n\n${buildDelegationUsage(
+    others.length > 0,
+    concreteConnectionIds.length > 0,
+  )}`;
 }

@@ -1,8 +1,8 @@
 /**
  * Builds the <available-connections> + <connections-usage> system-prompt
- * block. Lists the current Virtual MCP's connections and the safe names
- * of every tool each one exposes. The usage block teaches the model how
- * to activate them via enable_tool.
+ * block. Lists each concrete connection's id, title, and safe tool names. The
+ * id is also a valid subtask delegation target: Decopilot can create an
+ * ephemeral subagent scoped to that connection without a persisted agent.
  *
  * Returns null when there are no tools to expose so the caller can drop
  * the block from the prompt entirely.
@@ -59,12 +59,15 @@ export function buildConnectionsBlock(
 ): string | null {
   if (tools.length === 0) return null;
 
-  const groups = new Map<string, { title: string; toolNames: string[] }>();
+  const groups = new Map<
+    string,
+    { id: string; title: string; toolNames: string[] }
+  >();
   for (const t of tools) {
     const title = connectionTitleMap.get(t.connectionId) ?? t.connectionId;
     let group = groups.get(t.connectionId);
     if (!group) {
-      group = { title, toolNames: [] };
+      group = { id: t.connectionId, title, toolNames: [] };
       groups.set(t.connectionId, group);
     }
     // Emit the safe name verbatim — this is the exact identifier the
@@ -78,13 +81,13 @@ export function buildConnectionsBlock(
     a.title.localeCompare(b.title),
   );
 
-  const rows = sorted.map(({ title, toolNames }) => {
+  const rows = sorted.map(({ id, title, toolNames }) => {
     const joined = toolNames.join("; ");
-    return `${csvField(title)},${csvField(joined)}`;
+    return `${csvField(id)},${csvField(title)},${csvField(joined)}`;
   });
 
   return (
-    `\n\n<available-connections>\nname,tools\n${rows.join("\n")}\n</available-connections>` +
+    `\n\n<available-connections>\nid,name,tools\n${rows.join("\n")}\n</available-connections>` +
     `\n\n${USAGE}`
   );
 }

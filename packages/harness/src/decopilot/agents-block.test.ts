@@ -140,4 +140,30 @@ describe("buildAgentsBlock", () => {
     expect(result).toContain("subtask");
     expect(result).toContain("full context");
   });
+
+  test("documents ephemeral delegation when only a concrete connection is available", () => {
+    const result = buildAgentsBlock(
+      [entry("vmcp_self", "Self", "Self")],
+      "vmcp_self",
+      undefined,
+      ["conn_orders"],
+    );
+
+    expect(result).not.toContain("<available-agents>");
+    expect(result).toContain("<available-connections>");
+    expect(result).toContain("ephemeral subagent");
+    expect(result).not.toContain("NEVER pass agent_id");
+  });
+
+  test("applies the delegation allowlist to concrete connection ids", () => {
+    const result = buildAgentsBlock(
+      [entry("vmcp_self", "Self", "Self")],
+      "vmcp_self",
+      [],
+      ["conn_orders"],
+    );
+
+    expect(result).toContain("NEVER pass agent_id");
+    expect(result).not.toContain("ephemeral subagent");
+  });
 });

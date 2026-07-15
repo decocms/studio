@@ -47,7 +47,7 @@ export class PassthroughClient extends GatewayClient {
   ) {
     // Build VirtualMCP connection lookup for per-client selection
     const vmcpConnMap = new Map(
-      options.virtualMcp.connections.map((c) => [c.connection_id, c]),
+      (options.virtualMcp?.connections ?? []).map((c) => [c.connection_id, c]),
     );
 
     // Build ClientEntry record
@@ -116,7 +116,7 @@ export class PassthroughClient extends GatewayClient {
       prompts: [...base.prompts, ...seeded],
     };
 
-    const agent = findStudioPackAgentByMcpId(this.options.virtualMcp.id ?? "");
+    const agent = findStudioPackAgentByMcpId(this.options.virtualMcp?.id ?? "");
     const orgId = this.ctx.organization?.id;
     if (!agent || !orgId) return result;
 
@@ -156,7 +156,7 @@ export class PassthroughClient extends GatewayClient {
     params: GetPromptRequest["params"],
     options?: RequestOptions,
   ): Promise<GetPromptResult> {
-    const agentId = this.options.virtualMcp.id;
+    const agentId = this.options.virtualMcp?.id;
     if (agentId) {
       const prefix = `${slugify(agentId)}_`;
       if (params.name.startsWith(prefix)) {
@@ -182,7 +182,7 @@ export class PassthroughClient extends GatewayClient {
    * lines up with `getPrompt` above. Cached per instance. Never throws.
    */
   private async listSeededPrompts(): Promise<Prompt[]> {
-    const agentId = this.options.virtualMcp.id;
+    const agentId = this.options.virtualMcp?.id;
     if (!agentId) return [];
     const stored = await this.loadSeededPrompts();
     const prefix = slugify(agentId);
@@ -196,7 +196,7 @@ export class PassthroughClient extends GatewayClient {
 
   /** Cached org-fs read of the agent's seeded prompts. Never throws. */
   private loadSeededPrompts(): Promise<StoredAgentPrompt[]> {
-    const agentId = this.options.virtualMcp.id;
+    const agentId = this.options.virtualMcp?.id;
     const orgFs = this.ctx.orgFs;
     if (!agentId || !orgFs) return Promise.resolve([]);
     if (!this.agentPromptsCache) {
@@ -210,10 +210,12 @@ export class PassthroughClient extends GatewayClient {
     // they reach the model on every run path (cluster engine AND sandbox
     // daemon both read instructions; only the cluster runs the richer
     // buildAgentSystemPrompt).
-    const base = withKnowledge(
-      this.options.virtualMcp.metadata?.instructions ?? undefined,
-      this.options.virtualMcp.metadata?.knowledge,
-    );
+    const base = this.options.virtualMcp
+      ? withKnowledge(
+          this.options.virtualMcp.metadata?.instructions ?? undefined,
+          this.options.virtualMcp.metadata?.knowledge,
+        )
+      : this.options.instructions;
     // Append the pre-rendered <available-skills> catalog (built async in the
     // factory). Same seam, same both-paths guarantee as the knowledge block.
     const skills = this.options.skillsBlock;

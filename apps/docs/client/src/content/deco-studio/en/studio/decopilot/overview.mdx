@@ -57,7 +57,7 @@ Decopilot works with multiple AI providers — Anthropic, Google, OpenRouter, th
 
 ## Agents and subtasks
 
-When a task needs focused work — a customer-support question, a research pass, a data analysis — Decopilot can hand it off to a specialist [agent](/en/studio/agents) in a **subtask**. The subtask runs independently with its own clean context, then reports a summary back. Your main conversation stays clean.
+When a task needs focused work — a customer-support question, a research pass, a data analysis — Decopilot can hand it off to a specialist [agent](/en/studio/agents) or directly to a concrete MCP connection in a **subtask**. A connection target runs as an ephemeral subagent, so it doesn't require a dedicated agent configuration. The subtask runs independently with its own clean context, then reports a summary back. Your main conversation stays clean.
 
 ## Built-in tools
 
@@ -65,7 +65,7 @@ Decopilot ships with tools for coordinating work across any scope:
 
 | Tool | What it does |
 |---|---|
-| `subtask` | Delegates work to a specialist agent |
+| `subtask` | Delegates work to a specialist agent or concrete MCP connection |
 | `user_ask` | Asks you a question when it needs clarification |
 | `enable_tool` | Activates a scope tool for use in subsequent steps |
 | `read_resource` | Reads documentation or guidelines available in scope |
