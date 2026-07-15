@@ -893,7 +893,6 @@ function CommerceSetupContent({
       search: {
         virtualmcpid: reportApp.virtualMcpId,
         main: formatPinnedViewTabId(reportApp.connectionId, reportApp.toolName),
-        chat: 0,
       },
     });
   };

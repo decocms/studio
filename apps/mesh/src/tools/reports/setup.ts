@@ -111,11 +111,11 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
     // deterministic per org, so the URL is fully known here at /upgrade time.
     //   main="app:<connectionId>:<toolName>" — pinned-view tab grammar
     //   (web/layouts/main-panel-tabs/tab-id.ts:formatPinnedViewTabId).
-    //   chat=0 keeps the chat panel closed (report-first), matching the button.
+    //   No chat param: the vMCP's chatDefaultOpen metadata decides, matching
+    //   the onboarding button.
     const reportSearch = new URLSearchParams({
       virtualmcpid: virtualMcpId,
       main: `app:${connectionId}:${REPORT_TOOL_NAME}`,
-      chat: "0",
     });
     const claimContact = {
       email: ctx.auth.user?.email,

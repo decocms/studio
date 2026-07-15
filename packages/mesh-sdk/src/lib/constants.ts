@@ -404,7 +404,7 @@ export function getWellKnownCommerceDiscoveryVirtualMCP(
             id: connectionId,
             toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
           },
-          chatDefaultOpen: false,
+          chatDefaultOpen: true,
         },
       },
     },
