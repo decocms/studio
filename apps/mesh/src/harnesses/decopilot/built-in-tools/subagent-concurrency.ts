@@ -28,7 +28,11 @@ export interface ConcurrencyGate {
 }
 
 export function createConcurrencyGate(max: number): ConcurrencyGate {
-  const limit = Math.max(1, max);
+  // A NaN/Infinity `max` (e.g. from an unguarded env parse) must not reach
+  // `Math.max` here: Math.max(1, NaN) is NaN, and `active < NaN` is always
+  // false, so every acquire() would park forever — a total deadlock instead
+  // of the intended cap.
+  const limit = Number.isFinite(max) ? Math.max(1, max) : 1;
   let active = 0;
   const waiters: Array<() => void> = [];
 
