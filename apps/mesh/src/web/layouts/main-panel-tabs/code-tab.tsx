@@ -9,7 +9,7 @@
  */
 
 import { Suspense, lazy } from "react";
-import { Loading01 } from "@untitledui/icons";
+import { Folder, Loading01 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -23,6 +23,11 @@ import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-life
 import { useSandboxRepoDir } from "@/web/components/sandbox/hooks/use-sandbox-repo-dir";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import { ideDeepLink } from "@/web/components/sandbox/ide-deep-link";
+import {
+  localFileManagerName,
+  openSandboxRepoFolder,
+} from "@/web/components/sandbox/open-local-folder";
+import { toast } from "sonner";
 
 const VSCODE_ICON_URL =
   "https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png";
@@ -63,11 +68,41 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
     );
   }
 
+  const openFolderLabel = repoDir
+    ? `Open in ${localFileManagerName(repoDir)}`
+    : "Open folder";
+  const handleOpenFolder = async () => {
+    try {
+      await openSandboxRepoFolder({
+        orgSlug: org.slug,
+        virtualMcpId,
+        branch,
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to open folder",
+      );
+    }
+  };
+
   return (
     <div className="flex flex-col w-full h-full">
       {repoDir && (
         <div className="relative flex h-12 shrink-0 items-center border-b border-border/60 px-3 md:px-4">
           <div className="ml-auto flex shrink-0 items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={openFolderLabel}
+                  onClick={() => void handleOpenFolder()}
+                >
+                  <Folder size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{openFolderLabel}</TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

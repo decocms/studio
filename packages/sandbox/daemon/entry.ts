@@ -72,6 +72,7 @@ import {
 } from "./routes/fs";
 import { makeHealthHandler } from "./routes/health";
 import { makeIdleHandler } from "./routes/idle";
+import { makeOpenFolderHandler } from "./routes/open-folder";
 import { makeSetupHandler } from "./routes/setup";
 import {
   makeTasksDeleteHandler,
@@ -444,6 +445,7 @@ const eventsH = makeEventsHandler({
 });
 
 const idleH = makeIdleHandler();
+const openFolderH = makeOpenFolderHandler({ repoDir: bootConfig.repoDir });
 const proxyH = makeProxyHandler({ broadcaster, getDevPort });
 
 // ─── Harness dispatch ──────────────────────────────────────────────────
@@ -685,6 +687,8 @@ async function vmRouteH(
 
   const denied = requireToken(req, bootConfig.daemonToken);
   if (denied) return denied;
+
+  if (method === "POST" && vmPath === "/open-folder") return openFolderH();
 
   // Hosted harnesses drive the sandbox through the fs/exec tool routes
   // WITHOUT a /dispatch envelope, so the org links must be ensured here too —
