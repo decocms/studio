@@ -12,6 +12,8 @@
  * cached across steps.
  */
 
+import { csvField } from "./csv";
+
 const DESCRIPTION_MAX_LEN = 140;
 
 export interface AgentsBlockEntry {
@@ -66,14 +68,6 @@ Delegate self-contained work to a subagent with the subtask tool.
   option: there are no other agents available, so NEVER pass agent_id.
 
 ${USAGE_TAIL}`;
-
-function csvField(s: string | null | undefined): string {
-  if (s == null || s === "") return "";
-  if (s.includes(",") || s.includes('"') || s.includes("\n")) {
-    return `"${s.replaceAll('"', '""')}"`;
-  }
-  return s;
-}
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
