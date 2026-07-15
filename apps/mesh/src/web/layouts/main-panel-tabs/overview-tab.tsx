@@ -21,8 +21,6 @@ import {
 } from "@/web/components/home/home-edit-context";
 import { HomeGrid } from "@/web/components/home/home-grid";
 import { AddTileDrawer } from "@/web/components/home/add-tile-drawer";
-import { useNeedsRuntimeSetup } from "@/web/components/chat/use-needs-runtime-setup";
-import { NoAiProviderEmptyState } from "@/web/components/chat/no-ai-provider-empty-state";
 
 function CustomizeToolbar({
   isEditMode,
@@ -118,19 +116,9 @@ function OverviewBoard() {
 }
 
 export function OverviewTab() {
-  // The Overview board is only meaningful once the org can run a chat — with no
-  // AI provider (and no usable local CLI) it'd be a board behind a wall. Swap
-  // it for the provider-setup prompt. Sandbox-backed views (Preview/Settings/
-  // Deck) don't gate this way; they render regardless. A locked historical
-  // thread early-returns false from the hook, so it's never gated.
-  const needsSetup = useNeedsRuntimeSetup();
-  if (needsSetup) {
-    return (
-      <div className="h-full overflow-y-auto flex items-center justify-center p-6">
-        <NoAiProviderEmptyState />
-      </div>
-    );
-  }
+  // The board renders regardless of runtime setup — the tabs are always
+  // navigable. The provider-setup prompt lives solely in the chat side panel
+  // (side-panel-chat.tsx), so browsing the app is never a dead-end.
   return (
     <HomeEditProvider>
       <OverviewBoard />

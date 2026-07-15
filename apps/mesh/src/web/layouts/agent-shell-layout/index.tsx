@@ -540,8 +540,9 @@ function AgentInsetProvider() {
             sandboxMap={entity?.metadata?.sandboxMap}
           >
             {/* The toggles, tabs, header, and main panel all render inside
-                ActiveTaskProvider via DesktopTaskWorkspace so a single
-                locked-aware useNeedsRuntimeSetup() gates them together. */}
+                ActiveTaskProvider via DesktopTaskWorkspace. The runtime-setup
+                prompt lives only in the chat side panel; the tabs stay
+                navigable regardless. */}
             <Chat.ActiveTaskProvider key={layout.taskId} taskId={layout.taskId}>
               <Suspense fallback={<Chat.Skeleton />}>
                 <DesktopTaskWorkspace
