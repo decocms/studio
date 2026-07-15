@@ -53,6 +53,7 @@ import { AgentAvatar } from "@/web/components/agent-icon";
 import { SidebarTriggerButton } from "@/web/layouts/shell-controls";
 import { MyThreadsSection } from "./my-threads-section";
 import type { SidebarFilters } from "./next-page-offset";
+import { findArchiveFallback } from "./archive-fallback";
 
 type TypeFilter = "all" | "manual" | "automation";
 type GroupBy = "flat" | "status";
@@ -237,9 +238,12 @@ export function TaskGroupsList({
     const wasActive = task.id === activeTaskId;
     hide(task.id);
     if (!wasActive) return;
-    // Land only on the caller's own threads — never teleport into a teammate's.
-    const next = myThreadsAll.find(
-      (t) => t.id !== task.id && t.virtual_mcp_id === task.virtual_mcp_id,
+    // Follow the sidebar's current filtered order across agents, while keeping
+    // teammate threads opt-in even when Team scope renders them.
+    const next = findArchiveFallback(
+      visibleScopedThreads,
+      task.id,
+      currentUserId,
     );
     closeAfterNavigation();
     if (next) {
