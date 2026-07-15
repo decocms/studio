@@ -163,6 +163,7 @@ import {
 import {
   HOSTED_HARNESS_PARTITION_CONCURRENCY,
   HOSTED_HARNESS_QUEUE,
+  HOSTED_HARNESS_WORKER_CONCURRENCY,
   setHostedHarnessRuntime,
   setThreadGateRuntime,
   THREAD_GATE_PARTITION_CONCURRENCY,
@@ -795,6 +796,7 @@ import { type SSEEvent, sseHub } from "../event-bus";
 import {
   BACKGROUND_TOOLS_PARTITION_CONCURRENCY,
   BACKGROUND_TOOLS_QUEUE,
+  BACKGROUND_TOOLS_WORKER_CONCURRENCY,
   setBackgroundToolRuntime,
 } from "@/harnesses/decopilot/background-tool-workflow";
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
@@ -2147,15 +2149,19 @@ export async function createApp(options: CreateAppOptions = {}) {
     // Hosted-harness child workflow queue. Partition key = threadId, concurrency 1
     // (mirrors THREAD_GATE_QUEUE: one active run per thread, different threads
     // progress in parallel). Worker pods dequeue this alongside the parent gate.
+    // workerConcurrency bounds how many agent loops one pod runs at once so a
+    // burst spills to new pods (KEDA queue depth) instead of OOMing one.
     await DBOS.registerQueue(HOSTED_HARNESS_QUEUE, {
       partitionQueue: true,
       concurrency: HOSTED_HARNESS_PARTITION_CONCURRENCY,
+      workerConcurrency: HOSTED_HARNESS_WORKER_CONCURRENCY,
     });
     // Slow backgroundable built-ins (generate_image) run here, partitioned by
     // orgId for per-org fairness. The reaction turn hops to the thread-gate.
     await DBOS.registerQueue(BACKGROUND_TOOLS_QUEUE, {
       partitionQueue: true,
       concurrency: BACKGROUND_TOOLS_PARTITION_CONCURRENCY,
+      workerConcurrency: BACKGROUND_TOOLS_WORKER_CONCURRENCY,
     });
     await reconcileAutomationSchedules(automationsStorage);
 

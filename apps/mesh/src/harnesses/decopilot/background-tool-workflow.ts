@@ -45,6 +45,13 @@ import { BACKGROUND_TOOLS_QUEUE } from "@/dispatch-queue/queue-names";
 /** Per-org (per-partition) concurrency cap for heavy background tool runs. */
 export const BACKGROUND_TOOLS_PARTITION_CONCURRENCY = 5;
 
+/**
+ * Max concurrent background-tool runs a SINGLE worker pod executes (global
+ * per-process cap). Same rationale as the hosted-harness worker cap: bound
+ * per-pod memory and let backlog spill to new pods via KEDA queue depth.
+ */
+export const BACKGROUND_TOOLS_WORKER_CONCURRENCY = 4;
+
 /** Serializable thread snapshot carried so the reaction turn can be rebuilt on
  *  any pod. Models are re-resolved in-workflow, not carried. */
 export interface BackgroundToolSnapshot {

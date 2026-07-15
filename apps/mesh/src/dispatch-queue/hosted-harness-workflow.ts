@@ -117,6 +117,18 @@ export type StudioContextFactory = (
 export const HOSTED_HARNESS_PARTITION_CONCURRENCY = 1;
 
 /**
+ * Max concurrent hosted runs a SINGLE worker pod executes (global per-process
+ * cap, orthogonal to the per-thread partition cap above). Each run drives an
+ * in-process agent loop (LLM streaming + tool calls) whose working set is
+ * ~300MB typical with occasional multi-hundred-MB JSON.parse spikes; without a
+ * per-worker cap one pod can dequeue as many runs as there are active threads
+ * and OOM (2Gi limit). 3 keeps a loaded pod near ~1GB and makes backlog spill
+ * to new pods (KEDA queue-depth) instead of piling onto one.
+ * ponytail: raise if per-pod memory headroom grows or throughput caps out.
+ */
+export const HOSTED_HARNESS_WORKER_CONCURRENCY = 3;
+
+/**
  * Serializable input to a hosted harness run. Everything needed to (re)run the
  * in-process agent loop from a DBOS-replayed workflow journal — the
  * non-serializable `abortSignal` is excluded (the run constructs its own from

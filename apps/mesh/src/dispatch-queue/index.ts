@@ -12,6 +12,7 @@ export {
 export {
   cancelHostedHarness,
   HOSTED_HARNESS_PARTITION_CONCURRENCY,
+  HOSTED_HARNESS_WORKER_CONCURRENCY,
   HOSTED_HARNESS_QUEUE,
   setHostedHarnessRuntime,
   type HostedHarnessInput,
