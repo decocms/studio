@@ -27,8 +27,8 @@ import {
   STATUSES,
   type TaskBoardItemStatus,
 } from "../config";
-import { type DemoTask, SOURCE_LABEL } from "./data";
-import { DecoAvatar, Ga4Icon, SearchConsoleIcon, SourceIcon } from "./icons";
+import type { DemoTask } from "./data";
+import { DecoAvatar, SourceIcon } from "./icons";
 import {
   type DemoPhase,
   type DemoState,
@@ -39,7 +39,6 @@ import {
   subscribe,
   toggleAutoMerge,
 } from "./store";
-import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { TaskDetailDialog } from "./task-detail";
 
 function useDemoStore(): DemoState {
@@ -78,26 +77,7 @@ export default function DemoTaskBoard() {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-10 pt-10 pb-16">
-        <div className="flex flex-wrap items-center gap-4">
-          <h1 className="text-xl font-medium text-foreground">Tasks</h1>
-          <div className="flex items-center gap-2">
-            <IntegrationChip
-              label="GA4"
-              icon={<Ga4Icon size={13} />}
-              tooltip={SOURCE_LABEL.ga4}
-            />
-            <IntegrationChip
-              label="Search Console"
-              icon={<SearchConsoleIcon size={13} />}
-              tooltip={SOURCE_LABEL.gsc}
-            />
-            <IntegrationChip
-              label="GitHub"
-              icon={<GitHubIcon size={13} className="text-foreground" />}
-              tooltip={SOURCE_LABEL.github}
-            />
-          </div>
-        </div>
+        <h1 className="text-xl font-medium text-foreground">Tasks</h1>
 
         <div className="flex flex-wrap items-center gap-3">
           {state.phase === "idle" ? (
@@ -175,30 +155,6 @@ export default function DemoTaskBoard() {
         />
       )}
     </div>
-  );
-}
-
-function IntegrationChip({
-  label,
-  icon,
-  tooltip,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  tooltip: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-foreground">
-          {icon}
-          {label}
-          <span className="size-1.5 rounded-full bg-green-500" />
-          <span className="text-muted-foreground">Connected</span>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{tooltip} connected</TooltipContent>
-    </Tooltip>
   );
 }
 

@@ -8,7 +8,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import type { DemoSource } from "./data";
 
-export function Ga4Icon({
+function Ga4Icon({
   size = 14,
   className,
 }: {
@@ -30,7 +30,7 @@ export function Ga4Icon({
   );
 }
 
-export function SearchConsoleIcon({
+function SearchConsoleIcon({
   size = 14,
   className,
 }: {
