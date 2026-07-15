@@ -204,7 +204,7 @@ function ToolDetailsAuthenticated({
   const connection = useConnection(connectionId);
   const chatStream = useOptionalChatStream();
   const chatPrefs = useOptionalChatPrefs();
-  const { setChatOpen } = usePanelActions();
+  const { openSidePanel } = usePanelActions();
   const sourceId = `${connectionId}:${toolName}`;
 
   const client = useMCPClient({
@@ -223,7 +223,7 @@ function ToolDetailsAuthenticated({
     if (!chatStream) return;
     const doc = contentBlocksToTiptapDoc(params.content);
     if (doc.content.length > 0) {
-      setChatOpen(true);
+      openSidePanel("chat");
       chatStream.sendMessage({ tiptapDoc: doc });
     }
   };

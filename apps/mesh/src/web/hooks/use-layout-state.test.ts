@@ -5,373 +5,217 @@ import {
   mobileSurfaceSearch,
   resolveDefaultPanelState,
   resolveWorkspacePanelAction,
-  resolveWorkspaceVisibility,
 } from "./use-layout-state";
 
 describe("resolveDefaultPanelState", () => {
-  test("no metadata → main closed, chat open", () => {
+  const absentSearch = {
+    mainParamPresent: false,
+    sidePanelParamPresent: false,
+  };
+
+  test("defaults to Chat when no layout metadata exists", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: null,
-        mainParamPresent: false,
-        blocksParamPresent: false,
+        ...absentSearch,
       }),
-    ).toEqual({ mainOpen: false, chatOpen: true, blocksOpen: false });
+    ).toEqual({ sidePanel: "chat", mainOpen: false });
   });
 
-  test("defaultMainView.type='chat' → main closed, chat open", () => {
+  test("a Chat default opens Chat and closes Main", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
-        mainParamPresent: false,
-        blocksParamPresent: false,
+        ...absentSearch,
       }),
-    ).toEqual({ mainOpen: false, chatOpen: true, blocksOpen: false });
+    ).toEqual({ sidePanel: "chat", mainOpen: false });
   });
 
-  test("defaultMainView.type non-chat → main open, chat closed", () => {
+  test("a non-Chat default opens Main without a side panel", () => {
     expect(
       resolveDefaultPanelState({
-        entityMetadata: { defaultMainView: { type: "ext-app", id: "x" } },
-        mainParamPresent: false,
-        blocksParamPresent: false,
+        entityMetadata: { defaultMainView: { type: "settings" } },
+        ...absentSearch,
       }),
-    ).toEqual({ mainOpen: true, chatOpen: false, blocksOpen: false });
+    ).toEqual({ sidePanel: null, mainOpen: true });
   });
 
-  test("chatDefaultOpen=true with non-chat default → main open, chat open", () => {
+  test("chatDefaultOpen maps to the Chat side panel", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: {
-          defaultMainView: { type: "ext-app", id: "x" },
+          defaultMainView: { type: "overview" },
+          chatDefaultOpen: true,
+        },
+        ...absentSearch,
+      }),
+    ).toEqual({ sidePanel: "chat", mainOpen: true });
+  });
+
+  test("an explicit side panel overrides the configured side-panel default", () => {
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: {
+          defaultMainView: { type: "overview" },
           chatDefaultOpen: true,
         },
         mainParamPresent: false,
-        blocksParamPresent: false,
+        sidePanelParamPresent: true,
+        sidePanelParamValue: "blocks",
       }),
-    ).toEqual({ mainOpen: true, chatOpen: true, blocksOpen: false });
+    ).toEqual({ sidePanel: "blocks", mainOpen: true });
   });
 
-  test("chatDefaultOpen=false is the default behavior (chat closed)", () => {
+  test("sidepanel=0 keeps a non-Chat default Main-only", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: {
-          defaultMainView: { type: "layout" },
-          chatDefaultOpen: false,
+          defaultMainView: { type: "settings" },
+          chatDefaultOpen: true,
         },
         mainParamPresent: false,
-        blocksParamPresent: false,
+        sidePanelParamPresent: true,
+        sidePanelParamValue: 0,
       }),
-    ).toEqual({ mainOpen: true, chatOpen: false, blocksOpen: false });
+    ).toEqual({ sidePanel: null, mainOpen: true });
   });
 
-  test("chatDefaultOpen ignored when default is chat (chat still open)", () => {
+  test("main=<tab> opens Main alongside a Chat default", () => {
     expect(
       resolveDefaultPanelState({
-        entityMetadata: {
-          defaultMainView: { type: "chat" },
-          chatDefaultOpen: false,
-        },
-        mainParamPresent: false,
-        blocksParamPresent: false,
+        entityMetadata: { defaultMainView: { type: "chat" } },
+        mainParamPresent: true,
+        mainParamValue: "settings",
+        sidePanelParamPresent: false,
       }),
-    ).toEqual({ mainOpen: false, chatOpen: true, blocksOpen: false });
+    ).toEqual({ sidePanel: "chat", mainOpen: true });
   });
 
-  test("?main=0 overrides default and falls back to chat", () => {
+  test("sidepanel=blocks&main=0 produces a Blocks-only workspace", () => {
+    expect(
+      resolveDefaultPanelState({
+        entityMetadata: null,
+        mainParamPresent: true,
+        mainParamValue: 0,
+        sidePanelParamPresent: true,
+        sidePanelParamValue: "blocks",
+      }),
+    ).toEqual({ sidePanel: "blocks", mainOpen: false });
+  });
+
+  test("an all-closed state falls back to Chat", () => {
     expect(
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "settings" } },
         mainParamPresent: true,
         mainParamValue: 0,
-        blocksParamPresent: false,
+        sidePanelParamPresent: true,
+        sidePanelParamValue: 0,
       }),
-    ).toEqual({ mainOpen: false, chatOpen: true, blocksOpen: false });
-  });
-
-  test("?main=<tabId> opens main even when default is chat", () => {
-    expect(
-      resolveDefaultPanelState({
-        entityMetadata: { defaultMainView: { type: "chat" } },
-        mainParamPresent: true,
-        mainParamValue: "layout",
-        blocksParamPresent: false,
-      }),
-    ).toEqual({ mainOpen: true, chatOpen: true, blocksOpen: false });
-  });
-
-  test("?blocks=1 opens blocks without changing main or chat defaults", () => {
-    expect(
-      resolveDefaultPanelState({
-        entityMetadata: { defaultMainView: { type: "settings" } },
-        mainParamPresent: false,
-        blocksParamPresent: true,
-        blocksParamValue: 1,
-      }),
-    ).toEqual({ mainOpen: true, chatOpen: false, blocksOpen: true });
-  });
-
-  test("?blocks=0 closes blocks", () => {
-    expect(
-      resolveDefaultPanelState({
-        entityMetadata: {
-          defaultMainView: { type: "blocks" },
-          chatDefaultOpen: true,
-        },
-        mainParamPresent: true,
-        mainParamValue: "settings",
-        blocksParamPresent: true,
-        blocksParamValue: 0,
-      }),
-    ).toEqual({ mainOpen: true, chatOpen: false, blocksOpen: false });
-  });
-
-  test("legacy ?main=blocks becomes blocks-only", () => {
-    expect(
-      resolveDefaultPanelState({
-        entityMetadata: null,
-        mainParamPresent: true,
-        mainParamValue: "blocks",
-        blocksParamPresent: false,
-      }),
-    ).toEqual({ mainOpen: false, chatOpen: false, blocksOpen: true });
-  });
-
-  test("legacy ?main=blocks&blocks=0 closes Blocks and falls back to Chat", () => {
-    expect(
-      resolveDefaultPanelState({
-        entityMetadata: null,
-        mainParamPresent: true,
-        mainParamValue: "blocks",
-        blocksParamPresent: true,
-        blocksParamValue: 0,
-      }),
-    ).toEqual({ mainOpen: false, chatOpen: true, blocksOpen: false });
-  });
-
-  test("legacy ?main=blocks&blocks=1 remains Blocks-only", () => {
-    expect(
-      resolveDefaultPanelState({
-        entityMetadata: null,
-        mainParamPresent: true,
-        mainParamValue: "blocks",
-        blocksParamPresent: true,
-        blocksParamValue: 1,
-      }),
-    ).toEqual({ mainOpen: false, chatOpen: false, blocksOpen: true });
-  });
-
-  test("defaultMainView.type='blocks' becomes blocks-only", () => {
-    expect(
-      resolveDefaultPanelState({
-        entityMetadata: {
-          defaultMainView: { type: "blocks" },
-          chatDefaultOpen: true,
-        },
-        mainParamPresent: false,
-        blocksParamPresent: false,
-      }),
-    ).toEqual({ mainOpen: false, chatOpen: false, blocksOpen: true });
-  });
-
-  test("an all-closed derived state falls back to chat", () => {
-    expect(
-      resolveDefaultPanelState({
-        entityMetadata: { defaultMainView: { type: "blocks" } },
-        mainParamPresent: true,
-        mainParamValue: "0",
-        blocksParamPresent: true,
-        blocksParamValue: 0,
-      }),
-    ).toEqual({ mainOpen: false, chatOpen: true, blocksOpen: false });
-  });
-});
-
-describe("resolveWorkspaceVisibility", () => {
-  test("explicit chat=1 opens Chat alongside legacy Blocks", () => {
-    const defaults = resolveDefaultPanelState({
-      entityMetadata: null,
-      mainParamPresent: true,
-      mainParamValue: "blocks",
-      blocksParamPresent: false,
-    });
-
-    expect(resolveWorkspaceVisibility(defaults, { chat: 1 })).toEqual({
-      chatOpen: true,
-      blocksOpen: true,
-      mainOpen: false,
-    });
-  });
-
-  test("explicit chat=1 opens Chat alongside a Blocks default", () => {
-    const defaults = resolveDefaultPanelState({
-      entityMetadata: { defaultMainView: { type: "blocks" } },
-      mainParamPresent: false,
-      blocksParamPresent: false,
-    });
-
-    expect(resolveWorkspaceVisibility(defaults, { chat: 1 })).toEqual({
-      chatOpen: true,
-      blocksOpen: true,
-      mainOpen: false,
-    });
+    ).toEqual({ sidePanel: "chat", mainOpen: false });
   });
 });
 
 describe("canCloseWorkspacePanel", () => {
-  test("allows closing each open panel when another panel is open", () => {
-    const visibility = { chatOpen: true, blocksOpen: true, mainOpen: true };
-
-    expect(canCloseWorkspacePanel("chat", visibility)).toBe(true);
-    expect(canCloseWorkspacePanel("blocks", visibility)).toBe(true);
+  test("allows closing either panel when both are open", () => {
+    const visibility = { sidePanel: "chat" as const, mainOpen: true };
+    expect(canCloseWorkspacePanel("side", visibility)).toBe(true);
     expect(canCloseWorkspacePanel("main", visibility)).toBe(true);
   });
 
   test("does not allow closing the final open panel", () => {
     expect(
-      canCloseWorkspacePanel("chat", {
-        chatOpen: true,
-        blocksOpen: false,
+      canCloseWorkspacePanel("side", {
+        sidePanel: "blocks",
         mainOpen: false,
       }),
     ).toBe(false);
     expect(
-      canCloseWorkspacePanel("blocks", {
-        chatOpen: false,
-        blocksOpen: true,
-        mainOpen: false,
-      }),
+      canCloseWorkspacePanel("main", { sidePanel: null, mainOpen: true }),
     ).toBe(false);
-    expect(
-      canCloseWorkspacePanel("main", {
-        chatOpen: false,
-        blocksOpen: false,
-        mainOpen: true,
-      }),
-    ).toBe(false);
-  });
-
-  test("does not allow closing a panel that is already closed", () => {
-    const visibility = { chatOpen: true, blocksOpen: false, mainOpen: true };
-
-    expect(canCloseWorkspacePanel("blocks", visibility)).toBe(false);
   });
 });
 
 describe("resolveWorkspacePanelAction", () => {
-  test("toggleChat opens and closes Chat with minimal updates", () => {
+  test("switches the shared side panel directly between Chat and Blocks", () => {
     expect(
       resolveWorkspacePanelAction(
-        { type: "toggleChat" },
-        { chatOpen: false, blocksOpen: true, mainOpen: false },
+        { type: "toggleSidePanel", sidePanel: "blocks" },
+        { sidePanel: "chat", mainOpen: false },
       ),
-    ).toEqual({ chat: 1 });
-    expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleChat" },
-        { chatOpen: true, blocksOpen: false, mainOpen: true },
-      ),
-    ).toEqual({ chat: 0 });
+    ).toEqual({ sidepanel: "blocks" });
   });
 
-  test("toggleMain opens and closes Main with minimal updates", () => {
+  test("closes the active side panel when Main remains open", () => {
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "toggleSidePanel", sidePanel: "chat" },
+        { sidePanel: "chat", mainOpen: true },
+      ),
+    ).toEqual({ sidepanel: 0 });
+  });
+
+  test("refuses to close the active side panel when it is the final panel", () => {
+    expect(
+      resolveWorkspacePanelAction(
+        { type: "toggleSidePanel", sidePanel: "blocks" },
+        { sidePanel: "blocks", mainOpen: false },
+      ),
+    ).toBeNull();
+  });
+
+  test("opens and closes Main with the final-panel guard", () => {
     expect(
       resolveWorkspacePanelAction(
         { type: "toggleMain", openMainValue: "preview" },
-        { chatOpen: true, blocksOpen: false, mainOpen: false },
+        { sidePanel: "chat", mainOpen: false },
       ),
     ).toEqual({ main: "preview" });
     expect(
       resolveWorkspacePanelAction(
         { type: "toggleMain", openMainValue: "preview" },
-        { chatOpen: false, blocksOpen: true, mainOpen: true },
+        { sidePanel: "chat", mainOpen: true },
       ),
     ).toEqual({ main: 0 });
-  });
-
-  test("toggleBlocks updates only the blocks search param", () => {
     expect(
       resolveWorkspacePanelAction(
-        { type: "toggleBlocks" },
-        { chatOpen: true, blocksOpen: false, mainOpen: false },
-      ),
-    ).toEqual({ blocks: 1 });
-    expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleBlocks" },
-        { chatOpen: true, blocksOpen: true, mainOpen: false },
-      ),
-    ).toEqual({ blocks: 0 });
-  });
-
-  test("panel toggles refuse to close the final open panel", () => {
-    expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleChat" },
-        { chatOpen: true, blocksOpen: false, mainOpen: false },
-      ),
-    ).toBeNull();
-    expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleBlocks" },
-        { chatOpen: false, blocksOpen: true, mainOpen: false },
-      ),
-    ).toBeNull();
-    expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleMain", openMainValue: "settings" },
-        { chatOpen: false, blocksOpen: false, mainOpen: true },
+        { type: "toggleMain", openMainValue: "preview" },
+        { sidePanel: null, mainOpen: true },
       ),
     ).toBeNull();
   });
 
-  test("openChat is idempotent and only opens Chat", () => {
+  test("openSidePanel is idempotent and can switch side-panel content", () => {
     expect(
       resolveWorkspacePanelAction(
-        { type: "openChat" },
-        { chatOpen: true, blocksOpen: true, mainOpen: false },
+        { type: "openSidePanel", sidePanel: "chat" },
+        { sidePanel: "chat", mainOpen: true },
       ),
     ).toBeNull();
     expect(
       resolveWorkspacePanelAction(
-        { type: "openChat" },
-        { chatOpen: false, blocksOpen: true, mainOpen: false },
+        { type: "openSidePanel", sidePanel: "chat" },
+        { sidePanel: "blocks", mainOpen: true },
       ),
-    ).toEqual({ chat: 1 });
+    ).toEqual({ sidepanel: "chat" });
   });
 });
 
 describe("computeWorkspacePanelSizes", () => {
   test.each([
     [
-      { chatOpen: true, blocksOpen: false, mainOpen: false },
-      { chat: 100, blocks: 0, main: 0 },
+      { sidePanel: "chat" as const, mainOpen: false },
+      { side: 100, main: 0 },
     ],
     [
-      { chatOpen: false, blocksOpen: true, mainOpen: false },
-      { chat: 0, blocks: 100, main: 0 },
+      { sidePanel: "blocks" as const, mainOpen: true },
+      { side: 33, main: 67 },
     ],
     [
-      { chatOpen: false, blocksOpen: false, mainOpen: true },
-      { chat: 0, blocks: 0, main: 100 },
+      { sidePanel: null, mainOpen: true },
+      { side: 0, main: 100 },
     ],
-    [
-      { chatOpen: true, blocksOpen: false, mainOpen: true },
-      { chat: 33, blocks: 0, main: 67 },
-    ],
-    [
-      { chatOpen: false, blocksOpen: true, mainOpen: true },
-      { chat: 0, blocks: 40, main: 60 },
-    ],
-    [
-      { chatOpen: true, blocksOpen: true, mainOpen: false },
-      { chat: 40, blocks: 60, main: 0 },
-    ],
-    [
-      { chatOpen: true, blocksOpen: true, mainOpen: true },
-      { chat: 25, blocks: 35, main: 40 },
-    ],
-  ])("computes workspace sizes", (visibility, expected) => {
+  ])("computes the two-panel workspace sizes", (visibility, expected) => {
     expect(computeWorkspacePanelSizes(visibility)).toEqual(expected);
   });
 });
@@ -379,18 +223,15 @@ describe("computeWorkspacePanelSizes", () => {
 describe("mobileSurfaceSearch", () => {
   test("selects exactly one mobile surface", () => {
     expect(mobileSurfaceSearch("chat", "preview")).toEqual({
-      chat: 1,
-      blocks: 0,
+      sidepanel: "chat",
       main: 0,
     });
     expect(mobileSurfaceSearch("blocks", "preview")).toEqual({
-      chat: 0,
-      blocks: 1,
+      sidepanel: "blocks",
       main: 0,
     });
     expect(mobileSurfaceSearch("main", "preview")).toEqual({
-      chat: 0,
-      blocks: 0,
+      sidepanel: 0,
       main: "preview",
     });
   });

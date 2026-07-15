@@ -349,7 +349,7 @@ export function SettingsTab({
 
   // Chat hooks for running the automation
   const { openTask } = useChatTask();
-  const { setChatOpen } = usePanelActions();
+  const { openSidePanel } = usePanelActions();
   const { sendMessage } = useChatStream();
   const initialTiptapDoc =
     (automation.messages?.[0] as { metadata?: Metadata } | undefined)?.metadata
@@ -393,7 +393,7 @@ export function SettingsTab({
         instructions_length: instructionsText.length,
       });
 
-      setChatOpen(true);
+      openSidePanel("chat");
 
       await sendMessage({
         tiptapDoc: buildImprovePromptDoc({
@@ -569,11 +569,11 @@ export function SettingsTab({
 
     // Fire through the real automation path so the test honors the pinned
     // model + tool allowlist exactly as a scheduled/triggered fire would,
-    // then open the resulting run thread in the chat panel.
+    // then open the resulting run thread with Chat in the side panel.
     try {
       const result = await runMutation.mutateAsync(automationId);
       if (result.threadId) {
-        setChatOpen(true);
+        openSidePanel("chat");
         openTask(result.threadId);
       }
     } catch {

@@ -79,9 +79,6 @@ export function MainPanelTabsBar({
         to: ".",
         search: (prev: Record<string, unknown>) => ({
           ...prev,
-          ...(prev.main === "blocks" && prev.blocks === undefined
-            ? { blocks: 1 }
-            : {}),
           main: target,
         }),
         replace: true,

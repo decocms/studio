@@ -16,7 +16,7 @@ import { usePanelActions } from "@/web/layouts/shell-layout";
 
 // ---------- Panel content ----------
 
-function ChatPanelContent() {
+function ChatSidePanelContent() {
   const { org } = useProjectContext();
   const { isChatEmpty } = useChatStream();
   const { openTab } = usePanelActions();
@@ -105,11 +105,11 @@ function ChatPanelContent() {
   );
 }
 
-export function ChatPanel() {
+export function ChatSidePanel() {
   return (
     <ErrorBoundary fallback={<Chat.Skeleton />}>
       <Suspense fallback={<Chat.Skeleton />}>
-        <ChatPanelContent />
+        <ChatSidePanelContent />
       </Suspense>
     </ErrorBoundary>
   );

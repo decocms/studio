@@ -237,7 +237,7 @@ export function GenericToolCallPart({
   const chatPrefs = useOptionalChatPrefs();
   const { org } = useProjectContext();
 
-  const { setChatOpen } = usePanelActions();
+  const { openSidePanel } = usePanelActions();
   // Optional: the tool-call part is also rendered read-only in the Monitor
   // threads view, which has no ChatContextProvider / ThreadManagerProvider.
   const taskId = useOptionalChatTask()?.taskId ?? null;
@@ -313,7 +313,7 @@ export function GenericToolCallPart({
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
     const doc = contentBlocksToTiptapDoc(params.content);
     if (doc.content.length > 0) {
-      setChatOpen?.(true);
+      openSidePanel("chat");
       chatStream?.sendMessage(doc);
     }
   };

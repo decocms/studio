@@ -84,7 +84,7 @@ export default function OrgShellLayout() {
                   <Toolbar.LeftColumn>
                     {!reportsOnly && <ShellBreadcrumb />}
                     {/* Chat toggle sits on the left — it controls the left
-                        chat panel; the main-panel view tabs stay on the right.
+                        Chat side-panel view; the main-panel tabs stay on the right.
                         Reports-only orgs keep ONLY this toggle: no breadcrumb,
                         no view tabs, no right-side actions. */}
                     <Toolbar.TogglesSlot />

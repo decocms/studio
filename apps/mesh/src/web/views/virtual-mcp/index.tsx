@@ -981,7 +981,7 @@ function LayoutTabContent({
             <div className="space-y-0.5 min-w-0">
               <Label className="font-normal text-foreground">Show chat</Label>
               <p className="text-xs text-muted-foreground">
-                Display the chat panel alongside the main view.
+                Display Chat in the side panel alongside the main view.
               </p>
             </div>
             <Tooltip delayDuration={0}>
@@ -1173,7 +1173,7 @@ function VirtualMcpDetailViewWithData({
 
   const [instructionsFullscreen, setInstructionsFullscreen] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
-  const { createNewTask, setChatOpen } = usePanelActions();
+  const { createNewTask, openSidePanel } = usePanelActions();
   const { sendMessage } = useChatStream();
 
   const handleImprovePrompt = async () => {
@@ -1189,7 +1189,7 @@ function VirtualMcpDetailViewWithData({
         instructions_length: currentInstructions.length,
       });
 
-      setChatOpen(true);
+      openSidePanel("chat");
 
       await sendMessage({
         tiptapDoc: buildImprovePromptDoc({

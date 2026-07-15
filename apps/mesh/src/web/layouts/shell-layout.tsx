@@ -111,8 +111,8 @@ export function usePanelActions() {
     replace = true,
   ) => navWith(currentTaskId, searchFn, replace);
 
-  const setChatOpen = (open: boolean) =>
-    nav((prev) => ({ ...prev, chat: open ? 1 : 0 }));
+  const openSidePanel = (sidePanel: "chat" | "blocks") =>
+    nav((prev) => ({ ...prev, sidepanel: sidePanel }));
 
   const setTaskId = (
     id: string,
@@ -122,7 +122,7 @@ export function usePanelActions() {
     navWith(
       id,
       (prev) => {
-        const next: Record<string, unknown> = { chat: 1 };
+        const next: Record<string, unknown> = { sidepanel: "chat" };
         if (virtualMcpId) next.virtualmcpid = virtualMcpId;
         else if (prev.virtualmcpid) next.virtualmcpid = prev.virtualmcpid;
         // An agent switch (target vMCP differs from the current) must NOT carry
@@ -208,7 +208,7 @@ export function usePanelActions() {
     }));
 
   return {
-    setChatOpen,
+    openSidePanel,
     setTaskId,
     createNewTask,
     openTab,

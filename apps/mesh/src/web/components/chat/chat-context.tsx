@@ -10,7 +10,7 @@
  *   Owns: per-task streaming state (useChat, messages, status)
  *
  * The split allows a Suspense boundary between the sidebar (task list) and
- * the active chat panel. Switching tasks shows a skeleton while keeping the
+ * the active Chat side-panel view. Switching tasks shows a skeleton while keeping the
  * sidebar interactive.
  */
 

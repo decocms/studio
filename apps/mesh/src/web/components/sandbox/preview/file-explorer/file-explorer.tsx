@@ -198,7 +198,7 @@ export function FileExplorer({
     selectedCode: string;
   } | null>(null);
   const { sendMessage } = useChatStream();
-  const { setChatOpen } = usePanelActions();
+  const { openSidePanel } = usePanelActions();
   const queryClient = useQueryClient();
 
   const [nameDialog, setNameDialog] = useState<{
@@ -854,7 +854,7 @@ export function FileExplorer({
       "",
       "Please read the source file, locate the code, and apply the requested change.",
     );
-    setChatOpen(true);
+    openSidePanel("chat");
     sendMessage({ parts: [{ type: "text", text: lines.join("\n") }] });
     setAskAi(null);
   }
