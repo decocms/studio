@@ -99,6 +99,17 @@ describe("page-path-utils", () => {
     );
   });
 
+  it("expands optional `{x}?` segments (always present) in split and fill", () => {
+    expect(splitPathTemplate("/{granado/}?*")).toEqual([
+      { type: "text", text: "/granado/" },
+      { type: "param", name: "*" },
+    ]);
+    expect(fillPathTemplate("/{granado/}?*", { "*": "eau-de-toilette" })).toBe(
+      "/granado/eau-de-toilette",
+    );
+    expect(fillPathTemplate("/bf{/70-off}?", {})).toBe("/bf/70-off");
+  });
+
   it("fillPathTemplate fills `*` keeping `/` separators, encoding segments", () => {
     expect(fillPathTemplate("/*", { "*": "category/shoes" })).toBe(
       "/category/shoes",

@@ -98,12 +98,17 @@ import {
 import { derivePhaseProgress } from "./derive-phase-progress";
 import { ideDeepLink } from "../ide-deep-link";
 import {
-  detectPickerKind,
-  PICKER_LOADER_RESOLVE_TYPE,
-  type PathParamPickerKind,
+  classifyParamKinds,
+  collectPageLoaderResolveTypes,
+  commercePlatformsFromLoaders,
+  resolveOptionSources,
+  type OptionSource,
 } from "./path-param-picker";
-import { PathParamPickerChip } from "./path-param-picker-chip";
-import { isManifestRunnableResolveType } from "@/web/components/sandbox/content/runnable-catalog";
+import {
+  PathParamAutoFill,
+  PathParamPickerChip,
+} from "./path-param-picker-chip";
+import { manifestLoaderResolveTypes } from "@/web/components/sandbox/content/runnable-catalog";
 import { track } from "@/web/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
 
@@ -159,7 +164,7 @@ function PathParamInput({
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
   const cancelledRef = useRef(false);
-  const label = name === "*" ? "*" : `:${name}`;
+  const label = name === "*" ? "path" : `:${name}`;
   const sizer = draft || label;
   return (
     <>
@@ -400,25 +405,27 @@ export function PreviewContent({
     (currentPageKey ? pathParamsByPage[currentPageKey] : undefined) ?? {};
   const resolvedPath = fillPathTemplate(currentPath, pathParamValues);
 
-  // Special selectors for path params: PDP-style params get a product picker,
-  // the PLP catch-all a category picker — only when the running site's
-  // manifest actually has the VTEX loader the picker invokes.
-  const pathParamPickerKinds: Record<string, PathParamPickerKind> = {};
-  if (devServerReady && previewUrl && meta) {
+  // Special selectors for path params: each `:param`/`*` is classified from the
+  // loaders the current page uses (product/category, app-agnostic) and bound to
+  // whatever product-search / category loader the running site actually ships.
+  // A param with no resolvable source keeps the plain inline input.
+  const pathParamSources: Record<string, OptionSource[]> = {};
+  if (devServerReady && previewUrl && meta && decofile) {
+    const manifestLoaders = manifestLoaderResolveTypes(meta, "loaders");
+    const pageBlock = currentPageKey ? decofile[currentPageKey] : undefined;
+    const pageLoaders = collectPageLoaderResolveTypes(
+      pageBlock,
+      decofile,
+      (rt) => manifestLoaders.has(rt),
+    );
+    // The page's commerce platform (e.g. magento) — so option sources don't
+    // invoke a competing vendor's loader that merely exists in the manifest.
+    const platforms = commercePlatformsFromLoaders(pageLoaders);
     for (const token of splitPathTemplate(currentPath)) {
       if (token.type !== "param") continue;
-      const name = token.name;
-      const kind = detectPickerKind(currentPath, name);
-      if (
-        kind &&
-        isManifestRunnableResolveType(
-          meta,
-          PICKER_LOADER_RESOLVE_TYPE[kind],
-          "loaders",
-        )
-      ) {
-        pathParamPickerKinds[name] = kind;
-      }
+      const kinds = classifyParamKinds(currentPath, token.name, pageLoaders);
+      const sources = resolveOptionSources(kinds, manifestLoaders, platforms);
+      if (sources.length > 0) pathParamSources[token.name] = sources;
     }
   }
   const pickerSandboxRef =
@@ -952,6 +959,22 @@ export function PreviewContent({
 
   return (
     <div className="flex flex-col w-full h-full">
+      {/* Auto-select the first entity for a picker param with no value yet, so
+          navigating to a bare dynamic-route template lands on a real page.
+          Each helper renders nothing and unmounts once its param is filled. */}
+      {pickerSandboxRef &&
+        Object.entries(pathParamSources).map(([name, sources]) =>
+          (pathParamValues[name] ?? "") === "" ? (
+            <PathParamAutoFill
+              key={`${currentPageKey}:${name}`}
+              source={sources[0]!}
+              template={currentPath}
+              paramName={name}
+              sandboxRef={pickerSandboxRef}
+              onFill={(value) => setPathParamValue(name, value)}
+            />
+          ) : null,
+        )}
       {daemonReady && previewState.kind === "iframe" && (
         <div className="relative flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
           {/* Groups 2+3 only render when the iframe is live — they read
@@ -1021,16 +1044,16 @@ export function PreviewContent({
                                   </span>
                                 );
                               }
-                              const pickerKind =
-                                pathParamPickerKinds[token.name];
-                              // Params with a picker render as a chip that
+                              const sources = pathParamSources[token.name];
+                              // Params with option sources render as a chip that
                               // opens the modal (search or free-form value);
                               // the rest keep the inline input.
-                              if (pickerKind && pickerSandboxRef) {
+                              if (sources && pickerSandboxRef) {
                                 return (
                                   <PathParamPickerChip
                                     key={`${currentPageKey}:${token.name}`}
-                                    kind={pickerKind}
+                                    sources={sources}
+                                    template={currentPath}
                                     paramName={token.name}
                                     value={pathParamValues[token.name] ?? ""}
                                     sandboxRef={pickerSandboxRef}
