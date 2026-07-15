@@ -403,15 +403,27 @@ export function getWellKnownCommerceDiscoveryVirtualMCP(
 }
 
 /**
+ * Studio Pack agent ID prefixes (org-scoped), keyed the same as StudioPackAgentId below.
+ */
+const studioPackAgentPrefixes = {
+  AGENT_MANAGER: createWellKnownAgentPrefix("studio-agent-manager_"),
+  AUTOMATION_MANAGER: createWellKnownAgentPrefix("studio-automation-manager_"),
+  CONNECTION_MANAGER: createWellKnownAgentPrefix("studio-connection-manager_"),
+  STORE_MANAGER: createWellKnownAgentPrefix("studio-store-manager_"),
+  BRAND_MANAGER: createWellKnownAgentPrefix("studio-brand-manager_"),
+  USAGE_MANAGER: createWellKnownAgentPrefix("studio-usage-manager_"),
+} as const;
+
+/**
  * Studio Pack agent ID generators (org-scoped)
  */
 export const StudioPackAgentId = {
-  AGENT_MANAGER: (orgId: string) => `studio-agent-manager_${orgId}`,
-  AUTOMATION_MANAGER: (orgId: string) => `studio-automation-manager_${orgId}`,
-  CONNECTION_MANAGER: (orgId: string) => `studio-connection-manager_${orgId}`,
-  STORE_MANAGER: (orgId: string) => `studio-store-manager_${orgId}`,
-  BRAND_MANAGER: (orgId: string) => `studio-brand-manager_${orgId}`,
-  USAGE_MANAGER: (orgId: string) => `studio-usage-manager_${orgId}`,
+  AGENT_MANAGER: studioPackAgentPrefixes.AGENT_MANAGER.get,
+  AUTOMATION_MANAGER: studioPackAgentPrefixes.AUTOMATION_MANAGER.get,
+  CONNECTION_MANAGER: studioPackAgentPrefixes.CONNECTION_MANAGER.get,
+  STORE_MANAGER: studioPackAgentPrefixes.STORE_MANAGER.get,
+  BRAND_MANAGER: studioPackAgentPrefixes.BRAND_MANAGER.get,
+  USAGE_MANAGER: studioPackAgentPrefixes.USAGE_MANAGER.get,
 } as const;
 
 /**
@@ -419,13 +431,8 @@ export const StudioPackAgentId = {
  */
 export function isStudioPackAgent(id: string | null | undefined): boolean {
   if (!id) return false;
-  return (
-    id.startsWith("studio-agent-manager_") ||
-    id.startsWith("studio-automation-manager_") ||
-    id.startsWith("studio-connection-manager_") ||
-    id.startsWith("studio-store-manager_") ||
-    id.startsWith("studio-brand-manager_") ||
-    id.startsWith("studio-usage-manager_")
+  return Object.values(studioPackAgentPrefixes).some(
+    (prefix) => prefix.is(id) !== null,
   );
 }
 
