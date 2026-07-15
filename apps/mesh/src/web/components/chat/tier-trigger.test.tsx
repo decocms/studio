@@ -41,6 +41,20 @@ describe("TierTriggerPure", () => {
     expect(queryByText(/Sonnet/)).toBeNull();
   });
 
+  it("uses the local harness name for the closed pill when provided", () => {
+    const { getByRole } = render(
+      <TierTriggerPure
+        tier="smart"
+        pillIcon={<svg data-testid="claude-code-icon" />}
+        pillLabel="Claude Code Smart"
+        groups={[cloudGroup()]}
+      />,
+    );
+    expect(
+      getByRole("button", { name: "Claude Code Smart" }),
+    ).toBeInTheDocument();
+  });
+
   it("popover shows one row per group entry with its subtitle", () => {
     const { getByRole } = render(
       <TierTriggerPure tier="smart" groups={[cloudGroup()]} />,
@@ -94,7 +108,7 @@ describe("TierTriggerPure", () => {
     const groups = [
       {
         key: "claude-code",
-        label: "Claude",
+        label: "Claude Code",
         rows: [
           {
             key: "claude-smart",
@@ -125,7 +139,7 @@ describe("TierTriggerPure", () => {
     fireEvent.click(getByRole("button", { name: /Smart/i }));
     // Both groups expose a "Smart" row — the group label disambiguates them.
     expect(
-      getByRole("menuitem", { name: "Claude Smart" }).textContent,
+      getByRole("menuitem", { name: "Claude Code Smart" }).textContent,
     ).toContain("Sonnet 5");
     expect(
       getByRole("menuitem", { name: "Codex Smart" }).textContent,
