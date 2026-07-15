@@ -142,6 +142,40 @@ describe("resolveCandidate", () => {
   it("returns null when nothing matches", () => {
     expect(resolveCandidate(conns, "shopify", "deco/shopify")).toBeNull();
   });
+  it("skips repo-scoped github children, preferring the org-level connection", () => {
+    const github = [
+      {
+        id: "c_repo_child",
+        app_id: "deco/mcp-github",
+        status: "active",
+        updated_at: "2026-03-01",
+        metadata: {
+          repoScope: { installationId: 1, owner: "deco", repo: "site" },
+        },
+      },
+      {
+        id: "c_org",
+        app_id: "deco/mcp-github",
+        status: "active",
+        updated_at: "2026-02-01",
+      },
+    ];
+    expect(resolveCandidate(github, "github", "deco/mcp-github")).toBe("c_org");
+  });
+  it("returns null when the only github match is repo-scoped", () => {
+    const github = [
+      {
+        id: "c_repo_child",
+        app_id: "deco/mcp-github",
+        status: "active",
+        updated_at: "2026-03-01",
+        metadata: {
+          repoScope: { installationId: 1, owner: "deco", repo: "site" },
+        },
+      },
+    ];
+    expect(resolveCandidate(github, "github", "deco/mcp-github")).toBeNull();
+  });
 });
 
 describe("unwrapToolResult", () => {
