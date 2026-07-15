@@ -36,6 +36,9 @@ export function useConnectCompanion({
   const [connectingFieldKey, setConnectingFieldKey] = useState<string | null>(
     null,
   );
+  const [disconnectingFieldKey, setDisconnectingFieldKey] = useState<
+    string | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
 
   const updateConnection = async (
@@ -170,5 +173,63 @@ export function useConnectCompanion({
     }
   }
 
-  return { connect, connectingFieldKey, error };
+  // Unlink a companion so the user can revalidate: drop its binding from the CD
+  // configuration_state (read-modify-write), which reverts the card to
+  // "Conectar". We intentionally DON'T delete the underlying connection — a
+  // subsequent connect re-links a fresh/org-level one (repo-scoped children are
+  // excluded from candidates) and re-runs OAuth. GitHub's free-standing
+  // github_repo is cleared too, so the repo is re-picked against the next link.
+  async function disconnect(card: CompanionCardModel): Promise<boolean> {
+    setDisconnectingFieldKey(card.fieldKey);
+    setError(null);
+    const basePayload = {
+      app_name: card.title,
+      field_key: card.fieldKey,
+      organization_id: org.id,
+      domain,
+      site_url: siteUrl,
+    };
+    track("commerce_onboarding_companion_disconnect_clicked", basePayload);
+    try {
+      const cdGet = await selfClient.callTool({
+        name: "COLLECTION_CONNECTIONS_GET",
+        arguments: { id: cdConnectionId },
+      });
+      const currentState =
+        unwrapToolResult<{
+          item: { configuration_state?: Record<string, unknown> | null } | null;
+        }>(cdGet).item?.configuration_state ?? null;
+      const next = { ...(currentState ?? {}) };
+      delete next[card.fieldKey];
+      if (card.bindingType === "github") {
+        delete next.github_repo;
+      }
+      await updateConnection(cdConnectionId, { configuration_state: next });
+      await queryClient.invalidateQueries({
+        queryKey: KEYS.commerceDiscoveryConnection(org.id, cdConnectionId),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
+      });
+      track("commerce_onboarding_companion_disconnected", basePayload);
+      return true;
+    } catch (err) {
+      track("commerce_onboarding_companion_disconnect_failed", {
+        ...basePayload,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    } finally {
+      setDisconnectingFieldKey(null);
+    }
+  }
+
+  return {
+    connect,
+    connectingFieldKey,
+    disconnect,
+    disconnectingFieldKey,
+    error,
+  };
 }
