@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   countGitDiffFiles,
   decodeGithubFileContent,
+  fetchGithubPrDiff,
 } from "./github-pr-diff.ts";
 
 describe("github-pr-diff", () => {
@@ -47,5 +48,64 @@ describe("github-pr-diff", () => {
 
   it("decodeGithubFileContent returns null for tool errors", () => {
     expect(decodeGithubFileContent({ isError: true })).toBeNull();
+  });
+
+  it("fetchGithubPrDiff reads a renamed file's old content from its previous path", async () => {
+    const fileContentByPath: Record<string, string> = {
+      "old.ts": "old content",
+      "new.ts": "new content",
+    };
+    const calls: Array<{ name: string; arguments: Record<string, unknown> }> =
+      [];
+    const client = {
+      callTool: async (req: {
+        name: string;
+        arguments: Record<string, unknown>;
+      }) => {
+        calls.push(req);
+        if (req.name === "pull_request_read") {
+          return {
+            structuredContent: [
+              {
+                filename: "new.ts",
+                previous_filename: "old.ts",
+                status: "renamed",
+                additions: 1,
+                deletions: 1,
+                changes: 2,
+              },
+            ],
+          };
+        }
+        const path = req.arguments.path as string;
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                text: JSON.stringify(fileContentByPath[path] ?? null),
+              },
+            },
+          ],
+        };
+      },
+    };
+
+    const result = await fetchGithubPrDiff(client, {
+      owner: "acme",
+      repo: "widgets",
+      pullNumber: 1,
+      base: "main",
+      headSha: "headsha",
+    });
+
+    expect(result.diffs["new.ts"]).toEqual({
+      from: "old content",
+      to: "new content",
+    });
+    const fromCall = calls.find(
+      (c) => c.name === "get_file_contents" && c.arguments.ref === "main",
+    );
+    expect(fromCall?.arguments.path).toBe("old.ts");
   });
 });
