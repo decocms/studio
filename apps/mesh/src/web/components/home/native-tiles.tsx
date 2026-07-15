@@ -21,6 +21,7 @@ import {
   BarChart10,
   CheckCircle,
   GitBranch01,
+  Loading01,
   MessageChatCircle,
   ShoppingCart01,
 } from "@untitledui/icons";
@@ -31,6 +32,7 @@ import { useTaskBoardItems } from "@/web/hooks/use-task-board-items";
 import { STATUS_CONFIG } from "@/web/layouts/task-board/config";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
+import { useConnectApp } from "@/web/hooks/use-connect-app";
 import { KEYS } from "@/web/lib/query-keys";
 
 const TASKS_TILE_ID = "tasks";
@@ -265,17 +267,20 @@ function TasksTileBody() {
 
 // ---------------------------------------------------------------------------
 // Mock tiles — Coding / Analytics / Sales. Static sample data; a hover overlay
-// opens the connection catalog pre-filtered to the backing integration.
+// connects the backing integration. GitHub / Google Analytics connect directly
+// (single known app); Sales opens the catalog (VTEX or Shopify — user picks).
 // ---------------------------------------------------------------------------
 
 function MockConnectOverlay({
   label,
   icon,
   onConnect,
+  pending,
 }: {
   label: string;
   icon: React.ReactNode;
   onConnect: () => void;
+  pending?: boolean;
 }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-background/70 opacity-0 backdrop-blur-sm transition-opacity duration-150 group-hover/mock:opacity-100">
@@ -284,41 +289,37 @@ function MockConnectOverlay({
         variant="secondary"
         className="gap-2 shadow-sm"
         onClick={onConnect}
+        disabled={pending}
       >
-        {icon}
+        {pending ? <Loading01 className="size-4 animate-spin" /> : icon}
         {label}
       </Button>
     </div>
   );
 }
 
-/** Opens the connection catalog pre-filtered to the tile's integration. */
+/** Presentational mock-tile shell: sample content + hover connect overlay. */
 function MockTile({
   children,
   connectLabel,
   connectIcon,
-  connectSearch,
+  onConnect,
+  pending,
 }: {
   children: React.ReactNode;
   connectLabel: string;
   connectIcon: React.ReactNode;
-  connectSearch: string;
+  onConnect: () => void;
+  pending?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
   return (
     <div className="group/mock relative flex h-full flex-col overflow-hidden">
       <div className="flex flex-1 flex-col p-3">{children}</div>
       <MockConnectOverlay
         label={connectLabel}
         icon={connectIcon}
-        onConnect={() => setOpen(true)}
-      />
-      <AddConnectionDialog
-        mode="browse"
-        open={open}
-        onOpenChange={setOpen}
-        defaultTab="all"
-        initialSearch={connectSearch}
+        onConnect={onConnect}
+        pending={pending}
       />
     </div>
   );
@@ -360,11 +361,13 @@ const MOCK_PRS = [
 ];
 
 function CodingTileBody() {
+  const { connect, isConnecting } = useConnectApp("deco/mcp-github");
   return (
     <MockTile
       connectLabel="Connect GitHub"
       connectIcon={<GitHubIcon className="size-4" />}
-      connectSearch="GitHub"
+      onConnect={connect}
+      pending={isConnecting}
     >
       <ContributionsGrid />
       <div className="mt-3 flex flex-col gap-1.5">
@@ -425,11 +428,13 @@ function StatNumber({ value, label }: { value: string; label: string }) {
 }
 
 function AnalyticsTileBody() {
+  const { connect, isConnecting } = useConnectApp("deco/google-analytics");
   return (
     <MockTile
       connectLabel="Connect Google Analytics"
       connectIcon={<BarChart10 className="size-4" />}
-      connectSearch="Google Analytics"
+      onConnect={connect}
+      pending={isConnecting}
     >
       <div className="flex gap-6">
         <StatNumber value="12.4k" label="Pageviews" />
@@ -459,20 +464,32 @@ function BarChartMock() {
 }
 
 function SalesTileBody() {
+  // VTEX or Shopify — the user picks, so open the catalog rather than
+  // connecting a single app directly.
+  const [open, setOpen] = useState(false);
   return (
-    <MockTile
-      connectLabel="Connect VTEX or Shopify"
-      connectIcon={<ShoppingCart01 className="size-4" />}
-      connectSearch="Shopify"
-    >
-      <div className="flex gap-6">
-        <StatNumber value="$8,240" label="Revenue" />
-        <StatNumber value="142" label="Orders" />
-      </div>
-      <div className="mt-auto pt-3">
-        <BarChartMock />
-      </div>
-    </MockTile>
+    <>
+      <MockTile
+        connectLabel="Connect VTEX or Shopify"
+        connectIcon={<ShoppingCart01 className="size-4" />}
+        onConnect={() => setOpen(true)}
+      >
+        <div className="flex gap-6">
+          <StatNumber value="$8,240" label="Revenue" />
+          <StatNumber value="142" label="Orders" />
+        </div>
+        <div className="mt-auto pt-3">
+          <BarChartMock />
+        </div>
+      </MockTile>
+      <AddConnectionDialog
+        mode="browse"
+        open={open}
+        onOpenChange={setOpen}
+        defaultTab="all"
+        initialSearch="Shopify"
+      />
+    </>
   );
 }
 
