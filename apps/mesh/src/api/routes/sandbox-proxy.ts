@@ -517,19 +517,6 @@ export const createSandboxRoutes = () => {
       redactRepoDirUnlessDesktop: true,
     }),
   );
-  app.post("/:virtualMcpId/:branch/open-folder", (c) => {
-    const runner = requireRunner(c);
-    if (runner instanceof Response) return runner;
-    if (runner.kind !== "user-desktop") {
-      return c.json(
-        { error: "Opening folders is only available for desktop sandboxes" },
-        400,
-      );
-    }
-    return proxyDaemon(c, "/_sandbox/open-folder", {
-      signal: quickFileOpSignal(c),
-    });
-  });
   app.put("/:virtualMcpId/:branch/config", (c) =>
     proxyDaemon(c, "/_sandbox/config", {
       method: "PUT",

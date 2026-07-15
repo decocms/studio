@@ -19,7 +19,6 @@ import {
   Plus,
   SearchLg,
   CreditCardSearch,
-  Folder,
   Monitor04,
   Phone02,
   RefreshCw01,
@@ -81,10 +80,6 @@ import {
 } from "./last-preview-page";
 import { derivePhaseProgress } from "./derive-phase-progress";
 import { ideDeepLink } from "../ide-deep-link";
-import {
-  localFileManagerName,
-  openSandboxRepoFolder,
-} from "../open-local-folder";
 import {
   classifyParamKinds,
   collectPageLoaderResolveTypes,
@@ -297,23 +292,6 @@ export function PreviewContent() {
   // can retain a stale repoDir after the provider kind changes from desktop to
   // agent-sandbox, whose daemon reports a container-internal path ("/app/repo").
   const repoDir = isDesktopSandbox ? rawRepoDir : null;
-  const openFolderLabel = repoDir
-    ? `Open in ${localFileManagerName(repoDir)}`
-    : "Open folder";
-  const handleOpenFolder = async () => {
-    if (!virtualMcpId || !branch) return;
-    try {
-      await openSandboxRepoFolder({
-        orgSlug: org.slug,
-        virtualMcpId,
-        branch,
-      });
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to open folder",
-      );
-    }
-  };
 
   // Decofile pages for the URL bar dropdown — fetch only after dev server is up.
   const decofileParams =
@@ -1168,12 +1146,6 @@ export function PreviewContent() {
                       {repoDir && (
                         <>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => void handleOpenFolder()}
-                          >
-                            <Folder size={14} />
-                            {openFolderLabel}
-                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() =>
                               window.open(ideDeepLink("vscode", repoDir))
