@@ -17,10 +17,10 @@ Studio is an open-source control plane for Model Context Protocol (MCP) traffic.
 # Start full dev environment (migrations + client + server)
 bun run dev
 
-# Start mesh client only (Vite dev server on port 4000)
+# Start Studio client only (Vite dev server on port 4000)
 bun run --cwd=apps/mesh dev:client
 
-# Start mesh server only (Hono with hot reload)
+# Start Studio server only (Hono with hot reload)
 bun run --cwd=apps/mesh dev:server
 
 # Run documentation site locally
@@ -93,17 +93,17 @@ await client.end();
 EOF
 ```
 
-Replace `<PORT>` with the port found in step 1. The `--cwd apps/mesh` is required so bun resolves the `pg` dependency from the mesh workspace.
+Replace `<PORT>` with the port found in step 1. The `--cwd apps/mesh` is required so bun resolves the `pg` dependency from the `apps/mesh` workspace.
 
 ### Build & Deploy
 ```bash
 # Build runtime package
 bun run build:runtime
 
-# Build mesh client (production)
+# Build Studio client (production)
 bun run --cwd=apps/mesh build:client
 
-# Build mesh server (bundle for deployment)
+# Build Studio server (bundle for deployment)
 bun run --cwd=apps/mesh build:server
 
 # Run production build
@@ -357,12 +357,12 @@ The e2e suite is a **black-box contract** over HTTP + DB: spin the server, hit i
 assert on responses. It must stay decoupled from the implementation so a component can be rewritten
 — even in another language — and the same suite still holds. The in-sandbox daemon's suite
 (`packages/sandbox/daemon/daemon.e2e.*.test.ts`) already works this way: it spawns the built binary
-(swap it via the `DAEMON_E2E_CMD` env) and asserts only over HTTP. The mesh suite lives in the
+(swap it via the `DAEMON_E2E_CMD` env) and asserts only over HTTP. The Studio suite lives in the
 dedicated `packages/e2e` (`@decocms/e2e`) workspace behind the same wall — its Playwright config
 spawns the app dev server from `apps/mesh` via `webServer.cwd` (a process boundary, not an import).
 
 Rules:
-- **No imports from `apps/*/src/**` and no `@/` mesh alias** in `packages/e2e`. Enforced by
+- **No imports from `apps/*/src/**` and no `@/` app alias** in `packages/e2e`. Enforced by
   `plugins/ban-e2e-app-imports.js` (oxlint, `error`, deny-by-default) + a `paths: {}` override in
   `packages/e2e/tsconfig.json`. Only a small explicit allowlist of published packages is permitted
   (any unlisted `@decocms/*` is denied too, so app code creeping into `packages/` can't silently

@@ -24,7 +24,7 @@ const { doc } = Astro.props;
 const { Content } = await render(doc);
 
 // Extract breadcrumb from the path
-// doc.id format: "version/locale/...path" (e.g. "latest/en/mcp-mesh/overview")
+// doc.id format: "version/locale/...path" (e.g. "deco-studio/en/studio/overview")
 const pathParts = doc.id.split("/").slice(2);
 const locale = doc.id.split("/")[1] as keyof typeof ui;
 const translations = ui[locale] || ui.en;

@@ -114,7 +114,7 @@ const NODES: Record<string, Node> = {
     label: "Downstream MCP",
     tag: "tool servers · external",
     role: "MCP servers",
-    desc: "The actual MCP tool servers. Reached two ways: the API's MCP proxy forwards external-client traffic here over HTTP; the worker's agent loop connects directly in-process via a PassthroughClient bridge — no HTTP hop inside mesh.",
+    desc: "The actual MCP tool servers. Reached two ways: the API's MCP proxy forwards external-client traffic here over HTTP; the worker's agent loop connects directly in-process via a PassthroughClient bridge — no HTTP hop inside Studio.",
     facts: [
       ["Reached by", "proxy (HTTP)"],
       ["+ worker", "in-process bridge"],
