@@ -9,7 +9,7 @@ import type { HarnessId } from "@/harnesses";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { BranchPill } from "./branch-pill";
 import { RuntimeSwitcher } from "./runtime-switcher";
-import { ClaudeCodeIcon, CodexIcon } from "../agent-icons";
+import { localHarnessBrand } from "../agent-icons";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { authClient } from "@/web/lib/auth-client";
@@ -32,13 +32,6 @@ export function ChatModeRowPure({ branchPill }: PureProps) {
   return <>{branchPill}</>;
 }
 
-const LOCAL_RUNTIME: Partial<
-  Record<HarnessId, { label: string; icon: ReactNode }>
-> = {
-  "claude-code": { label: "Claude Code", icon: <ClaudeCodeIcon size={14} /> },
-  codex: { label: "Codex", icon: <CodexIcon size={14} /> },
-};
-
 /**
  * Read-only chip shown once a thread is locked to a local coding agent. The
  * runtime is normally chosen (and re-chosen) inside the model selector, but a
@@ -47,9 +40,10 @@ const LOCAL_RUNTIME: Partial<
  * Only local CLIs surface it; a cloud thread stays chrome-free.
  */
 function LockedRuntimeChip({ harness }: { harness: HarnessId }) {
-  const runtime = LOCAL_RUNTIME[harness];
-  if (!runtime) return null;
-  const message = `This chat is using ${runtime.label}. Start a new chat to use a different runtime.`;
+  const brand = localHarnessBrand(harness);
+  if (!brand) return null;
+  const { label, Icon } = brand;
+  const message = `This chat is using ${label}. Start a new chat to use a different runtime.`;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -58,8 +52,8 @@ function LockedRuntimeChip({ harness }: { harness: HarnessId }) {
           aria-label={message}
           className="inline-flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground"
         >
-          {runtime.icon}
-          <span className="truncate">{runtime.label}</span>
+          <Icon size={14} />
+          <span className="truncate">{label}</span>
         </span>
       </TooltipTrigger>
       <TooltipContent>{message}</TooltipContent>

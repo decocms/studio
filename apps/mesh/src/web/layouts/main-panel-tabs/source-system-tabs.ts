@@ -1,10 +1,9 @@
 export interface SourceSystemTab {
-  id: "preview" | "blocks" | "code";
+  id: "preview" | "code";
   title: string;
 }
 
 const SOURCE_SYSTEM_TABS: readonly SourceSystemTab[] = [
-  { id: "blocks", title: "Blocks" },
   { id: "preview", title: "Preview" },
   { id: "code", title: "Code" },
 ];

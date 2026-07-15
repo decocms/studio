@@ -1185,6 +1185,40 @@ export function ActiveTaskProvider({
       setChatMode("default");
     }
 
+    const submitSettings = resolveSubmitSettings({
+      thread: activeTask
+        ? {
+            harness_id: activeTask.harness_id ?? null,
+            sandbox_provider_kind: activeTask.sandbox_provider_kind ?? null,
+            branch: activeTask.branch ?? null,
+          }
+        : null,
+      globals: {
+        harnessId: pendingHarnessId ?? undefined,
+        sandboxProviderKind: pendingSandboxProviderKind ?? undefined,
+        branch: currentBranch,
+      },
+    });
+
+    // First message on an unlocked thread: the server pins harness_id /
+    // sandbox_provider_kind on receipt, but that write never flows back through
+    // `/watch` (RowPatch carries it, the SSE event does not). Mirror it into the
+    // store now so `findReusableNewChat` stops treating the (now non-empty,
+    // often just-failed) thread as an empty "New chat" and dropping the user
+    // back onto it. When the user hasn't explicitly picked a runtime the client
+    // sends no harnessId and the server pins its default ("decopilot", per
+    // resolveHarnessId's fallback for non-CLI providers) — mirror that so this
+    // covers the common brand-new-thread case, not just explicit picks. LIST is
+    // authoritative on reload; this only keeps the live view correct meanwhile.
+    if (!activeTask?.harness_id) {
+      manager.patchThread({
+        id: capturedTaskId,
+        harness_id: submitSettings.harnessId ?? "decopilot",
+        sandbox_provider_kind: submitSettings.sandboxProviderKind ?? null,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
     const requestOptions: RequestOptions = {
       tier: activeTier,
       mode: modeToSend,
@@ -1193,20 +1227,7 @@ export function ActiveTaskProvider({
       system: system || undefined,
       agent: { id: capturedVirtualMcpId },
       thread_id: capturedTaskId,
-      ...resolveSubmitSettings({
-        thread: activeTask
-          ? {
-              harness_id: activeTask.harness_id ?? null,
-              sandbox_provider_kind: activeTask.sandbox_provider_kind ?? null,
-              branch: activeTask.branch ?? null,
-            }
-          : null,
-        globals: {
-          harnessId: pendingHarnessId ?? undefined,
-          sandboxProviderKind: pendingSandboxProviderKind ?? undefined,
-          branch: currentBranch,
-        },
-      }),
+      ...submitSettings,
     };
 
     // A run is already streaming (this thread) or in progress (hosted): this

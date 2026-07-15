@@ -60,14 +60,18 @@ import {
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
+  BarChart10,
+  CheckCircle,
   ChevronDown,
   DotsGrid,
+  GitBranch01,
   Loading01,
   MessageChatCircle,
   Minus,
   Plus,
   SearchSm,
   Settings01,
+  ShoppingCart01,
   X,
 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -255,25 +259,55 @@ function DrawerBody({ search }: { search: string }) {
 }
 
 const NATIVE_TILE_ICON: Record<string, typeof MessageChatCircle> = {
+  tasks: CheckCircle,
+  coding: GitBranch01,
+  analytics: BarChart10,
+  sales: ShoppingCart01,
   "recent-conversations": MessageChatCircle,
 };
 
 /**
  * Built-in (native) tiles — views like recent conversations that aren't
- * agents. Their on-home state rides the board's `hidden` set, so toggling here
- * stages into the same edit draft the rest of the board uses.
+ * agents. Normal built-ins ride the board's `hidden` set; `defaultHidden`
+ * ones (off the board by default) ride the `shown` set. Toggling here stages
+ * into the same edit draft the rest of the board uses.
  */
 function NativeTilesSection() {
   const { layout, commitLayout } = useHomeEdit();
   const hidden = new Set(layout.hidden);
+  const shown = new Set(layout.shown ?? []);
 
   return (
     <div className="flex flex-col gap-1.5">
       <SectionHeader title="Built-in tiles" />
       {NATIVE_TILES.map((tile) => {
         const candidateId = nativeCandidateId(tile.id);
-        const onHome = !hidden.has(candidateId);
+        const onHome = tile.defaultHidden
+          ? shown.has(candidateId) && !hidden.has(candidateId)
+          : !hidden.has(candidateId);
         const Icon = NATIVE_TILE_ICON[tile.id] ?? MessageChatCircle;
+
+        const toggle = () => {
+          if (tile.defaultHidden) {
+            // Off-by-default tile: membership is the `shown` set. Adding also
+            // clears any lingering `hidden` entry; removing drops it from shown.
+            commitLayout({
+              ...layout,
+              hidden: layout.hidden.filter((id) => id !== candidateId),
+              shown: onHome
+                ? (layout.shown ?? []).filter((id) => id !== candidateId)
+                : [...(layout.shown ?? []), candidateId],
+            });
+            return;
+          }
+          commitLayout({
+            ...layout,
+            hidden: onHome
+              ? [...layout.hidden, candidateId]
+              : layout.hidden.filter((id) => id !== candidateId),
+          });
+        };
+
         return (
           <div
             key={tile.id}
@@ -290,14 +324,7 @@ function NativeTilesSection() {
               size="sm"
               variant={onHome ? "outline" : "special"}
               className="h-8 gap-1.5"
-              onClick={() =>
-                commitLayout({
-                  ...layout,
-                  hidden: onHome
-                    ? [...layout.hidden, candidateId]
-                    : layout.hidden.filter((id) => id !== candidateId),
-                })
-              }
+              onClick={toggle}
             >
               {onHome ? <Minus size={14} /> : <Plus size={14} />}
               {onHome ? "Remove" : "Add"}

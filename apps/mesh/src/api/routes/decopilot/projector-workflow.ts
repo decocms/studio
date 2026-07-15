@@ -3,7 +3,7 @@ import type { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts
 import type { ProjectChunksResult } from "./project-chunks";
 import { projectChunks } from "./project-chunks";
 import { createProjectorChunkStream } from "./projector-chunk-stream";
-import { StreamIdleTimeoutError } from "./nats-chunk-source";
+import { StreamGapError, StreamIdleTimeoutError } from "./nats-chunk-source";
 import { createRunPersistence } from "./run-persistence";
 import { recordPoison } from "./projector-metrics";
 import { ProgressBumpThrottle, tapProgressStream } from "./progress-bump";
@@ -97,6 +97,15 @@ export interface ProjectorWorkflowRuntime {
     kind: "harness" | "projection" | "liveness";
   }): Promise<void>;
   purgeRun(runId: string, fenceToken: string): Promise<void>;
+  /**
+   * Delete the synthesized error message a PRIOR interrupted projection
+   * attempt persisted for this `(runId, fenceToken)` (deterministic id — see
+   * `synthesizedErrorMessageId`). Called only on a SUCCESSFUL terminal
+   * (completed / requires_action), where a lingering "Error: …" bubble from a
+   * retried attempt is stale by definition. On a failed terminal the error
+   * part IS the run's content and must stay.
+   */
+  clearSynthesizedError(runId: string, fenceToken: string): Promise<void>;
 }
 
 let runtime: ProjectorWorkflowRuntime | null = null;
@@ -271,6 +280,7 @@ export async function runProjectorWorkflowBody(
       // Tool-approval pause: flip to requires_action so the client can
       // re-engage. No completion analytics for a pause.
       await rt.markRunRequiresAction(input.runId, orgId);
+      await rt.clearSynthesizedError(input.runId, input.fenceToken);
     } else {
       // completed
       const flipped = await rt.completeRunIfNotCompleted(input.runId, orgId);
@@ -286,12 +296,50 @@ export async function runProjectorWorkflowBody(
           },
         });
       }
+      // A PRIOR attempt of this same fence may have thrown mid-fold and
+      // persisted the synthesized error message before DBOS retried into
+      // this successful pass — that stale "Error: …" bubble would otherwise
+      // sit above the successful reply forever (redelivery repro,
+      // projector-redelivery.test.ts).
+      await rt.clearSynthesizedError(input.runId, input.fenceToken);
     }
     // Purge JetStream subject on ALL terminal outcomes (completed + harness-failed
     // + requires_action). The run is terminal — no re-projection is expected — so
     // purging is safe.
     await rt.purgeRun(input.runId, input.fenceToken);
   } catch (error) {
+    // A gapped subject (StreamGapError — retention discarded chunks under a
+    // late redelivery, or a purge raced it) can NEVER be reconstructed by
+    // retrying: the data is gone from the stream. Mark the run failed with an
+    // honest reason and let the step SUCCEED — a successful projection of a
+    // failed run, the same shape as the in-band harness-error branch above.
+    // Rethrowing (the pre-fix behavior) burned DBOS step retries/recovery on
+    // a hopeless replay and recorded the misleading generic reason
+    // "missing seq N" (stg incident 2026-07-14 follow-up; repro in
+    // projector-redelivery.test.ts).
+    if (error instanceof StreamGapError) {
+      const reason = `stream truncated before projection could replay it: ${error.message}`;
+      recordPoison(input.runId, orgId);
+      const flipped = await rt.markRunFailed(
+        input.runId,
+        orgId,
+        reason,
+        "projection",
+      );
+      if (flipped) {
+        await rt.recordFailed({
+          runId: input.runId,
+          orgId,
+          distinctId,
+          reason,
+          kind: "projection",
+        });
+      }
+      // Terminal — no re-projection is expected (and the subject is already
+      // partially discarded), so purging matches the try-path's policy.
+      await rt.purgeRun(input.runId, input.fenceToken);
+      return;
+    }
     // A silent subject (StreamIdleTimeoutError, thrown by natsChunkSource —
     // see nats-chunk-source.ts) is a LIVENESS breach, not a projection bug:
     // the executor died (or never started) before publishing anything, so
@@ -299,7 +347,25 @@ export async function runProjectorWorkflowBody(
     // plane T4) gives the thread a legible `failure_reason` instead of the
     // generic (and misleading) "projection" catch-all every other thrown
     // error still gets.
+    //
+    // One idle case is NOT a breach: the run already reached a terminal for
+    // THIS fence (a prior attempt crashed between its terminal write and the
+    // DBOS step journal, or `purgeRun` raced the redelivery) — the subject is
+    // silent because the run is finished, not because the producer died.
+    // Return cleanly instead of re-failing a settled run and rethrowing into
+    // retries that would idle-wait the full window again each time.
     const isLivenessBreach = error instanceof StreamIdleTimeoutError;
+    if (isLivenessBreach) {
+      const row = await rt.resolveRun(input.runId).catch(() => null);
+      const settled =
+        row !== null &&
+        row.runFenceToken === input.fenceToken &&
+        ["completed", "failed", "requires_action"].includes(row.status);
+      if (settled) {
+        await rt.purgeRun(input.runId, input.fenceToken);
+        return;
+      }
+    }
     const reason = isLivenessBreach
       ? livenessFailureReason((error as StreamIdleTimeoutError).idleTimeoutMs)
       : error instanceof Error

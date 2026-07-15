@@ -974,47 +974,110 @@ describe("resolveSchema – inline object unions (A | B) render as a choice", ()
   });
 });
 
-describe("resolveSchema – inline-union negative cases (paths left untouched)", () => {
-  test("anyOf of $refs stays block-ref, not inline-union", () => {
-    const meta: LiveMeta = {
+describe("resolveSchema – inline object unions behind $refs (real deco shape)", () => {
+  // deco emits data unions like `(Location | Map)[]` as an anyOf of *$refs* to
+  // bare object defs (no `__resolveType`, no saved-block title, no `type`
+  // discriminator) — NOT as inlined object branches. Before the fix these fell
+  // into the block-ref path, found no resolveType on either branch, dropped both,
+  // and returned an empty block-ref that rendered as `[object Object]`.
+  // deco base64-encodes def keys (they embed a jsdelivr URL), so real refs are
+  // slash-free single-segment keys. Mirror that with plain keys here.
+  function locationMatcherMeta(): LiveMeta {
+    return {
       manifest: {
         blocks: {
-          sections: {
-            "site/sections/Test.tsx": {
-              type: "object",
-              properties: {
-                card: {
-                  anyOf: [
-                    { $ref: "#/definitions/ImageCard" },
-                    { $ref: "#/definitions/TextCard" },
-                  ],
-                },
-              },
-            } as unknown as { $ref?: string; namespace?: string },
+          matchers: {
+            "website/matchers/location.ts": {
+              $ref: "#/definitions/LocationMatcher",
+              namespace: "website",
+            },
           },
         },
       },
       schema: {
         definitions: {
-          ImageCard: {
+          LocationMatcher: {
+            title: "Location",
             type: "object",
-            title: "ImageCard",
-            properties: { src: { type: "string" } },
+            allOf: [{ $ref: "#/definitions/LocationProps" }],
+            required: ["__resolveType"],
+            properties: {
+              __resolveType: {
+                type: "string",
+                enum: ["website/matchers/location.ts"],
+                default: "website/matchers/location.ts",
+              },
+            },
           },
-          TextCard: {
+          LocationProps: {
             type: "object",
-            title: "TextCard",
-            properties: { text: { type: "string" } },
+            properties: {
+              includeLocations: {
+                $ref: "#/definitions/LocationMapArray",
+                title: "Include Locations",
+              },
+            },
           },
+          LocationMapArray: {
+            type: "array",
+            items: { $ref: "#/definitions/LocationMapUnion" },
+            title: "[Location|Map]",
+          },
+          LocationMapUnion: {
+            anyOf: [
+              { $ref: "#/definitions/LocationBranch" },
+              { $ref: "#/definitions/MapBranch" },
+            ],
+            title: "Location|Map",
+          },
+          LocationBranch: {
+            type: "object",
+            title: "Location",
+            properties: {
+              city: { type: ["string", "null"], title: "City" },
+              regionCode: { type: ["string", "null"], title: "Region Code" },
+              country: { type: ["string", "null"], title: "Country" },
+            },
+          },
+          MapBranch: {
+            type: "object",
+            title: "Map",
+            properties: {
+              coordinates: {
+                $ref: "#/definitions/MapWidget",
+                title: "Area selection",
+              },
+            },
+          },
+          MapWidget: { type: "string", format: "map", title: "MapWidget" },
         },
       },
     };
-    const card = resolveSchema("site/sections/Test.tsx", meta)?.properties
-      ?.card;
-    expect(card?.type).toBe("block-ref");
-    expect(card?.type).not.toBe("inline-union");
-  });
+  }
 
+  test("(Location | Map)[] with $ref branches resolves to an inline-union", () => {
+    const items = resolveSchema(
+      "website/matchers/location.ts",
+      locationMatcherMeta(),
+    )?.properties?.includeLocations?.items;
+    expect(items?.type).toBe("inline-union");
+    const branches = items?.inlineUnionBranches ?? [];
+    expect(branches.map((b) => b.title)).toEqual(["Location", "Map"]);
+    // Location branch keeps its {city, regionCode, country} fields.
+    expect(Object.keys(branches[0]?.schema?.properties ?? {}).sort()).toEqual([
+      "city",
+      "country",
+      "regionCode",
+    ]);
+    // Map branch keeps its coordinates @format map (deref'd through MapWidget).
+    expect(branches[1]?.schema?.properties?.coordinates?.format).toBe("map");
+    // Plain data branches carry no const discriminators.
+    expect(branches[0]?.discriminators).toBeUndefined();
+    expect(branches[1]?.discriminators).toBeUndefined();
+  });
+});
+
+describe("resolveSchema – inline-union negative cases (paths left untouched)", () => {
   test("mixed primitive|object union does NOT become inline-union", () => {
     const meta = metaWithSchema({
       type: "object",

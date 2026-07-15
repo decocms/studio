@@ -7,6 +7,7 @@ import {
   formatLibraryFileTabId,
   parseCodeTabId,
   isLegacySettingsTab,
+  isLegacyBlocksTab,
   isPerThreadTab,
   parseAutomationTabId,
   parseDeckTabId,
@@ -258,9 +259,10 @@ describe("resolveActiveTabAndOpen", () => {
   });
 
   test("?main=0 → closed, tab = default", () => {
-    expect(resolveActiveTabAndOpen({ mainParam: "0", metadata: meta })).toEqual(
-      { mainOpen: false, activeTab: "analytics" },
-    );
+    expect(resolveActiveTabAndOpen({ mainParam: 0, metadata: meta })).toEqual({
+      mainOpen: false,
+      activeTab: "analytics",
+    });
   });
 
   test("?main=settings → open, tab = 'settings'", () => {
@@ -301,27 +303,32 @@ describe("resolveActiveTabAndOpen", () => {
       resolveActiveTabAndOpen({ mainParam: "git", metadata: meta }),
     ).toEqual({ mainOpen: true, activeTab: "git" });
   });
+
+  test("legacy ?main=blocks closes Main and preserves a valid active tab", () => {
+    expect(
+      resolveActiveTabAndOpen({ mainParam: "blocks", metadata: meta }),
+    ).toEqual({ mainOpen: false, activeTab: "analytics" });
+  });
+
+  test("a legacy Blocks default closes Main", () => {
+    expect(
+      resolveActiveTabAndOpen({
+        mainParam: undefined,
+        metadata: { defaultMainView: { type: "blocks" } },
+      }),
+    ).toEqual({ mainOpen: false, activeTab: "settings" });
+  });
 });
 
 describe("resolveTabClickTarget", () => {
-  test("clicking active tab while panel open → close ('0')", () => {
+  test("clicking active tab while panel open → close (0)", () => {
     expect(
       resolveTabClickTarget({
         clickedId: "settings",
         activeTab: "settings",
         mainOpen: true,
       }),
-    ).toBe("0");
-  });
-
-  test("clicking active Blocks tab collapses to Preview, not closed", () => {
-    expect(
-      resolveTabClickTarget({
-        clickedId: "blocks",
-        activeTab: "blocks",
-        mainOpen: true,
-      }),
-    ).toBe("preview");
+    ).toBe(0);
   });
 
   test("clicking non-active tab while panel open → clicked id", () => {
@@ -329,23 +336,6 @@ describe("resolveTabClickTarget", () => {
       resolveTabClickTarget({
         clickedId: "preview",
         activeTab: "settings",
-        mainOpen: true,
-      }),
-    ).toBe("preview");
-  });
-
-  test("Preview and Blocks switch to their own tab ids", () => {
-    expect(
-      resolveTabClickTarget({
-        clickedId: "blocks",
-        activeTab: "preview",
-        mainOpen: true,
-      }),
-    ).toBe("blocks");
-    expect(
-      resolveTabClickTarget({
-        clickedId: "preview",
-        activeTab: "blocks",
         mainOpen: true,
       }),
     ).toBe("preview");
@@ -435,13 +425,13 @@ describe("resolveAutomationsPillClickTarget", () => {
     ).toBe("automations");
   });
 
-  test("on list while panel open → close ('0')", () => {
+  test("on list while panel open → close (0)", () => {
     expect(
       resolveAutomationsPillClickTarget({
         activeTab: "automations",
         mainOpen: true,
       }),
-    ).toBe("0");
+    ).toBe(0);
   });
 
   test("on unrelated tab → open list", () => {
@@ -455,8 +445,9 @@ describe("resolveAutomationsPillClickTarget", () => {
 });
 
 describe("code tab id", () => {
-  test("includes blocks and code in the fixed system tabs", () => {
-    expect(FIXED_SYSTEM_TABS).toContain("blocks");
+  test("keeps Blocks out of the fixed system tabs", () => {
+    expect(FIXED_SYSTEM_TABS).not.toContain("blocks");
+    expect(isLegacyBlocksTab("blocks")).toBe(true);
     expect(FIXED_SYSTEM_TABS).toContain("code");
   });
 
@@ -476,5 +467,10 @@ describe("code tab id", () => {
     expect(parseCodeTabId("preview")).toBeNull();
     expect(parseCodeTabId(undefined)).toBeNull();
     expect(parseCodeTabId("codex")).toBeNull();
+  });
+
+  test("an open code path is per-thread (scoped to the task's sandbox/branch), but the bare tab is not", () => {
+    expect(isPerThreadTab(formatCodeTabId("src/index.ts"))).toBe(true);
+    expect(isPerThreadTab("code")).toBe(false);
   });
 });

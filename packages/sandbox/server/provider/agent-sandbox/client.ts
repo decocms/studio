@@ -510,7 +510,7 @@ export async function waitForClaimAdoptedSandbox(
     );
     const name = claim?.status?.sandbox?.name;
     if (name) return name;
-    await new Promise((r) => setTimeout(r, intervalMs));
+    await sleep(intervalMs);
   }
   throw new SandboxTimeoutError(
     `SandboxClaim ${claimName} did not record an adopted Sandbox (status.sandbox.name) within ${timeoutSeconds}s`,

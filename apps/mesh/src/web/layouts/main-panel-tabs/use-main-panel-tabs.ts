@@ -136,7 +136,7 @@ export function useMainPanelTabs(ctx: {
 }): MainPanelTabs {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as {
-    main?: string;
+    main?: string | 0;
   };
   const entity = useVirtualMCP(ctx.virtualMcpId);
   const metadata = useTaskMetadata(ctx.taskId);
@@ -301,8 +301,8 @@ export function useMainPanelTabs(ctx: {
   // Settings + Automations stay anchored at the right.
   // The Overview view (the Super Agent's default) leads the bar so it reads as
   // the agent's home. Data-driven off the configured default view — no
-  // per-agent special-case. Source tabs (Blocks · Preview · Code) share one
-  // capability gate via getSourceSystemTabs.
+  // per-agent special-case. Source tabs (Preview · Code) share one capability
+  // gate via getSourceSystemTabs; Blocks is a peer workspace panel.
   const leadingSystemTabs: Array<{ id: string; title: string }> = [];
   // Library is agent-independent, so it lives in the LEFT toolbar group next to
   // the Chat toggle (see LibraryToggle), NOT in this per-agent tab bar.
@@ -487,7 +487,13 @@ export function useMainPanelTabs(ctx: {
     });
     navigate({
       to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main: target }),
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        ...(prev.main === "blocks" && prev.blocks === undefined
+          ? { blocks: 1 }
+          : {}),
+        main: target,
+      }),
       replace: true,
     });
   };

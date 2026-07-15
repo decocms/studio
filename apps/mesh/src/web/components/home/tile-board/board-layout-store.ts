@@ -30,6 +30,7 @@ const DEFAULT_LAYOUT: BoardLayout = {
   version: STORAGE_VERSION,
   tiles: {},
   hidden: [],
+  shown: [],
 };
 
 export interface BoardLayoutStore {
@@ -48,11 +49,16 @@ function normalize(value: BoardLayout | undefined | null): BoardLayout {
     version: STORAGE_VERSION,
     tiles: value.tiles ?? {},
     hidden: Array.isArray(value.hidden) ? value.hidden : [],
+    shown: Array.isArray(value.shown) ? value.shown : [],
   };
 }
 
 function isMeaningful(layout: BoardLayout): boolean {
-  return Object.keys(layout.tiles).length > 0 || layout.hidden.length > 0;
+  return (
+    Object.keys(layout.tiles).length > 0 ||
+    layout.hidden.length > 0 ||
+    (layout.shown?.length ?? 0) > 0
+  );
 }
 
 function readCache(orgSlug: string): BoardLayout | undefined {

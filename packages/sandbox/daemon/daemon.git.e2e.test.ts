@@ -6,6 +6,8 @@
  * the setup orchestrator to drain. Black-box throughout (see helpers).
  */
 import { execSync } from "node:child_process";
+import { chmodSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
 import {
@@ -141,6 +143,25 @@ describe("daemon e2e: git (cloned repo)", () => {
       method: "POST",
       headers: jsonAuthHeaders(),
       body: toBody({ message: "test publish" }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { pushed: boolean }).pushed).toBe(true);
+  });
+
+  it("POST /git/publish pushes past a failing pre-push hook", async () => {
+    // A repo's own pre-push hook must never block the sync: the shutdown
+    // publish shares this path and can't wait out a hanging/failing hook before
+    // the pod's grace period elapses and SIGKILL drops the unsynced work. The
+    // push runs --no-verify, so a hook that would abort the push is skipped.
+    const hook = join(d.appDir, "repo", ".git", "hooks", "pre-push");
+    writeFileSync(hook, "#!/bin/sh\nexit 1\n");
+    chmodSync(hook, 0o755);
+
+    await writeRepoFile(d, "past-hook.txt", "survived the hook\n");
+    const res = await fetch(url(d, "/_sandbox/git/publish"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ message: "publish past a failing hook" }),
     });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { pushed: boolean }).pushed).toBe(true);

@@ -383,6 +383,8 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
                 organizationId: options.organizationId,
                 limit: options.limit,
                 offset: options.offset,
+                filterField: options.filterField,
+                filterValue: options.filterValue,
               }
             : undefined,
         });

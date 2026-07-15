@@ -1,22 +1,27 @@
-import { MessageCircle01 } from "@untitledui/icons";
+import { MessageCircle01, TextInput } from "@untitledui/icons";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
 import { LibraryToggle } from "./library-toggle";
+import { TasksToggle } from "./tasks-toggle";
 
 export interface ToggleButtonsProps {
   chatOpen: boolean;
   toggleChat: () => void;
+  blocksAvailable?: boolean;
+  blocksOpen?: boolean;
+  toggleBlocks?: () => void;
   /**
    * When true, the chat toggle is disabled — chat is the only visible panel,
    * so turning it off would leave a blank content area.
    */
   disableChatToggle?: boolean;
+  disableBlocksToggle?: boolean;
 }
 
 /**
  * Top-toolbar chat toggle. Renders through the shared HeaderTabButton so it
- * stays pixel-identical to the Preview/Blocks/Code tabs (same height, icon and
+ * stays pixel-identical to the Main panel tabs (same height, icon and
  * label metrics, active/hover styling) — the only extras are the PWA titlebar
  * drag opt-out and a taller mobile touch target. (The New task action lives in
  * the sidebar toolbar, next to the thread list.)
@@ -24,7 +29,11 @@ export interface ToggleButtonsProps {
 export function ToggleButtons({
   chatOpen,
   toggleChat,
+  blocksAvailable = false,
+  blocksOpen = false,
+  toggleBlocks,
   disableChatToggle = false,
+  disableBlocksToggle = false,
 }: ToggleButtonsProps) {
   // Reports-only orgs collapse the toolbar to just the chat toggle.
   const reportsOnly = useReportsOnly();
@@ -44,9 +53,30 @@ export function ToggleButtons({
           toggleChat();
         }}
       />
-      {/* Library is agent-independent, so it lives here in the left group next
-          to Chat rather than in the per-agent tab bar on the right. */}
-      {!reportsOnly && <LibraryToggle />}
+      {!reportsOnly && blocksAvailable && toggleBlocks && (
+        <HeaderTabButton
+          title="Blocks"
+          icon={{ kind: "component", Component: TextInput }}
+          active={blocksOpen}
+          disabled={disableBlocksToggle}
+          className="wco-no-drag h-10 md:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+          onClick={() => {
+            track("agent_toolbar_toggled", {
+              button: "blocks",
+              next_state: !blocksOpen ? "open" : "closed",
+            });
+            toggleBlocks();
+          }}
+        />
+      )}
+      {/* Tasks and Library are agent-independent overlays; hidden for
+          reports-only orgs along with everything else but Chat. */}
+      {!reportsOnly && (
+        <>
+          <TasksToggle />
+          <LibraryToggle />
+        </>
+      )}
     </>
   );
 }

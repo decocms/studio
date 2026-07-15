@@ -130,11 +130,18 @@ export function usePanelActions() {
         // "overview" onto a repo agent, or "preview" onto the Super Agent
         // ("No source to preview"), is exactly the stuck-view bug. Leaving
         // `main` unset lets the new agent's own defaultMainView resolve.
-        const targetVmcp = virtualMcpId ?? prev.virtualmcpid;
-        const isAgentSwitch =
-          typeof prev.virtualmcpid === "string" &&
-          typeof targetVmcp === "string" &&
-          targetVmcp !== prev.virtualmcpid;
+        // The Super Agent is the default agent when the URL carries no
+        // `virtualmcpid`, so treat an absent id as the Super Agent on BOTH
+        // sides. Otherwise switching FROM the param-less Super Agent TO a repo
+        // agent isn't detected as a switch and wrongly carries "overview" onto
+        // an agent that has no Overview tab.
+        const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+        const prevVmcp =
+          typeof prev.virtualmcpid === "string"
+            ? prev.virtualmcpid
+            : decopilotId;
+        const targetVmcp = virtualMcpId ?? prevVmcp;
+        const isAgentSwitch = targetVmcp !== prevVmcp;
         // Explicit main tab takes priority (e.g. home tile → pinned view).
         if (opts?.main) {
           next.main = opts.main;
@@ -202,9 +209,10 @@ export function usePanelActions() {
 
   const toggleMain = () =>
     nav((prev) => {
-      const isOpen = prev.main !== undefined && prev.main !== "0";
+      const isOpen =
+        prev.main !== undefined && prev.main !== 0 && prev.main !== "0";
       if (isOpen) {
-        return { ...prev, main: "0" };
+        return { ...prev, main: 0 };
       }
       const next: Record<string, unknown> = { ...prev };
       delete next.main;
