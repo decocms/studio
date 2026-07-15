@@ -801,63 +801,48 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const canVisualEdit = previewState.kind === "iframe";
-  const floatingPreviewControls =
-    canVisualEdit || editingMode === "blocks" ? (
-      <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
-        <div className="flex items-center gap-0.5 rounded-full border bg-background/90 p-1 shadow-lg backdrop-blur-sm">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToolbarIconButton
-                onClick={() => toggleEditingMode("visual")}
-                aria-pressed={editingMode === "visual"}
-                aria-label="Visual editor"
-                active={editingMode === "visual"}
-                disabled={!canVisualEdit}
+  const floatingPreviewControls = canVisualEdit ? (
+    <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
+      <div className="flex items-center gap-0.5 rounded-full border bg-background/90 p-1 shadow-lg backdrop-blur-sm">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              onClick={() => toggleEditingMode("visual")}
+              aria-pressed={editingMode === "visual"}
+              aria-label="Visual editor"
+              active={editingMode === "visual"}
+              disabled={!canVisualEdit}
+            >
+              <CursorClick01 size={16} />
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent side="top">Visual editor</TooltipContent>
+        </Tooltip>
+        <div className="mx-0.5 h-5 w-px bg-border" />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              onClick={handleDeviceToggle}
+              aria-label={DEVICE_LABELS[previewDeviceSize]}
+              disabled={!canVisualEdit}
+            >
+              <span
+                key={previewDeviceSize}
+                className="flex items-center justify-center animate-device-icon-pop"
               >
-                <CursorClick01 size={16} />
-              </ToolbarIconButton>
-            </TooltipTrigger>
-            <TooltipContent side="top">Visual editor</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToolbarIconButton
-                data-testid="preview-blocks-toggle"
-                onClick={() => toggleEditingMode("blocks")}
-                aria-pressed={editingMode === "blocks"}
-                aria-label="Blocks editor"
-                active={editingMode === "blocks"}
-              >
-                <TextInput size={16} />
-              </ToolbarIconButton>
-            </TooltipTrigger>
-            <TooltipContent side="top">Blocks editor</TooltipContent>
-          </Tooltip>
-          <div className="mx-0.5 h-5 w-px bg-border" />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToolbarIconButton
-                onClick={handleDeviceToggle}
-                aria-label={DEVICE_LABELS[previewDeviceSize]}
-                disabled={!canVisualEdit}
-              >
-                <span
-                  key={previewDeviceSize}
-                  className="flex items-center justify-center animate-device-icon-pop"
-                >
-                  {previewDeviceSize === "mobile" && <Phone02 size={16} />}
-                  {previewDeviceSize === "tablet" && <Tablet01 size={16} />}
-                  {previewDeviceSize === "desktop" && <Monitor04 size={16} />}
-                </span>
-              </ToolbarIconButton>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {DEVICE_LABELS[previewDeviceSize]}
-            </TooltipContent>
-          </Tooltip>
-        </div>
+                {previewDeviceSize === "mobile" && <Phone02 size={16} />}
+                {previewDeviceSize === "tablet" && <Tablet01 size={16} />}
+                {previewDeviceSize === "desktop" && <Monitor04 size={16} />}
+              </span>
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {DEVICE_LABELS[previewDeviceSize]}
+          </TooltipContent>
+        </Tooltip>
       </div>
-    ) : null;
+    </div>
+  ) : null;
 
   return (
     <div className="flex flex-col w-full h-full">
@@ -879,13 +864,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         )}
       {daemonReady && previewState.kind === "iframe" && (
         <div className="relative flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
-          {/* Groups 2+3 only render when the iframe is live — they read
-              `previewState.previewUrl` and steer the iframe directly. */}
           {previewState.kind === "iframe" && (
-            <div className="flex w-full items-center justify-center">
-              {/* Centered address bar (max 500px):
-                    reload · URL · open in new tab · more actions. */}
-              <div className="flex w-full max-w-[500px] items-center gap-0.5">
+            <div className="grid h-full w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
+              <Button
+                variant={editingMode === "blocks" ? "secondary" : "ghost"}
+                size="sm"
+                data-testid="preview-blocks-toggle"
+                onClick={() => toggleEditingMode("blocks")}
+                aria-pressed={editingMode === "blocks"}
+                aria-label="Blocks editor"
+              >
+                <TextInput size={14} />
+                Blocks
+              </Button>
+
+              <div className="flex w-full min-w-0 max-w-[500px] items-center gap-0.5 justify-self-center">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon" onClick={handleRefresh}>
@@ -1129,8 +1122,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     </div>
                   )}
                 </div>
-
-                {/* open in new tab · more actions */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -1146,9 +1137,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   </TooltipTrigger>
                   <TooltipContent side="bottom">Open in new tab</TooltipContent>
                 </Tooltip>
-                {/* more actions — pinned to the right of the header,
-                      outside the centered address bar. */}
-                <div className="absolute inset-y-0 right-3 flex items-center md:right-4">
+
+                <div className="flex shrink-0 items-center">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon">
