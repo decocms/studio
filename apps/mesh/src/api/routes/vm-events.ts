@@ -13,7 +13,7 @@
  *      lifecycle reaches `ready`. Wire format is preserved verbatim by raw
  *      byte-piping the upstream body, so daemon and client speak the same
  *      protocol they always have.
- *   3. `event: gone` — synthetic. Mesh's upstream daemon fetch returned 404
+ *   3. `event: gone` — synthetic. Studio's upstream daemon fetch returned 404
  *      (sandbox handle missing → operator evicted on idle TTL, etc). Client
  *      maps to `notFound` and triggers self-heal via SANDBOX_START.
  *   4. `event: keepalive` — heartbeat. 15s matches the existing daemon SSE.
@@ -27,10 +27,10 @@
  *     compute a different handle.
  *
  * Why one stream instead of two: prior design had the browser open
- * `/api/vm-lifecycle` (mesh) plus a direct EventSource to the daemon's public
+ * `/api/vm-lifecycle` (studio) plus a direct EventSource to the daemon's public
  * `/_sandbox/events`. The daemon endpoint is unauthenticated (Vercel-style
  * "URL is the secret") and putting two long-lived SSEs in every tab burned
- * the EventSource budget. Routing through mesh authenticates the surface and
+ * the EventSource budget. Routing through studio authenticates the surface and
  * collapses to one connection per session.
  */
 
@@ -165,7 +165,7 @@ export const createVmEventsRoutes = () => {
             reason: "unknown",
             message:
               resolveError?.message ??
-              "No sandbox runner configured on this mesh.",
+              "No sandbox runner configured on this studio instance.",
           } satisfies ClaimPhase),
         });
       });
@@ -256,7 +256,7 @@ async function isStaleHandle(
  * rehydrate path (which would chase a dead port-forward and timeout) and
  * falls through to fresh provision. The state-store delete alone wasn't
  * enough — when `provider.alive` returns false because the operator's
- * housekeeper reaped the claim out from under us, mesh's `records` map
+ * housekeeper reaped the claim out from under us, studio's `records` map
  * still held the K8sRecord pointing at the now-deleted pod, and the
  * deterministic preview port stayed bound to that dead pod's WS forwarder
  * until process restart. Calling `provider.delete` invalidates both.
@@ -388,7 +388,7 @@ async function emitLifecycle(args: {
 }
 
 /**
- * Budget for the "lifecycle says ready but mesh hasn't finished its
+ * Budget for the "lifecycle says ready but studio hasn't finished its
  * post-Ready bookkeeping" race. The Sandbox CR Ready=True signal fires the
  * moment the operator's reconciliation completes; `runner.ensure()` then
  * does Service-patch + HTTPRoute-mint + port-forward + daemon health probe

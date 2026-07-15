@@ -73,7 +73,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     if (!props.open) props.onOpenChange(true);
   };
 
-  // Mesh's sandbox proxy route requires virtualMcpId+branch in the path to
+  // Studio's sandbox proxy route requires virtualMcpId+branch in the path to
   // compute the per-user claim handle. Without them the request 400s
   // before reaching the daemon.
   const execScript = (name: string) => {

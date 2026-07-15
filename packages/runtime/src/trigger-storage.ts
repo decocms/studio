@@ -1,18 +1,18 @@
 /**
  * Built-in TriggerStorage implementations.
  *
- * - StudioKV: Persists to Mesh/Studio's KV API (recommended for production)
+ * - StudioKV: Persists to Studio's KV API (recommended for production)
  * - JsonFileStorage: Persists to a local JSON file (for dev/simple deployments)
  */
 
 import type { TriggerStorage } from "./triggers.ts";
 
 // ============================================================================
-// StudioKV — backed by Mesh's /api/kv endpoint
+// StudioKV — backed by Studio's /api/kv endpoint
 // ============================================================================
 
 interface StudioKVOptions {
-  /** Mesh/Studio base URL (e.g., "https://studio.example.com") */
+  /** Studio base URL (e.g., "https://studio.example.com") */
   url: string;
   /** API key created in the Studio org */
   apiKey: string;
@@ -21,7 +21,7 @@ interface StudioKVOptions {
 }
 
 /**
- * TriggerStorage backed by Mesh/Studio's org-scoped KV API.
+ * TriggerStorage backed by Studio's org-scoped KV API.
  *
  * @example
  * ```typescript

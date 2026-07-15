@@ -70,7 +70,7 @@ export interface EnvVarsFieldProps<T extends FieldValues> {
 
 /**
  * Form-bound env editor for `metadata.runtime.env` on a virtual MCP.
- * Mesh resolves secret entries against the credential vault on every
+ * Studio resolves secret entries against the credential vault on every
  * SANDBOX_START; literal entries are sent inline.
  *
  * The secret list is read via Suspense; the wrapper renders a skeleton

@@ -1,7 +1,7 @@
 /**
  * MCP OAuth Proxy E2E Tests
  *
- * Tests the Mesh OAuth proxy against real MCP servers.
+ * Tests the Studio OAuth proxy against real MCP servers.
  * All servers in mcp-test-servers.json must pass all tests.
  *
  * Run with: bun test oauth-proxy.e2e.test.ts

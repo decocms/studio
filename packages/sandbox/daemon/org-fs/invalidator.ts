@@ -3,7 +3,7 @@
  *
  * WebDAV has no ChangeNotify, so rclone can't learn about *external* writes on
  * its own — its only lever is the dir-cache TTL (a blunt time bound). This
- * closes that gap: poll the mesh change feed (`/api/:org/fs/:volume/changes`,
+ * closes that gap: poll the studio change feed (`/api/:org/fs/:volume/changes`,
  * a single indexed query — NOT a directory re-listing) and, for every changed
  * path, tell rclone via its rc API to `vfs/refresh` that path's parent dir.
  * That re-lists only that dir, picking up adds/deletes and (via the refreshed
@@ -22,7 +22,7 @@
  * long-poll isn't available (NATS down) — so the loop degrades to timer polling
  * instead of busy-looping.
  *
- * Deps are injected so the loop is unit-testable without a real mesh or rclone.
+ * Deps are injected so the loop is unit-testable without a real studio or rclone.
  */
 
 import { sleep } from "@decocms/std";
@@ -65,7 +65,7 @@ export async function runInvalidator(deps: InvalidatorDeps): Promise<void> {
     try {
       page = await deps.changes(since);
     } catch (err) {
-      // rclone rc not up yet, transient mesh error, etc. — back off and retry.
+      // rclone rc not up yet, transient studio error, etc. — back off and retry.
       log("change-feed poll failed", err);
       await sleep(pollMs, { signal: deps.signal }).catch(() => {});
       continue;

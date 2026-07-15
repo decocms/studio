@@ -40,7 +40,7 @@ import {
   makeConfigUpdateHandler,
 } from "./routes/config";
 import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
-// Import harness factories from their subpaths (rather than the mesh barrel).
+// Import harness factories from their subpaths (rather than the studio barrel).
 // The daemon runs desktop CLI harnesses only; Decopilot remains cluster-side.
 import { claudeCodeHarnessFactory } from "@decocms/harness/claude-code/index";
 import { codexHarnessFactory } from "@decocms/harness/codex/index";
@@ -113,7 +113,7 @@ const bootConfig = {
   // whether http:// loopback is permitted for local dev. They come from the
   // daemon's boot env, NEVER from the request frame.
   //
-  // CONTRACT: mesh must populate these when spawning the daemon —
+  // CONTRACT: studio must populate these when spawning the daemon —
   //   OFFLOAD_ALLOWED_HOSTS      comma-separated hostnames (object-store host(s))
   //   OFFLOAD_ALLOW_SAME_HOST_DEV "1" to allow http:// loopback (dev only)
   // The default is an EMPTY allowlist, which fails CLOSED: with no env wired,
@@ -134,7 +134,7 @@ const TMP_DIR = join(APP_ROOT, "tmp");
 
 const broadcaster = new Broadcaster(REPLAY_BYTES);
 
-// `application.port` is what mesh told the dev script to use, but plenty of
+// `application.port` is what studio told the dev script to use, but plenty of
 // frameworks (vite included) ignore PORT env and pick their own — and on the
 // host runner two sandboxes can race for the same default port, leaving the
 // loser on a fallback. Sniff the actual bind announcement from starter
@@ -319,7 +319,7 @@ resetProbeState = () => {
 kickProbe = probeCheckNow;
 
 // HTTP/WS proxy forwards to the same port the probe is HEAD-checking.
-// `application.port` is what mesh configured, but vite/etc. routinely
+// `application.port` is what studio configured, but vite/etc. routinely
 // pick a fallback when the configured one is busy — using the sniffed
 // announce-port keeps the proxy aligned with what the dev script
 // actually bound to. Falls back to the configured value when nothing has
@@ -781,11 +781,11 @@ Bun.serve<WsProxyData, never>({
 });
 
 // --- Org-filesystem mounts ---------------------------------------------------
-// Desktop links: the mesh sets ORGFS_CONFIG (a JSON OrgFsMountConfig) +
+// Desktop links: the studio sets ORGFS_CONFIG (a JSON OrgFsMountConfig) +
 // ORGFS_RCLONE_PATH at spawn — as boot env, like OFFLOAD_ALLOWED_HOSTS, so the
 // daemon itself mounts here at boot.
 // Cluster pods: this container can't mount (locked-down securityContext); a
-// privileged sidecar does (org-fs/sidecar.ts). The mesh runner POSTs the
+// privileged sidecar does (org-fs/sidecar.ts). The studio runner POSTs the
 // config to /_sandbox/orgfs-config post-bind (warm-pool claims reject
 // spec.env) and the handler relays it onto the shared control volume the
 // sidecar watches. Both paths are inert unless their env is set; every step
@@ -898,7 +898,7 @@ async function repointOutputLinkForRun(threadId: string): Promise<boolean> {
   await ensureRepoOrgLink(bootConfig.repoDir, orgFsLog);
   // Uploads link is best-effort: sandboxes provisioned before the uploads
   // volume existed have no .uploads mount, and inbound attachments flow
-  // through the mesh regardless — never fail the run over it.
+  // through the studio regardless — never fail the run over it.
   const uploadsMountPath = join(bootConfig.appRoot, "org", ".uploads");
   if (mounts.some((m) => m.mountPath === uploadsMountPath)) {
     await repointUploadLink(bootConfig.appRoot, threadId, orgFsLog);

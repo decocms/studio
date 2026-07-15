@@ -32,7 +32,7 @@
  *   claiming           – Default: SandboxClaim posted, no Pod yet.
  *
  * Container name `sandbox` and pod label `studio.decocms.com/sandbox-handle`
- * are mesh conventions verified against the running cluster — do not rely
+ * are studio conventions verified against the running cluster — do not rely
  * on operator-set labels (e.g. `agents.x-k8s.io/sandbox-name`), which exist
  * only as truncated `-hash` variants.
  */
@@ -57,7 +57,7 @@ const DEFAULT_SCHEDULING_TIMEOUT_MS = 5 * 60 * 1000;
 export interface WatchClaimLifecycleOptions {
   kc: KubeConfig;
   namespace: string;
-  /** SandboxClaim name. Mesh convention: pod name === claim name. */
+  /** SandboxClaim name. Studio convention: pod name === claim name. */
   claimName: string;
   signal?: AbortSignal;
   /**
@@ -521,7 +521,7 @@ async function watchPod(
   now: () => number,
   onPodName: (name: string) => void,
 ): Promise<void> {
-  // labelSelector pins to mesh-managed claims; fieldSelector by name is
+  // labelSelector pins to studio-managed claims; fieldSelector by name is
   // belt-and-suspenders (operator names pod after the claim).
   const path =
     `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods` +
@@ -683,7 +683,7 @@ async function watchEvents(
 }
 
 /**
- * Namespace-wide watch of mesh-managed SandboxClaims that invokes `onDelete`
+ * Namespace-wide watch of studio-managed SandboxClaims that invokes `onDelete`
  * with the claim handle (== claim `metadata.name`) whenever a claim is removed.
  * The long-lived runner uses this to drop its cached record + close the
  * port-forwarder the instant the operator idle-reaps the backing pod, instead

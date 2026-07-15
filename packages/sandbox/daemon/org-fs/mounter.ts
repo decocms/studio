@@ -53,11 +53,11 @@ const READY_POLL_MS = 200;
  *    healthy it answers in microseconds, dead it refuses the connection — so
  *    this only ever trips when rclone is genuinely gone, turning the classic NFS
  *    hard-mount hang (+ persistent reconnect dialog) into a fast, recoverable
- *    error. Writes land in rclone's local VFS cache first, so a slow mesh never
+ *    error. Writes land in rclone's local VFS cache first, so a slow studio never
  *    makes a write slow enough to trip this.
  *  - timeo=100 (tenths of a sec → 10s) / retrans=2: generous per-request
  *    headroom so a legitimately slow read (first open of a large uncached file
- *    that rclone must fetch whole from the mesh) is not killed, while still
+ *    that rclone must fetch whole from the studio) is not killed, while still
  *    bounding a dead-server hang to ~tens of seconds. Tuning knob: lower timeo
  *    for snappier dead-mount recovery only if large-read tests still pass.
  *  - nobrowse: keep the volume out of the Finder sidebar/desktop, reducing the
@@ -236,7 +236,7 @@ function makeHandle(
         // already gone
       }
       // rclone flushes its --vfs-cache-mode full write-back cache on SIGTERM;
-      // against a slow or unreachable mesh that flush can outlast the pod's
+      // against a slow or unreachable studio that flush can outlast the pod's
       // terminationGracePeriod and hang shutdown → the sidecar is SIGKILLed
       // (exit 137). Bound the wait, then SIGKILL rclone so teardown always
       // makes progress. Unflushed writes at teardown are best-effort anyway.

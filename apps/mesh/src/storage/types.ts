@@ -1,5 +1,5 @@
 /**
- * Database Types for MCP Mesh
+ * Database Types for Studio
  *
  * These TypeScript interfaces define the database schema using Kysely's type-only approach.
  * PostgreSQL database schema types.
@@ -1658,7 +1658,7 @@ export interface Database {
   automations: AutomationTable;
   automation_triggers: AutomationTriggerTable;
 
-  // Trigger callback tokens (for external MCP → Mesh callbacks)
+  // Trigger callback tokens (for external MCP → Studio callbacks)
   trigger_callback_tokens: TriggerCallbackTokenTable;
 
   // Organization SSO tables

@@ -63,7 +63,7 @@ describe("createBoundAuthClient — API-key authorization", () => {
       auth: stubAuth,
       headers: new Headers(),
       role: "admin",
-      permissions: { self: ["ORGANIZATION_GET"] }, // e.g. a mesh JWT payload
+      permissions: { self: ["ORGANIZATION_GET"] }, // e.g. a studio JWT payload
       // no apiKeyId — not an API key principal
     });
 

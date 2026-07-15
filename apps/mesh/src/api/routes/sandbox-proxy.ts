@@ -51,7 +51,7 @@ import {
 
 interface VmClaim {
   claimName: string;
-  /** Null when no sandbox runner is configured on this mesh instance. */
+  /** Null when no sandbox runner is configured on this studio instance. */
   runner: SandboxProvider | null;
   virtualMcpId: string;
   branch: string;
@@ -591,7 +591,7 @@ export const createSandboxRoutes = () => {
           data: JSON.stringify({
             kind: "failed",
             reason: "unknown",
-            message: "No sandbox runner configured on this mesh.",
+            message: "No sandbox runner configured on this studio instance.",
           } satisfies ClaimPhase),
         });
       });

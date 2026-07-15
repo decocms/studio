@@ -1,5 +1,5 @@
 /**
- * Settings accessor for MCP Mesh.
+ * Settings accessor for Studio.
  *
  * getSettings() returns the frozen Settings object constructed by the
  * startup pipeline. Throws if called before buildSettings() completes.

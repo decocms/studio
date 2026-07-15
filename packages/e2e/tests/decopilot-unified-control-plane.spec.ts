@@ -21,7 +21,7 @@
  *      of the daemon process dying mid-stream: the consume step only ever
  *      observes the JetStream subject, never the daemon's process liveness
  *      directly, so "publishes then goes silent" and "daemon crashed" are
- *      indistinguishable from the mesh's point of view.
+ *      indistinguishable from the studio's point of view.
  *
  * ## Environment facts this suite depends on
  *
@@ -350,7 +350,7 @@ test.describe("decopilot desktop — executor death mid-run reaches a liveness t
       // event, nothing. The consume step only ever watches the JetStream
       // subject, not the daemon's process itself, so this is the faithful
       // black-box equivalent of "the desktop daemon process dies mid-run":
-      // from the mesh's point of view the two are indistinguishable —
+      // from the studio's point of view the two are indistinguishable —
       // both are "no more events on the subject."
       const assistantMessageId = `msg_liveness_${Date.now()}`;
       const textId = `${assistantMessageId}-text-0`;

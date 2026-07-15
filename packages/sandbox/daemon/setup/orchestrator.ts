@@ -529,7 +529,7 @@ export class SetupOrchestrator {
 
   /**
    * Fill missing application fields (packageManager, runtime, port) from
-   * `.decocms/daemon.json` then from lockfile autodetect. Mesh-supplied
+   * `.decocms/daemon.json` then from lockfile autodetect. Studio-supplied
    * config always wins; this only patches gaps.
    *
    * Goes through `store.applyInternal` (not `apply`) so a fresh

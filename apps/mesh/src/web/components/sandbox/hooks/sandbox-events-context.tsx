@@ -1,7 +1,7 @@
 /**
- * Single SSE connection to mesh's `/api/:org/sandbox/:virtualMcpId/:branch/events`, fanned out via context.
+ * Single SSE connection to studio's `/api/:org/sandbox/:virtualMcpId/:branch/events`, fanned out via context.
  *
- * Keyed on `(virtualMcpId, branch)` — mesh derives the userId from the
+ * Keyed on `(virtualMcpId, branch)` — studio derives the userId from the
  * authenticated session and composes the same claim handle a racing
  * SANDBOX_START would. The stream emits in two phases on one connection:
  *
@@ -12,7 +12,7 @@
  *      passthrough from the in-pod daemon's `/_sandbox/events`. Types
  *      come from `@decocms/sandbox/shared`.
  *
- *   3. `event: gone` — synthetic. Mesh's upstream daemon fetch returned 404
+ *   3. `event: gone` — synthetic. Studio's upstream daemon fetch returned 404
  *      (sandbox handle missing → operator-evicted on idle TTL). Mapped to
  *      `notFound` which preview.tsx's self-heal flow turns into a SANDBOX_START.
  *
@@ -255,7 +255,7 @@ export function SandboxEventsProvider({
 
     const handleGone = () => {
       // The sandbox is gone (idle-evicted, SANDBOX_DELETE'd, or its pod terminated
-      // and mesh has stopped finding the handle). Everything we've cached is
+      // and studio has stopped finding the handle). Everything we've cached is
       // about to be stale, so reset.
       setNotFound(true);
       setPhase(null);

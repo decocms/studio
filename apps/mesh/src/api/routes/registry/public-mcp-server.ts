@@ -207,7 +207,7 @@ export function createPublicMCPHandler(
     });
 
     // Forward request to MCP server with a minimal env that satisfies DefaultEnv.
-    // This is a public endpoint (no Mesh proxy), so we provide stub values for
+    // This is a public endpoint (no Studio proxy), so we provide stub values for
     // the required fields that are only used by authenticated/internal flows.
     const env = {
       organizationId: org.id,

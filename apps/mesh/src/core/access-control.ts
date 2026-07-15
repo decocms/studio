@@ -1,5 +1,5 @@
 /**
- * Access Control for MCP Mesh
+ * Access Control for Studio
  *
  * Uses Better Auth's permission system for authorization.
  * Follows a grant-based model:
@@ -184,7 +184,7 @@ export class AccessControl {
     // Two kinds of principal, each with its OWN self-contained rule:
     //   - API key   → the key's stored allowlist is the whole decision. It is a
     //     capability, not a member: no role, no basic-usage, no Better Auth.
-    //   - everyone else (session / MCP OAuth / mesh JWT) → membership floor +
+    //   - everyone else (session / MCP OAuth / studio JWT) → membership floor +
     //     admin/owner bypass + Better Auth grants.
     return this.boundAuth?.isApiKeyPrincipal
       ? this.checkApiKeyAccess(resource)
@@ -205,7 +205,7 @@ export class AccessControl {
   }
 
   /**
-   * Member authorization (session / MCP OAuth / mesh JWT).
+   * Member authorization (session / MCP OAuth / studio JWT).
    *
    * Basic-usage tools are granted to every authenticated org MEMBER regardless
    * of role — resolved here, not baked into each role, so the set evolves with

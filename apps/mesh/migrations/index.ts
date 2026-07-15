@@ -129,7 +129,7 @@ import * as migration127taskboardduedate from "./127-task-board-due-date.ts";
 import * as migration128reportsonly from "./128-reports-only.ts";
 
 /**
- * Core migrations for the Mesh application.
+ * Core migrations for the Studio application.
  *
  * These are managed by Kysely's migrator and run in alphabetical order.
  */

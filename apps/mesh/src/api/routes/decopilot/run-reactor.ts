@@ -83,7 +83,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
   switch (event.type) {
     case "RUN_STARTED": {
       // Single-execution is guaranteed by the DBOS thread-gate queue
-      // (concurrency=1 per threadId partition), so there is no mesh-level
+      // (concurrency=1 per threadId partition), so there is no studio-level
       // run-owner claim to win/lose here — just record the run as active.
       await storage.update(event.taskId, event.orgId, {
         status: "in_progress",

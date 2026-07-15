@@ -2,7 +2,7 @@
  * Trigger Callback Tokens Storage
  *
  * Manages opaque callback tokens that external MCPs use to authenticate
- * trigger callbacks to Mesh. Tokens are stored as SHA-256 hashes;
+ * trigger callbacks to Studio. Tokens are stored as SHA-256 hashes;
  * plaintext is only returned once at creation time.
  */
 
