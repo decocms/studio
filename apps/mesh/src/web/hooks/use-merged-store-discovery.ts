@@ -56,20 +56,22 @@ function isCommunityRegistry(registry: RegistrySource): boolean {
 /**
  * Build a where expression for server-side search on registry items.
  * Searches title, description, name (server.name), and server.title.
+ *
+ * The search is split on whitespace into keywords, each OR'd across every
+ * field — so "vtex shopify" surfaces items matching either (union), letting a
+ * caller open the catalog pre-filtered to several providers at once.
  */
 function buildRegistrySearchWhere(
   search: string | undefined,
 ): Record<string, unknown> | undefined {
-  const trimmed = search?.trim();
-  if (!trimmed) return undefined;
+  const tokens = search?.trim().split(/\s+/).filter(Boolean) ?? [];
+  if (tokens.length === 0) return undefined;
+  const fields = [["title"], ["description"], ["name"], ["server", "title"]];
   return {
     operator: "or",
-    conditions: [
-      { field: ["title"], operator: "contains", value: trimmed },
-      { field: ["description"], operator: "contains", value: trimmed },
-      { field: ["name"], operator: "contains", value: trimmed },
-      { field: ["server", "title"], operator: "contains", value: trimmed },
-    ],
+    conditions: tokens.flatMap((token) =>
+      fields.map((field) => ({ field, operator: "contains", value: token })),
+    ),
   };
 }
 
