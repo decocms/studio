@@ -1,24 +1,14 @@
 /**
  * useChatMainPanelState — Querystring-driven panel layout state for the
- * side panel (chat / blocks) + main panel.
+ * chat + blocks + main panels.
  *
- * The workspace is two panels: the side panel is *how you author* — you either
- * converse with the agent (chat) or edit blocks by hand — and the main panel is
- * *what you get*. Chat and Blocks are alternatives, not neighbours: Blocks is
- * itself a list plus a props editor, so giving it a third of a three-way split
- * left the editor unusably narrow.
- *
- * URL model — the two panels read the same way, `<panel>=<surface>|0`:
- *   ?main=<tabId>        main panel open, tab active
- *   ?main=0              main panel closed
- *   ?main absent         default (open for non-chat, non-blocks main views)
- *   ?sidepanel=chat|blocks   which surface the side panel shows
- *   ?sidepanel=0         side panel collapsed
- *   ?virtualmcpid        which MCP the chat + main panel are scoped to
- *
- * Legacy `?chat=0|1` / `?blocks=0|1` / `?main=blocks` links still resolve (see
- * resolveSidePanel); every write clears them so a stale param can't fight
- * `?sidepanel` on the next read.
+ * URL model:
+ *   ?main=<tabId>    main panel open, tab active
+ *   ?main=0          main panel closed
+ *   ?main absent     default (open for non-chat, non-blocks main views)
+ *   ?chat=0|1        chat panel open state
+ *   ?blocks=0|1      blocks panel open state
+ *   ?virtualmcpid    which MCP the chat + right panel are scoped to
  */
 
 import { useRef } from "react";
@@ -39,15 +29,18 @@ export interface EntityLayoutMetadata {
     toolName?: string;
   } | null;
   /**
-   * When true, the side panel opens on chat alongside the main view. Ignored
-   * when defaultMainView is chat (chat is always the side surface then).
+   * When true, the chat panel is open alongside the main view. Ignored
+   * when defaultMainView is chat (chat is always open in that case).
    */
   chatDefaultOpen?: boolean | null;
   tabs?: Array<{ id: string }>;
 }
 
-export interface ChatMainLayoutState extends WorkspaceVisibility {
+export interface ChatMainLayoutState {
   taskId: string;
+  mainOpen: boolean;
+  chatOpen: boolean;
+  blocksOpen: boolean;
   /** Current ?main value (undefined when param absent). "0" = closed. */
   mainParam: string | undefined;
 }
@@ -55,7 +48,8 @@ export interface ChatMainLayoutState extends WorkspaceVisibility {
 export interface ChatMainLayoutActions {
   setTaskId: (id: string, virtualMcpId?: string) => void;
   toggleMain: () => void;
-  selectSidePanel: (tab: SidePanelTab) => void;
+  toggleChat: () => void;
+  toggleBlocks: () => void;
   setMobileSurface: (surface: MobileWorkspaceSurface) => void;
   openChat: () => void;
   createNewTask: () => void;
@@ -66,101 +60,73 @@ export interface ChatMainLayoutActions {
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
 
-/** The two surfaces the side panel can show. */
-export type SidePanelTab = "chat" | "blocks";
+export type WorkspacePanel = "chat" | "blocks" | "main";
 
 export interface WorkspaceVisibility {
-  /** Which surface the side panel shows, or null while it is collapsed. */
-  sidePanel: SidePanelTab | null;
+  chatOpen: boolean;
+  blocksOpen: boolean;
   mainOpen: boolean;
 }
 
 export type WorkspacePanelAction =
-  | { type: "selectSidePanel"; tab: SidePanelTab }
+  | { type: "toggleChat" }
+  | { type: "toggleBlocks" }
   | { type: "toggleMain"; openMainValue: string }
   | { type: "openChat" };
 
 export type WorkspacePanelSearchUpdate = {
-  sidepanel?: SidePanelTab | 0;
+  chat?: 0 | 1;
+  blocks?: 0 | 1;
   main?: string | 0;
-  /** Cleared alongside every `sidepanel` write so legacy links stop resolving. */
-  chat?: undefined;
-  blocks?: undefined;
 };
 
-/**
- * Search-param update that puts a surface into the side panel (or collapses it
- * with `0`). Writing `sidepanel` retires the legacy params that would otherwise
- * shadow it on the next read — anything navigating the side panel must go
- * through here rather than setting `chat` / `blocks` by hand.
- */
-export function sidePanelSearch(
-  sidepanel: SidePanelTab | 0,
-): WorkspacePanelSearchUpdate {
-  return { sidepanel, chat: undefined, blocks: undefined };
-}
+export function canCloseWorkspacePanel(
+  panel: WorkspacePanel,
+  visibility: WorkspaceVisibility,
+): boolean {
+  const openPanelCount =
+    Number(visibility.chatOpen) +
+    Number(visibility.blocksOpen) +
+    Number(visibility.mainOpen);
 
-/**
- * A legacy `?main=blocks` link carried Blocks as the main view; keep it on
- * screen as the side surface now that a tab is taking over main.
- */
-export function carryLegacyBlocksMainView(prev: {
-  main?: unknown;
-  sidepanel?: unknown;
-}): WorkspacePanelSearchUpdate {
-  return prev.main === "blocks" && prev.sidepanel === undefined
-    ? sidePanelSearch("blocks")
-    : {};
-}
+  if (openPanelCount <= 1) return false;
 
-/**
- * Either panel may collapse only while the other is still on screen — one of
- * them has to be showing something.
- */
-export function canCollapsePanel(visibility: WorkspaceVisibility): boolean {
-  return visibility.sidePanel !== null && visibility.mainOpen;
+  switch (panel) {
+    case "chat":
+      return visibility.chatOpen;
+    case "blocks":
+      return visibility.blocksOpen;
+    case "main":
+      return visibility.mainOpen;
+  }
 }
 
 function withWorkspaceFallback(
   visibility: WorkspaceVisibility,
 ): WorkspaceVisibility {
-  if (visibility.sidePanel || visibility.mainOpen) return visibility;
-  return { ...visibility, sidePanel: "chat" };
-}
-
-function parseSidePanelParam(value: string | 0): SidePanelTab {
-  return value === "blocks" ? "blocks" : "chat";
-}
-
-/**
- * Resolve the side surface from the URL, falling back to the entity default.
- *
- * Legacy `?chat` / `?blocks` are read only when `?sidepanel` is absent. When
- * both legacy params ask to be open, blocks wins: it is the more specific
- * intent, and the pair was never a state any entity default produced.
- */
-export function resolveSidePanel(
-  defaultSidePanel: SidePanelTab | null,
-  params: { sidepanel?: string | 0; chat?: number; blocks?: number },
-): SidePanelTab | null {
-  if (params.sidepanel !== undefined) {
-    return params.sidepanel === 0 || params.sidepanel === "0"
-      ? null
-      : parseSidePanelParam(params.sidepanel);
+  if (visibility.chatOpen || visibility.blocksOpen || visibility.mainOpen) {
+    return visibility;
   }
-  if (params.blocks === 1) return "blocks";
-  if (params.chat === 1) return "chat";
-  if (params.blocks === 0 && defaultSidePanel === "blocks") return null;
-  if (params.chat === 0 && defaultSidePanel === "chat") return null;
-  return defaultSidePanel;
+
+  return { ...visibility, chatOpen: true };
+}
+
+function parsePanelParam(
+  value: number | undefined,
+  defaultOpen: boolean,
+): boolean {
+  if (value === 1) return true;
+  if (value === 0) return false;
+  return defaultOpen;
 }
 
 export function resolveWorkspaceVisibility(
   defaults: WorkspaceVisibility,
-  params: { sidepanel?: string | 0; chat?: number; blocks?: number },
+  params: { chat?: number; blocks?: number },
 ): WorkspaceVisibility {
   return withWorkspaceFallback({
-    sidePanel: resolveSidePanel(defaults.sidePanel, params),
+    chatOpen: parsePanelParam(params.chat, defaults.chatOpen),
+    blocksOpen: parsePanelParam(params.blocks, defaults.blocksOpen),
     mainOpen: defaults.mainOpen,
   });
 }
@@ -170,20 +136,27 @@ export function resolveWorkspacePanelAction(
   visibility: WorkspaceVisibility,
 ): WorkspacePanelSearchUpdate | null {
   switch (action.type) {
-    case "selectSidePanel":
-      // Re-selecting the active surface collapses the panel; a different
-      // surface swaps into it rather than opening a second column.
-      if (visibility.sidePanel !== action.tab) {
-        return sidePanelSearch(action.tab);
+    case "toggleChat":
+      if (visibility.chatOpen && !canCloseWorkspacePanel("chat", visibility)) {
+        return null;
       }
-      return canCollapsePanel(visibility) ? sidePanelSearch(0) : null;
+      return { chat: visibility.chatOpen ? 0 : 1 };
+    case "toggleBlocks":
+      if (
+        visibility.blocksOpen &&
+        !canCloseWorkspacePanel("blocks", visibility)
+      ) {
+        return null;
+      }
+      return { blocks: visibility.blocksOpen ? 0 : 1 };
     case "toggleMain":
       if (visibility.mainOpen) {
-        return canCollapsePanel(visibility) ? { main: 0 } : null;
+        if (!canCloseWorkspacePanel("main", visibility)) return null;
+        return { main: 0 };
       }
       return { main: action.openMainValue };
     case "openChat":
-      return visibility.sidePanel === "chat" ? null : sidePanelSearch("chat");
+      return visibility.chatOpen ? null : { chat: 1 };
   }
 }
 
@@ -191,6 +164,8 @@ export function resolveDefaultPanelState(ctx: {
   entityMetadata: EntityLayoutMetadata | null;
   mainParamPresent: boolean;
   mainParamValue?: string | 0;
+  blocksParamPresent: boolean;
+  blocksParamValue?: number;
 }): WorkspaceVisibility {
   const mainParamValue = ctx.mainParamValue === 0 ? "0" : ctx.mainParamValue;
   const def = ctx.entityMetadata?.defaultMainView ?? null;
@@ -204,43 +179,47 @@ export function resolveDefaultPanelState(ctx: {
       ? mainParamValue !== "0"
       : !defaultIsChat && !defaultIsBlocks;
 
-  // Chat is the side surface when it IS the default view. Otherwise the side
-  // panel opens on chat alongside the main view only when the agent's layout
-  // opts in via chatDefaultOpen.
-  const sidePanel: SidePanelTab | null =
+  // Chat is always open when it IS the default view. Otherwise it opens
+  // alongside the main view only when the agent's layout opts in via
+  // chatDefaultOpen.
+  const chatOpen =
     legacyBlocksView || defaultIsBlocks
-      ? "blocks"
+      ? false
       : defaultIsChat
-        ? "chat"
-        : ctx.entityMetadata?.chatDefaultOpen
-          ? "chat"
-          : null;
+        ? true
+        : (ctx.entityMetadata?.chatDefaultOpen ?? false);
+  const blocksOpen = parsePanelParam(
+    ctx.blocksParamPresent ? ctx.blocksParamValue : undefined,
+    legacyBlocksView || defaultIsBlocks,
+  );
 
-  return withWorkspaceFallback({ sidePanel, mainOpen });
+  return withWorkspaceFallback({
+    mainOpen,
+    chatOpen,
+    blocksOpen,
+  });
 }
 
-/**
- * Default width (percent) of the side panel per surface. Chat is a
- * conversation column; blocks is a fixed 240px list plus a props editor, so it
- * needs roughly half the workspace before the editor is usable.
- */
-export const DEFAULT_SIDE_PANEL_WIDTH: Record<SidePanelTab, number> = {
-  chat: 33,
-  blocks: 50,
-};
-
 export interface WorkspacePanelSizes {
-  sidePanel: number;
+  chat: number;
+  blocks: number;
   main: number;
 }
 
 export function computeWorkspacePanelSizes(
   visibility: WorkspaceVisibility,
 ): WorkspacePanelSizes {
-  if (!visibility.sidePanel) return { sidePanel: 0, main: 100 };
-  if (!visibility.mainOpen) return { sidePanel: 100, main: 0 };
-  const sidePanel = DEFAULT_SIDE_PANEL_WIDTH[visibility.sidePanel];
-  return { sidePanel, main: 100 - sidePanel };
+  const { chatOpen, blocksOpen, mainOpen } = visibility;
+  if (chatOpen && blocksOpen && mainOpen) {
+    return { chat: 25, blocks: 35, main: 40 };
+  }
+  if (chatOpen && blocksOpen) return { chat: 40, blocks: 60, main: 0 };
+  if (chatOpen && mainOpen) return { chat: 33, blocks: 0, main: 67 };
+  if (blocksOpen && mainOpen) return { chat: 0, blocks: 40, main: 60 };
+  if (chatOpen) return { chat: 100, blocks: 0, main: 0 };
+  if (blocksOpen) return { chat: 0, blocks: 100, main: 0 };
+  if (mainOpen) return { chat: 0, blocks: 0, main: 100 };
+  return { chat: 0, blocks: 0, main: 0 };
 }
 
 export type MobileWorkspaceSurface = "chat" | "blocks" | "main";
@@ -248,17 +227,15 @@ export type MobileWorkspaceSurface = "chat" | "blocks" | "main";
 export function mobileSurfaceSearch(
   surface: MobileWorkspaceSurface,
   mainTabId: string,
-): WorkspacePanelSearchUpdate {
-  if (surface === "main") return { ...sidePanelSearch(0), main: mainTabId };
-  return { ...sidePanelSearch(surface), main: 0 };
-}
-
-/** Which single surface a mobile viewport shows for a given layout state. */
-export function resolveMobileSurface(
-  visibility: WorkspaceVisibility,
-): MobileWorkspaceSurface {
-  if (visibility.sidePanel === "blocks") return "blocks";
-  return visibility.mainOpen ? "main" : "chat";
+): Required<Pick<WorkspacePanelSearchUpdate, "chat" | "blocks" | "main">> {
+  switch (surface) {
+    case "chat":
+      return { chat: 1, blocks: 0, main: 0 };
+    case "blocks":
+      return { chat: 0, blocks: 1, main: 0 };
+    case "main":
+      return { chat: 0, blocks: 0, main: mainTabId };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -266,7 +243,6 @@ export function resolveMobileSurface(
 // ---------------------------------------------------------------------------
 
 type PanelSearchParams = {
-  sidepanel?: SidePanelTab | 0;
   chat?: number;
   blocks?: number;
   main?: string | 0;
@@ -303,10 +279,15 @@ export function useChatMainPanelState(
     entityMetadata,
     mainParamPresent: search.main !== undefined,
     mainParamValue: mainParam,
+    blocksParamPresent: search.blocks !== undefined,
+    blocksParamValue: search.blocks,
   });
 
-  const visibility = resolveWorkspaceVisibility(defaults, search);
-  const { sidePanel, mainOpen } = visibility;
+  const { chatOpen, blocksOpen, mainOpen } = resolveWorkspaceVisibility(
+    defaults,
+    search,
+  );
+  const visibility = { chatOpen, blocksOpen, mainOpen };
 
   const fallbackRef = useRef(crypto.randomUUID());
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
@@ -341,21 +322,32 @@ export function useChatMainPanelState(
     });
   };
 
-  const applyAction = (action: WorkspacePanelAction) => {
-    const update = resolveWorkspacePanelAction(action, visibility);
+  const toggleMain = () => {
+    const update = resolveWorkspacePanelAction(
+      {
+        type: "toggleMain",
+        openMainValue: resolveDefaultTabId(entityMetadata),
+      },
+      visibility,
+    );
     if (update) navigateSearch(update, { replace: true });
   };
 
-  const toggleMain = () =>
-    applyAction({
-      type: "toggleMain",
-      openMainValue: resolveDefaultTabId(entityMetadata),
-    });
+  const toggleChat = () => {
+    const update = resolveWorkspacePanelAction(
+      { type: "toggleChat" },
+      visibility,
+    );
+    if (update) navigateSearch(update, { replace: true });
+  };
 
-  const selectSidePanel = (tab: SidePanelTab) =>
-    applyAction({ type: "selectSidePanel", tab });
-
-  const openChat = () => applyAction({ type: "openChat" });
+  const toggleBlocks = () => {
+    const update = resolveWorkspacePanelAction(
+      { type: "toggleBlocks" },
+      visibility,
+    );
+    if (update) navigateSearch(update, { replace: true });
+  };
 
   const setMobileSurface = (surface: MobileWorkspaceSurface) => {
     const activeMainTab =
@@ -365,6 +357,14 @@ export function useChatMainPanelState(
     navigateSearch(mobileSurfaceSearch(surface, activeMainTab), {
       replace: true,
     });
+  };
+
+  const openChat = () => {
+    const update = resolveWorkspacePanelAction(
+      { type: "openChat" },
+      visibility,
+    );
+    if (update) navigateSearch(update, { replace: true });
   };
 
   // Carry the active task's branch into the new thread so it lands on the
@@ -388,7 +388,7 @@ export function useChatMainPanelState(
       search: (_prev: Record<string, unknown>) => {
         const next: Record<string, unknown> = {
           ...preserveVirtualMcp,
-          sidepanel: "chat",
+          chat: 1,
         };
         return next;
       },
@@ -398,10 +398,9 @@ export function useChatMainPanelState(
   const openTab = (id: string) => {
     navigateSearch(
       {
-        ...carryLegacyBlocksMainView({
-          main: mainParam,
-          sidepanel: search.sidepanel,
-        }),
+        ...(mainParam === "blocks" && search.blocks === undefined
+          ? { blocks: 1 }
+          : {}),
         main: id === "0" ? 0 : id,
       },
       { replace: true },
@@ -410,12 +409,14 @@ export function useChatMainPanelState(
 
   return {
     taskId,
-    sidePanel,
     mainOpen,
+    chatOpen,
+    blocksOpen,
     mainParam,
     setTaskId,
     toggleMain,
-    selectSidePanel,
+    toggleChat,
+    toggleBlocks,
     setMobileSurface,
     openChat,
     createNewTask,

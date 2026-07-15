@@ -45,10 +45,10 @@ async function createClonableAgent(
   return { agentId: agent.item.id, threadId: thread.item.id };
 }
 
-test.describe("Blocks in the shared side panel", () => {
+test.describe("standalone Blocks panel", () => {
   test.setTimeout(90_000);
 
-  test("Chat and Blocks swap in the side panel while Main stays put", async ({
+  test("Chat, Blocks, and Main toggle independently on desktop", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -57,7 +57,7 @@ test.describe("Blocks in the shared side panel", () => {
       orgSlug,
     );
     await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=chat&main=settings`,
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&chat=1&blocks=0&main=settings`,
     );
 
     const chat = page.getByTestId("chat-panel");
@@ -73,34 +73,24 @@ test.describe("Blocks in the shared side panel", () => {
     await expect(main).toBeVisible();
     await expect(blocks).toBeHidden();
 
-    // Selecting Blocks replaces Chat in the side panel rather than opening a
-    // third column, and leaves Main untouched.
     await blocksToggle.click();
-    await expect(page).toHaveURL(/sidepanel=blocks/);
+    await expect(page).toHaveURL(/blocks=1/);
     await expect(page).toHaveURL(/main=settings/);
+    await expect(chat).toBeVisible();
     await expect(blocks).toBeVisible();
-    await expect(chat).toBeHidden();
     await expect(main).toBeVisible();
 
     await page.getByRole("button", { name: "Preview", exact: true }).click();
     await expect(page).toHaveURL(/main=preview/);
     await expect(blocks).toBeVisible();
 
-    // Re-selecting the active surface collapses the side panel.
     await blocksToggle.click();
-    await expect(page).toHaveURL(/sidepanel=0/);
+    await expect(page).toHaveURL(/blocks=0/);
     await expect(main).toBeVisible();
-    await expect(blocks).toBeHidden();
-    await expect(chat).toBeHidden();
-
-    // Chat comes back into the same panel.
-    await page.getByRole("button", { name: "Chat", exact: true }).click();
-    await expect(page).toHaveURL(/sidepanel=chat/);
-    await expect(chat).toBeVisible();
     await expect(blocks).toBeHidden();
   });
 
-  test("legacy ?main=blocks links preserve the final visible panel guard", async ({
+  test("legacy Blocks-only links preserve the final visible panel guard", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -125,25 +115,6 @@ test.describe("Blocks in the shared side panel", () => {
     await expect(blocksToggle).toBeDisabled();
   });
 
-  test("a legacy ?chat=1&blocks=1 link lands on Blocks", async ({
-    authedPage,
-  }) => {
-    const { page, orgSlug } = authedPage;
-    const { agentId, threadId } = await createClonableAgent(
-      page.context().request,
-      orgSlug,
-    );
-    await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&chat=1&blocks=1&main=settings`,
-    );
-
-    await expect(page.getByTestId("blocks-panel-shell")).toBeVisible({
-      timeout: 30_000,
-    });
-    await expect(page.getByTestId("chat-panel")).toBeHidden();
-    await expect(page.getByTestId("main-panel")).toBeVisible();
-  });
-
   test("mobile renders one workspace surface at a time", async ({
     authedPage,
   }) => {
@@ -154,7 +125,7 @@ test.describe("Blocks in the shared side panel", () => {
       orgSlug,
     );
     await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=0&main=settings`,
+      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&chat=0&blocks=0&main=settings`,
     );
 
     const chatToggle = page.getByRole("button", {
@@ -164,7 +135,8 @@ test.describe("Blocks in the shared side panel", () => {
     await expect(chatToggle).toBeVisible({ timeout: 30_000 });
     await expect(chatToggle).toHaveAttribute("aria-pressed", "false");
     await chatToggle.click();
-    await expect(page).toHaveURL(/sidepanel=chat/);
+    await expect(page).toHaveURL(/chat=1/);
+    await expect(page).toHaveURL(/blocks=0/);
     await expect(page).toHaveURL(/main=0/);
     await expect(chatToggle).toHaveAttribute("aria-pressed", "true");
     await expect(chatToggle).toBeDisabled();
@@ -176,7 +148,8 @@ test.describe("Blocks in the shared side panel", () => {
       exact: true,
     });
     await blocksToggle.click();
-    await expect(page).toHaveURL(/sidepanel=blocks/);
+    await expect(page).toHaveURL(/chat=0/);
+    await expect(page).toHaveURL(/blocks=1/);
     await expect(chatToggle).toHaveAttribute("aria-pressed", "false");
     await expect(blocksToggle).toHaveAttribute("aria-pressed", "true");
     await expect(blocksToggle).toBeDisabled();
@@ -184,7 +157,7 @@ test.describe("Blocks in the shared side panel", () => {
 
     await page.getByRole("combobox", { name: "Main panel tab" }).click();
     await page.getByRole("option", { name: "Settings" }).click();
-    await expect(page).toHaveURL(/sidepanel=0/);
+    await expect(page).toHaveURL(/blocks=0/);
     await expect(page).toHaveURL(/main=settings/);
     await expect(blocksToggle).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByTestId("main-panel")).toBeVisible();
