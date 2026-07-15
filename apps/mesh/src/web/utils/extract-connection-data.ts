@@ -132,8 +132,13 @@ export function extractConnectionData(
   const packageIndex = options?.packageIndex ?? 0;
   const remoteIndex = options?.remoteIndex ?? 0;
 
-  // If packageIndex is specified and packages exist, use package (STDIO)
-  const usePackage = packages.length > 0 && options?.packageIndex !== undefined;
+  // Use a package (STDIO) when the caller explicitly picked one, or when
+  // there's no remote to fall back to — otherwise a package-only registry
+  // item (no `remotes`) always fell through to the empty-URL "Fallback"
+  // branch below, since no caller passes `packageIndex`.
+  const usePackage =
+    packages.length > 0 &&
+    (options?.packageIndex !== undefined || remotes.length === 0);
   const selectedPackage = usePackage ? packages[packageIndex] : null;
   const selectedRemote = !usePackage ? remotes[remoteIndex] : null;
 
