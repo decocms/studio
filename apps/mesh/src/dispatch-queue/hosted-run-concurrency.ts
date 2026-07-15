@@ -26,13 +26,48 @@
  */
 
 import { createConcurrencyGate } from "@/harnesses/decopilot/built-in-tools/subagent-concurrency";
+import { meter } from "@/observability";
 
 // A non-finite / non-positive env value would make the gate never block (fail
 // OPEN — the exact unbounded OOM this file prevents), so guard the default.
+// Default 3: prod worker is 768Mi request / 2Gi limit, run working set p90
+// ~450MB — 3×450≈1.35GB stays under the limit, 4-5 would OOM on p90 alone, and
+// a lower cap just parks more (which the KEDA queue-depth trigger can't see —
+// parked runs are PENDING, not ENQUEUED). The 1.8GB JSON.parse tail can still
+// OOM at any cap≥2; that's recovery's job, not this gate's.
 const parsed = Number(process.env.DECOPILOT_MAX_CONCURRENT_HOSTED_RUNS);
 const MAX = Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
 
 const gate = createConcurrencyGate(MAX);
+
+// The gate caps memory, which flattens the CPU/memory signals a plain HPA scales
+// on — so the backlog of PARKED runs is the only thing that reflects saturation.
+// Export it as a gauge so a queue-depth/KEDA trigger can add workers when runs
+// start waiting (parked runs are pinned to this pod; scaling relieves the queue,
+// not the in-flight backlog).
+meter
+  .createObservableGauge("hosted_runs.active", {
+    description: "Hosted agent-loop runs executing on this pod",
+    unit: "{runs}",
+  })
+  .addCallback((r) => r.observe(gate.active));
+meter
+  .createObservableGauge("hosted_runs.pending", {
+    description: "Hosted agent-loop runs parked waiting for a slot on this pod",
+    unit: "{runs}",
+  })
+  .addCallback((r) => r.observe(gate.pending));
+
+/**
+ * Live gate stats for the `/hosted-run-pending` metrics-api endpoint (KEDA).
+ * `pending` is the scale signal: parked runs are DBOS-PENDING (dequeued), so
+ * they're invisible to the ENQUEUED-only queue-depth endpoint.
+ */
+export const hostedRunStats = (): {
+  active: number;
+  pending: number;
+  max: number;
+} => ({ active: gate.active, pending: gate.pending, max: MAX });
 
 export const acquireHostedRunSlot = (): Promise<() => void> => {
   // Log when a run parks so a saturating pod is visible in prod — the whole
