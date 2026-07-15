@@ -31,7 +31,7 @@
  */
 
 import { sleep } from "@decocms/std";
-import { detachMount } from "./detach-mount";
+import { detachMountAsync } from "./detach-mount";
 import type { MountHandle, Mounter } from "./mount-manager";
 
 export { detachMount } from "./detach-mount";
@@ -137,8 +137,10 @@ export function createRcloneMounter(
         throw new Error("org-fs mounts are not supported on Windows");
       }
       // Reclaim: clear a stale mount from a prior killed session so we don't
-      // layer a fresh mount over a hung one (no-op on a clean path).
-      detachMount(mountPath, isMac);
+      // layer a fresh mount over a hung one (no-op on a clean path). Async so
+      // a wedged fusermount/umount can't freeze the daemon's event loop (see
+      // detach-mount.ts's detachMountAsync doc).
+      await detachMountAsync(mountPath, isMac);
 
       const args = buildMountArgs({
         isMac,
@@ -227,7 +229,7 @@ function makeHandle(
     exited: proc.exited,
     async unmount() {
       // Detach the OS mount first, then stop the foreground rclone child.
-      detachMount(mountPath, isMac);
+      await detachMountAsync(mountPath, isMac);
       try {
         proc.kill();
       } catch {
