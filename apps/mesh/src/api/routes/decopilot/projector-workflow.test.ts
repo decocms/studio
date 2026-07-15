@@ -75,7 +75,8 @@ interface FakeCall {
     | "fail"
     | "record-complete"
     | "record-fail"
-    | "purge";
+    | "purge"
+    | "clear-error";
   runId?: string;
   orgId?: string;
   distinctId?: string;
@@ -132,6 +133,9 @@ function makeRuntime(): { rt: ProjectorWorkflowRuntime; calls: FakeCall[] } {
     },
     purgeRun: async (runId, fenceToken) => {
       calls.push({ kind: "purge", runId, fenceToken });
+    },
+    clearSynthesizedError: async (runId, fenceToken) => {
+      calls.push({ kind: "clear-error", runId, fenceToken });
     },
   };
 

@@ -21,6 +21,32 @@ export class StreamIdleTimeoutError extends Error {
   }
 }
 
+/**
+ * Thrown when the fenced chunk sequence has a hole: the subject no longer
+ * retains a chunk the projection needs (retention discard — the stream's 4GB
+ * `DiscardPolicy.Old` / 24h age caps — or a purge racing a redelivery).
+ * Distinguishable via `instanceof` from a genuine projection bug because the
+ * caller must treat it differently: redelivery can NEVER succeed (the data is
+ * gone), so the projector maps this to a clean terminal failure instead of
+ * rethrowing into DBOS step retries that are pure burn (see
+ * `runProjectorWorkflowBody`'s catch in `projector-workflow.ts`).
+ * `gotSeq === null` means the fenced done arrived before `expectedSeq` was
+ * ever delivered (tail truncation under the done's `finalSeq`).
+ */
+export class StreamGapError extends Error {
+  constructor(
+    public readonly expectedSeq: number,
+    public readonly gotSeq: number | null,
+  ) {
+    super(
+      gotSeq === null
+        ? `missing seq ${expectedSeq} (stream ended at the fenced done)`
+        : `missing seq ${expectedSeq} (next delivered is ${gotSeq})`,
+    );
+    this.name = "StreamGapError";
+  }
+}
+
 export function fenceFilter(
   runId: string,
   fenceToken: string,
@@ -50,7 +76,7 @@ export function assertContiguousAndDedup(): TransformStream<
       }
       if (ev.seq < nextSeq) return; // dedup replay (resend past the dedup window)
       if (ev.seq > nextSeq) {
-        controller.error(new Error(`missing seq ${nextSeq}`));
+        controller.error(new StreamGapError(nextSeq, ev.seq));
         return;
       }
       nextSeq++;
@@ -89,7 +115,7 @@ export function projectorChunkStream(
           if (ev.envelopeFinalSeq !== lastSeq) {
             await reader.cancel();
             release();
-            controller.error(new Error(`missing seq ${lastSeq + 1}`));
+            controller.error(new StreamGapError(lastSeq + 1, null));
             return;
           }
           await reader.cancel();

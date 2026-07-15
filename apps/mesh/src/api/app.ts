@@ -169,6 +169,7 @@ import {
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
+import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import {
@@ -1501,6 +1502,17 @@ export async function createApp(options: CreateAppOptions = {}) {
       );
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
       return flipped;
+    },
+    clearSynthesizedError: async (runId, fenceToken) => {
+      // Replace-with-empty = delete the synthesized error message a prior
+      // interrupted attempt persisted for this fence (deterministic id).
+      await projectorThreadStorage
+        .messageParts()
+        .replaceMessageParts(
+          runId,
+          synthesizedErrorMessageId(runId, fenceToken),
+          [],
+        );
     },
     persistTitle: (runId, orgId, title) =>
       projectorThreadStorage.update(runId, orgId, { title }),
