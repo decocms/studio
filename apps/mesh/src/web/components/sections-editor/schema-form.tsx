@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { resolveSchema } from "./resolve-schema";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
 import { StringField } from "./fields/string-field";
@@ -18,6 +20,7 @@ import { isSecretBlock, SecretField } from "./fields/secret-field";
 import {
   isMultivariateArrayWrapper,
   isPageMultivariateSectionArrayField,
+  isSectionMultivariateWrapperValue,
   unwrapMultivariateArrayValue,
   wrapMultivariateArrayValue,
 } from "./page-variants";
@@ -324,6 +327,62 @@ export function renderField(props: FieldProps) {
   }
 }
 
+/**
+ * Render the value of a single multivariate variant (its `value` field).
+ *
+ * Section variants hold a full section; render it through the normal
+ * block-ref/section editor (breadcrumbs + drill-down keep working). When the
+ * flag's `value` type couldn't be resolved (schema depth limits), fall back to
+ * resolving the concrete value's own `__resolveType`.
+ */
+function renderMultivariateInnerField(
+  props: FieldProps,
+  variantValueSchema: SchemaProperty | undefined,
+): ReactNode {
+  if (
+    variantValueSchema &&
+    (variantValueSchema.type === "block-ref" ||
+      variantValueSchema.anyOfRefs ||
+      variantValueSchema.properties)
+  ) {
+    return renderField({ ...props, schema: variantValueSchema });
+  }
+
+  const value = props.value;
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).__resolveType === "string" &&
+    props.meta
+  ) {
+    const innerSchema = resolveSchema(
+      (value as Record<string, unknown>).__resolveType as string,
+      props.meta,
+    );
+    if (innerSchema) {
+      return (
+        <SchemaForm
+          schema={innerSchema}
+          value={value}
+          onChange={props.onChange}
+          basePath={props.path}
+          breadcrumbPath={props.breadcrumbPath}
+          onBreadcrumbChange={props.onBreadcrumbChange}
+          meta={props.meta}
+          decofile={props.decofile}
+          onSaveReferencedBlock={props.onSaveReferencedBlock}
+          sandbox={props.sandbox}
+        />
+      );
+    }
+  }
+
+  return renderField(
+    variantValueSchema ? { ...props, schema: variantValueSchema } : props,
+  );
+}
+
 export function SchemaForm({
   schema,
   value,
@@ -358,6 +417,38 @@ export function SchemaForm({
 }) {
   const properties = schema.properties;
   if (!properties) return null;
+
+  // A section-level multivariate flag (`website/flags/multivariate/section.ts`)
+  // opened directly — e.g. a saved/global block that wraps a section in
+  // variants. Its schema is `{ variants: Variant<Section>[] }`, so the generic
+  // object form would render `variants` as a plain "Item 1 / Item 2" array.
+  // Render the variant editor (rule matcher + per-variant section form) instead.
+  if (isSectionMultivariateWrapperValue(value) && properties.variants) {
+    const variantValueSchema = properties.variants.items?.properties?.value;
+    return (
+      <MultivariateFieldWrapper
+        key={basePath}
+        schema={schema}
+        value={value}
+        onChange={onChange}
+        path={basePath}
+        label={schema.title ?? ""}
+        breadcrumbPath={breadcrumbPath}
+        onBreadcrumbChange={onBreadcrumbChange}
+        meta={meta}
+        decofile={decofile}
+        onSaveReferencedBlock={onSaveReferencedBlock}
+        previewBaseUrl={previewBaseUrl}
+        onAddSectionItem={onAddSectionItem}
+        onRequestAddSection={onRequestAddSection}
+        sandbox={sandbox}
+        multivariateResolveType={value.__resolveType}
+        renderInnerField={(fieldProps) =>
+          renderMultivariateInnerField(fieldProps, variantValueSchema)
+        }
+      />
+    );
+  }
 
   const objValue =
     value != null && typeof value === "object" && !Array.isArray(value)
