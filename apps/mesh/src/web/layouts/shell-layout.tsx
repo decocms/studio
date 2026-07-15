@@ -5,6 +5,7 @@ import { FloatingReleaseCard } from "@/web/components/release-channel/floating-r
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
 import { VersionCheckDialog } from "@/web/components/version-check-dialog";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
+import { sidePanelSearch } from "@/web/hooks/use-layout-state";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
 import { AUTOSEND_QUERY_VALUE } from "@/web/lib/autosend";
@@ -112,7 +113,7 @@ export function usePanelActions() {
   ) => navWith(currentTaskId, searchFn, replace);
 
   const setChatOpen = (open: boolean) =>
-    nav((prev) => ({ ...prev, chat: open ? 1 : 0 }));
+    nav((prev) => ({ ...prev, ...sidePanelSearch(open ? "chat" : 0) }));
 
   const setTaskId = (
     id: string,
@@ -122,7 +123,7 @@ export function usePanelActions() {
     navWith(
       id,
       (prev) => {
-        const next: Record<string, unknown> = { chat: 1 };
+        const next: Record<string, unknown> = { sidepanel: "chat" };
         if (virtualMcpId) next.virtualmcpid = virtualMcpId;
         else if (prev.virtualmcpid) next.virtualmcpid = prev.virtualmcpid;
         // An agent switch (target vMCP differs from the current) must NOT carry

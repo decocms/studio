@@ -249,6 +249,9 @@ const unifiedChatSearchSchema = z.object({
   toolName: z.string().optional(),
   tasks: z.number().optional(),
   mainOpen: z.number().optional(),
+  /** Which surface the side panel shows; 0 collapses it. Mirrors `main`. */
+  sidepanel: z.union([z.enum(["chat", "blocks"]), z.literal(0)]).optional(),
+  /** Legacy side-panel params, still read when `sidepanel` is absent. */
   chat: z.number().optional(),
   blocks: z.number().optional(),
   autosend: z.string().optional(),

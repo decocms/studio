@@ -14,7 +14,7 @@
  *           • Chat.Provider
  *             └── VmEventsBridge
  *                 └── Chat.ActiveTaskProvider
- *                     └── WorkspacePanelGroup (Chat | Blocks | Main)
+ *                     └── WorkspacePanelGroup (Side: Chat|Blocks | Main)
  *                         (the per-thread todo list is rendered
  *                          by TodosHighlight inside ChatHighlight,
  *                          not as a side column)
@@ -55,7 +55,11 @@ import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
 import { EmptyState } from "@/web/components/empty-state";
-import { useChatMainPanelState } from "@/web/hooks/use-layout-state";
+import {
+  canCollapsePanel,
+  resolveMobileSurface,
+  useChatMainPanelState,
+} from "@/web/hooks/use-layout-state";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { Toolbar } from "./toolbar";
 import { WorkspacePanelGroup } from "./workspace-panel-group";
@@ -231,20 +235,22 @@ function DesktopTaskWorkspace({
   layout: TaskLayout;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
 }) {
+  // Chat and Blocks share the side panel, so a toggle only ever collapses the
+  // panel when it is already showing that surface and Main can carry the view.
+  const canCollapseSide = canCollapsePanel(layout);
+
   return (
     <>
       <Toolbar.Toggles>
         <ToggleButtons
-          chatOpen={layout.chatOpen}
-          toggleChat={layout.toggleChat}
+          chatOpen={layout.sidePanel === "chat"}
+          toggleChat={() => layout.selectSidePanel("chat")}
           blocksAvailable={agentHasClonableSource(entity.metadata)}
-          blocksOpen={layout.blocksOpen}
-          toggleBlocks={layout.toggleBlocks}
-          disableChatToggle={
-            layout.chatOpen && !layout.blocksOpen && !layout.mainOpen
-          }
+          blocksOpen={layout.sidePanel === "blocks"}
+          toggleBlocks={() => layout.selectSidePanel("blocks")}
+          disableChatToggle={layout.sidePanel === "chat" && !canCollapseSide}
           disableBlocksToggle={
-            layout.blocksOpen && !layout.chatOpen && !layout.mainOpen
+            layout.sidePanel === "blocks" && !canCollapseSide
           }
         />
       </Toolbar.Toggles>
@@ -254,7 +260,7 @@ function DesktopTaskWorkspace({
         <MainPanelTabsBar
           virtualMcpId={virtualMcpId}
           taskId={layout.taskId}
-          disableActiveMainToggle={!layout.chatOpen && !layout.blocksOpen}
+          disableActiveMainToggle={layout.sidePanel === null}
         />
       </Toolbar.Tabs>
       <NewTaskBridge
@@ -266,8 +272,7 @@ function DesktopTaskWorkspace({
         <WorkspacePanelGroup
           virtualMcpId={virtualMcpId}
           taskId={layout.taskId}
-          chatOpen={layout.chatOpen}
-          blocksOpen={layout.blocksOpen}
+          sidePanel={layout.sidePanel}
           mainOpen={layout.mainOpen}
           chatContent={<ActiveTaskBoundary />}
         />
@@ -287,11 +292,7 @@ function MobileTaskWorkspace({
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
   blocksAvailable: boolean;
 }) {
-  const mobileSurface = layout.blocksOpen
-    ? "blocks"
-    : layout.mainOpen
-      ? "main"
-      : "chat";
+  const mobileSurface = resolveMobileSurface(layout);
 
   return (
     <>
