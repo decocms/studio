@@ -38,9 +38,12 @@ function makeCtx(opts: {
   /** Stored reports_only value; undefined = settings row never created. */
   reportsOnly?: boolean | null;
   settingsUpsert?: (orgId: string, data: Record<string, unknown>) => void;
+  /** Org row createdAt; defaults to "just now" (fresh onboarding-made org). */
+  orgCreatedAt?: Date;
 }): StudioContext {
   let connection = opts.existingConnection ?? null;
   const virtualMcp = opts.existingVirtualMcp ?? { id: "vmcp_1", pinned: true };
+  const orgCreatedAt = opts.orgCreatedAt ?? new Date();
 
   return {
     auth: {
@@ -59,6 +62,15 @@ function makeCtx(opts: {
     },
     organization: { id: ORG_ID, slug: "test-org", name: "Test Org" },
     baseUrl: "https://mesh.example.com",
+    db: {
+      selectFrom: () => ({
+        select: () => ({
+          where: () => ({
+            executeTakeFirst: async () => ({ createdAt: orgCreatedAt }),
+          }),
+        }),
+      }),
+    },
     storage: {
       connections: {
         findById: async () => connection,
@@ -124,13 +136,14 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
 
     // The completion-email CTA ("diagnóstico completo") must deep-link to the
     // report APP VIEW, not the /commerce-onboarding page: /$org/$taskId with the
-    // vMCP selected and its report view pinned open (chat closed).
+    // vMCP selected and its report view pinned open. No chat param — the
+    // vMCP's chatDefaultOpen metadata decides.
     const reportUrl = (claimArg as unknown as { reportUrl?: string })
       .reportUrl!;
     expect(reportUrl).toContain("https://mesh.example.com/test-org/");
     expect(reportUrl).toContain("virtualmcpid=commerce-discovery_");
     expect(reportUrl).toContain("main=app"); // "app:<connId>:<toolName>" pinned view
-    expect(reportUrl).toContain("chat=0");
+    expect(reportUrl).not.toContain("chat=");
     expect(reportUrl).not.toContain("commerce-onboarding");
 
     // The connection must be updated with the fresh token and the new siteUrl.
@@ -143,10 +156,10 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
     );
   });
 
-  test("defaults reports_only on first-time setup when never set", async () => {
+  test("defaults reports_only on for an org the flow just created", async () => {
     const upserts: Array<{ orgId: string; data: Record<string, unknown> }> = [];
     const ctx = makeCtx({
-      // No existing connection → this run creates it (first-time setup).
+      // orgCreatedAt defaults to "just now" — the flow-minted org.
       settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
     });
 
@@ -158,7 +171,24 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
     expect(upserts).toEqual([{ orgId: ORG_ID, data: { reports_only: true } }]);
   });
 
-  test("does not clobber an explicit reports_only=false on first-time setup", async () => {
+  test("setup retry on a fresh org still defaults the flag", async () => {
+    const upserts: Array<{ orgId: string; data: Record<string, unknown> }> = [];
+    const ctx = makeCtx({
+      // Connection already exists (first attempt failed mid-way) but the org
+      // is minutes old — the retry must still finish the reports_only default.
+      existingConnection: { id: "conn_1", connection_token: "dgn_token" },
+      settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
+    });
+
+    await COMMERCE_DISCOVERY_SETUP.handler(
+      { siteUrl: "https://new-site.com" },
+      ctx,
+    );
+
+    expect(upserts).toEqual([{ orgId: ORG_ID, data: { reports_only: true } }]);
+  });
+
+  test("does not clobber an explicit reports_only=false on a fresh org", async () => {
     const upserts: Array<{ orgId: string; data: Record<string, unknown> }> = [];
     const ctx = makeCtx({
       reportsOnly: false,
@@ -173,12 +203,13 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
     expect(upserts).toHaveLength(0);
   });
 
-  test("does not touch reports_only on re-runs against an existing connection", async () => {
+  test("never flips reports_only on an established org doing its first onboarding", async () => {
     const upserts: Array<{ orgId: string; data: Record<string, unknown> }> = [];
     const ctx = makeCtx({
-      // Existing connection → re-run against an established org: an org-wide
-      // setting must not flip under a member-level connections permission.
-      existingConnection: { id: "conn_1", connection_token: "dgn_token" },
+      // Org created days ago, no report connection yet — a pre-existing org
+      // (with its own agents/MCPs) picking itself in the onboarding org
+      // choice must NOT be collapsed to the report surface.
+      orgCreatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
       settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
     });
 

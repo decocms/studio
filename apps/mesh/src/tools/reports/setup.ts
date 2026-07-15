@@ -23,6 +23,14 @@ import { fetchCommerceDiscoveryAuth } from "./auth-client";
 const REPORT_TOOL_NAME =
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME as "get_my_diagnostic";
 
+/**
+ * How recently an org must have been created for COMMERCE_DISCOVERY_SETUP to
+ * treat it as "created by this onboarding flow" and default reports_only on.
+ * Generous enough for a slow onboarding session; far below the age of any
+ * established org.
+ */
+const FRESH_ORG_WINDOW_MS = 60 * 60 * 1000;
+
 const CommerceDiscoverySetupInputSchema = z.object({
   siteUrl: z.string().min(1).describe("Website URL to configure."),
 });
@@ -241,13 +249,23 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       });
     }
 
-    // Default the "reports only" flag on for orgs onboarded through
-    // commerce — this collapses the product to the diagnostic panel. Gated to
-    // first-time setup (created.connection): this tool only requires
-    // COLLECTION_CONNECTIONS_CREATE, which every member holds, so a re-run
-    // against an established org must not flip an org-wide setting. Only set
-    // when never set (NULL), so an org that later turns it off stays off.
-    if (created.connection) {
+    // Default the "reports only" flag on ONLY for orgs the onboarding flow
+    // just created — an established org (already using other agents/MCPs)
+    // doing its first commerce onboarding must NOT be collapsed to the
+    // report surface. The org row's createdAt is the server-side signal
+    // that the org was minted moments ago by the flow's ensure-organization
+    // step; unlike a client-provided "isNewOrg" input it can't be spoofed,
+    // and unlike a created.connection guard it survives setup retries.
+    // Only set when never set (NULL), so an org that turns it off stays off.
+    const orgRow = await ctx.db
+      .selectFrom("organization")
+      .select(["createdAt"])
+      .where("id", "=", organization.id)
+      .executeTakeFirst();
+    const orgAgeMs = orgRow
+      ? Date.now() - new Date(orgRow.createdAt).getTime()
+      : Number.POSITIVE_INFINITY;
+    if (orgAgeMs < FRESH_ORG_WINDOW_MS) {
       const settings = await ctx.storage.organizationSettings.get(
         organization.id,
       );
