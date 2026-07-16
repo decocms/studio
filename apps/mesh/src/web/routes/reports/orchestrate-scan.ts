@@ -7,13 +7,24 @@
 import { sleep } from "@decocms/std";
 import type { TemplateDeck } from "@/reports/deck-types";
 import type { SlideDrop } from "@/reports/to-deck";
-import { getReport, getScanStatus, runReportScan } from "./api";
+import {
+  getReport,
+  getScanStatus,
+  isReportsUnauthorized,
+  runReportScan,
+} from "./api";
 import { captureReport } from "./track";
 
 const POLL_MS = 4000;
 const MAX_POLLS = 180;
 
-export type ScanPhase = "scanning" | "pending" | "blocked" | "empty" | "error";
+export type ScanPhase =
+  | "scanning"
+  | "pending"
+  | "blocked"
+  | "empty"
+  | "unauthorized"
+  | "error";
 
 export interface ScanEvents {
   onPhase: (phase: ScanPhase) => void;
@@ -136,16 +147,17 @@ export async function orchestrateScan(
       });
       events.onPhase("empty");
     }
-  } catch {
+  } catch (error) {
     if (!signal.aborted) {
       clearPending(domain);
+      const unauthorized = isReportsUnauthorized(error);
       captureReport("report_scan_failed", {
         domain,
-        phase: "error",
-        reason: "exception",
+        phase: unauthorized ? "unauthorized" : "error",
+        reason: unauthorized ? "unauthorized" : "exception",
         surface: "deck_v2",
       });
-      events.onPhase("error");
+      events.onPhase(unauthorized ? "unauthorized" : "error");
     }
   }
 }

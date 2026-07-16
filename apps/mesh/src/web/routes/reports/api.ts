@@ -8,8 +8,19 @@ import type {
   ScanTrigger,
 } from "@/reports/to-deck";
 
+class ReportsApiError extends Error {
+  constructor(readonly status: number) {
+    super(`reports API HTTP ${status}`);
+    this.name = "ReportsApiError";
+  }
+}
+
+export function isReportsUnauthorized(error: unknown): boolean {
+  return error instanceof ReportsApiError && error.status === 401;
+}
+
 async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`reports API HTTP ${res.status}`);
+  if (!res.ok) throw new ReportsApiError(res.status);
   return (await res.json()) as T;
 }
 

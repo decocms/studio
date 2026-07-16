@@ -55,3 +55,85 @@ test("a Studio session unlocks the report API", async ({ playwright }) => {
 
   await authenticated.dispose();
 });
+
+test("an expired report session returns to the inline login", async ({
+  page,
+}) => {
+  await signUpViaApi(page.context().request);
+  await page.route("**/api/_reports/site/**", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Authentication required" }),
+    }),
+  );
+
+  await page.goto("/report/session-expired.example");
+
+  await expect(
+    page.getByRole("dialog", { name: "Acesse seu relatório" }),
+  ).toBeVisible();
+});
+
+test("a failed initial read never triggers a scan", async ({ page }) => {
+  await signUpViaApi(page.context().request);
+  let scanRequests = 0;
+  await page.route("**/api/_reports/site/**", (route) =>
+    route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "report read failed" }),
+    }),
+  );
+  await page.route("**/api/_reports/run", (route) => {
+    scanRequests += 1;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ state: "fresh" }),
+    });
+  });
+
+  await page.goto("/report/read-error.example");
+
+  await expect(
+    page.getByRole("alert", {
+      name: "Não foi possível carregar o relatório",
+    }),
+  ).toBeVisible();
+  expect(scanRequests).toBe(0);
+});
+
+test("an authenticated scan uses the session email", async ({ playwright }) => {
+  const authenticated = await newApiContext(playwright);
+  const user = await signUpViaApi(authenticated);
+  const domain = `session-email-${crypto.randomUUID()}.example`;
+
+  const response = await authenticated.post("/api/_reports/run", {
+    data: {
+      domain,
+      email: "attacker-controlled@example.com",
+    },
+  });
+  expect(response.status()).toBe(200);
+
+  const commerceMock = await playwright.request.newContext({
+    baseURL: `http://localhost:${process.env.COMMERCE_MOCK_PORT ?? "4100"}`,
+  });
+  const capturedResponse = await commerceMock.get(
+    `/__e2e/report-run?domain=${encodeURIComponent(domain)}`,
+  );
+  expect(capturedResponse.status()).toBe(200);
+  const captured = (await capturedResponse.json()) as {
+    url?: string;
+    email?: string;
+  };
+  expect(captured).toMatchObject({
+    url: domain,
+    email: user.email,
+  });
+  expect(captured.email).not.toBe("attacker-controlled@example.com");
+
+  await commerceMock.dispose();
+  await authenticated.dispose();
+});

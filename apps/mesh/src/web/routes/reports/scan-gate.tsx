@@ -10,7 +10,7 @@ import {
   reportDrops,
   type ScanPhase,
 } from "./orchestrate-scan";
-import { ReportBackdrop } from "./auth-gate";
+import { ReportAuthGate, ReportBackdrop } from "./auth-gate";
 import { ReportSocialProof } from "./report-social-proof";
 import SignalDeck from "./signal-deck";
 import { DECK } from "./templates/tokens";
@@ -52,6 +52,9 @@ export default function ScanGate({
   };
 
   if (deck) return <SignalDeck deck={deck} />;
+  if (phase === "unauthorized") {
+    return <ReportAuthGate domain={domain} />;
+  }
 
   return (
     <div ref={scanRef}>

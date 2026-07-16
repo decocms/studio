@@ -9,7 +9,7 @@ import {
 import { KEYS } from "@/web/lib/query-keys";
 import { authClient } from "@/web/lib/auth-client";
 import { isPostHogInitialized } from "@/web/lib/posthog-client";
-import { getReport } from "./reports/api";
+import { getReport, isReportsUnauthorized } from "./reports/api";
 import { ReportAuthGate, ReportBackdrop } from "./reports/auth-gate";
 import ScanGate from "./reports/scan-gate";
 import {
@@ -70,6 +70,62 @@ function domainChromeRef(
   };
 }
 
+function UnauthorizedReportGate({
+  domain,
+  refreshSession,
+}: {
+  domain: string;
+  refreshSession: () => void;
+}) {
+  const refreshSessionRef = (element: HTMLDivElement | null) => {
+    if (!element || element.dataset.sessionRefreshStarted === "true") return;
+    element.dataset.sessionRefreshStarted = "true";
+    refreshSession();
+  };
+
+  return (
+    <div ref={refreshSessionRef}>
+      <ReportAuthGate domain={domain} />
+    </div>
+  );
+}
+
+function ReportLoadError({
+  domain,
+  retry,
+}: {
+  domain: string;
+  retry: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 overflow-y-auto">
+      <ReportBackdrop domain={domain} />
+      <div className="pointer-events-none absolute inset-0 bg-white/35" />
+      <div className="relative z-10 flex min-h-full items-center justify-center px-4 py-10">
+        <section
+          role="alert"
+          aria-label="Não foi possível carregar o relatório"
+          className="w-full max-w-[440px] rounded-3xl bg-background px-7 py-8 text-foreground shadow-2xl"
+        >
+          <h1 className="text-xl font-medium leading-7">
+            Não foi possível carregar este relatório.
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Verifique sua conexão e tente novamente.
+          </p>
+          <button
+            type="button"
+            onClick={retry}
+            className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
+          >
+            Tentar novamente
+          </button>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 export default function ReportPage() {
   const { domain: rawDomain } = route.useParams();
   const { key } = route.useSearch();
@@ -87,8 +143,11 @@ export default function ReportPage() {
     queryFn: () => getReport(domain, key),
     enabled: authenticated,
     staleTime: Infinity,
-    retry: 1,
+    retry: (failureCount, error) =>
+      !isReportsUnauthorized(error) && failureCount < 1,
   });
+  const reportUnauthorized =
+    initial.isError && isReportsUnauthorized(initial.error);
 
   const brand =
     initial.data?.deck?.meta.brand?.trim() || brandFromDomain(domain);
@@ -104,6 +163,7 @@ export default function ReportPage() {
     if (
       !element ||
       !authenticated ||
+      reportUnauthorized ||
       element.dataset.authCompletionTracked === "true" ||
       !isPostHogInitialized()
     )
@@ -126,6 +186,11 @@ export default function ReportPage() {
     <ReportAuthGate domain={domain} loading />
   ) : !session.data?.user ? (
     <ReportAuthGate domain={domain} />
+  ) : reportUnauthorized ? (
+    <UnauthorizedReportGate
+      domain={domain}
+      refreshSession={() => void session.refetch()}
+    />
   ) : initial.isPending ? (
     // Bare stage while the authenticated read resolves — ScanGate takes over
     // with the full scanning UI (or the deck renders when ready).
@@ -133,6 +198,8 @@ export default function ReportPage() {
       <ReportBackdrop domain={domain} />
       <div className="pointer-events-none absolute inset-0 bg-white/35" />
     </div>
+  ) : initial.isError ? (
+    <ReportLoadError domain={domain} retry={() => void initial.refetch()} />
   ) : (
     <ScanGate
       domain={domain}

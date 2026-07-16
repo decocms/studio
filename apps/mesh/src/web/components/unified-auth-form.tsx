@@ -199,11 +199,26 @@ export function UnifiedAuthForm({
     }
   };
   const compact = variant === "compact";
-  const visibleSocialProviders = allowedSocialProviders
+  const restrictedSocialProviders = allowedSocialProviders
     ? socialProviders.providers.filter((provider) =>
         allowedSocialProviders.includes(provider.name),
       )
     : socialProviders.providers;
+  const hasRestrictedSocialProviders =
+    socialProviders.enabled && restrictedSocialProviders.length > 0;
+  const passwordAvailableWithoutSocialFallback =
+    emailAndPassword.enabled &&
+    (allowPassword || (!emailOtp.enabled && !hasRestrictedSocialProviders));
+  // An embedded allowlist must not dead-end a deployment whose only enabled
+  // method is another social provider (for example a GitHub-only self-host).
+  const visibleSocialProviders =
+    socialProviders.enabled &&
+    socialProviders.providers.length > 0 &&
+    !hasRestrictedSocialProviders &&
+    !emailOtp.enabled &&
+    !passwordAvailableWithoutSocialFallback
+      ? socialProviders.providers
+      : restrictedSocialProviders;
   const hasSocialProviders =
     socialProviders.enabled && visibleSocialProviders.length > 0;
   const emailAndPasswordEnabled =
