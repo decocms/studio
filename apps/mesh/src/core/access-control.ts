@@ -9,19 +9,12 @@
  * 4. Tools can manually grant access for custom logic
  */
 
-import { MCP_MESH_KEY } from "@/core/constants";
 import { BASIC_USAGE_TOOLS } from "@/tools/registry-metadata";
 import type { BoundAuthClient } from "./studio-context";
 
 // ============================================================================
 // Types
 // ============================================================================
-
-/**
- * Callback to get tool metadata for public tool check.
- * Scoped to the current tool being accessed.
- */
-export type GetToolMetaFn = () => Promise<Record<string, unknown> | undefined>;
 
 // ============================================================================
 // Errors
@@ -57,18 +50,45 @@ export class ForbiddenError extends Error {
  * Delegates all permission checks to Better Auth's Organization plugin
  * via the BoundAuthClient (which encapsulates HTTP headers)
  */
-export class AccessControl {
-  private _granted: boolean = false;
+export interface AccessControlOptions {
+  /** Authenticated principal id; undefined for an anonymous caller. */
+  userId?: string;
+  /** Tool being checked. May be unset here and supplied later via setToolName(). */
+  toolName?: string;
+  /**
+   * Bound auth client. Built by the context factory for EVERY request (even
+   * anonymous), so it's a required dependency — an anonymous principal just has
+   * no role/perms and is denied by the permission check, not by a missing client.
+   */
+  boundAuth: BoundAuthClient;
+  /** Caller's role for the effective org (drives the built-in admin/owner bypass). */
+  role?: string;
+  /**
+   * Permission resource key: "self" for management tools, "conn_<id>" for a
+   * specific connection. Defaults to "self".
+   */
+  connectionId?: string;
+  /** Path-resolved org id (overrides the session's active org). */
+  organizationId?: string;
+}
 
-  constructor(
-    private userId?: string,
-    private toolName?: string,
-    private boundAuth?: BoundAuthClient, // Bound auth client for permission checks
-    private role?: string, // From user session (for built-in role bypass)
-    private connectionId: string = "self", // For connection-specific checks (matches permission resource key)
-    private getToolMeta?: GetToolMetaFn, // Optional callback for public tool check
-    private organizationId?: string, // Path-resolved org (overrides session active org)
-  ) {}
+export class AccessControl {
+  private _granted = false;
+  private userId?: string;
+  private toolName?: string;
+  private boundAuth: BoundAuthClient;
+  private role?: string;
+  private connectionId: string;
+  private organizationId?: string;
+
+  constructor(opts: AccessControlOptions) {
+    this.userId = opts.userId;
+    this.toolName = opts.toolName;
+    this.boundAuth = opts.boundAuth;
+    this.role = opts.role;
+    this.connectionId = opts.connectionId ?? "self";
+    this.organizationId = opts.organizationId;
+  }
 
   setToolName(toolName: string): void {
     this.toolName = toolName;
@@ -117,7 +137,6 @@ export class AccessControl {
    * @param resources - Resources to check (OR logic)
    * If omitted, checks the current tool name
    *
-   * @throws UnauthorizedError if not authenticated (401)
    * @throws ForbiddenError if access is denied (403)
    *
    * @example
@@ -134,18 +153,6 @@ export class AccessControl {
     if (this.toolName?.startsWith("MESH_PUBLIC_")) {
       this.grant();
       return;
-    }
-
-    // Check if authenticated first (401)
-    if (!this.userId && !this.boundAuth) {
-      // Check if tool is public before throwing
-      if (this.getToolMeta && (await this.isToolPublic())) {
-        this.grant();
-        return;
-      }
-      throw new UnauthorizedError(
-        "Authentication required. Please provide a valid OAuth token or API key.",
-      );
     }
 
     // Determine what to check
@@ -176,17 +183,12 @@ export class AccessControl {
    * Delegates to Better Auth's Organization plugin via boundAuth
    */
   private async checkResource(resource: string): Promise<boolean> {
-    // No user or bound auth = deny
-    if (!this.userId && !this.boundAuth) {
-      return false;
-    }
-
     // Two kinds of principal, each with its OWN self-contained rule:
     //   - API key   → the key's stored allowlist is the whole decision. It is a
     //     capability, not a member: no role, no basic-usage, no Better Auth.
     //   - everyone else (session / MCP OAuth / mesh JWT) → membership floor +
     //     admin/owner bypass + Better Auth grants.
-    return this.boundAuth?.isApiKeyPrincipal
+    return this.boundAuth.isApiKeyPrincipal
       ? this.checkApiKeyAccess(resource)
       : this.checkMemberAccess(resource);
   }
@@ -198,9 +200,6 @@ export class AccessControl {
    * See auth/api-key-permissions.ts (`checkApiKeyPermission`).
    */
   private async checkApiKeyAccess(resource: string): Promise<boolean> {
-    // `isApiKeyPrincipal` is only set on a real bound client, so this is
-    // defensive; the dispatcher already routed non-bound principals away.
-    if (!this.boundAuth) return false;
     return this.boundAuth.hasPermission({ [this.connectionId]: [resource] });
   }
 
@@ -222,9 +221,6 @@ export class AccessControl {
     if (this.role === "admin" || this.role === "owner") {
       return true;
     }
-    if (!this.boundAuth) {
-      return false;
-    }
     // Pass `this.role` so boundAuth can resolve built-in roles in-memory (no
     // Better Auth round-trip); admin/owner already returned above, so this only
     // accelerates the `user` role. `organizationId` (path-resolved org) makes
@@ -233,25 +229,6 @@ export class AccessControl {
       { [this.connectionId]: [resource] },
       { organizationId: this.organizationId, role: this.role },
     );
-  }
-
-  /**
-   * Check if the current tool is marked as public via _meta["mcp.mesh"].public_tool
-   */
-  private async isToolPublic(): Promise<boolean> {
-    if (this.toolName?.startsWith("MESH_PUBLIC_")) return true;
-    if (!this.getToolMeta) return false;
-    try {
-      const meta = await this.getToolMeta();
-      if (!meta) return false;
-      const meshMeta = meta[MCP_MESH_KEY] as
-        | Record<string, unknown>
-        | undefined;
-      const value = meshMeta?.public_tool;
-      return value === true || value === "true";
-    } catch {
-      return false;
-    }
   }
 
   /**

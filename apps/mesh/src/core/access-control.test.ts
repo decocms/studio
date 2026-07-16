@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "bun:test";
-import {
-  AccessControl,
-  ForbiddenError,
-  UnauthorizedError,
-} from "./access-control";
+import { AccessControl, ForbiddenError } from "./access-control";
 import type { BoundAuthClient } from "./studio-context";
 import type { Permission } from "../storage/types";
 import { BASIC_USAGE_TOOLS } from "../tools/registry-metadata";
@@ -45,13 +41,13 @@ const createMockBoundAuth = (permissions: Permission): BoundAuthClient => {
 describe("AccessControl", () => {
   describe("grant", () => {
     it("should grant access unconditionally", () => {
-      const ac = new AccessControl();
+      const ac = new AccessControl({ boundAuth: createMockBoundAuth({}) });
       ac.grant();
       expect(ac.granted()).toBe(true);
     });
 
     it("should allow multiple grant calls", () => {
-      const ac = new AccessControl();
+      const ac = new AccessControl({ boundAuth: createMockBoundAuth({}) });
       ac.grant();
       ac.grant();
       expect(ac.granted()).toBe(true);
@@ -60,61 +56,59 @@ describe("AccessControl", () => {
 
   describe("check", () => {
     it("should grant access when permission exists", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        "TEST_TOOL",
-        createMockBoundAuth({ self: ["TEST_TOOL"] }), // Has permission on self connection
-        "user",
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: "TEST_TOOL",
+        boundAuth: createMockBoundAuth({ self: ["TEST_TOOL"] }), // Has permission on self connection
+        role: "user",
+      });
 
       await ac.check();
       expect(ac.granted()).toBe(true);
     });
 
     it("should deny access when permission missing", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        "TEST_TOOL",
-        createMockBoundAuth({ self: ["OTHER_TOOL"] }), // Has OTHER_TOOL but not TEST_TOOL
-        "user",
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: "TEST_TOOL",
+        boundAuth: createMockBoundAuth({ self: ["OTHER_TOOL"] }), // Has OTHER_TOOL but not TEST_TOOL
+        role: "user",
+      });
 
       await expect(ac.check()).rejects.toThrow(ForbiddenError);
       expect(ac.granted()).toBe(false);
     });
 
     it("should check current tool name by default", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        "MY_TOOL",
-        createMockBoundAuth({ self: ["MY_TOOL"] }), // Permission on self connection
-        "user",
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: "MY_TOOL",
+        boundAuth: createMockBoundAuth({ self: ["MY_TOOL"] }), // Permission on self connection
+        role: "user",
+      });
 
       await ac.check();
       expect(ac.granted()).toBe(true);
     });
 
     it("should check specific resources when provided", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        undefined,
-        createMockBoundAuth({ conn_123: ["SEND_MESSAGE"] }),
-        "user",
-        "conn_123", // Checking conn_123
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        boundAuth: createMockBoundAuth({ conn_123: ["SEND_MESSAGE"] }),
+        role: "user",
+        connectionId: "conn_123", // Checking conn_123
+      });
 
       await ac.check("SEND_MESSAGE");
       expect(ac.granted()).toBe(true);
     });
 
     it("should use OR logic for multiple resources", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        undefined,
-        createMockBoundAuth({ self: ["TOOL2"] }), // Has TOOL2 on self connection
-        "user",
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        boundAuth: createMockBoundAuth({ self: ["TOOL2"] }), // Has TOOL2 on self connection
+        role: "user",
+      });
 
       // Has TOOL2 but not TOOL1 - should succeed (OR logic)
       await ac.check("TOOL1", "TOOL2");
@@ -123,7 +117,10 @@ describe("AccessControl", () => {
 
     it("should skip check if already granted", async () => {
       const mockBoundAuth = createMockBoundAuth({});
-      const ac = new AccessControl("user_1", undefined, mockBoundAuth);
+      const ac = new AccessControl({
+        userId: "user_1",
+        boundAuth: mockBoundAuth,
+      });
 
       ac.grant(); // Grant first
 
@@ -132,12 +129,12 @@ describe("AccessControl", () => {
     });
 
     it("should bypass checks for admin role", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        "TEST_TOOL",
-        createMockBoundAuth({}), // No permissions
-        "admin", // Admin role
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: "TEST_TOOL",
+        boundAuth: createMockBoundAuth({}), // No permissions
+        role: "admin", // Admin role
+      });
 
       await ac.check();
       expect(ac.granted()).toBe(true);
@@ -152,21 +149,21 @@ describe("AccessControl", () => {
         isApiKeyPrincipal: true,
       } as BoundAuthClient;
 
-      const allowed = new AccessControl(
-        "user_1",
-        "ORGANIZATION_GET",
-        keyBoundAuth,
-        "admin", // owner is an admin — must NOT grant beyond the allowlist
-      );
+      const allowed = new AccessControl({
+        userId: "user_1",
+        toolName: "ORGANIZATION_GET",
+        boundAuth: keyBoundAuth,
+        role: "admin", // owner is an admin — must NOT grant beyond the allowlist
+      });
       await allowed.check();
       expect(allowed.granted()).toBe(true);
 
-      const denied = new AccessControl(
-        "user_1",
-        "API_KEY_CREATE", // out of scope — the exact escalation we are blocking
-        keyBoundAuth,
-        "admin",
-      );
+      const denied = new AccessControl({
+        userId: "user_1",
+        toolName: "API_KEY_CREATE", // out of scope — the exact escalation we are blocking
+        boundAuth: keyBoundAuth,
+        role: "admin",
+      });
       await expect(denied.check()).rejects.toThrow(ForbiddenError);
       expect(denied.granted()).toBe(false);
     });
@@ -178,51 +175,53 @@ describe("AccessControl", () => {
         isApiKeyPrincipal: false,
       } as BoundAuthClient;
 
-      const ac = new AccessControl(
-        "user_1",
-        "API_KEY_CREATE",
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: "API_KEY_CREATE",
         boundAuth,
-        "owner",
-      );
+        role: "owner",
+      });
       await ac.check();
       expect(ac.granted()).toBe(true);
     });
 
     it("should check connection-specific permissions", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        "SEND_MESSAGE",
-        createMockBoundAuth({ conn_123: ["SEND_MESSAGE"] }),
-        "user",
-        "conn_123", // Connection ID
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: "SEND_MESSAGE",
+        boundAuth: createMockBoundAuth({ conn_123: ["SEND_MESSAGE"] }),
+        role: "user",
+        connectionId: "conn_123", // Connection ID
+      });
 
       await ac.check("SEND_MESSAGE");
       expect(ac.granted()).toBe(true);
     });
 
     it("should throw when no resources specified", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        undefined, // No tool name
-        createMockBoundAuth({}),
-        "user",
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        // No tool name
+        boundAuth: createMockBoundAuth({}),
+        role: "user",
+      });
 
       await expect(ac.check()).rejects.toThrow(
         "No resources specified for access check",
       );
     });
 
-    it("should deny access when no userId or permissions", async () => {
-      const ac = new AccessControl(
-        undefined, // No user
-        "TEST_TOOL",
-        undefined, // No boundAuth
-        undefined,
-      );
+    it("should deny an unauthenticated principal (no userId, no role)", async () => {
+      // boundAuth is always present (built per-request); an anonymous caller has
+      // no userId/role and is denied by the permission check (403). The 401 for
+      // truly-unauthenticated requests is enforced upstream by requireAuth.
+      const ac = new AccessControl({
+        // No user, no role
+        toolName: "TEST_TOOL",
+        boundAuth: createMockBoundAuth({}), // present, but grants nothing
+      });
 
-      await expect(ac.check()).rejects.toThrow(UnauthorizedError);
+      await expect(ac.check()).rejects.toThrow(ForbiddenError);
     });
   });
 
@@ -237,12 +236,12 @@ describe("AccessControl", () => {
     const tool = [...BASIC_USAGE_TOOLS][0];
 
     it("grants a basic-usage tool to an authenticated member, regardless of role", async () => {
-      const ac = new AccessControl(
-        "user_1", // authenticated principal
-        tool,
-        createMockBoundAuth({}), // role grants nothing explicitly
-        "some-custom-role", // a member (role set), not owner/admin
-      );
+      const ac = new AccessControl({
+        userId: "user_1", // authenticated principal
+        toolName: tool,
+        boundAuth: createMockBoundAuth({}), // role grants nothing explicitly
+        role: "some-custom-role", // a member (role set), not owner/admin
+      });
 
       await ac.check();
       expect(ac.granted()).toBe(true);
@@ -252,24 +251,24 @@ describe("AccessControl", () => {
       // boundAuth is constructed for every request, so it must never be treated
       // as authentication. With no userId the grant must not fire. (Before the
       // userId guard, a role-but-no-principal state would have leaked here.)
-      const ac = new AccessControl(
-        undefined, // no authenticated principal
-        tool,
-        createMockBoundAuth({}), // boundAuth present, as it always is
-        "some-custom-role", // role present, but the principal is not verified
-      );
+      const ac = new AccessControl({
+        // no authenticated principal
+        toolName: tool,
+        boundAuth: createMockBoundAuth({}), // boundAuth present, as it always is
+        role: "some-custom-role", // role present, but the principal is not verified
+      });
 
       await expect(ac.check()).rejects.toThrow(ForbiddenError);
       expect(ac.granted()).toBe(false);
     });
 
     it("does NOT grant basic-usage to an authenticated non-member (no role)", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        tool,
-        createMockBoundAuth({}),
-        undefined, // not a member of this org → no role
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: tool,
+        boundAuth: createMockBoundAuth({}),
+        // not a member of this org → no role
+      });
 
       await expect(ac.check()).rejects.toThrow(ForbiddenError);
       expect(ac.granted()).toBe(false);
@@ -284,7 +283,12 @@ describe("AccessControl", () => {
         isApiKeyPrincipal: true,
       } as BoundAuthClient;
 
-      const ac = new AccessControl("user_1", tool, keyBoundAuth, "admin");
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: tool,
+        boundAuth: keyBoundAuth,
+        role: "admin",
+      });
 
       await expect(ac.check()).rejects.toThrow(ForbiddenError);
       expect(ac.granted()).toBe(false);
@@ -293,35 +297,35 @@ describe("AccessControl", () => {
 
   describe("granted", () => {
     it("should return false initially", () => {
-      const ac = new AccessControl();
+      const ac = new AccessControl({ boundAuth: createMockBoundAuth({}) });
       expect(ac.granted()).toBe(false);
     });
 
     it("should return true after grant", () => {
-      const ac = new AccessControl();
+      const ac = new AccessControl({ boundAuth: createMockBoundAuth({}) });
       ac.grant();
       expect(ac.granted()).toBe(true);
     });
 
     it("should return true after successful check", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        "TEST_TOOL",
-        createMockBoundAuth({ self: ["TEST_TOOL"] }), // Permission on self connection
-        "user",
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: "TEST_TOOL",
+        boundAuth: createMockBoundAuth({ self: ["TEST_TOOL"] }), // Permission on self connection
+        role: "user",
+      });
 
       await ac.check();
       expect(ac.granted()).toBe(true);
     });
 
     it("should return false after failed check", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        "TEST_TOOL",
-        createMockBoundAuth({}), // No permissions
-        "user", // Not admin
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: "TEST_TOOL",
+        boundAuth: createMockBoundAuth({}), // No permissions
+        role: "user", // Not admin
+      });
 
       try {
         await ac.check();
@@ -337,12 +341,12 @@ describe("AccessControl", () => {
     it("should use BoundAuthClient hasPermission when available", async () => {
       const mockBoundAuth = createMockBoundAuth({ self: ["TEST_TOOL"] });
 
-      const ac = new AccessControl(
-        "user_1",
-        "TEST_TOOL",
-        mockBoundAuth,
-        "user",
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: "TEST_TOOL",
+        boundAuth: mockBoundAuth,
+        role: "user",
+      });
 
       await ac.check();
 
@@ -372,26 +376,15 @@ describe("AccessControl", () => {
         },
       } as unknown as BoundAuthClient;
 
-      const ac = new AccessControl(
-        "user_1",
-        "TEST_TOOL",
-        mockBoundAuth,
-        "user",
-      );
+      const ac = new AccessControl({
+        userId: "user_1",
+        toolName: "TEST_TOOL",
+        boundAuth: mockBoundAuth,
+        role: "user",
+      });
 
       await expect(ac.check()).rejects.toThrow(ForbiddenError);
       expect(ac.granted()).toBe(false);
-    });
-
-    it("should deny access when no BoundAuthClient provided", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        "TEST_TOOL",
-        undefined, // No bound auth
-        "user",
-      );
-
-      await expect(ac.check()).rejects.toThrow(ForbiddenError);
     });
   });
 });
