@@ -5,7 +5,12 @@
 import { describe, expect, test } from "bun:test";
 import type { SandboxRecord } from "@decocms/mesh-sdk";
 
-import { readSandboxMap, resolveVm } from "./sandbox-map";
+import {
+  deleteSandboxMapEntry,
+  mergeSandboxMapEntry,
+  readSandboxMap,
+  resolveVm,
+} from "./sandbox-map";
 
 const ENTRY_A: SandboxRecord = {
   sandboxHandle: "vm-1",
@@ -121,6 +126,94 @@ describe("resolveVm", () => {
     expect(resolveVm(sandboxMap, "user-1", "main", "agent-sandbox")).toEqual(
       ENTRY_B,
     );
+  });
+});
+
+describe("mergeSandboxMapEntry", () => {
+  test("preserves sibling branches when adding a new one (switch repos)", () => {
+    // Regression: load_repo used to overwrite the whole map, wiping the first
+    // repo's entry when a second repo was loaded on the same thread.
+    const current = {
+      u: { "thread:t/conn_a": { "agent-sandbox": ENTRY_A } },
+    };
+    const next = mergeSandboxMapEntry(
+      current,
+      "u",
+      "thread:t/conn_b",
+      "agent-sandbox",
+      ENTRY_B,
+    );
+    expect(resolveVm(next, "u", "thread:t/conn_a", "agent-sandbox")).toEqual(
+      ENTRY_A,
+    );
+    expect(resolveVm(next, "u", "thread:t/conn_b", "agent-sandbox")).toEqual(
+      ENTRY_B,
+    );
+  });
+
+  test("preserves sibling kinds on the same branch", () => {
+    const current = { u: { b: { "user-desktop": ENTRY_A } } };
+    const next = mergeSandboxMapEntry(
+      current,
+      "u",
+      "b",
+      "agent-sandbox",
+      ENTRY_B,
+    );
+    expect(resolveVm(next, "u", "b", "user-desktop")).toEqual(ENTRY_A);
+    expect(resolveVm(next, "u", "b", "agent-sandbox")).toEqual(ENTRY_B);
+  });
+
+  test("does not mutate the input map", () => {
+    const current = { u: { b: { "agent-sandbox": ENTRY_A } } };
+    const snapshot = JSON.stringify(current);
+    mergeSandboxMapEntry(current, "u", "b", "user-desktop", ENTRY_B);
+    expect(JSON.stringify(current)).toBe(snapshot);
+  });
+
+  test("normalizes a legacy stringified branch cell instead of corrupting it", () => {
+    // parseBranchMap treats a non-object (stringified) cell as empty, so the
+    // merge drops the unreadable cell rather than a raw spread exploding it into
+    // character-indexed keys ("0","1",...).
+    const current = {
+      u: { b: JSON.stringify({ "agent-sandbox": ENTRY_A }) },
+    } as unknown as Parameters<typeof mergeSandboxMapEntry>[0];
+    const next = mergeSandboxMapEntry(
+      current,
+      "u",
+      "b",
+      "user-desktop",
+      ENTRY_B,
+    );
+    expect(resolveVm(next, "u", "b", "user-desktop")).toEqual(ENTRY_B);
+    expect(next.u?.b).not.toHaveProperty("0");
+  });
+});
+
+describe("deleteSandboxMapEntry", () => {
+  test("returns null when the entry is absent (no-op write)", () => {
+    expect(deleteSandboxMapEntry({}, "u", "b", "agent-sandbox")).toBeNull();
+    const other = { u: { b: { "user-desktop": ENTRY_A } } };
+    expect(deleteSandboxMapEntry(other, "u", "b", "agent-sandbox")).toBeNull();
+  });
+
+  test("removes the entry and prunes empty branch + user buckets", () => {
+    const current = { u: { b: { "agent-sandbox": ENTRY_A } } };
+    const next = deleteSandboxMapEntry(current, "u", "b", "agent-sandbox");
+    expect(next).toEqual({});
+  });
+
+  test("keeps sibling kinds and sibling branches", () => {
+    const current = {
+      u: {
+        b: { "agent-sandbox": ENTRY_A, "user-desktop": ENTRY_B },
+        other: { "agent-sandbox": ENTRY_A },
+      },
+    };
+    const next = deleteSandboxMapEntry(current, "u", "b", "agent-sandbox");
+    expect(resolveVm(next!, "u", "b", "user-desktop")).toEqual(ENTRY_B);
+    expect(resolveVm(next!, "u", "other", "agent-sandbox")).toEqual(ENTRY_A);
+    expect(resolveVm(next!, "u", "b", "agent-sandbox")).toBeNull();
   });
 });
 

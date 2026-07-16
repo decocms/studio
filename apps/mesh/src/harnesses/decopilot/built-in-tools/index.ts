@@ -33,6 +33,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   enable_tool: { readOnly: true, destructive: false },
   todo_write: { readOnly: false, destructive: false },
   update_interests: { readOnly: false, destructive: false },
+  load_repo: { readOnly: false, destructive: true },
   search_threads: { readOnly: true, destructive: false },
   get_thread: { readOnly: true, destructive: false },
   list_thread_messages: { readOnly: true, destructive: false },
@@ -42,6 +43,7 @@ import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sa
 import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
+import { createLoadRepoTool } from "./load-repo";
 import { createSubtaskTool, SubtaskInputSchema } from "./subtask";
 import { userAskTool } from "@decocms/harness/decopilot/built-in-tools/user-ask";
 import { todoWriteTool } from "@decocms/harness/decopilot/built-in-tools/todo-write";
@@ -242,6 +244,18 @@ async function buildAllTools(
       virtualMcpId: vmContext.virtualMcpId,
     }) as ToolSet;
     Object.assign(tools, vmTools);
+    // Repo switcher — dynamic description lists the org's imported repos; calling
+    // it binds the repo to the thread, eagerly clones its sandbox, and opens the
+    // Preview. Omitted when the org has no imported repos (nothing to switch).
+    const loadRepo = await createLoadRepoTool({
+      ctx,
+      orgId: organization.id,
+      virtualMcpId: vmContext.virtualMcpId,
+      userId: vmContext.userId,
+      threadId: vmContext.threadId,
+      writer,
+    });
+    if (loadRepo) tools.load_repo = loadRepo;
   }
   // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code).
   if (provider) {

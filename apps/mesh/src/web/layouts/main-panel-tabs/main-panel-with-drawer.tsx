@@ -4,6 +4,7 @@
  * `hasClonableSource` so non-cloneable agents (e.g. decopilot) don't see it.
  */
 
+import { useChatTask } from "@/web/components/chat/chat-context";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
@@ -17,7 +18,12 @@ export function MainPanelWithDrawer({
   taskId: string;
 }) {
   const inset = useInsetContext();
-  const hasClonableSource = agentHasClonableSource(inset?.entity?.metadata);
+  const { activeTask } = useChatTask();
+  // Thread-scoped repo (bound by `load_repo`) also gets the drawer + dev
+  // terminal, not just agents with their own repo.
+  const hasClonableSource =
+    agentHasClonableSource(inset?.entity?.metadata) ||
+    agentHasClonableSource(activeTask?.metadata);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
