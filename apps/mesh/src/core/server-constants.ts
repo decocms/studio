@@ -6,6 +6,7 @@
  */
 
 import { getSettings } from "../settings";
+import { envWithFallback } from "../settings/env-fallback";
 
 /**
  * Get the base URL for the server.
@@ -39,11 +40,15 @@ export function getInternalUrl(): string {
  * (remote harness dispatch), which talks back to the cluster over the
  * public network from the user's desktop.
  *
- * Uses `MESH_PUBLIC_URL` when set, otherwise falls back to `BASE_URL`
- * (the same hostname the server advertises to browsers and OAuth clients).
- * Falls back to `getBaseUrl()` so production deployments without a
- * separate public-URL setting still work.
+ * Uses `STUDIO_PUBLIC_URL` when set (legacy `MESH_PUBLIC_URL` still
+ * honored), otherwise falls back to `BASE_URL` (the same hostname the
+ * server advertises to browsers and OAuth clients). Falls back to
+ * `getBaseUrl()` so production deployments without a separate
+ * public-URL setting still work.
  */
 export function getPublicUrl(): string {
-  return process.env.MESH_PUBLIC_URL ?? getBaseUrl();
+  return (
+    envWithFallback(process.env, "STUDIO_PUBLIC_URL", "MESH_PUBLIC_URL") ??
+    getBaseUrl()
+  );
 }

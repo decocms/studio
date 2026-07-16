@@ -235,7 +235,8 @@ export type CreatedResource = {
  * @throws Error if no request context or user is not authenticated
  */
 export function ensureAuthenticated(ctx: AppContext): User {
-  const reqCtx = ctx?.env?.MESH_REQUEST_CONTEXT;
+  const reqCtx =
+    ctx?.env?.STUDIO_REQUEST_CONTEXT ?? ctx?.env?.MESH_REQUEST_CONTEXT;
   if (!reqCtx) {
     throw new Error("Unauthorized: missing request context");
   }
@@ -615,7 +616,9 @@ type ResolvedMCPServerOptions<TSchema extends ZodTypeAny = never> =
   CreateMCPServerOptions<any, TSchema>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 const getMeshCtx = (input: { runtimeContext: AppContext }) => {
-  const ctx = input.runtimeContext.env.MESH_REQUEST_CONTEXT;
+  const ctx =
+    input.runtimeContext.env.STUDIO_REQUEST_CONTEXT ??
+    input.runtimeContext.env.MESH_REQUEST_CONTEXT;
   return {
     connectionId: ctx?.connectionId,
     meshUrl: ctx?.meshUrl,
@@ -697,7 +700,9 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
             outputSchema: OnEventsOutputSchema,
             execute: async (input) => {
               const env = input.runtimeContext.env;
-              const state = env.MESH_REQUEST_CONTEXT?.state as z.infer<TSchema>;
+              const state = (
+                env.STUDIO_REQUEST_CONTEXT ?? env.MESH_REQUEST_CONTEXT
+              )?.state as z.infer<TSchema>;
               const { connectionId } = getMeshCtx(input);
               return Event.execute(
                 events.handlers!,

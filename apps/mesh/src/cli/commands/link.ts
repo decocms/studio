@@ -14,6 +14,7 @@ import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { ensureSession } from "../lib/ensure-session";
+import { envWithFallback } from "../../settings/env-fallback";
 import { startLinkDaemon, type LinkDaemonMonitor } from "../../link-daemon";
 import { formatLogLine } from "../format-log-line";
 import { isPortInUse } from "../lib/port-wait";
@@ -126,7 +127,7 @@ export async function runLinkCommand(
     join(homedir(), "deco");
   const clusterBaseUrl =
     opts.clusterBaseUrl ??
-    process.env.MESH_CLUSTER_URL ??
+    envWithFallback(process.env, "STUDIO_CLUSTER_URL", "MESH_CLUSTER_URL") ??
     "https://studio.decocms.com";
 
   let restoreConsole: (() => void) | undefined;

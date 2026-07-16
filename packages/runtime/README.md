@@ -146,7 +146,7 @@ const getUserDataTool = createPrivateTool({
   }),
   execute: async ({ runtimeContext }) => {
     // ensureAuthenticated is called automatically
-    const user = runtimeContext.env.MESH_REQUEST_CONTEXT.ensureAuthenticated();
+    const user = runtimeContext.env.STUDIO_REQUEST_CONTEXT.ensureAuthenticated();
     return { userId: user.id, email: user.email };
   },
 });
@@ -361,7 +361,7 @@ export default withRuntime({
       inputSchema: z.object({ sql: z.string() }),
       execute: async ({ context, runtimeContext }) => {
         // Access resolved bindings from state
-        const { database } = runtimeContext.env.MESH_REQUEST_CONTEXT.state;
+        const { database } = runtimeContext.env.STUDIO_REQUEST_CONTEXT.state;
         return database.QUERY({ sql: context.sql });
       },
     }),
@@ -403,7 +403,7 @@ export default withRuntime({
     onInstall: async (env, { vault }) => {
       if (!vault) return;
 
-      const { github } = env.MESH_REQUEST_CONTEXT.state;
+      const { github } = env.STUDIO_REQUEST_CONTEXT.state;
       const client = createStudioVaultClient(vault);
       const token = await client.getAccessToken(github);
 
@@ -448,7 +448,7 @@ export default withRuntime({
     onInstall: async (env, { vault }) => {
       if (!vault) return;
 
-      const { github } = env.MESH_REQUEST_CONTEXT.state;
+      const { github } = env.STUDIO_REQUEST_CONTEXT.state;
       const client = createStudioVaultClient(vault);
       const configuration = await client.getConfiguration(github);
       const apiKey = configuration.state.apiKey;
@@ -643,8 +643,8 @@ const myTool = createTool({
   execute: async ({ runtimeContext }) => {
     const { env, req } = runtimeContext;
     
-    // Access MESH_REQUEST_CONTEXT for auth and bindings
-    const ctx = env.MESH_REQUEST_CONTEXT;
+    // Access STUDIO_REQUEST_CONTEXT for auth and bindings
+    const ctx = env.STUDIO_REQUEST_CONTEXT;
     
     // Get authenticated user (throws if not authenticated)
     const user = ctx.ensureAuthenticated();
@@ -703,7 +703,7 @@ const getProfileTool = createPrivateTool({
     name: z.string(),
   }),
   execute: async ({ runtimeContext }) => {
-    const user = runtimeContext.env.MESH_REQUEST_CONTEXT.ensureAuthenticated();
+    const user = runtimeContext.env.STUDIO_REQUEST_CONTEXT.ensureAuthenticated();
     return {
       id: user.id,
       email: user.email,

@@ -5,13 +5,14 @@
  */
 
 import { homedir } from "os";
+import { envWithFallback } from "./env-fallback";
 import type { CliFlags, DispatchRole, Settings } from "./types";
 
 type SandboxProviderKind = Settings["sandboxProviderKind"];
 
 const DISPATCH_ROLES = new Set<DispatchRole>(["all", "worker", "api"]);
 
-/** Normalize `MESH_DISPATCH_ROLE`; anything unknown coerces to the safe "all". */
+/** Normalize `STUDIO_DISPATCH_ROLE`; anything unknown coerces to the safe "all". */
 function resolveDispatchRole(raw: string | undefined): DispatchRole {
   const role = (raw ?? "").trim();
   return DISPATCH_ROLES.has(role as DispatchRole)
@@ -145,7 +146,11 @@ export function resolveConfig(
     // Auth & Secrets
     betterAuthSecret: envVars.BETTER_AUTH_SECRET || "",
     encryptionKey: envVars.ENCRYPTION_KEY || "",
-    meshJwtSecret: envVars.MESH_JWT_SECRET,
+    studioJwtSecret: envWithFallback(
+      envVars,
+      "STUDIO_JWT_SECRET",
+      "MESH_JWT_SECRET",
+    ),
     localMode,
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,
@@ -223,7 +228,9 @@ export function resolveConfig(
     isCli: true,
     noTui: flags.noTui === true,
     podName: envVars.POD_NAME ?? crypto.randomUUID(),
-    dispatchRole: resolveDispatchRole(envVars.MESH_DISPATCH_ROLE),
+    dispatchRole: resolveDispatchRole(
+      envWithFallback(envVars, "STUDIO_DISPATCH_ROLE", "MESH_DISPATCH_ROLE"),
+    ),
     sandboxProviderKind: resolveSandboxProviderKind(
       envVars.STUDIO_SANDBOX_PROVIDER,
     ),

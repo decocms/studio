@@ -116,3 +116,41 @@ describe("resolveShutdownDrainMs", () => {
     expect(resolveShutdownDrainMs("api", forceExitMs, "0")).toBe(0);
   });
 });
+
+describe("resolveConfig STUDIO_* env vars with MESH_* fallback", () => {
+  it("reads STUDIO_JWT_SECRET, preferring it over MESH_JWT_SECRET", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_JWT_SECRET: "new-secret",
+      MESH_JWT_SECRET: "old-secret",
+    });
+
+    expect(result.settings.studioJwtSecret).toBe("new-secret");
+  });
+
+  it("falls back to legacy MESH_JWT_SECRET", () => {
+    const result = resolveConfig(flags, { MESH_JWT_SECRET: "old-secret" });
+
+    expect(result.settings.studioJwtSecret).toBe("old-secret");
+  });
+
+  it("reads STUDIO_DISPATCH_ROLE, preferring it over MESH_DISPATCH_ROLE", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_DISPATCH_ROLE: "worker",
+      MESH_DISPATCH_ROLE: "api",
+    });
+
+    expect(result.settings.dispatchRole).toBe("worker");
+  });
+
+  it("falls back to legacy MESH_DISPATCH_ROLE", () => {
+    const result = resolveConfig(flags, { MESH_DISPATCH_ROLE: "api" });
+
+    expect(result.settings.dispatchRole).toBe("api");
+  });
+
+  it("defaults dispatch role to all when neither is set", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.dispatchRole).toBe("all");
+  });
+});

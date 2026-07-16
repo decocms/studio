@@ -224,8 +224,10 @@ export function createTriggers<const TDefs extends TriggerDef[]>(
     inputSchema: TriggerConfigureInputSchema,
     outputSchema: z.object({ success: z.boolean() }),
     execute: async ({ context, runtimeContext }) => {
-      const connectionId = (runtimeContext?.env as unknown as DefaultEnv)
-        ?.MESH_REQUEST_CONTEXT?.connectionId;
+      const env = runtimeContext?.env as unknown as DefaultEnv | undefined;
+      const connectionId = (
+        env?.STUDIO_REQUEST_CONTEXT ?? env?.MESH_REQUEST_CONTEXT
+      )?.connectionId;
 
       if (!connectionId) {
         throw new Error("Connection ID not available");

@@ -64,7 +64,7 @@ function getSigningKey(): Buffer {
   let secret: string | undefined;
   try {
     const settings = getSettings();
-    secret = settings.meshJwtSecret ?? settings.betterAuthSecret;
+    secret = settings.studioJwtSecret ?? settings.betterAuthSecret;
   } catch {
     // Settings not initialized (e.g. unit tests) — fall back like auth/jwt.ts.
     secret = undefined;

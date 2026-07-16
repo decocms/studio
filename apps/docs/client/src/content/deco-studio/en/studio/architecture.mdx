@@ -56,11 +56,11 @@ These three deployments are separate and scale on their own. The web tier was sp
 | Tier | Deployment | Responsibility |
 | --- | --- | --- |
 | **Web** | nginx | Serves the React SPA and reverse-proxies `/api`, `/mcp`, `/oauth-proxy`, `/.well-known` to the API Service. Port 8080. |
-| **API** | Hono, `MESH_DISPATCH_ROLE=api` | HTTP routes, Better Auth, the MCP proxy, access control. **Enqueues** Decopilot runs onto DBOS queues and tails NATS to stream output back to the UI. Stateless. **Does not run the agent loop.** |
-| **Worker** | Hono, `MESH_DISPATCH_ROLE=worker` | **Dequeues** DBOS queues (via `listenQueues`) and **runs the agent loop** (`streamText`: model → tool → repeat). CPU-bound. These are the run executors; scale horizontally. |
+| **API** | Hono, `STUDIO_DISPATCH_ROLE=api` | HTTP routes, Better Auth, the MCP proxy, access control. **Enqueues** Decopilot runs onto DBOS queues and tails NATS to stream output back to the UI. Stateless. **Does not run the agent loop.** |
+| **Worker** | Hono, `STUDIO_DISPATCH_ROLE=worker` | **Dequeues** DBOS queues (via `listenQueues`) and **runs the agent loop** (`streamText`: model → tool → repeat). CPU-bound. These are the run executors; scale horizontally. |
 
 <Callout type="note">
-  The split is by role, not by image — both run the same build. `MESH_DISPATCH_ROLE` decides whether a pod listens on the DBOS queues (`worker`) or only serves HTTP and enqueues (`api`). A single-deployment setup can use `all`.
+  The split is by role, not by image — both run the same build. `STUDIO_DISPATCH_ROLE` decides whether a pod listens on the DBOS queues (`worker`) or only serves HTTP and enqueues (`api`). A single-deployment setup can use `all`.
 </Callout>
 
 The set of queues a worker pod listens on is configured by env (`listenQueues`). Because of that, worker pools can be split per DBOS queue — running different workflows on separate pools with their own resources and scaling.

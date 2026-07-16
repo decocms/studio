@@ -23,7 +23,7 @@ export interface Settings {
   // Auth & Secrets
   betterAuthSecret: string;
   encryptionKey: string;
-  meshJwtSecret: string | undefined;
+  studioJwtSecret: string | undefined;
   localMode: boolean;
   disableRateLimit: boolean;
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys

@@ -60,7 +60,10 @@ export interface DefaultEnv<
   TSchema extends z.ZodTypeAny = any,
   TBindings extends BindingRegistry = BindingRegistry,
 > {
+  /** @deprecated Use `STUDIO_REQUEST_CONTEXT` instead. */
   MESH_REQUEST_CONTEXT: RequestContext<TSchema, TBindings>;
+  /** Preferred alias of `MESH_REQUEST_CONTEXT` — both point to the same object. */
+  STUDIO_REQUEST_CONTEXT?: RequestContext<TSchema, TBindings>;
   MESH_APP_DEPLOYMENT_ID: string;
   IS_LOCAL: boolean;
   MESH_URL?: string;
@@ -265,7 +268,8 @@ export const withBindings = <TEnv>({
     } as unknown as RequestContext<any>;
   }
 
-  env.MESH_REQUEST_CONTEXT = context;
+  env.STUDIO_REQUEST_CONTEXT = context;
+  env.MESH_REQUEST_CONTEXT = context; // deprecated alias, kept for existing apps
   context.state = initializeBindings(context);
 
   withDefaultBindings({
