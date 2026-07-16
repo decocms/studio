@@ -17,6 +17,14 @@ export interface FieldProps {
   label: string;
   breadcrumbPath?: string[];
   onBreadcrumbChange?: (path: string[]) => void;
+  /**
+   * True when this field shares its object scope with another array/drill-down
+   * field. Array fields use it to decide whether their own label must stay in
+   * the breadcrumb: a bare `[itemLabel]` trail can't say WHICH sibling array an
+   * item belongs to (two label-less arrays both fall back to "Item N"), so when
+   * siblings exist the array label is kept as a disambiguator.
+   */
+  hasSiblingDrillDownFields?: boolean;
   meta?: LiveMeta;
   decofile?: Record<string, unknown>;
   containerResolveType?: string;

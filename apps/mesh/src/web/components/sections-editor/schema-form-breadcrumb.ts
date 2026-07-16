@@ -27,6 +27,35 @@ function labelsMatchLoose(a: string, b: string): boolean {
 }
 
 /**
+ * Whether the array's own label must stay in the breadcrumb trail so the item
+ * remains uniquely addressable.
+ *
+ * A trail of just `[itemLabel]` can't say WHICH array an item came from. That's
+ * fine for the common case — the array is an implementation detail whose list is
+ * already shown inline in the parent — but it breaks when the crumb is
+ * ambiguous, so the array label is kept as a disambiguator when EITHER:
+ *
+ * - a sibling array/drill-down field exists in the same scope
+ *   ({@link resolveActiveFieldKey} would otherwise pick the first sibling whose
+ *   item shares the crumb — e.g. two label-less arrays both fall back to
+ *   "Item N"); or
+ * - the item's own label collides with the array's display label or property
+ *   key — {@link breadcrumbPathForActiveField} strips a head crumb that matches
+ *   either, which would drop the sole crumb and lose the selection.
+ */
+export function arrayCrumbNeededForDisambiguation(
+  arrayLabel: string,
+  itemLabel: string,
+  opts?: { arrayKey?: string; hasSiblingDrillDownFields?: boolean },
+): boolean {
+  return (
+    (opts?.hasSiblingDrillDownFields ?? false) ||
+    labelsMatch(itemLabel, arrayLabel) ||
+    (opts?.arrayKey != null && labelsMatch(itemLabel, opts.arrayKey))
+  );
+}
+
+/**
  * Breadcrumb trail when opening an array item.
  *
  * The array field itself is an implementation detail: its list is already shown
@@ -37,16 +66,15 @@ function labelsMatchLoose(a: string, b: string): boolean {
  * ({@link resolveActiveFieldKey}, {@link resolveArrayItemSelection}) already
  * matches an item by its label without the array crumb present.
  *
- * The ONE exception is disambiguation: when the item's display label equals the
- * array label (e.g. an item whose label comes from `alt` that happens to match
- * the array title), we keep the array crumb so {@link breadcrumbPathForActiveField}
- * can still tell the array level from the item level — otherwise it would strip
- * the sole crumb and lose the selection (the array-label == item-label bug).
+ * The exception is when the crumb would be ambiguous — see
+ * {@link arrayCrumbNeededForDisambiguation}: then the array label is kept so the
+ * right array (and item) still resolves.
  */
 export function buildArrayDrillDownBreadcrumb(
   breadcrumbPath: string[],
   arrayLabel: string,
   itemLabel: string,
+  opts?: { arrayKey?: string; hasSiblingDrillDownFields?: boolean },
 ): string[] {
   const normalizedItem = normalizeBreadcrumbLabel(itemLabel);
   if (
@@ -59,7 +87,7 @@ export function buildArrayDrillDownBreadcrumb(
   }
   const trail = [...breadcrumbPath];
   if (
-    labelsMatch(itemLabel, arrayLabel) &&
+    arrayCrumbNeededForDisambiguation(arrayLabel, itemLabel, opts) &&
     !trail.some((crumb) => labelsMatch(crumb, arrayLabel))
   ) {
     trail.push(arrayLabel);
