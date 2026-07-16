@@ -2,13 +2,16 @@
  * E2E: capability-based gating of the settings UI.
  *
  * Drives the real browser as a restricted member (built-in "user" role, which
- * resolves to no gated capabilities) and asserts the gating wired up in the
- * settings layout + route guards + capability-aware index redirect:
+ * resolves to only agents:manage + connections:manage + secrets:manage — see
+ * USER_ROLE_CAPABILITY_IDS) and asserts the gating wired up in the settings
+ * layout + route guards + capability-aware index redirect:
  *
- *   - direct-navigating to a management settings route shows the no-access
- *     panel instead of the page;
- *   - the /settings index lands a no-management member on Profile (the always-
- *     accessible fallback), and an owner on General;
+ *   - direct-navigating to a management settings route the role can't open
+ *     (e.g. General, gated behind org:manage) shows the no-access panel
+ *     instead of the page;
+ *   - the /settings index lands this member on the first tab their role CAN
+ *     open (Secrets, via secrets:manage) rather than a denied tab, and an
+ *     owner on General;
  *
  * The capability resolution itself is unit + e2e tested at the endpoint
  * (my-capabilities.spec.ts); this spec covers the UI consuming it.
@@ -90,10 +93,12 @@ test.describe("settings capability gating", () => {
       timeout: 15_000,
     });
 
-    // The settings index redirects a no-management member to Profile — the
-    // always-accessible fallback — rather than landing them on a denied tab.
+    // The built-in user role is also granted secrets:manage (every member can
+    // vault a token pasted in chat) — the settings index lands this member on
+    // Secrets rather than the Profile fallback, since it's the first
+    // capability-gated tab they can open.
     await page.goto(`/${owner.orgSlug}/settings`);
-    await page.waitForURL((url) => url.pathname.endsWith("/settings/profile"), {
+    await page.waitForURL((url) => url.pathname.endsWith("/settings/secrets"), {
       timeout: 15_000,
     });
 

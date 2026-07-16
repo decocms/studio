@@ -254,6 +254,8 @@ describe("resolveEffectiveVirtualMcpForHarness", () => {
       "API_KEY_LIST",
       "API_KEY_UPDATE",
       "API_KEY_DELETE",
+      "SECRET_CREATE",
+      "SECRET_LIST",
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
       "COLLECTION_CONNECTIONS_LIST",

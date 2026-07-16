@@ -33,6 +33,7 @@ import {
   BrandContextListPart,
   AgentCreatePart,
   AgentListPart,
+  ApiKeyCreatePart,
   ConnectionListPart,
 } from "./parts/tool-call-part/index.ts";
 import { NextActionChip } from "./next-action-chip.tsx";
@@ -413,6 +414,14 @@ function MessagePart({
       if (fallback.type === "tool-COLLECTION_VIRTUAL_MCP_CREATE") {
         return (
           <AgentCreatePart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
+      if (fallback.type === "tool-API_KEY_CREATE") {
+        return (
+          <ApiKeyCreatePart
             part={fallback}
             latency={getMeta(fallback.toolCallId)?.latencySeconds}
           />

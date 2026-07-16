@@ -5,6 +5,7 @@ import { type UIMessage } from "ai";
 import { useRef, useState } from "react";
 import { FileNode } from "../tiptap/file/node.tsx";
 import { MentionNode } from "../tiptap/mention/node.tsx";
+import { SecretRefNode } from "../tiptap/secret-ref/node.tsx";
 import type { Metadata } from "../types.ts";
 import { MessageTextPart } from "./parts/text-part.tsx";
 import { MessageTimestamp } from "./timestamp.tsx";
@@ -28,6 +29,7 @@ const EXTENSIONS = [
   }),
   MentionNode,
   FileNode,
+  SecretRefNode,
 ];
 
 /**
@@ -146,6 +148,7 @@ export function MessageUser<T extends Metadata>({
                           key={`${id}-${index}`}
                           id={id}
                           part={part}
+                          redactRaw
                         />
                       );
                     }
