@@ -29,7 +29,6 @@ import {
   type AgentMode,
 } from "./use-agent-mode";
 import { useChatPrefs, useOptionalChatTask } from "./context";
-import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { useAgentOptionAvailability } from "./use-agent-availability";
 import {
   type AgentOption,
@@ -315,8 +314,6 @@ export function TierTrigger() {
   const { pendingHarnessId, setPendingAgentOption } = useChatPrefs();
   const availability = useAgentOptionAvailability();
   const taskCtx = useOptionalChatTask();
-  // Reports-only orgs are locked to the fast tier — no selector at all.
-  const reportsOnly = useReportsOnly();
   const locked = taskCtx?.isThreadLocked ?? false;
   const hasLocal = availability.claudeCode || availability.codex;
   const isLocal = mode !== "cloud-decopilot";
@@ -382,8 +379,6 @@ export function TierTrigger() {
       },
     ];
   }
-
-  if (reportsOnly) return null;
 
   const localBrand = isLocal ? localHarnessBrand(pendingHarnessId) : null;
   const LocalBrandIcon = localBrand?.Icon;

@@ -2,10 +2,9 @@
  * Org Shell Layout
  *
  * Shared parent for `/$org/` (home) and `/$org/$taskId` (chat). Owns the
- * full-width toolbar header, the sidebar row beneath it, and
- * ChatPrefsProvider.
+ * toolbar header, the sidebar row, and ChatPrefsProvider.
  *
- * Shell shape:
+ * Shell shape (default):
  *   SidebarProvider
  *   └── app-shell-root (flex-col, h-dvh)
  *       ├── Toolbar.Header           — full-width, fixed left zone
@@ -13,6 +12,11 @@
  *           ├── StudioSidebar (desktop only)
  *           ├── SidebarResizeHandle (desktop only)
  *           └── SidebarInset         — routed content
+ *
+ * On desktop the sidebar owns the full height and the toolbar header lives in
+ * the right column so it only spans above the panels — the org selector +
+ * collapse toggle live in the sidebar's own header instead of the top bar.
+ *
  *   + Sheet for mobile sidebar (rendered alongside, portal-based)
  */
 
@@ -21,6 +25,7 @@ import {
   SidebarInset,
   SidebarLayout,
   SidebarProvider,
+  useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Outlet } from "@tanstack/react-router";
@@ -30,7 +35,7 @@ import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
 import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
-import { ShellBreadcrumb } from "@/web/components/header/shell-breadcrumb";
+import { AgentSwitcherCrumb } from "@/web/components/header/shell-breadcrumb";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import {
   MobileSidebarSheet,
@@ -42,15 +47,24 @@ import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
 
+function CollapsedAgentCrumb() {
+  const { state } = useSidebar();
+  const reportsOnly = useReportsOnly();
+  // No agent switcher in the collapsed top bar for commerce (reports-only) orgs.
+  if (state !== "collapsed" || reportsOnly) return null;
+  return <AgentSwitcherCrumb />;
+}
+
 function RouteFallback() {
   return <ShellRouteLoading />;
 }
 
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
-  // Reports-only orgs hide the whole navigation surface (agents,
-  // threads, settings): the sidebar and its trigger are dropped so only the
-  // reports diagnostic remains reachable.
+  // Commerce (reports-only) orgs keep the full shell but with a curated top bar:
+  // no agent switcher crumb (see CollapsedAgentCrumb + the mobile header). The
+  // heavier curation (no Customize / Automations / Settings) lives in the home
+  // board and the tab bar, keyed off the same flag.
   const reportsOnly = useReportsOnly();
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
     SIDEBAR_OPEN_STORAGE_KEY,
@@ -58,61 +72,92 @@ export default function OrgShellLayout() {
   );
   const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
 
+  // On desktop the header lives in the right column above the panels only (not
+  // spanning the sidebar).
+  const headerInRightColumn = !isMobile;
+  const desktopHeader = (
+    <Toolbar.Header>
+      <Toolbar.LeftColumn>
+        <CollapsedAgentCrumb />
+        <Toolbar.TogglesSlot />
+      </Toolbar.LeftColumn>
+      <Toolbar.CenterSlot />
+      <Toolbar.RightColumn>
+        <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
+          <Toolbar.TabsSlot />
+        </div>
+        <Toolbar.RightSlot />
+      </Toolbar.RightColumn>
+    </Toolbar.Header>
+  );
+
+  // Single flex row. Like the desktop collapsed topbar, only the *agent* shows
+  // here (it flexes and truncates) — the org switcher lives in the sidebar
+  // sheet, reached via the hamburger. The linked-desktop indicator, toggles and
+  // view select stay shrink-0. The Center / Right portal targets ride along at
+  // the end (usually empty on mobile) so nothing spills onto a second row.
+  const mobileHeader = (
+    <Toolbar.Header className="grid-cols-1 px-1">
+      <div className="flex w-full min-w-0 items-center gap-1">
+        <SidebarTriggerButton />
+        {/* No agent switcher for commerce (reports-only) orgs. */}
+        {!reportsOnly && (
+          <div className="flex min-w-0 flex-1 items-center">
+            <AgentSwitcherCrumb />
+          </div>
+        )}
+        <LinkedDesktopIndicator />
+        <Toolbar.TogglesSlot />
+        <Toolbar.TabsSlot className="shrink-0" />
+        <Toolbar.CenterSlot />
+        <Toolbar.RightSlot />
+      </div>
+    </Toolbar.Header>
+  );
+
+  const inset = (
+    <SidebarInset
+      className="flex flex-col min-h-0"
+      style={{
+        background: "transparent",
+        containerType: "inline-size",
+      }}
+    >
+      <div className="flex flex-col h-full min-h-0">
+        <div className="relative flex-1 min-h-0 flex flex-row">
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
+        </div>
+      </div>
+    </SidebarInset>
+  );
+
   return (
     <ThreadManagerProvider>
       <Toolbar.Provider>
         <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <ChatPrefsProvider>
             <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
-              {isMobile ? (
-                <Toolbar.Header className="grid-cols-1 px-1 pr-1">
-                  <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto] items-center gap-2">
-                    {!reportsOnly && <SidebarTriggerButton />}
-                    {!reportsOnly && <ShellBreadcrumb />}
-                    {!reportsOnly && <LinkedDesktopIndicator />}
-                    <div aria-hidden className="min-w-0" />
-                    <Toolbar.TogglesSlot />
-                    {!reportsOnly && (
-                      <Toolbar.TabsSlot className="min-w-0 justify-self-end" />
-                    )}
-                  </div>
-                  {!reportsOnly && <Toolbar.CenterSlot />}
-                  {!reportsOnly && <Toolbar.RightSlot />}
-                </Toolbar.Header>
-              ) : (
-                <Toolbar.Header>
-                  <Toolbar.LeftColumn>
-                    {!reportsOnly && <ShellBreadcrumb />}
-                    {/* Chat toggle sits on the left — it controls the left
-                        Chat side-panel view; the main-panel tabs stay on the right.
-                        Reports-only orgs keep ONLY this toggle: no breadcrumb,
-                        no view tabs, no right-side actions. */}
-                    <Toolbar.TogglesSlot />
-                  </Toolbar.LeftColumn>
-                  {reportsOnly ? <div aria-hidden /> : <Toolbar.CenterSlot />}
-                  <Toolbar.RightColumn>
-                    {!reportsOnly && (
-                      <>
-                        <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
-                          <Toolbar.TabsSlot />
-                        </div>
-                        <Toolbar.RightSlot />
-                      </>
-                    )}
-                  </Toolbar.RightColumn>
-                </Toolbar.Header>
-              )}
+              {/* Header on top: mobile always, desktop unless the sidebar owns
+                  the full height. */}
+              {!headerInRightColumn &&
+                (isMobile ? mobileHeader : desktopHeader)}
               <SidebarLayout
                 ref={wrapperRef}
                 className="flex-1 bg-sidebar relative min-h-0"
                 style={
                   {
                     "--sidebar-width": `${width}px`,
-                    "--sidebar-width-icon": "3.5rem",
+                    // 3.125rem → collapsed-rail buttons are 34px (calc(3.125rem -
+                    // 1rem)), matching the expanded toolbar's 34px icon buttons so
+                    // the sidebar toggle + new-task don't jump size between
+                    // open/collapsed.
+                    "--sidebar-width-icon": "3.125rem",
                   } as Record<string, string>
                 }
               >
-                {!isMobile && !reportsOnly && (
+                {!isMobile && (
                   <>
                     <StudioSidebar />
                     <SidebarResizeHandle
@@ -121,23 +166,16 @@ export default function OrgShellLayout() {
                     />
                   </>
                 )}
-                <SidebarInset
-                  className="flex flex-col"
-                  style={{
-                    background: "transparent",
-                    containerType: "inline-size",
-                  }}
-                >
-                  <div className="flex flex-col h-full min-h-0">
-                    <div className="relative flex-1 min-h-0 flex flex-row">
-                      <Suspense fallback={<RouteFallback />}>
-                        <Outlet />
-                      </Suspense>
-                    </div>
+                {headerInRightColumn ? (
+                  <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full">
+                    {desktopHeader}
+                    {inset}
                   </div>
-                </SidebarInset>
+                ) : (
+                  inset
+                )}
               </SidebarLayout>
-              {isMobile && !reportsOnly && (
+              {isMobile && (
                 <MobileSidebarSheet
                   renderSidebar={({ onClose }) => (
                     <div className="flex h-full">

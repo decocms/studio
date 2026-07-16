@@ -59,7 +59,7 @@ export function HeaderTabButton({
       <span className="flex size-5 items-center justify-center shrink-0">
         <TabIconGlyph icon={icon} />
       </span>
-      <span className="whitespace-nowrap text-sm font-medium leading-none">
+      <span className="max-md:hidden whitespace-nowrap text-sm font-medium leading-none">
         {title}
       </span>
     </button>

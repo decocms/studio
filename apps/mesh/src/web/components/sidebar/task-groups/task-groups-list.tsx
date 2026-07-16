@@ -49,8 +49,12 @@ import { GlobalSearchDialog } from "@/web/layouts/tasks-panel/global-search-dial
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
-import { AgentAvatar } from "@/web/components/agent-icon";
 import { SidebarTriggerButton } from "@/web/layouts/shell-controls";
+import {
+  OrgIcon,
+  OrgSwitcherPopover,
+} from "@/web/components/header/org-switcher";
+import { AgentAvatar } from "@/web/components/agent-icon";
 import { MyThreadsSection } from "./my-threads-section";
 import type { SidebarFilters } from "./next-page-offset";
 import { findArchiveFallback } from "./archive-fallback";
@@ -85,7 +89,10 @@ function ToolbarTooltipButton({
           onPointerLeave={() => setOpen(false)}
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}
-          className={cn(active && "bg-sidebar-accent text-foreground")}
+          className={cn(
+            "md:size-[34px] rounded-lg",
+            active && "bg-sidebar-accent text-foreground",
+          )}
         >
           {children}
         </ToolbarIconButton>
@@ -299,6 +306,11 @@ export function TaskGroupsList({
 
   // Collapsed rail: the toggle up top, then each thread as its agent's avatar
   // (tooltip = title), so threads stay reachable without expanding.
+  //
+  // The rail is pinned to the collapsed icon width (var(--sidebar-width-icon) -
+  // px-2) so its icons don't reflow while the sidebar animates its width down on
+  // collapse: without the pin they'd render centered in the still-wide sidebar,
+  // then slide left as it shrinks — that horizontal drift is the "flick".
   if (isCollapsed) {
     const decopilot = getWellKnownDecopilotVirtualMCP(org.id);
     const agentById = new Map((agents ?? []).map((a) => [a.id, a] as const));
@@ -306,45 +318,62 @@ export function TaskGroupsList({
       (id ? agentById.get(id) : undefined) ??
       (id === decopilotId ? decopilot : undefined);
     return (
-      <SidebarMenu className="min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {/* Toggle first, then new thread, then the threads themselves. All
-            SidebarMenuButtons so they share the rail's default sizing/padding. */}
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            aria-label="Toggle sidebar"
-            tooltip="Toggle sidebar"
-            onClick={toggleSidebar}
-          >
-            <LayoutLeft size={16} />
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            tooltip="New thread"
-            onClick={() => void handleNewThread()}
-          >
-            <Edit05 size={16} />
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        {visibleScopedThreads.map((t) => {
-          const agent = resolveAgent(t.virtual_mcp_id);
-          return (
-            <SidebarMenuItem key={t.id}>
-              <SidebarMenuButton
-                tooltip={t.title || "New chat"}
-                isActive={t.id === activeTaskId}
-                onClick={() => handleSelectTask(t)}
-              >
-                <AgentAvatar
-                  icon={agent?.icon ?? null}
-                  name={agent?.title ?? "Agent"}
-                  size="2xs"
-                />
+      <div className="flex flex-col min-h-0 flex-1 -mt-1 w-[calc(var(--sidebar-width-icon)-1rem)]">
+        {/* Mirror the OPEN sidebar's top exactly so nothing jumps when toggling:
+            the org sits in an h-12 slot (= the open header's height) pulled flush
+            to the top via -mt-1 (cancels the collapsed additionalContent margin),
+            then an mt-2 before the menu reproduces the open header→toolbar gap so
+            the collapse toggle lands at the same height as its open counterpart. */}
+        <div className="flex h-12 shrink-0 items-center justify-center">
+          <OrgSwitcherPopover
+            orgParam={org.slug}
+            side="right"
+            align="start"
+            trigger={
+              <SidebarMenuButton tooltip={org.name}>
+                <OrgIcon org={org} size="sm" />
               </SidebarMenuButton>
-            </SidebarMenuItem>
-          );
-        })}
-      </SidebarMenu>
+            }
+          />
+        </div>
+        <SidebarMenu className="mt-2 min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              aria-label="Toggle sidebar"
+              tooltip="Toggle sidebar"
+              onClick={toggleSidebar}
+            >
+              <LayoutLeft size={16} />
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="New thread"
+              onClick={() => void handleNewThread()}
+            >
+              <Edit05 size={16} />
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          {visibleScopedThreads.map((t) => {
+            const agent = resolveAgent(t.virtual_mcp_id);
+            return (
+              <SidebarMenuItem key={t.id}>
+                <SidebarMenuButton
+                  tooltip={t.title || "New chat"}
+                  isActive={t.id === activeTaskId}
+                  onClick={() => handleSelectTask(t)}
+                >
+                  <AgentAvatar
+                    icon={agent?.icon ?? null}
+                    name={agent?.title ?? "Agent"}
+                    size="xs"
+                  />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </div>
     );
   }
 
@@ -359,6 +388,7 @@ export function TaskGroupsList({
             <ToolbarIconButton
               aria-label="Filter threads"
               active={filtersActive}
+              className="md:size-[34px] rounded-lg"
             >
               <FilterLines size={16} />
               {filtersActive && (
@@ -412,13 +442,15 @@ export function TaskGroupsList({
     <TooltipProvider delayDuration={300}>
       <div
         className={cn(
-          "shrink-0 px-1 flex items-center justify-between",
-          mobile ? "h-10" : "h-10 md:h-7 mb-2",
+          "shrink-0 flex items-center justify-between",
+          mobile ? "h-10" : "h-10 md:h-[34px] mb-2",
         )}
       >
-        {/* Left: toggle + filter popover. */}
+        {/* Left: sidebar trigger + filter popover. */}
         <div className="flex items-center gap-0.5">
-          {!mobile && <SidebarTriggerButton />}
+          {!mobile && (
+            <SidebarTriggerButton className="md:size-[34px] rounded-lg" />
+          )}
           {filterPopover}
         </div>
         {/* Right: search + new thread. */}

@@ -39,7 +39,6 @@ import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
-import { useCapability } from "@/web/hooks/use-capability";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -59,6 +58,8 @@ import {
 } from "./tab-id";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
 import { getSourceSystemTabs } from "./source-system-tabs";
+import { useCapability } from "@/web/hooks/use-capability";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 export type AgentTabDef = {
   id: string;
@@ -192,6 +193,7 @@ export function useMainPanelTabs(ctx: {
     agentHasClonableSource(entity?.metadata) ||
     agentHasClonableSource(metadata);
   const { granted: canManageAgents } = useCapability("agents:manage");
+  const reportsOnly = useReportsOnly();
   const connections = useConnections({ includeVirtual: true });
 
   // Show "Content" only when decofile/meta confirm editable pages or sections
@@ -323,10 +325,13 @@ export function useMainPanelTabs(ctx: {
   if (gitTabVisible) {
     systemTabs.push({ id: "git", title: "Review changes" });
   }
-  systemTabs.push({ id: "automations", title: "Automations" });
-  // Settings is always the last tab (Library moved to the leading anchor above).
-  if (canManageAgents) {
-    systemTabs.push({ id: "settings", title: "Settings" });
+  // Commerce (reports-only) orgs get a curated top bar: no Automations, no
+  // Settings.
+  if (!reportsOnly) {
+    systemTabs.push({ id: "automations", title: "Automations" });
+    if (canManageAgents) {
+      systemTabs.push({ id: "settings", title: "Settings" });
+    }
   }
 
   // Merge pinned views + per-task expanded tools into a single list keyed

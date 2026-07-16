@@ -91,21 +91,24 @@ test.describe("Blocks preview mode", () => {
       `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=0&main=settings`,
     );
 
-    const chatToggle = page.getByRole("button", {
-      name: "Chat",
-      exact: true,
-    });
-    await expect(chatToggle).toBeVisible({ timeout: 30_000 });
-    await expect(chatToggle).toHaveAttribute("aria-pressed", "false");
-    await chatToggle.click();
+    // Mobile has no side-by-side split and no standalone Chat toggle: every
+    // destination (Chat, the main views, Tasks, Library) lives in the single
+    // "View" dropdown, and only one surface shows at a time.
+    const viewSelect = page.getByRole("combobox", { name: "View" });
+    await expect(viewSelect).toBeVisible({ timeout: 30_000 });
+    // main=settings is the single visible surface to start.
+    await expect(page.getByTestId("main-panel")).toBeVisible();
+
+    // Pick Chat: the main panel closes and chat becomes the only surface.
+    await viewSelect.click();
+    await page.getByRole("option", { name: "Chat" }).click();
     await expect(page).toHaveURL(/sidepanel=chat/);
     await expect(page).toHaveURL(/main=0/);
-    await expect(chatToggle).toHaveAttribute("aria-pressed", "true");
-    await expect(chatToggle).toBeDisabled();
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
     await expect(page.getByTestId("main-panel")).toHaveCount(0);
 
-    await page.getByRole("combobox", { name: "Main panel tab" }).click();
+    // Pick Settings again: chat closes, the main panel returns.
+    await viewSelect.click();
     await page.getByRole("option", { name: "Settings" }).click();
     await expect(page).toHaveURL(/sidepanel=0/);
     await expect(page).toHaveURL(/main=settings/);

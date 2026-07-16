@@ -10,10 +10,14 @@ import { useSidebar } from "@deco/ui/components/sidebar.tsx";
 import { LayoutLeft } from "@untitledui/icons";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 
-export function SidebarTriggerButton() {
+export function SidebarTriggerButton({ className }: { className?: string }) {
   const { toggleSidebar } = useSidebar();
   return (
-    <ToolbarIconButton onClick={toggleSidebar} aria-label="Toggle sidebar">
+    <ToolbarIconButton
+      onClick={toggleSidebar}
+      aria-label="Toggle sidebar"
+      className={className}
+    >
       <LayoutLeft size={16} />
     </ToolbarIconButton>
   );

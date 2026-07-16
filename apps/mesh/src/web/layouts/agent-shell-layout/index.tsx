@@ -299,13 +299,9 @@ function MobileTaskWorkspace({
 
   return (
     <>
-      <Toolbar.Toggles>
-        <ToggleButtons
-          sidePanel={mobileSurface === "main" ? null : mobileSurface}
-          toggleSidePanel={layout.setMobileSurface}
-          disableActiveSidePanelToggle={mobileSurface !== "main"}
-        />
-      </Toolbar.Toggles>
+      {/* No Chat/Tasks/Library toggles on mobile: there's no side-by-side split,
+          so one surface shows at a time and every destination (Chat, the main
+          views, Tasks, Library) lives in this single dropdown instead. */}
       <Toolbar.Tabs>
         <MobileMainPanelTabSelect
           virtualMcpId={virtualMcpId}
