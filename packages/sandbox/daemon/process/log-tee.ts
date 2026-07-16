@@ -34,10 +34,15 @@ export class LogTee {
   write(data: string): void {
     if (data.length === 0) return;
     const buf = Buffer.from(data, "utf-8");
+    // Open first so `written` is seeded from the file's actual on-disk size
+    // (named-script tees reopen an existing path across runs) — checking the
+    // cap against a stale `written` of 0 would let this first write blow
+    // past maxBytes without rotating.
+    if (!this.openIfNeeded()) return;
     if (this.written + buf.length > this.maxBytes) {
       this.rotate();
+      if (this.fd === null) return;
     }
-    if (!this.openIfNeeded()) return;
     try {
       writeSync(this.fd as number, buf);
       this.written += buf.length;
