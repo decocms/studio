@@ -51,7 +51,7 @@ export function reportAttributionFromSearch(search: string): ReportAttribution {
   };
 }
 
-export function currentReportAttribution(): ReportAttribution {
+function currentReportAttribution(): ReportAttribution {
   return reportAttributionFromSearch(
     typeof window === "undefined" ? "" : window.location.search,
   );
