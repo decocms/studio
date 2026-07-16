@@ -85,8 +85,9 @@ const installStudioPackWorkflow = DBOS.registerWorkflow(
  * version would otherwise block the startup backfill from installing
  * newly added agents in existing orgs.
  * v2: added Usage Manager.
+ * v3: added API Key Manager.
  */
-const INSTALL_VERSION = "v2";
+const INSTALL_VERSION = "v3";
 
 /**
  * Fire-and-forget enqueue from the Better Auth org.afterCreate callback.
