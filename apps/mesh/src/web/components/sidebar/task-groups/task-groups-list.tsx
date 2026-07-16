@@ -58,6 +58,7 @@ import { AgentAvatar } from "@/web/components/agent-icon";
 import { MyThreadsSection } from "./my-threads-section";
 import type { SidebarFilters } from "./next-page-offset";
 import { findArchiveFallback } from "./archive-fallback";
+import { forgetThreadLayout } from "@/web/lib/thread-layout-memory";
 
 type TypeFilter = "all" | "manual" | "automation";
 type GroupBy = "flat" | "status";
@@ -244,6 +245,9 @@ export function TaskGroupsList({
     }
     const wasActive = task.id === activeTaskId;
     hide(task.id);
+    // Drop the archived thread's remembered layout so it can't resurface if a
+    // new thread ever reuses the id within this session.
+    forgetThreadLayout(task.id);
     if (!wasActive) return;
     // Follow the sidebar's current filtered order across agents, while keeping
     // teammate threads opt-in even when Team scope renders them.
