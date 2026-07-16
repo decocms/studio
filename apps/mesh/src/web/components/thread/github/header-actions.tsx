@@ -32,8 +32,10 @@ import * as tpl from "./message-templates.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
 import { resolveSandboxBranchFromMap } from "./resolve-sandbox-branch.ts";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events.ts";
+import { usePublishGate } from "@/web/components/sandbox/hooks/use-publish-gate.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
+import type { PublishGate } from "./sandbox-git-api.ts";
 
 interface Props {
   virtualMcpId: string;
@@ -137,6 +139,33 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // daemon's own poll fallback. It also applies the boot-dirty baseline filter
   // that a raw /git/status poll would miss.
   const effectiveBranchMeta = branchMeta;
+
+  // Gate the side "Publish" button up-front: fetch the direct-publish diff and
+  // disable the button (with a tooltip) when it contains code, instead of
+  // opening a dialog whose Publish button is already dead. Only fetch when
+  // there's local work not yet merged (i.e. a side Publish button could show).
+  const publishGateBase =
+    effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.base : "main";
+  const publishGateEnabled =
+    effectiveBranchMeta.kind === "ready" &&
+    Boolean(sandboxRouteBranch) &&
+    (effectiveBranchMeta.workingTreeDirty ||
+      effectiveBranchMeta.unpushed > 0 ||
+      effectiveBranchMeta.aheadOfBase > 0);
+  const publishGateSignature =
+    effectiveBranchMeta.kind === "ready"
+      ? `${effectiveBranchMeta.headSha}:${effectiveBranchMeta.workingTreeDirty}:${effectiveBranchMeta.unpushed}:${effectiveBranchMeta.aheadOfBase}`
+      : "unknown";
+  const { gate: publishGate } = usePublishGate({
+    orgSlug: org.slug,
+    virtualMcpId,
+    branch: sandboxRouteBranch ?? "",
+    base: publishGateBase,
+    headSha:
+      effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.headSha : null,
+    signature: publishGateSignature,
+    enabled: publishGateEnabled,
+  });
 
   // Detached: repo linked via a GitHub connection that's no longer aggregated.
   // Render a reconnect pill instead of nothing so the user has a recovery path
@@ -319,6 +348,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         onActivate={onActivate}
         showPublishSide={showPublishSide}
         onPublishSide={onPublishSide}
+        publishGate={publishGate}
         prNumber={pr?.number}
         prBase={pr?.base}
         onSquashMerge={handleSquashMerge}
@@ -372,6 +402,7 @@ function HeaderButtonRenderer(props: {
   onActivate: (action: HeaderButton["action"]) => void;
   showPublishSide: boolean;
   onPublishSide: () => void;
+  publishGate: PublishGate;
   prNumber?: number;
   prBase?: string;
   onSquashMerge: (pullNumber: number) => void | Promise<void>;
@@ -427,11 +458,15 @@ function HeaderButtonRenderer(props: {
         </Button>
       </WithTooltip>
       {props.showPublishSide ? (
-        <WithTooltip label="Publish directly, skipping review">
+        <WithTooltip
+          label={
+            props.publishGate.reason ?? "Publish directly, skipping review"
+          }
+        >
           <Button
             size="sm"
             variant="success"
-            disabled={props.githubActionPending}
+            disabled={props.githubActionPending || !props.publishGate.allowed}
             onClick={props.onPublishSide}
           >
             Publish
