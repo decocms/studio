@@ -84,6 +84,15 @@ export type VmContext = {
    * thread isn't deducible from the sandbox identity alone.
    */
   threadId: string;
+  /**
+   * The run's pre-authenticated Virtual MCP endpoint. When present, the
+   * sandbox fs layer fires POST /_sandbox/tools/sync after provisioning so
+   * the daemon materializes the tool catalog + endpoint file under
+   * `<repo>/.deco/tools/` — hosted harnesses never send a /dispatch
+   * envelope, so this is the cloud-path counterpart of the daemon's
+   * onDispatchMcp hook.
+   */
+  mcp?: { url: string; headers: Record<string, string>; expiresAt?: number };
 };
 
 export interface BuiltinToolParams {
@@ -232,6 +241,7 @@ async function buildAllTools(
       virtualMcpId: vmContext.virtualMcpId,
       branch: vmContext.branch,
       userId: vmContext.userId,
+      mcp: vmContext.mcp,
     });
     vmTools = createVmTools({
       fs,

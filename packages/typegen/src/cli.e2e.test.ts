@@ -18,7 +18,14 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -243,6 +250,69 @@ describe("typegen CLI e2e", () => {
     ]);
     expect(code).toBe(0);
     expect(stdout).toContain("LIST_CUSTOMERS");
+  });
+
+  // A workspace as the daemon leaves it: .deco/tools/.endpoint.json holding
+  // the run's pre-authenticated endpoint. No flags, no STUDIO_*/MESH_* env.
+  // One CLI invocation per test — the stub transport is single-session.
+  async function flaglessWorkspace(): Promise<{
+    run: (
+      args: string[],
+    ) => Promise<{ code: number; stdout: string; stderr: string }>;
+    [Symbol.asyncDispose]: () => Promise<void>;
+  }> {
+    const workspace = await mkdtemp(join(tmpdir(), "typegen-sandbox-"));
+    const toolsDir = join(workspace, ".deco", "tools");
+    await mkdir(toolsDir, { recursive: true });
+    await writeFile(
+      join(toolsDir, ".endpoint.json"),
+      JSON.stringify({
+        url: `${baseUrl}/mcp/virtual-mcp/crm`,
+        headers: { Authorization: "Bearer test-key" },
+        expiresAt: 1,
+      }),
+    );
+
+    const env = { ...process.env };
+    delete env.STUDIO_BASE_URL;
+    delete env.STUDIO_API_KEY;
+    delete env.STUDIO_MCP_ID;
+    delete env.MESH_BASE_URL;
+    delete env.MESH_API_KEY;
+    delete env.MESH_MCP_ID;
+
+    return {
+      run: (args: string[]) => {
+        const proc = Bun.spawn(["bun", "run", CLI, ...args], {
+          cwd: workspace,
+          env,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        return Promise.all([
+          proc.exited,
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+        ]).then(([code, stdout, stderr]) => ({ code, stdout, stderr }));
+      },
+      [Symbol.asyncDispose]: () =>
+        rm(workspace, { recursive: true, force: true }),
+    };
+  }
+
+  test("flagless `tools` inside a sandbox workspace via the endpoint file", async () => {
+    await using ws = await flaglessWorkspace();
+    const tools = await ws.run(["tools"]);
+    expect(tools.stderr).toBe("");
+    expect(tools.code).toBe(0);
+    expect(tools.stdout).toContain("LIST_CUSTOMERS");
+  });
+
+  test("flagless `call` inside a sandbox workspace via the endpoint file", async () => {
+    await using ws = await flaglessWorkspace();
+    const call = await ws.run(["call", "LIST_CUSTOMERS", '{"plan":"free"}']);
+    expect(call.code).toBe(0);
+    expect(JSON.parse(call.stdout).customers[0].name).toBe("Grace");
   });
 
   test("call surfaces tool errors with a non-zero exit", async () => {

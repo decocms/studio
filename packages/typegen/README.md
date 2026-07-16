@@ -14,7 +14,7 @@ bunx @decocms/typegen --mcp <virtual-mcp-id> --key <api-key> --output client.ts
 
 | Flag | Env var | Default |
 |------|---------|---------|
-| `--mcp` | `STUDIO_MCP_ID` | **required** |
+| `--mcp` | `STUDIO_MCP_ID` | **required** (unless a sandbox endpoint file is discovered — see below) |
 | `--key` | `STUDIO_API_KEY` | — |
 | `--url` | `STUDIO_BASE_URL` | `https://studio.decocms.com` |
 | `--output` | — | `client.ts` |
@@ -95,6 +95,28 @@ bunx @decocms/typegen call SEARCH '{"query":"hello"}'
 ```
 
 `call` exits non-zero and prints the server's error message when a tool fails.
+
+## Sandbox endpoint discovery
+
+Inside a Studio sandbox workspace, the daemon materializes the run's
+pre-authenticated MCP endpoint at `<repo>/.deco/tools/.endpoint.json`
+(`{ url, headers, expiresAt }`), next to the per-tool schema catalog. With no
+`--mcp` flag and no `STUDIO_MCP_ID`/`MESH_MCP_ID` env, the CLI discovers that
+file by walking up from cwd — so `typegen tools` and `typegen call` run fully
+flagless in a sandbox.
+
+`createMeshClient` does the same when no api key resolves: it connects to the
+discovered endpoint (retargeted to `mcpId` when one is given, preserving the
+credentials). The file is re-read on every connect, so after the daemon
+refreshes it with new credentials, a `close()` + retry picks them up. An
+explicit endpoint can also be passed directly:
+
+```ts
+const client = createMeshClient(); // flagless inside a sandbox
+const other = createMeshClient({
+  endpoint: { url: "https://.../mcp/virtual-mcp/vmc_x", headers: { ... } },
+});
+```
 
 ## Regenerating
 
