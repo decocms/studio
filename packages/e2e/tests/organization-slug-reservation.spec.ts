@@ -1,17 +1,40 @@
 import { signUpViaApi } from "../fixtures/auth-api";
 import { expect, newApiContext, test } from "../fixtures/test";
 
-test("the public report namespace cannot become an organization slug", async ({
+const RESERVED_SLUGS = [
+  ".well-known",
+  "_admin",
+  "api",
+  "auth",
+  "cli",
+  "commerce-onboarding",
+  "dbos-queue-depth",
+  "health",
+  "hosted-run-pending",
+  "login",
+  "mcp",
+  "metrics",
+  "oauth",
+  "oauth-proxy",
+  "onboarding",
+  "org",
+  "report",
+  "reset-password",
+] as const;
+
+test("public route namespaces cannot become organization slugs", async ({
   playwright,
 }) => {
   const ctx = await newApiContext(playwright);
   await signUpViaApi(ctx);
 
-  const create = await ctx.post("/api/auth/organization/create", {
-    data: { name: "Report", slug: "report" },
-  });
-  expect(create.status()).toBe(400);
-  expect((await create.text()).toLowerCase()).toContain("reserved");
+  for (const slug of RESERVED_SLUGS) {
+    const create = await ctx.post("/api/auth/organization/create", {
+      data: { name: `Reserved ${slug}`, slug },
+    });
+    expect(create.status()).toBe(400);
+    expect((await create.text()).toLowerCase()).toContain("reserved");
+  }
 
   const list = await ctx.get("/api/auth/organization/list");
   expect(list.ok()).toBe(true);
@@ -27,7 +50,7 @@ test("the public report namespace cannot become an organization slug", async ({
   const rename = await ctx.post("/api/auth/organization/update", {
     data: {
       organizationId,
-      data: { slug: "report" },
+      data: { slug: "api" },
     },
   });
   expect(rename.status()).toBe(400);

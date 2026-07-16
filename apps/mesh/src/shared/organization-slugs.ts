@@ -7,7 +7,24 @@
  * calls, MCP tools, onboarding, and future clients cannot bypass it.
  */
 export const RESERVED_ORGANIZATION_SLUGS: ReadonlySet<string> = new Set([
+  ".well-known",
+  "_admin",
+  "api",
+  "auth",
+  "cli",
+  "commerce-onboarding",
+  "dbos-queue-depth",
+  "health",
+  "hosted-run-pending",
+  "login",
+  "mcp",
+  "metrics",
+  "oauth",
+  "oauth-proxy",
+  "onboarding",
+  "org",
   "report",
+  "reset-password",
 ]);
 
 export function isReservedOrganizationSlug(slug: unknown): boolean {
