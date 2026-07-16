@@ -27,10 +27,7 @@ import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
-import {
-  getRepoScope,
-  isOrgSharedConnection,
-} from "@/shared/github-repo-scope";
+import { getRepoScope } from "@/shared/github-repo-scope";
 import {
   mergeSandboxMapEntry,
   readSandboxMap,
@@ -63,12 +60,11 @@ const CLONE_POLL_MS = 1_500;
 const CLONE_MAX_CONSECUTIVE_FAILURES = 5;
 
 /**
- * The repos `load_repo` offers: active `mcp-github` connections that are
- * **org-shared** ("Add repo" in the sidebar — injected into every agent, see
- * `mcp-clients/virtual-mcp`). Per-agent import children also carry a
- * `repoScope` but stay private to their agent, so they're deliberately excluded
- * — otherwise the tool would surface a repo imported for a different agent.
- * Pure so it's unit-testable without a DB.
+ * The repos `load_repo` offers: every active `mcp-github` connection carrying a
+ * `repoScope` — i.e. each repo imported into the org (the "Code Agents" list in
+ * the UI). This includes both org-shared imports and per-agent imports; they're
+ * all the user's own org repos and all loadable. The base org-level `mcp-github`
+ * connection has no `repoScope`, so it's skipped. Pure so it's unit-testable.
  */
 export function selectLoadableRepos(
   connections: RepoConnection[],
@@ -76,7 +72,6 @@ export function selectLoadableRepos(
   const repos: RepoOption[] = [];
   for (const conn of connections) {
     if (conn.status !== "active") continue;
-    if (!isOrgSharedConnection(conn)) continue;
     const scope = getRepoScope(conn);
     if (!scope) continue;
     repos.push({

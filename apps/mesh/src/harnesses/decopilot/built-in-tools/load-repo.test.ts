@@ -23,12 +23,19 @@ const repoScope = (owner: string, repo: string) => ({
   permissions: {},
 });
 
-test("selectLoadableRepos keeps active org-shared repo connections", () => {
+test("selectLoadableRepos lists every imported repo — org-shared AND per-agent", () => {
+  // Both are the user's own org repos; both are loadable. `orgShared` only
+  // governs auto-injection into other agents' toolsets, not load_repo's list.
   const repos = selectLoadableRepos([
     {
       id: "conn_shared",
       status: "active",
       metadata: { orgShared: true, repoScope: repoScope("acme", "web") },
+    },
+    {
+      id: "conn_peragent",
+      status: "active",
+      metadata: { repoScope: repoScope("acme", "api") },
     },
   ]);
   expect(repos).toEqual([
@@ -38,18 +45,13 @@ test("selectLoadableRepos keeps active org-shared repo connections", () => {
       repo: "web",
       installationId: 7,
     },
-  ]);
-});
-
-test("selectLoadableRepos excludes per-agent-private repos (no orgShared)", () => {
-  const repos = selectLoadableRepos([
     {
-      id: "conn_private",
-      status: "active",
-      metadata: { repoScope: repoScope("acme", "secret") },
+      connectionId: "conn_peragent",
+      owner: "acme",
+      repo: "api",
+      installationId: 7,
     },
   ]);
-  expect(repos).toEqual([]);
 });
 
 test("selectLoadableRepos excludes inactive and non-repo connections", () => {
@@ -57,9 +59,9 @@ test("selectLoadableRepos excludes inactive and non-repo connections", () => {
     {
       id: "conn_inactive",
       status: "inactive",
-      metadata: { orgShared: true, repoScope: repoScope("acme", "web") },
+      metadata: { repoScope: repoScope("acme", "web") },
     },
-    // Base org mcp-github connection — org-shared marker absent AND no repoScope.
+    // Base org mcp-github connection — no repoScope.
     { id: "conn_base", status: "active", metadata: {} },
   ]);
   expect(repos).toEqual([]);
