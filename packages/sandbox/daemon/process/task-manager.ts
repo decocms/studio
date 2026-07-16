@@ -558,6 +558,21 @@ export class TaskManager {
       if (task.timer) clearTimeout(task.timer);
       // Reap survivors of any backgrounded children.
       killGroup("SIGKILL");
+      // A trailing multi-byte UTF-8 sequence can still be buffered inside
+      // the decoder when the stream ends (no more bytes ever arrive to
+      // complete it) — flush it now so it isn't silently dropped.
+      const stdoutTail = stdoutDecoder.end();
+      if (stdoutTail) {
+        task.stdout.append(stdoutTail);
+        task.tee.write(stdoutTail);
+        this.fanOut(task, { stream: "stdout", data: stdoutTail });
+      }
+      const stderrTail = stderrDecoder.end();
+      if (stderrTail) {
+        task.stderr.append(stderrTail);
+        task.tee.write(stderrTail);
+        this.fanOut(task, { stream: "stderr", data: stderrTail });
+      }
       // A signal-terminated child (e.g. our own SIGTERM/SIGKILL via
       // kill()/killByLogName()) reports `code: null` here — mapping that
       // to `1` collapsed every explicit kill into status "exited" instead
