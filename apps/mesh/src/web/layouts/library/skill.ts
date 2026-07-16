@@ -1,6 +1,6 @@
 /**
  * SKILL.md parsing for the Library — re-exported from the shared harness
- * module (`@decocms/harness/skills/skill-md`) so the web UI and the studio
+ * module (`@decocms/harness/skills/skill-md`) so the web UI and the Studio
  * server-side skill catalog parse identically.
  */
 

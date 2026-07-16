@@ -7,6 +7,7 @@ import {
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Suspense, useDeferredValue, useState } from "react";
+import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
 import {
   useMutation,
@@ -395,7 +396,10 @@ function PickerContent({
 
       toast.success(`Imported ${repo.name} from GitHub`);
       onComplete();
-      localStorage.setItem("mesh:sidebar-open", JSON.stringify(false));
+      localStorage.setItem(
+        LOCALSTORAGE_KEYS.sidebarOpen(),
+        JSON.stringify(false),
+      );
       navigateToAgent(virtualMcpId);
     },
     onError: (error) => {

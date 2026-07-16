@@ -67,7 +67,7 @@ export function useListState<T extends ListStateEntity>(
   const [filters, setFilters] = usePersistedFilters(filterPersistKey);
 
   // Filter bar visibility (persisted)
-  const filterBarVisibilityKey = `mesh-${resource}-filter-visible-${namespace}`;
+  const filterBarVisibilityKey = `studio-${resource}-filter-visible-${namespace}`;
   const [filterBarVisible, setFilterBarVisibleState] = useState(() => {
     const stored = globalThis.localStorage?.getItem(filterBarVisibilityKey);
     return stored === "true";
@@ -84,7 +84,7 @@ export function useListState<T extends ListStateEntity>(
 
   // View mode (persisted)
   const [viewMode, setViewMode] = useViewMode(
-    `mesh-${resource}-${namespace}`,
+    `studio-${resource}-${namespace}`,
     defaultViewMode,
   );
 

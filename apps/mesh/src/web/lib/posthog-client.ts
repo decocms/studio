@@ -18,7 +18,7 @@ let initialized = false;
 let lastOrgGroupKey: string | null = null;
 let bootstrapTimingSent = false;
 
-const LP_DISTINCT_ID_STASH = "mesh:lp-distinct-id";
+const LP_DISTINCT_ID_STASH = "studio:lp-distinct-id";
 const REPORT_LINK_TOKEN_PATH = "/api/_reports/link-token/";
 // How long a stashed LP id stays mergeable. Long enough for "clicked the CTA
 // this morning, signed up tonight"; short enough that a shared machine can't
@@ -275,8 +275,8 @@ export function flushBootstrapTiming() {
       ? Math.round(nav.domContentLoadedEventEnd)
       : undefined,
     // SPA bootstrap phases that gate first paint (the suspense chain).
-    config_fetch_ms: measure("mesh:config-fetch"),
-    active_org_fetch_ms: measure("mesh:active-org-fetch"),
+    config_fetch_ms: measure("studio:config-fetch"),
+    active_org_fetch_ms: measure("studio:active-org-fetch"),
     // Whole thing: navigation start → shell rendered.
     time_to_shell_ms: Math.round(performance.now()),
     // Did localStorage hydration spare us the cold fetches this load?

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -371,7 +372,10 @@ export function ImportFromDecoDialog({
       queryClient.invalidateQueries({ queryKey: KEYS.projects(org.id) });
       toast.success(`Imported ${slug} from deco.cx`);
       handleClose(false);
-      localStorage.setItem("mesh:sidebar-open", JSON.stringify(false));
+      localStorage.setItem(
+        LOCALSTORAGE_KEYS.sidebarOpen(),
+        JSON.stringify(false),
+      );
       navigateToAgent(virtualMcpId);
     },
     onError: (err) => {

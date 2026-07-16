@@ -8,7 +8,7 @@ import type { ConnectionEntity } from "@/tools/connection/schema";
  * When a binding field declares `__type: "@deco/llm"`, we resolve it to the
  * builtin "LLMS" binding and match connections by their tools instead of
  * falling back to app-name matching (which doesn't work for built-in bindings
- * like the Mesh MCP).
+ * like the Studio MCP).
  */
 const BINDING_TYPE_TO_BUILTIN: Record<string, string> = {
   "@deco/llm": "LLMS",

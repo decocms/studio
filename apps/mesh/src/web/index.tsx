@@ -1,3 +1,7 @@
+// Must be the first import: its module init migrates pre-rename "mesh:*"
+// localStorage keys before anything (e.g. providers.tsx's module-scope
+// hydrateQueryClient) reads localStorage.
+import "@/web/lib/localstorage-keys";
 import { createRoot } from "react-dom/client";
 import { StrictMode, Suspense } from "react";
 import { Providers } from "@/web/providers/providers";

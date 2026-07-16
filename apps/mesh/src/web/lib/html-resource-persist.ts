@@ -22,7 +22,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { UI_RESOURCE_HTML_KEY } from "@decocms/mesh-sdk";
 
-const DB_NAME = "mesh-ui-resources";
+const DB_NAME = "studio-ui-resources";
 const STORE = "html";
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_ENTRIES = 50; // bound the store; prune oldest beyond this on restore
@@ -71,6 +71,13 @@ export async function restoreHtmlResourceCache(
   queryClient: QueryClient,
 ): Promise<void> {
   if (typeof indexedDB === "undefined") return;
+  // Pre-rename DB: it's a pure cache (server ETag revalidates every read), so
+  // no migration — just drop it so it doesn't linger.
+  try {
+    indexedDB.deleteDatabase("mesh-ui-resources");
+  } catch {
+    // ignore
+  }
   try {
     const db = await openDb();
     const store = tx(db, "readonly");

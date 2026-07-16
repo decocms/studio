@@ -43,7 +43,7 @@ export function nextDrift(
  * Polls /api/config on its own (short-lived, unlike the Infinity-staleTime
  * publicConfig query used for boot) and prompts a refresh once the deployed
  * server version drifts — consistently, across repeated polls — from this
- * bundle's build-time __MESH_VERSION__.
+ * bundle's build-time __STUDIO_VERSION__.
  */
 export function VersionCheckDialog() {
   const { data: serverVersion, dataUpdatedAt } = useQuery({
@@ -69,7 +69,7 @@ export function VersionCheckDialog() {
 
   if (dataUpdatedAt !== lastCheckedAt) {
     setLastCheckedAt(dataUpdatedAt);
-    setDrift((prev) => nextDrift(prev, serverVersion, __MESH_VERSION__));
+    setDrift((prev) => nextDrift(prev, serverVersion, __STUDIO_VERSION__));
   }
 
   const isStale = drift.count >= CONFIRMATIONS_REQUIRED;

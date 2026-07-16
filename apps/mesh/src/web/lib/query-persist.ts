@@ -15,7 +15,7 @@
 import { type QueryClient, dehydrate, hydrate } from "@tanstack/react-query";
 import { clearHtmlResourceCache } from "./html-resource-persist";
 
-const STORAGE_KEY = "mesh:rq-cache";
+const STORAGE_KEY = "studio:rq-cache";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
 const WRITE_DEBOUNCE_MS = 1000;
 
@@ -89,7 +89,7 @@ export function hydrateQueryClient(queryClient: QueryClient): void {
 
     const stale =
       !parsed.timestamp || Date.now() - parsed.timestamp > MAX_AGE_MS;
-    if (parsed.buster !== __MESH_VERSION__ || stale || !parsed.state) {
+    if (parsed.buster !== __STUDIO_VERSION__ || stale || !parsed.state) {
       window.localStorage.removeItem(STORAGE_KEY);
       return;
     }
@@ -121,7 +121,7 @@ export function persistQueryClient(queryClient: QueryClient): () => void {
       window.localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
-          buster: __MESH_VERSION__,
+          buster: __STUDIO_VERSION__,
           timestamp: Date.now(),
           state,
         }),

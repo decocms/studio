@@ -5,7 +5,7 @@ import { captureException } from "@/web/lib/posthog-client";
 import { ArchivedOrgScreen } from "@/web/components/archived-org-screen";
 import { NoPermissionState } from "@/web/components/no-permission-state";
 
-const CHUNK_RELOAD_KEY = "__mesh_chunk_reload_ts";
+const CHUNK_RELOAD_KEY = "__studio_chunk_reload_ts";
 
 function isArchivedOrgError(error: Error | null): boolean {
   return error?.message === "Organization is archived";

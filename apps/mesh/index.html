@@ -6,7 +6,7 @@
       // Reload once on modulepreload 404 (rolling deployment — old pod missing new chunk).
       // Shares the cooldown key with ChunkErrorBoundary to prevent double-reload loops.
       window.addEventListener('vite:preloadError', function() {
-        var key = '__mesh_chunk_reload_ts';
+        var key = '__studio_chunk_reload_ts';
         var last = sessionStorage.getItem(key);
         var now = Date.now();
         if (!last || now - Number(last) > 10000) {
@@ -19,7 +19,10 @@
       // Apply dark mode class before first paint to prevent flash
       (function() {
         try {
-          var p = JSON.parse(localStorage.getItem("mesh:user:preferences") || "{}");
+          // "mesh:" fallback: this runs before the bundle's one-time key
+          // migration (localstorage-keys.ts), so the very first load after
+          // the rename still finds the old key.
+          var p = JSON.parse(localStorage.getItem("studio:user:preferences") || localStorage.getItem("mesh:user:preferences") || "{}");
           var theme = p.theme || "system";
           var isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
           if (isDark) {

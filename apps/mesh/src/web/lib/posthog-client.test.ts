@@ -218,7 +218,7 @@ describe("posthog-client.identifyUser LP merge", () => {
 
   test("aliases the stashed LP distinct_id after identify, then clears it", () => {
     const store = stubLocalStorage({
-      "mesh:lp-distinct-id": JSON.stringify({
+      "studio:lp-distinct-id": JSON.stringify({
         id: "lp-anon-1",
         ts: Date.now(),
       }),
@@ -227,12 +227,12 @@ describe("posthog-client.identifyUser LP merge", () => {
     identifyUser("user_42", { email: "x@y.com" });
     expect(identifyCalls).toHaveLength(1);
     expect(aliasCalls).toEqual([["lp-anon-1"]]);
-    expect(store["mesh:lp-distinct-id"]).toBeUndefined(); // one-shot
+    expect(store["studio:lp-distinct-id"]).toBeUndefined(); // one-shot
   });
 
   test("second login does not re-alias (stash consumed)", () => {
     stubLocalStorage({
-      "mesh:lp-distinct-id": JSON.stringify({
+      "studio:lp-distinct-id": JSON.stringify({
         id: "lp-anon-1",
         ts: Date.now(),
       }),
@@ -245,7 +245,7 @@ describe("posthog-client.identifyUser LP merge", () => {
 
   test("ignores an expired stash", () => {
     stubLocalStorage({
-      "mesh:lp-distinct-id": JSON.stringify({
+      "studio:lp-distinct-id": JSON.stringify({
         id: "lp-anon-1",
         ts: Date.now() - 25 * 60 * 60 * 1000,
       }),
@@ -256,7 +256,7 @@ describe("posthog-client.identifyUser LP merge", () => {
   });
 
   test("ignores a corrupt stash and no localStorage at all", () => {
-    stubLocalStorage({ "mesh:lp-distinct-id": "not-json" });
+    stubLocalStorage({ "studio:lp-distinct-id": "not-json" });
     initPostHog("phc_test", "https://us.i.posthog.com");
     identifyUser("user_42");
     expect(aliasCalls).toHaveLength(0);

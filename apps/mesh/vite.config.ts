@@ -18,7 +18,7 @@ const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
 
 export default defineConfig({
   define: {
-    __MESH_VERSION__: JSON.stringify(pkg.version),
+    __STUDIO_VERSION__: JSON.stringify(pkg.version),
   },
   build: {
     outDir: "dist/client",
