@@ -83,7 +83,7 @@ export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
   return (
     <Dialog open>
       <DialogPortal>
-        <DialogOverlay className="bg-black/25 backdrop-blur-md" />
+        <DialogOverlay className="bg-black/15 backdrop-blur-sm" />
         <DialogPrimitive.Content
           data-slot="commerce-connect-modal"
           onEscapeKeyDown={(event) => event.preventDefault()}
