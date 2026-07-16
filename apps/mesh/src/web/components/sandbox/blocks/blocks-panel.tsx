@@ -33,15 +33,17 @@ export function BlocksPanel({ virtualMcpId }: { virtualMcpId: string }) {
   const workspace = useBlocksPreviewWorkspace();
   const devServerReady = sandboxEvents.lifecycle.phase === "running";
   const previewUrl = lifecycle.previewUrl;
-  const fetchParams =
-    currentBranch && devServerReady
-      ? {
-          orgSlug: org.slug,
-          virtualMcpId,
-          branch: currentBranch,
-          previewUrl,
-        }
-      : null;
+  // Not gated on the dev server: when it's down (crashed/paused) we read the
+  // committed `.deco/*.gen.json` snapshot so the Blocks form editor still opens
+  // (block edits persist to the FS). The live routes take over once it's up.
+  const fetchParams = currentBranch
+    ? {
+        orgSlug: org.slug,
+        virtualMcpId,
+        branch: currentBranch,
+        previewUrl,
+      }
+    : null;
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
   const state = resolveBlocksTabState({
