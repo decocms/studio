@@ -160,9 +160,38 @@ export async function createLoadRepoTool(opts: {
         ctx,
       );
 
-      // 4. Poll until the checkout is present. Provisioning starts the clone
-      //    async in the daemon, so `ensureSandbox` returning isn't proof the
-      //    files are there. Reuses the fs hooks (idempotent re-`ensure`).
+      // 4. Persist the sandbox record on the thread and open the Preview NOW —
+      //    before the (up-to-2min) clone poll — so the preview renders its
+      //    normal booting state immediately and survives an interrupted turn.
+      //    `previewUrl` is known the moment `ensureSandbox` returns; the clone
+      //    finishing is separate. The synthetic agent's sandboxMap never
+      //    persists, so the frontend reads this thread-scoped entry instead,
+      //    keyed the same 3-level way ([userId][branch][kind]).
+      const sandboxMap = {
+        [userId]: { [branch]: { [kind]: entry } },
+      };
+      await ctx.storage.threads.update(threadId, {
+        metadata: { ...(thread?.metadata ?? {}), githubRepo, sandboxMap },
+        updated_by: userId,
+      });
+      // Open the Preview panel + patch the client's local thread row (branch +
+      // repo + sandbox) so `activeTask` reflects the switch without a refetch
+      // (mirrors the `data-deck-updated` path).
+      writer.write({
+        type: "data-open-preview",
+        id: threadId,
+        data: {
+          previewUrl: entry.previewUrl ?? null,
+          branch,
+          githubRepo,
+          sandboxMap,
+          sandboxProviderKind: kind,
+        },
+      } as Parameters<UIMessageStreamWriter["write"]>[0]);
+
+      // 5. Poll until the checkout is present, only to enrich the return
+      //    message/listing. Provisioning starts the clone async in the daemon,
+      //    so `ensureSandbox` returning isn't proof the files are there.
       const fs = await buildClusterSandboxFs(ctx, {
         virtualMcpId,
         branch,
@@ -189,34 +218,6 @@ export async function createLoadRepoTool(opts: {
         }
         await sleep(CLONE_POLL_MS);
       }
-
-      // 5. Persist the sandbox record on the thread so the Preview panel can
-      //    resolve `previewUrl` (the synthetic agent's sandboxMap never
-      //    persists, and the frontend reads the sandbox entry from thread
-      //    metadata for thread-scoped repos). Keyed the same 3-level way the
-      //    agent sandboxMap is: [userId][branch][kind].
-      const sandboxMap = {
-        [userId]: { [branch]: { [kind]: entry } },
-      };
-      await ctx.storage.threads.update(threadId, {
-        metadata: { ...(thread?.metadata ?? {}), githubRepo, sandboxMap },
-        updated_by: userId,
-      });
-
-      // 6. Tell the client to open the Preview panel and patch its local thread
-      //    row (branch + repo + sandbox) so `activeTask` reflects the switch
-      //    without waiting for a refetch (mirrors the `data-deck-updated` path).
-      writer.write({
-        type: "data-open-preview",
-        id: threadId,
-        data: {
-          previewUrl: entry.previewUrl ?? null,
-          branch,
-          githubRepo,
-          sandboxMap,
-          sandboxProviderKind: kind,
-        },
-      } as Parameters<UIMessageStreamWriter["write"]>[0]);
 
       return {
         success: true,
