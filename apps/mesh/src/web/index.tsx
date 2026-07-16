@@ -296,6 +296,14 @@ const unifiedChatSearchSchema = z.object({
    *  inherits the "Run locally" toggle state. ChatPrefsProvider seeds
    *  runLocally from this on mount. */
   runLocally: z.string().optional(),
+  /** Commerce onboarding hand-off: `"1"` mounts the blocking connections modal
+   *  over this report route until at least one data source is connected. Dropped
+   *  by the modal once the enriching run is triggered. */
+  connect: z.string().optional(),
+  /** Commerce onboarding hand-off: the claimed site the connect modal is for,
+   *  carried in the URL (same context as `/commerce-onboarding?siteUrl=…`) so the
+   *  modal is self-describing. Falls back to the connection's stored metadata. */
+  siteUrl: z.string().optional(),
 });
 
 const unifiedChatRoute = createRoute({

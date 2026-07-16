@@ -19,13 +19,13 @@ interface CompanionOrg {
 // so the layout can't drift between the three — see CompanionMcpsSectionSkeleton
 // and CompanionMcpsSectionError.
 const SECTION_CONTAINER_CLASS =
-  "flex min-h-0 flex-1 flex-col gap-6 md:grid md:flex-none md:gap-4";
+  "flex min-h-0 flex-1 flex-col gap-4 md:grid md:flex-none md:gap-4";
 
 function SectionIntro() {
   // Matches the onboarding title scale (CommerceHeader / auth screen use the
   // same text-2xl font-medium leading-8).
   return (
-    <h1 className="text-2xl font-medium leading-8 text-foreground">
+    <h1 className="text-lg font-medium leading-6 text-foreground lg:text-2xl lg:leading-8">
       Conecte suas ferramentas para ver o diagnóstico completo
     </h1>
   );

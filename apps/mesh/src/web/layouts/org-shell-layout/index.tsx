@@ -13,9 +13,10 @@
  *           ├── SidebarResizeHandle (desktop only)
  *           └── SidebarInset         — routed content
  *
- * On desktop the sidebar owns the full height and the toolbar header lives in
- * the right column so it only spans above the panels — the org selector +
- * collapse toggle live in the sidebar's own header instead of the top bar.
+ * When SIDEBAR_NAV_BUTTONS is on (desktop), the sidebar owns the full height
+ * and the toolbar header moves INTO the right column so it only spans above
+ * the panels — the org selector + collapse toggle live in the sidebar's own
+ * header instead of the top bar.
  *
  *   + Sheet for mobile sidebar (rendered alongside, portal-based)
  */
@@ -28,7 +29,8 @@ import {
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { Outlet } from "@tanstack/react-router";
+import { Outlet, useSearch } from "@tanstack/react-router";
+import { CommerceConnectModal } from "@/web/routes/commerce-onboarding/commerce-connect-modal";
 import { SidebarResizeHandle } from "@/web/components/sidebar/sidebar-resize-handle";
 import { useSidebarResize } from "@/web/hooks/use-sidebar-resize";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
@@ -66,6 +68,19 @@ export default function OrgShellLayout() {
   // heavier curation (no Customize / Automations / Settings) lives in the home
   // board and the tab bar, keyed off the same flag.
   const reportsOnly = useReportsOnly();
+  // Commerce onboarding hands off here: after site setup it lands on the org
+  // home thread with `?connect=1`, which mounts the blocking connections modal
+  // over the (blurred) org home until at least one data source is connected.
+  const { connect, siteUrl: connectSiteUrl } = useSearch({ strict: false }) as {
+    connect?: string;
+    siteUrl?: string;
+  };
+  // Scoped by the `?connect=1` param, which ONLY the commerce onboarding
+  // hand-off ever sets — a regular org (e.g. the deco org) never navigates with
+  // it, so it can't be locked. We intentionally do NOT also gate on
+  // `reports_only`: that flag collapses the org UI, which would leave nothing
+  // but a blank surface behind the modal instead of the org home.
+  const showConnectModal = connect === "1";
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
     SIDEBAR_OPEN_STORAGE_KEY,
     false,
@@ -73,7 +88,8 @@ export default function OrgShellLayout() {
   const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
 
   // On desktop the header lives in the right column above the panels only (not
-  // spanning the sidebar).
+  // spanning the sidebar). SIDEBAR_NAV_BUTTONS additionally relocates the
+  // toolbar toggles/tabs into the sidebar.
   const headerInRightColumn = !isMobile;
   const desktopHeader = (
     <Toolbar.Header>
@@ -188,6 +204,9 @@ export default function OrgShellLayout() {
                     </div>
                   )}
                 />
+              )}
+              {showConnectModal && (
+                <CommerceConnectModal siteUrl={connectSiteUrl} />
               )}
             </div>
           </ChatPrefsProvider>
