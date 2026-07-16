@@ -413,6 +413,15 @@ export function SandboxEventsProvider({
             const isDecoFile =
               filePath.startsWith(".deco/") || filePath.includes("/.deco/");
             if (isDecoFile) {
+              // Only act while the dev server is running. When it's down
+              // (crashed/paused — the state the committed-snapshot fallback
+              // supports editing in), `blocks.gen.json` is a stale build
+              // artifact the dev server can't regenerate, so invalidating +
+              // refetching it would overwrite the optimistic cache update from
+              // useSaveBlock/useDeleteBlock and the edit would visibly revert.
+              // Leave the optimistic cache as the source of truth; the
+              // lifecycle→running transition re-invalidates onto the live routes.
+              if (prevLifecyclePhase !== "running") return;
               // Turn on the preview's loading overlay immediately — before the
               // debounce below — so the pending refresh feels instant instead of
               // only appearing once the reload finally fires.
