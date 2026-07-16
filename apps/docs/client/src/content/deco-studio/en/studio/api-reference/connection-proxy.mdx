@@ -143,6 +143,12 @@ Permissions are stored in the format:
 }
 ```
 
+The resource key can also be a Virtual MCP (agent) id. A grant like
+`{ "vir_<id>": ["*"] }` authorizes calling tools **through that agent's
+gateway endpoint** (`/api/:org/mcp/gateway/:virtualMcpId`) — this is the scope
+the agent Connect modal mints. It does not grant direct access to the agent's
+underlying connections via `/api/:org/mcp/:connectionId`.
+
 ### Public Tools
 
 Tools can be marked as public using metadata:

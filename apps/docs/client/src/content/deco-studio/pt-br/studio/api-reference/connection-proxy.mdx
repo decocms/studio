@@ -143,6 +143,12 @@ As permissões são armazenadas no formato:
 }
 ```
 
+A chave de recurso também pode ser o id de um Virtual MCP (agent). Um grant
+como `{ "vir_<id>": ["*"] }` autoriza chamar tools **através do endpoint de
+gateway daquele agent** (`/api/:org/mcp/gateway/:virtualMcpId`) — é esse o
+escopo que o modal de Connect do agent gera. Ele não concede acesso direto às
+connections subjacentes do agent via `/api/:org/mcp/:connectionId`.
+
 ### Tools públicas
 
 Tools podem ser marcadas como públicas usando metadados:
