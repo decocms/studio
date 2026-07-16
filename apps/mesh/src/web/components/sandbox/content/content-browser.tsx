@@ -1424,6 +1424,9 @@ function ContentBrowserReady({
           }}
           pageKey={jsonPageKey}
           decofile={decofile}
+          onSave={(data) =>
+            saveBlock.mutateAsync({ blockKey: jsonPageKey, data })
+          }
         />
       )}
 
