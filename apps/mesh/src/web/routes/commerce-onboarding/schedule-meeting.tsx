@@ -14,8 +14,7 @@ type MeetingCtaPlacement = "visual_card" | "mobile_banner";
 const SCHEDULE_MEETING_URL = "https://decocms.com/agendar";
 
 const HEADLINE = "Precisa de ajuda? Fale conosco";
-const BODY =
-  "Agende uma chamada de 20 minutos e ajudamos você a conectar suas ferramentas.";
+const BODY = "Agende uma chamada e ajudamos você a conectar suas ferramentas.";
 
 const TEAM = [
   {

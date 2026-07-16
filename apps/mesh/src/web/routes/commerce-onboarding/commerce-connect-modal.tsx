@@ -284,14 +284,18 @@ function CommerceConnectModalContent({
           <Button
             type="button"
             size="xl"
-            className="w-full rounded-2xl text-base font-medium"
+            className="w-full rounded-2xl text-base font-medium whitespace-normal h-auto py-3"
             onClick={() => void openReport()}
             disabled={runMutation.isPending || !hasConnectedSource}
           >
             {runMutation.isPending
               ? "Abrindo relatório..."
-              : "Ver relatório completo"}
-            {!runMutation.isPending ? <ArrowRight size={18} /> : null}
+              : !hasConnectedSource
+                ? "Conecte uma ferramenta para continuar"
+                : "Ver relatório completo"}
+            {!runMutation.isPending && hasConnectedSource ? (
+              <ArrowRight size={18} />
+            ) : null}
           </Button>
         </div>
       </div>

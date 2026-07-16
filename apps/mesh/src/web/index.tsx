@@ -299,7 +299,7 @@ const unifiedChatSearchSchema = z.object({
   /** Commerce onboarding hand-off: `"1"` mounts the blocking connections modal
    *  over this report route until at least one data source is connected. Dropped
    *  by the modal once the enriching run is triggered. */
-  connect: z.string().optional(),
+  connect: z.coerce.string().optional(),
   /** Commerce onboarding hand-off: the claimed site the connect modal is for,
    *  carried in the URL (same context as `/commerce-onboarding?siteUrl=…`) so the
    *  modal is self-describing. Falls back to the connection's stored metadata. */
@@ -328,6 +328,8 @@ const unifiedChatRoute = createRoute({
 // redirect, mirroring the thread's main-panel tabs.
 const orgIndexSearchSchema = z.object({
   main: z.string().optional(),
+  connect: z.coerce.string().optional(),
+  siteUrl: z.string().optional(),
 });
 
 const orgIndexRoute = createRoute({
