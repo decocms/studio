@@ -27,7 +27,10 @@ import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
-import { getRepoScope } from "@/shared/github-repo-scope";
+import {
+  getRepoScope,
+  isOrgSharedConnection,
+} from "@/shared/github-repo-scope";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { threadBranch } from "@/tools/sandbox/thread-repo";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
@@ -39,20 +42,37 @@ type RepoOption = {
   installationId: number;
 };
 
+/** Minimal connection shape the repo selection needs (keeps the pure helper
+ *  testable without the full `ConnectionEntity`). */
+type RepoConnection = {
+  id: string;
+  status: string;
+  metadata: Record<string, unknown> | null;
+};
+
 /** Wait at most this long for the clone to land before returning anyway. */
 const CLONE_TIMEOUT_MS = 120_000;
 const CLONE_POLL_MS = 1_500;
+/** Give up early if the sandbox can't answer the probe at all this many times
+ *  in a row (a broken/partitioned runner) — no point polling a dead link for
+ *  the full timeout. */
+const CLONE_MAX_CONSECUTIVE_FAILURES = 5;
 
-async function listOrgRepos(
-  ctx: StudioContext,
-  orgId: string,
-): Promise<RepoOption[]> {
-  const { items } = await ctx.storage.connections.list(orgId, {
-    slug: "mcp-github",
-  });
+/**
+ * The repos `load_repo` offers: active `mcp-github` connections that are
+ * **org-shared** ("Add repo" in the sidebar — injected into every agent, see
+ * `mcp-clients/virtual-mcp`). Per-agent import children also carry a
+ * `repoScope` but stay private to their agent, so they're deliberately excluded
+ * — otherwise the tool would surface a repo imported for a different agent.
+ * Pure so it's unit-testable without a DB.
+ */
+export function selectLoadableRepos(
+  connections: RepoConnection[],
+): RepoOption[] {
   const repos: RepoOption[] = [];
-  for (const conn of items) {
+  for (const conn of connections) {
     if (conn.status !== "active") continue;
+    if (!isOrgSharedConnection(conn)) continue;
     const scope = getRepoScope(conn);
     if (!scope) continue;
     repos.push({
@@ -63,6 +83,33 @@ async function listOrgRepos(
     });
   }
   return repos;
+}
+
+async function listOrgRepos(
+  ctx: StudioContext,
+  orgId: string,
+): Promise<RepoOption[]> {
+  const { items } = await ctx.storage.connections.list(orgId, {
+    slug: "mcp-github",
+  });
+  return selectLoadableRepos(items);
+}
+
+/**
+ * Interpret the clone-probe stdout (`echo __CLONED__` marker + `ls -A`).
+ * `cloned` is true once git has a HEAD or any non-`.git` entry appears; the
+ * listing is the repo root minus `.git`. Pure so it's unit-testable.
+ */
+export function parseCloneProbe(stdout: string): {
+  cloned: boolean;
+  listing: string;
+} {
+  const entries = stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && l !== ".git" && l !== "__CLONED__");
+  const cloned = stdout.includes("__CLONED__") || entries.length > 0;
+  return { cloned, listing: cloned ? entries.join("\n") : "" };
 }
 
 export function buildDescription(repos: RepoOption[]): string {
@@ -192,20 +239,26 @@ export async function createLoadRepoTool(opts: {
       const deadline = Date.now() + CLONE_TIMEOUT_MS;
       let listing = "";
       let cloned = false;
+      let consecutiveFailures = 0;
       while (Date.now() < deadline) {
-        const { stdout } = await fs
+        const probe = await fs
           .onBash(
             "if git -C /app/repo rev-parse HEAD >/dev/null 2>&1; then echo __CLONED__; fi; ls -A /app/repo 2>/dev/null",
           )
-          .catch(() => ({ stdout: "" }) as { stdout: string });
-        const entries = stdout
-          .replace("__CLONED__\n", "")
-          .split("\n")
-          .map((l) => l.trim())
-          .filter((l) => l && l !== ".git");
-        if (stdout.includes("__CLONED__") || entries.length > 0) {
+          .then((r) => ({ ok: true as const, stdout: r.stdout }))
+          .catch(() => ({ ok: false as const, stdout: "" }));
+        if (!probe.ok) {
+          // The runner itself couldn't answer — a dead/partitioned link won't
+          // recover mid-poll, so bail instead of burning the full timeout.
+          if (++consecutiveFailures >= CLONE_MAX_CONSECUTIVE_FAILURES) break;
+          await sleep(CLONE_POLL_MS);
+          continue;
+        }
+        consecutiveFailures = 0;
+        const result = parseCloneProbe(probe.stdout);
+        if (result.cloned) {
           cloned = true;
-          listing = entries.join("\n");
+          listing = result.listing;
           break;
         }
         await sleep(CLONE_POLL_MS);
