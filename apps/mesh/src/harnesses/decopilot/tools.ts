@@ -298,6 +298,10 @@ export async function assembleDecopilotTools(
           // model-outputs/<threadId>/. Cannot be derived from the
           // sandbox row since one ephemeral sandbox serves many threads.
           threadId: extras.threadId,
+          // Lets the fs layer materialize the tool catalog + endpoint file
+          // into the sandbox once it's provisioned (hosted runs never send
+          // a /dispatch envelope, so the daemon can't do it itself).
+          mcp: input.mcp,
         }
       : null;
 
