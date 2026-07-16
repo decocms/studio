@@ -260,32 +260,23 @@ graph TB
 
     subgraph k8s ["Kubernetes (Helm)"]
         api["Studio API + Admin UI"]
-        worker["Workers — event bus · schedules"]
-        sandbox["Agent sandboxes (sandbox-operator)"]
-        otel["OTel Collector"]
+        api --> sandbox["Agent sandboxes<br/>(sandbox-operator)"]
+        api -->|"notify"| nats["NATS"]
+        api -->|"traces · costs"| otel["OTel Collector"]
+        nats -->|"wake"| worker["Workers<br/>event bus · schedules"]
+        otel --> ch[("ClickHouse")]
     end
 
-    subgraph deps ["Data plane"]
-        pg[("PostgreSQL")]
-        nats["NATS"]
-        ch[("ClickHouse")]
-    end
+    pg[("PostgreSQL")]
+    api --> pg
+    worker --> pg
 
     subgraph upstream ["Models & tools"]
-        direction TB
-        models["Anthropic · OpenAI · OpenRouter · Ollama"]
-        mcps["GitHub · Slack · Postgres · your MCP servers"]
+        models["Anthropic · OpenAI<br/>OpenRouter · Ollama"]
+        mcps["GitHub · Slack · Postgres<br/>your MCP servers"]
     end
 
-    api --> sandbox
-    api -->|"traces · costs"| otel
-    api --> pg
-    api -->|"notify"| nats
-    worker -->|"wake"| nats
-    worker --> pg
-    otel --> ch
-    api --> models
-    api -->|"vaulted credentials"| mcps
+    api -->|"model routing · vaulted credentials"| upstream
 ```
 
 Every box is optional except Studio and PostgreSQL — start small, turn on the rest as the rollout grows.
