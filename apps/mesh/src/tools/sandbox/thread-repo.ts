@@ -11,8 +11,9 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import type { GithubRepo, SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
+import type { GithubRepo, SandboxRecord } from "@decocms/mesh-sdk";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
+import { mergeSandboxMapEntry, readSandboxMap } from "./sandbox-map";
 
 /**
  * Per-thread sandbox branch for a loaded repo. Includes the repo's connection
@@ -49,27 +50,37 @@ export function threadIdFromBranch(
   return id || null;
 }
 
-/** Read the repo bound to a thread, or null. Never throws. `ctx.storage.threads`
- *  is already org-scoped, so only the thread id is needed. */
+/** Read a thread's metadata JSON. Returns `null` only when the thread is
+ *  absent (so writers can skip a non-existent row); an existing thread with a
+ *  null metadata column returns `{}`. Never throws. `ctx.storage.threads` is
+ *  already org-scoped, so only the thread id is needed. */
+async function getThreadMeta(
+  ctx: StudioContext,
+  threadId: string | undefined | null,
+): Promise<Record<string, unknown> | null> {
+  if (!threadId) return null;
+  const thread = await ctx.storage.threads.get(threadId).catch(() => null);
+  if (!thread) return null;
+  return (thread.metadata as Record<string, unknown> | null) ?? {};
+}
+
+/** Read the repo bound to a thread, or null. Never throws. */
 export async function getThreadGithubRepo(
   ctx: StudioContext,
   threadId: string | undefined | null,
 ): Promise<GithubRepo | null> {
-  if (!threadId) return null;
-  const thread = await ctx.storage.threads.get(threadId).catch(() => null);
-  const repo = (thread?.metadata as { githubRepo?: GithubRepo } | undefined)
-    ?.githubRepo;
-  return repo ?? null;
+  const meta = await getThreadMeta(ctx, threadId);
+  return (meta as { githubRepo?: GithubRepo } | null)?.githubRepo ?? null;
 }
 
 /**
  * Persist a sandbox record on the THREAD's `metadata.sandboxMap`
- * ([userId][branch][kind]), mirroring the agent-scoped `setSandboxMapEntry`.
- * The synthetic Decopilot agent's sandboxMap write is a no-op, so for
- * thread-scoped branches this is the only place the frontend can read the
- * live `previewUrl`/handle from. Called from `provisionSandbox` so every
- * provisioning path (load_repo, the frontend's SANDBOX_START auto-start, the
- * fs tools) persists it — not just `load_repo`. Never throws.
+ * ([userId][branch][kind]) via the shared {@link mergeSandboxMapEntry}. The
+ * synthetic Decopilot agent's sandboxMap write is a no-op, so for thread-scoped
+ * branches this is the only place the frontend reads the live `previewUrl`/
+ * handle from. Called from `provisionSandbox` so every provisioning path
+ * (load_repo, the frontend's SANDBOX_START auto-start, the fs tools) persists
+ * it — not just `load_repo`. Never throws.
  */
 export async function setThreadSandboxMapEntry(
   ctx: StudioContext,
@@ -79,16 +90,15 @@ export async function setThreadSandboxMapEntry(
   kind: SandboxProviderKind,
   entry: SandboxRecord,
 ): Promise<void> {
-  const thread = await ctx.storage.threads.get(threadId).catch(() => null);
-  if (!thread) return;
-  const meta = (thread.metadata ?? {}) as Record<string, unknown>;
-  const current = (meta.sandboxMap ?? {}) as SandboxMap;
-  const userMap = { ...(current[userId] ?? {}) } as Record<
-    string,
-    Record<string, SandboxRecord>
-  >;
-  userMap[branch] = { ...(userMap[branch] ?? {}), [kind]: entry };
-  const next = { ...current, [userId]: userMap } as SandboxMap;
+  const meta = await getThreadMeta(ctx, threadId);
+  if (!meta) return;
+  const next = mergeSandboxMapEntry(
+    readSandboxMap(meta),
+    userId,
+    branch,
+    kind,
+    entry,
+  );
   await ctx.storage.threads
     .update(threadId, { metadata: { ...meta, sandboxMap: next } })
     .catch((err) =>

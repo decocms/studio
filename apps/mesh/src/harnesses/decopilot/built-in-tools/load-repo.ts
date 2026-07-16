@@ -31,6 +31,10 @@ import {
   getRepoScope,
   isOrgSharedConnection,
 } from "@/shared/github-repo-scope";
+import {
+  mergeSandboxMapEntry,
+  readSandboxMap,
+} from "@/tools/sandbox/sandbox-map";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { threadBranch } from "@/tools/sandbox/thread-repo";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
@@ -199,20 +203,22 @@ export async function createLoadRepoTool(opts: {
         ctx,
       );
 
-      // 3. Persist the sandbox record on the thread and open the Preview NOW —
-      //    before the (up-to-2min) clone poll — so the preview renders its
-      //    normal booting state immediately and survives an interrupted turn.
-      //    `previewUrl` is known the moment `ensureSandbox` returns; the clone
-      //    finishing is separate. The synthetic agent's sandboxMap never
-      //    persists, so the frontend reads this thread-scoped entry instead,
-      //    keyed the same 3-level way ([userId][branch][kind]).
-      const sandboxMap = {
-        [userId]: { [branch]: { [kind]: entry } },
-      };
-      await ctx.storage.threads.update(threadId, {
-        metadata: { ...(thread?.metadata ?? {}), githubRepo, sandboxMap },
-        updated_by: userId,
-      });
+      // 3. `ensureSandbox` already persisted the sandbox record on the thread
+      //    (provisionSandbox → setThreadSandboxMapEntry — the single writer), so
+      //    we don't re-write it: a second write from the pre-provision snapshot
+      //    would clobber a sibling repo's entry when switching repos. We only
+      //    open the Preview NOW — before the (up-to-2min) clone poll — so it
+      //    renders its booting state immediately and survives an interrupted
+      //    turn. `previewUrl` is known the moment `ensureSandbox` returns.
+      //    Send the merged map (snapshot + this entry, via the shared helper) so
+      //    the client patches its local thread without dropping sibling repos.
+      const sandboxMap = mergeSandboxMapEntry(
+        readSandboxMap(thread?.metadata),
+        userId,
+        branch,
+        kind,
+        entry,
+      );
       // Open the Preview panel + patch the client's local thread row (branch +
       // repo + sandbox) so `activeTask` reflects the switch without a refetch
       // (mirrors the `data-deck-updated` path).

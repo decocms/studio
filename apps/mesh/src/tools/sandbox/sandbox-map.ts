@@ -40,6 +40,34 @@ export function resolveVm(
 }
 
 /**
+ * Pure merge: returns a copy of `current` with sandboxMap[userId][branch][kind]
+ * set to `entry`. Creates intermediate buckets as needed and preserves any
+ * sibling users, branches, and kinds. Normalizes the target branch cell through
+ * `parseBranchMap` so a legacy stringified cell can't corrupt the spread. The
+ * single source of truth for both the agent-scoped (`setSandboxMapEntry`) and
+ * thread-scoped (`setThreadSandboxMapEntry`) writers.
+ */
+export function mergeSandboxMapEntry(
+  current: SandboxMap,
+  targetUserId: string,
+  branch: string,
+  sandboxProviderKind: SandboxProviderKind,
+  entry: SandboxRecord,
+): SandboxMap {
+  const currentBranchMap = parseBranchMap(current[targetUserId]?.[branch]);
+  return {
+    ...current,
+    [targetUserId]: {
+      ...(current[targetUserId] ?? {}),
+      [branch]: {
+        ...currentBranchMap,
+        [sandboxProviderKind]: entry,
+      } as SandboxMap[string][string],
+    },
+  };
+}
+
+/**
  * Read-modify-write: sets sandboxMap[userId][branch][kind] = entry on the
  * virtualmcp. Creates intermediate buckets as needed. Preserves any
  * sibling-kind entries already present at sandboxMap[userId][branch][*].
@@ -57,18 +85,13 @@ export async function setSandboxMapEntry(
   if (!virtualMcp) return;
 
   const meta = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
-  const current = readSandboxMap(meta);
-  const currentBranchMap = parseBranchMap(current[targetUserId]?.[branch]);
-  const next: SandboxMap = {
-    ...current,
-    [targetUserId]: {
-      ...(current[targetUserId] ?? {}),
-      [branch]: {
-        ...currentBranchMap,
-        [sandboxProviderKind]: entry,
-      } as SandboxMap[string][string],
-    },
-  };
+  const next = mergeSandboxMapEntry(
+    readSandboxMap(meta),
+    targetUserId,
+    branch,
+    sandboxProviderKind,
+    entry,
+  );
 
   await storage.update(virtualMcpId, actingUserId, {
     metadata: {
