@@ -17,6 +17,7 @@ import {
 } from "../cli-store";
 import { findAvailablePort } from "../find-available-port";
 import { waitForPort } from "../lib/port-wait";
+import { stripAnsi } from "../strip-ansi";
 
 export interface DevOptions {
   port: string;
@@ -34,13 +35,6 @@ export interface DevOptions {
   hotReload?: boolean;
   /** Dev-only: route managed user-desktop link traffic through ToxiProxy. */
   devLinkToxiProxy?: boolean;
-}
-
-// Strip ANSI escape codes from a string
-function stripAnsi(str: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI codes requires matching control chars
-  // oxlint-disable-next-line no-control-regex
-  return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 /**
