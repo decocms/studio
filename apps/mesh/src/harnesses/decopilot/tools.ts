@@ -298,7 +298,7 @@ export async function assembleDecopilotTools(
       ? {
           virtualMcpId: input.agent.id,
           branch: threadRepo
-            ? threadBranch(extras.threadId)
+            ? threadBranch(extras.threadId, threadRepo.connectionId)
             : isEphemeralAgent
               ? "ephemeral"
               : (runContext.branch ?? `thread:${extras.threadId}`),

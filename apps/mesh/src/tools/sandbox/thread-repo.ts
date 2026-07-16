@@ -13,9 +13,24 @@
 import type { StudioContext } from "@/core/studio-context";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 
-/** Stable, per-thread sandbox branch used when a repo is loaded into a thread. */
-export function threadBranch(threadId: string): string {
-  return `thread:${threadId}`;
+/**
+ * Per-thread sandbox branch for a loaded repo. Includes the repo's connection
+ * id so switching repos yields a DISTINCT sandbox (handle + previewUrl), which
+ * is what makes the preview UI react to a switch — the whole preview/lifecycle
+ * machinery keys on the previewUrl changing. Falls back to a bare
+ * `thread:<id>` (no repo / public clone) which stays stable.
+ *
+ * The daemon treats any `thread:`-prefixed branch as synthetic (never a git
+ * ref), and the sandbox-proxy validator strips the prefix before its git-ref
+ * charset check — so the extra `/` segment is safe.
+ */
+export function threadBranch(
+  threadId: string,
+  connectionId?: string | null,
+): string {
+  return connectionId
+    ? `thread:${threadId}/${connectionId}`
+    : `thread:${threadId}`;
 }
 
 /** Read the repo bound to a thread, or null. Never throws. `ctx.storage.threads`

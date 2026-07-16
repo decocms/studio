@@ -25,9 +25,7 @@
 import { sleep } from "@decocms/std";
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
-import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type { StudioContext } from "@/core/studio-context";
-import { computeClaimHandle } from "@/sandbox/claim-handle";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { getRepoScope } from "@/shared/github-repo-scope";
 import { ensureSandbox } from "@/tools/sandbox/start";
@@ -118,7 +116,11 @@ export async function createLoadRepoTool(opts: {
         };
       }
 
-      const branch = threadBranch(threadId);
+      // Branch is repo-specific (includes the connection id) so switching repos
+      // yields a distinct sandbox + previewUrl — that's what makes the preview
+      // UI react to a switch, and it sidesteps stale-checkout entirely (each
+      // repo gets its own sandbox; re-loading one adopts its existing sandbox).
+      const branch = threadBranch(threadId, repo.connectionId);
       const githubRepo = {
         url: `https://github.com/${repo.owner}/${repo.repo}`,
         owner: repo.owner,
@@ -136,31 +138,21 @@ export async function createLoadRepoTool(opts: {
         updated_by: userId,
       });
 
-      // 2. Tear down any sandbox already on this thread branch. The branch is
-      //    stable per thread, so its sandbox handle is deterministic — without
-      //    an explicit teardown a repo SWITCH would re-`ensure` the SAME handle
-      //    and the daemon adopts the existing checkout instead of re-cloning
-      //    (the "still on the previous repo" bug). Delete by computed handle
-      //    because the synthetic agent's sandboxMap never persists, so
-      //    SANDBOX_DELETE's entry lookup finds nothing.
-      const { provider: runner, kind } = await resolveSandboxProvider(ctx, {
+      // 2. Eagerly provision the repo sandbox on the repo-specific branch.
+      //    `ensureSandbox` reads the thread repo we just wrote (it prefers
+      //    thread over agent). Resolve the kind so the frontend + fs tools bind
+      //    to the same sandbox.
+      const { kind } = await resolveSandboxProvider(ctx, {
         userId,
         branch,
         virtualMcpMetadata: null,
       });
-      const projectRef = composeSandboxRef({ orgId, virtualMcpId, branch });
-      const handle = computeClaimHandle({ userId, projectRef }, branch);
-      await runner.delete(handle).catch(() => {});
-      await runner.forgetHandle?.(handle).catch(() => {});
-
-      // 3. Eagerly provision the repo sandbox on the thread branch. `ensureSandbox`
-      //    reads the thread repo we just wrote (it prefers thread over agent).
       const entry = await ensureSandbox(
         { virtualMcpId, branch, sandboxProviderKind: kind },
         ctx,
       );
 
-      // 4. Persist the sandbox record on the thread and open the Preview NOW —
+      // 3. Persist the sandbox record on the thread and open the Preview NOW —
       //    before the (up-to-2min) clone poll — so the preview renders its
       //    normal booting state immediately and survives an interrupted turn.
       //    `previewUrl` is known the moment `ensureSandbox` returns; the clone
@@ -189,7 +181,7 @@ export async function createLoadRepoTool(opts: {
         },
       } as Parameters<UIMessageStreamWriter["write"]>[0]);
 
-      // 5. Poll until the checkout is present, only to enrich the return
+      // 4. Poll until the checkout is present, only to enrich the return
       //    message/listing. Provisioning starts the clone async in the daemon,
       //    so `ensureSandbox` returning isn't proof the files are there.
       const fs = await buildClusterSandboxFs(ctx, {
