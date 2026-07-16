@@ -4,6 +4,7 @@
 // pull in a webfont.
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowDown,
   ArrowRight,
   ArrowUp,
@@ -32,6 +33,7 @@ const ICONS: Record<
   arrow_upward: ArrowUp,
   arrow_downward: ArrowDown,
   info: InfoCircle,
+  warning: AlertTriangle,
   flag: Flag01,
   lock: Lock01,
   link: Link01,

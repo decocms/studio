@@ -1,3 +1,4 @@
+import Icon from "../icon";
 import { trackConnectCta } from "../onboarding";
 import { useReportCtaHref } from "../use-report-cta-href";
 import { DECK } from "./tokens";
@@ -89,15 +90,11 @@ export default function ListTemplate({
                   {e.label}
                 </span>
                 <span
-                  className="material-symbols-rounded shrink-0 text-[20px] sm:text-[22px]"
-                  style={{
-                    color: sev.color,
-                    fontVariationSettings:
-                      "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 40",
-                  }}
+                  className="grid shrink-0 place-items-center"
+                  style={{ color: sev.color }}
                   aria-label={e.severity}
                 >
-                  {sev.icon}
+                  <Icon name={sev.icon} size="large" />
                 </span>
               </li>
             );
