@@ -13,7 +13,10 @@
  *     /api/:org/mcp/virtual-mcp/:virId (the fix);
  *   - the same key is still DENIED on the direct connection proxy
  *     /api/:org/mcp/:connectionId — the grant is the agent surface, not the
- *     underlying connection.
+ *     underlying connection;
+ *   - spoofing `x-caller-id: vir_<id>` on the direct proxy does NOT smuggle
+ *     the gateway grant in (the fallback reads a route-set field, never the
+ *     caller-controlled header).
  */
 import { z } from "zod";
 import { signUpViaApi } from "../fixtures/auth-api";
@@ -159,6 +162,33 @@ test.describe("agent-scoped API key on the gateway", () => {
     expect(directDenied, "vir-scoped key denied on direct connection").toBe(
       true,
     );
+
+    // Spoof guard: x-caller-id is a caller-set header that feeds
+    // ctx.connectionId — it must NOT be able to impersonate the gateway and
+    // smuggle the vir grant onto a direct connection call.
+    const spoofedRes = await apiCtx.post(
+      `/api/${owner.orgSlug}/mcp/${connection.id}`,
+      {
+        headers: { ...headers, "x-caller-id": agent.id },
+        data: {
+          jsonrpc: "2.0",
+          id: 4,
+          method: "tools/call",
+          params: { name: "ping", arguments: { from: "e2e" } },
+        },
+      },
+    );
+    const spoofedDenied = !spoofedRes.ok()
+      ? true
+      : Boolean(
+          (((await spoofedRes.json()) as JsonRpcEnvelope).error?.message ?? "")
+            .toLowerCase()
+            .includes("access denied"),
+        );
+    expect(
+      spoofedDenied,
+      "spoofed x-caller-id must not unlock the direct connection",
+    ).toBe(true);
 
     await ownerCtx.dispose();
     await apiCtx.dispose();

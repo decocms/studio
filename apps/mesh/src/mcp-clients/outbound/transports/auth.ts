@@ -182,14 +182,12 @@ export class AuthTransport extends WrapperTransport {
     } catch (err) {
       // A grant may be keyed on the virtual MCP the request entered through
       // ({ vir_<id>: [tools] } — what the Connect modal mints) instead of the
-      // underlying connection. ctx.connectionId carries that gateway id (set
-      // only by the virtual-mcp route), so retry the check keyed on it.
-      const gatewayId = ctx.connectionId;
-      if (
-        !(err instanceof ForbiddenError) ||
-        !gatewayId ||
-        gatewayId === connection.id
-      ) {
+      // underlying connection, so retry the check keyed on the gateway id.
+      // NEVER read ctx.connectionId here: it can come from the caller-set
+      // x-caller-id header, which would let a vir-scoped key escape to any
+      // connection. gatewayVirtualMcpId is set only by the virtual-mcp route.
+      const gatewayId = ctx.gatewayVirtualMcpId;
+      if (!(err instanceof ForbiddenError) || !gatewayId) {
         throw err;
       }
       await checkFor(gatewayId);
