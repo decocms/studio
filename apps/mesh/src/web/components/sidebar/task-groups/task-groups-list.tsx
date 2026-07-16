@@ -320,7 +320,7 @@ export function TaskGroupsList({
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
-            tooltip="New thread"
+            tooltip="New chat"
             onClick={() => void handleNewThread()}
           >
             <Edit05 size={16} />
@@ -357,7 +357,7 @@ export function TaskGroupsList({
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <ToolbarIconButton
-              aria-label="Filter threads"
+              aria-label="Filter chats"
               active={filtersActive}
             >
               <FilterLines size={16} />
@@ -367,7 +367,7 @@ export function TaskGroupsList({
             </ToolbarIconButton>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Filter threads</TooltipContent>
+        <TooltipContent side="bottom">Filter chats</TooltipContent>
       </Tooltip>
       <PopoverContent align="start" className="w-64 flex flex-col gap-3 p-3">
         <FilterRow
@@ -424,7 +424,7 @@ export function TaskGroupsList({
         {/* Right: search + new thread. */}
         <div className="flex items-center gap-0.5">
           <ToolbarTooltipButton
-            label="Search threads"
+            label="Search chats"
             onClick={() => {
               track("tasks_panel_search_opened");
               setSearchEverOpened(true);
@@ -434,7 +434,7 @@ export function TaskGroupsList({
             <SearchSm size={16} />
           </ToolbarTooltipButton>
           <ToolbarTooltipButton
-            label="New thread"
+            label="New chat"
             onClick={() => void handleNewThread()}
           >
             <Edit05 size={16} />

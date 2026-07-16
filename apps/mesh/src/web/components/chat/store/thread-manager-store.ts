@@ -155,7 +155,7 @@ export class ThreadManagerStore {
       // Surface failures here so callers don't each need their own toast.
       // Re-throw so callers can still branch (navigate-anyway, abort, etc.).
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(`Could not create thread: ${msg}`);
+      toast.error(`Could not create chat: ${msg}`);
       throw err;
     }
   }
@@ -367,7 +367,7 @@ export class ThreadManagerStore {
       this.nextOffset += items.length;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(`Could not load more threads: ${msg}`);
+      toast.error(`Could not load more chats: ${msg}`);
     } finally {
       this.isFetchingMore.set(false);
     }

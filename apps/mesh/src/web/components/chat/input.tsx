@@ -464,7 +464,7 @@ export function ChatInput({
 
   if (userId && task?.created_by && task.created_by !== userId) {
     return (
-      <ChatInputDisabledState message="Read only - you're viewing someone else's thread" />
+      <ChatInputDisabledState message="Read only - you're viewing someone else's chat" />
     );
   }
 
