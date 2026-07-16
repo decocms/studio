@@ -1267,7 +1267,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // reports engine for the /report/:domain page.
   app.route("/api/_reports", publicReportsRoutes);
 
-  // Public report page + dynamic social card. API-only/test apps safely return
+  // Public report page + dynamic metadata. API-only/test apps safely return
   // 404 for the HTML shell when no built client directory is supplied.
   app.route("/report", createReportPagesRoutes(options.clientDir));
 

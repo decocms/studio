@@ -23,9 +23,6 @@ const SERVER_ENTRY_POINT = join(SCRIPT_DIR, "../src/index.ts");
 const CLI_ENTRY_POINT = join(SCRIPT_DIR, "../src/cli.ts");
 const ALWAYS_INCLUDE = [
   "@jitl/quickjs-wasmfile-release-sync",
-  // Native N-API binding used by the report OG renderer. Externalize it so
-  // Bun does not emit a second .node output next to the single-file bundle.
-  "@resvg/resvg-js",
   "@anthropic-ai/claude-agent-sdk",
   "@dbos-inc/dbos-sdk",
   "embedded-postgres",
@@ -643,17 +640,6 @@ async function copyQuickjsWasm() {
   console.log(`✅ QuickJS WASM copied to ${wasmDest}`);
 }
 
-// Satori requires TTF/OTF bytes at runtime. Keep them as explicit assets:
-// Bun's file loader emits multiple outputs, which is incompatible with this
-// script's single --outfile server bundle.
-async function copyReportFonts() {
-  console.log("📄 Copying report fonts...");
-  const source = join(MESH_APP_ROOT, "src/reports/assets");
-  const destination = join(OUTPUT_DIR, "report-fonts");
-  await cp(source, destination, { recursive: true });
-  console.log(`✅ Report fonts copied to ${destination}`);
-}
-
 // host/runner.ts inlines packages/sandbox/daemon/dist/daemon.js via a
 // text-import attribute. `bun build` needs that file present on disk to
 // embed it into the server bundle, so produce it before bundling.
@@ -928,9 +914,6 @@ async function main() {
   // Copy QuickJS WASM alongside bundles as a safety net for path resolution
   await copyQuickjsWasm();
 
-  // Copy the TTF assets consumed by the report OG-image renderer.
-  await copyReportFonts();
-
   // Drop debug-only / type-only files the runtime never loads (~45MB).
   await stripNonRuntimeFiles();
 
@@ -944,7 +927,6 @@ async function main() {
   console.log(`   - server.js`);
   console.log(`   - cli.js`);
   console.log(`   - emscripten-module.wasm`);
-  console.log(`   - report-fonts/`);
   console.log(`   - node_modules/`);
   console.log(`   - ../README.md`);
 }

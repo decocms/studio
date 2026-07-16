@@ -37,11 +37,6 @@ export function reportPath(rawUrlParam: string): string {
   return `/report/${encodeURIComponent(normalizeDomain(rawUrlParam))}`;
 }
 
-/** The origin-relative dynamic share card path for a scanned domain. */
-export function ogImagePath(rawUrlParam: string): string {
-  return `${reportPath(rawUrlParam)}/og.png`;
-}
-
 /** Trim to a max length on a word boundary, appending an ellipsis when cut. */
 export function clampText(value: string, max: number): string {
   const text = value.trim();

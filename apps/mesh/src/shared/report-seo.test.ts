@@ -3,7 +3,6 @@ import {
   brandFromDomain,
   clampText,
   normalizeDomain,
-  ogImagePath,
   reportPath,
   reportShareCopy,
 } from "./report-seo";
@@ -15,11 +14,10 @@ describe("report SEO helpers", () => {
     );
   });
 
-  test("builds encoded report and social-card paths", () => {
+  test("builds encoded report paths", () => {
     expect(reportPath("https://www.nike.com/products")).toBe(
       "/report/nike.com",
     );
-    expect(ogImagePath("nike.com")).toBe("/report/nike.com/og.png");
   });
 
   test("derives readable share copy with an optional score", () => {

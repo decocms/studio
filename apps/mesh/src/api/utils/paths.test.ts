@@ -2,9 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { isServerPath, shouldSkipStudioContext, SYSTEM_PATHS } from "./paths";
 
 describe("public report paths", () => {
-  test("routes report pages and social cards through Hono", () => {
+  test("routes report pages through Hono for dynamic metadata", () => {
     expect(isServerPath("/report/nike.com")).toBe(true);
-    expect(isServerPath("/report/nike.com/og.png")).toBe(true);
   });
 
   test("does not reserve similarly named organization paths", () => {
