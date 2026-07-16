@@ -10,6 +10,8 @@ import {
   reportDrops,
   type ScanPhase,
 } from "./orchestrate-scan";
+import { ReportBackdrop } from "./auth-gate";
+import { ReportSocialProof } from "./report-social-proof";
 import SignalDeck from "./signal-deck";
 import { DECK } from "./templates/tokens";
 
@@ -18,35 +20,6 @@ const FOREST = "#07401A";
 
 const distinctId = () =>
   isPostHogInitialized() ? posthog.get_distinct_id() : undefined;
-
-// Full logo set — intrinsic pixel dimensions prevent SVG blowup
-const CAROUSEL_LOGOS = [
-  { src: "/logos/summit/fila.svg", alt: "Fila", w: 100, h: 34 },
-  { src: "/logos/summit/osklen.svg", alt: "Osklen", w: 152, h: 21 },
-  { src: "/logos/summit/farm-rio.svg", alt: "Farm Rio", w: 159, h: 23 },
-  { src: "/logos/summit/electrolux.svg", alt: "Electrolux", w: 154, h: 35 },
-  { src: "/logos/summit/monte-carlo.svg", alt: "Monte Carlo", w: 116, h: 61 },
-  { src: "/logos/summit/leroy-merlin.svg", alt: "Leroy Merlin", w: 109, h: 62 },
-  { src: "/logos/summit/technos.svg", alt: "Technos", w: 141, h: 29 },
-  { src: "/logos/summit/bagaggio.svg", alt: "Bagaggio", w: 149, h: 22 },
-  { src: "/logos/summit/le-biscuit.svg", alt: "Le Biscuit", w: 141, h: 24 },
-  { src: "/logos/summit/miess.svg", alt: "Miess", w: 113, h: 43 },
-  { src: "/logos/summit/casa-e-video.svg", alt: "Casa & Video", w: 145, h: 18 },
-  { src: "/logos/summit/hering-fill.svg", alt: "Hering", w: 140, h: 30 },
-] as const;
-
-const CAROUSEL_COLS = 4;
-const CYCLE_MS = 2400;
-
-// Split logos into N columns (round-robin, deterministic)
-function splitLogos(n: number) {
-  const cols: (typeof CAROUSEL_LOGOS)[number][][] = Array.from(
-    { length: n },
-    () => [],
-  );
-  CAROUSEL_LOGOS.forEach((logo, i) => cols[i % n]?.push(logo));
-  return cols;
-}
 
 export default function ScanGate({
   domain,
@@ -131,12 +104,14 @@ function ScanScreen({
     <div
       className="fixed inset-0 overflow-y-auto"
       style={{
-        background: FOREST,
         color: DECK.ink,
         fontFamily: "Switzer, 'Inter var', Helvetica, Arial, sans-serif",
         WebkitFontSmoothing: "antialiased",
       }}
     >
+      <ReportBackdrop domain={domain} />
+      <div className="pointer-events-none absolute inset-0 bg-white/35" />
+
       {/* Lime progress strip */}
       <div
         className="fixed inset-x-0 top-0 z-10 h-[2px] overflow-hidden"
@@ -150,7 +125,7 @@ function ScanScreen({
         )}
       </div>
 
-      <div className="flex min-h-full flex-col items-center justify-center px-3 py-4 sm:px-5 sm:py-16">
+      <div className="relative z-10 flex min-h-full flex-col items-center justify-center px-3 py-4 sm:px-5 sm:py-16">
         {isActive && (
           <div
             className="w-full max-w-[460px] rounded-2xl sm:rounded-3xl px-5 pt-5 pb-6 sm:px-8 sm:pt-8 sm:pb-9"
@@ -278,19 +253,7 @@ function ScanScreen({
               })}
             </div>
 
-            {/* Social proof */}
-            <div
-              className="mt-8 pt-6"
-              style={{ borderTop: `1px solid ${DECK.border}` }}
-            >
-              <p
-                className="mb-4 text-[11px] uppercase tracking-[0.04em] text-center"
-                style={{ color: DECK.faint }}
-              >
-                Já receberam
-              </p>
-              <LogoCarousel />
-            </div>
+            <ReportSocialProof />
           </div>
         )}
 
@@ -438,108 +401,5 @@ function NotificationEmail({ email }: { email: string }) {
         </p>
       </div>
     </div>
-  );
-}
-
-// ── logo carousel ─────────────────────────────────────────────────────────────
-
-type LogoEntry = (typeof CAROUSEL_LOGOS)[number];
-
-function LogoCol({
-  logos,
-  delayMs,
-  last,
-  bottomRow,
-}: {
-  logos: LogoEntry[];
-  delayMs: number;
-  last?: boolean;
-  bottomRow?: boolean;
-}) {
-  const [idx, setIdx] = useState(0);
-
-  // Staggered cycle timer, alive while the column is mounted.
-  const cycleRef = (el: HTMLDivElement | null) => {
-    if (!el) return;
-    let interval: ReturnType<typeof setInterval>;
-    const timeout = setTimeout(() => {
-      interval = setInterval(
-        () => setIdx((i) => (i + 1) % logos.length),
-        CYCLE_MS,
-      );
-    }, delayMs);
-    return () => {
-      clearTimeout(timeout);
-      clearInterval(interval);
-    };
-  };
-
-  const logo = logos[idx % logos.length] ?? logos[0];
-  if (!logo) return null;
-
-  // These SVGs have preserveAspectRatio="none" width="100%" height="100%",
-  // so they stretch to fill whatever pixel box you give them. The only fix
-  // is computing the exact proportional pixel dimensions from the viewBox.
-  const MAX_W = 78;
-  const MAX_H = 22;
-  const scale = Math.min(MAX_W / logo.w, MAX_H / logo.h);
-  const renderW = Math.round(logo.w * scale);
-  const renderH = Math.round(logo.h * scale);
-
-  return (
-    <div
-      ref={cycleRef}
-      className="flex flex-1 items-center justify-center overflow-hidden py-3"
-      style={{
-        borderRight: last ? undefined : `1px solid ${DECK.border}`,
-        borderTop: bottomRow ? `1px solid ${DECK.border}` : undefined,
-      }}
-    >
-      <img
-        key={idx}
-        src={logo.src}
-        alt={logo.alt}
-        width={renderW}
-        height={renderH}
-        className="logo-carousel-enter block"
-      />
-    </div>
-  );
-}
-
-function LogoCarousel() {
-  const cols = splitLogos(CAROUSEL_COLS);
-  return (
-    <>
-      {/* 2×2 on mobile */}
-      <div
-        className="grid grid-cols-2 overflow-hidden rounded-xl sm:hidden"
-        style={{ border: `1px solid ${DECK.border}` }}
-      >
-        {cols.map((logos, i) => (
-          <LogoCol
-            key={i}
-            logos={logos}
-            delayMs={i * 380}
-            last={false}
-            bottomRow={i >= 2}
-          />
-        ))}
-      </div>
-      {/* 4 columns on sm+ */}
-      <div
-        className="hidden sm:flex overflow-hidden rounded-xl"
-        style={{ border: `1px solid ${DECK.border}` }}
-      >
-        {cols.map((logos, i) => (
-          <LogoCol
-            key={i}
-            logos={logos}
-            delayMs={i * 380}
-            last={i === cols.length - 1}
-          />
-        ))}
-      </div>
-    </>
   );
 }

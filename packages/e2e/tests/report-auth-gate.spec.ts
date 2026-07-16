@@ -1,6 +1,21 @@
 import { signUpViaApi } from "../fixtures/auth-api";
 import { expect, newApiContext, test } from "../fixtures/test";
 
+test("anonymous report page shows login over a blurred preview", async ({
+  page,
+}) => {
+  await page.goto("/report/example.com");
+
+  const dialog = page.getByRole("dialog", { name: "Acesse seu relatório" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Já receberam")).toBeVisible();
+
+  const preview = page
+    .locator('div[aria-hidden="true"]')
+    .filter({ hasText: "Uma visão completa da sua loja." });
+  await expect(preview).toHaveCSS("filter", "blur(9px)");
+});
+
 test("report data and scan operations reject anonymous callers", async ({
   playwright,
 }) => {

@@ -1,6 +1,7 @@
 import { AuthEntry } from "@/web/components/auth-entry";
 import type { UnifiedAuthFormCopy } from "@/web/components/unified-auth-form";
 import { brandFromDomain, faviconForDomain } from "@/shared/report-seo";
+import { ReportSocialProof } from "./report-social-proof";
 import { captureReport } from "./track";
 import { DECK } from "./templates/tokens";
 
@@ -33,7 +34,7 @@ function callbackUrl(domain: string): string {
   return `${path}${window.location.search}${window.location.hash}`;
 }
 
-function ReportBackdrop({ domain }: { domain: string }) {
+export function ReportBackdrop({ domain }: { domain: string }) {
   const brand = brandFromDomain(domain);
 
   return (
@@ -263,7 +264,7 @@ export function ReportAuthGate({
       }}
     >
       <ReportBackdrop domain={domain} />
-      <div className="absolute inset-0 bg-white/35" />
+      <div className="pointer-events-none absolute inset-0 bg-white/35" />
 
       <div className="relative z-10 flex min-h-full items-center justify-center px-3 py-5 sm:px-6 sm:py-10">
         {loading ? (
@@ -318,6 +319,7 @@ export function ReportAuthGate({
             >
               Acesso gratuito. Leva menos de um minuto.
             </p>
+            <ReportSocialProof compact />
           </section>
         )}
       </div>

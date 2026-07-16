@@ -9,10 +9,9 @@ import {
 import { KEYS } from "@/web/lib/query-keys";
 import { authClient } from "@/web/lib/auth-client";
 import { getReport } from "./reports/api";
-import { ReportAuthGate } from "./reports/auth-gate";
+import { ReportAuthGate, ReportBackdrop } from "./reports/auth-gate";
 import ScanGate from "./reports/scan-gate";
 import { setReportReviewerMode } from "./reports/track";
-import { DECK } from "./reports/templates/tokens";
 import "./reports/reports.css";
 
 const route = getRouteApi("/report/$domain");
@@ -102,11 +101,10 @@ export default function ReportPage() {
   ) : initial.isPending ? (
     // Bare stage while the authenticated read resolves — ScanGate takes over
     // with the full scanning UI (or the deck renders when ready).
-    <div
-      className="fixed inset-0"
-      style={{ background: DECK.forest }}
-      aria-busy="true"
-    />
+    <div className="fixed inset-0 overflow-hidden" aria-busy="true">
+      <ReportBackdrop domain={domain} />
+      <div className="pointer-events-none absolute inset-0 bg-white/35" />
+    </div>
   ) : (
     <ScanGate
       domain={domain}
