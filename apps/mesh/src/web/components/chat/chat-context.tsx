@@ -1028,10 +1028,40 @@ export function ActiveTaskProvider({
           });
           return;
         }
-        // `load_repo` finished cloning a repo into the thread's sandbox and
-        // wants the live Preview shown — open the "preview" main-panel tab.
+        // `load_repo` finished cloning a repo into the thread's sandbox. Patch
+        // the local thread row (branch + repo + sandbox record) so the preview
+        // resolves without a refetch, then open the "preview" main-panel tab.
         if (chunk.type === "data-open-preview") {
+          const data = (
+            chunk as unknown as {
+              data: {
+                branch?: string | null;
+                githubRepo?: unknown;
+                sandboxMap?: unknown;
+                sandboxProviderKind?: string | null;
+              };
+            }
+          ).data;
           const cb = cbRef.current;
+          const id = cb.taskId;
+          if (id) {
+            const current = cb.manager.threads.get().find((t) => t.id === id);
+            cb.manager.patchThread({
+              id,
+              ...(data?.branch ? { branch: data.branch } : {}),
+              ...(data?.sandboxProviderKind
+                ? {
+                    sandbox_provider_kind:
+                      data.sandboxProviderKind as Task["sandbox_provider_kind"],
+                  }
+                : {}),
+              metadata: {
+                ...(current?.metadata ?? {}),
+                ...(data?.githubRepo ? { githubRepo: data.githubRepo } : {}),
+                ...(data?.sandboxMap ? { sandboxMap: data.sandboxMap } : {}),
+              } as Task["metadata"],
+            });
+          }
           cb.navigate({
             to: ".",
             search: (prev: Record<string, unknown>) => ({

@@ -1,3 +1,4 @@
+import { useChatTask } from "@/web/components/chat/chat-context";
 import { PreviewContent } from "@/web/components/sandbox/preview/preview";
 import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
@@ -5,7 +6,12 @@ import { AlertCircle } from "@untitledui/icons";
 
 export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   const entity = useVirtualMCP(virtualMcpId);
-  const hasClonableSource = agentHasClonableSource(entity?.metadata);
+  const { activeTask } = useChatTask();
+  // A thread-scoped repo (bound by `load_repo`) is previewable even when the
+  // agent itself has no clonable source (e.g. the ephemeral Decopilot agent).
+  const hasClonableSource =
+    agentHasClonableSource(entity?.metadata) ||
+    agentHasClonableSource(activeTask?.metadata);
 
   if (!hasClonableSource) {
     return (
