@@ -43,7 +43,11 @@ import {
 import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
-import { getThreadGithubRepo, threadIdFromBranch } from "./thread-repo";
+import {
+  getThreadGithubRepo,
+  setThreadSandboxMapEntry,
+  threadIdFromBranch,
+} from "./thread-repo";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
 import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
@@ -546,6 +550,21 @@ async function provisionSandbox(
     params.providerKind,
     entry,
   );
+  // Thread-scoped branch: the agent write above is a no-op for the synthetic
+  // Decopilot agent, so also persist the record on the thread — the only place
+  // the frontend reads previewUrl/handle from for these sandboxes. Applies to
+  // EVERY provisioning path (load_repo, SANDBOX_START auto-start, fs tools).
+  const threadId = threadIdFromBranch(branch);
+  if (threadId) {
+    await setThreadSandboxMapEntry(
+      ctx,
+      threadId,
+      userId,
+      branch,
+      params.providerKind,
+      entry,
+    );
+  }
 
   // Different handle = new sandbox (stale entry / orphan recovery / state miss).
   const isNewVm = !existing || existing.sandboxHandle !== sandbox.handle;

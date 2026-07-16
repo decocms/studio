@@ -11,7 +11,8 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { GithubRepo, SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 /**
  * Per-thread sandbox branch for a loaded repo. Includes the repo's connection
@@ -59,4 +60,38 @@ export async function getThreadGithubRepo(
   const repo = (thread?.metadata as { githubRepo?: GithubRepo } | undefined)
     ?.githubRepo;
   return repo ?? null;
+}
+
+/**
+ * Persist a sandbox record on the THREAD's `metadata.sandboxMap`
+ * ([userId][branch][kind]), mirroring the agent-scoped `setSandboxMapEntry`.
+ * The synthetic Decopilot agent's sandboxMap write is a no-op, so for
+ * thread-scoped branches this is the only place the frontend can read the
+ * live `previewUrl`/handle from. Called from `provisionSandbox` so every
+ * provisioning path (load_repo, the frontend's SANDBOX_START auto-start, the
+ * fs tools) persists it — not just `load_repo`. Never throws.
+ */
+export async function setThreadSandboxMapEntry(
+  ctx: StudioContext,
+  threadId: string,
+  userId: string,
+  branch: string,
+  kind: SandboxProviderKind,
+  entry: SandboxRecord,
+): Promise<void> {
+  const thread = await ctx.storage.threads.get(threadId).catch(() => null);
+  if (!thread) return;
+  const meta = (thread.metadata ?? {}) as Record<string, unknown>;
+  const current = (meta.sandboxMap ?? {}) as SandboxMap;
+  const userMap = { ...(current[userId] ?? {}) } as Record<
+    string,
+    Record<string, SandboxRecord>
+  >;
+  userMap[branch] = { ...(userMap[branch] ?? {}), [kind]: entry };
+  const next = { ...current, [userId]: userMap } as SandboxMap;
+  await ctx.storage.threads
+    .update(threadId, { metadata: { ...meta, sandboxMap: next } })
+    .catch((err) =>
+      console.warn("[thread-repo] setThreadSandboxMapEntry failed", err),
+    );
 }
