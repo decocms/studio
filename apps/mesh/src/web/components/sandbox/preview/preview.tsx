@@ -67,6 +67,10 @@ import {
   VisualEditorPayloadSchema,
   type VisualEditorPayload,
 } from "./visual-editor-script";
+import { CMS_EDITOR_SCRIPT, CmsEditorPayloadSchema } from "./cms-editor-script";
+import { parseSections } from "@/web/components/sections-editor/parse-sections";
+import { resolveSectionCandidates } from "./section-candidates";
+import { getPageVariantSectionsAt } from "@/web/components/sections-editor/page-variants";
 import { VisualEditorPrompt } from "./visual-editor-prompt";
 import {
   useSandboxEvents,
@@ -239,6 +243,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
+  /** Section index selected via click-through from the preview iframe. */
+  const [cmsSelectedSectionIndex, setCmsSelectedSectionIndex] = useState<
+    number | null
+  >(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   const blocksPanelRef = useRef<ImperativePanelHandle>(null);
 
@@ -383,6 +391,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   }
   const pickerSandboxRef =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
+
+  // Per-section metadata for the CMS hover overlay, aligned by index with the
+  // iframe's top-level section list. `label`: ONLY global (saved block)
+  // sections get a name — the DOM can't carry it (incl. globals inside async
+  // rendering); non-global sections are empty so the iframe falls back to their
+  // full resolve. `kind`: drives the highlight color (global / variant / normal).
+  const cmsRawSections =
+    decofile && currentPageKey
+      ? getPageVariantSectionsAt(decofile, currentPageKey, 0)
+      : [];
+  const cmsSections = decofile ? parseSections(cmsRawSections, decofile) : [];
+  const cmsSectionLabels = cmsSections.map((s) =>
+    s.isSavedBlock ? s.label : "",
+  );
+  const cmsSectionKinds = cmsSections.map((s) =>
+    s.isSavedBlock ? "global" : s.isMultivariate ? "variant" : "normal",
+  );
+  // Candidate manifest keys per editable section, used iframe-side to align the
+  // editable run within the DOM (handles framework sections deco injects around
+  // OR between the editable ones) — no hardcoded list of sections to skip.
+  const cmsSectionKeys = cmsRawSections.map((s) =>
+    resolveSectionCandidates(s, decofile ?? {}),
+  );
 
   const iframeSrcRef = useRef<string | null>(null);
   /** Path we navigated to programmatically; ignore stale iframe onLoad events. */
@@ -572,6 +603,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       if (e.data?.type === "visual-editor::element-clicked") {
         const result = VisualEditorPayloadSchema.safeParse(e.data.payload);
         if (result.success) setVisualElement(result.data);
+      } else if (e.data?.type === "cms-editor::section-clicked") {
+        const result = CmsEditorPayloadSchema.safeParse(e.data.payload);
+        if (result.success)
+          setCmsSelectedSectionIndex(result.data.sectionIndex);
       }
     };
     window.addEventListener("message", handler);
@@ -607,6 +642,33 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     win.postMessage({ type: "visual-editor::deactivate" }, "*");
   };
 
+  const injectCmsEditor = () => {
+    const win = previewIframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage(
+      { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
+      "*",
+    );
+    // Ordered after activate, so the script's listener is registered by the
+    // time this arrives. Re-sent on every (re)injection (mode switch, page
+    // navigation, save-reload) so labels track the current page.
+    win.postMessage(
+      {
+        type: "cms-editor::set-labels",
+        labels: cmsSectionLabels,
+        kinds: cmsSectionKinds,
+        keys: cmsSectionKeys,
+      },
+      "*",
+    );
+  };
+
+  const deactivateCmsEditor = () => {
+    const win = previewIframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: "cms-editor::deactivate" }, "*");
+  };
+
   const activateEditingMode = (mode: PreviewEditingMode) => {
     const previousMode = editingMode;
     if (!isMobile && mode !== previousMode) {
@@ -615,8 +677,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
     setEditingMode(mode);
     setVisualElement(null);
+    setCmsSelectedSectionIndex(null);
     if (previousMode === "visual") deactivateVisualEditor();
     if (mode === "visual") injectVisualEditor();
+    if (previousMode === "blocks" && mode !== "blocks") deactivateCmsEditor();
+    if (mode === "blocks") injectCmsEditor();
   };
 
   const toggleEditingMode = (mode: PreviewEditorMode) => {
@@ -709,6 +774,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     intendedPathRef.current = target;
     setActiveGlobalSection(null);
     setDirectPreviewUrl(null);
+    // A click-through index from the previous page must not auto-select on the
+    // next page's remounted editor.
+    setCmsSelectedSectionIndex(null);
     setPinnedPageKey(page.key);
     setCurrentPath(page.path);
     persistLastPage({ path: page.path, pageKey: page.key, params });
@@ -744,6 +812,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     );
     setActiveGlobalSection(section);
     setDirectPreviewUrl(url);
+    setCmsSelectedSectionIndex(null);
     workspace.selectTarget({ kind: "section", key: section.key });
   };
 
@@ -1237,7 +1306,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       <div className="flex-1 overflow-hidden">
         {isMobile && effectiveEditingMode === "blocks" ? (
           <div className="relative h-full min-h-0 overflow-hidden">
-            <BlocksPanel virtualMcpId={virtualMcpId} />
+            <BlocksPanel
+              virtualMcpId={virtualMcpId}
+              externalSelectedIndex={cmsSelectedSectionIndex}
+            />
             {floatingPreviewControls}
           </div>
         ) : (
@@ -1256,7 +1328,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               )}
             >
               {effectiveEditingMode === "blocks" && (
-                <BlocksPanel virtualMcpId={virtualMcpId} />
+                <BlocksPanel
+                  virtualMcpId={virtualMcpId}
+                  externalSelectedIndex={cmsSelectedSectionIndex}
+                />
               )}
             </ResizablePanel>
             <ResizableHandle
@@ -1399,6 +1474,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           }
                         }
                         if (editingMode === "visual") injectVisualEditor();
+                        if (editingMode === "blocks") injectCmsEditor();
                       }}
                     />
                   </div>
