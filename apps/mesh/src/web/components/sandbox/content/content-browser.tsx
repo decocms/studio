@@ -1362,9 +1362,6 @@ function ContentBrowserReady({
                     setOpenPageSeoKey(null);
                     if (mode === "blocks") workspace.consumeEditSeo();
                   }}
-                  onSaved={
-                    mode === "blocks" ? workspace.notifySaved : undefined
-                  }
                 />
               )
             ) : (

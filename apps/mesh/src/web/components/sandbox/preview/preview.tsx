@@ -75,6 +75,7 @@ import { VisualEditorPrompt } from "./visual-editor-prompt";
 import {
   useSandboxEvents,
   useSandboxReloadHandler,
+  useSandboxReloadStartHandler,
 } from "../hooks/use-sandbox-events";
 import { SandboxStateCard } from "./state-card";
 import {
@@ -423,14 +424,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   /** Path we navigated to programmatically; ignore stale iframe onLoad events. */
   const intendedPathRef = useRef<string | null>(null);
 
-  // "reload" fires on config edits framework HMR won't catch (.ts/.tsx use HMR).
-  useSandboxReloadHandler(() => {
-    const iframe = previewIframeRef.current;
-    const src = iframeSrcRef.current;
-    if (!iframe || !src) return;
-    iframe.src = src;
-  });
-
   // Only the user-pause state routes to the suspended overlay (resume
   // affordance). The daemon's `error` state means the dev script crashed
   // — that's a failure, but the daemon's HTTP proxy serves an auto-reloading
@@ -700,10 +693,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     iframe.src = iframeSrc;
   };
 
-  // Reload the preview after a Blocks save without moving keyboard focus.
+  // Reload the preview without moving keyboard focus. Used both for the daemon
+  // "reload" event (config edits HMR won't catch) and, via the debounced
+  // `.deco/` file-changed signal, after a Blocks save once the dev server has
+  // rebuilt (see sandbox-events-context).
   const reloadPreviewPreservingScroll = () => {
     const iframe = previewIframeRef.current;
     if (!iframe) return;
+    // Show the same loading overlay as page navigation while the reloaded page
+    // fetches; the iframe's onLoad clears it (with beginNavigation's safety net
+    // as a fallback if onLoad never fires).
+    beginNavigation();
     const focused = document.activeElement as HTMLElement | null;
     const prevTabIndex = iframe.tabIndex;
     iframe.tabIndex = -1;
@@ -725,15 +725,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     setTimeout(restore, 3000);
   };
 
-  const [handledPreviewRevision, setHandledPreviewRevision] = useState(
-    workspace.state.previewRevision,
-  );
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- synchronizes persisted Blocks saves with the mounted preview iframe
-  useEffect(() => {
-    if (handledPreviewRevision === workspace.state.previewRevision) return;
-    setHandledPreviewRevision(workspace.state.previewRevision);
+  // Fires on the daemon "reload" event and on debounced `.deco/` file changes
+  // (Blocks saves, external/agent decofile writes) — the only refresh path for
+  // decofile edits, which the framework's HMR doesn't cover.
+  useSandboxReloadHandler(() => {
     reloadPreviewPreservingScroll();
-  }, [handledPreviewRevision, workspace.state.previewRevision]);
+  });
+  // Show the loading overlay the instant a `.deco/` change is detected, ahead of
+  // the debounced reload above, so the pending refresh feels immediate.
+  useSandboxReloadStartHandler(() => {
+    beginNavigation();
+  });
 
   const handleHardReload = () => {
     if (!previewIframeRef.current || !iframeSrc) return;

@@ -1,6 +1,8 @@
 import { type Query, useQuery } from "@tanstack/react-query";
+import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { exponentialBackoffWithJitter } from "@decocms/std";
 import { KEYS } from "@/web/lib/query-keys";
+import { decoRepoPath } from "./deco-repo-path";
 import { readCommittedJson } from "./read-committed-file";
 import type { LiveMeta } from "./resolve-schema";
 
@@ -23,6 +25,11 @@ export function useLiveMeta(
 ) {
   const fetchEnabled = options?.fetchEnabled ?? true;
   const previewUrl = params?.previewUrl;
+  // Committed snapshot lives under the project's package path
+  // (`metadata.runtime.path`) when the project isn't at the repo root; the live
+  // `/live/_meta` route already resolves relative to the dev-server cwd.
+  const packagePath =
+    useVirtualMCP(params?.virtualMcpId)?.metadata?.runtime?.path ?? null;
   return useQuery({
     queryKey: params
       ? KEYS.liveMeta(
@@ -34,7 +41,10 @@ export function useLiveMeta(
       : KEYS.liveMeta(""),
     queryFn: async () => {
       const readCommitted = () =>
-        readCommittedJson<LiveMeta>(params!, ".deco/meta.gen.json");
+        readCommittedJson<LiveMeta>(
+          params!,
+          decoRepoPath(packagePath, ".deco/meta.gen.json"),
+        );
       // Prefer the live `/live/_meta` when the dev server is up; otherwise (or on
       // failure) read the committed `.deco/meta.gen.json` snapshot so the CMS
       // schema is available even without a working preview.

@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { exponentialBackoffWithJitter } from "@decocms/std";
 import { KEYS } from "@/web/lib/query-keys";
+import { decoRepoPath } from "./deco-repo-path";
 import { buildDecofileFetchUrl } from "./preview-fetch-url";
 import { readCommittedJson } from "./read-committed-file";
 
@@ -24,13 +26,19 @@ export function useDecofile(
   // so optimistic block writes (which persist to the FS) operate on a full base
   // and the CMS stays editable even if the preview never comes up.
   const fetchEnabled = options?.fetchEnabled ?? true;
+  // Committed snapshot lives under the project's package path
+  // (`metadata.runtime.path`) when the project isn't at the repo root — the
+  // daemon reads resolve against the repo root, so prefix it. The live
+  // `/.decofile` route already resolves relative to the dev-server cwd.
+  const packagePath =
+    useVirtualMCP(params?.virtualMcpId)?.metadata?.runtime?.path ?? null;
   return useQuery({
     queryKey: KEYS.decofile(key),
     queryFn: async () => {
       const readCommitted = () =>
         readCommittedJson<Record<string, unknown>>(
           params!,
-          ".deco/blocks.gen.json",
+          decoRepoPath(packagePath, ".deco/blocks.gen.json"),
         );
       if (fetchEnabled) {
         const res = await fetch(buildDecofileFetchUrl(params!), {

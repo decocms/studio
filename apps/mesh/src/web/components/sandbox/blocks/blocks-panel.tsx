@@ -136,7 +136,6 @@ export function BlocksPanel({
             workspace.state.editSeoPageKey === activePageBlockKey
           }
           onExitSeo={workspace.consumeEditSeo}
-          onSaved={workspace.notifySaved}
           onVariantPreviewOverride={workspace.setVariantOverride}
         />
       </Suspense>
