@@ -15,6 +15,11 @@ export const KEYS = {
   // a deployed version newer than the client's own build.
   appVersionCheck: () => ["appVersionCheck"] as const,
 
+  // Auth-related queries
+  session: () => ["session"] as const,
+
+  messages: (locator: string) => ["messages", locator] as const,
+
   // Organizations list
   organizations: () => ["organizations"] as const,
 
@@ -38,6 +43,9 @@ export const KEYS = {
 
   homeGithubRecentPrs: (orgId: string, connectionId: string) =>
     ["home-github-recent-prs", orgId, connectionId] as const,
+
+  homeGithubContributions: (orgId: string, connectionId: string) =>
+    ["home-github-contributions", orgId, connectionId] as const,
 
   // Public report deck for a scanned domain (/report/:domain, no auth).
   publicReport: (domain: string, key?: string) =>
@@ -124,6 +132,10 @@ export const KEYS = {
   isMCPAuthenticated: (url: string, token: string | null) =>
     ["is-mcp-authenticated", url, token] as const,
 
+  // MCP tools (scoped by URL and optional token)
+  mcpTools: (url: string, token?: string | null) =>
+    ["mcp", "tools", url, token] as const,
+
   // Prefix for all mesh-sdk mcp-client queries (mcpClient, mcpToolsList,
   // mcpResourcesList, mcpPromptsList, mcpReadResource, mcpGetPrompt,
   // mcpToolCall — all start with ["mcp", "client", ...]). Use with
@@ -141,6 +153,9 @@ export const KEYS = {
   // Org access status (for /:org gate — pending invite / auto-join / no access)
   orgAccessStatus: (slug: string) => ["org-access-status", slug] as const,
 
+  // Models list (scoped by organization)
+  modelsList: (orgId: string) => ["models-list", orgId] as const,
+
   // Home next-actions — agent prompts under Chat.Input.
   homeNextActions: (orgSlug: string) => ["home-next-actions", orgSlug] as const,
 
@@ -151,10 +166,22 @@ export const KEYS = {
   agentPrompts: (orgId: string, agentId: string) =>
     ["agent-prompts", orgId, agentId] as const,
 
+  // Allowed models for current user (scoped by organization)
+  allowedModels: (locator: ProjectLocator) =>
+    [locator, "allowed-models"] as const,
+
+  // Collections (scoped by connection)
+  connectionCollections: (connectionId: string) =>
+    [connectionId, "collections", "discovery"] as const,
+
   // Tool call results (generic caching for MCP tool calls)
   // scope is required - scopes the cache (connectionId for connection-scoped, locator for org/project-scoped)
   toolCall: (scope: string, toolName: string, paramsKey: string) =>
     ["tool-call", scope, toolName, paramsKey] as const,
+
+  // Collection items (scoped by connection and collection name)
+  collectionItems: (connectionId: string, collectionName: string) =>
+    ["collection", connectionId, collectionName] as const,
 
   // Collection CRUD queries (scoped by orgId, scopeKey, client, and collection name)
   // orgId: organization ID
@@ -207,12 +234,20 @@ export const KEYS = {
     ] as const,
 
   // Monitoring queries
+  monitoringStats: () => ["monitoring", "stats"] as const,
   monitoringStatsToolCalls: (orgId: string, paramsKey: string) =>
     ["MONITORING_STATS", orgId, "tool-calls", paramsKey] as const,
   monitoringStatsLlm: (orgId: string, paramsKey: string) =>
     ["MONITORING_STATS", orgId, "llm", paramsKey] as const,
   monitoringThreadUsage: (locator: string, paramsKey: string) =>
     ["MONITORING_THREAD_USAGE", locator, paramsKey] as const,
+  monitoringLogs: (filters: {
+    connectionId?: string;
+    toolName?: string;
+    isError?: boolean;
+    limit?: number;
+    offset?: number;
+  }) => ["monitoring", "logs", filters] as const,
   monitoringLogsInfinite: (locator: string, paramsKey: string) =>
     ["monitoring", "logs-infinite", locator, paramsKey] as const,
   monitoringLogDetail: (logId: string) =>
@@ -233,11 +268,20 @@ export const KEYS = {
     ["threads", "overview", locator] as const,
   threadMessages: (locator: string, threadId: string) =>
     ["threads", "messages", locator, threadId] as const,
+  threadModelLogs: (locator: string, dateKey: string) =>
+    ["threads", "model-logs", locator, dateKey] as const,
+  threadSandbox: (orgKey: string, taskId: string | undefined) =>
+    ["thread-sandbox", "v2", orgKey, taskId] as const,
   threadOutputs: (threadId: string) => ["thread-outputs", threadId] as const,
   // Fetched text content of a previewed file (FilePreview), keyed by URL.
   fileText: (downloadUrl: string) => ["file-text", downloadUrl] as const,
   // First bytes of a CSV/TSV file for the card thumbnail (range request).
   csvThumb: (downloadUrl: string) => ["csv-thumb", downloadUrl] as const,
+
+  // Virtual MCP tools (for tool definition lookup in chat)
+  // null virtualMcpId means default virtual MCP
+  virtualMcpTools: (virtualMcpId: string | null, orgId: string) =>
+    ["virtual-mcp", orgId, virtualMcpId ?? "default", "tools"] as const,
 
   toolDefinitionLookup: (
     connectionId: string | null,
@@ -252,6 +296,10 @@ export const KEYS = {
       "lookup",
       rawToolName,
     ] as const,
+
+  // Virtual MCP agents (for agent mentions in chat)
+  virtualMcpAgents: (orgId: string) =>
+    ["virtual-mcp", orgId, "agents"] as const,
 
   // Virtual MCP prompts (for ice breakers in chat)
   // null virtualMcpId means default virtual MCP
@@ -271,8 +319,24 @@ export const KEYS = {
     query: string,
   ) => [...baseKey, isOpen, query] as const,
 
+  // Connection prompts (for Virtual MCP settings)
+  connectionPrompts: (connectionId: string) =>
+    ["connection", connectionId, "prompts"] as const,
+
+  // Connection resources (for Virtual MCP settings)
+  connectionResources: (connectionId: string) =>
+    ["connection", connectionId, "resources"] as const,
+
   // User data
   user: (userId: string) => ["user", userId] as const,
+
+  // Store README fetched from external URL
+  storeReadmeUrl: (readmeUrl: string | null | undefined) =>
+    ["store-readme-url", readmeUrl] as const,
+
+  // Remote MCP tools (for store server detail page)
+  remoteMcpTools: (remoteUrl: string | null) =>
+    ["remote-mcp-tools", remoteUrl] as const,
 
   // Tags (scoped by locator)
   tags: (locator: string) => [locator, "tags"] as const,
@@ -306,6 +370,21 @@ export const KEYS = {
 
   // Projects (scoped by organization)
   projects: (organizationId: string) => ["projects", organizationId] as const,
+  project: (organizationId: string, slug: string) =>
+    ["project", organizationId, slug] as const,
+  // Virtual MCP entity (scoped by org + id)
+  virtualMcp: (orgId: string, virtualMcpId: string) =>
+    ["virtual-mcp", orgId, virtualMcpId] as const,
+
+  // Project plugin configs
+  projectPluginConfigs: (projectId: string) =>
+    ["project-plugin-configs", projectId] as const,
+  projectPluginConfig: (projectId: string, pluginId: string) =>
+    ["project-plugin-config", projectId, pluginId] as const,
+
+  // Project connections (dependencies)
+  projectConnections: (projectId: string) =>
+    ["project-connections", projectId] as const,
 
   // Project connection details (with tools, for sidebar)
   projectConnectionDetails: (projectId: string, connectionIds: string[]) =>
@@ -413,6 +492,9 @@ export const KEYS = {
   defaultBrand: (organizationId: string) =>
     ["brand-context", organizationId, "default"] as const,
 
+  // Deco profile (scoped by user email)
+  decoProfile: (email: string | undefined) => ["deco-profile", email] as const,
+
   // Deco sites (scoped by user email)
   decoSites: (email: string | undefined) => ["deco-sites", email] as const,
   decoApps: () => ["deco-apps"] as const,
@@ -427,6 +509,10 @@ export const KEYS = {
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   sandboxRepoDir: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["sandbox-repo-dir", orgSlug, virtualMcpId, branch] as const,
+
+  // Link daemon status (user-scoped; the cluster derives the userSub
+  // from the bearer session, so we don't include it in the key).
+  linkStatus: () => ["link-status"] as const,
 
   // Current link info (org-scoped; includes capabilities, machineId, cliVersion).
   currentLink: (orgId: string) => ["current-link", orgId] as const,
@@ -447,6 +533,8 @@ export const KEYS = {
       installationLogin,
       query,
     ] as const,
+  vmEnv: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["vm-env", orgSlug, virtualMcpId, branch] as const,
 } as const;
 
 export function invalidateVirtualMcpQueries(
