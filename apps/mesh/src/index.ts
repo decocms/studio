@@ -167,7 +167,7 @@ const previewProxyDeps = {
 // Create the Hono app (any DBOS.registerWorkflow calls happen during this
 // import chain). Launch DBOS afterwards so the registry is sealed before
 // the executor starts dequeueing workflows.
-const app = await createApp();
+const app = await createApp({ clientDir });
 // Conductor opt-in via env (SDK defaults conductorURL to wss://cloud.dbos.dev/...).
 const conductorKey = process.env.DBOS_CONDUCTOR_KEY?.trim();
 const conductorURL = process.env.DBOS_CONDUCTOR_URL?.trim();

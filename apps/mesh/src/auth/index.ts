@@ -48,6 +48,14 @@ import { getBuiltinRoleStatements } from "./builtin-role-permission";
 import { createSSOConfig } from "./sso";
 import { GENERIC_EMAIL_DOMAINS } from "./org-assurance-policy";
 import { ensureUserOrganization } from "./ensure-user-organization";
+import { isReservedOrganizationSlug } from "@/shared/organization-slugs";
+
+function rejectReservedOrganizationSlug(slug: unknown): void {
+  if (!isReservedOrganizationSlug(slug)) return;
+  throw new APIError("BAD_REQUEST", {
+    message: `Organization slug "${String(slug).trim()}" is reserved by Studio`,
+  });
+}
 
 const allTools = Object.values(getToolsByCategory())
   .map((tool) => tool.map((t) => t.name))
@@ -231,10 +239,20 @@ const plugins = [
       },
     },
     organizationHooks: {
+      // This is the canonical creation boundary: it also covers direct calls
+      // to Better Auth's /organization/create endpoint, not only Studio's UI
+      // and MCP tool wrappers.
+      beforeCreateOrganization: async ({ organization }) => {
+        rejectReservedOrganizationSlug(organization.slug);
+      },
       // Keep base64 logos out of the org row (they bloat every
       // organization.list response). Mirrors `backfill-assets
       // --target organizations`; raster only — SVG stays inline.
       beforeUpdateOrganization: async ({ organization, member }) => {
+        // Better Auth allows slug changes directly, so creation-only
+        // validation could otherwise be bypassed by renaming an existing org.
+        rejectReservedOrganizationSlug(organization.slug);
+
         const logo = organization.logo;
         if (typeof logo !== "string" || !logo.startsWith("data:")) return;
         const hoisted = await hoistOrgLogo(member.organizationId, logo);

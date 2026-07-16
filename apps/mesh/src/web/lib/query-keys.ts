@@ -39,6 +39,10 @@ export const KEYS = {
   homeGithubRecentPrs: (orgId: string, connectionId: string) =>
     ["home-github-recent-prs", orgId, connectionId] as const,
 
+  // Public report deck for a scanned domain (/report/:domain, no auth).
+  publicReport: (domain: string, key?: string) =>
+    ["public-report", domain, key ?? ""] as const,
+
   commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "connection", orgId, connectionId] as const,
   commerceDiscoveryVirtualMcp: (orgId: string, virtualMcpId: string) =>

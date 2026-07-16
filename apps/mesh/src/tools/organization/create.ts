@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { getUserId, requireAuth } from "../../core/studio-context";
+import { isReservedOrganizationSlug } from "../../shared/organization-slugs";
 
 export const ORGANIZATION_CREATE = defineTool({
   name: "ORGANIZATION_CREATE" as const,
@@ -24,9 +25,10 @@ export const ORGANIZATION_CREATE = defineTool({
       .string()
       .min(1)
       .max(50)
-      .regex(
-        /^[a-z0-9-]+$/,
-        "Slug must be lowercase alphanumeric with hyphens",
+      .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens")
+      .refine(
+        (slug) => !isReservedOrganizationSlug(slug),
+        "Slug is reserved by Studio",
       ),
     name: z.string().min(1).max(255),
     description: z.string().optional(),
