@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn as nodeSpawn } from "node:child_process";
 import { readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { appLogPath } from "../paths";
 import { LogTee } from "./log-tee";
 import { spawnPty } from "./pty-spawn";
@@ -497,6 +498,12 @@ export class TaskManager {
     );
     task.pid = child.pid;
     task.pgid = child.pid;
+    // A multi-byte UTF-8 character can straddle two separate stdout/stderr
+    // 'data' events — decoding each Buffer chunk independently below would
+    // mangle it into replacement characters. StringDecoder carries the
+    // dangling bytes over to the next chunk instead.
+    const stdoutDecoder = new StringDecoder("utf-8");
+    const stderrDecoder = new StringDecoder("utf-8");
 
     const killGroup = (signal: NodeJS.Signals) => {
       if (task.pgid === undefined) return;
@@ -527,13 +534,13 @@ export class TaskManager {
     task.kill = (signal) => killGroup(signal ?? "SIGTERM");
 
     child.stdout?.on("data", (chunk: Buffer) => {
-      const data = chunk.toString("utf-8");
+      const data = stdoutDecoder.write(chunk);
       task.stdout.append(data);
       task.tee.write(data);
       this.fanOut(task, { stream: "stdout", data });
     });
     child.stderr?.on("data", (chunk: Buffer) => {
-      const data = chunk.toString("utf-8");
+      const data = stderrDecoder.write(chunk);
       task.stderr.append(data);
       task.tee.write(data);
       this.fanOut(task, { stream: "stderr", data });
