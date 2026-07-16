@@ -18,7 +18,7 @@ describe("run status copy", () => {
   test("uses the agreed cluster runtime labels", () => {
     expect(RUN_STATUS_COPY["waiting-runner"]).toEqual({
       label: "Waiting for an available runner",
-      detail: "Waiting for the per-thread dispatch slot",
+      detail: "Waiting for the per-chat dispatch slot",
     });
     expect(RUN_STATUS_COPY["analyzing-scope"]).toEqual({
       label: "Analyzing scope",
