@@ -468,38 +468,40 @@ function CodingConnected({ connectionId }: { connectionId: string }) {
             />
           ))}
         </div>
-      ) : !data || data.prs.length === 0 ? (
+      ) : !data || data.repos.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          {data?.repo ? `${data.repo} · ` : ""}No recent pull requests.
+          No recent pull requests.
         </p>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
-          {data.repo && (
-            <div className="truncate text-xs text-muted-foreground">
-              {data.repo}
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          {data.repos.map((group) => (
+            <div key={group.repo} className="flex flex-col gap-0.5">
+              <div className="truncate text-xs text-muted-foreground">
+                {group.repo}
+              </div>
+              {group.prs.map((pr) => (
+                <a
+                  key={`${group.repo}#${pr.number}`}
+                  href={pr.htmlUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm transition-colors hover:bg-accent/60"
+                >
+                  <GitBranch01 className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-foreground">{pr.title}</span>
+                  <span
+                    className={cn(
+                      "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-xs font-medium",
+                      pr.merged
+                        ? "bg-success/10 text-success"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    #{pr.number}
+                  </span>
+                </a>
+              ))}
             </div>
-          )}
-          {data.prs.map((pr) => (
-            <a
-              key={pr.number}
-              href={pr.htmlUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm transition-colors hover:bg-accent/60"
-            >
-              <GitBranch01 className="size-4 shrink-0 text-muted-foreground" />
-              <span className="truncate text-foreground">{pr.title}</span>
-              <span
-                className={cn(
-                  "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-xs font-medium",
-                  pr.merged
-                    ? "bg-success/10 text-success"
-                    : "bg-muted text-muted-foreground",
-                )}
-              >
-                #{pr.number}
-              </span>
-            </a>
           ))}
         </div>
       )}
