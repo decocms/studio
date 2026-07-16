@@ -135,6 +135,7 @@ import {
   removeCategoryFromPost,
   replaceCategoryOnPost,
   scanBlogEntries,
+  stampPostModified,
 } from "./blog/blog-data";
 import {
   useDeleteBlogBlock,
@@ -946,7 +947,7 @@ function ContentBrowserReady({
       if (next === payload) continue;
       await saveBlogBlock.mutateAsync({
         blockKey: key,
-        data: buildBlogBlock(key, "posts", next),
+        data: buildBlogBlock(key, "posts", stampPostModified(next)),
       });
       changed += 1;
     }
@@ -1019,7 +1020,7 @@ function ContentBrowserReady({
               if (next === payload) continue;
               await saveBlogBlock.mutateAsync({
                 blockKey: postKey,
-                data: buildBlogBlock(postKey, "posts", next),
+                data: buildBlogBlock(postKey, "posts", stampPostModified(next)),
               });
             }
           }
