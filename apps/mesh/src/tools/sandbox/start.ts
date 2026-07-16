@@ -152,7 +152,18 @@ export const SANDBOX_START = defineTool({
       providerKind,
     );
 
-    const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
+    // Thread-scoped repo (bound by `load_repo`) wins over the agent's repo — the
+    // same rule as `ensureSandbox`. Without this the frontend's auto-start
+    // provisions a repo-LESS sandbox for the synthetic Decopilot agent (whose
+    // metadata has no repo), so nothing clones and the dev server stays idle.
+    // Derive the thread id from the branch since this path has no
+    // `ctx.metadata.threadId`.
+    const threadRepo = await getThreadGithubRepo(
+      ctx,
+      threadIdFromBranch(resolvedBranch) ?? ctx.metadata?.threadId,
+    );
+    const githubRepo =
+      threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
 
     const { entry, isNewVm } = await provisionSandbox({
       ctx,
