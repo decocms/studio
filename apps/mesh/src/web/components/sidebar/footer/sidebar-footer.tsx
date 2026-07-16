@@ -6,15 +6,17 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
-import { Settings02, UserPlus01, ZapSquare } from "@untitledui/icons";
+import { Link01, Settings02, UserPlus01, ZapSquare } from "@untitledui/icons";
 import { useState } from "react";
 import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
+import { ConnectDialog } from "@/web/components/connect/connect-dialog";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { SidebarTopActions } from "@/web/components/sidebar/top-actions";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
+import { track } from "@/web/lib/posthog-client";
 
 function SettingsFullButton() {
   const navigate = useNavigate();
@@ -54,6 +56,7 @@ function SettingsIconButton() {
 
 function SidebarExtraActions() {
   const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const [connectClaudeOpen, setConnectClaudeOpen] = useState(false);
   return (
     <>
       <SidebarMenu className="gap-0.5">
@@ -76,11 +79,27 @@ function SidebarExtraActions() {
             <span>Add connection</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            tooltip="Connect to Claude"
+            onClick={() => {
+              track("connect_studio_opened", { source: "sidebar_footer" });
+              setConnectClaudeOpen(true);
+            }}
+          >
+            <Link01 />
+            <span>Connect to Claude</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
       </SidebarMenu>
       <AddConnectionDialog
         open={connectionsOpen}
         onOpenChange={setConnectionsOpen}
         mode="browse"
+      />
+      <ConnectDialog
+        open={connectClaudeOpen}
+        onOpenChange={setConnectClaudeOpen}
       />
     </>
   );
