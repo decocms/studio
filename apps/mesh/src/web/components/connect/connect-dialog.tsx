@@ -88,7 +88,7 @@ function ConnectDialogBody({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <>
+    <div className="flex flex-col gap-4 min-w-0">
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2.5">
           <span className="size-8 rounded-lg bg-special/15 text-special flex items-center justify-center shrink-0">
@@ -183,8 +183,8 @@ function ConnectDialogBody({ onClose }: { onClose: () => void }) {
           Add a custom connector in Settings → Connectors and paste this URL.
           Claude signs in with OAuth on first use.
         </p>
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 pl-3 pr-1.5 py-1.5">
-          <code className="text-xs flex-1 truncate font-mono text-foreground/90">
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 pl-3 pr-1.5 py-1.5 min-w-0">
+          <code className="text-xs flex-1 min-w-0 truncate font-mono text-foreground/90">
             {url}
           </code>
           <Button
@@ -213,7 +213,7 @@ function ConnectDialogBody({ onClose }: { onClose: () => void }) {
           </Link>
         </Button>
       </div>
-    </>
+    </div>
   );
 }
 
