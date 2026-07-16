@@ -91,6 +91,12 @@ RUN apt-get update \
   && find /opt/sandbox-daemon/node_modules/node-pty -name "spawn-helper" -exec chmod +x {} \; \
   && chown -R sandbox:sandbox /opt/sandbox-daemon
 
+# Install the typegen build produced from this exact source revision. Installing
+# from npm here would race the post-merge package release and could bake the
+# previous CLI, which does not discover the materialized endpoint file.
+COPY --chown=sandbox:sandbox daemon/dist/typegen.tgz /opt/sandbox-daemon/typegen.tgz
+RUN npm install -g /opt/sandbox-daemon/typegen.tgz
+
 COPY --chown=sandbox:sandbox daemon/dist/daemon.js /opt/sandbox-daemon/daemon.js
 COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
 

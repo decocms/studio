@@ -4,7 +4,7 @@ import type { StudioContext } from "../core/studio-context";
 
 // Define Hono variables type
 type Variables = TimingVariables & {
-  meshContext: StudioContext;
+  studioContext: StudioContext;
   rootSpan: Span;
 };
 

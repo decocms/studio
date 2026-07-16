@@ -61,7 +61,7 @@ import {
 import { buildSkillCatalog } from "@/file-storage/skill-catalog";
 import { detectContentType } from "@/object-storage/key-utils";
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 type Ctx = Context<{ Variables: Variables }>;
 
 /** Hard ceiling on a single uploaded body (matches the per-file quota). */
@@ -379,7 +379,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     volume: string,
     permission: "ORG_FS_READ" | "ORG_FS_WRITE",
   ): Promise<Resolved> => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     if (!ctx.auth?.user?.id) {
       return { ok: false, res: c.json({ error: "Unauthorized" }, 401) };
     }
@@ -417,7 +417,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   // The deployment's configured public skill sets (names only — the UI's
   // root listing). Member-gated like any read.
   app.get("/public-sets", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     if (!ctx.auth?.user?.id) {
       return c.json({ error: "Unauthorized" }, 401);
     }
@@ -428,7 +428,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   // Library page's "Recently added" feed. Volume-less by design, so it
   // lives above the `/:volume/*` routes.
   app.get("/recent", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     if (!ctx.auth?.user?.id) {
       return c.json({ error: "Unauthorized" }, 401);
     }
@@ -457,7 +457,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   // first — the Library's search box. Volume-less by design, so it lives
   // above the `/:volume/*` routes.
   app.get("/search", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     if (!ctx.auth?.user?.id) {
       return c.json({ error: "Unauthorized" }, 401);
     }
@@ -507,7 +507,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   // the agent link picker and the run can never drift on what "a skill" is.
   // Volume-less; lives above the `/:volume/*` routes. Member-gated read.
   app.get("/skills", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     if (!ctx.auth?.user?.id) {
       return c.json({ error: "Unauthorized" }, 401);
     }
@@ -603,7 +603,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   app.get("/:volume/read", async (c) => {
     const volume = c.req.param("volume");
     const path = c.req.query("path") ?? "";
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
 
     let access: ReadAccess = { access: "private" };
     if (
@@ -876,7 +876,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     async (c) => {
       const volume = c.req.param("volume");
       const path = c.req.query("path") ?? "";
-      const ctx = c.get("meshContext");
+      const ctx = c.get("studioContext");
       const orgId = ctx.organization?.id;
       const orgSlug = ctx.organization?.slug ?? "";
       if (

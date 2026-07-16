@@ -69,11 +69,16 @@ export function TaskRow({
         }
       }}
       className={cn(
-        "group/row flex items-center gap-2 py-1.5 pr-2 rounded-md cursor-pointer transition-colors",
+        "group/row flex items-center gap-2 py-1.5 rounded-md cursor-pointer transition-colors",
         // Indented rows stretch their background out to the group's left edge
         // (-ml-4 cancels the wrapper's pl-4) while pl-6 keeps the content where
         // it sat before, so the button surface spans the full sidebar width.
-        indented ? "-ml-4 pl-6" : "pl-2",
+        // Flat rows use pl-[7px] so the (smaller, 20px) agent avatar centers on
+        // the same x=25 axis as the org icon and the sidebar-toggle glyph (that
+        // axis is the collapsed icon-rail's midpoint, so nothing shifts between
+        // open/collapsed). No right padding: the status/archive slot then reaches
+        // the same right edge as the toolbar's search / new buttons.
+        indented ? "-ml-4 pl-6" : "pl-[7px]",
         "focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-ring/50",
         isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
       )}
@@ -130,7 +135,7 @@ export function TaskRow({
         {!hideStatusIdle && (
           <span
             className={cn(
-              "[grid-area:slot] flex size-7 items-center justify-center pointer-events-none transition-opacity",
+              "[grid-area:slot] flex size-8 items-center justify-center pointer-events-none transition-opacity",
               // Only fade the status icon on hover when there's an archive
               // button to reveal underneath it.
               onArchive && "group-hover/row:opacity-0",
@@ -156,7 +161,7 @@ export function TaskRow({
                   e.stopPropagation();
                   onArchive();
                 }}
-                className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto transition-opacity flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto transition-opacity flex size-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <Archive size={14} />
               </button>

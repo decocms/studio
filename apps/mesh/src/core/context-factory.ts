@@ -1385,12 +1385,12 @@ export async function createStudioContextFactory(
     });
 
     // Build auth object for StudioContext
-    const meshAuth: StudioContext["auth"] = {
+    const studioAuth: StudioContext["auth"] = {
       user: authResult.user,
     };
 
     if (authResult.apiKeyId) {
-      meshAuth.apiKey = {
+      studioAuth.apiKey = {
         id: authResult.apiKeyId,
         name: "", // Not needed for access control
         userId: "", // Not needed for access control
@@ -1407,7 +1407,7 @@ export async function createStudioContextFactory(
 
     // Create AccessControl instance with bound auth client
     const access = new AccessControl(
-      meshAuth.user?.id,
+      studioAuth.user?.id,
       undefined, // toolName set later by defineTool
       boundAuth, // Bound auth client for permission checks
       authResult.role, // Role from session (for built-in role bypass)
@@ -1460,7 +1460,7 @@ export async function createStudioContextFactory(
 
     const ctx: StudioContext = {
       timings,
-      auth: meshAuth,
+      auth: studioAuth,
       connectionId,
       organization,
       storage,

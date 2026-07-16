@@ -13,12 +13,65 @@
  * `@decocms/sandbox`.
  */
 
-import { createSandboxFsHooks } from "@decocms/sandbox/provider";
+import {
+  createSandboxFsHooks,
+  type SandboxProvider,
+  type SandboxProviderKind,
+} from "@decocms/sandbox/provider";
 import type { StudioContext } from "@/core/studio-context";
+import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { removeSandboxMapEntry } from "@/tools/sandbox/sandbox-map";
 import type { SandboxFsHooks } from "@decocms/harness/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
+
+/**
+ * Fire-and-forget: mint the run's virtual-MCP endpoint and have the daemon
+ * materialize the tool catalog + endpoint file under `<repo>/.deco/tools/` so
+ * agents can script tool calls (see the tool-scripting skill). Hosted
+ * harnesses drive the daemon via fs/exec routes without a /dispatch envelope,
+ * so the daemon's own onDispatchMcp hook never fires on this path — this call
+ * is its cloud-side counterpart. Minted here (not passed in) because
+ * decopilot's stream input carries the in-process sentinel `mcp.url === ""`,
+ * and minting lazily keys the endpoint's TTL to the actual provisioning.
+ * Failures only warn: the run must never depend on it.
+ */
+async function syncToolsCatalog(
+  ctx: StudioContext,
+  runner: SandboxProvider,
+  handle: string,
+  vm: { virtualMcpId: string; providerKind: SandboxProviderKind },
+): Promise<void> {
+  try {
+    const organization = ctx.organization;
+    if (!organization) return;
+    const mcp = await mintMcpEndpoint(
+      ctx,
+      vm.virtualMcpId,
+      organization,
+      "tool-scripting",
+      vm.providerKind,
+    );
+    const res = await runner.proxyDaemonRequest(
+      handle,
+      "/_sandbox/tools/sync",
+      {
+        method: "POST",
+        headers: new Headers({ "content-type": "application/json" }),
+        body: JSON.stringify(mcp),
+      },
+    );
+    if (!res.ok) {
+      console.warn(
+        "[cluster-sandbox-fs] tools/sync failed",
+        res.status,
+        await res.text().catch(() => ""),
+      );
+    }
+  } catch (err) {
+    console.warn("[cluster-sandbox-fs] tools/sync failed", err);
+  }
+}
 
 /**
  * Build the cluster flat fs hooks for a (virtualMcp, branch, user) tuple.
@@ -33,7 +86,14 @@ import type { SandboxFsHooks } from "@decocms/harness/decopilot/built-in-tools/v
  */
 export async function buildClusterSandboxFs(
   ctx: StudioContext,
-  vm: { virtualMcpId: string; branch: string; userId: string },
+  vm: {
+    virtualMcpId: string;
+    branch: string;
+    userId: string;
+    /** When true, tools/sync fires after each (re)provisioning — see
+     *  `syncToolsCatalog`. */
+    syncTools?: boolean;
+  },
 ): Promise<SandboxFsHooks> {
   // `dispatch-run` already populated `ctx.sandboxPreference` from the resolved
   // `DispatchTarget`, so the resolver short-circuits on that ctx hint without
@@ -64,6 +124,20 @@ export async function buildClusterSandboxFs(
       cached.catch(() => {
         cached = null;
       });
+      // Attached to every fresh `cached` (not once per build) so an
+      // auto-restarted sandbox — whose new workspace lost the catalog —
+      // gets re-synced too. Provisioning stays lazy: this only fires when
+      // a VM tool actually ensures the sandbox.
+      if (vm.syncTools) {
+        void cached
+          .then((handle) =>
+            syncToolsCatalog(ctx, runner, handle, {
+              virtualMcpId: vm.virtualMcpId,
+              providerKind,
+            }),
+          )
+          .catch(() => {});
+      }
     }
     return cached;
   };

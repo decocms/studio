@@ -84,12 +84,12 @@ function getReadmeMeta(request: PublishRequest): {
   readmeContent: string;
   readmeUrl: string;
 } {
-  const meshMeta = request._meta?.["mcp.mesh"];
+  const studioMeta = request._meta?.["mcp.mesh"];
   return {
-    hasReadmeContent: Boolean(meshMeta?.readme?.trim()),
-    hasReadmeLink: Boolean(meshMeta?.readme_url?.trim()),
-    readmeContent: meshMeta?.readme?.trim() ?? "",
-    readmeUrl: meshMeta?.readme_url?.trim() ?? "",
+    hasReadmeContent: Boolean(studioMeta?.readme?.trim()),
+    hasReadmeLink: Boolean(studioMeta?.readme_url?.trim()),
+    readmeContent: studioMeta?.readme?.trim() ?? "",
+    readmeUrl: studioMeta?.readme_url?.trim() ?? "",
   };
 }
 

@@ -10,6 +10,7 @@
  */
 
 import posthog from "posthog-js";
+import type { BeforeSendFn, Properties } from "posthog-js";
 
 import { wasCacheRestored, wasOrgCacheRestored } from "@/web/lib/query-persist";
 
@@ -18,10 +19,67 @@ let lastOrgGroupKey: string | null = null;
 let bootstrapTimingSent = false;
 
 const LP_DISTINCT_ID_STASH = "mesh:lp-distinct-id";
+const REPORT_LINK_TOKEN_PATH = "/api/_reports/link-token/";
 // How long a stashed LP id stays mergeable. Long enough for "clicked the CTA
 // this morning, signed up tonight"; short enough that a shared machine can't
 // attach someone's week-old LP browsing to an unrelated login.
 const LP_STASH_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Remove report credentials from URLs before they leave the browser in
+ * analytics events, performance entries, or session replay metadata. */
+export function sanitizeAnalyticsUrl(value: string): string {
+  const base = "https://analytics.invalid";
+  const isAbsolute = /^[a-z][a-z\d+.-]*:\/\//i.test(value);
+  const isProtocolRelative = value.startsWith("//");
+
+  try {
+    const url = new URL(value, base);
+    let changed = false;
+
+    for (const parameter of ["key", "d"]) {
+      if (url.searchParams.has(parameter)) {
+        url.searchParams.delete(parameter);
+        changed = true;
+      }
+    }
+
+    if (
+      url.pathname.startsWith(REPORT_LINK_TOKEN_PATH) &&
+      url.pathname !== REPORT_LINK_TOKEN_PATH
+    ) {
+      url.pathname = `${REPORT_LINK_TOKEN_PATH}redacted`;
+      changed = true;
+    }
+
+    if (!changed) return value;
+    if (isAbsolute) return url.toString();
+    if (isProtocolRelative) {
+      return `//${url.host}${url.pathname}${url.search}${url.hash}`;
+    }
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return value;
+  }
+}
+
+function sanitizeAnalyticsProperties(properties: Properties): Properties {
+  return Object.fromEntries(
+    Object.entries(properties).map(([key, value]) => [
+      key,
+      typeof value === "string" ? sanitizeAnalyticsUrl(value) : value,
+    ]),
+  );
+}
+
+const sanitizeAnalyticsEvent: BeforeSendFn = (event) => {
+  if (!event) return null;
+  event.properties = sanitizeAnalyticsProperties(event.properties);
+  if (event.$set) event.$set = sanitizeAnalyticsProperties(event.$set);
+  if (event.$set_once) {
+    event.$set_once = sanitizeAnalyticsProperties(event.$set_once);
+  }
+  return event;
+};
 
 /** The stashed LP distinct_id, or undefined when absent/expired/corrupt. */
 function readLpStash(): string | undefined {
@@ -125,6 +183,7 @@ export function initPostHog(key: string, host: string) {
     capture_pageview: "history_change",
     capture_pageleave: true,
     autocapture: true,
+    before_send: sanitizeAnalyticsEvent,
     // Real-user Core Web Vitals (LCP, FCP, CLS, INP) as $web_vitals events.
     // On a cold refresh LCP ≈ when the app shell paints, so this is the
     // headline "how slow is the load" signal, sliceable by org/route/device.
@@ -144,6 +203,12 @@ export function initPostHog(key: string, host: string) {
     session_recording: {
       maskAllInputs: true,
       blockClass: "ph-no-capture",
+      maskCapturedNetworkRequestFn: (request) => ({
+        ...request,
+        ...(typeof request.name === "string"
+          ? { name: sanitizeAnalyticsUrl(request.name) }
+          : {}),
+      }),
     },
     person_profiles: "identified_only",
   });

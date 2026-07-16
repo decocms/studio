@@ -45,7 +45,7 @@ export function mountDevRoutes(
     mcpAuth,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async (c: Context<any>) => {
-      const ctx = c.get("meshContext") as StudioContext;
+      const ctx = c.get("studioContext") as StudioContext;
       const url = new URL(c.req.url);
       const baseUrl = `${url.protocol}//${url.host}`;
       return handleDevAssetsMcpRequest(c.req.raw, ctx, baseUrl);
@@ -58,7 +58,7 @@ export function mountDevRoutes(
     mcpAuth,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async (c: Context<any>) => {
-      const ctx = c.get("meshContext") as StudioContext;
+      const ctx = c.get("studioContext") as StudioContext;
       const url = new URL(c.req.url);
       const baseUrl = `${url.protocol}//${url.host}`;
       const toolName = c.req.param("toolName");

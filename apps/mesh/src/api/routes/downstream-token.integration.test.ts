@@ -13,7 +13,7 @@ import { createDownstreamTokenRoutes } from "./downstream-token";
 
 describe("Downstream Token Routes", () => {
   let database: StudioDatabase;
-  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
+  let app: Hono<{ Variables: { studioContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -45,7 +45,7 @@ describe("Downstream Token Routes", () => {
 
     app = new Hono();
     app.use("*", async (c, next) => {
-      c.set("meshContext", ctx);
+      c.set("studioContext", ctx);
       await next();
     });
     app.route("/", createDownstreamTokenRoutes());

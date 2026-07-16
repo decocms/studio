@@ -56,7 +56,7 @@ export function createTriggerCallbackRoutes(deps: TriggerCallbackDeps) {
       }
 
       // Attribute the legacy-route deprecation log to the token's
-      // org/connection — this route has no session-based meshContext.
+      // org/connection — this route has no session-based studioContext.
       c.set("deprecatedRouteAttribution", {
         organizationId: context.organizationId,
         connectionId: context.connectionId,

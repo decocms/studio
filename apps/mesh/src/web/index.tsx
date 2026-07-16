@@ -230,6 +230,20 @@ const commerceOnboardingRoute = createRoute({
   ),
 });
 
+// Auth-gated commerce report for a scanned domain. The route itself stays
+// outside the org shell so login can happen inline over its locked preview.
+const reportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/report/$domain",
+  component: lazyRouteComponent(() => import("./routes/reports.tsx")),
+  validateSearch: z.lazy(() =>
+    z.object({
+      // Reviewer preview password — bypasses the engine's publish gate only.
+      key: z.string().optional(),
+    }),
+  ),
+});
+
 // ============================================
 // ORG LAYOUT
 // ============================================
@@ -631,6 +645,7 @@ const routeTree = rootRoute.addChildren([
   adminLayoutWithChildren,
   onboardingRoute,
   commerceOnboardingRoute,
+  reportRoute,
   loginRoute,
   cliAuthSuccessRoute,
   resetPasswordRoute,

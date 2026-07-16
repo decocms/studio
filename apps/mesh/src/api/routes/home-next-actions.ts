@@ -31,7 +31,7 @@ const MAX_PROMPTS_PER_AGENT = 10;
 const LIST_PROMPTS_TIMEOUT_MS = 5000;
 
 type Variables = {
-  meshContext: StudioContext;
+  studioContext: StudioContext;
 };
 interface PromptEntry {
   agentId: string;
@@ -195,7 +195,7 @@ export function createHomeNextActionsRoutes() {
   const app = new Hono<{ Variables: Variables }>();
 
   app.get("/home-next-actions", async (c) => {
-    const mesh = c.get("meshContext");
+    const mesh = c.get("studioContext");
     const orgId = mesh.organization?.id;
     if (!orgId) return c.json({ error: "Organization required" }, 400);
 

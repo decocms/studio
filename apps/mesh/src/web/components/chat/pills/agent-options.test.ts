@@ -8,6 +8,7 @@ import {
   agentOptionFor,
   agentOptionIsAvailable,
   preferredLocalAgentOption,
+  resolveOfflineAgentOption,
 } from "./agent-options";
 
 const ALL_AVAILABLE: AgentOptionAvailability = {
@@ -135,5 +136,32 @@ describe("preferredLocalAgentOption", () => {
         codex: false,
       }),
     ).toBeNull();
+  });
+});
+
+describe("resolveOfflineAgentOption", () => {
+  test("auto-switches a desktop pick to cloud when the link is offline", () => {
+    expect(resolveOfflineAgentOption("claude-code-desktop", true)).toBe(
+      "decopilot",
+    );
+    expect(resolveOfflineAgentOption("codex-desktop", true)).toBe("decopilot");
+  });
+
+  test("keeps the desktop pick while the link is online (or unresolved)", () => {
+    // The old behavior: a desktop pick is preserved exactly. It must only be
+    // overridden on a *confirmed* offline probe, never the unresolved default.
+    expect(resolveOfflineAgentOption("claude-code-desktop", false)).toBe(
+      "claude-code-desktop",
+    );
+    expect(resolveOfflineAgentOption("codex-desktop", false)).toBe(
+      "codex-desktop",
+    );
+  });
+
+  test("leaves cloud and null picks untouched regardless of link state", () => {
+    expect(resolveOfflineAgentOption("decopilot", true)).toBe("decopilot");
+    expect(resolveOfflineAgentOption("decopilot", false)).toBe("decopilot");
+    expect(resolveOfflineAgentOption(null, true)).toBeNull();
+    expect(resolveOfflineAgentOption(null, false)).toBeNull();
   });
 });

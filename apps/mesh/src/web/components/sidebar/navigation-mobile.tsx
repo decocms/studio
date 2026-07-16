@@ -8,9 +8,14 @@ import {
   SidebarSeparator,
 } from "@deco/ui/components/sidebar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { type ReactNode, Suspense } from "react";
+import { LayoutLeft } from "@untitledui/icons";
+import type { ReactNode } from "react";
 import { SidebarCollapsibleGroup } from "./sidebar-group";
-import { SidebarLogoHeader } from "./sidebar-logo-header";
+import {
+  AgentSwitcherCrumb,
+  OrgSwitcherCrumb,
+} from "@/web/components/header/shell-breadcrumb";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import type { NavigationSidebarItem, SidebarSection } from "./types";
 
 function MobileNavigationItem({
@@ -109,9 +114,17 @@ export function MobileNavigationSidebar({
       className="bg-sidebar flex h-full w-full flex-col"
       data-sidebar="sidebar"
     >
-      <Suspense fallback={<div className="h-12 shrink-0" />}>
-        <SidebarLogoHeader onToggle={onClose} />
-      </Suspense>
+      {/* Mirror the desktop sidebar header: org switcher + agent switcher, so
+          the agent can be changed from the mobile sheet too. Picking an agent
+          closes the sheet (onNavigate) so the chosen chat is visible. */}
+      <div className="flex h-12 shrink-0 items-center gap-0.5 px-1.5">
+        <OrgSwitcherCrumb />
+        <AgentSwitcherCrumb onNavigate={onClose} />
+        <div className="flex-1" />
+        <ToolbarIconButton onClick={onClose} aria-label="Close sidebar">
+          <LayoutLeft size={16} />
+        </ToolbarIconButton>
+      </div>
       <SidebarContent className="flex flex-col flex-1 px-2 py-2 gap-0">
         {sections.map((section, index) => (
           <MobileSectionRenderer

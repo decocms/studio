@@ -6,14 +6,16 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { generateClientCode, toolSchemaFiles } from "./codegen.js";
+import { discoverEndpoint, mcpIdFromUrl } from "./endpoint.js";
 import { createMeshClient } from "./runtime.js";
 
 const DEFAULT_BASE_URL = "https://studio.decocms.com";
 
 interface Common {
-  mcpId: string;
-  apiKey: string | undefined;
-  baseUrl: string;
+  /** From --mcp/env, or parsed from a discovered endpoint URL. */
+  mcpId: string | undefined;
+  url: URL;
+  headers: Record<string, string>;
 }
 
 function flag(args: string[], name: string): string | undefined {
@@ -34,42 +36,51 @@ function positionals(args: string[]): string[] {
   return out;
 }
 
-/** mcp id / key / base url shared by every command, with env fallbacks so the
- *  CLI runs flagless inside a sandbox that exports STUDIO_* env vars. The
- *  legacy MESH_* names are still honored for backward compatibility. */
+/** Resolve where every command connects. Flags, then STUDIO_* (or legacy
+ *  MESH_*) env vars, then — with no id at all — the sandbox endpoint file
+ *  (`.deco/tools/.endpoint.json`, written by the daemon), so the CLI runs
+ *  fully flagless inside a sandbox workspace. */
 function common(args: string[]): Common {
   const mcpId =
     flag(args, "--mcp") ?? process.env.STUDIO_MCP_ID ?? process.env.MESH_MCP_ID;
-  if (!mcpId) {
+  if (mcpId) {
+    const apiKey =
+      flag(args, "--key") ??
+      process.env.STUDIO_API_KEY ??
+      process.env.MESH_API_KEY;
+    const base = (
+      flag(args, "--url") ??
+      process.env.STUDIO_BASE_URL ??
+      process.env.MESH_BASE_URL ??
+      DEFAULT_BASE_URL
+    ).replace(/\/$/, "");
+    return {
+      mcpId,
+      // String concat (not `new URL(path, base)`) so a path-prefixed base
+      // URL is preserved; encode the id against special characters.
+      url: new URL(`${base}/mcp/virtual-mcp/${encodeURIComponent(mcpId)}`),
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+    };
+  }
+  const discovered = discoverEndpoint();
+  if (!discovered) {
     console.error(
-      "Error: --mcp <virtual-mcp-id> is required (or set STUDIO_MCP_ID)",
+      "Error: --mcp <virtual-mcp-id> is required (or set STUDIO_MCP_ID, or run inside a sandbox workspace with .deco/tools/.endpoint.json)",
     );
     process.exit(1);
   }
   return {
-    mcpId,
-    apiKey:
-      flag(args, "--key") ??
-      process.env.STUDIO_API_KEY ??
-      process.env.MESH_API_KEY,
-    baseUrl:
-      flag(args, "--url") ??
-      process.env.STUDIO_BASE_URL ??
-      process.env.MESH_BASE_URL ??
-      DEFAULT_BASE_URL,
+    mcpId: mcpIdFromUrl(discovered.url),
+    url: new URL(discovered.url),
+    headers: discovered.headers ?? {},
   };
 }
 
-async function connect({ mcpId, apiKey, baseUrl }: Common): Promise<Client> {
-  const url = new URL(`/mcp/virtual-mcp/${mcpId}`, baseUrl);
+async function connect({ url, headers }: Common): Promise<Client> {
   const client = new Client({ name: "@decocms/typegen", version: "1.0.0" });
   try {
     await client.connect(
-      new StreamableHTTPClientTransport(url, {
-        requestInit: {
-          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-        },
-      }),
+      new StreamableHTTPClientTransport(url, { requestInit: { headers } }),
     );
   } catch (err) {
     console.error(
@@ -84,6 +95,14 @@ async function cmdGenerate(args: string[]): Promise<void> {
   const opts = common(args);
   const output = flag(args, "--output") ?? "client.ts";
   const schemasDir = flag(args, "--schemas-dir");
+  if (!opts.mcpId) {
+    // Discovered endpoint without the /mcp/virtual-mcp/<id> shape — codegen
+    // embeds the id in the client, so it must be explicit here.
+    console.error(
+      "Error: could not derive the Virtual MCP id from the discovered endpoint — pass --mcp <virtual-mcp-id>",
+    );
+    process.exit(1);
+  }
 
   console.log(`Connecting to Virtual MCP: ${opts.mcpId}`);
   const client = await connect(opts);
@@ -156,9 +175,7 @@ async function cmdCall(args: string[]): Promise<void> {
   }
 
   const client = createMeshClient({
-    mcpId: opts.mcpId,
-    apiKey: opts.apiKey,
-    baseUrl: opts.baseUrl,
+    endpoint: { url: opts.url.toString(), headers: opts.headers },
   }) as Record<string, (i: unknown) => Promise<unknown>> & {
     close: () => Promise<void>;
   };

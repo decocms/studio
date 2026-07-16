@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import type { StudioContext } from "@/core/studio-context";
 import { detectContentType, sanitizeKey } from "@/object-storage/key-utils";
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 
 const DEFAULT_EXPIRES_IN = 3600;
 
@@ -69,7 +69,7 @@ export const createObjectStorageRoutes = () => {
   });
 
   app.post("/object-storage/presigned-get/*", async (c) => {
-    const storage = requireStorage(c.get("meshContext"));
+    const storage = requireStorage(c.get("studioContext"));
     const key = keyFromPath(c.req.path, "/object-storage/presigned-get/");
     const body = parsePresignBody(await c.req.json().catch(() => ({})));
     const url = await storage.presignedGetUrl(key, body.expiresIn);
@@ -77,7 +77,7 @@ export const createObjectStorageRoutes = () => {
   });
 
   app.post("/object-storage/presigned-put/*", async (c) => {
-    const storage = requireStorage(c.get("meshContext"));
+    const storage = requireStorage(c.get("studioContext"));
     const key = keyFromPath(c.req.path, "/object-storage/presigned-put/");
     const body = parsePresignBody(await c.req.json().catch(() => ({})));
     const url = await storage.presignedPutUrl(
@@ -89,7 +89,7 @@ export const createObjectStorageRoutes = () => {
   });
 
   app.put("/object-storage/*", async (c) => {
-    const storage = requireStorage(c.get("meshContext"));
+    const storage = requireStorage(c.get("studioContext"));
     const key = keyFromPath(c.req.path, "/object-storage/");
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     const result = await storage.put(key, bytes, {
@@ -99,7 +99,7 @@ export const createObjectStorageRoutes = () => {
   });
 
   app.get("/object-storage/*", async (c) => {
-    const storage = requireStorage(c.get("meshContext"));
+    const storage = requireStorage(c.get("studioContext"));
     const key = keyFromPath(c.req.path, "/object-storage/");
     const [head, bytes] = await Promise.all([
       storage.head(key),
@@ -116,7 +116,7 @@ export const createObjectStorageRoutes = () => {
   });
 
   app.on("HEAD", "/object-storage/*", async (c) => {
-    const storage = requireStorage(c.get("meshContext"));
+    const storage = requireStorage(c.get("studioContext"));
     const key = keyFromPath(c.req.path, "/object-storage/");
     const head = await storage.head(key);
     return c.body(null, 200, {

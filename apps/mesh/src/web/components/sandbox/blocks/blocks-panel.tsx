@@ -25,7 +25,14 @@ const SectionsEditor = lazy(() =>
   })),
 );
 
-export function BlocksPanel({ virtualMcpId }: { virtualMcpId: string }) {
+export function BlocksPanel({
+  virtualMcpId,
+  externalSelectedIndex = null,
+}: {
+  virtualMcpId: string;
+  /** Section index selected via click-through from the preview iframe. */
+  externalSelectedIndex?: number | null;
+}) {
   const { org } = useProjectContext();
   const { currentBranch } = useChatTask();
   const sandboxEvents = useSandboxEvents();
@@ -119,6 +126,9 @@ export function BlocksPanel({ virtualMcpId }: { virtualMcpId: string }) {
           currentPath={currentPath}
           activePageBlockKey={activePageBlockKey}
           activeGlobalBlockKey={activeGlobalBlockKey}
+          externalSelectedIndex={
+            activeGlobalBlockKey ? null : externalSelectedIndex
+          }
           initialEditSeo={
             !!activePageBlockKey &&
             workspace.state.editSeoPageKey === activePageBlockKey

@@ -9,7 +9,7 @@ import {
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 
 type Variables = {
-  meshContext: StudioContext;
+  studioContext: StudioContext;
 };
 
 function bearerToken(value: string | undefined): string | null {
@@ -71,7 +71,7 @@ async function authorizeVaultRequest(
     return { ok: false, response: c.json({ error: "Unauthorized" }, 401) };
   }
 
-  const ctx = c.get("meshContext");
+  const ctx = c.get("studioContext");
   const organizationId = ctx.organization?.id;
   if (!organizationId) {
     return {

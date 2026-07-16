@@ -108,18 +108,21 @@ export const tracingMiddleware: MiddlewareHandler<Env> = async (c, next) => {
         span.setAttribute("http.response.status_code", status);
 
         // Add mesh-specific attributes if available
-        const meshContext = c.get("meshContext");
-        if (meshContext) {
-          if (meshContext.auth.user?.id) {
-            span.setAttribute("studio.user.id", meshContext.auth.user.id);
+        const studioContext = c.get("studioContext");
+        if (studioContext) {
+          if (studioContext.auth.user?.id) {
+            span.setAttribute("studio.user.id", studioContext.auth.user.id);
           }
-          if (meshContext.auth.apiKey?.id) {
-            span.setAttribute("studio.api_key.id", meshContext.auth.apiKey.id);
+          if (studioContext.auth.apiKey?.id) {
+            span.setAttribute(
+              "studio.api_key.id",
+              studioContext.auth.apiKey.id,
+            );
           }
-          if (meshContext.organization?.id) {
+          if (studioContext.organization?.id) {
             span.setAttribute(
               "studio.organization.id",
-              meshContext.organization.id,
+              studioContext.organization.id,
             );
           }
         }

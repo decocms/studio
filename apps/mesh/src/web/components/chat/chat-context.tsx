@@ -46,8 +46,10 @@ import type { HarnessId } from "@/harnesses";
 import {
   AGENT_OPTION_PINS,
   agentOptionFor,
+  resolveOfflineAgentOption,
   type AgentOption,
 } from "./pills/agent-options";
+import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import {
   isDeepResearchModel,
@@ -127,10 +129,7 @@ import {
 import { textFromParts } from "./queue-items";
 import { useMessageQueueActions } from "./use-message-queue";
 import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
-import {
-  useReportsOnly,
-  useSimpleMode,
-} from "../../hooks/use-organization-settings";
+import { useSimpleMode } from "../../hooks/use-organization-settings";
 
 // ============================================================================
 // Context Types
@@ -434,9 +433,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     LOCALSTORAGE_KEYS.chatSimpleModeTier(locator),
     null,
   );
-  // Reports-only orgs are locked to the fast tier (the selector is hidden).
-  const reportsOnly = useReportsOnly();
-  const activeTier = reportsOnly ? "fast" : resolveActiveTier(storedTier);
+  const activeTier = resolveActiveTier(storedTier);
 
   // AI provider keys + models
   const keys = useAiProviderKeys();
@@ -606,12 +603,17 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
         )
       : null;
 
-  // Preserve the user's selected runtime exactly. Presence/capability probes are
-  // advisory only; dispatch should surface the real backend error if the choice
-  // cannot run. (Cloud chat via the org router works even where the cloud
-  // *sandbox* is unavailable, so we must not rewrite the harness here — the
-  // preview's cloud-vs-local fallback is handled at the sandbox layer.)
-  const selectedAgentOption = pendingAgentOption;
+  // Capability probes are advisory — we don't rewrite the harness for a missing
+  // CLI (cloud chat via the org router works even where the cloud *sandbox*
+  // doesn't). The one exception is a desktop pick whose link is *confirmed*
+  // offline: it can't run anywhere and nothing prompted the user to reconnect,
+  // so we auto-switch it to cloud. Derived (not persisted), so the desktop pick
+  // returns on its own once the link reconnects.
+  const link = useCurrentLink();
+  const selectedAgentOption = resolveOfflineAgentOption(
+    pendingAgentOption,
+    link.ready && !link.online,
+  );
 
   // When the thread is locked, the agent option is dictated by the persisted
   // (harness, sandbox) pair — period. Otherwise, fall through to the user's

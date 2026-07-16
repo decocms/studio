@@ -17,6 +17,7 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { track } from "@/web/lib/posthog-client";
+import { isReservedOrganizationSlug } from "@/shared/organization-slugs";
 
 const organizationSettingsSchema = z.object({
   name: z.string().min(1, "Name is required").max(255, "Name is too long"),
@@ -27,6 +28,10 @@ const organizationSettingsSchema = z.object({
     .regex(
       /^[a-z0-9-]+$/,
       "Slug must contain only lowercase letters, numbers, and hyphens",
+    )
+    .refine(
+      (slug) => !isReservedOrganizationSlug(slug),
+      "This organization URL is reserved by Studio",
     ),
   logo: z.string().optional(),
 });

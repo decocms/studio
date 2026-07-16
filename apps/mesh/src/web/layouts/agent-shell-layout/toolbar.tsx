@@ -91,7 +91,7 @@ function ToolbarHeader({
   return (
     <div
       className={cn(
-        "app-titlebar wco-drag relative z-10 shrink-0 grid grid-cols-3 items-center pl-1 pr-2 pt-0.25 h-12 bg-sidebar",
+        "app-titlebar wco-drag relative z-10 shrink-0 grid grid-cols-3 items-center pl-1 pr-2 h-12 bg-sidebar",
         className,
       )}
       {...props}

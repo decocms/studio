@@ -139,7 +139,7 @@ export interface HostedHarnessRuntime {
   /** The hosted in-process agent loop — `dispatchRunAndWait` in production. */
   dispatchRunFn: DispatchRunAndWaitFn;
   /** Resolves a StudioContext for an (org, user) pair (membership-checked). */
-  meshContextFactory: StudioContextFactory;
+  studioContextFactory: StudioContextFactory;
   deps: Pick<
     DispatchRunDeps,
     "runRegistry" | "cancelBroadcast" | "streamBuffer" | "sseHub"
@@ -189,10 +189,10 @@ export async function runHostedHarness(
   const rt = requireRuntime();
   const { request } = input;
 
-  const meshCtx =
+  const studioCtx =
     ctx ??
-    (await rt.meshContextFactory(request.organizationId, request.userId));
-  if (!meshCtx) {
+    (await rt.studioContextFactory(request.organizationId, request.userId));
+  if (!studioCtx) {
     // Throw so DBOS records the step (and the workflow) as failed. Swallowing
     // would mark it SUCCESS and break retry / failure tooling.
     throw new Error("user membership lost mid-dispatch");
@@ -201,7 +201,7 @@ export async function runHostedHarness(
   // Carry per-run metadata (from a webhook trigger's run_metadata) onto the run
   // context so every downstream MCP tool call forwards it as x-mesh-run-metadata.
   if (request.runMetadata) {
-    meshCtx.metadata.runMetadata = request.runMetadata;
+    studioCtx.metadata.runMetadata = request.runMetadata;
   }
 
   // No wall-clock cap: a hosted run lives as long as it makes progress. The
@@ -217,7 +217,7 @@ export async function runHostedHarness(
   try {
     await rt.dispatchRunFn(
       { ...request, abortSignal: abortController.signal },
-      meshCtx,
+      studioCtx,
       rt.deps,
     );
   } finally {

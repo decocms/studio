@@ -50,10 +50,11 @@ interface HomeGridProps {
   isEditMode: boolean;
 }
 
-// Default tile footprint before the user resizes it.
-const TILE_DEFAULT_SIZE = { w: 2, h: 4 } as const;
+// Default tile footprint before the user resizes it. w:3 keeps agent tiles at
+// half width on the 6-column grid (see tile-board/constants).
+const TILE_DEFAULT_SIZE = { w: 3, h: 4 } as const;
 const TILE_MIN_SIZE = { w: 1, h: 2 } as const;
-const PROMPT_DEFAULT_SIZE = { w: 1, h: 1 } as const;
+const PROMPT_DEFAULT_SIZE = { w: 2, h: 1 } as const;
 
 /** Stable, deterministic id so the persisted layout matches the same item
  *  on the next render. */

@@ -128,12 +128,12 @@ export function getContentType(key: string): string {
 // Routes
 // ============================================================================
 
-type DevAssetsVariables = { meshContext: StudioContext };
+type DevAssetsVariables = { studioContext: StudioContext };
 
 interface CreateDevAssetsRoutesOptions {
   /**
    * When `true`, the routes are mounted at `/*` and the org id is read from
-   * `meshContext.organization.id` (set by the `resolveOrgFromPath` middleware).
+   * `studioContext.organization.id` (set by the `resolveOrgFromPath` middleware).
    * When `false`, the routes are mounted at `/:orgId/*` and the org id is read
    * from the path param — preserves the legacy `/api/dev-assets/:orgId/*`
    * behaviour.
@@ -157,7 +157,7 @@ export const createDevAssetsRoutes = (opts: CreateDevAssetsRoutesOptions) => {
    */
   app.get(path, async (c) => {
     const orgId = opts.orgFromPath
-      ? c.get("meshContext")?.organization?.id
+      ? c.get("studioContext")?.organization?.id
       : c.req.param("orgId");
 
     if (!orgId) {
@@ -237,7 +237,7 @@ export const createDevAssetsRoutes = (opts: CreateDevAssetsRoutesOptions) => {
    */
   app.put(path, async (c) => {
     const orgId = opts.orgFromPath
-      ? c.get("meshContext")?.organization?.id
+      ? c.get("studioContext")?.organization?.id
       : c.req.param("orgId");
 
     if (!orgId) {

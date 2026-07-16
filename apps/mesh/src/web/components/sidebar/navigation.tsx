@@ -3,6 +3,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -20,6 +21,7 @@ interface NavigationSidebarProps {
   sections: SidebarSection[];
   footer?: ReactNode;
   additionalContent?: ReactNode;
+  header?: ReactNode;
   variant?: "sidebar" | "floating" | "inset";
   /** Additional classes for the content area */
   contentClassName?: string;
@@ -95,11 +97,17 @@ function NavigationSidebarInner({
   sections,
   footer,
   additionalContent,
+  header,
   variant = "sidebar",
   contentClassName,
 }: NavigationSidebarProps) {
   return (
     <Sidebar variant={variant}>
+      {header && (
+        <SidebarHeader className="shrink-0 h-12 flex flex-row items-center px-2 py-0 group-data-[collapsible=icon]/sidebar:hidden">
+          {header}
+        </SidebarHeader>
+      )}
       <SidebarContent
         className={cn(
           "flex flex-col flex-1 px-2 pb-2 gap-0.5",

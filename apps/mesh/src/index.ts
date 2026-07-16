@@ -17,6 +17,7 @@ import {
 } from "./dispatch-queue/queue-names";
 import { buildDbosConfig } from "./dbos/config";
 import { getSettings } from "./settings";
+import { resolveShutdownDrainMs } from "./settings/resolve-config";
 import { initObservability } from "./observability";
 import { startProfiling } from "./observability/profiling";
 
@@ -167,7 +168,7 @@ const previewProxyDeps = {
 // Create the Hono app (any DBOS.registerWorkflow calls happen during this
 // import chain). Launch DBOS afterwards so the registry is sealed before
 // the executor starts dequeueing workflows.
-const app = await createApp();
+const app = await createApp({ clientDir });
 // Conductor opt-in via env (SDK defaults conductorURL to wss://cloud.dbos.dev/...).
 const conductorKey = process.env.DBOS_CONDUCTOR_KEY?.trim();
 const conductorURL = process.env.DBOS_CONDUCTOR_URL?.trim();
@@ -426,8 +427,10 @@ async function gracefulShutdown(signal: string) {
     //    connections to a dead socket -> CF 520 during rollout. Stay under the
     //    force-exit timer (derived from terminationGracePeriodSeconds above) so
     //    it never trips before drain completes.
-    const drainMs = Number(
-      process.env.SHUTDOWN_DRAIN_MS ?? Math.floor(forceExitMs * 0.6),
+    const drainMs = resolveShutdownDrainMs(
+      settings.dispatchRole,
+      forceExitMs,
+      process.env.SHUTDOWN_DRAIN_MS,
     );
     await sleep(drainMs);
 

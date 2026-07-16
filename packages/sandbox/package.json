@@ -1,12 +1,14 @@
 {
   "name": "@decocms/sandbox",
-  "version": "1.16.4",
+  "version": "1.17.2",
   "type": "module",
   "description": "Sandbox runner for isolated per-user containerised tool execution",
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
-    "build": "bun build daemon/entry.ts --target=bun --outfile=daemon/dist/daemon.js --external node-pty && bun run daemon/strip-bun-pragma.ts",
+    "build": "bun run build:daemon && bun run build:typegen",
+    "build:daemon": "bun build daemon/entry.ts --target=bun --outfile=daemon/dist/daemon.js --external node-pty && bun run daemon/strip-bun-pragma.ts",
+    "build:typegen": "bun run --cwd=../typegen build && bun --cwd=../typegen pm pack --filename $PWD/daemon/dist/typegen.tgz --quiet",
     "dev:daemon": "bun run --watch daemon/entry.ts"
   },
   "exports": {

@@ -6,13 +6,13 @@ import {
   logDeprecatedRoute,
 } from "./log-deprecated-route";
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 
 const setStudioContext = async (
   c: import("hono").Context<{ Variables: Variables }>,
   next: () => Promise<void>,
 ) => {
-  c.set("meshContext", {
+  c.set("studioContext", {
     organization: { slug: "acme" },
     auth: { user: { id: "user-1" } },
   } as unknown as StudioContext);
@@ -93,7 +93,7 @@ describe("createLogDeprecatedRoute suppression logic", () => {
         header: () => "test-agent",
       },
       get: (key: string) =>
-        key === "meshContext"
+        key === "studioContext"
           ? {
               organization: { slug: "acme" },
               auth: { user: { id: "user-1" } },
