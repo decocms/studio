@@ -8,10 +8,16 @@ import {
 } from "@/shared/report-seo";
 import { KEYS } from "@/web/lib/query-keys";
 import { authClient } from "@/web/lib/auth-client";
+import { isPostHogInitialized } from "@/web/lib/posthog-client";
 import { getReport } from "./reports/api";
 import { ReportAuthGate, ReportBackdrop } from "./reports/auth-gate";
 import ScanGate from "./reports/scan-gate";
-import { setReportReviewerMode } from "./reports/track";
+import {
+  captureReport,
+  consumeReportAuthAttempt,
+  reportAuthAttemptProperties,
+  setReportReviewerMode,
+} from "./reports/track";
 import "./reports/reports.css";
 
 const route = getRouteApi("/report/$domain");
@@ -94,6 +100,28 @@ export default function ReportPage() {
     return () => setReportReviewerMode(false);
   };
 
+  const authCompletionRef = (element: HTMLDivElement | null) => {
+    if (
+      !element ||
+      !authenticated ||
+      element.dataset.authCompletionTracked === "true" ||
+      !isPostHogInitialized()
+    )
+      return;
+    const attempt = consumeReportAuthAttempt(domain);
+    if (!attempt) return;
+    element.dataset.authCompletionTracked = "true";
+    captureReport("report_auth_succeeded", {
+      domain,
+      surface: "deck_v2",
+      ...reportAuthAttemptProperties(attempt),
+      method: attempt.method ?? "unknown",
+      time_to_auth_ms: Math.max(0, Date.now() - attempt.gate_shown_at),
+      ...(attempt.provider ? { provider: attempt.provider } : {}),
+      ...(attempt.auth_mode ? { auth_mode: attempt.auth_mode } : {}),
+    });
+  };
+
   const content = session.isPending ? (
     <ReportAuthGate domain={domain} loading />
   ) : !session.data?.user ? (
@@ -122,6 +150,7 @@ export default function ReportPage() {
           initial.data?.deck?.meta.faviconUrl,
         )(el);
         const cleanupReviewer = reviewerCleanupRef(el);
+        authCompletionRef(el);
         return () => {
           cleanupChrome?.();
           cleanupReviewer?.();

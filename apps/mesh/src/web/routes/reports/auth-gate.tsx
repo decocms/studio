@@ -1,8 +1,18 @@
 import { AuthEntry } from "@/web/components/auth-entry";
-import type { UnifiedAuthFormCopy } from "@/web/components/unified-auth-form";
+import type {
+  AuthFlowEvent,
+  UnifiedAuthFormCopy,
+} from "@/web/components/unified-auth-form";
 import { brandFromDomain, faviconForDomain } from "@/shared/report-seo";
+import { isPostHogInitialized } from "@/web/lib/posthog-client";
 import { ReportSocialProof } from "./report-social-proof";
-import { captureReport } from "./track";
+import {
+  beginReportAuthAttempt,
+  captureReport,
+  reportAuthAttemptProperties,
+  reportAuthErrorType,
+  updateReportAuthAttempt,
+} from "./track";
 import { DECK } from "./templates/tokens";
 
 const REPORT_AUTH_COPY = {
@@ -244,12 +254,51 @@ export function ReportAuthGate({
   domain: string;
   loading?: boolean;
 }) {
+  const handleAuthEvent = (event: AuthFlowEvent) => {
+    const provider = "provider" in event ? event.provider : undefined;
+    const authMode = "mode" in event ? event.mode : undefined;
+    const method =
+      event.method === "social" ? (provider ?? "social") : event.method;
+    const details = {
+      method,
+      provider,
+      auth_mode: authMode,
+    };
+    const attempt = updateReportAuthAttempt(domain, details);
+
+    const properties = {
+      domain,
+      surface: "deck_v2",
+      ...reportAuthAttemptProperties(attempt),
+      ...details,
+    };
+
+    if (event.type === "started") {
+      captureReport("report_auth_started", properties);
+    } else if (event.type === "otp_sent") {
+      captureReport("report_auth_otp_sent", properties);
+    } else if (event.type === "otp_submitted") {
+      captureReport("report_auth_otp_submitted", properties);
+    } else if (event.type === "failed") {
+      captureReport("report_auth_failed", {
+        ...properties,
+        failure_stage: event.stage,
+        error_type: reportAuthErrorType(event.error),
+      });
+    }
+    // `succeeded` updates the durable attempt above. The identified success
+    // event is emitted after the auth redirect, when the report route unlocks.
+  };
+
   const trackGateRef = (element: HTMLDivElement | null) => {
-    if (!element || loading || element.dataset.tracked === "true") return;
+    if (!element || loading) return;
+    const attempt = beginReportAuthAttempt(domain);
+    if (element.dataset.tracked === "true" || !isPostHogInitialized()) return;
     element.dataset.tracked = "true";
     captureReport("report_auth_gate_shown", {
       domain,
       surface: "deck_v2",
+      ...reportAuthAttemptProperties(attempt),
     });
   };
 
@@ -286,6 +335,7 @@ export function ReportAuthGate({
               variant="compact"
               allowedSocialProviders={["google"]}
               allowPassword={false}
+              onAuthEvent={handleAuthEvent}
               brand={
                 <div className="flex items-center justify-between gap-4">
                   <div

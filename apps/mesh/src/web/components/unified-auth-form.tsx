@@ -7,6 +7,35 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 
+export type AuthFlowMethod =
+  | "email_otp"
+  | "email_password"
+  | "social"
+  | "sso"
+  | "local";
+
+export type AuthFlowEvent =
+  | {
+      type: "started" | "succeeded";
+      method: AuthFlowMethod;
+      provider?: string;
+      mode?: "sign_in" | "sign_up";
+    }
+  | { type: "otp_sent" | "otp_submitted"; method: "email_otp" }
+  | {
+      type: "failed";
+      method: AuthFlowMethod;
+      stage:
+        | "validation"
+        | "authenticate"
+        | "send_otp"
+        | "verify_otp"
+        | "redirect";
+      error: string;
+      provider?: string;
+      mode?: "sign_in" | "sign_up";
+    };
+
 interface UnifiedAuthFormProps {
   /**
    * URL to redirect to after successful authentication.
@@ -43,6 +72,8 @@ interface UnifiedAuthFormProps {
   allowedSocialProviders?: string[];
   /** Hide password auth when an embedded surface should use OTP only. */
   allowPassword?: boolean;
+  /** Optional lifecycle sink for embedded surfaces with their own funnel. */
+  onAuthEvent?: (event: AuthFlowEvent) => void;
 }
 
 type FormView = "signIn" | "signUp" | "forgotPassword" | "emailOtp";
@@ -156,9 +187,17 @@ export function UnifiedAuthForm({
   variant = "default",
   allowedSocialProviders,
   allowPassword = true,
+  onAuthEvent,
 }: UnifiedAuthFormProps) {
   const { emailAndPassword, resetPassword, emailOtp, socialProviders } =
     useAuthConfig();
+  const emitAuthEvent = (event: AuthFlowEvent) => {
+    try {
+      onAuthEvent?.(event);
+    } catch {
+      // An analytics sink must never interrupt authentication.
+    }
+  };
   const compact = variant === "compact";
   const visibleSocialProviders = allowedSocialProviders
     ? socialProviders.providers.filter((provider) =>
@@ -222,11 +261,30 @@ export function UnifiedAuthForm({
         throw err instanceof Error ? err : new Error(copy.authenticationFailed);
       }
     },
+    onMutate: () => {
+      emitAuthEvent({
+        type: "started",
+        method: "email_password",
+        mode: isSignUp ? "sign_up" : "sign_in",
+      });
+    },
     onSuccess: () => {
+      emitAuthEvent({
+        type: "succeeded",
+        method: "email_password",
+        mode: isSignUp ? "sign_up" : "sign_in",
+      });
       globalThis.localStorage?.setItem("hasLoggedIn", "true");
       window.location.href = redirectUrl ?? callbackUrl;
     },
     onError: (error) => {
+      emitAuthEvent({
+        type: "failed",
+        method: "email_password",
+        mode: isSignUp ? "sign_up" : "sign_in",
+        stage: "authenticate",
+        error: error instanceof Error ? error.message : String(error),
+      });
       track(isSignUp ? "user_signup_failed" : "user_signin_failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -266,11 +324,21 @@ export function UnifiedAuthForm({
       }
       return result;
     },
+    onMutate: () => {
+      emitAuthEvent({ type: "started", method: "email_otp" });
+    },
     onSuccess: () => {
+      emitAuthEvent({ type: "otp_sent", method: "email_otp" });
       track("email_otp_sent");
       setOtpSent(true);
     },
     onError: (error) => {
+      emitAuthEvent({
+        type: "failed",
+        method: "email_otp",
+        stage: "send_otp",
+        error: error instanceof Error ? error.message : String(error),
+      });
       track("email_otp_send_failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -288,11 +356,21 @@ export function UnifiedAuthForm({
       }
       return result;
     },
+    onMutate: () => {
+      emitAuthEvent({ type: "otp_submitted", method: "email_otp" });
+    },
     onSuccess: () => {
+      emitAuthEvent({ type: "succeeded", method: "email_otp" });
       globalThis.localStorage?.setItem("hasLoggedIn", "true");
       window.location.href = redirectUrl ?? callbackUrl;
     },
     onError: (error) => {
+      emitAuthEvent({
+        type: "failed",
+        method: "email_otp",
+        stage: "verify_otp",
+        error: error instanceof Error ? error.message : String(error),
+      });
       track("email_otp_verify_failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -315,6 +393,13 @@ export function UnifiedAuthForm({
 
     if (!validateEmail(email)) {
       setEmailError(copy.invalidEmail);
+      emitAuthEvent({
+        type: "failed",
+        method: "email_password",
+        mode: isSignUp ? "sign_up" : "sign_in",
+        stage: "validation",
+        error: "invalid_email",
+      });
       return;
     }
 
@@ -337,6 +422,12 @@ export function UnifiedAuthForm({
 
     if (!validateEmail(email)) {
       setEmailError(copy.invalidEmail);
+      emitAuthEvent({
+        type: "failed",
+        method: "email_otp",
+        stage: "validation",
+        error: "invalid_email",
+      });
       return;
     }
 
@@ -432,6 +523,29 @@ export function UnifiedAuthForm({
 
   const displayError = error || forgotPasswordError || otpError;
 
+  const handleSocialSignIn = async (provider: string) => {
+    emitAuthEvent({ type: "started", method: "social", provider });
+    try {
+      const result = await authClient.signIn.social({
+        provider,
+        callbackURL: redirectUrl ?? callbackUrl,
+      });
+      if (result.error) {
+        throw new Error(result.error.message || copy.authenticationFailed);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      emitAuthEvent({
+        type: "failed",
+        method: "social",
+        provider,
+        stage: "redirect",
+        error: message,
+      });
+      track("social_signin_failed", { provider, error: message });
+    }
+  };
+
   const headerTitle = isForgotPassword
     ? copy.resetPasswordTitle
     : isEmailOtp && otpSent
@@ -508,12 +622,7 @@ export function UnifiedAuthForm({
               key={provider.name}
               type="button"
               disabled={isLoading}
-              onClick={() => {
-                authClient.signIn.social({
-                  provider: provider.name,
-                  callbackURL: redirectUrl ?? callbackUrl,
-                });
-              }}
+              onClick={() => void handleSocialSignIn(provider.name)}
               className={cn(
                 "flex w-full items-center justify-center gap-3 bg-background px-3 text-sm font-medium text-foreground card-shadow transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
                 compact ? "h-11 rounded-lg" : "h-12 rounded-xl",
