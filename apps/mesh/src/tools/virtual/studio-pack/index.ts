@@ -1,6 +1,7 @@
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type { VirtualMCPStorage } from "@/storage/virtual";
 import { agentManagerAgent } from "./agent-manager";
+import { apiKeyManagerAgent } from "./api-key-manager";
 import { automationManagerAgent } from "./automation-manager";
 import { brandManagerAgent } from "./brand-manager";
 import { connectionManagerAgent } from "./connection-manager";
@@ -30,6 +31,7 @@ export const STUDIO_PACK_AGENTS = [
   agentManagerAgent,
   automationManagerAgent,
   connectionManagerAgent,
+  apiKeyManagerAgent,
   storeManagerAgent,
   usageManagerAgent,
 ] as const;
@@ -88,9 +90,9 @@ export async function installStudioPack(
     STUDIO_PACK_AGENTS.map(async (agent) => {
       const agentId = agent.getId(orgId);
 
-      // Idempotent: skip if this agent already exists in the org. Existing
-      // orgs pre-dating Store Manager already have the other three; we only
-      // backfill what's missing.
+      // Idempotent: skip if this agent already exists in the org. This also
+      // lets startup backfills install newly added managers without replacing
+      // existing ones.
       const existing = await virtualMcpStorage.findById(agentId, orgId);
       if (existing) return;
 
