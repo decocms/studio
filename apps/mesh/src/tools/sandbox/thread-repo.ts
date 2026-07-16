@@ -33,6 +33,21 @@ export function threadBranch(
     : `thread:${threadId}`;
 }
 
+/**
+ * Extract the thread id from a synthetic sandbox branch
+ * (`thread:<id>` or `thread:<id>/<connectionId>`), or null for non-thread
+ * branches. Lets provisioning recover the thread repo from the branch alone,
+ * without relying on `ctx.metadata.threadId` (absent on the frontend's
+ * SANDBOX_START auto-start path).
+ */
+export function threadIdFromBranch(
+  branch: string | null | undefined,
+): string | null {
+  if (!branch || !branch.startsWith("thread:")) return null;
+  const id = branch.slice("thread:".length).split("/")[0];
+  return id || null;
+}
+
 /** Read the repo bound to a thread, or null. Never throws. `ctx.storage.threads`
  *  is already org-scoped, so only the thread id is needed. */
 export async function getThreadGithubRepo(

@@ -43,7 +43,7 @@ import {
 import { generateBranchName } from "../../shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
-import { getThreadGithubRepo } from "./thread-repo";
+import { getThreadGithubRepo, threadIdFromBranch } from "./thread-repo";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
 import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
@@ -249,7 +249,13 @@ export async function ensureSandbox(
   // Thread-scoped repo wins over the agent's own repo: `load_repo` binds a repo
   // to the thread (the only place it can persist for the synthetic Decopilot
   // agent), and it's the per-conversation override for real repo-agents too.
-  const threadRepo = await getThreadGithubRepo(ctx, ctx.metadata?.threadId);
+  // Recover the thread id from the branch (`thread:<id>[/<conn>]`) so the
+  // repo binding is found even on the frontend's SANDBOX_START auto-start path,
+  // which doesn't set `ctx.metadata.threadId`. Falls back to the ctx value.
+  const threadRepo = await getThreadGithubRepo(
+    ctx,
+    threadIdFromBranch(input.branch) ?? ctx.metadata?.threadId,
+  );
   const githubRepo =
     threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
   const { entry } = await provisionSandbox({
