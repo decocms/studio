@@ -1,12 +1,14 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
+import { Columns03, Folder, MessageCircle01 } from "@untitledui/icons";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
 } from "@deco/ui/components/select.tsx";
-import { isAutomationsPillActive } from "./tab-id";
-import { useMainPanelTabs, type Tab } from "./use-main-panel-tabs";
+import { useTaskBoardEnabled } from "@/web/hooks/use-organization-settings";
+import { useMainPanelTabs } from "./use-main-panel-tabs";
+import type { TabIcon } from "./resolve-tab-icon";
 import { TabIconGlyph } from "./tab-icon-glyph";
 import { track } from "@/web/lib/posthog-client";
 
@@ -26,6 +28,20 @@ export function resolveMobileMainPanelTabSelectLabel({
   return active?.title ?? tabs[0]?.title ?? "Main view";
 }
 
+type ViewOption = { value: string; title: string; icon: TabIcon };
+
+const CHAT_ICON: TabIcon = { kind: "component", Component: MessageCircle01 };
+const TASKS_ICON: TabIcon = { kind: "component", Component: Columns03 };
+const LIBRARY_ICON: TabIcon = { kind: "component", Component: Folder };
+
+/**
+ * Mobile view selector. On mobile there's no side-by-side split, so a single
+ * surface is visible at a time — this dropdown therefore holds *everything* the
+ * desktop spreads across the toolbar: Chat, the agent's main views (Overview,
+ * Preview, …), plus the agent-independent Tasks / Library overlays. Picking any
+ * option swaps the single visible surface (chat closes the main panel; the rest
+ * open the main panel on that view and close chat).
+ */
 export function MobileMainPanelTabSelect({
   virtualMcpId,
   taskId,
@@ -34,49 +50,58 @@ export function MobileMainPanelTabSelect({
   taskId: string;
 }) {
   const navigate = useNavigate();
+  const params = useParams({ strict: false }) as {
+    org?: string;
+    taskId?: string;
+  };
   const { tabs, activeTab, mainOpen } = useMainPanelTabs({
     virtualMcpId,
     taskId,
   });
-  const label = resolveMobileMainPanelTabSelectLabel({
-    tabs,
-    activeTab,
-    mainOpen,
-  });
-  const selectedTab =
-    tabs.find((tab) => tab.id === activeTab) ?? (!mainOpen ? tabs[0] : null);
-  const automationsActive = isAutomationsPillActive({ activeTab, mainOpen });
+  const taskBoardEnabled = useTaskBoardEnabled();
 
-  const handleSelect = (id: string) => {
-    if (id === MOBILE_SELECT_SENTINEL) return;
-    const clicked = tabs.find((tab) => tab.id === id);
+  // Tasks / Library are toggled via `?main=board|files`; they need a task route
+  // to act on (same gate as the desktop toggles).
+  const overlayEnabled = !!(params.org && params.taskId);
+
+  const options: ViewOption[] = [
+    { value: "chat", title: "Chat", icon: CHAT_ICON },
+    ...tabs.map((tab) => ({
+      value: tab.id,
+      title: tab.title,
+      icon: tab.icon,
+    })),
+    ...(taskBoardEnabled && overlayEnabled
+      ? [{ value: "board", title: "Tasks", icon: TASKS_ICON }]
+      : []),
+    ...(overlayEnabled
+      ? [{ value: "files", title: "Library", icon: LIBRARY_ICON }]
+      : []),
+  ];
+
+  // Chat is the surface whenever the main panel is closed; otherwise the active
+  // main tab (which includes board/files when an overlay is open).
+  const currentValue = !mainOpen
+    ? "chat"
+    : (options.find((o) => o.value === activeTab)?.value ?? activeTab);
+  const selected = options.find((o) => o.value === currentValue);
+  const label =
+    selected?.title ??
+    resolveMobileMainPanelTabSelectLabel({ tabs, activeTab, mainOpen });
+
+  const handleSelect = (value: string) => {
+    if (value === MOBILE_SELECT_SENTINEL) return;
     track("main_panel_tab_clicked", {
       virtual_mcp_id: virtualMcpId,
-      tab_id: id,
-      tab_kind: clicked?.kind ?? null,
-      was_active:
-        id === "automations" ? automationsActive : mainOpen && activeTab === id,
+      tab_id: value,
       source: "mobile_select",
     });
-    if (id === "automations") {
-      navigate({
-        to: ".",
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          sidepanel: 0 as const,
-          main: "automations",
-        }),
-        replace: true,
-      });
-      return;
-    }
     navigate({
       to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        sidepanel: 0 as const,
-        main: id,
-      }),
+      search: (prev: Record<string, unknown>) =>
+        value === "chat"
+          ? { ...prev, sidepanel: "chat" as const, main: 0 as const }
+          : { ...prev, sidepanel: 0 as const, main: value },
       replace: true,
     });
   };
@@ -90,13 +115,13 @@ export function MobileMainPanelTabSelect({
         of `card-shadow-none`, which is not a real utility.
       */}
       <SelectTrigger
-        aria-label="Main panel tab"
+        aria-label="View"
         className="h-10! w-full min-w-0 max-w-[7.5rem] rounded-md border-0 bg-transparent px-1.5 text-xs shadow-none [--card-shadow:none]"
       >
         <span className="flex min-w-0 items-center gap-1.5">
-          {selectedTab && (
-            <span className="flex size-4 shrink-0 items-center justify-center">
-              <TabIconGlyph icon={selectedTab.icon} />
+          {selected && (
+            <span className="flex size-5 shrink-0 items-center justify-center">
+              <TabIconGlyph icon={selected.icon} className="size-5" />
             </span>
           )}
           <span className="min-w-0 truncate">{label}</span>
@@ -111,13 +136,13 @@ export function MobileMainPanelTabSelect({
         >
           {label}
         </SelectItem>
-        {tabs.map((tab: Tab) => (
-          <SelectItem key={tab.id} value={tab.id}>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
             <span className="flex min-w-0 items-center gap-2">
               <span className="flex size-5 shrink-0 items-center justify-center">
-                <TabIconGlyph icon={tab.icon} />
+                <TabIconGlyph icon={option.icon} />
               </span>
-              <span className="min-w-0 truncate">{tab.title}</span>
+              <span className="min-w-0 truncate">{option.title}</span>
             </span>
           </SelectItem>
         ))}

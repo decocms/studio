@@ -14,7 +14,6 @@
 import {
   Outlet,
   Link,
-  Navigate,
   useRouterState,
   useParams,
 } from "@tanstack/react-router";
@@ -50,7 +49,6 @@ import {
   HardDrive,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { useReportsOnlyGate } from "@/web/hooks/use-organization-settings";
 import { useCapabilities, type CapabilityId } from "@/web/hooks/use-capability";
 import { usePendingJoinRequests } from "@/web/hooks/use-join-requests";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -467,16 +465,6 @@ function SettingsInset() {
 
 export default function SettingsLayout() {
   const isMobile = useIsMobile();
-  const { org } = useProjectContext();
-  const reportsOnly = useReportsOnlyGate();
-
-  // Settings is part of the product surface hidden for reports-only
-  // orgs — bounce any direct navigation back to the diagnostic panel.
-  if (reportsOnly) {
-    return (
-      <Navigate to="/commerce-onboarding" search={{ org: org.slug }} replace />
-    );
-  }
 
   return (
     <Toolbar.Provider>
@@ -496,7 +484,9 @@ export default function SettingsLayout() {
             className="flex-1 bg-sidebar min-h-0"
             style={
               {
-                "--sidebar-width-icon": "3.5rem",
+                // Keep in sync with org-shell-layout: 3.125rem → 34px
+                // collapsed-rail buttons, matching the expanded toolbar's buttons.
+                "--sidebar-width-icon": "3.125rem",
               } as Record<string, string>
             }
           >

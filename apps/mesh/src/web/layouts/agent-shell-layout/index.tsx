@@ -49,7 +49,6 @@ import {
   parseBranchMap,
 } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity, SandboxMap } from "@decocms/mesh-sdk/types";
-import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
@@ -148,30 +147,10 @@ function VmEventsBridge({
   sandboxMap: SandboxMap | undefined;
   children: ReactNode;
 }) {
-  const { currentBranch, activeTask } = useChatTask();
+  const { currentBranch } = useChatTask();
   const { pendingSandboxProviderKind } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
-
-  // Overlay the thread's own sandbox record for the current branch. `load_repo`
-  // binds a repo to the thread and persists its sandbox there (the ephemeral
-  // Decopilot agent's sandboxMap never persists), so the preview must read the
-  // thread's entry, not just the agent's.
-  const threadSandboxMap = activeTask?.metadata?.sandboxMap as
-    | SandboxMap
-    | undefined;
-  const effectiveSandboxMap: SandboxMap | undefined =
-    userId && currentBranch && threadSandboxMap?.[userId]?.[currentBranch]
-      ? {
-          ...(sandboxMap ?? {}),
-          [userId]: {
-            ...(sandboxMap?.[userId] ?? {}),
-            [currentBranch]: threadSandboxMap[userId]![currentBranch]!,
-          },
-        }
-      : sandboxMap;
-  const effectiveHasGithubRepo =
-    hasActiveGithubRepo || agentHasClonableSource(activeTask?.metadata);
 
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
@@ -185,9 +164,10 @@ function VmEventsBridge({
   );
   const branchMap =
     userId && currentBranch
-      ? (parseBranchMap(
-          effectiveSandboxMap?.[userId]?.[currentBranch],
-        ) as Record<string, BranchMapEntryLike>)
+      ? (parseBranchMap(sandboxMap?.[userId]?.[currentBranch]) as Record<
+          string,
+          BranchMapEntryLike
+        >)
       : {};
   // Use the resolved provider kind to pick the matching entry — same logic as
   // SandboxLifecycleProvider so the SSE previewUrl and the lifecycle vmEntry
@@ -211,8 +191,8 @@ function VmEventsBridge({
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? null}
         userId={userId ?? null}
-        hasActiveGithubRepo={effectiveHasGithubRepo}
-        sandboxMap={effectiveSandboxMap}
+        hasActiveGithubRepo={hasActiveGithubRepo}
+        sandboxMap={sandboxMap}
         sandboxProviderKind={pendingSandboxProviderKind}
       >
         <BlocksPreviewWorkspaceProvider
@@ -299,13 +279,9 @@ function MobileTaskWorkspace({
 
   return (
     <>
-      <Toolbar.Toggles>
-        <ToggleButtons
-          sidePanel={mobileSurface === "main" ? null : mobileSurface}
-          toggleSidePanel={layout.setMobileSurface}
-          disableActiveSidePanelToggle={mobileSurface !== "main"}
-        />
-      </Toolbar.Toggles>
+      {/* No Chat/Tasks/Library toggles on mobile: there's no side-by-side split,
+          so one surface shows at a time and every destination (Chat, the main
+          views, Tasks, Library) lives in this single dropdown instead. */}
       <Toolbar.Tabs>
         <MobileMainPanelTabSelect
           virtualMcpId={virtualMcpId}

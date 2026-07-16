@@ -3,7 +3,6 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-  useSuspenseQuery,
   type MutateOptions,
   type UseMutationResult,
   type UseQueryResult,
@@ -229,26 +228,14 @@ export function useUpdateSimpleMode() {
 }
 
 /**
- * Whether the org is collapsed to the reports panel (everything
- * else in Studio hidden). Non-blocking read — used for cosmetic gating like
- * hiding the sidebar, where a brief pre-resolution render is harmless.
+ * Whether the org uses the curated commerce (reports) look: the full Studio
+ * shell stays, but agent navigation, the home Customize button, and the
+ * Settings / Automations tabs are hidden. Non-blocking read — used for cosmetic
+ * gating where a brief pre-resolution render is harmless.
  */
 export function useReportsOnly(): boolean {
   const { data } = useOrganizationSettings((s) => s.reports_only ?? false);
   return data ?? false;
-}
-
-/**
- * Suspense variant of {@link useReportsOnly}. Blocks on the shared
- * org-settings query (already warmed by the shell) so routing gates can decide
- * to redirect without first flashing the full product surface.
- */
-export function useReportsOnlyGate(): boolean {
-  const { org } = useProjectContext();
-  const { data } = useSuspenseQuery(
-    organizationSettingsQueryOptions(org.slug, org.id),
-  );
-  return data.reports_only ?? false;
 }
 
 export function useTaskBoardEnabled(): boolean {
