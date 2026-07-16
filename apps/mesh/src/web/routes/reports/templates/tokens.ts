@@ -30,10 +30,3 @@ export const TONE_COLOR: Record<Tone, string> = {
   bad: "#d43d3d", // report red — warmer than tailwind red
   neutral: DECK.ink,
 };
-
-/** Faint fill tint used under the curve, per tone. */
-export const TONE_FILL: Record<Tone, string> = {
-  good: "rgba(140,170,37,0.16)",
-  bad: "rgba(212,61,61,0.14)",
-  neutral: "rgba(40,37,36,0.08)",
-};

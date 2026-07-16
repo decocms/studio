@@ -17,15 +17,10 @@ import { z } from "zod";
 //
 // PORTABLE: pure Zod, no engine imports, so `scripts/gen-deck-contract.ts` can
 // copy it verbatim into the LP site and BOTH repos validate against the same
-// schema. Bump CONTRACT_VERSION on any shape change; the JSON-schema route and
-// the drift tests key off it.
+// schema.
 // ---------------------------------------------------------------------------
 
-/** Bump on ANY change to the slide shape below. Surfaced at
- *  GET /api/v2/public/deck-contract and asserted by the drift tests. */
-export const CONTRACT_VERSION = "1.0.0";
-
-export const SLIDE_TEMPLATE_KINDS = [
+const SLIDE_TEMPLATE_KINDS = [
   "cover",
   "series",
   "threshold",

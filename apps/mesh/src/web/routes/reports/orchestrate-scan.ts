@@ -50,7 +50,7 @@ export const writePending = (d: string, v: PendingMark) => {
     /* ignore */
   }
 };
-export const clearPending = (d: string) => {
+const clearPending = (d: string) => {
   try {
     localStorage.removeItem(PKEY(d));
   } catch {
