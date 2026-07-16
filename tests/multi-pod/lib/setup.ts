@@ -38,7 +38,7 @@ export interface MockProvider {
   modelId: string;
 }
 
-/** The internal URL mesh pods use to reach the mock-ai container. */
+/** The internal URL studio pods use to reach the mock-ai container. */
 const MOCK_AI_INTERNAL_URL = "http://mock-ai:9000/v1";
 const MOCK_AI_MODEL_ID = "mock-model";
 
@@ -112,7 +112,7 @@ export async function bootstrapSession(pod: PodInfo): Promise<Session> {
   if (refreshed) cookie = refreshed;
 
   // 4. Mint an API key via the built-in API_KEY_CREATE MCP tool. The
-  // `{orgId}_self` endpoint is mesh's internal MCP namespace.
+  // `{orgId}_self` endpoint is studio's internal MCP namespace.
   const apiKeyRes = await mcpCall<{ key?: string }>(pod, orgId, cookie, {
     name: "API_KEY_CREATE",
     arguments: {
