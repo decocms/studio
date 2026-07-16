@@ -272,10 +272,52 @@ describe("isArrayDrillDownField", () => {
 });
 
 describe("buildArrayDrillDownBreadcrumb", () => {
-  test("includes array label before item label", () => {
+  test("omits the array label — drills straight from section to item", () => {
+    // The array is an implementation detail (its list is shown inline in the
+    // parent); the breadcrumb jumps straight to the item so there's no
+    // redundant "list only" crumb to click back through.
     expect(
       buildArrayDrillDownBreadcrumb([], "Flag Desconto", "Partiu ferias"),
-    ).toEqual(["Flag Desconto", "Partiu ferias"]);
+    ).toEqual(["Partiu ferias"]);
+  });
+
+  test("keeps the array label to disambiguate an item labelled like the array", () => {
+    // Item label == array label (e.g. label driven by `alt`): keep the array
+    // crumb so breadcrumbPathForActiveField can tell the two levels apart.
+    expect(buildArrayDrillDownBreadcrumb([], "Banner", "Banner")).toEqual([
+      "Banner",
+      "Banner",
+    ]);
+  });
+
+  test("keeps the array label to disambiguate an item labelled like the array KEY", () => {
+    // Item label == array's property key: breadcrumbPathForActiveField strips a
+    // head crumb matching the key too, so the array crumb must be kept.
+    expect(
+      buildArrayDrillDownBreadcrumb([], "Products", "items", {
+        arrayKey: "items",
+      }),
+    ).toEqual(["Products", "items"]);
+  });
+
+  test("keeps the array label when a sibling array/drill-down field exists", () => {
+    // A bare [itemLabel] trail can't say WHICH sibling array the item belongs to
+    // (two label-less arrays both fall back to "Item N"), so keep the array
+    // label as a disambiguator when siblings are present.
+    expect(
+      buildArrayDrillDownBreadcrumb([], "Logos", "Item 1", {
+        hasSiblingDrillDownFields: true,
+      }),
+    ).toEqual(["Logos", "Item 1"]);
+  });
+
+  test("omits the array label when it is the sole drill-down field in scope", () => {
+    expect(
+      buildArrayDrillDownBreadcrumb([], "Images", "Item 1", {
+        arrayKey: "images",
+        hasSiblingDrillDownFields: false,
+      }),
+    ).toEqual(["Item 1"]);
   });
 
   test("does not duplicate crumbs already in trail", () => {
@@ -286,6 +328,65 @@ describe("buildArrayDrillDownBreadcrumb", () => {
         "Partiu ferias",
       ),
     ).toEqual(["Flag Desconto", "Partiu ferias"]);
+  });
+
+  test("nested drill-down stays free of array labels (no doubled crumb)", () => {
+    // Opening an item inside an already-open item appends only the new item
+    // label — the intermediate array levels never enter the trail.
+    expect(
+      buildArrayDrillDownBreadcrumb(["Leve 3 pague 2"], "Images", "Detroit"),
+    ).toEqual(["Leve 3 pague 2", "Detroit"]);
+  });
+});
+
+describe("sibling array disambiguation (regression)", () => {
+  // Two sibling arrays of label-less objects: getArrayItemLabel falls back to
+  // "Item N" for both, so a bare ["Item 1"] trail is ambiguous. The array label
+  // must be kept, and the correct array must resolve — otherwise clicking one
+  // array's item opens the other (the wrong-array bug).
+  const itemSchema = {
+    type: "object",
+    properties: { src: { type: "string", title: "Src" } },
+  } as SchemaProperty;
+  const properties = {
+    images: { title: "Images", type: "array", items: itemSchema },
+    logos: { title: "Logos", type: "array", items: itemSchema },
+  } as Record<string, SchemaProperty>;
+  const objValue = { images: [{ src: "a" }], logos: [{ src: "b" }] };
+
+  test("keeps array label and resolves to the clicked array, not the first sibling", () => {
+    const trail = buildArrayDrillDownBreadcrumb([], "Logos", "Item 1", {
+      arrayKey: "logos",
+      hasSiblingDrillDownFields: true,
+    });
+    expect(trail).toEqual(["Logos", "Item 1"]);
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        objValue,
+        trail,
+      ),
+    ).toBe("logos");
+  });
+
+  test("sole array resolves from a bare [itemLabel] trail", () => {
+    const soleProps = {
+      cards: { title: "Cards", type: "array", items: { type: "object" } },
+    } as Record<string, SchemaProperty>;
+    const trail = buildArrayDrillDownBreadcrumb([], "Cards", "Men's", {
+      arrayKey: "cards",
+      hasSiblingDrillDownFields: false,
+    });
+    expect(trail).toEqual(["Men's"]);
+    expect(
+      resolveActiveFieldKey(
+        ["cards"],
+        soleProps,
+        { cards: [{ title: "Men's" }] },
+        trail,
+      ),
+    ).toBe("cards");
   });
 });
 

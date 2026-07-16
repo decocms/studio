@@ -281,6 +281,7 @@ export function ArrayField({
   label,
   breadcrumbPath = [],
   onBreadcrumbChange,
+  hasSiblingDrillDownFields,
   meta,
   decofile,
   onSaveReferencedBlock,
@@ -293,6 +294,12 @@ export function ArrayField({
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
   const arrayFieldKey = arrayFieldKeyFromPath(path);
+  // Options that let buildArrayDrillDownBreadcrumb decide whether this array's
+  // own label must stay in the trail to keep the item uniquely addressable.
+  const drillDownOpts = {
+    arrayKey: arrayFieldKey,
+    hasSiblingDrillDownFields,
+  };
   const usesSectionPicker = isSectionArrayField(schema, arrayFieldKey);
   // Only plain object arrays (banners, links, …) get the hide toggle. Section
   // pickers have their own hide flow, and primitive arrays can't be wrapped.
@@ -356,7 +363,12 @@ export function ArrayField({
     const labelText = itemLabel(items[index], index);
     setOpenIndex(index);
     onBreadcrumbChange?.(
-      buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
+      buildArrayDrillDownBreadcrumb(
+        breadcrumbPath,
+        label,
+        labelText,
+        drillDownOpts,
+      ),
     );
   };
 
@@ -367,7 +379,12 @@ export function ArrayField({
     setOpenIndex(nextIndex);
     const labelText = getArrayItemLabel(item, nextIndex, itemSchema);
     onBreadcrumbChange?.(
-      buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
+      buildArrayDrillDownBreadcrumb(
+        breadcrumbPath,
+        label,
+        labelText,
+        drillDownOpts,
+      ),
     );
   };
 
@@ -399,7 +416,12 @@ export function ArrayField({
     setOpenIndex(nextIndex);
     const labelText = getArrayItemLabel(defaultVal, nextIndex, itemSchema);
     onBreadcrumbChange?.(
-      buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
+      buildArrayDrillDownBreadcrumb(
+        breadcrumbPath,
+        label,
+        labelText,
+        drillDownOpts,
+      ),
     );
   };
 
@@ -535,6 +557,7 @@ export function ArrayField({
         breadcrumbPath,
         label,
         itemName,
+        drillDownOpts,
       );
       const itemIndex = findBreadcrumbLabelIndex(trail, itemName);
       if (itemIndex >= 0) {
