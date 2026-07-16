@@ -37,6 +37,12 @@ interface UnifiedAuthFormProps {
   brand?: React.ReactNode;
   /** Optional localized copy for this auth surface. */
   copy?: Partial<UnifiedAuthFormCopy>;
+  /** Compact layout for embedded auth surfaces. The login page stays default. */
+  variant?: "default" | "compact";
+  /** Limit social buttons without changing the deployment-wide auth config. */
+  allowedSocialProviders?: string[];
+  /** Hide password auth when an embedded surface should use OTP only. */
+  allowPassword?: boolean;
 }
 
 type FormView = "signIn" | "signUp" | "forgotPassword" | "emailOtp";
@@ -147,9 +153,23 @@ export function UnifiedAuthForm({
   subtitle,
   brand,
   copy: copyOverrides,
+  variant = "default",
+  allowedSocialProviders,
+  allowPassword = true,
 }: UnifiedAuthFormProps) {
   const { emailAndPassword, resetPassword, emailOtp, socialProviders } =
     useAuthConfig();
+  const compact = variant === "compact";
+  const visibleSocialProviders = allowedSocialProviders
+    ? socialProviders.providers.filter((provider) =>
+        allowedSocialProviders.includes(provider.name),
+      )
+    : socialProviders.providers;
+  const hasSocialProviders =
+    socialProviders.enabled && visibleSocialProviders.length > 0;
+  const emailAndPasswordEnabled =
+    emailAndPassword.enabled &&
+    (allowPassword || (!emailOtp.enabled && !hasSocialProviders));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -427,7 +447,7 @@ export function UnifiedAuthForm({
         : subtitle;
 
   return (
-    <div className="w-full grid gap-10">
+    <div className={cn("grid w-full", compact ? "gap-5" : "gap-10")}>
       {/* Brand */}
       {brand ?? (
         <div>
@@ -446,9 +466,21 @@ export function UnifiedAuthForm({
 
       {/* Header */}
       <div className="space-y-2">
-        <h1 className="text-2xl font-medium leading-8">{headerTitle}</h1>
+        <h1
+          className={cn(
+            "font-medium",
+            compact ? "text-xl leading-7" : "text-2xl leading-8",
+          )}
+        >
+          {headerTitle}
+        </h1>
         {headerSubtitle && (
-          <p className="text-base text-muted-foreground leading-6">
+          <p
+            className={cn(
+              "text-muted-foreground",
+              compact ? "text-sm leading-5" : "text-base leading-6",
+            )}
+          >
             {headerSubtitle}
           </p>
         )}
@@ -469,51 +501,61 @@ export function UnifiedAuthForm({
       )}
 
       {/* Social Provider Buttons */}
-      {!isForgotPassword &&
-        !(isEmailOtp && otpSent) &&
-        socialProviders.enabled && (
-          <div className="grid gap-2">
-            {socialProviders.providers.map((provider) => (
-              <button
-                key={provider.name}
-                type="button"
-                disabled={isLoading}
-                onClick={() => {
-                  authClient.signIn.social({
-                    provider: provider.name,
-                    callbackURL: redirectUrl ?? callbackUrl,
-                  });
-                }}
-                className="flex h-12 w-full items-center justify-center gap-3 rounded-xl bg-background dark:bg-input/30 px-3 text-sm font-medium text-foreground card-shadow transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-input/50 disabled:opacity-50 disabled:pointer-events-none"
-              >
-                {provider.icon && (
-                  <img
-                    src={provider.icon}
-                    alt=""
-                    className={cn(
-                      "h-5 w-5",
-                      provider.name === "github" && "dark:invert",
-                    )}
-                    aria-hidden="true"
-                  />
-                )}
-                {copy.continueWith(
-                  provider.name.charAt(0).toUpperCase() +
-                    provider.name.slice(1),
-                )}
-              </button>
-            ))}
-          </div>
-        )}
+      {!isForgotPassword && !(isEmailOtp && otpSent) && hasSocialProviders && (
+        <div className="grid gap-2">
+          {visibleSocialProviders.map((provider) => (
+            <button
+              key={provider.name}
+              type="button"
+              disabled={isLoading}
+              onClick={() => {
+                authClient.signIn.social({
+                  provider: provider.name,
+                  callbackURL: redirectUrl ?? callbackUrl,
+                });
+              }}
+              className={cn(
+                "flex w-full items-center justify-center gap-3 bg-background px-3 text-sm font-medium text-foreground card-shadow transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
+                compact ? "h-11 rounded-lg" : "h-12 rounded-xl",
+              )}
+            >
+              {provider.icon && (
+                <img
+                  src={provider.icon}
+                  alt=""
+                  className={cn(
+                    "h-5 w-5",
+                    provider.name === "github" && "dark:invert",
+                  )}
+                  aria-hidden="true"
+                />
+              )}
+              {copy.continueWith(
+                provider.name.charAt(0).toUpperCase() + provider.name.slice(1),
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Divider between social and email-based auth */}
       {!isForgotPassword &&
         !(isEmailOtp && otpSent) &&
-        socialProviders.enabled &&
-        (emailAndPassword.enabled || emailOtp.enabled) && (
-          <div className="flex items-center gap-2.5 -my-4">
+        hasSocialProviders &&
+        (emailAndPasswordEnabled || emailOtp.enabled) && (
+          <div
+            className={cn(
+              "flex items-center gap-2.5",
+              compact ? "my-0" : "-my-4",
+            )}
+          >
             <div className="h-px flex-1 bg-border" />
-            <span className="text-base text-muted-foreground">
+            <span
+              className={cn(
+                "text-muted-foreground",
+                compact ? "text-sm" : "text-base",
+              )}
+            >
               {copy.divider}
             </span>
             <div className="h-px flex-1 bg-border" />
@@ -524,9 +566,20 @@ export function UnifiedAuthForm({
       {isEmailOtp && emailOtp.enabled && (
         <>
           {!otpSent ? (
-            <form onSubmit={handleSendOtp} className="grid gap-2">
+            <form
+              onSubmit={handleSendOtp}
+              className={cn(
+                "grid gap-2",
+                compact && "sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start",
+              )}
+            >
               <div className="grid gap-2">
-                <label className="text-sm font-medium text-foreground">
+                <label
+                  className={cn(
+                    "text-sm font-medium text-foreground",
+                    compact && "sr-only",
+                  )}
+                >
                   {copy.emailLabel}
                 </label>
                 <Input
@@ -548,15 +601,29 @@ export function UnifiedAuthForm({
               <button
                 type="submit"
                 disabled={isLoading || !canSubmit}
-                className="flex h-12 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50 disabled:pointer-events-none"
+                className={cn(
+                  "flex items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:pointer-events-none disabled:opacity-50",
+                  compact ? "h-11 sm:w-auto" : "h-12 w-full",
+                )}
               >
                 {isLoading ? copy.sending : copy.sendCode}
               </button>
             </form>
           ) : (
-            <form onSubmit={handleVerifyOtp} className="grid gap-2">
+            <form
+              onSubmit={handleVerifyOtp}
+              className={cn(
+                "grid gap-2",
+                compact && "sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start",
+              )}
+            >
               <div className="grid gap-2">
-                <label className="text-sm font-medium text-foreground">
+                <label
+                  className={cn(
+                    "text-sm font-medium text-foreground",
+                    compact && "sr-only",
+                  )}
+                >
                   {copy.verificationCodeLabel}
                 </label>
                 <Input
@@ -576,7 +643,10 @@ export function UnifiedAuthForm({
               <button
                 type="submit"
                 disabled={isLoading || !canSubmit}
-                className="flex h-12 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50 disabled:pointer-events-none"
+                className={cn(
+                  "flex items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:pointer-events-none disabled:opacity-50",
+                  compact ? "h-11 sm:w-auto" : "h-12 w-full",
+                )}
               >
                 {isLoading ? copy.verifying : copy.verify}
               </button>
@@ -590,7 +660,10 @@ export function UnifiedAuthForm({
                   verifyOtpMutation.reset();
                 }}
                 disabled={isLoading}
-                className="mt-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className={cn(
+                  "mt-1 text-sm text-muted-foreground transition-colors hover:text-foreground",
+                  compact && "sm:col-span-2",
+                )}
               >
                 {copy.useDifferentEmail}
               </button>
@@ -600,7 +673,7 @@ export function UnifiedAuthForm({
       )}
 
       {/* Forgot Password Form */}
-      {isForgotPassword && emailAndPassword.enabled && !resetEmailSent && (
+      {isForgotPassword && emailAndPasswordEnabled && !resetEmailSent && (
         <form onSubmit={handleForgotPassword} className="grid gap-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
@@ -634,7 +707,7 @@ export function UnifiedAuthForm({
       )}
 
       {/* Email & Password Form */}
-      {!isForgotPassword && !isEmailOtp && emailAndPassword.enabled && (
+      {!isForgotPassword && !isEmailOtp && emailAndPasswordEnabled && (
         <form onSubmit={handleEmailPassword} className="grid gap-5">
           {isSignUp && (
             <div>
@@ -735,7 +808,7 @@ export function UnifiedAuthForm({
           >
             {copy.backToSignIn}
           </button>
-        ) : isEmailOtp && emailAndPassword.enabled ? (
+        ) : isEmailOtp && emailAndPasswordEnabled ? (
           <button
             type="button"
             onClick={() => switchView("signIn")}
@@ -744,7 +817,7 @@ export function UnifiedAuthForm({
           >
             {copy.signInWithPassword}
           </button>
-        ) : !isEmailOtp && emailAndPassword.enabled ? (
+        ) : !isEmailOtp && emailAndPasswordEnabled ? (
           <>
             {isSignUp ? copy.alreadyHaveAccount : copy.dontHaveAccount}
             <button

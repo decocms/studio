@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { isServerPath, shouldSkipStudioContext, SYSTEM_PATHS } from "./paths";
 
-describe("public report paths", () => {
+describe("report page paths", () => {
   test("routes report pages through Hono for dynamic metadata", () => {
     expect(isServerPath("/report/nike.com")).toBe(true);
   });

@@ -1,14 +1,14 @@
 /**
- * Public Reports Routes — `/api/_reports/*`
+ * Authenticated Report Routes — `/api/_reports/*`
  *
- * Anonymous (no-auth) proxy between the report page (`/report/:domain`) and
- * the reports engine (reports.decocms.com, `/api/v2`). The engine's master API
- * key stays server-side; base URL + key resolve exactly like the Commerce
- * Discovery tools (`tools/reports/auth-client.ts`). Ported from the decocms
- * landing's TanStack server fns (`src/server/diagnostics.ts` + `suggest.ts`).
+ * Session-gated proxy between the report page (`/report/:domain`) and the
+ * reports engine (reports.decocms.com, `/api/v2`). The engine's master API key
+ * stays server-side; the caller's session email is the only delivery
+ * address accepted when a scan starts.
  */
 
 import { Hono } from "hono";
+import { auth } from "@/auth";
 import { resolveApiKey, resolveBaseUrl } from "@/tools/reports/auth-client";
 import {
   type DomainSuggestion,
@@ -25,11 +25,9 @@ function engineFetch(path: string, init?: RequestInit): Promise<Response> {
 }
 
 /**
- * Anonymous read of an already-scanned domain's deck. Exported for the
- * head-rewrite + OG-image handlers, which reuse the exact same fetch +
- * normalize path.
+ * Read an already-scanned domain's deck after the route's session gate.
  */
-export async function fetchPublicReport(
+async function fetchReport(
   domain: string,
   // Reviewer preview: the approval password unlocks a pre-publish read —
   // forwarded as ?pw=, the engine bypasses ONLY its publish gate and returns
@@ -56,7 +54,31 @@ export async function fetchPublicReport(
 
 const TERMINAL = new Set(["complete", "errored", "terminated", "unknown"]);
 
-const app = new Hono();
+type ReportsEnv = {
+  Variables: {
+    reportUser: { email: string };
+  };
+};
+
+const app = new Hono<ReportsEnv>();
+
+app.use("*", async (c, next) => {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session?.user?.id) {
+    return c.json({ error: "Authentication required" }, 401, {
+      "Cache-Control": "private, no-store",
+      Vary: "Cookie",
+    });
+  }
+
+  c.set("reportUser", {
+    email: session.user.email,
+  });
+  await next();
+  c.header("Cache-Control", "private, no-store");
+  c.header("Vary", "Cookie");
+  return undefined;
+});
 
 /** GET /api/_reports/site/:domain — the deck for an already-scanned domain. */
 app.get("/site/:domain", async (c) => {
@@ -64,7 +86,7 @@ app.get("/site/:domain", async (c) => {
   if (!domain) return c.json({ error: "domain is required" }, 400);
   const key = c.req.query("key")?.trim() || undefined;
   try {
-    const state = await fetchPublicReport(domain, key);
+    const state = await fetchReport(domain, key);
     // Never cached: the deck carries short-lived signed screenshot URLs.
     c.header("Cache-Control", "private, no-store");
     return c.json(state);
@@ -75,12 +97,12 @@ app.get("/site/:domain", async (c) => {
 
 /** POST /api/_reports/run — trigger a scan (master-key, server-only). The
  *  engine is idempotent + single-flight, so spamming this for a domain never
- *  starts parallel runs. An optional `email` rides the same body — the engine
- *  attaches it to the paused workflow to notify the requester. The optional
- *  `distinctId` is the visitor's PostHog id, so the engine's server-side
- *  funnel events attribute to the same person. */
+ *  starts parallel runs. The engine receives the authenticated session email
+ *  to notify the requester; it never accepts a caller-supplied address. The
+ *  optional `distinctId` is the visitor's PostHog id, so the engine's
+ *  server-side funnel events attribute to the same person. */
 app.post("/run", async (c) => {
-  let body: { domain?: unknown; email?: unknown; distinctId?: unknown };
+  let body: { domain?: unknown; distinctId?: unknown };
   try {
     body = await c.req.json();
   } catch {
@@ -88,10 +110,7 @@ app.post("/run", async (c) => {
   }
   const domain = typeof body.domain === "string" ? body.domain.trim() : "";
   if (!domain) return c.json({ error: "domain is required" }, 400);
-  const email =
-    typeof body.email === "string" && body.email.trim()
-      ? body.email.trim()
-      : undefined;
+  const email = c.get("reportUser").email;
   const distinctId =
     typeof body.distinctId === "string" &&
     body.distinctId.trim() &&
@@ -148,9 +167,8 @@ app.get("/status", async (c) => {
 });
 
 /** GET /api/_reports/link-token/:id — resolve an email link's `d` token to the
- *  {domain, run_id} it was minted for. The engine mints an unguessable id per
- *  send — the id itself is the only credential, so this is a plain anonymous
- *  read. Null on a 404 (never minted). */
+ *  {domain, run_id} it was minted for. Session auth is still required even
+ *  though the engine token itself is unguessable. Null on a 404. */
 app.get("/link-token/:id", async (c) => {
   const id = c.req.param("id");
   try {

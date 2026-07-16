@@ -1,9 +1,10 @@
 /**
- * Server-rendered head for the public report page (`/report/:domain`).
+ * Server-rendered shell for the auth-gated report page (`/report/:domain`).
  *
  * Link unfurlers do not run the SPA, so production serves the built index.html
- * with domain-specific title, description, canonical URL, and favicon. The SPA
- * then boots normally from the same document.
+ * with domain-derived title, description, canonical URL, and favicon. Report
+ * data is deliberately absent from this anonymous shell; the authenticated SPA
+ * fetches it after the session gate.
  *
  * Intentionally no dynamic `og:image`: the original Satori + Resvg renderer
  * performed CPU-heavy synchronous work inside Studio's Bun process, blocking
@@ -15,7 +16,6 @@
 
 import { Hono } from "hono";
 import { join } from "node:path";
-import type { TemplateDeck } from "@/reports/deck-types";
 import {
   brandFromDomain,
   faviconForDomain,
@@ -23,7 +23,6 @@ import {
   reportShareCopy,
 } from "@/shared/report-seo";
 import { getSettings } from "@/settings";
-import { fetchPublicReport } from "./public-reports";
 
 /** Escape a string for safe interpolation into an HTML attribute/text node. */
 function esc(value: string): string {
@@ -34,39 +33,18 @@ function esc(value: string): string {
     .replaceAll('"', "&quot;");
 }
 
-async function buildReportHead(rawDomain: string): Promise<string> {
+function buildReportHead(rawDomain: string): string {
   const domain = normalizeDomain(rawDomain);
-
-  // Best-effort deck read — a failure degrades to domain-derived copy.
-  let deck: TemplateDeck | null = null;
-  try {
-    const state = await fetchPublicReport(rawDomain);
-    deck = state.deck;
-  } catch {
-    deck = null;
-  }
-
-  const brand = deck?.meta.brand?.trim() || brandFromDomain(domain);
-  const favicon = deck?.meta.faviconUrl || faviconForDomain(domain, 128);
+  const brand = brandFromDomain(domain);
+  const favicon = faviconForDomain(domain, 128);
   const origin = (
     getSettings().baseUrl ?? "https://studio.decocms.com"
   ).replace(/\/+$/, "");
   const canonical = `${origin}/report/${encodeURIComponent(domain)}`;
 
-  const cover = deck?.slides.find((slide) => {
-    return slide.template?.template === "cover";
-  });
-  const coverBody = cover?.template as
-    | { score?: { value?: number } }
-    | undefined;
-  const score =
-    typeof coverBody?.score?.value === "number" ? coverBody.score.value : null;
-
   const { title, description } = reportShareCopy({
     brand,
     domain,
-    score,
-    verdict: cover?.headline ?? null,
   });
 
   return [
@@ -110,7 +88,7 @@ export function createReportPagesRoutes(clientDir: string | undefined): Hono {
 
     const html = await indexFile.text();
     try {
-      const head = await buildReportHead(raw);
+      const head = buildReportHead(raw);
       return c.html(rewriteHead(html, head), 200, {
         "Cache-Control": "public, max-age=0, s-maxage=300",
       });

@@ -4,16 +4,13 @@ import type { TemplateDeck } from "@/reports/deck-types";
 import { faviconForDomain } from "@/shared/report-seo";
 import type { ReportState } from "@/reports/to-deck";
 import { isPostHogInitialized } from "@/web/lib/posthog-client";
-import { runReportScan } from "./api";
 import {
   orchestrateScan,
   readPending,
   reportDrops,
   type ScanPhase,
-  writePending,
 } from "./orchestrate-scan";
 import SignalDeck from "./signal-deck";
-import { captureReport } from "./track";
 import { DECK } from "./templates/tokens";
 
 const LIME = "#D0EC1A";
@@ -54,9 +51,11 @@ function splitLogos(n: number) {
 export default function ScanGate({
   domain,
   initial,
+  sessionEmail,
 }: {
   domain: string;
   initial?: ReportState;
+  sessionEmail: string;
 }) {
   const [deck, setDeck] = useState<TemplateDeck | null>(
     initial?.status === "ready" ? initial.deck : null,
@@ -83,7 +82,7 @@ export default function ScanGate({
 
   return (
     <div ref={scanRef}>
-      <ScanScreen domain={domain} phase={phase} />
+      <ScanScreen domain={domain} phase={phase} email={sessionEmail} />
     </div>
   );
 }
@@ -107,7 +106,15 @@ function stagesFor(phase: ScanPhase): StageState[] {
 
 // ── page shell ────────────────────────────────────────────────────────────────
 
-function ScanScreen({ domain, phase }: { domain: string; phase: ScanPhase }) {
+function ScanScreen({
+  domain,
+  phase,
+  email,
+}: {
+  domain: string;
+  phase: ScanPhase;
+  email: string;
+}) {
   const isActive = phase === "scanning" || phase === "pending";
   const stages = stagesFor(phase);
 
@@ -182,10 +189,11 @@ function ScanScreen({ domain, phase }: { domain: string; phase: ScanPhase }) {
               className="mt-2 sm:mt-3 text-[13px] sm:text-[14px] leading-[1.6]"
               style={{ color: DECK.muted }}
             >
-              Deixe seu email abaixo e avisamos quando estiver pronto.
+              Você pode acompanhar por aqui. Também avisaremos quando estiver
+              pronto.
             </p>
 
-            {/* Email capture */}
+            {/* Authenticated delivery address */}
             <div
               className="mt-4 sm:mt-5 rounded-xl sm:rounded-2xl px-4 sm:px-5 py-4 sm:py-5"
               style={{ background: "#F2F1EF" }}
@@ -194,9 +202,9 @@ function ScanScreen({ domain, phase }: { domain: string; phase: ScanPhase }) {
                 className="mb-2.5 sm:mb-3 text-[15px] sm:text-[16px]"
                 style={{ color: DECK.ink }}
               >
-                Receba uma notificação quando ficar pronto:
+                Enviaremos uma notificação para:
               </p>
-              <EmailCapture domain={domain} />
+              <NotificationEmail email={email} />
             </div>
 
             {/* Tracker */}
@@ -390,95 +398,46 @@ function StepDot({ state }: { state: StageState }) {
   );
 }
 
-// ── email capture ─────────────────────────────────────────────────────────────
+// ── authenticated delivery address ──────────────────────────────────────────
 
-function EmailCapture({ domain }: { domain: string }) {
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(() => readPending(domain)?.emailed ?? false);
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email.trim() || sent) return;
-    setSent(true);
-    writePending(domain, { emailed: true });
-    captureReport("report_pending_email", { domain, surface: "deck_v2" });
-    if (isPostHogInitialized()) {
-      posthog.setPersonProperties({
-        email: email.trim(),
-        last_scanned_domain: domain,
-      });
-    }
-    runReportScan({
-      domain,
-      email: email.trim(),
-      distinctId: distinctId(),
-    }).catch(() => {});
-  }
-
-  if (sent) {
-    return (
-      <div
-        className="flex items-center gap-3 rounded-xl px-4 py-3"
-        style={{ background: DECK.limeTint }}
-      >
-        <div
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-          style={{ background: DECK.soft }}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 12 12"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path
-              d="M2 6l2.5 2.5L10 3.5"
-              stroke="#fff"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-        <div>
-          <p className="text-[13px] font-medium" style={{ color: FOREST }}>
-            Email registrado
-          </p>
-          <p className="text-[12px]" style={{ color: DECK.soft }}>
-            Avisamos assim que ficar pronto.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
+function NotificationEmail({ email }: { email: string }) {
   return (
-    <form onSubmit={submit} className="flex items-center gap-3">
-      <input
-        id="notify-email"
-        type="email"
-        required
-        // eslint-disable-next-line jsx-a11y/no-autofocus
-        autoFocus
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="seu@email.com"
-        className="scan-gate-input min-w-0 flex-1 h-12 px-6 rounded-full text-[15px] outline-none transition-colors"
-        style={{
-          background: "#fff",
-          border: `1px solid ${DECK.inputBorder}`,
-          color: DECK.ink,
-        }}
-      />
-      <button
-        type="submit"
-        className="shrink-0 cursor-pointer h-12 px-6 rounded-full text-[15px] font-medium transition-transform active:scale-[0.97]"
-        style={{ background: DECK.primary, color: DECK.primaryFg }}
+    <div
+      className="flex min-w-0 items-center gap-3 rounded-xl px-4 py-3"
+      style={{ background: DECK.limeTint }}
+    >
+      <div
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+        style={{ background: DECK.soft }}
       >
-        Avisar
-      </button>
-    </form>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M2 6l2.5 2.5L10 3.5"
+            stroke="#fff"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+      <div className="min-w-0">
+        <p
+          className="truncate text-[13px] font-medium"
+          style={{ color: FOREST }}
+        >
+          {email}
+        </p>
+        <p className="text-[12px]" style={{ color: DECK.soft }}>
+          Avisamos assim que ficar pronto.
+        </p>
+      </div>
+    </div>
   );
 }
 

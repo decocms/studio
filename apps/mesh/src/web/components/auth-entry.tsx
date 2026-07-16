@@ -19,6 +19,12 @@ export interface AuthEntryProps {
   brand?: ReactNode;
   /** Optional localized copy for the auth form. */
   copy?: Partial<UnifiedAuthFormCopy>;
+  /** Compact layout for embedded auth surfaces. */
+  variant?: "default" | "compact";
+  /** Limit social buttons without changing the global login page. */
+  allowedSocialProviders?: string[];
+  /** Hide password auth in OTP-first embedded surfaces. */
+  allowPassword?: boolean;
 }
 
 class RetriableAutoLoginResponse {
@@ -138,6 +144,9 @@ export function AuthEntry({
   subtitle,
   brand,
   copy,
+  variant,
+  allowedSocialProviders,
+  allowPassword,
 }: AuthEntryProps) {
   const {
     sso,
@@ -173,6 +182,9 @@ export function AuthEntry({
         subtitle={subtitle}
         brand={brand}
         copy={copy}
+        variant={variant}
+        allowedSocialProviders={allowedSocialProviders}
+        allowPassword={allowPassword}
       />
     );
   }

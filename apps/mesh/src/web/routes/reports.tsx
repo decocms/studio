@@ -7,7 +7,9 @@ import {
   reportShareCopy,
 } from "@/shared/report-seo";
 import { KEYS } from "@/web/lib/query-keys";
-import { getPublicReport } from "./reports/api";
+import { authClient } from "@/web/lib/auth-client";
+import { getReport } from "./reports/api";
+import { ReportAuthGate } from "./reports/auth-gate";
 import ScanGate from "./reports/scan-gate";
 import { setReportReviewerMode } from "./reports/track";
 import { DECK } from "./reports/templates/tokens";
@@ -67,6 +69,8 @@ export default function ReportPage() {
   const { domain: rawDomain } = route.useParams();
   const { key } = route.useSearch();
   const domain = normalizeDomain(rawDomain);
+  const session = authClient.useSession();
+  const authenticated = Boolean(session.data?.user);
 
   // Reviewer sessions (?key=) flag every event with report_preview — set at
   // render (module state, so it lands before any child capture) and cleared
@@ -74,8 +78,9 @@ export default function ReportPage() {
   setReportReviewerMode(Boolean(key));
 
   const initial = useQuery({
-    queryKey: KEYS.publicReport(domain, key),
-    queryFn: () => getPublicReport(domain, key),
+    queryKey: KEYS.report(domain, key),
+    queryFn: () => getReport(domain, key),
+    enabled: authenticated,
     staleTime: Infinity,
     retry: 1,
   });
@@ -86,20 +91,29 @@ export default function ReportPage() {
 
   const reviewerCleanupRef = (el: HTMLDivElement | null) => {
     if (!el) return;
+    setReportReviewerMode(Boolean(key));
     return () => setReportReviewerMode(false);
   };
 
-  if (initial.isPending) {
-    // Bare stage while the first read resolves — ScanGate takes over with the
-    // full scanning UI (or the deck renders straight away when ready).
-    return (
-      <div
-        className="fixed inset-0"
-        style={{ background: DECK.forest }}
-        aria-busy="true"
-      />
-    );
-  }
+  const content = session.isPending ? (
+    <ReportAuthGate domain={domain} loading />
+  ) : !session.data?.user ? (
+    <ReportAuthGate domain={domain} />
+  ) : initial.isPending ? (
+    // Bare stage while the authenticated read resolves — ScanGate takes over
+    // with the full scanning UI (or the deck renders when ready).
+    <div
+      className="fixed inset-0"
+      style={{ background: DECK.forest }}
+      aria-busy="true"
+    />
+  ) : (
+    <ScanGate
+      domain={domain}
+      initial={initial.data}
+      sessionEmail={session.data.user.email}
+    />
+  );
 
   return (
     <div
@@ -116,7 +130,7 @@ export default function ReportPage() {
         };
       }}
     >
-      <ScanGate domain={domain} initial={initial.data} />
+      {content}
     </div>
   );
 }
