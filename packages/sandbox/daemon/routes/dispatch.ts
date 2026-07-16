@@ -62,12 +62,13 @@ export interface DispatchDeps {
    *  MinIO). false in production. */
   allowSameHostDev: boolean;
   /** Fire-and-forget hook called with the run's MCP endpoint right after the
-   *  input is parsed. The daemon uses it to materialize the tool catalog into
-   *  the workspace so agents can script against tools from disk. Must not
-   *  throw or block; omitted in tests. */
+   *  input is parsed. The daemon uses it to materialize the tool catalog and
+   *  the endpoint file into the workspace so agents can script against tools
+   *  from disk. Must not throw or block; omitted in tests. */
   onDispatchMcp?: (mcp: {
     url: string;
     headers: Record<string, string>;
+    expiresAt?: number;
   }) => void;
 }
 

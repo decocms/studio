@@ -1,13 +1,21 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { readdir } from "node:fs/promises";
+import {
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   CATALOG_DIR,
+  ENDPOINT_FILENAME,
   makeCatalogSync,
   type McpEndpoint,
   toolCatalogFiles,
+  writeEndpointFile,
   writeToolCatalog,
 } from "./tools-catalog";
 
@@ -105,6 +113,59 @@ describe("writeToolCatalog", () => {
 
     const left = (await readdir(dir())).sort();
     expect(left).toEqual(["KEEP.json", "README.md"]);
+  });
+
+  test("prune never deletes the endpoint dotfile", async () => {
+    await writeEndpointFile(
+      { url: "http://x/mcp/virtual-mcp/a", headers: {} },
+      opts(),
+    );
+    await writeToolCatalog([{ name: "LIST", inputSchema: {} }], opts());
+
+    expect(existsSync(join(dir(), ENDPOINT_FILENAME))).toBe(true);
+  });
+});
+
+describe("writeEndpointFile", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "endpoint-"));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+  const opts = () => ({ appRoot: root, repoDir: root });
+  const file = () => join(root, CATALOG_DIR, ENDPOINT_FILENAME);
+
+  test("writes url, headers and expiresAt, owner-read-only", async () => {
+    const ok = await writeEndpointFile(
+      {
+        url: "http://x/mcp/virtual-mcp/agent-1",
+        headers: { Authorization: "Bearer k", "x-org-id": "org_1" },
+        expiresAt: 1234,
+      },
+      opts(),
+    );
+    expect(ok).toBe(true);
+
+    const parsed = JSON.parse(await readFile(file(), "utf-8"));
+    expect(parsed).toEqual({
+      url: "http://x/mcp/virtual-mcp/agent-1",
+      headers: { Authorization: "Bearer k", "x-org-id": "org_1" },
+      expiresAt: 1234,
+    });
+    expect(statSync(file()).mode & 0o777).toBe(0o600);
+  });
+
+  test("omits expiresAt when absent and overwrites a previous file", async () => {
+    await writeEndpointFile(
+      { url: "http://old", headers: {}, expiresAt: 1 },
+      opts(),
+    );
+    await writeEndpointFile({ url: "http://new", headers: {} }, opts());
+
+    const parsed = JSON.parse(await readFile(file(), "utf-8"));
+    expect(parsed).toEqual({ url: "http://new", headers: {} });
   });
 });
 

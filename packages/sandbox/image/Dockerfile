@@ -91,6 +91,11 @@ RUN apt-get update \
   && find /opt/sandbox-daemon/node_modules/node-pty -name "spawn-helper" -exec chmod +x {} \; \
   && chown -R sandbox:sandbox /opt/sandbox-daemon
 
+# Tool-scripting CLI (see /mnt/skills/public/tool-scripting): `typegen tools` /
+# `typegen call` discover the pre-authenticated MCP endpoint the daemon
+# materializes under <repo>/.deco/tools/, so agents can script org tool calls.
+RUN npm install -g @decocms/typegen
+
 COPY --chown=sandbox:sandbox daemon/dist/daemon.js /opt/sandbox-daemon/daemon.js
 COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
 
