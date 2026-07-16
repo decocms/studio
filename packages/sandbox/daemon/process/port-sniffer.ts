@@ -19,9 +19,18 @@ import { WELL_KNOWN_STARTERS } from "../constants";
  * locked-in port from a later log line, so a log message that happens to
  * contain another `http://localhost:N/` (e.g. an outbound fetch) can't
  * retarget the probe.
+ *
+ * The match requires one of the banner phrases above on the same line as
+ * the URL — a bare `http://localhost:N` isn't enough. `dev`/`start` often
+ * run more than one process (e.g. `concurrently "vite" "node server.js"`),
+ * and their stdout interleaves on the same stream; without the phrase gate
+ * an unrelated URL logged by a sibling process (a backend's own "listening"
+ * line, a proxied fetch, ...) could win the lock before the real bind line
+ * ever arrives.
  */
 
-const URL_PATTERN = /\bhttps?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d+)/;
+const URL_PATTERN =
+  /(?:Local:|Listening on)[^\n]*?\bhttps?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d+)/;
 
 /** ANSI color/cursor escape regex shared with the booting overlay. */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escapes are control chars
