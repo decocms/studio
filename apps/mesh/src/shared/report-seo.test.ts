@@ -17,9 +17,9 @@ describe("report SEO helpers", () => {
 
   test("builds encoded report and social-card paths", () => {
     expect(reportPath("https://www.nike.com/products")).toBe(
-      "/reports/nike.com",
+      "/report/nike.com",
     );
-    expect(ogImagePath("nike.com")).toBe("/reports/nike.com/og.png");
+    expect(ogImagePath("nike.com")).toBe("/report/nike.com/og.png");
   });
 
   test("derives readable share copy with an optional score", () => {

@@ -33,7 +33,7 @@ const PATH_PREFIXES = {
   OAUTH_PROXY: "/oauth-proxy/",
   WELL_KNOWN: "/.well-known",
   ORG: "/org/",
-  REPORTS: "/reports/",
+  REPORT: "/report/",
 } as const;
 
 /** Static file extensions that should be served as-is (internal use only) */
@@ -77,7 +77,7 @@ export function isServerPath(path: string): boolean {
     path.startsWith(PATH_PREFIXES.MCP) ||
     path.startsWith(PATH_PREFIXES.OAUTH_PROXY) ||
     path.startsWith(PATH_PREFIXES.ORG) ||
-    path.startsWith(PATH_PREFIXES.REPORTS) ||
+    path.startsWith(PATH_PREFIXES.REPORT) ||
     isSystemPath(path)
   );
 }

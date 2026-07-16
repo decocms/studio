@@ -39,7 +39,7 @@ export const KEYS = {
   homeGithubRecentPrs: (orgId: string, connectionId: string) =>
     ["home-github-recent-prs", orgId, connectionId] as const,
 
-  // Public report deck for a scanned domain (/reports/:domain, no auth).
+  // Public report deck for a scanned domain (/report/:domain, no auth).
   publicReport: (domain: string, key?: string) =>
     ["public-report", domain, key ?? ""] as const,
 

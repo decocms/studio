@@ -4,7 +4,7 @@ import { isPostHogInitialized } from "@/web/lib/posthog-client";
 
 let reviewerMode = false;
 
-/** Set at /reports route render time (module state, so it lands before any
+/** Set at /report route render time (module state, so it lands before any
  *  child component captures — effects would run too late) and cleared on
  *  unmount. Reviewer sessions (?key=) flag every report event with
  *  `report_preview` instead of polluting the production funnel. */

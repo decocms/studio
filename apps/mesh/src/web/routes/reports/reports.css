@@ -1,5 +1,5 @@
 /* Signal Deck styles — ported from the decocms landing's app.css. Loaded only
-   with the lazy /reports route chunk, so none of this leaks into the app. */
+   with the lazy /report route chunk, so none of this leaks into the app. */
 
 /* The deck's typeface. Scoped: only elements that opt into
    font-family: Switzer pick it up (the deck root + ScanGate). */

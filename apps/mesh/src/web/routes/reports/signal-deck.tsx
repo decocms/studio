@@ -349,7 +349,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
       utm_medium: "deck",
       utm_campaign: "report",
     });
-    return `${origin}/reports/${encodeURIComponent(deck.meta.domain)}?${q.toString()}#${s.key}`;
+    return `${origin}/report/${encodeURIComponent(deck.meta.domain)}?${q.toString()}#${s.key}`;
   };
 
   const buildShareText = (s: DeckSlide) =>

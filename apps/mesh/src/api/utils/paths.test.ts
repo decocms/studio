@@ -3,12 +3,13 @@ import { isServerPath, shouldSkipStudioContext, SYSTEM_PATHS } from "./paths";
 
 describe("public report paths", () => {
   test("routes report pages and social cards through Hono", () => {
-    expect(isServerPath("/reports/nike.com")).toBe(true);
-    expect(isServerPath("/reports/nike.com/og.png")).toBe(true);
+    expect(isServerPath("/report/nike.com")).toBe(true);
+    expect(isServerPath("/report/nike.com/og.png")).toBe(true);
   });
 
   test("does not reserve similarly named organization paths", () => {
-    expect(isServerPath("/reports-team")).toBe(false);
+    expect(isServerPath("/report-team")).toBe(false);
+    expect(isServerPath("/reports/nike.com")).toBe(false);
   });
 });
 

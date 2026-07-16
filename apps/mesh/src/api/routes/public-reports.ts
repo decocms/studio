@@ -1,7 +1,7 @@
 /**
  * Public Reports Routes — `/api/_reports/*`
  *
- * Anonymous (no-auth) proxy between the report page (`/reports/:domain`) and
+ * Anonymous (no-auth) proxy between the report page (`/report/:domain`) and
  * the reports engine (reports.decocms.com, `/api/v2`). The engine's master API
  * key stays server-side; base URL + key resolve exactly like the Commerce
  * Discovery tools (`tools/reports/auth-client.ts`). Ported from the decocms

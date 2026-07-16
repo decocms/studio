@@ -1264,12 +1264,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.route("/api/config", publicConfigRoutes);
 
   // Public commerce reports (no auth required) — anonymous proxy to the
-  // reports engine for the /reports/:domain page.
+  // reports engine for the /report/:domain page.
   app.route("/api/_reports", publicReportsRoutes);
 
   // Public report page + dynamic social card. API-only/test apps safely return
   // 404 for the HTML shell when no built client directory is supplied.
-  app.route("/reports", createReportPagesRoutes(options.clientDir));
+  app.route("/report", createReportPagesRoutes(options.clientDir));
 
   // ============================================================================
   // Better Auth Routes

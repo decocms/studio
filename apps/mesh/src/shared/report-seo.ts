@@ -34,7 +34,7 @@ export function faviconForDomain(domain: string, size = 64): string {
 
 /** The origin-relative report page path for a scanned domain. */
 export function reportPath(rawUrlParam: string): string {
-  return `/reports/${encodeURIComponent(normalizeDomain(rawUrlParam))}`;
+  return `/report/${encodeURIComponent(normalizeDomain(rawUrlParam))}`;
 }
 
 /** The origin-relative dynamic share card path for a scanned domain. */

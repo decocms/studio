@@ -1,16 +1,16 @@
 /**
- * Server-rendered surface of the public report page (`/reports/:domain`):
+ * Server-rendered surface of the public report page (`/report/:domain`):
  *
- * - `GET /reports/:domain` — serves the SPA's index.html with the <head>
+ * - `GET /report/:domain` — serves the SPA's index.html with the <head>
  *   rewritten for this domain (title/description/og/twitter/canonical), so
  *   link unfurlers (Slack/WhatsApp/X/iMessage) — which never run the SPA —
  *   see real metadata. Browsers get the same HTML and boot the SPA normally.
- * - `GET /reports/:domain/og.png` — the 1200×630 share card, rendered with
+ * - `GET /report/:domain/og.png` — the 1200×630 share card, rendered with
  *   satori + resvg (ported from the landing's cf-workers-og version).
  *
  * Both paths are claimed away from the static asset handler via the
- * `/reports/` prefix in `isServerPath` (api/utils/paths.ts) — without that,
- * a dotted path like /reports/nike.com gets no SPA fallback for bots.
+ * `/report/` prefix in `isServerPath` (api/utils/paths.ts) — without that,
+ * a dotted path like /report/nike.com gets no SPA fallback for bots.
  */
 
 import { Resvg } from "@resvg/resvg-js";
@@ -574,7 +574,7 @@ async function buildReportHead(rawDomain: string): Promise<string> {
   const origin = (
     getSettings().baseUrl ?? "https://studio.decocms.com"
   ).replace(/\/+$/, "");
-  const canonical = `${origin}/reports/${encodeURIComponent(domain)}`;
+  const canonical = `${origin}/report/${encodeURIComponent(domain)}`;
   const image = `${canonical}/og.png`;
 
   // The cover slide carries the overall score + the top verdict headline.

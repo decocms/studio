@@ -13,7 +13,7 @@ import { setReportReviewerMode } from "./reports/track";
 import { DECK } from "./reports/templates/tokens";
 import "./reports/reports.css";
 
-const route = getRouteApi("/reports/$domain");
+const route = getRouteApi("/report/$domain");
 
 /**
  * Swap the browser-tab title + favicon to the scanned domain's own. The SPA
