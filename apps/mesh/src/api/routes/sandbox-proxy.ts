@@ -66,14 +66,21 @@ type VmEnv = Env & { Variables: Env["Variables"] & { vmClaim: VmClaim } };
 const SANDBOX_BRANCH_NAME = /^[a-zA-Z0-9][a-zA-Z0-9/._-]*$/;
 
 function assertSandboxBranchParam(branch: string): void {
+  // "thread:<id>" is a synthetic sandbox-identity branch (bound by `load_repo`
+  // for thread-scoped repos) — the daemon accepts it and never checks it out as
+  // a git ref, so the ':' is legal here even though the git-ref charset below
+  // forbids it. Validate the id part after the prefix.
+  const ref = branch.startsWith("thread:")
+    ? branch.slice("thread:".length)
+    : branch;
   if (
-    !branch ||
-    branch.length > 255 ||
-    branch.includes("..") ||
-    branch.startsWith("/") ||
-    branch.endsWith("/") ||
-    branch.endsWith(".lock") ||
-    !SANDBOX_BRANCH_NAME.test(branch)
+    !ref ||
+    ref.length > 255 ||
+    ref.includes("..") ||
+    ref.startsWith("/") ||
+    ref.endsWith("/") ||
+    ref.endsWith(".lock") ||
+    !SANDBOX_BRANCH_NAME.test(ref)
   ) {
     throw new Error(`Invalid branch name: ${branch}`);
   }
