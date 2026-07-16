@@ -33,4 +33,11 @@ describe("createPortSniffer", () => {
     expect(s.observe("start", "Listening on http://0.0.0.0:8000/")).toBe(true);
     expect(s.current()).toBe(8000);
   });
+
+  test("ignores an unrelated localhost URL from a sibling process preceding the real bind line", () => {
+    const s = createPortSniffer();
+    const interleaved = `API ready on http://localhost:4000/graphql\n\n${VITE_READY}`;
+    expect(s.observe("dev", interleaved)).toBe(true);
+    expect(s.current()).toBe(3000);
+  });
 });
