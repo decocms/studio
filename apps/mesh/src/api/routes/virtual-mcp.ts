@@ -33,7 +33,7 @@ import { serveMcpRequest } from "../utils/serve-mcp";
 
 export async function handleVirtualMcpRequest(
   c: {
-    get: (key: "meshContext") => StudioContext;
+    get: (key: "studioContext") => StudioContext;
     req: {
       header: (name: string) => string | undefined;
       param: (name: string) => string | undefined;
@@ -44,7 +44,7 @@ export async function handleVirtualMcpRequest(
   },
   virtualMcpId: string | undefined,
 ) {
-  const ctx = c.get("meshContext");
+  const ctx = c.get("studioContext");
 
   try {
     // Prefer x-org-id header (no DB lookup) over x-org-slug (requires DB lookup)

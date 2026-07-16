@@ -67,7 +67,7 @@ interface FileObject {
 
 // Define Hono variables type
 type Variables = {
-  meshContext: StudioContext;
+  studioContext: StudioContext;
 };
 
 const app = new Hono<{ Variables: Variables }>();
@@ -590,7 +590,7 @@ export async function callDevAssetsTool(
  * Implements OBJECT_STORAGE_BINDING for local filesystem storage
  */
 app.all("/", async (c) => {
-  const ctx = c.get("meshContext");
+  const ctx = c.get("studioContext");
 
   // Get base URL for presigned URLs
   const url = new URL(c.req.url);

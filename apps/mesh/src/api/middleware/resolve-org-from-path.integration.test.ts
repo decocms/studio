@@ -9,7 +9,7 @@ import {
 import type { StudioDatabase } from "../../database";
 import { resolveOrgFromPath } from "./resolve-org-from-path";
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 
 interface FakeAuth {
   user?: { id: string };
@@ -36,7 +36,7 @@ const buildApp = (
     // rebind, any thread-touching route on the new path family throws
     // "OrgScopedThreadStorage: thread operations require an authenticated organization".
     const threadOrgIds: (string | undefined)[] = [];
-    c.set("meshContext", {
+    c.set("studioContext", {
       auth,
       db: db.db,
       baseUrl: "http://test",
@@ -65,7 +65,7 @@ const buildApp = (
   });
   app.use("/api/:org/*", resolveOrgFromPath);
   app.get("/api/:org/probe", (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     return c.json({
       orgId: ctx.organization?.id,
       orgSlug: ctx.organization?.slug,
@@ -199,7 +199,7 @@ describe("resolveOrgFromPath", () => {
     // when the session's active org differs from the URL org.
     const app = new Hono<{ Variables: Variables }>();
     app.use("*", async (c, next) => {
-      c.set("meshContext", {
+      c.set("studioContext", {
         auth: { user: { id: "user-1" } },
         db: db.db,
         baseUrl: "http://test",
@@ -217,7 +217,7 @@ describe("resolveOrgFromPath", () => {
     });
     app.use("/api/:org/*", resolveOrgFromPath);
     app.get("/api/:org/role", (c) => {
-      const ctx = c.get("meshContext");
+      const ctx = c.get("studioContext");
       return c.json({ role: ctx.organization?.role });
     });
     const res = await app.request("/api/acme/role");
@@ -238,7 +238,7 @@ describe("resolveOrgFromPath", () => {
 
   it("rebinds storage.threads + objectStorage to the path-resolved org", async () => {
     // Regression: when the new /api/:org path is hit without an x-org-id
-    // header, meshContext is created with org=undefined, so OrgScopedThreadStorage
+    // header, studioContext is created with org=undefined, so OrgScopedThreadStorage
     // and objectStorage start out unbound. resolveOrgFromPath must rebind both
     // after looking up the org from the slug, otherwise thread routes throw
     // "thread operations require an authenticated organization".
@@ -251,7 +251,7 @@ describe("resolveOrgFromPath", () => {
   });
 
   it("rebinds objectStorage even when it was prebound to a stale org", async () => {
-    // Regression: meshContext is built eagerly from the session's
+    // Regression: studioContext is built eagerly from the session's
     // activeOrganizationId. When the URL targets a different org (e.g. session
     // active=A, path=B), the eagerly-bound objectStorage points at A. The
     // middleware must replace it so /api/:org/files/* reads from B's tenant

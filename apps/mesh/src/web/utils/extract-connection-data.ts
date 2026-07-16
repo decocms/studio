@@ -21,8 +21,8 @@ import { generatePrefixedId } from "@/shared/utils/generate-id";
 export function getRegistryItemAppName(
   item: Pick<RegistryItem, "_meta" | "server">,
 ): string | null {
-  const meshMeta = item._meta?.["mcp.mesh"];
-  return meshMeta?.appName || item.server?.name || null;
+  const studioMeta = item._meta?.["mcp.mesh"];
+  return studioMeta?.appName || item.server?.name || null;
 }
 
 /**
@@ -76,12 +76,12 @@ export function extractConnectionData(
   options?: ExtractConnectionDataOptions,
 ) {
   const server = item.server as MCPRegistryServer["server"] | undefined;
-  const meshMeta = item._meta?.[MCP_MESH_DECOCMS_KEY];
+  const studioMeta = item._meta?.[MCP_MESH_DECOCMS_KEY];
   const now = new Date().toISOString();
 
   const baseName =
-    meshMeta?.friendlyName ||
-    meshMeta?.friendly_name ||
+    studioMeta?.friendlyName ||
+    studioMeta?.friendly_name ||
     item.title ||
     server?.title ||
     server?.name ||
@@ -93,7 +93,7 @@ export function extractConnectionData(
   const icon =
     server?.icons?.[0]?.src || getGitHubAvatarUrl(server?.repository) || null;
 
-  const rawOauthConfig = meshMeta?.oauth_config as
+  const rawOauthConfig = studioMeta?.oauth_config as
     | Record<string, unknown>
     | null
     | undefined;
@@ -108,11 +108,11 @@ export function extractConnectionData(
       ? (rawOauthConfig as unknown as OAuthConfig)
       : null;
 
-  const configState = meshMeta?.configuration_state as
+  const configState = studioMeta?.configuration_state as
     | Record<string, unknown>
     | null
     | undefined;
-  const configScopes = meshMeta?.configuration_scopes as
+  const configScopes = studioMeta?.configuration_scopes as
     | string[]
     | null
     | undefined;
@@ -199,7 +199,7 @@ export function extractConnectionData(
     description,
     icon,
     app_name: getRegistryItemAppName(item),
-    app_id: meshMeta?.id || item.id || null,
+    app_id: studioMeta?.id || item.id || null,
     connection_type: connectionType,
     connection_url: connectionUrl,
     connection_token: null as string | null,
@@ -210,10 +210,10 @@ export function extractConnectionData(
     metadata: {
       source: "store",
       registry_item_id: item.id,
-      verified: meshMeta?.verified ?? false,
-      scopeName: meshMeta?.scopeName ?? null,
-      toolsCount: meshMeta?.tools?.length ?? 0,
-      publishedAt: meshMeta?.publishedAt ?? null,
+      verified: studioMeta?.verified ?? false,
+      scopeName: studioMeta?.scopeName ?? null,
+      toolsCount: studioMeta?.tools?.length ?? 0,
+      publishedAt: studioMeta?.publishedAt ?? null,
       repository,
     },
     created_at: now,

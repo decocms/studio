@@ -10,7 +10,7 @@ import {
 import { issueNatsCredentials } from "@/links/nats-credentials";
 
 type Variables = {
-  meshContext: StudioContext;
+  studioContext: StudioContext;
 };
 
 const unavailable = () => ({ error: "link session unavailable" });
@@ -33,7 +33,7 @@ export function createLinkSessionRoutes() {
   const app = new Hono<{ Variables: Variables }>();
 
   app.post("/links/session", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     const userId = ctx.auth?.user?.id;
 
     if (!userId) {

@@ -98,7 +98,7 @@ function auditAdminAction(action: string, props: Record<string, unknown>) {
 
 /**
  * The REAL actor for audit purposes. Under impersonation the session user (and
- * meshContext.auth.user) is the impersonation TARGET — an admin impersonating
+ * studioContext.auth.user) is the impersonation TARGET — an admin impersonating
  * a fellow admin can reach every /api/_admin route, and attributing their
  * actions to the impersonated identity would defeat the audit trail. The
  * original admin's id lives in `session.impersonatedBy`.
@@ -108,7 +108,7 @@ async function getAuditActor(
 ): Promise<{ actorId?: string; impersonatedBy?: string }> {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   return {
-    actorId: c.get("meshContext").auth.user?.id,
+    actorId: c.get("studioContext").auth.user?.id,
     impersonatedBy: (
       session?.session as { impersonatedBy?: string } | undefined
     )?.impersonatedBy,
@@ -119,7 +119,7 @@ async function requireDeploymentAdmin(
   c: Context<Env>,
   next: () => Promise<void>,
 ) {
-  const user = c.get("meshContext").auth.user;
+  const user = c.get("studioContext").auth.user;
   if (!user) {
     return c.json({ error: "Unauthorized" }, 401);
   }
@@ -146,7 +146,7 @@ export function createAdminRoutes(): Hono<Env> {
 
   // The middleware IS the check — the UI gate just probes this.
   app.get("/me", (c) => {
-    const email = c.get("meshContext").auth.user?.email;
+    const email = c.get("studioContext").auth.user?.email;
     if (!email) return c.json({ error: "Unauthorized" }, 401);
     return c.json({ email });
   });
@@ -218,7 +218,7 @@ export function createAdminRoutes(): Hono<Env> {
     }
     // The UI disables the button for the current user, but the server is the
     // trust boundary — self-impersonation would set impersonatedBy = self.
-    if (userId === c.get("meshContext").auth.user?.id) {
+    if (userId === c.get("studioContext").auth.user?.id) {
       return c.json({ error: "Cannot impersonate yourself" }, 400);
     }
 
@@ -243,7 +243,7 @@ export function createAdminRoutes(): Hono<Env> {
     });
 
     if (res.ok) {
-      const actorId = c.get("meshContext").auth.user?.id;
+      const actorId = c.get("studioContext").auth.user?.id;
       auditAdminAction("impersonate", {
         actor_user_id: actorId,
         target_user_id: userId,

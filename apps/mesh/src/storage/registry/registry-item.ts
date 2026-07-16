@@ -52,7 +52,7 @@ function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   }
 }
 
-function getMeshMeta(meta?: RegistryItemMeta): MeshRegistryMeta {
+function getStudioMeta(meta?: RegistryItemMeta): MeshRegistryMeta {
   return meta?.["mcp.mesh"] ?? {};
 }
 
@@ -215,9 +215,9 @@ export class RegistryItemStorage {
   ): Promise<PrivateRegistryItemEntity> {
     const now = new Date().toISOString();
     const meta = input._meta ?? {};
-    const meshMeta = getMeshMeta(meta);
-    const tags = normalizeStringList(meshMeta.tags);
-    const categories = normalizeStringList(meshMeta.categories);
+    const studioMeta = getStudioMeta(meta);
+    const tags = normalizeStringList(studioMeta.tags);
+    const categories = normalizeStringList(studioMeta.categories);
 
     const row: Insertable<PrivateRegistryDatabase["private_registry_item"]> = {
       id: input.id,
@@ -289,9 +289,9 @@ export class RegistryItemStorage {
     }
 
     const mergedMeta = input._meta ?? current._meta ?? {};
-    const meshMeta = getMeshMeta(mergedMeta);
-    const tags = normalizeStringList(meshMeta.tags);
-    const categories = normalizeStringList(meshMeta.categories);
+    const studioMeta = getStudioMeta(mergedMeta);
+    const tags = normalizeStringList(studioMeta.tags);
+    const categories = normalizeStringList(studioMeta.categories);
 
     const update: Updateable<PrivateRegistryDatabase["private_registry_item"]> =
       {

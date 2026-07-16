@@ -244,10 +244,10 @@ export class AccessControl {
     try {
       const meta = await this.getToolMeta();
       if (!meta) return false;
-      const meshMeta = meta[MCP_MESH_KEY] as
+      const studioMeta = meta[MCP_MESH_KEY] as
         | Record<string, unknown>
         | undefined;
-      const value = meshMeta?.public_tool;
+      const value = studioMeta?.public_tool;
       return value === true || value === "true";
     } catch {
       return false;

@@ -22,16 +22,16 @@ function isPublicSharePath(c: Context): boolean {
 }
 
 export const resolveOrgFromPath: MiddlewareHandler<{
-  Variables: { meshContext: StudioContext };
+  Variables: { studioContext: StudioContext };
 }> = async (c, next) => {
   const slug = c.req.param("org");
   if (!slug) {
     return c.json({ error: "org slug missing in path" }, 400);
   }
 
-  const ctx = c.get("meshContext");
+  const ctx = c.get("studioContext");
   if (!ctx?.db) {
-    return c.json({ error: "meshContext not initialized" }, 500);
+    return c.json({ error: "studioContext not initialized" }, 500);
   }
   const db = ctx.db;
 

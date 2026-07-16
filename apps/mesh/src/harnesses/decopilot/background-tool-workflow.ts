@@ -69,7 +69,7 @@ export interface BackgroundToolContext extends BackgroundToolSnapshot {
 }
 
 export interface BackgroundToolRuntime {
-  meshContextFactory: StudioContextFactory;
+  studioContextFactory: StudioContextFactory;
   /** Enqueue via a decoupled `DBOSClient` — `DBOS.startWorkflow` is illegal
    *  inside the agent-loop step that fires the backgroundable tool. */
   systemDatabaseUrl: string;
@@ -136,13 +136,13 @@ function toModelInfo(
 /** Re-resolve the org's chat ("smart") + image + web_search + deep_research
  *  tiers into a `ModelsConfig`, same as the interactive chat path. */
 async function resolveReactionModels(
-  meshCtx: StudioContext,
+  studioCtx: StudioContext,
 ): Promise<ModelsConfig> {
   const [chat, image, webSearch, deepResearch] = await Promise.all([
-    resolveTier(meshCtx, "smart"),
-    tryResolveTier(meshCtx, "image"),
-    tryResolveTier(meshCtx, "web_search"),
-    tryResolveTier(meshCtx, "deep_research"),
+    resolveTier(studioCtx, "smart"),
+    tryResolveTier(studioCtx, "image"),
+    tryResolveTier(studioCtx, "web_search"),
+    tryResolveTier(studioCtx, "deep_research"),
   ]);
   return {
     credentialId: chat.credentialId,
@@ -172,16 +172,16 @@ async function resolveReactionModels(
 async function requireMeshContext(
   ctx: BackgroundToolContext,
 ): Promise<StudioContext> {
-  const meshCtx = await requireRuntime().meshContextFactory(
+  const studioCtx = await requireRuntime().studioContextFactory(
     ctx.orgId,
     ctx.userId,
   );
-  if (!meshCtx) {
+  if (!studioCtx) {
     throw new Error(
       `[background-tool] mesh context unavailable for org ${ctx.orgId} user ${ctx.userId}`,
     );
   }
-  return meshCtx;
+  return studioCtx;
 }
 
 /** Resolve a thread row's dispatch target + harness (hosted vs desktop link). */
@@ -250,7 +250,7 @@ interface BackgroundProducer {
 /** Workflow-provided context + parts sink handed to each producer. */
 interface BackgroundJob {
   ctx: BackgroundToolContext;
-  meshContext(): Promise<StudioContext>;
+  studioContext(): Promise<StudioContext>;
   /** Append the job's terminal assistant message as a recorded step. */
   emitFinal(parts: AnyMessage["parts"]): Promise<void>;
 }
@@ -258,7 +258,7 @@ interface BackgroundJob {
 function makeJob(ctx: BackgroundToolContext): BackgroundJob {
   return {
     ctx,
-    meshContext: () => requireMeshContext(ctx),
+    studioContext: () => requireMeshContext(ctx),
     emitFinal: (parts) =>
       DBOS.runStep(() => appendPartsStep(ctx, parts), { name: "appendResult" }),
   };
@@ -346,8 +346,8 @@ function extractAssistantText(
 async function runSubtaskStep(
   ctx: BackgroundToolContext,
 ): Promise<{ report: string; finishReason: string; models: ModelsConfig }> {
-  const meshCtx = await requireMeshContext(ctx);
-  const organization = meshCtx.organization;
+  const studioCtx = await requireMeshContext(ctx);
+  const organization = studioCtx.organization;
   if (!organization) {
     throw new Error(
       `[background-tool] organization context unavailable for subtask (org ${ctx.orgId})`,
@@ -356,8 +356,8 @@ async function runSubtaskStep(
   const input = ctx.input as { prompt: string; agent_id?: string };
   const isSelf = !input.agent_id || input.agent_id === ctx.agentId;
   const targetId = isSelf ? ctx.agentId : input.agent_id!;
-  const models = await resolveReactionModels(meshCtx);
-  const provider = await meshCtx.aiProviders.activate(
+  const models = await resolveReactionModels(studioCtx);
+  const provider = await studioCtx.aiProviders.activate(
     models.credentialId,
     ctx.orgId,
   );
@@ -370,7 +370,7 @@ async function runSubtaskStep(
     ...(models.deepResearch ? { deepResearch: models.deepResearch } : {}),
   };
   const { mcpClient, targetKind, targetRef } = await resolveSubagent(
-    meshCtx,
+    studioCtx,
     ctx.orgId,
     targetId,
     { superUser: isSelf },
@@ -385,13 +385,16 @@ async function runSubtaskStep(
   const webSearchInfo = harnessModels.webSearch;
   const deepInfo = harnessModels.deepResearch;
   const imageProvider = imageInfo?.credentialId
-    ? await meshCtx.aiProviders.activate(imageInfo.credentialId, ctx.orgId)
+    ? await studioCtx.aiProviders.activate(imageInfo.credentialId, ctx.orgId)
     : null;
   const webSearchProvider = webSearchInfo?.credentialId
-    ? await meshCtx.aiProviders.activate(webSearchInfo.credentialId, ctx.orgId)
+    ? await studioCtx.aiProviders.activate(
+        webSearchInfo.credentialId,
+        ctx.orgId,
+      )
     : null;
   const deepResearchProvider = deepInfo?.credentialId
-    ? await meshCtx.aiProviders.activate(deepInfo.credentialId, ctx.orgId)
+    ? await studioCtx.aiProviders.activate(deepInfo.credentialId, ctx.orgId)
     : null;
   const subagentBuiltInParams = {
     provider,
@@ -435,7 +438,7 @@ async function runSubtaskStep(
   try {
     const handle = await runAgentLoop({
       kind: "subagent",
-      ctx: meshCtx,
+      ctx: studioCtx,
       organization,
       virtualMcp: targetRef,
       mcpClient: mcpClient as never,
@@ -487,7 +490,7 @@ async function runSubtaskStep(
     // Persist under runId=jobId but thread_id=the originating thread, so the
     // rows belong to the thread yet group under the job for nesting.
     const emitter = new PartEmitter({
-      storage: meshCtx.storage.threads.messageParts(),
+      storage: studioCtx.storage.threads.messageParts(),
       orgId: ctx.orgId,
       threadId: ctx.threadId,
       runId: ctx.jobId,
@@ -528,13 +531,13 @@ async function runSubtaskStep(
 async function runGenerateImageStep(
   job: BackgroundJob,
 ): Promise<{ result: GenerateImageResult; models: ModelsConfig }> {
-  const meshCtx = await job.meshContext();
-  const models = await resolveReactionModels(meshCtx);
+  const studioCtx = await job.studioContext();
+  const models = await resolveReactionModels(studioCtx);
   const image = models.image;
   if (!image?.credentialId) {
     throw new Error("[background-tool] no image model configured for org");
   }
-  const provider = await meshCtx.aiProviders.activate(
+  const provider = await studioCtx.aiProviders.activate(
     image.credentialId,
     job.ctx.orgId,
   );
@@ -548,7 +551,7 @@ async function runGenerateImageStep(
       {
         provider,
         imageModelInfo: { id: image.id },
-        objectStorage: meshCtx.objectStorage,
+        objectStorage: studioCtx.objectStorage,
         allowHttpExternalUrls: getSettings().localMode,
         abortSignal: ac.signal,
       },
@@ -565,13 +568,13 @@ async function appendPartsStep(
   ctx: BackgroundToolContext,
   parts: AnyMessage["parts"],
 ): Promise<void> {
-  const meshCtx = await requireMeshContext(ctx);
-  const thread = await meshCtx.storage.threads.get(ctx.threadId);
+  const studioCtx = await requireMeshContext(ctx);
+  const thread = await studioCtx.storage.threads.get(ctx.threadId);
   if (!thread) {
     throw new Error(`[background-tool] thread ${ctx.threadId} not found`);
   }
   const emitter = new PartEmitter({
-    storage: meshCtx.storage.threads.messageParts(),
+    storage: studioCtx.storage.threads.messageParts(),
     orgId: ctx.orgId,
     threadId: ctx.threadId,
     runId: ctx.jobId,
@@ -605,12 +608,12 @@ export async function deliverBackgroundSubtaskResult(args: {
     input: {},
     toolCallId: `${jobId}:deliver`,
   };
-  const meshCtx = await requireMeshContext(ctx);
+  const studioCtx = await requireMeshContext(ctx);
   const hasReport = report.trim().length > 0;
 
   // 1. Persist the report nested under the subtask card (metadata.subtaskJobId).
   const emitter = new PartEmitter({
-    storage: meshCtx.storage.threads.messageParts(),
+    storage: studioCtx.storage.threads.messageParts(),
     orgId: snapshot.orgId,
     threadId: snapshot.threadId,
     runId: jobId,
@@ -629,9 +632,9 @@ export async function deliverBackgroundSubtaskResult(args: {
   } as any);
 
   // 2. Enqueue the reaction turn, carrying the report in the nudge.
-  const models = await resolveReactionModels(meshCtx);
+  const models = await resolveReactionModels(studioCtx);
   const { target, harnessId } = resolveThreadTarget(
-    await meshCtx.storage.threads.get(snapshot.threadId),
+    await studioCtx.storage.threads.get(snapshot.threadId),
   );
   const nudge = hasReport
     ? `The background subtask you started has completed. Its result:\n\n${report}\n\nUse this to continue with the user's request — do NOT call subtask again for this.`
@@ -654,12 +657,12 @@ export async function deliverBackgroundSubtaskResult(args: {
 async function resolveReactionTargetStep(
   ctx: BackgroundToolContext,
 ): Promise<{ target: DispatchTarget; harnessId: HarnessId | null } | null> {
-  const meshCtx = await requireRuntime().meshContextFactory(
+  const studioCtx = await requireRuntime().studioContextFactory(
     ctx.orgId,
     ctx.userId,
   );
-  if (!meshCtx) return null;
-  return resolveThreadTarget(await meshCtx.storage.threads.get(ctx.threadId));
+  if (!studioCtx) return null;
+  return resolveThreadTarget(await studioCtx.storage.threads.get(ctx.threadId));
 }
 
 /** Re-enter the per-thread gate so the agent reacts to the delivered result.
