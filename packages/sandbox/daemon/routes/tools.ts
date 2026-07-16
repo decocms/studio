@@ -31,12 +31,14 @@ export function makeToolsSyncHandler(deps: ToolsDeps) {
     const mcp = body as Partial<McpEndpoint>;
     if (
       typeof mcp?.url !== "string" ||
+      !URL.canParse(mcp.url) ||
       typeof mcp.headers !== "object" ||
       mcp.headers === null
     ) {
       return jsonResponse(
         {
-          error: "body must be { url: string, headers: Record<string,string> }",
+          error:
+            "body must be { url: string (valid URL), headers: Record<string,string> }",
         },
         400,
       );

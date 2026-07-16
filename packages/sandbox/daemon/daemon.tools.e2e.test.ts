@@ -170,6 +170,14 @@ describe("POST /_sandbox/tools/sync", () => {
     expect(res.status).toBe(400);
   });
 
+  test("rejects an empty url with 400, writes no endpoint file", async () => {
+    // Regression: the decopilot in-process sentinel (`url: ""`) used to be
+    // forwarded here and materialized a broken .endpoint.json.
+    const res = await sync({ url: "", headers: {} });
+    expect(res.status).toBe(400);
+    expect(existsSync(catalogPath(".endpoint.json"))).toBe(false);
+  });
+
   test("surfaces an unreachable endpoint as 502, endpoint file still written", async () => {
     const res = await sync({
       url: "http://127.0.0.1:1/mcp/virtual-mcp/test",
