@@ -272,10 +272,22 @@ describe("isArrayDrillDownField", () => {
 });
 
 describe("buildArrayDrillDownBreadcrumb", () => {
-  test("includes array label before item label", () => {
+  test("omits the array label — drills straight from section to item", () => {
+    // The array is an implementation detail (its list is shown inline in the
+    // parent); the breadcrumb jumps straight to the item so there's no
+    // redundant "list only" crumb to click back through.
     expect(
       buildArrayDrillDownBreadcrumb([], "Flag Desconto", "Partiu ferias"),
-    ).toEqual(["Flag Desconto", "Partiu ferias"]);
+    ).toEqual(["Partiu ferias"]);
+  });
+
+  test("keeps the array label ONLY to disambiguate an item labelled like the array", () => {
+    // Item label == array label (e.g. label driven by `alt`): keep the array
+    // crumb so breadcrumbPathForActiveField can tell the two levels apart.
+    expect(buildArrayDrillDownBreadcrumb([], "Banner", "Banner")).toEqual([
+      "Banner",
+      "Banner",
+    ]);
   });
 
   test("does not duplicate crumbs already in trail", () => {
@@ -286,6 +298,14 @@ describe("buildArrayDrillDownBreadcrumb", () => {
         "Partiu ferias",
       ),
     ).toEqual(["Flag Desconto", "Partiu ferias"]);
+  });
+
+  test("nested drill-down stays free of array labels (no doubled crumb)", () => {
+    // Opening an item inside an already-open item appends only the new item
+    // label — the intermediate array levels never enter the trail.
+    expect(
+      buildArrayDrillDownBreadcrumb(["Leve 3 pague 2"], "Images", "Detroit"),
+    ).toEqual(["Leve 3 pague 2", "Detroit"]);
   });
 });
 

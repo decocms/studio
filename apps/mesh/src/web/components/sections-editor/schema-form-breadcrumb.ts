@@ -26,7 +26,23 @@ function labelsMatchLoose(a: string, b: string): boolean {
   );
 }
 
-/** Breadcrumb trail when opening an array item (includes the array field label). */
+/**
+ * Breadcrumb trail when opening an array item.
+ *
+ * The array field itself is an implementation detail: its list is already shown
+ * inline in the parent form, so drilling into an item jumps straight from the
+ * section to the item. We deliberately do NOT add the array's own label as a
+ * crumb — it would show a redundant "list only" step the user has to click back
+ * through (and, once nested, could even appear twice). Resolution
+ * ({@link resolveActiveFieldKey}, {@link resolveArrayItemSelection}) already
+ * matches an item by its label without the array crumb present.
+ *
+ * The ONE exception is disambiguation: when the item's display label equals the
+ * array label (e.g. an item whose label comes from `alt` that happens to match
+ * the array title), we keep the array crumb so {@link breadcrumbPathForActiveField}
+ * can still tell the array level from the item level — otherwise it would strip
+ * the sole crumb and lose the selection (the array-label == item-label bug).
+ */
 export function buildArrayDrillDownBreadcrumb(
   breadcrumbPath: string[],
   arrayLabel: string,
@@ -42,8 +58,12 @@ export function buildArrayDrillDownBreadcrumb(
     return breadcrumbPath;
   }
   const trail = [...breadcrumbPath];
-  const hasArrayLabel = trail.some((crumb) => labelsMatch(crumb, arrayLabel));
-  if (!hasArrayLabel) trail.push(arrayLabel);
+  if (
+    labelsMatch(itemLabel, arrayLabel) &&
+    !trail.some((crumb) => labelsMatch(crumb, arrayLabel))
+  ) {
+    trail.push(arrayLabel);
+  }
   trail.push(itemLabel);
   return trail;
 }
