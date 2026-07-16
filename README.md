@@ -1,8 +1,8 @@
-<h1 align="center">Deco CMS</h1>
+<h1 align="center">deco Studio</h1>
 
 <p align="center">
 <em>Open-source · TypeScript-first · Deploy anywhere</em><br/><br/>
-<b>Open-source control plane for your AI agents.</b>
+<b>Open-source private AI workspace for organizations.</b>
 </p>
 
 <p align="center">
@@ -11,34 +11,34 @@
 <a href="https://decocms.com/studio">decocms.com/studio</a>
 </p>
 
-> **TL;DR:** Hire agents. Connect tools. Organize them into projects with a UI that fits the job. Track every token and dollar. Self-host or use the cloud.
+> **TL;DR:** Your team needs a secure internal vibecoding platform. You just found it. Configure agents with team context. Connect private MCPs once — share capabilities, not credentials. Keep the model layer interchangeable. Roll out across the organization with SSO, RBAC, audit logs, and cost controls — all through one MCP endpoint. Local-first. Self-host or use the cloud.
 
 ---
 
-## What is Deco CMS?
+## What is deco Studio?
 
-Studio is where you hire agents, connect tools, and organize them into projects that actually do things.
+Studio packages the infrastructure behind an internal AI rollout: model routing, MCP authentication, agent configuration, SSO, RBAC, audit logs, and usage accounting. Your teams get chat. You keep control.
 
-Agents come with real skills and battle-tested prompts. Connections give them access to your tools — GitHub, Slack, Postgres, OpenRouter, anything that speaks MCP — set up through a web UI with one-click OAuth. Projects bring agents and connections together around a goal: each project gets its own sidebar and UI, shaped by what's inside it.
+Under the hood it's one control plane for your AI agents — one MCP endpoint for all your agents, tools, and models. Agents package context, tools, and policy into something you publish to the organization. Connections give them governed access to your systems — GitHub, Slack, Postgres, Sentry, anything that speaks MCP — with tokens stored in an encrypted vault. Models stay interchangeable: OpenRouter or direct providers, chosen per agent and per tool.
 
-Everything is tracked — tokens, costs, errors, latency — per connection, per agent. Install locally and it stays private. Sync to the cloud for remote access, team roles, and shared billing.
+Start with one team. Standardize approved models, tools, and context. Expand across the organization without copying secrets or rebuilding the platform. Install locally and it stays private; sync to the cloud for remote access, team roles, and shared billing.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                           Clients                               │
-│         Cursor · Claude · VS Code · Custom Agents               │
+│                             Clients                             │
+│            Cursor · Claude · VS Code · Custom Agents            │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                         DECO CMS                              │
-│  Agents · Connections · Projects · Observability · Token Vault  │
+│                           DECO STUDIO                           │
+│      Agents · Connections · Models · Vault · Observability      │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Tools & MCP Servers                          │
-│      GitHub · Slack · Postgres · OpenRouter · Your APIs         │
+│                       Tools & MCP Servers                       │
+│       GitHub · Slack · Postgres · OpenRouter · Your APIs        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,11 +66,11 @@ bun run dev
 
 ### Agents
 
-Browse and hire specialized AI agents from the built-in store. Each agent knows how to use specific tools and comes with battle-tested prompts. Agents compose — they can call each other — and every action is tracked with cost attribution.
+Package context, tools, and policy into an agent. Define instructions, add skills and files, grant approved MCP access, choose a model policy, then publish the agent to the organization. Each agent is its own MCP endpoint — callable from Cursor, Claude Desktop, your own code, or another agent. Agents compose, and every action is tracked with cost attribution.
 
 ### Connections
 
-Set up MCP connections through a web UI with one-click OAuth. No JSON configs. Monitor latency, errors, and costs per connection. Share tools across your team without sharing credentials.
+Connect private systems once, securely. Register MCP servers at the organization level through a web UI with one-click OAuth — no JSON configs. Tokens live in the encrypted vault, and you grant tool-level access by organization, role, or agent. Share MCP capabilities — not credentials.
 
 As tool surfaces grow, Studio exposes **Virtual MCPs** — one endpoint, different strategies for which tools to surface:
 
@@ -78,15 +78,17 @@ As tool surfaces grow, Studio exposes **Virtual MCPs** — one endpoint, differe
 - **Smart selection:** narrow the toolset before execution
 - **Code execution:** load tools on demand in a sandbox
 
+### Models
+
+Keep the AI layer interchangeable. Use OpenRouter or connect Anthropic, OpenAI, Google, or any compatible provider directly — the best model for each agent and tool, behind one router. For coding work, engineers can link their own Claude Code or Codex session and use the subscription already authenticated on their machine.
+
 ### Projects
 
 Projects bring agents and connections together around a goal. The project's UI adapts to what's inside — add a content agent and a CMS connection, the sidebar shows content management; add an analytics agent and a database, it shows dashboards and queries. The UI you see is the UI that's relevant for operating that project.
 
-You can also define outcomes declaratively and let Studio work backward to derive milestones, assign agents, and verify results.
-
 ### Observability
 
-Token spend per connection — OpenRouter, Perplexity, Firecrawl, all of it. Latency, errors, bottlenecks. One dashboard.
+Account for every model and tool call. Trace the user, agent, model, tools, latency, errors, tokens, and cost for every thread. Break usage down by agent, connection, organization, or teammate — one dashboard.
 
 ### From your desktop to your org
 
@@ -94,8 +96,8 @@ Token spend per connection — OpenRouter, Perplexity, Firecrawl, all of it. Lat
 |---|---|
 | **Local** | `bunx decostudio` on your desktop. Embedded PostgreSQL. Private. |
 | **Cloud** | Log in to studio.decocms.com. Control local projects from any browser. |
-| **Team** | Invite people. Roles. Shared connections. Cost attribution. |
-| **Enterprise** | Self-hosted. Your infra. Your rules. |
+| **Team** | Invite people. SSO and role-based access. Shared connections. Cost attribution. |
+| **Enterprise** | Self-hosted. Organization isolation, tool-scoped API keys, audit logs. Your infra, your rules. |
 
 ---
 
@@ -103,13 +105,14 @@ Token spend per connection — OpenRouter, Perplexity, Firecrawl, all of it. Lat
 
 | Capability | What it does |
 |---|---|
-| **Agents** | Browse, hire, and compose AI agents with tracked skills and cost attribution |
-| **Connections** | Route MCP traffic through one governed endpoint with auth, proxy, and token vault |
+| **Agents** | Package context, tools, and policy into publishable agents with cost attribution |
+| **Connections** | Route MCP traffic through one governed endpoint with auth, proxy, and encrypted token vault |
+| **Models** | Interchangeable AI layer — OpenRouter or direct providers, model policy per agent |
 | **Projects** | Organize agents and connections around goals with an adaptive UI |
 | **Virtual MCPs** | Compose and expose governed toolsets as new MCP endpoints |
-| **Observability** | Traces, costs, errors, and latency per connection — one dashboard |
-| **Access Control** | RBAC via Better Auth — OAuth 2.1 + API keys per workspace/project |
-| **Multi-tenancy** | Workspace/project isolation for config, credentials, policies, and audit logs |
+| **Observability** | Traces, costs, errors, and latency per user, agent, and connection — one dashboard |
+| **Access Control** | SSO + RBAC via Better Auth — OAuth 2.1 and tool-scoped API keys per workspace/project |
+| **Multi-tenancy** | Organization/project isolation for config, credentials, policies, and audit logs |
 | **Event Bus** | Pub/sub between connections with scheduled/cron delivery and at-least-once guarantees |
 | **Bindings** | Capability contracts so tools target interfaces, not specific implementations |
 | **Store** | Discover and install agents, tools, and templates |
@@ -159,7 +162,7 @@ Every tool call gets input/output validation, access control, audit logging, and
 
 ```
 ├── apps/
-│   ├── mesh/                # Full-stack Deco CMS (Hono API + Vite/React)
+│   ├── mesh/                # Full-stack deco Studio (Hono API + Vite/React)
 │   │   ├── src/
 │   │   │   ├── api/         # Hono HTTP + MCP proxy routes
 │   │   │   ├── auth/        # Better Auth (OAuth + API keys)
@@ -177,7 +180,9 @@ Every tool call gets input/output validation, access control, audit logging, and
     ├── bindings/            # Core MCP bindings and connection abstractions
     ├── runtime/             # MCP proxy, OAuth, and runtime utilities
     ├── ui/                  # Shared React components (shadcn-based)
-    ├── cli/                 # CLI tooling (deco commands)
+    ├── std/                 # Isomorphic async primitives (sleep, retry, backoff)
+    ├── sandbox/             # Isolated per-agent containerized environments
+    ├── mesh-sdk/            # SDK for external apps integrating with Studio
     └── create-deco/         # Project scaffolding (npm create deco)
 ```
 
@@ -223,10 +228,10 @@ bun run dev:conductor
 
 ```bash
 # Docker (embedded PostgreSQL)
-docker compose -f deploy/docker-compose.yml up
+docker compose -f deploy/docker-compose/docker-compose.yml up
 
 # Docker (PostgreSQL)
-docker compose -f deploy/docker-compose.postgres.yml up
+docker compose -f deploy/docker-compose/docker-compose.postgres.yml up
 
 # Bun
 bun run build:client && bun run build:server && bun run start
@@ -236,6 +241,54 @@ helm install deco-studio oci://ghcr.io/decocms/chart-deco-studio --version <vers
 ```
 
 No vendor lock-in. Runs on Docker, Kubernetes, AWS, GCP, or local runtimes.
+
+### What you need to run it
+
+| Tier | Footprint |
+|---|---|
+| **Laptop** | Nothing. One process, embedded PostgreSQL. |
+| **Docker** | The published image. Bring PostgreSQL or use the embedded one. |
+| **Production (Helm)** | PostgreSQL you bring, plus optional NATS (event bus wake-up), ClickHouse + OTel Collector (traces and analytics), and the sandbox operator (isolated agent environments on Kubernetes). Your identity provider, your model keys, your storage. |
+
+### Production topology
+
+```mermaid
+graph TB
+    clients["MCP clients — Cursor · Claude · VS Code · your code"]
+
+    clients -->|"one MCP endpoint · SSO · RBAC · audit"| api
+
+    subgraph k8s ["Kubernetes (Helm)"]
+        api["Studio API + Admin UI"]
+        worker["Workers — event bus · schedules"]
+        sandbox["Agent sandboxes (sandbox-operator)"]
+        otel["OTel Collector"]
+    end
+
+    subgraph deps ["Data plane"]
+        pg[("PostgreSQL")]
+        nats["NATS"]
+        ch[("ClickHouse")]
+    end
+
+    subgraph upstream ["Models & tools"]
+        direction TB
+        models["Anthropic · OpenAI · OpenRouter · Ollama"]
+        mcps["GitHub · Slack · Postgres · your MCP servers"]
+    end
+
+    api --> sandbox
+    api -->|"traces · costs"| otel
+    api --> pg
+    api -->|"notify"| nats
+    worker -->|"wake"| nats
+    worker --> pg
+    otel --> ch
+    api --> models
+    api -->|"vaulted credentials"| mcps
+```
+
+Every box is optional except Studio and PostgreSQL — start small, turn on the rest as the rollout grows.
 
 ---
 
