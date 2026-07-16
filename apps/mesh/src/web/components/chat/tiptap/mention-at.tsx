@@ -11,7 +11,7 @@ import {
   useMCPClient,
   useProjectContext,
   useVirtualMCPs,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { ListResourcesResult } from "@modelcontextprotocol/sdk/types.js";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Editor } from "@tiptap/react";

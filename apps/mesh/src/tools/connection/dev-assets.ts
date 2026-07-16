@@ -10,7 +10,7 @@ import { OBJECT_STORAGE_BINDING } from "@decocms/bindings/object-storage";
 import {
   getWellKnownDevAssetsConnection,
   WellKnownOrgMCPId,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { z } from "zod";
 import { type ConnectionEntity, type ToolDefinition } from "./schema";
 

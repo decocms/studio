@@ -1,6 +1,6 @@
 import { Suspense, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import {
   AlertCircle,
   Check,

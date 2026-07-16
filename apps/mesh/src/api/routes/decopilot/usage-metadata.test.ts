@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { calculateUsageStats } from "@decocms/mesh-sdk";
+import { calculateUsageStats } from "@decocms/studio-sdk";
 
 describe("calculateUsageStats - multi-turn usage", () => {
   /**

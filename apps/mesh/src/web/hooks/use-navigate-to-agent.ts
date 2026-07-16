@@ -5,8 +5,8 @@
  * agent navigation with automatic personal sidebar membership.
  */
 
-import { useProjectContext, useVirtualMCPs } from "@decocms/mesh-sdk";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import { useProjectContext, useVirtualMCPs } from "@decocms/studio-sdk";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 import { useNavigate } from "@tanstack/react-router";
 import { useSyncExternalStore } from "react";
 import { authClient } from "@/web/lib/auth-client";

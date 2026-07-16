@@ -1,7 +1,7 @@
 {
-  "name": "@decocms/mesh-sdk",
+  "name": "@decocms/studio-sdk",
   "version": "1.28.0",
-  "description": "SDK for building external apps that integrate with Mesh MCP servers",
+  "description": "SDK for building external apps that integrate with Studio MCP servers",
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
@@ -34,7 +34,7 @@
     "node": ">=18.0.0"
   },
   "keywords": [
-    "mesh",
+    "studio",
     "mcp",
     "model-context-protocol",
     "sdk",
@@ -44,7 +44,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/decocms/studio.git",
-    "directory": "packages/mesh-sdk"
+    "directory": "packages/studio-sdk"
   },
   "license": "MIT",
   "publishConfig": {

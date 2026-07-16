@@ -20,7 +20,7 @@ import {
   useProjectContext,
   type AiProviderInfo,
   type AiProviderKey,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/query-keys";
 import {

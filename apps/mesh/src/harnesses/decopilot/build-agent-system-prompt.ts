@@ -25,7 +25,7 @@ import {
 } from "@decocms/harness/coding-workspace-prompt";
 import { buildOrgFilesystemPrompt } from "@/api/routes/decopilot/constants";
 import { sandboxIsDecoSite } from "./built-in-tools/cluster-sandbox-fs";
-import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { GithubRepo } from "@decocms/studio-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   buildSystemMessages,

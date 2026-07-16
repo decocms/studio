@@ -1,6 +1,6 @@
 import { AlertTriangle } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 

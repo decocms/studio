@@ -13,7 +13,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { KEYS } from "../../lib/query-keys";
 import { useOptionalChatStream } from "./context.tsx";
 

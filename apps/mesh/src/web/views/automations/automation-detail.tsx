@@ -33,7 +33,7 @@ import {
   StudioPackAgentId,
   useConnections,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { buildImprovePromptDoc } from "@/web/components/chat/tiptap/build-improve-prompt-doc";
 import {

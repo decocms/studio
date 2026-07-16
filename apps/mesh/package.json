@@ -94,7 +94,7 @@
     "@decocms/bindings": "workspace:*",
     "@decocms/harness": "workspace:*",
     "@decocms/mcp-utils": "workspace:*",
-    "@decocms/mesh-sdk": "workspace:*",
+    "@decocms/studio-sdk": "workspace:*",
     "@decocms/runtime": "workspace:*",
     "@decocms/sandbox": "workspace:*",
     "@decocms/std": "workspace:*",

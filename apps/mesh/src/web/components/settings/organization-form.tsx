@@ -1,7 +1,7 @@
 import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { KEYS } from "@/web/lib/query-keys";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { zodResolver } from "@hookform/resolvers/zod";

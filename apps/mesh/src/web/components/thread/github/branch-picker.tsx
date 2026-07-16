@@ -1,5 +1,5 @@
 import { type UIEvent, useRef, useState } from "react";
-import type { SandboxMap } from "@decocms/mesh-sdk";
+import type { SandboxMap } from "@decocms/studio-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {

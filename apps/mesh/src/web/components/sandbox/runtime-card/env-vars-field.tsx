@@ -7,7 +7,7 @@ import type {
 } from "react-hook-form";
 import { Controller, useFieldArray, useWatch } from "react-hook-form";
 import { toast } from "sonner";
-import { ENV_VAR_KEY_RE } from "@decocms/mesh-sdk";
+import { ENV_VAR_KEY_RE } from "@decocms/studio-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Dialog,

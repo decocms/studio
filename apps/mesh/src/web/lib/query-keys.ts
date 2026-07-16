@@ -5,7 +5,7 @@
  * and prevents inline array declarations that are harder to maintain.
  */
 
-import { ProjectLocator } from "@decocms/mesh-sdk";
+import { ProjectLocator } from "@decocms/studio-sdk";
 
 export const KEYS = {
   // Public config (no auth required)
@@ -144,7 +144,7 @@ export const KEYS = {
   mcpTools: (url: string, token?: string | null) =>
     ["mcp", "tools", url, token] as const,
 
-  // Prefix for all mesh-sdk mcp-client queries (mcpClient, mcpToolsList,
+  // Prefix for all studio-sdk mcp-client queries (mcpClient, mcpToolsList,
   // mcpResourcesList, mcpPromptsList, mcpReadResource, mcpGetPrompt,
   // mcpToolCall — all start with ["mcp", "client", ...]). Use with
   // invalidateQueries to blow away every cached client query at once,

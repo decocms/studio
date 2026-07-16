@@ -12,8 +12,8 @@ import {
   DrawerTitle,
 } from "@deco/ui/components/drawer.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { useProjectContext } from "@decocms/mesh-sdk";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk";
 import { Check, Copy01, Key01, Loading01 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Suspense, useState } from "react";

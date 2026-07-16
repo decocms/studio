@@ -6,7 +6,7 @@ import {
   useConnections,
   useMCPClient,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 
 import { EmptyState } from "@deco/ui/components/empty-state.tsx";
 import {

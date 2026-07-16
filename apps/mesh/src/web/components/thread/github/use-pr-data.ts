@@ -13,7 +13,7 @@
  * still goes through the separate `list_pull_requests` tool.
  */
 
-import { useMCPClient, useMCPToolCallQuery } from "@decocms/mesh-sdk";
+import { useMCPClient, useMCPToolCallQuery } from "@decocms/studio-sdk";
 
 import { extractPullRequestList } from "./github-pr-api.ts";
 import { extractToolJson } from "./extract-tool-json.ts";

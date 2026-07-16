@@ -46,7 +46,7 @@ import {
   useVirtualMCP,
   useVirtualMCPActions,
   useVirtualMCPsLastUsed,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";

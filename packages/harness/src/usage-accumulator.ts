@@ -20,7 +20,7 @@
  *
  * The accumulator exposes two emission helpers that produce the exact
  * `messageMetadata.usage` shape the frontend expects (see
- * `packages/mesh-sdk/src/lib/usage.ts:UsageData`):
+ * `packages/studio-sdk/src/lib/usage.ts:UsageData`):
  *   - `buildStepUsage()` for `finish-step` chunks (cumulative through
  *     the current step, no `reasoningTokens` or sanitized provider
  *     metadata).
@@ -35,7 +35,7 @@
  * stays 0 — the UI then shows tokens instead of a dollar amount.
  */
 
-import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
+import { sanitizeProviderMetadata } from "@decocms/studio-sdk";
 import type { LanguageModelUsage } from "ai";
 
 /**

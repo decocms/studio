@@ -14,7 +14,7 @@ import {
   CommandItem,
   CommandList,
 } from "@deco/ui/components/command.tsx";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/query-keys";
 import { usePanelActions } from "@/web/layouts/shell-layout";

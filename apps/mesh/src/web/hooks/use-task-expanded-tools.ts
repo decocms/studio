@@ -5,7 +5,7 @@
  * the most recent expansion for a given tool name wins.
  */
 
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ThreadExpandedTool, ThreadMetadata } from "../../storage/types";

@@ -17,7 +17,7 @@ import {
   ProjectContextProvider,
   SELF_MCP_ALIAS_ID,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import {
   Outlet,

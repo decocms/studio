@@ -2,7 +2,7 @@ import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
   useVirtualMCP,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { Chat } from "./index";
 import { useChatPrefs, useChatTask } from "./context";

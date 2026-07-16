@@ -38,7 +38,7 @@ import {
   useVirtualMCPs,
   type VirtualMCPEntity,
   type VirtualMcpHomeTile,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import {
   useDefaultHomeAgents,
   useHomeAgentsWriter,

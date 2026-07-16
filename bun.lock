@@ -38,7 +38,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "4.52.4",
+      "version": "4.61.0",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -89,10 +89,10 @@
         "@decocms/bindings": "workspace:*",
         "@decocms/harness": "workspace:*",
         "@decocms/mcp-utils": "workspace:*",
-        "@decocms/mesh-sdk": "workspace:*",
         "@decocms/runtime": "workspace:*",
         "@decocms/sandbox": "workspace:*",
         "@decocms/std": "workspace:*",
+        "@decocms/studio-sdk": "workspace:*",
         "@decocms/tunnel": "workspace:*",
         "@floating-ui/react": "^0.27.16",
         "@happy-dom/global-registrator": "^20.9.0",
@@ -208,7 +208,7 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "1.11.1",
+      "version": "1.13.0",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/sandbox": "workspace:*",
@@ -236,8 +236,8 @@
         "@ai-sdk/google": "^3.0.83",
         "@ai-sdk/openai": "^3.0.73",
         "@ai-sdk/provider": "^3.0.10",
-        "@decocms/mesh-sdk": "workspace:*",
         "@decocms/std": "workspace:*",
+        "@decocms/studio-sdk": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@openrouter/ai-sdk-provider": "^2.9.1",
         "@opentelemetry/api": "^1.9.0",
@@ -268,25 +268,6 @@
         "@modelcontextprotocol/sdk": ">=1.27.0",
       },
     },
-    "packages/mesh-sdk": {
-      "name": "@decocms/mesh-sdk",
-      "version": "1.25.1",
-      "dependencies": {
-        "@decocms/bindings": "^1.1.1",
-        "@decocms/mcp-utils": "workspace:*",
-        "@modelcontextprotocol/sdk": "1.29.0",
-        "zod": "^4.0.0",
-      },
-      "peerDependencies": {
-        "@tanstack/react-query": ">=5.0.0",
-        "react": ">=18.0.0",
-        "react-dom": ">=18.0.0",
-        "sonner": ">=2.0.0",
-      },
-      "optionalPeers": [
-        "sonner",
-      ],
-    },
     "packages/runtime": {
       "name": "@decocms/runtime",
       "version": "2.3.1",
@@ -310,7 +291,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.15.20",
+      "version": "1.17.2",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/std": "workspace:*",
@@ -331,6 +312,25 @@
       "name": "@decocms/std",
       "version": "0.1.1",
     },
+    "packages/studio-sdk": {
+      "name": "@decocms/studio-sdk",
+      "version": "1.26.2",
+      "dependencies": {
+        "@decocms/bindings": "^1.1.1",
+        "@decocms/mcp-utils": "workspace:*",
+        "@modelcontextprotocol/sdk": "1.29.0",
+        "zod": "^4.0.0",
+      },
+      "peerDependencies": {
+        "@tanstack/react-query": ">=5.0.0",
+        "react": ">=18.0.0",
+        "react-dom": ">=18.0.0",
+        "sonner": ">=2.0.0",
+      },
+      "optionalPeers": [
+        "sonner",
+      ],
+    },
     "packages/tunnel": {
       "name": "@decocms/tunnel",
       "version": "0.2.0",
@@ -341,7 +341,7 @@
     },
     "packages/typegen": {
       "name": "@decocms/typegen",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "bin": {
         "typegen": "./dist/cli.js",
       },
@@ -696,13 +696,13 @@
 
     "@decocms/mcp-utils": ["@decocms/mcp-utils@workspace:packages/mcp-utils"],
 
-    "@decocms/mesh-sdk": ["@decocms/mesh-sdk@workspace:packages/mesh-sdk"],
-
     "@decocms/runtime": ["@decocms/runtime@workspace:packages/runtime"],
 
     "@decocms/sandbox": ["@decocms/sandbox@workspace:packages/sandbox"],
 
     "@decocms/std": ["@decocms/std@workspace:packages/std"],
+
+    "@decocms/studio-sdk": ["@decocms/studio-sdk@workspace:packages/studio-sdk"],
 
     "@decocms/tunnel": ["@decocms/tunnel@workspace:packages/tunnel"],
 

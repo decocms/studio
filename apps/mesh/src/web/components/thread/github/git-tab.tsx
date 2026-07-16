@@ -12,7 +12,7 @@
  * message-templates.ts. The LLM executes the action via its GitHub tools.
  */
 
-import { useProjectContext, useVirtualMCP } from "@decocms/mesh-sdk";
+import { useProjectContext, useVirtualMCP } from "@decocms/studio-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { GitBranch01, LinkExternal01 } from "@untitledui/icons";
 import { MemoizedMarkdown } from "../../chat/markdown.tsx";

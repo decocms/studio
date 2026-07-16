@@ -9,7 +9,7 @@
  */
 
 import { slugify } from "@decocms/mcp-utils/aggregate";
-import type { AgentKickstartPrompt } from "@decocms/mesh-sdk/types";
+import type { AgentKickstartPrompt } from "@decocms/studio-sdk/types";
 import type { OrgFs } from "./org-fs";
 
 const AGENT_PROMPTS_VOLUME = "agent-prompts";

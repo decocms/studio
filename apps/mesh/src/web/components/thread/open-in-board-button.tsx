@@ -1,4 +1,4 @@
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { LayoutAlt01 } from "@untitledui/icons";
 import {

@@ -5,7 +5,7 @@ import { Page } from "@/web/components/page";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import {
   useOrgSsoConfig,
   useSaveOrgSsoConfig,

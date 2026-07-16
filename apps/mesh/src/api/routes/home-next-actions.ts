@@ -15,7 +15,7 @@
 
 import { Hono } from "hono";
 import { slugify } from "@decocms/mcp-utils/aggregate";
-import { getHomeTiles, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { getHomeTiles, WellKnownOrgMCPId } from "@decocms/studio-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import type { StudioContext } from "@/core/studio-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";

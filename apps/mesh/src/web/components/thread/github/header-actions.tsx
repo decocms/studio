@@ -3,7 +3,7 @@ import {
   useMCPClient,
   useProjectContext,
   useVirtualMCP,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
 import {

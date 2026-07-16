@@ -4,11 +4,11 @@
  * Shared helpers, types, and constants used across monitoring tabs.
  */
 
-import type { useConnections, useVirtualMCPs } from "@decocms/mesh-sdk";
+import type { useConnections, useVirtualMCPs } from "@decocms/studio-sdk";
 import {
   isDecopilot,
   getWellKnownDecopilotVirtualMCP,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { useMembers } from "@/web/hooks/use-members";
 import type {
   DateRange,

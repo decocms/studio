@@ -106,8 +106,8 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-} from "@decocms/mesh-sdk";
-import type { SandboxMap } from "@decocms/mesh-sdk/types";
+} from "@decocms/studio-sdk";
+import type { SandboxMap } from "@decocms/studio-sdk/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { useChatTask } from "@/web/components/chat/context";

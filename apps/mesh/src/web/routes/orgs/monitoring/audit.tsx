@@ -3,9 +3,9 @@
  */
 
 import { useState } from "react";
-import type { useConnections, useVirtualMCPs } from "@decocms/mesh-sdk";
-import { useMCPClient } from "@decocms/mesh-sdk";
-import type { useProjectContext } from "@decocms/mesh-sdk";
+import type { useConnections, useVirtualMCPs } from "@decocms/studio-sdk";
+import { useMCPClient } from "@decocms/studio-sdk";
+import type { useProjectContext } from "@decocms/studio-sdk";
 import { useQuery, useSuspenseInfiniteQuery } from "@tanstack/react-query";
 import { Button } from "@deco/ui/components/button.tsx";
 import {

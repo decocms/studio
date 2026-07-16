@@ -1,4 +1,4 @@
-import { useProjectContext, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { useProjectContext, WellKnownOrgMCPId } from "@decocms/studio-sdk";
 import {
   useMutation,
   useQuery,

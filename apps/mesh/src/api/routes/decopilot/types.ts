@@ -9,7 +9,7 @@
 
 import type { LanguageModelV2 } from "@ai-sdk/provider";
 import type { InferUITool, UIMessage } from "ai";
-import type { ToolDefinition, UsageStats } from "@decocms/mesh-sdk";
+import type { ToolDefinition, UsageStats } from "@decocms/studio-sdk";
 import type { Metadata } from "@/web/components/chat/types";
 import type { BuiltInToolSet } from "@/harnesses/decopilot/built-in-tools";
 import type { ModelsConfig as HarnessModelsConfig } from "@decocms/harness/types";

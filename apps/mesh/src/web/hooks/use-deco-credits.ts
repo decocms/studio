@@ -5,7 +5,7 @@
  * chat error banners, and settings page into a single source of truth.
  */
 
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "../lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";

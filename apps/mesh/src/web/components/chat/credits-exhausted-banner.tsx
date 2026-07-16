@@ -25,7 +25,7 @@ import { Input } from "@deco/ui/components/input.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { useStudioTools } from "@/web/lib/studio-tools";

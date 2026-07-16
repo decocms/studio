@@ -2,7 +2,7 @@ import type {
   CallToolRequest,
   CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { isDecopilot } from "@decocms/mesh-sdk";
+import { isDecopilot } from "@decocms/studio-sdk";
 import { trace, context } from "@opentelemetry/api";
 import type { StudioContext } from "../../core/studio-context";
 import { emitMonitoringLog } from "../../monitoring/emit";

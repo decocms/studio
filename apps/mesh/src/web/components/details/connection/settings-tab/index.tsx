@@ -5,7 +5,7 @@ import {
   useMCPToolCall,
   useProjectContext,
   type ConnectionEntity,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Key01, File06, Loading01 } from "@untitledui/icons";
 import { Suspense } from "react";

@@ -10,7 +10,7 @@ import { Settings02, UserPlus01, ZapSquare } from "@untitledui/icons";
 import { useState } from "react";
 import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { SidebarTopActions } from "@/web/components/sidebar/top-actions";

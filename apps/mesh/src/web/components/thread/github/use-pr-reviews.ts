@@ -11,7 +11,7 @@
  *   available without an additional review-threads call.
  */
 
-import { useMCPClient, useMCPToolCallQuery } from "@decocms/mesh-sdk";
+import { useMCPClient, useMCPToolCallQuery } from "@decocms/studio-sdk";
 
 import { extractToolJson } from "./extract-tool-json.ts";
 

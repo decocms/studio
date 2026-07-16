@@ -9,7 +9,7 @@
  * Types come from `@/tools/io-types` (`import type` only — no server code is
  * bundled).
  */
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import type { ToolIO, ToolName } from "@/tools/io-types";
 
 /** Thrown when a tool REST call returns a non-2xx status. `status` is the HTTP code. */

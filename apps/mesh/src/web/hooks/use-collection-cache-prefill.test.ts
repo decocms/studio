@@ -3,7 +3,7 @@ import { QueryClient } from "@tanstack/react-query";
 import {
   buildCollectionQueryKey,
   EMPTY_COLLECTION_LIST_RESULT,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
 // Test the core prefilling logic directly

@@ -2,7 +2,7 @@
 
 import { Monitor01 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
-import { useOrg } from "@decocms/mesh-sdk";
+import { useOrg } from "@decocms/studio-sdk";
 import { ToolCallShell } from "./common.tsx";
 import { getEffectiveState } from "./utils.tsx";
 import { ImageLightbox } from "../../../image-lightbox.tsx";

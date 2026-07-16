@@ -31,7 +31,7 @@ import {
   getWellKnownDecopilotVirtualMCP,
   useConnections,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { getOrgGithubConnections } from "@/shared/github-repo-scope";
 import { useConnectApp } from "@/web/hooks/use-connect-app";
 import { useMembers } from "@/web/hooks/use-members";

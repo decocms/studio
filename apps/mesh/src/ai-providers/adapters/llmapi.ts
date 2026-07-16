@@ -1,5 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import type { ModelCapability } from "@decocms/mesh-sdk";
+import type { ModelCapability } from "@decocms/studio-sdk";
 import type { MeshProvider, ModelInfo, ProviderAdapter } from "../types";
 
 const LLMAPI_BASE_URL = "https://api.llmapi.ai/v1";

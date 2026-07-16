@@ -13,7 +13,7 @@ import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
   useVirtualMCP,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowUp,

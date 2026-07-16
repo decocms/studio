@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
-import { useConnections } from "@decocms/mesh-sdk";
+import { useConnections } from "@decocms/studio-sdk";
 import { Loading01, XClose, Zap } from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";

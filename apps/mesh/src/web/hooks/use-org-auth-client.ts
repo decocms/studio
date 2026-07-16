@@ -18,7 +18,7 @@
  */
 
 import { authClient } from "@/web/lib/auth-client";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 
 type OrgClient = typeof authClient.organization;
 

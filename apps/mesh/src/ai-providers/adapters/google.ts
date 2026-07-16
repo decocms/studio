@@ -1,5 +1,5 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import type { ModelCapability } from "@decocms/mesh-sdk";
+import type { ModelCapability } from "@decocms/studio-sdk";
 import {
   isInteractionsOnlyModel,
   pollInteraction,

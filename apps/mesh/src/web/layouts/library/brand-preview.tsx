@@ -14,7 +14,7 @@
 
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
 import {

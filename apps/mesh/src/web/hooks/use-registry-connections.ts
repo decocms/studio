@@ -13,7 +13,7 @@ import {
   useConnections,
   useProjectContext,
   WellKnownOrgMCPId,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useRegistryConfig } from "./use-organization-settings";
 
 export function useRegistryConnections() {

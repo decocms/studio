@@ -1,5 +1,5 @@
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { Suspense, useState } from "react";
 import { ErrorBoundary } from "../error-boundary";
 

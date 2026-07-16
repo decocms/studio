@@ -1,7 +1,7 @@
 import {
   createDecopilotThreadStatusEvent,
   type ThreadStatus,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { SSEEvent } from "@/event-bus";
 
 /** Minimal thread-row shape needed to build a `decopilot.thread.status` event. */

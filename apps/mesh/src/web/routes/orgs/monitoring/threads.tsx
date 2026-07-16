@@ -3,8 +3,8 @@
  */
 
 import { Suspense, useState } from "react";
-import type { useConnections, useVirtualMCPs } from "@decocms/mesh-sdk";
-import { useMCPClient } from "@decocms/mesh-sdk";
+import type { useConnections, useVirtualMCPs } from "@decocms/studio-sdk";
+import { useMCPClient } from "@decocms/studio-sdk";
 import {
   useInfiniteQuery,
   useQuery,

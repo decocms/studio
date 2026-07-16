@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Capability } from "@/links/protocol";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/query-keys";
 

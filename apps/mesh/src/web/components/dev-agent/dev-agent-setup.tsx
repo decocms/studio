@@ -22,8 +22,8 @@ import {
   isDecopilot,
   useVirtualMCPActions,
   useVirtualMCPs,
-} from "@decocms/mesh-sdk";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+} from "@decocms/studio-sdk";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { GitHubRepoPicker } from "@/web/components/github-repo-picker.tsx";
 import {

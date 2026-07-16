@@ -3,7 +3,10 @@
  * Provides inline virtual MCP creation with optional navigation.
  */
 
-import { useVirtualMCPActions, type VirtualMCPEntity } from "@decocms/mesh-sdk";
+import {
+  useVirtualMCPActions,
+  type VirtualMCPEntity,
+} from "@decocms/studio-sdk";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 
 interface CreateVirtualMCPResult {

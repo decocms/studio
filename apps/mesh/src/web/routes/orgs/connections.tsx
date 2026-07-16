@@ -64,7 +64,7 @@ import {
   useProjectContext,
   type ConnectionEntity,
   useVirtualMCPs,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";

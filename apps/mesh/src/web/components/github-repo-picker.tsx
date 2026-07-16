@@ -24,10 +24,10 @@ import {
   useConnections,
   useConnectionActions,
   SELF_MCP_ALIAS_ID,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { authenticateAndPersistOAuth } from "@/web/lib/authenticate-and-persist-oauth";
-import type { ConnectionEntity } from "@decocms/mesh-sdk";
+import type { ConnectionEntity } from "@decocms/studio-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { toast } from "sonner";
 import {

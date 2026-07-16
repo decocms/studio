@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import type { SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
+import type { SandboxMap, SandboxRecord } from "@decocms/studio-sdk";
 import type { StudioContext } from "../../core/studio-context";
 import type {
   SandboxProvider,

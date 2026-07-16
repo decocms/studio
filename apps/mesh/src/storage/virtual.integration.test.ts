@@ -7,7 +7,7 @@ import {
 } from "../database/test-db-pg";
 import type { StudioDatabase } from "../database";
 import { VirtualMCPStorage } from "./virtual";
-import { getDecopilotId } from "@decocms/mesh-sdk";
+import { getDecopilotId } from "@decocms/studio-sdk";
 
 describe("VirtualMCPStorage.findById (Decopilot)", () => {
   let database: StudioDatabase;

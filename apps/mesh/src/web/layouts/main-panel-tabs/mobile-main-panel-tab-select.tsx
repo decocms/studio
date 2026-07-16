@@ -9,7 +9,7 @@ import {
 import {
   getCommerceDiscoveryAgentId,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { shouldDeepLinkSourceTab } from "./source-system-tabs";

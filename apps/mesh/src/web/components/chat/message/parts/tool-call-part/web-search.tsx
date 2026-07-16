@@ -4,7 +4,7 @@ import { useState } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Globe02, LinkExternal01 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
-import { useOrg } from "@decocms/mesh-sdk";
+import { useOrg } from "@decocms/studio-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys.ts";
 import { ToolCallShell } from "./common.tsx";
@@ -15,7 +15,7 @@ import {
   type UsageStats,
   type UsageData,
   getCostFromUsage,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { parseStudioStorageKey } from "@/api/routes/decopilot/studio-storage-uri";
 
 function resolveStorageUri(uri: string, orgSlug: string): string {

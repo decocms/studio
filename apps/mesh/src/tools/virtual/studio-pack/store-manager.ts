@@ -1,4 +1,4 @@
-import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/studio-sdk";
 import type { StudioPackChecklistItem, StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>

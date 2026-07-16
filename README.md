@@ -182,7 +182,7 @@ Every tool call gets input/output validation, access control, audit logging, and
     ├── ui/                  # Shared React components (shadcn-based)
     ├── std/                 # Isomorphic async primitives (sleep, retry, backoff)
     ├── sandbox/             # Isolated per-agent containerized environments
-    ├── mesh-sdk/            # SDK for external apps integrating with Studio
+    ├── studio-sdk/          # SDK for external apps integrating with Studio
     └── create-deco/         # Project scaffolding (npm create deco)
 ```
 

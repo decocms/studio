@@ -1,4 +1,4 @@
-import type { ProjectLocator } from "@decocms/mesh-sdk";
+import type { ProjectLocator } from "@decocms/studio-sdk";
 import type { TiptapDoc } from "@/web/components/chat/types";
 import { isTiptapDocEmpty } from "@/web/components/chat/tiptap/utils";
 import { LOCALSTORAGE_KEYS } from "./localstorage-keys";

@@ -1,7 +1,7 @@
 // Shared utility functions for handling tool/resource/prompt selections
 // across virtual MCP and agent components
 
-import type { VirtualMCPConnection } from "@decocms/mesh-sdk/types";
+import type { VirtualMCPConnection } from "@decocms/studio-sdk/types";
 
 /**
  * SelectionValue state meanings:
@@ -25,7 +25,7 @@ export interface ConnectionFormValue {
 
 /**
  * Connection selection type - re-exported from SDK for convenience
- * @deprecated Use VirtualMCPConnection from @decocms/mesh-sdk/types instead
+ * @deprecated Use VirtualMCPConnection from @decocms/studio-sdk/types instead
  */
 export type ConnectionSelection = VirtualMCPConnection;
 

@@ -18,11 +18,11 @@ import {
   useMCPResourcesList,
   useMCPToolsList,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { AlertTriangle, Loading01, LockUnlocked01 } from "@untitledui/icons";
 import type { ReactNode } from "react";
 import { Suspense, useReducer } from "react";
-import type { VirtualMCPConnection } from "@decocms/mesh-sdk/types";
+import type { VirtualMCPConnection } from "@decocms/studio-sdk/types";
 import {
   type ConnectionFormValue,
   type SelectionValue,

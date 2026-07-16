@@ -6,7 +6,7 @@
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { isDecopilot } from "@decocms/mesh-sdk";
+import { isDecopilot } from "@decocms/studio-sdk";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { getMcpListCache } from "../mcp-list-cache";
 import type { StudioContext } from "../../core/studio-context";

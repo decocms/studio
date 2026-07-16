@@ -12,7 +12,7 @@
 
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import type { ConnectionEntity } from "@/tools/connection/schema";
-import { createServerFromClient } from "@decocms/mesh-sdk";
+import { createServerFromClient } from "@decocms/studio-sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type {
   ListPromptsResult,

@@ -152,8 +152,8 @@ export interface UseUiResourceHtmlOptions
   connectionId: string;
   /** Resource URI (e.g. `ui://...`). */
   uri: string;
-  /** Base mesh URL; defaults to the current origin. */
-  meshUrl?: string;
+  /** Base Studio URL; defaults to the current origin. */
+  studioUrl?: string;
 }
 
 /**
@@ -168,7 +168,7 @@ export function useUiResourceHtml({
   orgSlug,
   connectionId,
   uri,
-  meshUrl,
+  studioUrl,
   ...queryOptions
 }: UseUiResourceHtmlOptions): UseSuspenseQueryResult<string, Error> {
   return useSuspenseQuery<string, Error>({
@@ -176,7 +176,7 @@ export function useUiResourceHtml({
     queryKey: KEYS.mcpUiResourceHtml(orgSlug, connectionId, uri),
     queryFn: async () => {
       const base =
-        meshUrl ??
+        studioUrl ??
         (typeof window !== "undefined" ? window.location.origin : "");
       const url = `${base}/api/${encodeURIComponent(
         orgSlug,

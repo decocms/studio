@@ -10,7 +10,7 @@ import {
   ENV_VAR_KEY_RE,
   type RuntimeEnvEntry,
   type SandboxRecord,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 import {

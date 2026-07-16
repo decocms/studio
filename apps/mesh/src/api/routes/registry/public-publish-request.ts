@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { posthog } from "@/posthog";
 import type { RegistryRouteContext } from "./route-context";
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { WellKnownOrgMCPId } from "@decocms/studio-sdk";
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
 import { randomUUID } from "node:crypto";

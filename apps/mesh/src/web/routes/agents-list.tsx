@@ -5,7 +5,7 @@ import {
   useVirtualMCPActions,
   useVirtualMCPs,
   useVirtualMCPsLastUsed,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { Page } from "@/web/components/page";
 import { ProjectCard } from "@/web/components/project-card";
 import { useCapability } from "@/web/hooks/use-capability";

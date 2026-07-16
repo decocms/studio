@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import {
   Tabs,
   TabsContent,

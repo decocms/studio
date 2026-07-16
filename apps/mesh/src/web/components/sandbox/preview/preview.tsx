@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, Suspense, lazy } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { formatCodeTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/web/components/chat/context";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 

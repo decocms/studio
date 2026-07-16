@@ -47,8 +47,8 @@ import {
   useProjectContext,
   useVirtualMCP,
   parseBranchMap,
-} from "@decocms/mesh-sdk";
-import type { VirtualMCPEntity, SandboxMap } from "@decocms/mesh-sdk/types";
+} from "@decocms/studio-sdk";
+import type { VirtualMCPEntity, SandboxMap } from "@decocms/studio-sdk/types";
 import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/web/components/sandbox/hooks/use-sandbox-start";

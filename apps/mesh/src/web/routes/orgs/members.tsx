@@ -18,7 +18,7 @@ import { useOrganizationRoles } from "@/web/hooks/use-organization-roles";
 import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { getRoleColor, getRoleDotColor } from "@/web/lib/role-color";
 import { KEYS } from "@/web/lib/query-keys";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import {
   Tooltip,
   TooltipContent,

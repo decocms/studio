@@ -8,7 +8,7 @@ import {
   useConnection,
   useMCPClient,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";

@@ -1,4 +1,4 @@
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { WellKnownOrgMCPId } from "@decocms/studio-sdk";
 import { z } from "zod";
 import { normalizeReportsSiteUrl } from "../../reports/site-url";
 import { defineTool } from "../../core/define-tool";

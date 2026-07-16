@@ -1,6 +1,6 @@
 import { Suspense, lazy } from "react";
 import { Loading01 } from "@untitledui/icons";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useChatTask } from "@/web/components/chat/context";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";

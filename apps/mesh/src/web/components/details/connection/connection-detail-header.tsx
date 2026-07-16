@@ -1,5 +1,5 @@
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
-import type { ConnectionEntity } from "@decocms/mesh-sdk";
+import type { ConnectionEntity } from "@decocms/studio-sdk";
 
 interface ConnectionDetailHeaderProps {
   connection: ConnectionEntity;

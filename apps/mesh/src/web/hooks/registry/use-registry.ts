@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useProjectContext, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { useProjectContext, WellKnownOrgMCPId } from "@decocms/studio-sdk";
 import { toast } from "sonner";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/registry/query-keys";

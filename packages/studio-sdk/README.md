@@ -1,13 +1,13 @@
-# @decocms/mesh-sdk
+# @decocms/studio-sdk
 
 SDK for building external apps that integrate with Studio MCP servers. Provides React hooks and utilities for managing connections, authenticating with OAuth, and calling MCP tools.
 
 ## Installation
 
 ```bash
-npm install @decocms/mesh-sdk @decocms/bindings
+npm install @decocms/studio-sdk @decocms/bindings
 # or
-bun add @decocms/mesh-sdk @decocms/bindings
+bun add @decocms/studio-sdk @decocms/bindings
 ```
 
 ### Peer Dependencies
@@ -39,14 +39,14 @@ await client.callTool({
 
 ```typescript
 // server.ts (Node.js / Bun / your backend)
-import { createMCPClient } from "@decocms/mesh-sdk";
+import { createMCPClient } from "@decocms/studio-sdk";
 
 // Create an MCP client - keep API key on server only!
 const client = await createMCPClient({
-  meshUrl: "https://mesh.your-company.com",  // Your Mesh server URL
+  studioUrl: "https://studio.your-company.com",  // Your Studio server URL
   connectionId: "self",                       // "self" for management API
   orgId: "org_xxxxx",                         // Your organization ID
-  token: process.env.MESH_API_KEY,            // API key from environment
+  token: process.env.STUDIO_API_KEY,            // API key from environment
 });
 
 // List connections
@@ -84,38 +84,38 @@ The most common use case for external apps is letting your end-users connect the
 ```typescript
 // server/api.ts (Hono / Express / your backend)
 import { Hono } from "hono";
-import { createMCPClient } from "@decocms/mesh-sdk";
+import { createMCPClient } from "@decocms/studio-sdk";
 
 const app = new Hono();
 
-const MESH_URL = process.env.MESH_URL!;
-const ORG_ID = process.env.MESH_ORG_ID!;
-const API_KEY = process.env.MESH_API_KEY!;
+const STUDIO_URL = process.env.STUDIO_URL!;
+const ORG_ID = process.env.STUDIO_ORG_ID!;
+const API_KEY = process.env.STUDIO_API_KEY!;
 
-let meshClient: Awaited<ReturnType<typeof createMCPClient>> | null = null;
+let studioClient: Awaited<ReturnType<typeof createMCPClient>> | null = null;
 
-async function getMeshClient() {
-  if (!meshClient) {
-    meshClient = await createMCPClient({
-      meshUrl: MESH_URL,
+async function getStudioClient() {
+  if (!studioClient) {
+    studioClient = await createMCPClient({
+      studioUrl: STUDIO_URL,
       connectionId: "self",
       orgId: ORG_ID,
       token: API_KEY,
     });
   }
-  return meshClient;
+  return studioClient;
 }
 
 // POST /api/connect-session - Create a session for end-user to connect MCPs
 app.post("/api/connect-session", async (c) => {
   const { userId } = await c.req.json();
-  const client = await getMeshClient();
+  const client = await getStudioClient();
 
   // Call User Sandbox plugin to create a connect session
   const result = await client.callTool({
     name: "USER_SANDBOX_CREATE_SESSION",
     arguments: {
-      templateId: "your-template-id",  // Created in Mesh dashboard
+      templateId: "your-template-id",  // Created in Studio dashboard
       externalUserId: userId,           // Your app's user ID
       redirectUrl: "https://your-app.com/connect/complete",
     },
@@ -147,7 +147,7 @@ function ConnectIntegrationsButton({ userId }: { userId: string }) {
     });
     const { connectUrl } = await res.json();
 
-    // Redirect user to Mesh connect flow
+    // Redirect user to Studio connect flow
     window.location.href = connectUrl;
   };
 
@@ -169,13 +169,13 @@ For server-side automation or admin tasks, you can call any MCP tool directly:
 
 ```typescript
 // server-side only
-import { createMCPClient } from "@decocms/mesh-sdk";
+import { createMCPClient } from "@decocms/studio-sdk";
 
 const client = await createMCPClient({
-  meshUrl: "https://mesh.your-company.com",
+  studioUrl: "https://studio.your-company.com",
   connectionId: "self",
   orgId: process.env.ORG_ID!,
-  token: process.env.MESH_API_KEY!,
+  token: process.env.STUDIO_API_KEY!,
 });
 
 // List Virtual MCPs (agents)
@@ -197,10 +197,10 @@ const newConn = await client.callTool({
 
 // Call a tool on a specific connection
 const specificClient = await createMCPClient({
-  meshUrl: "https://mesh.your-company.com",
+  studioUrl: "https://studio.your-company.com",
   connectionId: "conn_xxx",  // Target connection ID
   orgId: process.env.ORG_ID!,
-  token: process.env.MESH_API_KEY!,
+  token: process.env.STUDIO_API_KEY!,
 });
 
 const result = await specificClient.callTool({
@@ -218,10 +218,10 @@ Creates and connects an MCP client to a Studio server. **Use on server only** - 
 ```typescript
 // server-side only
 const client = await createMCPClient({
-  meshUrl: "https://studio.example.com",  // Required for external apps
+  studioUrl: "https://studio.example.com",  // Required for external apps
   connectionId: "self",                  // "self" for management API, or connection ID
   orgId: "org_xxx",                      // Organization ID
-  token: process.env.MESH_API_KEY,       // API key from environment
+  token: process.env.STUDIO_API_KEY,       // API key from environment
 });
 ```
 
@@ -249,7 +249,7 @@ Triggers OAuth authentication flow for an MCP connection. **This runs client-sid
 ```typescript
 // client-side - safe to use in browser
 const result = await authenticateMcp({
-  meshUrl: "https://studio.example.com",  // Required for external apps
+  studioUrl: "https://studio.example.com",  // Required for external apps
   connectionId: "conn_xxx",              // Connection to authenticate
   callbackUrl: "https://your-app.com/oauth/callback",  // Your OAuth callback URL
   timeout: 120000,                       // Timeout in ms (default: 120000)
@@ -276,7 +276,7 @@ Check if a connection is authenticated. Can be used on either server or client.
 const status = await isConnectionAuthenticated({
   url: "https://studio.example.com/mcp/conn_xxx",
   token: "bearer_token",  // Optional
-  meshUrl: "https://studio.example.com",  // For API calls
+  studioUrl: "https://studio.example.com",  // For API calls
 });
 
 console.log(status.isAuthenticated);  // boolean
@@ -289,13 +289,13 @@ console.log(status.hasOAuthToken);    // boolean
 When using with `ProjectContextProvider`, you get access to collection hooks. **Only use when running on the same origin as Studio** (e.g., inside Studio app or plugins).
 
 ```typescript
-// client-side - only for same-origin apps (inside Mesh)
+// client-side - only for same-origin apps (inside Studio)
 import {
   ProjectContextProvider,
   useConnections,
   useConnection,
   useConnectionActions,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 
 function App() {
   return (
@@ -360,7 +360,7 @@ import type {
   VirtualMCPEntity,
   VirtualMCPCreateData,
   VirtualMCPUpdateData,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 ```
 
 ## License

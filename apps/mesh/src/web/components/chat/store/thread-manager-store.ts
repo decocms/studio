@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import {
   DECOPILOT_EVENTS,
   type DecopilotThreadStatusEvent,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type {
   ThreadCreateData,
   ThreadUpdateData,

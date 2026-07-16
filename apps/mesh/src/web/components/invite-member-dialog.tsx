@@ -31,7 +31,7 @@ import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { track } from "@/web/lib/posthog-client";
 import { authClient } from "@/web/lib/auth-client";
 import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { useOrganizationRoles } from "@/web/hooks/use-organization-roles";
 

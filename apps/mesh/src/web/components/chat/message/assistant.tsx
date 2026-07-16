@@ -42,7 +42,7 @@ import {
   type RenderItem,
   useFilterParts,
 } from "./use-filter-parts.ts";
-import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
+import { addUsage, emptyUsageStats } from "@decocms/studio-sdk";
 import { useOptionalChatStream, useOptionalChatTask } from "../context.tsx";
 import { toEpochMs } from "../../../lib/format-time.ts";
 

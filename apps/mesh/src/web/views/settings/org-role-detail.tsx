@@ -17,7 +17,7 @@ import {
   useConnections,
   useProjectContext,
   type ConnectionEntity,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import {
   type AiProviderKey,
   useAiProviderKeys,

@@ -11,7 +11,7 @@
 
 import { Kysely } from "kysely";
 import { nanoid } from "nanoid";
-// Inlined constants (previously from @decocms/mesh-sdk)
+// Inlined constants (previously from @decocms/studio-sdk)
 const ORG_ADMIN_PROJECT_SLUG = "org-admin";
 const ORG_ADMIN_PROJECT_NAME = "Organization Admin";
 

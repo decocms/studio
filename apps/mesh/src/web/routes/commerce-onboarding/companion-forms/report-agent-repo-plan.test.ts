@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { GithubRepo } from "@decocms/studio-sdk";
 import {
   parseRepoFullName,
   planAgentConnections,

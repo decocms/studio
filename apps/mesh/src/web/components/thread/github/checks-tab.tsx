@@ -1,4 +1,4 @@
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { LinkExternal01 } from "@untitledui/icons";
 import { useChatStream } from "../../chat/chat-context.tsx";

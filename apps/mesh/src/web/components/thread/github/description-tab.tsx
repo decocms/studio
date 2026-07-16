@@ -1,4 +1,4 @@
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { MemoizedMarkdown } from "../../chat/markdown.tsx";
 import { CommentsAccordion } from "./comments-accordion.tsx";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";

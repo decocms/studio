@@ -4,7 +4,7 @@
  * `filterEventTypes` view of its own.
  */
 
-import { ALL_DECOPILOT_EVENT_TYPES } from "@decocms/mesh-sdk";
+import { ALL_DECOPILOT_EVENT_TYPES } from "@decocms/studio-sdk";
 import {
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,

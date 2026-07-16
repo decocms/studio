@@ -3,7 +3,7 @@ import {
   type McpAuthStatus,
 } from "@/web/lib/mcp-oauth";
 import { KEYS } from "@/web/lib/query-keys";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
 
 /**

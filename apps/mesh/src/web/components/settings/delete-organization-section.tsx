@@ -2,7 +2,7 @@ import { invalidateOrganizationListCache } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { track } from "@/web/lib/posthog-client";
 import { useStudioTools } from "@/web/lib/studio-tools";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import {
   AlertDialog,
   AlertDialogAction,

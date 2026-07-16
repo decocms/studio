@@ -18,7 +18,7 @@ import {
   isBrandContextSetup,
   isDecopilot,
   normalizeSandboxMap,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type {
   VirtualMCPCreateData,
   VirtualMCPEntity,

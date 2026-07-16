@@ -1,4 +1,4 @@
-import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
+import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/studio-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Dialog, DialogContent } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";

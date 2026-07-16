@@ -3,8 +3,8 @@
 import type { ToolUIPart } from "ai";
 import { Link01 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
-import { useProjectContext } from "@decocms/mesh-sdk";
-import type { ConnectionEntity } from "@decocms/mesh-sdk/types";
+import { useProjectContext } from "@decocms/studio-sdk";
+import type { ConnectionEntity } from "@decocms/studio-sdk/types";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {

@@ -20,7 +20,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import {
   type ConnectionEntity,
   type VirtualMCPEntity,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import {
   CheckSquare,
   Container,

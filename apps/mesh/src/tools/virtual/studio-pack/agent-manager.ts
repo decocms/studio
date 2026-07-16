@@ -1,4 +1,4 @@
-import { StudioPackAgentId, isStudioPackAgent } from "@decocms/mesh-sdk";
+import { StudioPackAgentId, isStudioPackAgent } from "@decocms/studio-sdk";
 import type { ResolveRuntime, StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS_BOOTSTRAP = `<role>

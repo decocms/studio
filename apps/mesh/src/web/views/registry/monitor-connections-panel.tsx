@@ -4,7 +4,7 @@ import {
   isConnectionAuthenticated,
   UI_RESOURCE_HTML_KEY,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { clearHtmlResourceCacheForConnection } from "@/web/lib/html-resource-persist";
 import { useStudioTools } from "@/web/lib/studio-tools";

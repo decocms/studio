@@ -19,8 +19,8 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 
-import type { ToolDefinition } from "@decocms/mesh-sdk";
-import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
+import type { ToolDefinition } from "@decocms/studio-sdk";
+import { useMCPClient, useProjectContext } from "@decocms/studio-sdk";
 import {
   getGatewayClientId,
   stripToolNamespace,

@@ -1,4 +1,4 @@
-import { createMCPClient } from "@decocms/mesh-sdk";
+import { createMCPClient } from "@decocms/studio-sdk";
 import { useQuery } from "@tanstack/react-query";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { KEYS } from "@/web/lib/query-keys";

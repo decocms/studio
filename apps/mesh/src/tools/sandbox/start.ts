@@ -9,7 +9,7 @@
  */
 
 import { z } from "zod";
-import type { SandboxRecord } from "@decocms/mesh-sdk";
+import type { SandboxRecord } from "@decocms/studio-sdk";
 import {
   composeSandboxRef,
   normalizeSandboxProviderKind,

@@ -24,7 +24,7 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { CollectionListOutput } from "@decocms/bindings/collections";
 import { useSuspenseInfiniteQuery } from "@tanstack/react-query";
 import {

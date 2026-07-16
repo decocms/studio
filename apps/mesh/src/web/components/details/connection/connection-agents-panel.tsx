@@ -1,5 +1,5 @@
-import { useProjectContext, useVirtualMCPs } from "@decocms/mesh-sdk";
-import type { ConnectionEntity } from "@decocms/mesh-sdk";
+import { useProjectContext, useVirtualMCPs } from "@decocms/studio-sdk";
+import type { ConnectionEntity } from "@decocms/studio-sdk";
 import { ConnectionVirtualMCPsSection } from "./settings-tab/connection-virtual-mcps-section";
 
 interface ConnectionAgentsPanelProps {

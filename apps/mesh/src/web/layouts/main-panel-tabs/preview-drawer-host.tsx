@@ -9,7 +9,7 @@
  */
 
 import { useRef, useState } from "react";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import {

@@ -1,8 +1,8 @@
 /**
  * MCP OAuth Client Utilities
  *
- * Re-exported from @decocms/mesh-sdk for backwards compatibility.
- * New code should import directly from @decocms/mesh-sdk.
+ * Re-exported from @decocms/studio-sdk for backwards compatibility.
+ * New code should import directly from @decocms/studio-sdk.
  */
 
 export {
@@ -13,4 +13,4 @@ export {
   type OAuthTokenInfo,
   type AuthenticateMcpResult,
   type McpAuthStatus,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";

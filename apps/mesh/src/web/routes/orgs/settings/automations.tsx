@@ -11,7 +11,7 @@ import {
   getDecopilotId,
   useVirtualMCPs,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { track } from "@/web/lib/posthog-client";
 import { RequireCapability } from "@/web/components/require-capability";

@@ -22,7 +22,7 @@
  *      `sandboxProviderKind` is rewritten to use the new key.
  *
  * Both passes are idempotent — re-running on an already-clean row is a
- * no-op. The mesh-sdk `parseBranchMap` / `parseVmMapEntry` tolerant
+ * no-op. The studio-sdk `parseBranchMap` / `parseVmMapEntry` tolerant
  * readers, plus the matching Zod preprocess adapters in `virtual-mcp.ts`,
  * continue to accept either shape on read until this migration has run
  * everywhere.
@@ -144,7 +144,7 @@ export async function down(_db: Kysely<unknown>): Promise<void> {
   // No-op. Reversing this would mean reintroducing two distinct legacy
   // shapes (v1 layout AND `runnerKind` field) that the rest of the
   // codebase has already moved past. Restoration is not useful — readers
-  // still tolerate both shapes via mesh-sdk's preprocess adapters and the
+  // still tolerate both shapes via studio-sdk's preprocess adapters and the
   // `parseBranchMap` / `parseVmMapEntry` helpers, so a rollback is never
   // needed to recover behavior.
 }

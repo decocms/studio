@@ -1,11 +1,11 @@
 /**
  * Virtual MCP Schema Re-exports
  *
- * Re-exports schemas from @decocms/mesh-sdk to maintain a single source of truth.
+ * Re-exports schemas from @decocms/studio-sdk to maintain a single source of truth.
  * This file exists to preserve existing import paths while delegating to the SDK.
  */
 
-// Re-export all schemas and types from mesh-sdk
+// Re-export all schemas and types from studio-sdk
 export {
   VirtualMCPEntitySchema,
   VirtualMCPCreateDataSchema,
@@ -15,4 +15,4 @@ export {
   type VirtualMCPUpdateData,
   type VirtualMCPConnection,
   type KnowledgeFile,
-} from "@decocms/mesh-sdk/types";
+} from "@decocms/studio-sdk/types";

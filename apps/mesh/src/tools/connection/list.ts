@@ -20,7 +20,7 @@ import { LANGUAGE_MODEL_BINDING } from "@decocms/bindings/llm";
 import { MCP_BINDING } from "@decocms/bindings/mcp";
 import { OBJECT_STORAGE_BINDING } from "@decocms/bindings/object-storage";
 import { AI_GATEWAY_BILLING_BINDING } from "@decocms/bindings/ai-gateway";
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { WellKnownOrgMCPId } from "@decocms/studio-sdk";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { getBaseUrl } from "../../core/server-constants";

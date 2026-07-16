@@ -10,7 +10,7 @@ import {
   useConnectionActions,
   useProjectContext,
   type ConnectionEntity,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
 import {
   inferRegistryListToolName,

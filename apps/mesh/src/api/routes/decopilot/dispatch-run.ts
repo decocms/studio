@@ -54,7 +54,7 @@ import { deriveOffloadAllowlist } from "@/object-storage/offload-allowlist";
 import { getSettings } from "@/settings";
 import type { WorkItemSandbox } from "@/links/link-work-item";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk";
 import type {
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,

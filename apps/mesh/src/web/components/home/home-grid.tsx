@@ -13,7 +13,7 @@ import {
   useMCPClient,
   useMCPToolsListQuery,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";

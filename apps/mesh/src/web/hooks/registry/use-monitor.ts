@@ -3,7 +3,7 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { PLUGIN_ID } from "@/tools/registry/shared";
 import { KEYS } from "@/web/lib/registry/query-keys";
 import type {

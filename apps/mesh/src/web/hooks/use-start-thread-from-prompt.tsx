@@ -17,7 +17,11 @@ import {
   getGatewayClientId,
   stripToolNamespace,
 } from "@decocms/mcp-utils/aggregate";
-import { getPrompt, useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
+import {
+  getPrompt,
+  useMCPClient,
+  useProjectContext,
+} from "@decocms/studio-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";

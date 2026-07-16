@@ -15,7 +15,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { useMCPClient } from "@decocms/mesh-sdk";
+import { useMCPClient } from "@decocms/studio-sdk";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle,

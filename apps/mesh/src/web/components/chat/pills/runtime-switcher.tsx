@@ -30,7 +30,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import type { SandboxProviderKind } from "@decocms/mesh-sdk";
+import type { SandboxProviderKind } from "@decocms/studio-sdk";
 import { useChatPrefs, useChatTask } from "../context";
 import { useAgentOptionAvailability } from "../use-agent-availability";
 import { preferredLocalAgentOption } from "./agent-options";

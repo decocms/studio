@@ -7,7 +7,7 @@
 
 import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { KEYS } from "@/web/lib/query-keys";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useQuery } from "@tanstack/react-query";
 
 const BUILTIN_ROLES = [

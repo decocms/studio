@@ -1,7 +1,7 @@
 /**
  * REST-backed client for the self/management connection.
  *
- * The web client no longer speaks MCP to the mesh server for builtin tools —
+ * The web client no longer speaks MCP to the Studio server for builtin tools —
  * it calls them over plain REST at `POST /api/:org/tools/:name`. This object
  * implements the subset of the MCP `Client` interface the app actually uses
  * against the self connection (`callTool`, `listTools`), returning the same
@@ -19,8 +19,8 @@ export interface RestSelfClientOptions {
   orgSlug: string;
   /** Bearer token for non-cookie auth (external apps). Browser uses the session cookie. */
   token?: string | null;
-  /** Mesh server origin; defaults to `window.location.origin` in the browser. */
-  meshUrl?: string;
+  /** Studio server origin; defaults to `window.location.origin` in the browser. */
+  studioUrl?: string;
   /** Stable string used for React Query key serialization (via `toJSON`). */
   toJSONString: string;
 }
@@ -35,11 +35,11 @@ const text = (value: string) => [{ type: "text" as const, text: value }];
 
 export function createRestSelfClient(opts: RestSelfClientOptions): Client {
   const origin =
-    opts.meshUrl ??
+    opts.studioUrl ??
     (typeof window !== "undefined" ? window.location.origin : undefined);
   if (!origin) {
     throw new Error(
-      "RestSelfClient requires either meshUrl or a browser environment.",
+      "RestSelfClient requires either studioUrl or a browser environment.",
     );
   }
 

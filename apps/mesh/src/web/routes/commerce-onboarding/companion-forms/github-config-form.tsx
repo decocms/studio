@@ -8,7 +8,7 @@ import {
   getCommerceDiscoveryAgentId,
   type GithubRepo,
   WellKnownOrgMCPId,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   Form,

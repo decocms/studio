@@ -30,7 +30,7 @@ import {
   RefreshCcw01,
   X,
 } from "@untitledui/icons";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { ImageUpload } from "./image-upload.tsx";
 import { ToolsEditor } from "./tools-editor.tsx";
 import { useImageUpload } from "@/web/hooks/registry/use-image-upload";

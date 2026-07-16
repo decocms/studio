@@ -8,7 +8,7 @@ import {
   listPrompts,
   useMCPClient,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Tooltip,

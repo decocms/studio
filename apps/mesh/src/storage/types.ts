@@ -14,7 +14,7 @@
 import type { ColumnType } from "kysely";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
-import { ThreadStatus, type ProviderId } from "@decocms/mesh-sdk";
+import { ThreadStatus, type ProviderId } from "@decocms/studio-sdk";
 import type { PrivateRegistryDatabase } from "./registry/types";
 
 // ============================================================================
@@ -896,11 +896,11 @@ export interface ConnectionAggregationTable {
  * Threads are scopes users in organizations and store messages with Agents.
  */
 
-/** Stored thread statuses (persisted in DB). Canonical source: @decocms/mesh-sdk */
+/** Stored thread statuses (persisted in DB). Canonical source: @decocms/studio-sdk */
 export {
   THREAD_STATUSES,
   type ThreadStatus,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 
 export interface InflightAsyncJob {
   /** Tool call that submitted this job (for diagnostics; not the resume key). */

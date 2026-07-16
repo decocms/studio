@@ -1,5 +1,5 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import type { ModelCapability } from "@decocms/mesh-sdk";
+import type { ModelCapability } from "@decocms/studio-sdk";
 import type {
   MeshProvider,
   ModelInfo,

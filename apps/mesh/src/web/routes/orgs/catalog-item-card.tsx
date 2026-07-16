@@ -13,7 +13,7 @@ import {
 } from "@deco/ui/components/alert-dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { ConnectionCard } from "@/web/components/connections/connection-card.tsx";
-import type { ConnectionEntity } from "@decocms/mesh-sdk";
+import type { ConnectionEntity } from "@decocms/studio-sdk";
 import { track } from "@/web/lib/posthog-client";
 import type { RegistryItem } from "@/web/components/store/types";
 import { getRegistryItemAppName } from "@/web/utils/extract-connection-data";

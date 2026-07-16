@@ -21,7 +21,7 @@ import {
   useConnectionActions,
   useConnections,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { Link } from "@tanstack/react-router";
 import {
   Power01,

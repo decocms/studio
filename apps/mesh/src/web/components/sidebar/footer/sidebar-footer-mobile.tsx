@@ -6,7 +6,7 @@ import {
   useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import { Settings02 } from "@untitledui/icons";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 

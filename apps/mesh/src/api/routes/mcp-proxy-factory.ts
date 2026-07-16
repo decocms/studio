@@ -15,7 +15,7 @@ import type { ServerClient } from "@decocms/bindings/mcp";
 import {
   createBridgeTransportPair,
   createServerFromClient,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";

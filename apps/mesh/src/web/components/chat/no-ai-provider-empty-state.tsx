@@ -7,7 +7,7 @@ import {
   ProviderGrid,
   type ProviderSelection,
 } from "@/web/views/settings/ai-providers/provider-grid";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useAiProviders } from "@/web/hooks/collections/use-ai-providers";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { useCurrentLink } from "@/web/hooks/use-current-link";

@@ -7,8 +7,8 @@
  */
 
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useVirtualMCPs } from "@decocms/mesh-sdk";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import { useVirtualMCPs } from "@decocms/studio-sdk";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 import { useChatNavigation } from "@/web/components/chat/hooks/use-chat-navigation";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
 import { findDevPartner } from "@/web/lib/agent-capabilities";

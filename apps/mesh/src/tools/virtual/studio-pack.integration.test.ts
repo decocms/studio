@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "kysely";
-import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/studio-sdk";
 import {
   closeTestPgDatabase,
   connectTestPgDatabase,

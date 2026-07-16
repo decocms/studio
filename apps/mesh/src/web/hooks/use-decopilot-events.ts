@@ -16,7 +16,7 @@ import {
   type DecopilotStepEvent,
   type DecopilotFinishEvent,
   type DecopilotThreadStatusEvent,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useRef, useSyncExternalStore } from "react";
 import { decopilotSSE } from "./decopilot-sse-pool";
 

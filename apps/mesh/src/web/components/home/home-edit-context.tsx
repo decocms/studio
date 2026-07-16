@@ -12,7 +12,7 @@
  */
 
 import { createContext, type ReactNode, useContext, useState } from "react";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useBoardLayoutStore } from "./tile-board/board-layout-store";
 import type { BoardLayout } from "./tile-board/types";
 

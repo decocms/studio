@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
+import { useMCPClient, useProjectContext } from "@decocms/studio-sdk";
 import { toast } from "sonner";
 
 interface UseImageUploadResult {
