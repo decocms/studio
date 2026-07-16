@@ -218,7 +218,10 @@ export default function CoverTemplate({
   // Replay the deal-in entrance every time the slide re-enters (keyed remount).
   // Render-phase "state from props" adjustment — no effect needed.
   const [prevActive, setPrevActive] = useState(active);
-  const [playKey, setPlayKey] = useState(0);
+  // The cover is the initial active slide, so its first mount must count as a
+  // play too. Starting at zero leaves `.holo-card` at opacity: 0 until the user
+  // navigates away and returns.
+  const [playKey, setPlayKey] = useState(active ? 1 : 0);
   if (active !== prevActive) {
     setPrevActive(active);
     if (active) setPlayKey((k) => k + 1);

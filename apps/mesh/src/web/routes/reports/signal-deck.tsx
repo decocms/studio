@@ -34,6 +34,9 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareAnchorRect, setShareAnchorRect] = useState<DOMRect | null>(null);
+  const [sharePlacement, setSharePlacement] = useState<"above" | "below">(
+    "above",
+  );
   // Minted once per popover opening, so the twitter/linkedin hrefs and their
   // click events agree on one share_id (see handleShareClick).
   const [popoverShareId, setPopoverShareId] = useState("");
@@ -379,6 +382,10 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
     }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setShareAnchorRect(rect);
+    // Header actions have room below; footer actions have room above. Keeping
+    // this geometry-based means every share button gets the natural direction
+    // without coupling the handler to a specific chrome location.
+    setSharePlacement(rect.top < window.innerHeight / 2 ? "below" : "above");
     // Mint the popover's share_id at open time so its hrefs + events agree.
     setPopoverShareId(newShareId(s));
     setShareOpen((o) => !o);
@@ -888,7 +895,9 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
           style={{
             background: DECK.surface,
             borderColor: DECK.border,
-            bottom: window.innerHeight - shareAnchorRect.top + 8,
+            ...(sharePlacement === "below"
+              ? { top: shareAnchorRect.bottom + 8 }
+              : { bottom: window.innerHeight - shareAnchorRect.top + 8 }),
             left: shareAnchorRect.left + shareAnchorRect.width / 2,
             transform: "translateX(-50%)",
           }}
