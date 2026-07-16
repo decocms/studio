@@ -5,7 +5,12 @@
 import { describe, expect, test } from "bun:test";
 import type { SandboxRecord } from "@decocms/mesh-sdk";
 
-import { mergeSandboxMapEntry, readSandboxMap, resolveVm } from "./sandbox-map";
+import {
+  deleteSandboxMapEntry,
+  mergeSandboxMapEntry,
+  readSandboxMap,
+  resolveVm,
+} from "./sandbox-map";
 
 const ENTRY_A: SandboxRecord = {
   sandboxHandle: "vm-1",
@@ -182,6 +187,33 @@ describe("mergeSandboxMapEntry", () => {
     );
     expect(resolveVm(next, "u", "b", "user-desktop")).toEqual(ENTRY_B);
     expect(next.u?.b).not.toHaveProperty("0");
+  });
+});
+
+describe("deleteSandboxMapEntry", () => {
+  test("returns null when the entry is absent (no-op write)", () => {
+    expect(deleteSandboxMapEntry({}, "u", "b", "agent-sandbox")).toBeNull();
+    const other = { u: { b: { "user-desktop": ENTRY_A } } };
+    expect(deleteSandboxMapEntry(other, "u", "b", "agent-sandbox")).toBeNull();
+  });
+
+  test("removes the entry and prunes empty branch + user buckets", () => {
+    const current = { u: { b: { "agent-sandbox": ENTRY_A } } };
+    const next = deleteSandboxMapEntry(current, "u", "b", "agent-sandbox");
+    expect(next).toEqual({});
+  });
+
+  test("keeps sibling kinds and sibling branches", () => {
+    const current = {
+      u: {
+        b: { "agent-sandbox": ENTRY_A, "user-desktop": ENTRY_B },
+        other: { "agent-sandbox": ENTRY_A },
+      },
+    };
+    const next = deleteSandboxMapEntry(current, "u", "b", "agent-sandbox");
+    expect(resolveVm(next!, "u", "b", "user-desktop")).toEqual(ENTRY_B);
+    expect(resolveVm(next!, "u", "other", "agent-sandbox")).toEqual(ENTRY_A);
+    expect(resolveVm(next!, "u", "b", "agent-sandbox")).toBeNull();
   });
 });
 

@@ -11,9 +11,13 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import type { GithubRepo, SandboxRecord } from "@decocms/mesh-sdk";
+import type { GithubRepo, SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import { mergeSandboxMapEntry, readSandboxMap } from "./sandbox-map";
+import {
+  deleteSandboxMapEntry,
+  mergeSandboxMapEntry,
+  readSandboxMap,
+} from "./sandbox-map";
 
 /**
  * Per-thread sandbox branch for a loaded repo. Includes the repo's connection
@@ -103,5 +107,42 @@ export async function setThreadSandboxMapEntry(
     .update(threadId, { metadata: { ...meta, sandboxMap: next } })
     .catch((err) =>
       console.warn("[thread-repo] setThreadSandboxMapEntry failed", err),
+    );
+}
+
+/** The thread's sandboxMap ([userId][branch][kind]). `{}` when absent. Never
+ *  throws. This is where the synthetic Decopilot agent's sandbox records live,
+ *  so backend existence checks (the events handler) must read it here — the
+ *  agent row is a no-op store for those. */
+export async function getThreadSandboxMap(
+  ctx: StudioContext,
+  threadId: string | undefined | null,
+): Promise<SandboxMap> {
+  return readSandboxMap(await getThreadMeta(ctx, threadId));
+}
+
+/** Remove sandboxMap[userId][branch][kind] from the thread via the shared
+ *  {@link deleteSandboxMapEntry}. No-op when the thread or entry is absent.
+ *  Never throws. Mirrors the agent-scoped `removeSandboxMapEntry`. */
+export async function removeThreadSandboxMapEntry(
+  ctx: StudioContext,
+  threadId: string,
+  userId: string,
+  branch: string,
+  kind: SandboxProviderKind,
+): Promise<void> {
+  const meta = await getThreadMeta(ctx, threadId);
+  if (!meta) return;
+  const next = deleteSandboxMapEntry(
+    readSandboxMap(meta),
+    userId,
+    branch,
+    kind,
+  );
+  if (!next) return;
+  await ctx.storage.threads
+    .update(threadId, { metadata: { ...meta, sandboxMap: next } })
+    .catch((err) =>
+      console.warn("[thread-repo] removeThreadSandboxMapEntry failed", err),
     );
 }

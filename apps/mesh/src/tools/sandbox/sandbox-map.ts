@@ -102,25 +102,20 @@ export async function setSandboxMapEntry(
 }
 
 /**
- * Read-modify-write: removes sandboxMap[userId][branch][kind].
- * Drops the branch bucket if no kinds remain; drops the user bucket if no
- * branches remain.
+ * Pure removal: returns a copy of `current` without sandboxMap[userId][branch]
+ * [kind]. Prunes the branch bucket when no kinds remain and the user bucket when
+ * no branches remain. Returns `null` when the entry wasn't present (so callers
+ * can skip a no-op write). Shared by the agent-scoped (`removeSandboxMapEntry`)
+ * and thread-scoped (`removeThreadSandboxMapEntry`) removers.
  */
-export async function removeSandboxMapEntry(
-  storage: VirtualMCPStoragePort,
-  virtualMcpId: string,
-  actingUserId: string,
+export function deleteSandboxMapEntry(
+  current: SandboxMap,
   targetUserId: string,
   branch: string,
   sandboxProviderKind: SandboxProviderKind,
-): Promise<void> {
-  const virtualMcp = await storage.findById(virtualMcpId);
-  if (!virtualMcp) return;
-
-  const meta = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
-  const current = readSandboxMap(meta);
+): SandboxMap | null {
   const branchMap = parseBranchMap(current[targetUserId]?.[branch]);
-  if (!branchMap[sandboxProviderKind]) return;
+  if (!branchMap[sandboxProviderKind]) return null;
 
   const nextBranchMap = { ...branchMap };
   delete nextBranchMap[sandboxProviderKind];
@@ -138,6 +133,33 @@ export async function removeSandboxMapEntry(
   } else {
     next[targetUserId] = userMap;
   }
+  return next;
+}
+
+/**
+ * Read-modify-write: removes sandboxMap[userId][branch][kind].
+ * Drops the branch bucket if no kinds remain; drops the user bucket if no
+ * branches remain.
+ */
+export async function removeSandboxMapEntry(
+  storage: VirtualMCPStoragePort,
+  virtualMcpId: string,
+  actingUserId: string,
+  targetUserId: string,
+  branch: string,
+  sandboxProviderKind: SandboxProviderKind,
+): Promise<void> {
+  const virtualMcp = await storage.findById(virtualMcpId);
+  if (!virtualMcp) return;
+
+  const meta = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
+  const next = deleteSandboxMapEntry(
+    readSandboxMap(meta),
+    targetUserId,
+    branch,
+    sandboxProviderKind,
+  );
+  if (!next) return;
 
   await storage.update(virtualMcpId, actingUserId, {
     metadata: {
