@@ -337,13 +337,14 @@ export const getCommerceDiscoveryAgentId = commerceDiscoveryPrefix.get;
 export function getWellKnownCommerceDiscoveryConnection(
   orgId: string,
   authorizationToken: string,
+  connectionUrl = COMMERCE_DISCOVERY_MCP_URL,
 ): ConnectionCreateData {
   return {
     id: WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
     title: "Store Report",
     description: "Your store's report and diagnostics",
     connection_type: "HTTP",
-    connection_url: COMMERCE_DISCOVERY_MCP_URL,
+    connection_url: connectionUrl,
     icon: COMMERCE_DISCOVERY_ICON,
     app_name: "commerce-discovery",
     app_id: null,
