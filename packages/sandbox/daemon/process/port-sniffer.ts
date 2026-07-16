@@ -37,6 +37,16 @@ const URL_PATTERN =
 // oxlint-disable-next-line no-control-regex
 const ANSI = /\[[0-9;?]*[a-zA-Z]/g;
 
+/**
+ * PTY reads (`child.onData`) aren't line-buffered — a chunk boundary can
+ * land mid bind-line (e.g. "...Local:   http://localhost:30" | "00/\n").
+ * Matching each chunk in isolation would miss the announcement forever.
+ * Carry a bounded tail per source across calls so a split line still
+ * matches once its continuation arrives. The longest phrase+URL we need
+ * to span is well under 100 chars, so 200 leaves headroom.
+ */
+const CARRY_LIMIT = 200;
+
 export interface PortSniffer {
   /**
    * Inspect a log chunk. No-op when not a starter source, when a port is
@@ -54,6 +64,7 @@ export interface PortSniffer {
 
 export function createPortSniffer(): PortSniffer {
   let port: number | null = null;
+  const carry = new Map<string, string>();
   return {
     observe(source, data) {
       if (port !== null) return false;
@@ -63,12 +74,18 @@ export function createPortSniffer(): PortSniffer {
         )
       )
         return false;
-      const stripped = data.replace(ANSI, "");
-      const match = stripped.match(URL_PATTERN);
-      if (!match) return false;
-      const parsed = Number(match[1]);
-      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535)
+      const combined = (carry.get(source) ?? "") + data.replace(ANSI, "");
+      const match = combined.match(URL_PATTERN);
+      if (!match) {
+        carry.set(source, combined.slice(-CARRY_LIMIT));
         return false;
+      }
+      const parsed = Number(match[1]);
+      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
+        carry.set(source, combined.slice(-CARRY_LIMIT));
+        return false;
+      }
+      carry.delete(source);
       port = parsed;
       return true;
     },
@@ -77,6 +94,7 @@ export function createPortSniffer(): PortSniffer {
     },
     reset() {
       port = null;
+      carry.clear();
     },
   };
 }

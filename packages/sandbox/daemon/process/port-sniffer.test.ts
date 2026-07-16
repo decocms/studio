@@ -40,4 +40,13 @@ describe("createPortSniffer", () => {
     expect(s.observe("dev", interleaved)).toBe(true);
     expect(s.current()).toBe(3000);
   });
+
+  test("locks the port when the bind line is split across two PTY chunks", () => {
+    const s = createPortSniffer();
+    const splitAt = VITE_READY.indexOf("http://localhost:3000") + 15;
+    expect(s.observe("dev", VITE_READY.slice(0, splitAt))).toBe(false);
+    expect(s.current()).toBeNull();
+    expect(s.observe("dev", VITE_READY.slice(splitAt))).toBe(true);
+    expect(s.current()).toBe(3000);
+  });
 });
