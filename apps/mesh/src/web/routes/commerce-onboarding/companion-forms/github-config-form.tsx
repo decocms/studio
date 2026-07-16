@@ -271,7 +271,7 @@ export function GitHubConfigForm({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           disabled={isPending}
-          placeholder="Buscar repositório (ex: deco-sites/fila-store)"
+          placeholder="Buscar repositório"
           aria-label="Buscar repositório"
           className="h-8 pl-8"
         />
