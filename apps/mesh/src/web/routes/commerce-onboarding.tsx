@@ -854,16 +854,15 @@ function CommerceSetupContent({
     const normalized = normalizeReportsSiteUrl(currentSiteUrl);
     if (normalized.ok) {
       try {
+        // Always run setup before triggering the run. Setup is idempotent
+        // (/upgrade per (org, site)) and ensures the CD connection's
+        // connection_url and token are always in sync with the current
+        // environment (prod vs. stg) before the report view opens.
+        await setupMutation.mutateAsync(normalized.value);
         let runResult = await runMutation.mutateAsync(normalized.value);
-        // triggered:false means the site isn't claimed for this org on the
-        // Commerce Discovery side (not_upgraded — see triggerCommerceDiscoveryRun).
-        // This can diverge from the studio connection's metadata.siteUrl (which
-        // gates setupReady): the connection looks claimed here, so setup is
-        // skipped on load, the report token is never refreshed, and every run
-        // 409s — a dead end where "reload" changes nothing. Reconcile by
-        // re-running setup (idempotent /upgrade re-claims the site AND persists a
-        // fresh connection token, which also fixes the CD proxy 401s), then retry
-        // the run once before giving up.
+        // triggered:false means the site still isn't claimed after the setup
+        // above (e.g. /upgrade failed silently, or a race). Keep the fallback
+        // reclaim path so a second attempt can recover.
         if (!runResult.triggered) {
           track("commerce_onboarding_run_reclaim", {
             domain: siteUrlToHost(currentSiteUrl) ?? undefined,
