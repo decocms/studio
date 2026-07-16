@@ -69,10 +69,12 @@
     "@nats-io/transport-node": "3.4.0",
     "@openrouter/ai-sdk-provider": "^2.9.1",
     "@opentelemetry/core": "^2.6.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@tanstack/react-virtual": "3.13.24",
     "@tiptap/extension-text-align": "3.20.2",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
+    "echarts": "^5.6.0",
     "embedded-postgres": "^18.3.0-beta.16",
     "ink": "^6.8.0",
     "kysely": "^0.28.12",
@@ -81,6 +83,7 @@
     "posthog-node": "^5.0.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "satori": "^0.28.0",
     "use-stick-to-bottom": "^1.1.6"
   },
   "devDependencies": {

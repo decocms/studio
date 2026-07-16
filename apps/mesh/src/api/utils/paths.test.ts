@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { shouldSkipStudioContext, SYSTEM_PATHS } from "./paths";
+import { isServerPath, shouldSkipStudioContext, SYSTEM_PATHS } from "./paths";
+
+describe("public report paths", () => {
+  test("routes report pages and social cards through Hono", () => {
+    expect(isServerPath("/reports/nike.com")).toBe(true);
+    expect(isServerPath("/reports/nike.com/og.png")).toBe(true);
+  });
+
+  test("does not reserve similarly named organization paths", () => {
+    expect(isServerPath("/reports-team")).toBe(false);
+  });
+});
 
 describe("DBOS queue-depth path", () => {
   test("skips StudioContext for the queue-depth endpoint", () => {

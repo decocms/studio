@@ -1,0 +1,580 @@
+/* Signal Deck styles — ported from the decocms landing's app.css. Loaded only
+   with the lazy /reports route chunk, so none of this leaks into the app. */
+
+/* The deck's typeface. Scoped: only elements that opt into
+   font-family: Switzer pick it up (the deck root + ScanGate). */
+@font-face {
+  font-family: "Switzer";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/Switzer-Variable.woff2") format("woff2");
+}
+
+/* Indeterminate progress: a partial bar sweeps left→right. The child bar is
+   width:40%, so the translate range keeps it fully on-track at both ends. */
+@keyframes reportIndeterminate {
+  0% {
+    transform: translateX(-105%);
+  }
+  100% {
+    transform: translateX(255%);
+  }
+}
+.animate-indeterminate {
+  animation: reportIndeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Signal Deck — the tiny uppercase kicker above slide
+   headlines. Soft green, near-flat tracking (tracked tight). */
+.deck-eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8caa25;
+}
+@media (min-width: 640px) {
+  .deck-eyebrow {
+    font-size: 12px;
+  }
+}
+
+/* Signal Deck entrance reveal. Transition-based (not a keyframe) so it replays
+   every time a slide becomes active — the deck keeps all slides mounted and
+   toggles [data-show] as you navigate. ease-out: content enters, then settles. */
+.reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 480ms cubic-bezier(0.215, 0.61, 0.355, 1),
+    transform 480ms cubic-bezier(0.215, 0.61, 0.355, 1);
+  will-change: transform, opacity;
+}
+.reveal[data-show="true"] {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal[data-show="true"] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  /* Park the indeterminate bar at the start as a static, visible segment. */
+  .animate-indeterminate {
+    animation: none;
+    transform: translateX(0);
+  }
+}
+
+/* ── ScanGate email input ───────────────────────────────────────────────── */
+.scan-gate-input::placeholder {
+  color: #78726e;
+}
+.scan-gate-input:focus {
+  border-color: rgba(40, 37, 36, 0.35) !important;
+  outline: none;
+}
+
+/* ── ScanGate logo carousel ─────────────────────────────────────────────── */
+@keyframes logoCycleEnter {
+  from {
+    transform: translateY(30%);
+    opacity: 0;
+    filter: grayscale(1) blur(5px);
+  }
+  to {
+    transform: translateY(0);
+    opacity: 0.38;
+    filter: grayscale(1) blur(0px);
+  }
+}
+.logo-carousel-enter {
+  animation: logoCycleEnter 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* ── CTA "unlock" reveal ────────────────────────────────────────────────
+   The closing CTA's hero: the 3-D gift box slides in, the lid flips open,
+   god-rays burst from the opening, and the report cards fly out. Gated on
+   [data-play] and React-keyed so it replays each time the slide re-enters. */
+.unlock-rays,
+.unlock-halo {
+  opacity: 0;
+}
+
+[data-play="true"] .unlock-rays {
+  animation: unlockRays 950ms cubic-bezier(0.19, 1, 0.22, 1) 960ms both;
+}
+[data-play="true"] .unlock-halo {
+  animation: unlockHalo 900ms cubic-bezier(0.19, 1, 0.22, 1) 1010ms both;
+}
+
+@keyframes unlockRays {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.55) rotate(-8deg);
+  }
+  22% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scale(1.9) rotate(20deg);
+  }
+}
+@keyframes unlockHalo {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.5);
+  }
+  45% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0.32;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+/* ── Box animation (3-D gift-box opener) ─────────────────────────────────
+   The box uses CSS preserve-3d: 3 visible faces (front, right, inside floor)
+   plus a lid wrapper that positions the lid at the top of the cube. The
+   lid-face is animated independently, pivoting around its back edge. */
+.unlock-box,
+.unlock-box-glow,
+.unlock-box-icon,
+.unlock-box-sources {
+  opacity: 0;
+}
+
+[data-play="true"] .unlock-box {
+  animation: unlockBoxEnter 360ms cubic-bezier(0.34, 1.56, 0.64, 1) 800ms both;
+}
+[data-play="true"] .unlock-box-sources {
+  animation: unlockBoxEnter 360ms cubic-bezier(0.34, 1.56, 0.64, 1) 900ms both;
+}
+[data-play="true"] .unlock-box-lid-face {
+  animation: unlockBoxLidOpen 440ms cubic-bezier(0.34, 1.1, 0.64, 1) 980ms both;
+}
+[data-play="true"] .unlock-box-glow {
+  animation: unlockBoxGlow 500ms ease-out 1060ms both;
+}
+[data-play="true"] .unlock-box-icon {
+  animation: unlockBoxIcon 460ms cubic-bezier(0.34, 1.45, 0.64, 1) both;
+}
+
+@keyframes unlockBoxEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+/* Lid starts horizontal (closed). rotateX(+) with transform-origin 50% 0%
+   swings the front edge upward — the back edge stays fixed as the hinge. */
+@keyframes unlockBoxLidOpen {
+  0% {
+    transform: rotateX(0deg);
+  }
+  72% {
+    transform: rotateX(138deg);
+  }
+  100% {
+    transform: rotateX(130deg);
+  }
+}
+@keyframes unlockBoxGlow {
+  0% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+@keyframes unlockBoxIcon {
+  0% {
+    opacity: 0;
+    transform: translateY(56px) translateX(0px) scale(0.5);
+  }
+  28% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 1;
+    transform: translateY(-10px) translateX(var(--icon-dx, 0px)) scale(1.07);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0px) translateX(var(--icon-dx, 0px)) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-play="true"] .unlock-halo,
+  [data-play="true"] .unlock-box,
+  [data-play="true"] .unlock-box-icon,
+  [data-play="true"] .unlock-box-glow,
+  [data-play="true"] .unlock-box-sources {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  [data-play="true"] .unlock-rays,
+  [data-play="true"] .unlock-box-lid-face {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* ── Cover: holographic "Deco Score" card ────────────────────────────────
+   The opening slide is a single physical trading card that deals itself in,
+   tilts toward the pointer in 3-D, and carries a holographic foil that shifts
+   with the tilt — a Pokémon-holo treatment for the score. All the shine layers
+   read the pointer through inherited CSS vars (--mx/--my/--posx/--posy/--active)
+   set on `.holo-tilt` from React, so no re-render happens per frame. */
+.holo-stage {
+  perspective: 1050px;
+}
+
+/* Shared holo rainbow used by every foil layer. */
+.holo-tilt {
+  --holo: repeating-linear-gradient(
+    125deg,
+    rgba(255, 119, 115, 0.6) 0%,
+    rgba(255, 223, 110, 0.6) 8%,
+    rgba(158, 255, 120, 0.6) 16%,
+    rgba(120, 255, 244, 0.6) 24%,
+    rgba(120, 158, 255, 0.6) 32%,
+    rgba(216, 117, 255, 0.6) 40%,
+    rgba(255, 119, 115, 0.6) 48%
+  );
+  --mx: 50%;
+  --my: 50%;
+  --posx: 50%;
+  --posy: 50%;
+  --active: 0;
+  transform-style: preserve-3d;
+  /* Pointer tilt only — the stronger rotation + tighter perspective carry the
+     3-D read. No scale/translateZ: the card already fills its container, so
+     growing it would overflow the (overflow-hidden) frame. */
+  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  /* No transform transition: the pointer easing loop (CoverTemplate) drives
+     --rx/--ry every frame, so a CSS ease here would only lag and fight it. */
+  transition: box-shadow 260ms ease;
+  /* Metallic frame: the 2px padding of .holo-tilt shows this silvered edge, with
+     an iridescent sheen (the holo, overlaid) that drifts with the tilt so the
+     border itself reads as foil. */
+  background:
+    linear-gradient(
+      145deg,
+      #efe9e0 0%,
+      #ffffff 16%,
+      #cfc9bf 40%,
+      #ffffff 54%,
+      #d7d1c7 74%,
+      #ffffff 88%,
+      #e6e1d8 100%
+    ), var(--holo);
+  background-blend-mode: overlay;
+  background-size:
+    100% 100%,
+    300% 300%;
+  background-position:
+    0 0,
+    var(--posx) var(--posy);
+  box-shadow:
+    0 40px 80px -28px rgba(13, 9, 6, 0.42),
+    0 12px 30px -14px rgba(13, 9, 6, 0.22),
+    0 2px 5px rgba(13, 9, 6, 0.07);
+  will-change: transform;
+}
+
+/* Whole-card iridescent wash — overlay so the rainbow reads on the light card
+   surface too. Masked to bloom around the pointer, so the holo looks like light
+   catching foil (vivid where the "light" hits, gone elsewhere) rather than a
+   flat tint. Falls back to a soft central bloom at rest. */
+.holo-foil {
+  background-image: var(--holo);
+  background-size: 260% 260%;
+  background-position: var(--posx) var(--posy);
+  mix-blend-mode: overlay;
+  opacity: calc(0.35 + var(--active) * 0.5);
+  -webkit-mask-image: radial-gradient(
+    circle at var(--mx) var(--my),
+    #000 0%,
+    rgba(0, 0, 0, 0.35) 30%,
+    transparent 58%
+  );
+  mask-image: radial-gradient(
+    circle at var(--mx) var(--my),
+    #000 0%,
+    rgba(0, 0, 0, 0.35) 30%,
+    transparent 58%
+  );
+  transition: opacity 320ms ease;
+}
+
+/* Fine foil grain that catches the light on tilt. */
+.holo-lines {
+  background-image: repeating-linear-gradient(
+    100deg,
+    transparent 0px,
+    transparent 3px,
+    rgba(255, 255, 255, 0.5) 3px,
+    rgba(255, 255, 255, 0.5) 4px
+  );
+  background-size: 200% 100%;
+  background-position: var(--posx) 0;
+  mix-blend-mode: overlay;
+  opacity: calc(var(--active) * 0.28);
+  transition: opacity 320ms ease;
+}
+
+/* Specular glare that tracks the pointer. */
+.holo-glare {
+  background: radial-gradient(
+    circle at var(--mx) var(--my),
+    rgba(255, 255, 255, 0.75),
+    rgba(255, 255, 255, 0) 42%
+  );
+  mix-blend-mode: soft-light;
+  opacity: calc(var(--active) * 0.9);
+  transition: opacity 320ms ease;
+}
+
+/* The device-preview artwork sits on a large holographic panel whose rainbow
+   fill is bigger than the previews (so the rainbow reads as the card art), plus
+   its own stronger foil so the whole panel reads like real holo card art. */
+.holo-art-base {
+  background: linear-gradient(
+    135deg,
+    #ffd0e2 0%,
+    #e3d4ff 18%,
+    #cfe0ff 36%,
+    #ccf4e7 54%,
+    #fff1cc 72%,
+    #ffd6c9 88%,
+    #ffd0e2 100%
+  );
+  background-size: 200% 200%;
+  background-position: var(--posx) var(--posy);
+  transition: background-position 320ms ease;
+}
+@media (hover: none) {
+  .holo-art-base {
+    animation: decoFoilIdle 7s ease-in-out infinite;
+  }
+}
+.holo-artfoil {
+  background-image: var(--holo);
+  background-size: 220% 220%;
+  background-position: var(--posx) var(--posy);
+  mix-blend-mode: color-dodge;
+  opacity: calc(0.16 + var(--active) * 0.5);
+  border-radius: inherit;
+  transition: opacity 320ms ease;
+}
+/* Glitter — two offset dot grids that catch the light as the card tilts, for
+   the cosmos-foil twinkle. color-dodge makes them read as bright glints over
+   the (darker) artwork; position shifts with the pointer so they shimmer. */
+.holo-sparkle {
+  background-image:
+    radial-gradient(
+      circle at 20% 35%,
+      rgba(255, 255, 255, 0.95) 0,
+      rgba(255, 255, 255, 0) 0.8px
+    ),
+    radial-gradient(
+      circle at 68% 12%,
+      rgba(190, 230, 255, 0.9) 0,
+      rgba(255, 255, 255, 0) 0.8px
+    ),
+    radial-gradient(
+      circle at 82% 74%,
+      rgba(255, 235, 190, 0.9) 0,
+      rgba(255, 255, 255, 0) 0.8px
+    );
+  background-size:
+    47px 61px,
+    71px 53px,
+    59px 79px;
+  background-position:
+    var(--posx) var(--posy),
+    calc(100% - var(--posx)) var(--posy),
+    var(--posx) calc(100% - var(--posy));
+  mix-blend-mode: color-dodge;
+  opacity: calc(var(--active) * 0.85);
+  border-radius: inherit;
+  transition: opacity 320ms ease;
+}
+@media (hover: none) {
+  .holo-sparkle {
+    opacity: 0.3;
+    animation: decoFoilIdle 7s ease-in-out infinite;
+  }
+}
+.holo-artglare {
+  background: radial-gradient(
+    circle at var(--mx) var(--my),
+    rgba(255, 255, 255, 0.55),
+    rgba(255, 255, 255, 0) 45%
+  );
+  mix-blend-mode: overlay;
+  opacity: calc(var(--active) * 0.9);
+  border-radius: inherit;
+  transition: opacity 320ms ease;
+}
+
+/* On short viewports the findings list scrolls inside the card rather than
+   overflowing it; keep the scrollbar unobtrusive. The deck shell already yields
+   nested-scroll gestures to this region before advancing slides. The mask puts
+   a "more below" fade over the last row when the list overflows. */
+.holo-findings {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(13, 9, 6, 0.18) transparent;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 20px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 20px),
+    transparent 100%
+  );
+}
+.holo-findings::-webkit-scrollbar {
+  width: 6px;
+}
+.holo-findings::-webkit-scrollbar-thumb {
+  background: rgba(13, 9, 6, 0.16);
+  border-radius: 6px;
+}
+
+/* Deal-in entrance — the card flips up around its vertical axis to face you
+   (a trading-card reveal), rising a touch and overshooting slightly before it
+   settles flat. The stage's perspective gives the flip its depth. */
+.holo-card {
+  opacity: 0;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  /* Pre-promote to a compositor layer so the opening frame of the flip doesn't
+     jank while the browser sets up the mix-blend-mode holo layers. */
+  will-change: transform, opacity;
+}
+/* One continuous motion (no intermediate keyframes) so there's no velocity dip
+   mid-flip: the card rises up from below while it flips around to face you, with
+   a prompt start and a gentle end overshoot. Desktop runs it a touch faster. */
+.holo-card[data-enter="true"] {
+  animation: decoCardIn 820ms cubic-bezier(0.25, 0.65, 0.3, 1.07) both;
+}
+@media (min-width: 1024px) {
+  .holo-card[data-enter="true"] {
+    animation-duration: 620ms;
+  }
+}
+@keyframes decoCardIn {
+  0% {
+    opacity: 0;
+    transform: translateY(72px) scale(0.9) rotateY(-82deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotateY(0deg);
+  }
+}
+
+/* One-shot diagonal light sweep across the whole card on entrance. */
+.holo-sweep-bar {
+  position: absolute;
+  inset: -20% -40%;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.65) 48%,
+    rgba(255, 255, 255, 0.9) 50%,
+    rgba(255, 255, 255, 0.65) 52%,
+    transparent 70%
+  );
+  mix-blend-mode: overlay;
+  opacity: 0;
+  transform: translateX(-120%);
+}
+.holo-card[data-enter="true"] .holo-sweep-bar {
+  animation: decoSweep 900ms ease-out 460ms both;
+}
+@keyframes decoSweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-120%) skewX(-14deg);
+  }
+  35% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(120%) skewX(-14deg);
+  }
+}
+
+/* Touch devices can't hover, so keep the foil alive with a slow idle drift. */
+@media (hover: none) {
+  .holo-foil {
+    opacity: 0.22;
+    animation: decoFoilIdle 7s ease-in-out infinite;
+  }
+  .holo-artfoil {
+    opacity: 0.42;
+    animation: decoFoilIdle 7s ease-in-out infinite;
+  }
+  .holo-lines {
+    opacity: 0.12;
+    animation: decoLinesIdle 7s ease-in-out infinite;
+  }
+}
+@keyframes decoFoilIdle {
+  0%,
+  100% {
+    background-position: 18% 30%;
+  }
+  50% {
+    background-position: 82% 74%;
+  }
+}
+@keyframes decoLinesIdle {
+  0%,
+  100% {
+    background-position: 0 0;
+  }
+  50% {
+    background-position: 100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .holo-card,
+  .holo-card[data-enter="true"] {
+    opacity: 1;
+    animation: none;
+  }
+  .holo-tilt {
+    transition: none;
+  }
+  .holo-card[data-enter="true"] .holo-sweep-bar {
+    animation: none;
+    opacity: 0;
+  }
+  .holo-foil,
+  .holo-artfoil,
+  .holo-lines {
+    animation: none;
+  }
+}

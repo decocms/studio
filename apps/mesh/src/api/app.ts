@@ -92,6 +92,8 @@ import openaiCompatRoutes from "./routes/openai-compat";
 import { createProxyRoutes } from "./routes/proxy";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import publicConfigRoutes from "./routes/public-config";
+import { createReportPagesRoutes } from "./routes/report-pages";
+import publicReportsRoutes from "./routes/public-reports";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
@@ -832,6 +834,8 @@ export interface CreateAppOptions {
   database?: StudioDatabase;
   /** Skip NATS wiring and use local-only no-op stubs (for testing) */
   disableNats?: boolean;
+  /** Built client directory used to serve report pages with dynamic metadata. */
+  clientDir?: string;
 }
 
 /**
@@ -1258,6 +1262,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Public Configuration (no auth required)
   // ============================================================================
   app.route("/api/config", publicConfigRoutes);
+
+  // Public commerce reports (no auth required) — anonymous proxy to the
+  // reports engine for the /reports/:domain page.
+  app.route("/api/_reports", publicReportsRoutes);
+
+  // Public report page + dynamic social card. API-only/test apps safely return
+  // 404 for the HTML shell when no built client directory is supplied.
+  app.route("/reports", createReportPagesRoutes(options.clientDir));
 
   // ============================================================================
   // Better Auth Routes
