@@ -7,10 +7,17 @@ import {
   reportShareCopy,
 } from "@/shared/report-seo";
 import { KEYS } from "@/web/lib/query-keys";
-import { getPublicReport } from "./reports/api";
+import { authClient } from "@/web/lib/auth-client";
+import { isPostHogInitialized } from "@/web/lib/posthog-client";
+import { getReport, isReportsUnauthorized } from "./reports/api";
+import { ReportAuthGate, ReportBackdrop } from "./reports/auth-gate";
 import ScanGate from "./reports/scan-gate";
-import { setReportReviewerMode } from "./reports/track";
-import { DECK } from "./reports/templates/tokens";
+import {
+  captureReport,
+  consumeReportAuthAttempt,
+  reportAuthAttemptProperties,
+  setReportReviewerMode,
+} from "./reports/track";
 import "./reports/reports.css";
 
 const route = getRouteApi("/report/$domain");
@@ -63,10 +70,68 @@ function domainChromeRef(
   };
 }
 
+function UnauthorizedReportGate({
+  domain,
+  refreshSession,
+}: {
+  domain: string;
+  refreshSession: () => void;
+}) {
+  const refreshSessionRef = (element: HTMLDivElement | null) => {
+    if (!element || element.dataset.sessionRefreshStarted === "true") return;
+    element.dataset.sessionRefreshStarted = "true";
+    refreshSession();
+  };
+
+  return (
+    <div ref={refreshSessionRef}>
+      <ReportAuthGate domain={domain} />
+    </div>
+  );
+}
+
+function ReportLoadError({
+  domain,
+  retry,
+}: {
+  domain: string;
+  retry: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 overflow-y-auto">
+      <ReportBackdrop domain={domain} />
+      <div className="pointer-events-none absolute inset-0 bg-white/35" />
+      <div className="relative z-10 flex min-h-full items-center justify-center px-4 py-10">
+        <section
+          role="alert"
+          aria-label="Não foi possível carregar o relatório"
+          className="w-full max-w-[440px] rounded-3xl bg-background px-7 py-8 text-foreground shadow-2xl"
+        >
+          <h1 className="text-xl font-medium leading-7">
+            Não foi possível carregar este relatório.
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Verifique sua conexão e tente novamente.
+          </p>
+          <button
+            type="button"
+            onClick={retry}
+            className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
+          >
+            Tentar novamente
+          </button>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 export default function ReportPage() {
   const { domain: rawDomain } = route.useParams();
   const { key } = route.useSearch();
   const domain = normalizeDomain(rawDomain);
+  const session = authClient.useSession();
+  const authenticated = Boolean(session.data?.user);
 
   // Reviewer sessions (?key=) flag every event with report_preview — set at
   // render (module state, so it lands before any child capture) and cleared
@@ -74,11 +139,15 @@ export default function ReportPage() {
   setReportReviewerMode(Boolean(key));
 
   const initial = useQuery({
-    queryKey: KEYS.publicReport(domain, key),
-    queryFn: () => getPublicReport(domain, key),
+    queryKey: KEYS.report(domain, key),
+    queryFn: () => getReport(domain, key),
+    enabled: authenticated,
     staleTime: Infinity,
-    retry: 1,
+    retry: (failureCount, error) =>
+      !isReportsUnauthorized(error) && failureCount < 1,
   });
+  const reportUnauthorized =
+    initial.isError && isReportsUnauthorized(initial.error);
 
   const brand =
     initial.data?.deck?.meta.brand?.trim() || brandFromDomain(domain);
@@ -86,20 +155,58 @@ export default function ReportPage() {
 
   const reviewerCleanupRef = (el: HTMLDivElement | null) => {
     if (!el) return;
+    setReportReviewerMode(Boolean(key));
     return () => setReportReviewerMode(false);
   };
 
-  if (initial.isPending) {
-    // Bare stage while the first read resolves — ScanGate takes over with the
-    // full scanning UI (or the deck renders straight away when ready).
-    return (
-      <div
-        className="fixed inset-0"
-        style={{ background: DECK.forest }}
-        aria-busy="true"
-      />
-    );
-  }
+  const authCompletionRef = (element: HTMLDivElement | null) => {
+    if (
+      !element ||
+      !authenticated ||
+      reportUnauthorized ||
+      element.dataset.authCompletionTracked === "true" ||
+      !isPostHogInitialized()
+    )
+      return;
+    const attempt = consumeReportAuthAttempt(domain);
+    if (!attempt) return;
+    element.dataset.authCompletionTracked = "true";
+    captureReport("report_auth_succeeded", {
+      domain,
+      surface: "deck_v2",
+      ...reportAuthAttemptProperties(attempt),
+      method: attempt.method ?? "unknown",
+      time_to_auth_ms: Math.max(0, Date.now() - attempt.gate_shown_at),
+      ...(attempt.provider ? { provider: attempt.provider } : {}),
+      ...(attempt.auth_mode ? { auth_mode: attempt.auth_mode } : {}),
+    });
+  };
+
+  const content = session.isPending ? (
+    <ReportAuthGate domain={domain} loading />
+  ) : !session.data?.user ? (
+    <ReportAuthGate domain={domain} />
+  ) : reportUnauthorized ? (
+    <UnauthorizedReportGate
+      domain={domain}
+      refreshSession={() => void session.refetch()}
+    />
+  ) : initial.isPending ? (
+    // Bare stage while the authenticated read resolves — ScanGate takes over
+    // with the full scanning UI (or the deck renders when ready).
+    <div className="fixed inset-0 overflow-hidden" aria-busy="true">
+      <ReportBackdrop domain={domain} />
+      <div className="pointer-events-none absolute inset-0 bg-white/35" />
+    </div>
+  ) : initial.isError ? (
+    <ReportLoadError domain={domain} retry={() => void initial.refetch()} />
+  ) : (
+    <ScanGate
+      domain={domain}
+      initial={initial.data}
+      sessionEmail={session.data.user.email}
+    />
+  );
 
   return (
     <div
@@ -110,13 +217,14 @@ export default function ReportPage() {
           initial.data?.deck?.meta.faviconUrl,
         )(el);
         const cleanupReviewer = reviewerCleanupRef(el);
+        authCompletionRef(el);
         return () => {
           cleanupChrome?.();
           cleanupReviewer?.();
         };
       }}
     >
-      <ScanGate domain={domain} initial={initial.data} />
+      {content}
     </div>
   );
 }

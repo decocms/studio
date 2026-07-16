@@ -1,4 +1,4 @@
-// Thin client for the public reports proxy (`/api/_reports/*`, no auth).
+// Thin client for the authenticated reports proxy (`/api/_reports/*`).
 // Mirrors the server types in `@/reports/to-deck`.
 
 import type {
@@ -8,16 +8,24 @@ import type {
   ScanTrigger,
 } from "@/reports/to-deck";
 
+class ReportsApiError extends Error {
+  constructor(readonly status: number) {
+    super(`reports API HTTP ${status}`);
+    this.name = "ReportsApiError";
+  }
+}
+
+export function isReportsUnauthorized(error: unknown): boolean {
+  return error instanceof ReportsApiError && error.status === 401;
+}
+
 async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`reports API HTTP ${res.status}`);
+  if (!res.ok) throw new ReportsApiError(res.status);
   return (await res.json()) as T;
 }
 
-/** Anonymous read — the deck for an already-scanned domain (instant). */
-export function getPublicReport(
-  domain: string,
-  key?: string,
-): Promise<ReportState> {
+/** Read the deck for an already-scanned domain (instant). */
+export function getReport(domain: string, key?: string): Promise<ReportState> {
   const qs = key ? `?key=${encodeURIComponent(key)}` : "";
   return fetch(`/api/_reports/site/${encodeURIComponent(domain)}${qs}`).then(
     (r) => json<ReportState>(r),
@@ -27,7 +35,6 @@ export function getPublicReport(
 /** Trigger a scan. Idempotent + single-flight on the engine side. */
 export function runReportScan(input: {
   domain: string;
-  email?: string;
   distinctId?: string;
 }): Promise<ScanTrigger> {
   return fetch("/api/_reports/run", {

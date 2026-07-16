@@ -15,6 +15,8 @@
  *   POST /upgrade { org_id, name } -> { url, org_id, scope, token, run }
  *   POST /run     { org_id }       -> { url, scope, run }   (triggered on
  *                                      "See full report"; the flow awaits it)
+ * It also captures the public report scan contract used by report-auth specs:
+ *   POST /api/v2/diagnostics/run { url, email, distinct_id }
  */
 
 import { createServer } from "node:http";
@@ -22,6 +24,9 @@ import { createServer } from "node:http";
 const port = Number(process.env.COMMERCE_MOCK_PORT ?? "4100");
 const UPGRADE_RE = /^\/api\/v2\/internal\/diagnostics\/([^/]+)\/upgrade$/;
 const RUN_RE = /^\/api\/v2\/internal\/diagnostics\/([^/]+)\/run$/;
+const PUBLIC_REPORT_RUN_PATH = "/api/v2/diagnostics/run";
+const CAPTURED_REPORT_RUN_PATH = "/__e2e/report-run";
+const capturedReportRuns = new Map<string, Record<string, unknown>>();
 
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -29,6 +34,43 @@ const server = createServer((req, res) => {
   if (req.method === "GET" && url.pathname === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === CAPTURED_REPORT_RUN_PATH) {
+    const domain = url.searchParams.get("domain") ?? "";
+    const captured = capturedReportRuns.get(domain);
+    res.writeHead(captured ? 200 : 404, {
+      "content-type": "application/json",
+    });
+    res.end(JSON.stringify(captured ?? { error: "not found" }));
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === PUBLIC_REPORT_RUN_PATH) {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk;
+    });
+    req.on("end", () => {
+      let body: Record<string, unknown>;
+      try {
+        body = JSON.parse(raw || "{}") as Record<string, unknown>;
+      } catch {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid JSON" }));
+        return;
+      }
+      const domain = typeof body.url === "string" ? body.url : "";
+      if (!domain) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "url is required" }));
+        return;
+      }
+      capturedReportRuns.set(domain, body);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ status: "fresh" }));
+    });
     return;
   }
 

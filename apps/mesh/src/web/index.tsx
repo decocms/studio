@@ -230,9 +230,9 @@ const commerceOnboardingRoute = createRoute({
   ),
 });
 
-// Public commerce report (Signal Deck) for a scanned domain — no auth. The
-// static /report segment wins over the /$org catch-all by specificity.
-const publicReportRoute = createRoute({
+// Auth-gated commerce report for a scanned domain. The route itself stays
+// outside the org shell so login can happen inline over its locked preview.
+const reportRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/report/$domain",
   component: lazyRouteComponent(() => import("./routes/reports.tsx")),
@@ -645,7 +645,7 @@ const routeTree = rootRoute.addChildren([
   adminLayoutWithChildren,
   onboardingRoute,
   commerceOnboardingRoute,
-  publicReportRoute,
+  reportRoute,
   loginRoute,
   cliAuthSuccessRoute,
   resetPasswordRoute,

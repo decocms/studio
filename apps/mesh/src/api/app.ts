@@ -93,7 +93,7 @@ import { createProxyRoutes } from "./routes/proxy";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
-import publicReportsRoutes from "./routes/public-reports";
+import reportsRoutes from "./routes/reports";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
@@ -1263,12 +1263,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ============================================================================
   app.route("/api/config", publicConfigRoutes);
 
-  // Public commerce reports (no auth required) — anonymous proxy to the
-  // reports engine for the /report/:domain page.
-  app.route("/api/_reports", publicReportsRoutes);
+  // Report shell stays public so authentication can happen inline, while all
+  // report data and scan operations behind this proxy require a user session.
+  app.route("/api/_reports", reportsRoutes);
 
-  // Public report page + dynamic metadata. API-only/test apps safely return
-  // 404 for the HTML shell when no built client directory is supplied.
+  // Auth-gated report page + domain-derived metadata. API-only/test apps safely
+  // return 404 for the HTML shell when no built client directory is supplied.
   app.route("/report", createReportPagesRoutes(options.clientDir));
 
   // ============================================================================

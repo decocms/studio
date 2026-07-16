@@ -50,6 +50,7 @@ mock.module("posthog-js", () => ({
 const {
   initPostHog,
   identifyUser,
+  sanitizeAnalyticsUrl,
   setOrganizationGroup,
   resetUser,
   __resetForTest,
@@ -70,6 +71,91 @@ function stubLocalStorage(seed: Record<string, string> = {}) {
   (globalThis.window as { localStorage?: unknown }).localStorage = stub;
   return store;
 }
+
+describe("posthog-client report URL privacy", () => {
+  beforeEach(() => {
+    initCalls.length = 0;
+    __resetForTest();
+  });
+
+  test("removes report credentials while preserving attribution", () => {
+    expect(
+      sanitizeAnalyticsUrl(
+        "https://studio.decocms.com/report/acme.com?key=preview&d=email-token&share_id=share-1&utm_source=email#overview",
+      ),
+    ).toBe(
+      "https://studio.decocms.com/report/acme.com?share_id=share-1&utm_source=email#overview",
+    );
+    expect(
+      sanitizeAnalyticsUrl(
+        "/api/_reports/site/acme.com?key=preview&share_id=share-1",
+      ),
+    ).toBe("/api/_reports/site/acme.com?share_id=share-1");
+  });
+
+  test("redacts email link tokens embedded in API paths", () => {
+    expect(
+      sanitizeAnalyticsUrl(
+        "/api/_reports/link-token/private-token?email_run_id=run-42",
+      ),
+    ).toBe("/api/_reports/link-token/redacted?email_run_id=run-42");
+  });
+
+  test("leaves ordinary URLs and non-URL values unchanged", () => {
+    expect(sanitizeAnalyticsUrl("https://studio.decocms.com/acme/tasks")).toBe(
+      "https://studio.decocms.com/acme/tasks",
+    );
+    expect(sanitizeAnalyticsUrl("not a URL")).toBe("not a URL");
+  });
+
+  test("applies the sanitizer to events and session replay URLs", () => {
+    initPostHog("phc_test", "https://us.i.posthog.com");
+    const config = initCalls[0]?.[1] as {
+      before_send: (event: {
+        properties: Record<string, unknown>;
+        $set_once?: Record<string, unknown>;
+      }) => {
+        properties: Record<string, unknown>;
+        $set_once?: Record<string, unknown>;
+      };
+      session_recording: {
+        maskCapturedNetworkRequestFn: (request: { name: string }) => {
+          name: string;
+        };
+      };
+    };
+
+    const event = config.before_send({
+      properties: {
+        $current_url:
+          "https://studio.decocms.com/report/acme.com?key=preview&utm_source=share",
+      },
+      $set_once: {
+        $initial_current_url:
+          "https://studio.decocms.com/report/acme.com?d=email-token&utm_source=email",
+      },
+    });
+    expect(event.properties.$current_url).toBe(
+      "https://studio.decocms.com/report/acme.com?utm_source=share",
+    );
+    expect(event.$set_once?.$initial_current_url).toBe(
+      "https://studio.decocms.com/report/acme.com?utm_source=email",
+    );
+
+    expect(
+      config.session_recording.maskCapturedNetworkRequestFn({
+        name: "/api/_reports/site/acme.com?key=preview",
+      }),
+    ).toEqual({
+      name: "/api/_reports/site/acme.com",
+    });
+    expect(
+      config.session_recording.maskCapturedNetworkRequestFn({
+        name: "/api/_reports/link-token/email-token",
+      }),
+    ).toEqual({ name: "/api/_reports/link-token/redacted" });
+  });
+});
 
 describe("posthog-client.setOrganizationGroup", () => {
   beforeEach(() => {

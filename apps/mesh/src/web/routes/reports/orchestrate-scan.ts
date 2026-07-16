@@ -1,5 +1,5 @@
 // The scan lifecycle as a pure async function (no React): trigger the scan,
-// then poll the public read (and the durable run's status when we have an id)
+// then poll the authenticated read (and the durable run's status when we have an id)
 // until the deck is ready or the run terminates. Ported from ScanGate's effect
 // in the decocms landing — here it's started from a mount callback ref and
 // cancelled via AbortSignal.
@@ -7,13 +7,24 @@
 import { sleep } from "@decocms/std";
 import type { TemplateDeck } from "@/reports/deck-types";
 import type { SlideDrop } from "@/reports/to-deck";
-import { getPublicReport, getScanStatus, runReportScan } from "./api";
+import {
+  getReport,
+  getScanStatus,
+  isReportsUnauthorized,
+  runReportScan,
+} from "./api";
 import { captureReport } from "./track";
 
 const POLL_MS = 4000;
 const MAX_POLLS = 180;
 
-export type ScanPhase = "scanning" | "pending" | "blocked" | "empty" | "error";
+export type ScanPhase =
+  | "scanning"
+  | "pending"
+  | "blocked"
+  | "empty"
+  | "unauthorized"
+  | "error";
 
 export interface ScanEvents {
   onPhase: (phase: ScanPhase) => void;
@@ -32,9 +43,9 @@ export function reportDrops(domain: string, drops?: SlideDrop[]): void {
     });
 }
 
-// localStorage mark: this browser already has a scan in flight for the domain
-// (so a reload lands straight on the pending screen, keeping the typed email).
-type PendingMark = { emailed: boolean };
+// localStorage mark: this browser already has a scan in flight for the domain,
+// so a reload lands straight on the pending screen.
+type PendingMark = { startedAt?: number };
 const PKEY = (d: string) => `report:pending:${d}`;
 export const readPending = (d: string): PendingMark | null => {
   try {
@@ -43,9 +54,9 @@ export const readPending = (d: string): PendingMark | null => {
     return null;
   }
 };
-export const writePending = (d: string, v: PendingMark) => {
+const writePending = (d: string) => {
   try {
-    localStorage.setItem(PKEY(d), JSON.stringify(v));
+    localStorage.setItem(PKEY(d), JSON.stringify({ startedAt: Date.now() }));
   } catch {
     /* ignore */
   }
@@ -85,11 +96,11 @@ export async function orchestrateScan(
         domain,
         surface: "deck_v2",
       });
-      writePending(domain, readPending(domain) ?? { emailed: false });
+      writePending(domain);
     }
 
     for (let i = 0; i < MAX_POLLS && !signal.aborted; i++) {
-      const next = await getPublicReport(domain);
+      const next = await getReport(domain);
       if (signal.aborted) return;
       if (next.status === "ready" && next.deck) {
         clearPending(domain);
@@ -102,7 +113,7 @@ export async function orchestrateScan(
         if (signal.aborted) return;
         if (st.done) {
           await sleep(POLL_MS, { signal });
-          const fin = await getPublicReport(domain);
+          const fin = await getReport(domain);
           if (signal.aborted) return;
           if (fin.status === "ready" && fin.deck) {
             clearPending(domain);
@@ -136,16 +147,17 @@ export async function orchestrateScan(
       });
       events.onPhase("empty");
     }
-  } catch {
+  } catch (error) {
     if (!signal.aborted) {
       clearPending(domain);
+      const unauthorized = isReportsUnauthorized(error);
       captureReport("report_scan_failed", {
         domain,
-        phase: "error",
-        reason: "exception",
+        phase: unauthorized ? "unauthorized" : "error",
+        reason: unauthorized ? "unauthorized" : "exception",
         surface: "deck_v2",
       });
-      events.onPhase("error");
+      events.onPhase(unauthorized ? "unauthorized" : "error");
     }
   }
 }

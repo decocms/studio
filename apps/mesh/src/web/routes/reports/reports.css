@@ -69,15 +69,6 @@
   }
 }
 
-/* ── ScanGate email input ───────────────────────────────────────────────── */
-.scan-gate-input::placeholder {
-  color: #78726e;
-}
-.scan-gate-input:focus {
-  border-color: rgba(40, 37, 36, 0.35) !important;
-  outline: none;
-}
-
 /* ── ScanGate logo carousel ─────────────────────────────────────────────── */
 @keyframes logoCycleEnter {
   from {
