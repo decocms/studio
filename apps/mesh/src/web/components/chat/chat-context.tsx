@@ -1028,6 +1028,20 @@ export function ActiveTaskProvider({
           });
           return;
         }
+        // `load_repo` finished cloning a repo into the thread's sandbox and
+        // wants the live Preview shown — open the "preview" main-panel tab.
+        if (chunk.type === "data-open-preview") {
+          const cb = cbRef.current;
+          cb.navigate({
+            to: ".",
+            search: (prev: Record<string, unknown>) => ({
+              ...prev,
+              main: "preview",
+            }),
+            replace: true,
+          });
+          return;
+        }
       },
       onFinish: (message, _messages, finishReason) => {
         const cb = cbRef.current;

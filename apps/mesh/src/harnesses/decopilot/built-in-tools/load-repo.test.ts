@@ -11,4 +11,3 @@ test("buildDescription lists each repo with its connectionId", () => {
   // The model is told to pass a connectionId.
   expect(desc).toContain("connectionId of the repo to load");
 });
-

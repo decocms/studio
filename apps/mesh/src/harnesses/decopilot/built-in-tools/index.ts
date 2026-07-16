@@ -244,16 +244,16 @@ async function buildAllTools(
       virtualMcpId: vmContext.virtualMcpId,
     }) as ToolSet;
     Object.assign(tools, vmTools);
-    // Repo switcher — dynamic description lists the org's imported repos, and
-    // calling it rewrites `githubRepo` + tears down the sandbox so the next VM
-    // tool call re-provisions against the newly selected repo. Omitted entirely
-    // when the org has no imported repos (nothing to switch between).
+    // Repo switcher — dynamic description lists the org's imported repos; calling
+    // it binds the repo to the thread, eagerly clones its sandbox, and opens the
+    // Preview. Omitted when the org has no imported repos (nothing to switch).
     const loadRepo = await createLoadRepoTool({
       ctx,
       orgId: organization.id,
       virtualMcpId: vmContext.virtualMcpId,
-      branch: vmContext.branch,
       userId: vmContext.userId,
+      threadId: vmContext.threadId,
+      writer,
     });
     if (loadRepo) tools.load_repo = loadRepo;
   }
