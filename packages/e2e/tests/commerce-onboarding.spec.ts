@@ -298,7 +298,9 @@ test.describe("Commerce onboarding route isolation", () => {
       [connectionId],
     );
     expect(concrete.rows[0]).toMatchObject({
-      connection_url: "https://reports.decocms.com/api/v2/mcp",
+      // The host is environment-specific (COMMERCE_DISCOVERY_INTERNAL_API_URL);
+      // assert only the invariant path suffix.
+      connection_url: expect.stringMatching(/\/api\/v2\/mcp$/),
       connection_type: "HTTP",
       title: "Store Report",
     });
