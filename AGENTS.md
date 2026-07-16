@@ -321,6 +321,13 @@ isolation) and is intentionally separate.
 - Files in shared packages: kebab-case (enforced by `plugins/enforce-kebab-case-file-names.ts`)
 - A comment that takes a paragraph to justify a workaround is a signal the code is wrong, not the comment—fix the code, don't explain it away
 
+### "Thread" vs "Chat" naming
+The domain concept is a **thread** — that's the name on the backend and in all code: DB columns/tables, storage, tools, API routes, wire payloads, query keys, types, hooks, variables, functions. Do NOT rename any of these to "chat".
+
+User-facing copy calls it a **chat** — anything a person reads in the UI: JSX text, button/menu labels, placeholders, tooltips, `aria-label`s, headings, empty states, toasts/error messages. Write these as "chat".
+
+So a `thread`-named identifier can render "New chat" in a label; keep the code identifier as `thread` and only the displayed string as "chat". When in doubt: if it crosses the wire or lives in code, it's "thread"; if a user reads it, it's "chat".
+
 ### React 19 Patterns
 - Uses React 19 with React Compiler (babel-plugin-react-compiler)
 - **DO NOT** use `useEffect` (banned by `plugins/ban-use-effect.ts`)—prefer alternatives
