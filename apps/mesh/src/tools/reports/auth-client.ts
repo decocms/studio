@@ -67,6 +67,18 @@ export function resolveBaseUrl(options: CommerceDiscoveryAuthOptions): string {
   ).replace(/\/+$/, "");
 }
 
+/**
+ * Resolve the Commerce Discovery MCP endpoint URL from env settings, so the
+ * CD connection's `connection_url` always targets the same instance as the
+ * internal API (prod vs. stg). Falls back to the hardcoded constant when no
+ * COMMERCE_DISCOVERY_INTERNAL_API_URL override is set.
+ */
+export function resolveCommerceDiscoveryMcpUrl(
+  options: CommerceDiscoveryAuthOptions = {},
+): string {
+  return `${resolveBaseUrl(options)}/api/v2/mcp`;
+}
+
 export function resolveApiKey(options: CommerceDiscoveryAuthOptions): string {
   const apiKey =
     options.apiKey ??

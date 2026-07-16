@@ -6,19 +6,22 @@ import {
 } from "./constants";
 
 describe("StudioPackAgentId", () => {
-  test("generates the Store Manager id with the org suffix", () => {
-    expect(StudioPackAgentId.STORE_MANAGER("org_xyz")).toBe(
-      "studio-store-manager_org_xyz",
+  test("generates org-scoped manager ids", () => {
+    expect(StudioPackAgentId.API_KEY_MANAGER("org_xyz")).toBe(
+      "studio-api-key-manager_org_xyz",
     );
   });
 });
 
 describe("isStudioPackAgent", () => {
-  test("recognises every studio-pack manager id, including the new store-manager", () => {
+  test("recognises every studio-pack manager id", () => {
     expect(isStudioPackAgent("studio-agent-manager_org_xyz")).toBe(true);
     expect(isStudioPackAgent("studio-automation-manager_org_xyz")).toBe(true);
     expect(isStudioPackAgent("studio-connection-manager_org_xyz")).toBe(true);
+    expect(isStudioPackAgent("studio-api-key-manager_org_xyz")).toBe(true);
     expect(isStudioPackAgent("studio-store-manager_org_xyz")).toBe(true);
+    expect(isStudioPackAgent("studio-brand-manager_org_xyz")).toBe(true);
+    expect(isStudioPackAgent("studio-usage-manager_org_xyz")).toBe(true);
   });
 
   test("rejects unrelated ids", () => {

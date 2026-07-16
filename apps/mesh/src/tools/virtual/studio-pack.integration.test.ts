@@ -10,7 +10,7 @@ import type { StudioDatabase } from "../../database";
 import { CredentialVault } from "../../encryption/credential-vault";
 import { ConnectionStorage } from "../../storage/connection";
 import { VirtualMCPStorage } from "../../storage/virtual";
-import { installStudioPack } from "./studio-pack";
+import { installStudioPack, STUDIO_PACK_AGENTS } from "./studio-pack";
 
 describe("installStudioPack", () => {
   let database: StudioDatabase;
@@ -81,16 +81,13 @@ describe("installStudioPack", () => {
   test("creates the studio-pack agents on a fresh org", async () => {
     await installStudioPack(orgId, userId, virtualMcpStorage);
 
-    for (const getId of [
-      StudioPackAgentId.AGENT_MANAGER,
-      StudioPackAgentId.AUTOMATION_MANAGER,
-      StudioPackAgentId.CONNECTION_MANAGER,
-      StudioPackAgentId.STORE_MANAGER,
-      StudioPackAgentId.USAGE_MANAGER,
-    ]) {
-      const found = await virtualMcpStorage.findById(getId(orgId), orgId);
+    for (const manager of STUDIO_PACK_AGENTS) {
+      const found = await virtualMcpStorage.findById(
+        manager.getId(orgId),
+        orgId,
+      );
       expect(found).not.toBeNull();
-      expect(found?.title).toBeTruthy();
+      expect(found?.title).toBe(manager.title);
     }
   });
 
@@ -126,5 +123,26 @@ describe("installStudioPack", () => {
     const agent = await virtualMcpStorage.findById(agentId, orgId);
     const connIds = (agent?.connections ?? []).map((c) => c.connection_id);
     expect(connIds).toEqual([WellKnownOrgMCPId.SELF(orgId)]);
+  });
+
+  test("API Key Manager exposes only key management and read-only discovery tools", async () => {
+    await installStudioPack(orgId, userId, virtualMcpStorage);
+    const managerId = StudioPackAgentId.API_KEY_MANAGER(orgId);
+    const manager = await virtualMcpStorage.findById(managerId, orgId);
+
+    expect(manager?.connections).toHaveLength(1);
+    expect(manager?.connections[0]?.connection_id).toBe(
+      WellKnownOrgMCPId.SELF(orgId),
+    );
+    expect(manager?.connections[0]?.selected_tools).toEqual([
+      "API_KEY_CREATE",
+      "API_KEY_LIST",
+      "API_KEY_UPDATE",
+      "API_KEY_DELETE",
+      "COLLECTION_VIRTUAL_MCP_LIST",
+      "COLLECTION_VIRTUAL_MCP_GET",
+      "COLLECTION_CONNECTIONS_LIST",
+      "COLLECTION_CONNECTIONS_GET",
+    ]);
   });
 });

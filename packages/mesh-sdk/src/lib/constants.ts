@@ -190,31 +190,6 @@ export function getWellKnownDevAssetsConnection(
 }
 
 /**
- * Get well-known connection definition for MCP Studio.
- * Used by agents and workflows pages to offer installation when no provider is connected.
- */
-export function getWellKnownMcpStudioConnection(): ConnectionCreateData {
-  return {
-    title: "MCP Studio",
-    description: "An app that allows you to create and manage MCPs",
-    icon: "https://assets.decocache.com/mcp/09e44283-f47d-4046-955f-816d227c626f/app.png",
-    app_name: "mcp-studio",
-    app_id: "65a1b407-b6af-41e2-a89f-ce9450c05bbc",
-    connection_type: "HTTP",
-    connection_url: "https://sites-vibemcp.decocache.com/mcp",
-    connection_token: null,
-    connection_headers: null,
-    oauth_config: null,
-    configuration_state: null,
-    configuration_scopes: null,
-    metadata: {
-      isDefault: false,
-      type: "mcp-studio",
-    },
-  };
-}
-
-/**
  * Build a paired `{ is, get }` helper for an org-scoped well-known agent id
  * of shape `${prefix}${orgId}`. Centralizes the trivial check/slice/format
  * logic that every well-known agent used to hand-roll.
@@ -362,13 +337,14 @@ export const getCommerceDiscoveryAgentId = commerceDiscoveryPrefix.get;
 export function getWellKnownCommerceDiscoveryConnection(
   orgId: string,
   authorizationToken: string,
+  connectionUrl = COMMERCE_DISCOVERY_MCP_URL,
 ): ConnectionCreateData {
   return {
     id: WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
     title: "Store Report",
     description: "Your store's report and diagnostics",
     connection_type: "HTTP",
-    connection_url: COMMERCE_DISCOVERY_MCP_URL,
+    connection_url: connectionUrl,
     icon: COMMERCE_DISCOVERY_ICON,
     app_name: "commerce-discovery",
     app_id: null,
@@ -428,15 +404,29 @@ export function getWellKnownCommerceDiscoveryVirtualMCP(
 }
 
 /**
+ * Studio Pack agent ID prefixes (org-scoped), keyed the same as StudioPackAgentId below.
+ */
+const studioPackAgentPrefixes = {
+  AGENT_MANAGER: createWellKnownAgentPrefix("studio-agent-manager_"),
+  AUTOMATION_MANAGER: createWellKnownAgentPrefix("studio-automation-manager_"),
+  CONNECTION_MANAGER: createWellKnownAgentPrefix("studio-connection-manager_"),
+  API_KEY_MANAGER: createWellKnownAgentPrefix("studio-api-key-manager_"),
+  STORE_MANAGER: createWellKnownAgentPrefix("studio-store-manager_"),
+  BRAND_MANAGER: createWellKnownAgentPrefix("studio-brand-manager_"),
+  USAGE_MANAGER: createWellKnownAgentPrefix("studio-usage-manager_"),
+} as const;
+
+/**
  * Studio Pack agent ID generators (org-scoped)
  */
 export const StudioPackAgentId = {
-  AGENT_MANAGER: (orgId: string) => `studio-agent-manager_${orgId}`,
-  AUTOMATION_MANAGER: (orgId: string) => `studio-automation-manager_${orgId}`,
-  CONNECTION_MANAGER: (orgId: string) => `studio-connection-manager_${orgId}`,
-  STORE_MANAGER: (orgId: string) => `studio-store-manager_${orgId}`,
-  BRAND_MANAGER: (orgId: string) => `studio-brand-manager_${orgId}`,
-  USAGE_MANAGER: (orgId: string) => `studio-usage-manager_${orgId}`,
+  AGENT_MANAGER: studioPackAgentPrefixes.AGENT_MANAGER.get,
+  AUTOMATION_MANAGER: studioPackAgentPrefixes.AUTOMATION_MANAGER.get,
+  CONNECTION_MANAGER: studioPackAgentPrefixes.CONNECTION_MANAGER.get,
+  API_KEY_MANAGER: studioPackAgentPrefixes.API_KEY_MANAGER.get,
+  STORE_MANAGER: studioPackAgentPrefixes.STORE_MANAGER.get,
+  BRAND_MANAGER: studioPackAgentPrefixes.BRAND_MANAGER.get,
+  USAGE_MANAGER: studioPackAgentPrefixes.USAGE_MANAGER.get,
 } as const;
 
 /**
@@ -444,13 +434,8 @@ export const StudioPackAgentId = {
  */
 export function isStudioPackAgent(id: string | null | undefined): boolean {
   if (!id) return false;
-  return (
-    id.startsWith("studio-agent-manager_") ||
-    id.startsWith("studio-automation-manager_") ||
-    id.startsWith("studio-connection-manager_") ||
-    id.startsWith("studio-store-manager_") ||
-    id.startsWith("studio-brand-manager_") ||
-    id.startsWith("studio-usage-manager_")
+  return Object.values(studioPackAgentPrefixes).some(
+    (prefix) => prefix.is(id) !== null,
   );
 }
 

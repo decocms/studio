@@ -43,6 +43,34 @@ describe("TaskManager intentional flag", () => {
   });
 });
 
+describe("TaskManager pipe-mode output decoding", () => {
+  it("does not corrupt a multi-byte UTF-8 character split across separate stdout chunks", async () => {
+    const tm = makeManager();
+    const t = await tm.spawn({
+      // Two separate writes with a gap: the ✓ (0xE2 0x9C 0x93) arrives as
+      // one stdout 'data' event with a dangling lead byte, then the rest.
+      command: "printf '\\xe2\\x9c'; sleep 0.05; printf '\\x93 ok\\n'",
+      cwd: "/tmp",
+      mode: "pipe",
+    });
+    await tm.finished(t.id);
+    expect(tm.output(t.id)?.stdout).toBe("✓ ok\n");
+  });
+
+  it("flushes a dangling multi-byte sequence still buffered when the stream closes", async () => {
+    const tm = makeManager();
+    const t = await tm.spawn({
+      // Writes only the first 2 of 3 bytes of ✓ (0xE2 0x9C 0x93), then exits
+      // with no further output — the decoder never sees a completing byte.
+      command: "printf '\\xe2\\x9c'",
+      cwd: "/tmp",
+      mode: "pipe",
+    });
+    await tm.finished(t.id);
+    expect(tm.output(t.id)?.stdout.length).toBeGreaterThan(0);
+  });
+});
+
 describe("TaskManager kill status", () => {
   it("reports status 'killed' (not 'exited') for a pipe-mode task killed via kill()", async () => {
     const tm = makeManager();

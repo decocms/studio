@@ -23,6 +23,11 @@ import {
   removeSandboxMapEntry,
   resolveVm,
 } from "../../tools/sandbox/sandbox-map";
+import {
+  getThreadSandboxMap,
+  removeThreadSandboxMapEntry,
+  threadIdFromBranch,
+} from "../../tools/sandbox/thread-repo";
 import type { Env } from "../hono-env";
 
 /**
@@ -76,17 +81,12 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
   } = args;
   const providerKind = resolveSandboxProviderKindFromEnv();
 
-  const existingVmEntry = resolveVm(
-    readSandboxMap(virtualMcpMetadata),
-    userId,
-    branch,
-    providerKind,
-  );
-  const expectingHandle = existingVmEntry?.sandboxHandle === claimName;
-  // Post-migration 091 the field is already canonical. Just narrow against
-  // null/undefined for the cleanup call site below.
-  const existingProviderKind: SandboxProviderKind | null =
-    existingVmEntry?.sandboxProviderKind ?? null;
+  // The agent row is a no-op sandbox store for the synthetic Decopilot agent —
+  // its records live on the THREAD (see `setThreadSandboxMapEntry`). Resolve the
+  // thread id from the branch so the stale-handle check below covers thread-
+  // scoped sandboxes too; otherwise a dead thread claim never emits `gone` and
+  // the preview loops on `claiming` forever with no self-heal.
+  const threadId = threadIdFromBranch(branch);
 
   c.header("X-Accel-Buffering", "no");
   c.header("Content-Encoding", "identity");
@@ -104,7 +104,28 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     });
 
     try {
-      if (expectingHandle) {
+      // Prefer the agent entry; fall back to the thread entry (thread-scoped
+      // branches). `fromThread` steers cleanup to the right store.
+      let vmEntry = resolveVm(
+        readSandboxMap(virtualMcpMetadata),
+        userId,
+        branch,
+        providerKind,
+      );
+      let fromThread = false;
+      if (!vmEntry && threadId) {
+        vmEntry = resolveVm(
+          await getThreadSandboxMap(ctx, threadId),
+          userId,
+          branch,
+          providerKind,
+        );
+        fromThread = !!vmEntry;
+      }
+      const existingProviderKind: SandboxProviderKind | null =
+        vmEntry?.sandboxProviderKind ?? null;
+
+      if (vmEntry?.sandboxHandle === claimName) {
         const stale = await isStaleHandle(runner, claimName);
         if (stale) {
           await cleanupStaleEntry({
@@ -116,6 +137,7 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
             userId,
             projectRef,
             sandboxProviderKind: existingProviderKind ?? providerKind,
+            threadId: fromThread ? threadId : null,
           });
           await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
           return;
@@ -170,6 +192,9 @@ async function cleanupStaleEntry(args: {
   userId: string;
   projectRef: string;
   sandboxProviderKind: SandboxProviderKind;
+  /** Set when the stale entry was found on the thread (synthetic agent) — clear
+   *  it there instead of / in addition to the agent row. */
+  threadId: string | null;
 }): Promise<void> {
   const {
     ctx,
@@ -180,20 +205,32 @@ async function cleanupStaleEntry(args: {
     userId,
     projectRef,
     sandboxProviderKind,
+    threadId,
   } = args;
   // Drop the sandboxMap entry first. Without this the dangling `sandboxHandle`
-  // stays in the virtualmcp metadata, so every client SSE reconnect re-enters
-  // this stale path and re-issues a DELETE against the already-gone claim — a
-  // 404 flood that only stops when the tab closes. Mirrors SANDBOX_DELETE.
+  // stays in metadata, so every client SSE reconnect re-enters this stale path
+  // and re-issues a DELETE against the already-gone claim — a 404 flood that
+  // only stops when the tab closes. Clear whichever store held it (thread for
+  // the synthetic agent, else the agent row). Mirrors SANDBOX_DELETE.
   try {
-    await removeSandboxMapEntry(
-      ctx.storage.virtualMcps,
-      virtualMcpId,
-      userId,
-      userId,
-      branch,
-      sandboxProviderKind,
-    );
+    if (threadId) {
+      await removeThreadSandboxMapEntry(
+        ctx,
+        threadId,
+        userId,
+        branch,
+        sandboxProviderKind,
+      );
+    } else {
+      await removeSandboxMapEntry(
+        ctx.storage.virtualMcps,
+        virtualMcpId,
+        userId,
+        userId,
+        branch,
+        sandboxProviderKind,
+      );
+    }
   } catch (err) {
     console.warn(
       `[vm-events] sandboxMap cleanup failed for ${virtualMcpId}/${branch}/${sandboxProviderKind}: ${

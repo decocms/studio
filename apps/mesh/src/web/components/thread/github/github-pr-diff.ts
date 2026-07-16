@@ -75,6 +75,8 @@ function parsePrFiles(result: unknown): PrFile[] {
       additions,
       deletions,
       blobUrl: typeof f.blob_url === "string" ? f.blob_url : null,
+      previousFilename:
+        typeof f.previous_filename === "string" ? f.previous_filename : null,
     };
   });
 }
@@ -154,10 +156,13 @@ export async function fetchGithubPrDiff(
       return;
     }
 
+    // A renamed file's old content lives at `previousFilename`, not `path`
+    // (the new name) — fetching `path` at the base ref 404s there instead.
+    const fromPath = file.previousFilename ?? path;
     const [from, to] = await Promise.all([
       getFileAtRef(
         client,
-        { owner: args.owner, repo: args.repo, path },
+        { owner: args.owner, repo: args.repo, path: fromPath },
         fromRef,
       ),
       getFileAtRef(

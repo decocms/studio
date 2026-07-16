@@ -865,9 +865,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       {daemonReady && previewState.kind === "iframe" && (
         <div className="relative flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
           {previewState.kind === "iframe" && (
-            <div className="grid h-full w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
+            <div className="flex h-full w-full items-center justify-between gap-2">
               <Button
-                variant={editingMode === "blocks" ? "secondary" : "ghost"}
+                variant="outline"
                 size="sm"
                 data-testid="preview-blocks-toggle"
                 onClick={() => toggleEditingMode("blocks")}
@@ -878,7 +878,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 Blocks
               </Button>
 
-              <div className="flex w-full min-w-0 max-w-[500px] items-center gap-0.5 justify-self-center">
+              <div className="flex w-full min-w-0 max-w-[500px] items-center gap-0.5">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon" onClick={handleRefresh}>
@@ -1137,99 +1137,97 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   </TooltipTrigger>
                   <TooltipContent side="bottom">Open in new tab</TooltipContent>
                 </Tooltip>
+              </div>
 
-                <div className="flex shrink-0 items-center">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <DotsHorizontal size={14} />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44">
-                      <DropdownMenuItem onClick={handleHardReload}>
-                        Hard Reload
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleCopyUrl}>
-                        Copy Current URL
-                      </DropdownMenuItem>
-                      {decofile && meta && (
-                        <>
-                          <DropdownMenuSeparator />
-                          {currentPageKey && (
-                            <DropdownMenuItem
-                              onClick={() => {
-                                workspace.editSeo({
-                                  kind: "page",
-                                  key: currentPageKey,
-                                  path: currentPath,
-                                });
-                                activateEditingMode("blocks");
-                              }}
-                            >
-                              <CreditCardSearch size={14} />
-                              Edit SEO
-                            </DropdownMenuItem>
-                          )}
-                          {currentPageKey && (
-                            <DropdownMenuItem
-                              onClick={() => {
-                                try {
-                                  goToTab(
-                                    formatCodeTabId(
-                                      decoBlockFileViewPath(currentPageKey),
-                                    ),
-                                  );
-                                } catch {
-                                  toast.error("Invalid page block key");
-                                }
-                              }}
-                            >
-                              <Code01 size={14} />
-                              View JSON
-                            </DropdownMenuItem>
-                          )}
+              <div className="flex shrink-0 items-center">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon">
+                      <DotsHorizontal size={14} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onClick={handleHardReload}>
+                      Hard Reload
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleCopyUrl}>
+                      Copy Current URL
+                    </DropdownMenuItem>
+                    {decofile && meta && (
+                      <>
+                        <DropdownMenuSeparator />
+                        {currentPageKey && (
                           <DropdownMenuItem
-                            onClick={() => setSiteSeoOpen(true)}
+                            onClick={() => {
+                              workspace.editSeo({
+                                kind: "page",
+                                key: currentPageKey,
+                                path: currentPath,
+                              });
+                              activateEditingMode("blocks");
+                            }}
                           >
                             <CreditCardSearch size={14} />
-                            Site SEO
+                            Edit SEO
                           </DropdownMenuItem>
-                        </>
-                      )}
-                      {repoDir && (
-                        <>
-                          <DropdownMenuSeparator />
+                        )}
+                        {currentPageKey && (
                           <DropdownMenuItem
-                            onClick={() =>
-                              window.open(ideDeepLink("vscode", repoDir))
-                            }
+                            onClick={() => {
+                              try {
+                                goToTab(
+                                  formatCodeTabId(
+                                    decoBlockFileViewPath(currentPageKey),
+                                  ),
+                                );
+                              } catch {
+                                toast.error("Invalid page block key");
+                              }
+                            }}
                           >
-                            <img
-                              src={VSCODE_ICON_URL}
-                              alt="VSCode"
-                              width={14}
-                              height={14}
-                            />
-                            Open in VSCode
+                            <Code01 size={14} />
+                            View JSON
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() =>
-                              window.open(ideDeepLink("cursor", repoDir))
-                            }
-                          >
-                            <img
-                              src={CURSOR_ICON_URL}
-                              alt="Cursor"
-                              width={14}
-                              height={14}
-                            />
-                            Open in Cursor
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                        )}
+                        <DropdownMenuItem onClick={() => setSiteSeoOpen(true)}>
+                          <CreditCardSearch size={14} />
+                          Site SEO
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {repoDir && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() =>
+                            window.open(ideDeepLink("vscode", repoDir))
+                          }
+                        >
+                          <img
+                            src={VSCODE_ICON_URL}
+                            alt="VSCode"
+                            width={14}
+                            height={14}
+                          />
+                          Open in VSCode
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            window.open(ideDeepLink("cursor", repoDir))
+                          }
+                        >
+                          <img
+                            src={CURSOR_ICON_URL}
+                            alt="Cursor"
+                            width={14}
+                            height={14}
+                          />
+                          Open in Cursor
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           )}

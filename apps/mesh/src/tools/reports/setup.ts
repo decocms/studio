@@ -18,7 +18,10 @@ import {
 } from "../../core/studio-context";
 import { ConnectionEntitySchema } from "../connection/schema";
 import { VirtualMCPEntitySchema } from "../virtual/schema";
-import { fetchCommerceDiscoveryAuth } from "./auth-client";
+import {
+  fetchCommerceDiscoveryAuth,
+  resolveCommerceDiscoveryMcpUrl,
+} from "./auth-client";
 
 const REPORT_TOOL_NAME =
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME as "get_my_diagnostic";
@@ -168,6 +171,11 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       ...claimContact,
     });
 
+    // The MCP URL must target the same instance as the internal API — in
+    // staging COMMERCE_DISCOVERY_INTERNAL_API_URL overrides the host, so the
+    // CD connection must point there too, not at the hardcoded prod constant.
+    const mcpUrl = resolveCommerceDiscoveryMcpUrl();
+
     if (connection) {
       console.log("[commerce-discovery] syncing connection to claimed site", {
         orgId: organization.id,
@@ -175,6 +183,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
         connectionId,
       });
       connection = await ctx.storage.connections.update(connection.id, {
+        connection_url: mcpUrl,
         connection_token: auth.authorizationToken,
         metadata: { ...(connection.metadata ?? {}), siteUrl: normalized.value },
       });
@@ -189,6 +198,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
         const base = getWellKnownCommerceDiscoveryConnection(
           organization.id,
           auth.authorizationToken,
+          mcpUrl,
         );
         connection = await ctx.storage.connections.create({
           ...base,

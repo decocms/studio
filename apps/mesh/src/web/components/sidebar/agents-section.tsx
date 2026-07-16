@@ -204,8 +204,8 @@ function PinAgentPopoverContent({
   const userAgents = agents
     .filter((s) => !isDecopilot(s.id))
     .filter((s) => !devAgentIds.has(s.id))
-    // Studio Pack default agents (Usage/Automation/Agent/Connection/Store/Brand
-    // Manager) live only on the agents page, not this browse list.
+    // Studio Pack default agents live only on the agents page, not this browse
+    // list.
     .filter((s) => !isStudioPackAgent(s.id))
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
 
