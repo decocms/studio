@@ -17,7 +17,7 @@ const fetchAuthMock = mock(
 mock.module("./auth-client", () => ({
   fetchCommerceDiscoveryAuth: fetchAuthMock,
   resolveCommerceDiscoveryMcpUrl: () =>
-    "https://commerce-skills.deco-cx.workers.dev/api/v2/mcp",
+    "https://reports-stg.decocms.com/api/v2/mcp",
 }));
 
 const { COMMERCE_DISCOVERY_SETUP } = await import("./setup");
