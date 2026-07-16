@@ -43,7 +43,7 @@ function labelsMatchLoose(a: string, b: string): boolean {
  *   key — {@link breadcrumbPathForActiveField} strips a head crumb that matches
  *   either, which would drop the sole crumb and lose the selection.
  */
-export function arrayCrumbNeededForDisambiguation(
+function arrayCrumbNeededForDisambiguation(
   arrayLabel: string,
   itemLabel: string,
   opts?: { arrayKey?: string; hasSiblingDrillDownFields?: boolean },
