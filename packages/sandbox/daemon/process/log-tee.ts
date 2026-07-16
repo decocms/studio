@@ -93,10 +93,6 @@ export class LogTee {
     return this.rotatedOnce;
   }
 
-  bytesWritten(): number {
-    return this.written;
-  }
-
   close(): void {
     if (this.fd === null) return;
     try {
