@@ -42,11 +42,18 @@ For N calls (a tool per row/file/item), never loop through your own
 tool-calling — write a script, run it, read back the summary. Results belong
 in a file, not in your context.
 
-Set up a scratch project so the user's repo stays untouched, then run from
-the repo root (endpoint discovery walks up from cwd):
+Set up a scratch project so the user's repo stays untouched. Cloud sandboxes
+carry the typegen package built from the same Studio revision; Desktop falls
+back to the published package. Then run from the repo root (endpoint discovery
+walks up from cwd):
 
 ```bash
-mkdir -p /tmp/toolrun && cd /tmp/toolrun && bun add @decocms/typegen
+mkdir -p /tmp/toolrun && cd /tmp/toolrun
+if [ -f /opt/sandbox-daemon/typegen.tgz ]; then
+  bun add /opt/sandbox-daemon/typegen.tgz
+else
+  bun add @decocms/typegen
+fi
 cd - && bun run /tmp/toolrun/bulk.ts
 ```
 

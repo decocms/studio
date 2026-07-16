@@ -91,10 +91,11 @@ RUN apt-get update \
   && find /opt/sandbox-daemon/node_modules/node-pty -name "spawn-helper" -exec chmod +x {} \; \
   && chown -R sandbox:sandbox /opt/sandbox-daemon
 
-# Tool-scripting CLI (see /mnt/skills/public/tool-scripting): `typegen tools` /
-# `typegen call` discover the pre-authenticated MCP endpoint the daemon
-# materializes under <repo>/.deco/tools/, so agents can script org tool calls.
-RUN npm install -g @decocms/typegen
+# Install the typegen build produced from this exact source revision. Installing
+# from npm here would race the post-merge package release and could bake the
+# previous CLI, which does not discover the materialized endpoint file.
+COPY --chown=sandbox:sandbox daemon/dist/typegen.tgz /opt/sandbox-daemon/typegen.tgz
+RUN npm install -g /opt/sandbox-daemon/typegen.tgz
 
 COPY --chown=sandbox:sandbox daemon/dist/daemon.js /opt/sandbox-daemon/daemon.js
 COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
