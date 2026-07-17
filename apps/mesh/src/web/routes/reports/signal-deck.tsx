@@ -601,10 +601,10 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                   slideIndex: index,
                 })
               }
-              className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full px-6 text-base font-medium transition-transform hover:scale-[1.01] lg:hidden"
+              className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full px-6 text-base font-medium transition-transform duration-300 ease-out hover:scale-105 lg:hidden"
               style={{ background: DECK.lime, color: DECK.forest }}
             >
-              <span>Destravar minha receita</span>
+              <span>Ver diagnóstico completo</span>
               <Icon name="arrow_forward" size="large" />
             </a>
             {/* desktop: Share on the right (CTA is in-slide) */}

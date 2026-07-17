@@ -140,6 +140,8 @@ export default function SlideTemplate({
           domain={deck.meta.domain}
           brand={deck.meta.brand}
           initial={deck.meta.initial}
+          checksProbed={deck.meta.scores?.coverage.checks_probed}
+          checksTotal={deck.meta.scores?.coverage.checks_total}
         />
       );
     default: {

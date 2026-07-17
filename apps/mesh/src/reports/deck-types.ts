@@ -324,6 +324,10 @@ export type CtaProps = Omit<CtaTemplate, "template"> &
     domain: string;
     brand: string;
     initial: string;
+    /** Coverage from the engine (checks probed / total). Absent on cached
+     *  reports that predate deterministic scores — the count pill hides then. */
+    checksProbed?: number;
+    checksTotal?: number;
   };
 
 /** A data source credited on a slide (logo + name). Rendered as a pill in the
