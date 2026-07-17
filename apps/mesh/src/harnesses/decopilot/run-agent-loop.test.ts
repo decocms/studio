@@ -188,6 +188,104 @@ describe("runAgentLoop user/userContext threading", () => {
   });
 });
 
+describe("runAgentLoop PR-open → task board thread-link resolution", () => {
+  // The subtask fix threads the parent's thread id into the subagent's
+  // runAgentLoop so a PR opened INSIDE a subtask still advances the linked
+  // card. These tests lock the mechanism that fix restores: the bash PR
+  // detector resolves the linked task via `currentThreadId` when the run
+  // carries no `runMetadata.taskBoardItemId` (the link fallback). Given no
+  // thread id, the fallback is unreachable — the exact failure a subtask that
+  // omits `currentThreadId` produces.
+
+  const fakeResult = {
+    text: Promise.resolve(""),
+    finishReason: Promise.resolve("stop"),
+    usage: Promise.resolve({ inputTokens: 0, outputTokens: 0, totalTokens: 0 }),
+    toUIMessageStream: () => ({ async *[Symbol.asyncIterator]() {} }),
+    response: Promise.resolve({ messages: [] }),
+  } as never;
+
+  const mockMcpClient = {
+    listTools: async () => ({ tools: [] }),
+    getInstructions: () => "",
+  } as never;
+
+  // ctx whose taskBoard.linkedTaskIds records the (threadId, orgId) it's asked
+  // to resolve. No `metadata.runMetadata` → forces the thread-link path.
+  function makePrCtx(linkedCalls: Array<{ threadId: string; orgId: string }>) {
+    return {
+      organization: { id: "org_test" },
+      auth: { user: { id: "u1" } },
+      metadata: {},
+      storage: {
+        virtualMcps: { list: async () => [] },
+        taskBoard: {
+          linkedTaskIds: async (threadId: string, orgId: string) => {
+            linkedCalls.push({ threadId, orgId });
+            return [];
+          },
+          getById: async () => null,
+        },
+      },
+    } as never;
+  }
+
+  async function runWithBashStep(
+    currentThreadId: string | undefined,
+    command: string,
+    linkedCalls: Array<{ threadId: string; orgId: string }>,
+  ) {
+    let onStepFinish:
+      | ((step: { toolCalls?: unknown[] }) => unknown)
+      | undefined;
+    const fakeStreamText = (cfg: { onStepFinish?: typeof onStepFinish }) => {
+      onStepFinish = cfg.onStepFinish;
+      return fakeResult;
+    };
+
+    await runAgentLoop({
+      kind: "subagent",
+      ctx: makePrCtx(linkedCalls),
+      organization: mockOrg,
+      virtualMcp: { id: "vir_test" },
+      mcpClient: mockMcpClient,
+      provider: mockProvider,
+      models: mockModels,
+      messages: [{ role: "user", content: "open a pr" }],
+      currentThreadId,
+      abortSignal: new AbortController().signal,
+      writer: mockWriter,
+      subtaskParams: mockSubtaskParams,
+      __streamText: fakeStreamText as never,
+    } as never);
+
+    // linkedTaskIds is invoked synchronously (before the first await inside
+    // advanceTaskBoardForRun), so the record is present as soon as the step
+    // callback returns — no timer needed.
+    await onStepFinish?.({
+      toolCalls: [{ toolName: "bash", input: { command } }],
+    });
+  }
+
+  test("resolves the linked task via currentThreadId on a `gh pr create` step", async () => {
+    const linkedCalls: Array<{ threadId: string; orgId: string }> = [];
+    await runWithBashStep("thr_abc", "gh pr create --fill", linkedCalls);
+    expect(linkedCalls).toEqual([{ threadId: "thr_abc", orgId: "org_test" }]);
+  });
+
+  test("does NOT query the thread link when currentThreadId is absent (the subtask-omission failure mode)", async () => {
+    const linkedCalls: Array<{ threadId: string; orgId: string }> = [];
+    await runWithBashStep(undefined, "gh pr create --fill", linkedCalls);
+    expect(linkedCalls).toEqual([]);
+  });
+
+  test("ignores a non-PR bash command", async () => {
+    const linkedCalls: Array<{ threadId: string; orgId: string }> = [];
+    await runWithBashStep("thr_abc", "git status", linkedCalls);
+    expect(linkedCalls).toEqual([]);
+  });
+});
+
 describe("runAgentLoop assembledSystemMessages (single surviving assembler)", () => {
   test("exposes exactly buildAgentSystemPrompt's output — the prompt feeding the model is the same one the _request.systemSections debug metadata is derived from", async () => {
     const fakeResult = {
