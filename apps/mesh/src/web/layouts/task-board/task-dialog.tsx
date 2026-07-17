@@ -81,9 +81,12 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
 });
 
-/** Sidebar property row — ghost button that opens an editor popover/menu. */
+/**
+ * Property control that opens an editor popover/menu. Outlined chip on mobile
+ * (wrapping row); a borderless ghost row in the desktop sidebar.
+ */
 const PROPERTY_BUTTON =
-  "inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted";
+  "inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:border-transparent";
 
 const THREAD_STATUS: Record<
   NonNullable<TaskBoardItemThread["status"]>,
@@ -117,6 +120,7 @@ export function TaskBoardItemDialog({
   open,
   onClose,
   item,
+  defaultStatus,
   onSubmit,
   onDelete,
   onOpenThread,
@@ -126,6 +130,9 @@ export function TaskBoardItemDialog({
   onClose: () => void;
   /** Present in edit mode, prefills the form. */
   item?: TaskBoardItem;
+  /** In create mode, the status to start the new task in (e.g. the lane the
+   * "+" was clicked from). Falls back to "triage". */
+  defaultStatus?: TaskBoardItemStatus;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -144,7 +151,7 @@ export function TaskBoardItemDialog({
   const [title, setTitle] = useState(item?.title ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
   const [status, setStatus] = useState<TaskBoardItemStatus>(
-    item?.status ?? "triage",
+    item?.status ?? defaultStatus ?? "triage",
   );
   const [priority, setPriority] = useState<TaskBoardItemPriority>(
     item?.priority ?? "medium",
@@ -161,7 +168,7 @@ export function TaskBoardItemDialog({
   const reset = () => {
     setTitle(item?.title ?? "");
     setDescription(item?.description ?? "");
-    setStatus(item?.status ?? "triage");
+    setStatus(item?.status ?? defaultStatus ?? "triage");
     setPriority(item?.priority ?? "medium");
     setAssigneeId(item?.assigneeId ?? null);
     setDueDate(parseIsoDate(item?.dueDate));
@@ -196,7 +203,7 @@ export function TaskBoardItemDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent
-        className="flex h-[85vh] max-h-[640px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[850px]"
+        className="flex max-h-[90vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:h-[85vh] sm:max-h-[640px] sm:max-w-[850px]"
         closeButtonClassName="hidden"
       >
         <DialogTitle className="sr-only">
@@ -212,9 +219,10 @@ export function TaskBoardItemDialog({
           <X size={16} />
         </button>
 
-        <div className="flex min-h-0 flex-1">
-          {/* Editor pane */}
-          <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto p-8">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:flex-row sm:overflow-hidden">
+          {/* Editor pane — content-height on mobile so it doesn't leave a big
+              gap above the properties; fills the column on desktop. */}
+          <div className="flex min-w-0 flex-col gap-6 p-6 sm:flex-1 sm:overflow-y-auto sm:p-8">
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -227,7 +235,7 @@ export function TaskBoardItemDialog({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe a task for an agent..."
-              className="min-h-[120px] w-full flex-1 resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50"
+              className="min-h-[96px] w-full flex-1 resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[120px]"
             />
 
             {thread && (
@@ -239,13 +247,14 @@ export function TaskBoardItemDialog({
             )}
           </div>
 
-          {/* Properties pane */}
-          <div className="flex w-[220px] shrink-0 flex-col gap-4 border-l border-border px-6 py-10">
-            <span className="px-3 text-sm text-muted-foreground">
+          {/* Properties pane — wrapping chips under the editor on mobile, a
+              stacked sidebar on desktop. */}
+          <div className="flex w-full shrink-0 flex-col gap-4 border-t border-border p-6 sm:w-[220px] sm:border-t-0 sm:border-l sm:px-6 sm:py-10">
+            <span className="hidden px-3 text-sm text-muted-foreground sm:block">
               Properties
             </span>
 
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2 sm:flex-col">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button type="button" className={PROPERTY_BUTTON}>
@@ -282,7 +291,7 @@ export function TaskBoardItemDialog({
                     <span
                       className={cn(
                         "size-2 rounded-full",
-                        PRIORITY_CONFIG[priority].badgeClassName,
+                        PRIORITY_CONFIG[priority].dotClassName,
                       )}
                     />
                     {PRIORITY_CONFIG[priority].label}
@@ -294,7 +303,7 @@ export function TaskBoardItemDialog({
                       <span
                         className={cn(
                           "size-2 rounded-full",
-                          PRIORITY_CONFIG[p].badgeClassName,
+                          PRIORITY_CONFIG[p].dotClassName,
                         )}
                       />
                       {PRIORITY_CONFIG[p].label}

@@ -48,7 +48,7 @@ export const STATUS_CONFIG: Record<
   { label: string; icon: typeof Circle; iconClassName: string }
 > = {
   triage: {
-    label: "Triage",
+    label: "Backlog",
     icon: AlertCircle,
     iconClassName: "text-muted-foreground",
   },
@@ -83,26 +83,30 @@ export const PRIORITIES: TaskBoardItemPriority[] = [
 
 export const PRIORITY_CONFIG: Record<
   TaskBoardItemPriority,
-  { label: string; badgeClassName: string; flagClassName: string }
+  {
+    label: string;
+    flagClassName: string;
+    dotClassName: string;
+  }
 > = {
   low: {
     label: "Low",
-    badgeClassName: "bg-muted text-muted-foreground",
     flagClassName: "text-muted-foreground",
+    dotClassName: "bg-muted-foreground/40",
   },
   medium: {
     label: "Medium",
-    badgeClassName: "bg-blue-500/10 text-blue-600",
     flagClassName: "text-blue-500",
+    dotClassName: "bg-blue-500",
   },
   high: {
     label: "High",
-    badgeClassName: "bg-orange-500/10 text-orange-600",
     flagClassName: "text-orange-500",
+    dotClassName: "bg-orange-500",
   },
   urgent: {
     label: "Urgent",
-    badgeClassName: "bg-red-500/10 text-red-600",
     flagClassName: "text-red-500",
+    dotClassName: "bg-red-500",
   },
 };
