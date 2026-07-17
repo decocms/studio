@@ -43,8 +43,8 @@ export const STATUS_CONFIG: Record<StatusKey, StatusConfig> = {
     label: "Failed",
     verb: "Something went wrong",
     icon: XCircle,
-    iconClassName: "text-red-500",
-    labelColor: "text-red-600 dark:text-red-400",
+    iconClassName: "text-destructive",
+    labelColor: "text-destructive",
   },
   expired: {
     label: "Timed out",
