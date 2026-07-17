@@ -128,6 +128,34 @@ export function isCreditError(error: unknown): boolean {
 }
 
 /**
+ * Downstream MCP connection failures reach the chat as raw transport strings:
+ * the SDK's `"Streamable HTTP error: Error POSTing to endpoint: {...-32000...
+ * Unauthorized...}"` or our circuit-breaker's `"... circuit breaker is open —
+ * downstream server unreachable"`. Neither is meaningful to a user, and the
+ * model parrots them back verbatim. Map the known shapes to a short, actionable
+ * sentence; return null for anything else so provider/model errors (including
+ * genuine model-provider 401s) fall through unchanged.
+ */
+export function mcpConnectionErrorMessage(message: string): string | null {
+  const lower = message.toLowerCase();
+  if (lower.includes("circuit breaker is open")) {
+    return "A connected app is temporarily unreachable — it'll keep retrying. Try again in a moment.";
+  }
+  // Gate the auth/reach mapping on the MCP transport markers so a model-provider
+  // auth failure (a bad API key) is never mislabeled as a connection problem.
+  const isMcpTransport =
+    lower.includes("error posting to endpoint") ||
+    lower.includes("streamable http error");
+  if (!isMcpTransport) return null;
+  if (
+    /unauthorized|authentication required|forbidden|\b401\b|\b403\b/.test(lower)
+  ) {
+    return "A connected app needs to be re-authenticated before it can be used. Reconnect it, then try again.";
+  }
+  return "Couldn't reach a connected app. Try again in a moment.";
+}
+
+/**
  * Returns a sanitized, user-facing error message.
  * Provider-specific URLs and branding are stripped so they are never
  * surfaced to the client.
@@ -135,6 +163,8 @@ export function isCreditError(error: unknown): boolean {
 // TODO @pedrofrxncx: remove this code in favor of a better solution
 export function sanitizeStreamError(error: unknown): string {
   const { message } = extractErrorParts(error);
+  const connectionMsg = mcpConnectionErrorMessage(message);
+  if (connectionMsg) return connectionMsg;
   if (isCreditError(error)) {
     // Prefix with [CREDITS] so the frontend can detect credit errors
     // without fragile string matching on provider-specific messages.
