@@ -49,6 +49,7 @@ import type { ToolApprovalLevel } from "@/web/hooks/use-preferences";
 import type { SimpleModeTier } from "@/tools/organization/schema";
 import { Store } from "./store-primitive";
 import { extractToolErrorMessage } from "./mcp-utils";
+import { guardToolInvariant } from "./tool-invariant-guard";
 import type { ChatMode } from "../types";
 import { toast } from "sonner";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
@@ -1102,7 +1103,11 @@ export class ThreadConnection {
     this.freshRunSubstream = false;
     const iter = readUIMessageStream({
       message: seed,
-      stream: sub,
+      // Guard the tool-invocation invariant: after abnormal termination
+      // (ghost-run force-fail, subject purge, retention gap) a tool's output
+      // can arrive without its input part, which otherwise throws
+      // "No tool invocation found for tool call ID …" and bricks the chat.
+      stream: guardToolInvariant(sub, seed),
       onError: (e) => {
         const err = e instanceof Error ? e : new Error(String(e));
         this.failTo(err);
