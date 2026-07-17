@@ -72,7 +72,7 @@ export const STATUS_CONFIG: Record<
   done: {
     label: "Done",
     icon: CheckCircle,
-    iconClassName: "text-green-600",
+    iconClassName: "text-success",
   },
 };
 
@@ -109,12 +109,12 @@ export const PRIORITY_CONFIG: Record<
   },
   high: {
     label: "High",
-    flagClassName: "text-orange-500",
-    dotClassName: "bg-orange-500",
+    flagClassName: "text-warning",
+    dotClassName: "bg-warning",
   },
   urgent: {
     label: "Urgent",
-    flagClassName: "text-red-500",
-    dotClassName: "bg-red-500",
+    flagClassName: "text-destructive",
+    dotClassName: "bg-destructive",
   },
 };
