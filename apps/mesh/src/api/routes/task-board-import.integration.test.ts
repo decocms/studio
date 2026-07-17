@@ -64,15 +64,27 @@ describe("Task Board Import Route", () => {
     } as never);
 
     // An org whose id ≠ slug, so the tests prove the service caller can
-    // resolve by ID (the worker holds the org id, never the slug).
+    // resolve by ID (the worker holds the org id, never the slug). Plus one
+    // with the board enabled but NO owner member (the delegation refusal).
+    const now = new Date().toISOString();
     await sql`
       INSERT INTO "organization" (id, name, slug, "createdAt")
-      VALUES ('org_board', 'Board Org', 'board-org', ${new Date().toISOString()})
+      VALUES ('org_board', 'Board Org', 'board-org', ${now}),
+             ('org_ownerless', 'Ownerless Org', 'ownerless-org', ${now})
       ON CONFLICT (id) DO NOTHING
     `.execute(database.db);
     await new OrganizationSettingsStorage(database.db).upsert("org_board", {
       task_board_enabled: true,
     });
+    await new OrganizationSettingsStorage(database.db).upsert("org_ownerless", {
+      task_board_enabled: true,
+    });
+    // user_1 (seeded) is org_board's owner — the delegation principal.
+    await sql`
+      INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
+      VALUES ('mem_board_owner', 'user_1', 'org_board', 'owner', ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
 
     app = await createApp({ database, disableNats: true });
   });
@@ -117,7 +129,7 @@ describe("Task Board Import Route", () => {
   it("creates triage items as the system principal, resolving the org by id", async () => {
     const res = await app.fetch(post("org_board", "svc-secret", BODY));
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ created: 2 });
+    await expect(res.json()).resolves.toEqual({ created: 2, delegated: 0 });
 
     const rows = await database.db
       .selectFrom("task_board_items")
@@ -141,5 +153,70 @@ describe("Task Board Import Route", () => {
     expect(byTitle.get("Liberar o GPTBot no WAF")?.description).toBe(
       "403 no WAF.",
     );
+  });
+
+  it("delegates a super-agent item: To Do, owner as the run principal", async () => {
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          { title: "Adicionar sinônimos à busca", assigneeId: "super-agent" },
+          { title: "Tarefa comum" },
+        ],
+      }),
+    );
+    expect(res.status).toBe(200);
+    // The enqueue itself is best-effort (no model configured in tests) — the
+    // delegation must still land on the row.
+    await expect(res.json()).resolves.toEqual({ created: 2, delegated: 1 });
+
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", "org_board")
+      .execute();
+    const byTitle = new Map(rows.map((r) => [r.title, r]));
+    const delegated = byTitle.get("Adicionar sinônimos à busca");
+    expect(delegated?.status).toBe("todo");
+    expect(delegated?.assignee_id).toBe("super-agent");
+    expect(delegated?.assigned_by).toBe("user_1"); // the org owner
+    expect(delegated?.created_by).toBe("system");
+    const plain = byTitle.get("Tarefa comum");
+    expect(plain?.status).toBe("triage");
+    expect(plain?.assigned_by).toBeNull();
+  });
+
+  it("accepts a real-member assignee and rejects a non-member", async () => {
+    const ok = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Pra pessoa", assigneeId: "user_1" }],
+      }),
+    );
+    expect(ok.status).toBe(200);
+    const row = await database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", "org_board")
+      .where("title", "=", "Pra pessoa")
+      .executeTakeFirst();
+    expect(row?.assignee_id).toBe("user_1");
+    expect(row?.assigned_by).toBe("system");
+    expect(row?.status).toBe("triage");
+
+    const bad = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "t", assigneeId: "user_stranger" }],
+      }),
+    );
+    expect(bad.status).toBe(400);
+  });
+
+  it("refuses a super-agent delegation when the org has no owner", async () => {
+    const res = await app.fetch(
+      post("org_ownerless", "svc-secret", {
+        items: [{ title: "t", assigneeId: "super-agent" }],
+      }),
+    );
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({ error: "no_org_owner" });
   });
 });
