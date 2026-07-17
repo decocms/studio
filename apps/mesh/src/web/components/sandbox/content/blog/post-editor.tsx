@@ -13,7 +13,13 @@ import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { ImageField } from "@/web/components/sections-editor/fields/image-field";
 import { StringField } from "@/web/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
-import { buildBlogBlock, getBlogPayload, listBlogPayloads } from "./blog-data";
+import {
+  buildBlogBlock,
+  getBlogPayload,
+  listBlogPayloads,
+  relationPickerState,
+  stampPostModified,
+} from "./blog-data";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
@@ -66,7 +72,10 @@ export function PostEditor({
   const initial = getBlogPayload(block, "posts");
 
   const [post, setPost] = useAutosave(initial, (next) => {
-    save.mutate({ blockKey, data: buildBlogBlock(blockKey, "posts", next) });
+    save.mutate({
+      blockKey,
+      data: buildBlogBlock(blockKey, "posts", stampPostModified(next)),
+    });
   });
 
   const setField = (key: string, value: unknown) =>
@@ -204,21 +213,28 @@ function PostSettings({
         path="post-image"
         label="Cover image"
       />
+      {/* Authors denormalize their FULL record onto the post — the blog app
+          renders the author box (type, job title, company, avatar) from it. */}
       <RelationSelect
         label="Authors"
         decofile={decofile}
         kind="authors"
         valueField="email"
-        extraFields={["email"]}
+        toRef={(author) => ({ ...author })}
         selected={post.authors}
         onChange={(v) => onChange("authors", v)}
       />
+      {/* Categories denormalize only `{ name, slug }` — copying the category's
+          own body (description, sections) onto every post would bloat them. */}
       <RelationSelect
         label="Categories"
         decofile={decofile}
         kind="categories"
         valueField="slug"
-        extraFields={["slug"]}
+        toRef={(category) => ({
+          name: str(category.name),
+          slug: str(category.slug),
+        })}
         selected={post.categories}
         onChange={(v) => onChange("categories", v)}
       />
@@ -278,14 +294,14 @@ function ExtraPropsField({
 
 /**
  * Multi-select that links a post to existing Author/Category records.
- * Stores the denormalized subset deco expects (e.g. `{ name, email }`).
+ * Stores the denormalized ref `toRef` builds from the picked record.
  */
 function RelationSelect({
   label,
   decofile,
   kind,
   valueField,
-  extraFields,
+  toRef,
   selected,
   onChange,
 }: {
@@ -293,39 +309,16 @@ function RelationSelect({
   decofile: Record<string, unknown>;
   kind: "authors" | "categories";
   valueField: string;
-  extraFields: string[];
+  toRef: (payload: Record<string, unknown>) => Record<string, unknown>;
   selected: unknown;
-  onChange: (value: Array<Record<string, unknown>>) => void;
+  onChange: (value: unknown[]) => void;
 }) {
-  const records = listBlogPayloads(decofile, kind);
-  const valueOf = (payload: Record<string, unknown>, key: string) =>
-    str(payload[valueField]) || key;
-
-  const options = records.map(({ key, payload }) => ({
-    value: valueOf(payload, key),
-    label: str(payload.name) || valueOf(payload, key),
-  }));
-
-  const selectedArr = Array.isArray(selected)
-    ? (selected as Array<Record<string, unknown>>)
-    : [];
-  const defaultValue = selectedArr
-    .map((s) => str(s[valueField]))
-    .filter(Boolean);
-
-  const handleChange = (values: string[]) => {
-    onChange(
-      values.map((value) => {
-        const match = records.find(
-          ({ key, payload }) => valueOf(payload, key) === value,
-        );
-        if (!match) return { name: value, [valueField]: value };
-        const out: Record<string, unknown> = { name: str(match.payload.name) };
-        for (const f of extraFields) out[f] = match.payload[f] ?? value;
-        return out;
-      }),
-    );
-  };
+  const { options, selectedValues, refsForValues } = relationPickerState({
+    records: listBlogPayloads(decofile, kind),
+    selected,
+    valueField,
+    toRef,
+  });
 
   return (
     <div className="space-y-2">
@@ -338,8 +331,8 @@ function RelationSelect({
       ) : (
         <MultiSelect
           options={options}
-          defaultValue={defaultValue}
-          onValueChange={handleChange}
+          defaultValue={selectedValues}
+          onValueChange={(values) => onChange(refsForValues(values))}
           placeholder={`Select ${label.toLowerCase()}`}
           maxCount={4}
         />

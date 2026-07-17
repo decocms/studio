@@ -27,6 +27,7 @@ import {
   listBlogPayloads,
   listPostsWithMeta,
   renameCategoryOnPost,
+  stampPostModified,
 } from "./blog-data";
 import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
 import { useSaveBlogBlock } from "./use-blog-mutations";
@@ -139,7 +140,7 @@ export function CategoryEditor({
         if (next === payload) continue;
         await save.mutateAsync({
           blockKey: key,
-          data: buildBlogBlock(key, "posts", next),
+          data: buildBlogBlock(key, "posts", stampPostModified(next)),
         });
         changed += 1;
       }
