@@ -46,7 +46,7 @@ import {
 } from "./config";
 
 /** Sentinel assignee filter matching tasks with no assignee. */
-export const UNASSIGNED_FILTER = "__unassigned__";
+const UNASSIGNED_FILTER = "__unassigned__";
 
 export type DueFilter = "overdue" | "today" | "week" | "none";
 
@@ -63,7 +63,7 @@ export const EMPTY_FILTERS: TaskFilters = {
   due: null,
 };
 
-export function hasActiveFilters(f: TaskFilters): boolean {
+function hasActiveFilters(f: TaskFilters): boolean {
   return f.assignee !== null || f.priority !== null || f.due !== null;
 }
 
