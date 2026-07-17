@@ -4,13 +4,21 @@
  * Gated behind the org's task_board_enabled setting (see org settings).
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { getInitials } from "@/web/lib/get-initials";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Badge } from "@deco/ui/components/badge.tsx";
-import { Calendar, Columns03, List, Loading01, Plus } from "@untitledui/icons";
+import {
+  Calendar,
+  Columns03,
+  HelpCircle,
+  List,
+  Loading01,
+  Plus,
+} from "@untitledui/icons";
+import { SuperAgentIcon } from "@/web/components/super-agent-icon";
 import { useMembers } from "@/web/hooks/use-members";
 import {
   useTaskBoardItemActions,
@@ -18,14 +26,19 @@ import {
 } from "@/web/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import {
+  isTaskBlocked,
+  primaryThread,
   PRIORITY_CONFIG,
   STATUS_CONFIG,
   STATUSES,
+  SUPER_AGENT_ASSIGNEE_ID,
   type TaskBoardItem,
   type TaskBoardItemStatus,
   type Member,
 } from "./config";
 import { TaskBoardItemDialog } from "./task-dialog";
+import { useFlipLanes } from "./use-flip-lanes";
+import { usePanelActions } from "@/web/layouts/shell-layout";
 
 type Layout = "board" | "list";
 
@@ -52,6 +65,19 @@ function formatDueDate(iso: string): { label: string; overdue: boolean } {
   return { label: DATE_FMT.format(d), overdue };
 }
 
+/** Card flag for a task whose agent is paused waiting on human input. */
+function BlockedBadge() {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600"
+      title="The agent is waiting for your input"
+    >
+      <HelpCircle size={10} />
+      Needs input
+    </span>
+  );
+}
+
 function DueDatePill({ iso }: { iso: string }) {
   const { label, overdue } = formatDueDate(iso);
   return (
@@ -69,6 +95,57 @@ function DueDatePill({ iso }: { iso: string }) {
   );
 }
 
+/**
+ * Assignee glyph for a card/row. For a Super Agent task it renders the
+ * delegation as overlapping avatars — the assigner's avatar eclipsed by the
+ * Super Agent capybara — so it's clear a human handed the task off. Otherwise a
+ * plain member avatar.
+ */
+function AssigneeDisplay({
+  item,
+  assignee,
+  assignedBy,
+}: {
+  item: TaskBoardItem;
+  assignee?: Member;
+  assignedBy?: Member;
+}) {
+  if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
+    return (
+      <span
+        className="inline-flex items-center"
+        title={
+          assignedBy?.user?.name
+            ? `Assigned to Super Agent by ${assignedBy.user.name}`
+            : "Assigned to Super Agent"
+        }
+      >
+        {assignedBy && (
+          <Avatar
+            url={assignedBy.user?.image ?? undefined}
+            fallback={getInitials(assignedBy.user?.name)}
+            shape="circle"
+            size="2xs"
+            className="-mr-1.5 ring-2 ring-background"
+          />
+        )}
+        <SuperAgentIcon size={16} className="ring-2 ring-background" />
+      </span>
+    );
+  }
+  if (assignee) {
+    return (
+      <Avatar
+        url={assignee.user?.image ?? undefined}
+        fallback={getInitials(assignee.user?.name)}
+        shape="circle"
+        size="2xs"
+      />
+    );
+  }
+  return null;
+}
+
 export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
@@ -79,6 +156,7 @@ export function TaskBoardPage() {
   const [layout, setLayout] = useState<Layout>("board");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<TaskBoardItem | null>(null);
+  const { setTaskId } = usePanelActions();
 
   const openCreate = () => {
     setEditingItem(null);
@@ -89,6 +167,10 @@ export function TaskBoardPage() {
     setEditingItem(item);
     setDialogOpen(true);
   };
+
+  // Opening a card always opens the task modal. The modal's activity area is
+  // what navigates into the run's chat (see onOpenThread below).
+  const openTask = openEdit;
 
   if (isLoading && items.length === 0) {
     return (
@@ -138,7 +220,7 @@ export function TaskBoardPage() {
           <Lanes
             items={items}
             memberByUserId={memberByUserId}
-            onOpen={openEdit}
+            onOpen={openTask}
             onMove={(id, status) => actions.update.mutate({ id, status })}
           />
         ) : (
@@ -152,7 +234,12 @@ export function TaskBoardPage() {
                     ? memberByUserId.get(item.assigneeId)
                     : undefined
                 }
-                onOpen={() => openEdit(item)}
+                assignedBy={
+                  item.assignedBy
+                    ? memberByUserId.get(item.assignedBy)
+                    : undefined
+                }
+                onOpen={() => openTask(item)}
               />
             ))}
           </div>
@@ -181,6 +268,13 @@ export function TaskBoardPage() {
               }
             : undefined
         }
+        onOpenThread={(thread) => {
+          if (!thread.virtualMcpId) return;
+          setDialogOpen(false);
+          setTaskId(thread.threadId, thread.virtualMcpId, {
+            main: thread.hasPreview ? "preview" : "board",
+          });
+        }}
       />
     </div>
   );
@@ -228,9 +322,17 @@ function Lanes({
   onMove: (id: string, status: TaskBoardItemStatus) => void;
 }) {
   const [overLane, setOverLane] = useState<TaskBoardItemStatus | null>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  // Re-run FLIP whenever a card's lane or ordering changes.
+  const signature = items.map((t) => `${t.id}:${t.status}`).join(",");
+  useFlipLanes(boardRef, signature);
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <div
+      ref={boardRef}
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
+    >
       {STATUSES.map((status) => {
         const laneItems = items.filter((t) => t.status === status);
         const config = STATUS_CONFIG[status];
@@ -278,6 +380,11 @@ function Lanes({
                       ? memberByUserId.get(item.assigneeId)
                       : undefined
                   }
+                  assignedBy={
+                    item.assignedBy
+                      ? memberByUserId.get(item.assignedBy)
+                      : undefined
+                  }
                   onOpen={() => onOpen(item)}
                 />
               ))}
@@ -292,40 +399,53 @@ function Lanes({
 function TaskCard({
   item,
   assignee,
+  assignedBy,
   onOpen,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
+  assignedBy?: Member;
   onOpen: () => void;
 }) {
   const priorityConfig = PRIORITY_CONFIG[item.priority];
   const due = item.dueDate ? formatDueDate(item.dueDate) : null;
+  const lastMessage = primaryThread(item)?.lastMessage;
 
   return (
     <button
       type="button"
       draggable
+      data-flip-id={item.id}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", item.id);
         e.dataTransfer.effectAllowed = "move";
       }}
       onClick={onOpen}
-      className="flex cursor-grab flex-col gap-1.5 rounded-[10px] border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-ring/40 active:cursor-grabbing"
+      className="flex cursor-grab flex-col gap-1.5 rounded-[10px] border border-border bg-card px-3 py-2.5 text-left transition-colors will-change-transform hover:border-ring/40 active:cursor-grabbing"
       title={item.title}
     >
       <div className="flex items-start justify-between gap-2">
         <span className="min-w-0 flex-1 truncate text-[12px] font-medium leading-snug text-foreground">
           {item.title}
         </span>
-        {assignee && (
-          <Avatar
-            url={assignee.user?.image ?? undefined}
-            fallback={getInitials(assignee.user?.name)}
-            shape="circle"
-            size="2xs"
-          />
-        )}
+        <AssigneeDisplay
+          item={item}
+          assignee={assignee}
+          assignedBy={assignedBy}
+        />
       </div>
+
+      {lastMessage && (
+        <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+          {lastMessage}
+        </p>
+      )}
+
+      {isTaskBlocked(item) && (
+        <div className="flex">
+          <BlockedBadge />
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-2">
         <span
@@ -354,10 +474,12 @@ function TaskCard({
 function ListRow({
   item,
   assignee,
+  assignedBy,
   onOpen,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
+  assignedBy?: Member;
   onOpen: () => void;
 }) {
   const config = STATUS_CONFIG[item.status];
@@ -372,6 +494,7 @@ function ListRow({
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
         {item.title}
       </span>
+      {isTaskBlocked(item) && <BlockedBadge />}
       <Badge
         className={cn(
           "shrink-0 text-[10px]",
@@ -381,14 +504,11 @@ function ListRow({
         {PRIORITY_CONFIG[item.priority].label}
       </Badge>
       {item.dueDate && <DueDatePill iso={item.dueDate} />}
-      {assignee && (
-        <Avatar
-          url={assignee.user?.image ?? undefined}
-          fallback={getInitials(assignee.user?.name)}
-          shape="circle"
-          size="2xs"
-        />
-      )}
+      <AssigneeDisplay
+        item={item}
+        assignee={assignee}
+        assignedBy={assignedBy}
+      />
       <span className="shrink-0 text-[11px] text-muted-foreground/70">
         {formatTimeAgo(new Date(item.createdAt))}
       </span>

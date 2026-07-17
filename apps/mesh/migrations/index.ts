@@ -127,6 +127,8 @@ import * as migration125githubchildsingleparent from "./125-github-child-single-
 import * as migration126taskboard from "./126-task-board.ts";
 import * as migration127taskboardduedate from "./127-task-board-due-date.ts";
 import * as migration128reportsonly from "./128-reports-only.ts";
+import * as migration129taskboardassignedby from "./129-task-board-assigned-by.ts";
+import * as migration130taskboardthreadid from "./130-task-board-thread-id.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -279,6 +281,8 @@ const migrations: Record<string, Migration> = {
   "126-task-board": migration126taskboard,
   "127-task-board-due-date": migration127taskboardduedate,
   "128-reports-only": migration128reportsonly,
+  "129-task-board-assigned-by": migration129taskboardassignedby,
+  "130-task-board-thread-id": migration130taskboardthreadid,
 };
 
 export default migrations;

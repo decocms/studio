@@ -290,6 +290,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
       updated_at: now,
       created_by: data.created_by,
       updated_by: data.updated_by ?? null,
+      ...(data.message_storage_version !== undefined
+        ? { message_storage_version: data.message_storage_version }
+        : {}),
       ...(data.metadata !== undefined
         ? { metadata: JSON.stringify(data.metadata) }
         : {}),

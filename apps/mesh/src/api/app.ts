@@ -150,6 +150,8 @@ import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
+import { TaskBoardStorage } from "../storage/task-board";
+import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
@@ -1476,6 +1478,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // database. Wired before `DBOS.launch()` for the same reason as
   // automations/thread-gate: it only sets a module-level pointer.
   const projectorThreadStorage = new SqlThreadStorage(database.db);
+  const projectorTaskBoard = new TaskBoardStorage(database.db);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
     getJetStreamManager: async () => {
@@ -1517,6 +1520,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       // without this the chip stays "running" until a refetch. `flipped` is
       // null on a no-op (already terminal) → no double-publish.
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
+      if (flipped)
+        await advanceTasksToReviewOnThreadFinish(
+          projectorTaskBoard,
+          runId,
+          orgId,
+        );
       return flipped;
     },
     markRunRequiresAction: async (runId, orgId) => {
@@ -1535,6 +1544,12 @@ export async function createApp(options: CreateAppOptions = {}) {
         kind,
       );
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
+      if (flipped)
+        await advanceTasksToReviewOnThreadFinish(
+          projectorTaskBoard,
+          runId,
+          orgId,
+        );
       return flipped;
     },
     clearSynthesizedError: async (runId, fenceToken) => {
