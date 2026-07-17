@@ -3,15 +3,15 @@ import type { MonitorToolResult } from "./types";
 export function monitorStatusBadgeClass(status: string): string {
   switch (status) {
     case "running":
-      return "bg-blue-500/10 text-blue-600 border-blue-500/20";
+      return "bg-primary/10 text-primary border-primary/20";
     case "completed":
-      return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
+      return "bg-success/10 text-success border-success/20";
     case "failed":
-      return "bg-red-500/10 text-red-600 border-red-500/20";
+      return "bg-destructive/10 text-destructive border-destructive/20";
     case "cancelled":
-      return "bg-zinc-500/10 text-zinc-500 border-zinc-500/20";
+      return "bg-muted text-muted-foreground border-border";
     case "pending":
-      return "bg-amber-500/10 text-amber-600 border-amber-500/20";
+      return "bg-warning/10 text-warning border-warning/20";
     default:
       return "";
   }
