@@ -17,6 +17,7 @@ import type { ToolSet, UIMessageStreamWriter } from "ai";
 import type { StudioContext } from "@/core/studio-context";
 import {
   toolsFromMCP,
+  type PrOpenedEvent,
   type ToolApprovalLevel,
   type ToolCallAnalytics,
 } from "@decocms/harness/decopilot/mcp-tools";
@@ -53,6 +54,9 @@ export interface AssembleAgentToolsOptions {
   /** Cluster-injected hook: emit per-tool-call analytics (posthog). Omitted
    *  on desktop → no analytics. */
   onToolCalled?: (event: ToolCallAnalytics) => void;
+  /** Cluster-injected hook: a PR was opened via the GitHub MCP — link it to
+   *  the run's task. Omitted on desktop. */
+  onPrOpened?: (event: PrOpenedEvent) => void;
   /**
    * Full built-in params for a SUBAGENT. When present (the `subtask` paths), the
    * subagent is built with the SAME heavy built-ins the parent has — vm file
@@ -90,6 +94,7 @@ export async function assembleAgentTools(
       timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
       resolveArgs: opts.resolveArgs,
       onToolCalled: opts.onToolCalled,
+      onPrOpened: opts.onPrOpened,
     },
   );
 

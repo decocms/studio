@@ -1534,6 +1534,30 @@ export interface TaskBoardItemThreadTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+/** Join row: a task board item ↔ a GitHub pull request an agent opened for it. */
+export interface TaskBoardItemPrTable {
+  task_board_item_id: string;
+  organization_id: string;
+  url: string;
+  pr_number: number;
+  repo_owner: string;
+  repo_name: string;
+  /** Source GitHub MCP connection, when the PR was opened via MCP. Null for
+   *  bash-opened PRs — the live fetcher falls back to the org's shared conn. */
+  connection_id: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/** A PR linked to a task — identity only. Title/state are fetched live. */
+export interface TaskBoardItemPrRef {
+  url: string;
+  number: number;
+  repoOwner: string;
+  repoName: string;
+  connectionId: string | null;
+  createdAt: string;
+}
+
 /** A thread linked to a task, with the run state the board needs to render it. */
 export interface TaskBoardItemThreadRef {
   threadId: string;
@@ -1713,6 +1737,7 @@ export interface Database {
   org_sites: OrgSiteTable;
   task_board_items: TaskBoardItemTable;
   task_board_item_threads: TaskBoardItemThreadTable;
+  task_board_item_prs: TaskBoardItemPrTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

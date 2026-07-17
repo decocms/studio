@@ -1,9 +1,118 @@
 import { describe, expect, it } from "bun:test";
 import {
+  capturePrForRun,
   isPrCreateBashCommand,
   isPrCreateMcpTool,
   resolveAdvanceTargets,
 } from "./run-reactions";
+
+type LinkPrCall = {
+  taskBoardItemId: string;
+  organizationId: string;
+  url: string;
+  prNumber: number;
+  repoOwner: string;
+  repoName: string;
+  connectionId?: string | null;
+};
+
+/** In-memory ctx: records linkPr calls, resolves the thread link from `linked`. */
+function makeCtx(opts: {
+  orgId?: string;
+  metadataItemId?: string;
+  linked?: string[];
+}) {
+  const linkPrCalls: LinkPrCall[] = [];
+  const ctx = {
+    organization: opts.orgId ? { id: opts.orgId } : undefined,
+    metadata: opts.metadataItemId
+      ? { runMetadata: { taskBoardItemId: opts.metadataItemId } }
+      : {},
+    storage: {
+      taskBoard: {
+        linkPr: async (p: LinkPrCall) => {
+          linkPrCalls.push(p);
+        },
+        linkedTaskIds: async () => opts.linked ?? [],
+      },
+    },
+  } as never;
+  return { ctx, linkPrCalls };
+}
+
+const MCP_RESULT = {
+  structuredContent: { id: 1, url: "https://github.com/acme/site/pull/42" },
+};
+const BASH_OUTPUT = {
+  exitCode: 0,
+  stdout: "https://github.com/acme/site/pull/42\n",
+};
+
+describe("capturePrForRun", () => {
+  it("links the PR to the metadata-resolved task (the subagent-shares-ctx path)", async () => {
+    const { ctx, linkPrCalls } = makeCtx({
+      orgId: "org-1",
+      metadataItemId: "item-1",
+    });
+    await capturePrForRun(ctx, MCP_RESULT, "conn-9", "thr-x");
+    expect(linkPrCalls).toEqual([
+      {
+        taskBoardItemId: "item-1",
+        organizationId: "org-1",
+        url: "https://github.com/acme/site/pull/42",
+        prNumber: 42,
+        repoOwner: "acme",
+        repoName: "site",
+        connectionId: "conn-9",
+      },
+    ]);
+  });
+
+  it("falls back to the thread link when the run carries no metadata", async () => {
+    const { ctx, linkPrCalls } = makeCtx({
+      orgId: "org-1",
+      linked: ["item-2", "item-3"],
+    });
+    await capturePrForRun(ctx, BASH_OUTPUT, null, "thr-x");
+    expect(linkPrCalls.map((c) => c.taskBoardItemId)).toEqual([
+      "item-2",
+      "item-3",
+    ]);
+    expect(linkPrCalls[0]?.connectionId).toBeNull();
+    expect(linkPrCalls[0]?.prNumber).toBe(42);
+  });
+
+  it("captures a PR from bash stdout (main-agent gh/curl path)", async () => {
+    const { ctx, linkPrCalls } = makeCtx({
+      orgId: "org-1",
+      metadataItemId: "item-1",
+    });
+    await capturePrForRun(ctx, BASH_OUTPUT, null, "thr-x");
+    expect(linkPrCalls).toHaveLength(1);
+    expect(linkPrCalls[0]?.url).toBe("https://github.com/acme/site/pull/42");
+  });
+
+  it("no-ops when the source has no PR URL", async () => {
+    const { ctx, linkPrCalls } = makeCtx({
+      orgId: "org-1",
+      metadataItemId: "item-1",
+    });
+    await capturePrForRun(ctx, { stdout: "nothing here" }, null, "thr-x");
+    expect(linkPrCalls).toEqual([]);
+  });
+
+  it("no-ops without an active organization", async () => {
+    const { ctx, linkPrCalls } = makeCtx({ metadataItemId: "item-1" });
+    await capturePrForRun(ctx, MCP_RESULT, null, "thr-x");
+    expect(linkPrCalls).toEqual([]);
+  });
+
+  it("no-ops off a task run (no metadata, no linked threads)", async () => {
+    const { ctx, linkPrCalls } = makeCtx({ orgId: "org-1", linked: [] });
+    await capturePrForRun(ctx, MCP_RESULT, null, "thr-x");
+    expect(linkPrCalls).toEqual([]);
+  });
+});
 
 describe("resolveAdvanceTargets", () => {
   it("uses the metadata item alone when present (the task's own run)", () => {

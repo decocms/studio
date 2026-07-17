@@ -17,10 +17,14 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
-import type { ToolCallAnalytics } from "@decocms/harness/decopilot/mcp-tools";
+import type {
+  PrOpenedEvent,
+  ToolCallAnalytics,
+} from "@decocms/harness/decopilot/mcp-tools";
 import { resolveArgsStorageRefs } from "./file-materializer";
 import {
   advanceTaskBoardForRun,
+  capturePrForRun,
   isPrCreateMcpTool,
 } from "@/tools/task-board/run-reactions";
 
@@ -29,6 +33,7 @@ export interface ClusterMcpToolHooks {
     input: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
   onToolCalled: (event: ToolCallAnalytics) => void;
+  onPrOpened: (event: PrOpenedEvent) => void;
 }
 
 /**
@@ -72,6 +77,12 @@ export function buildClusterMcpToolHooks(
           is_error: event.isError,
         },
       });
+    },
+    onPrOpened: (event) => {
+      // A PR was opened via the GitHub MCP — link it to the run's task, using
+      // the source connection so the modal can fetch it back live. Separate
+      // from the In Review advance above (which rides onToolCalled).
+      void capturePrForRun(ctx, event.result, event.connectionId, threadId);
     },
   };
 }

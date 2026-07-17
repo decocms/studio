@@ -20,6 +20,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import { extractPrFromValue } from "./pr-extract";
 import { sseHub } from "@/event-bus/sse-hub";
 import { TASK_BOARD_ITEM_UPDATED_EVENT } from "@/shared/task-board";
 import type { TaskBoardStorage } from "@/storage/task-board";
@@ -62,6 +63,26 @@ export function resolveAdvanceTargets(
 }
 
 /**
+ * The task board item(s) a run-driven side effect targets: the enqueue-set
+ * `runMetadata.taskBoardItemId` when present, else the thread's link rows. The
+ * thread link is queried only on the fallback path (no metadata + a threadId).
+ * Shared by the advance-status and PR-capture reactions so both resolve a
+ * subtask-opened action the same way.
+ */
+async function resolveRunTaskTargets(
+  ctx: StudioContext,
+  orgId: string,
+  threadId?: string,
+): Promise<string[]> {
+  const metadataItemId = ctx.metadata?.runMetadata?.taskBoardItemId;
+  const linkedIds =
+    !metadataItemId && threadId
+      ? await ctx.storage.taskBoard.linkedTaskIds(threadId, orgId)
+      : [];
+  return resolveAdvanceTargets(metadataItemId, linkedIds);
+}
+
+/**
  * Advance the run's linked task board item(s) forward to `status` and
  * broadcast each move. Resolves the linked item(s) from `runMetadata` first
  * (set at enqueue for the task's own run), falling back to the
@@ -79,14 +100,7 @@ export async function advanceTaskBoardForRun(
   const orgId = ctx.organization?.id;
   if (!orgId) return;
   try {
-    const metadataItemId = ctx.metadata?.runMetadata?.taskBoardItemId;
-    // Query the thread link only on the fallback path (no metadata + a
-    // threadId) — the task's own run never reads it.
-    const linkedIds =
-      !metadataItemId && threadId
-        ? await ctx.storage.taskBoard.linkedTaskIds(threadId, orgId)
-        : [];
-    for (const itemId of resolveAdvanceTargets(metadataItemId, linkedIds)) {
+    for (const itemId of await resolveRunTaskTargets(ctx, orgId, threadId)) {
       const current = await ctx.storage.taskBoard.getById(itemId, orgId);
       // ponytail: read-then-write rank guard. A single run's transitions are
       // sequential, so the race window is negligible; it buys idempotency (a
@@ -104,6 +118,43 @@ export async function advanceTaskBoardForRun(
     }
   } catch (err) {
     console.error("[task-board] run transition failed", err);
+  }
+}
+
+/**
+ * A run opened a GitHub PR — extract its identity from `source` (an MCP
+ * `create_pull_request` result or a `bash` tool's output) and link it to the
+ * run's task board item(s). Resolves the target(s) the same way as the status
+ * advance (runMetadata first, else the thread link), so a PR opened inside a
+ * subtask (which carries no metadata but shares the thread) still links.
+ * Idempotent per (task, url) at the storage layer; best-effort — a failure
+ * never disturbs the agent run. No-op when no PR URL is found or off a task run.
+ */
+export async function capturePrForRun(
+  ctx: StudioContext,
+  source: unknown,
+  connectionId?: string | null,
+  threadId?: string,
+): Promise<void> {
+  const orgId = ctx.organization?.id;
+  if (!orgId) return;
+  try {
+    const pr = extractPrFromValue(source);
+    if (!pr) return;
+    const targets = await resolveRunTaskTargets(ctx, orgId, threadId);
+    for (const itemId of targets) {
+      await ctx.storage.taskBoard.linkPr({
+        taskBoardItemId: itemId,
+        organizationId: orgId,
+        url: pr.url,
+        prNumber: pr.number,
+        repoOwner: pr.owner,
+        repoName: pr.repo,
+        connectionId: connectionId ?? null,
+      });
+    }
+  } catch (err) {
+    console.error("[task-board] PR capture failed", err);
   }
 }
 

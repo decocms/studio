@@ -13,6 +13,8 @@ export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 export type TaskBoardItemStatus = TaskBoardItem["status"];
 export type TaskBoardItemPriority = TaskBoardItem["priority"];
 export type TaskBoardItemThread = TaskBoardItem["threads"][number];
+export type TaskBoardItemPr =
+  ToolOutput<"TASK_BOARD_ITEM_PRS_GET">["prs"][number];
 
 /**
  * A task is "blocked" when one of its agent threads is waiting on human input
