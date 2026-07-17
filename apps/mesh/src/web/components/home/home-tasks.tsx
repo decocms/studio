@@ -13,6 +13,7 @@ import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowUpRight, Calendar, Flag01, Plus } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
+import { SuperAgentIcon } from "@/web/components/super-agent-icon";
 import { useMembers } from "@/web/hooks/use-members";
 import {
   useTaskBoardItemActions,
@@ -25,20 +26,6 @@ import {
   type TaskBoardItemStatus,
 } from "@/web/layouts/task-board/config";
 import { TaskBoardItemDialog } from "@/web/layouts/task-board/task-dialog";
-
-/** Same asset as the Super Agent icon in getWellKnownDecopilotVirtualMCP. */
-const DECOPILOT_ICON_URL =
-  "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png";
-
-function DecoAvatar({ className }: { className?: string }) {
-  return (
-    <img
-      src={DECOPILOT_ICON_URL}
-      alt="Deco"
-      className={cn("size-4 shrink-0 rounded-full object-cover", className)}
-    />
-  );
-}
 
 interface OrgMember {
   userId: string;
@@ -188,7 +175,7 @@ export function HomeTasks() {
   return (
     <div className="flex flex-col gap-10">
       <div className="flex items-start gap-4 animate-in fade-in slide-in-from-top-1 duration-300">
-        <DecoAvatar className="mt-0.5 size-6" />
+        <SuperAgentIcon size={24} className="mt-0.5" />
         <p className="max-w-3xl text-lg font-medium leading-snug text-foreground">
           {summary}
         </p>

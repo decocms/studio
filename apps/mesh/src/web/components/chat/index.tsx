@@ -23,6 +23,7 @@ import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
 import { selectHiddenFromBody } from "./queue-items.ts";
 import { useMessageQueue } from "./use-message-queue.ts";
+import { useOpenPreviewOnRepoLoad } from "./use-open-preview-on-repo-load.ts";
 import { SubtaskRunsProvider } from "./subtask-runs-context.tsx";
 import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
 import { CreditsEmptyState } from "./credits-empty-state";
@@ -136,6 +137,10 @@ function ChatMessages() {
     fetchOlderMessages,
   } = useChatStream();
   const { taskId } = useChatTask();
+
+  // Open Preview the moment load_repo succeeds — durable across background/
+  // reopened runs the transient stream chunk never reaches.
+  useOpenPreviewOnRepoLoad();
 
   // Queued turns render tray-side only (see queue-items.ts / the message
   // queue tray) — filter them out of the body BEFORE pairing so a queued

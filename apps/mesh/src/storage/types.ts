@@ -1509,6 +1509,7 @@ export interface TaskBoardItemTable {
     string
   >;
   assignee_id: string | null;
+  assigned_by: string | null;
   due_date: ColumnType<
     Date | null,
     Date | string | null | undefined,
@@ -1520,6 +1521,29 @@ export interface TaskBoardItemTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+/** Join row: a task board item ↔ an agent thread (many-to-many). */
+export interface TaskBoardItemThreadTable {
+  task_board_item_id: string;
+  thread_id: string;
+  organization_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/** A thread linked to a task, with the run state the board needs to render it. */
+export interface TaskBoardItemThreadRef {
+  threadId: string;
+  /** Owning agent — needed to open the thread's chat. */
+  virtualMcpId: string | null;
+  status: ThreadStatus | null;
+  title: string | null;
+  /** Latest assistant text, for the card's one-line activity preview. */
+  lastMessage: string | null;
+  /** True when a repo is bound to the thread (`metadata.githubRepo`) — the
+   *  card opens the live dev Preview instead of staying on the board. */
+  hasPreview: boolean;
+  createdAt: string;
+}
+
 export interface TaskBoardItem {
   id: string;
   organizationId: string;
@@ -1528,7 +1552,10 @@ export interface TaskBoardItem {
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
   assigneeId: string | null;
+  assignedBy: string | null;
   dueDate: string | null;
+  /** Agent threads linked to this task (most-recent first). */
+  threads: TaskBoardItemThreadRef[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -1680,6 +1707,7 @@ export interface Database {
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
   task_board_items: TaskBoardItemTable;
+  task_board_item_threads: TaskBoardItemThreadTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

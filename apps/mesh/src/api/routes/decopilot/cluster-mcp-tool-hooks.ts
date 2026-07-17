@@ -19,6 +19,10 @@ import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import type { ToolCallAnalytics } from "@decocms/harness/decopilot/mcp-tools";
 import { resolveArgsStorageRefs } from "./file-materializer";
+import {
+  advanceTaskBoardForRun,
+  isPrCreateMcpTool,
+} from "@/tools/task-board/run-reactions";
 
 export interface ClusterMcpToolHooks {
   resolveArgs: (
@@ -38,6 +42,11 @@ export function buildClusterMcpToolHooks(
   return {
     resolveArgs: (input) => resolveArgsStorageRefs(input, ctx),
     onToolCalled: (event) => {
+      // A Super Agent task run just opened a PR via the GitHub MCP tool —
+      // move its card to In Review. Fire-and-forget (no-ops off a task run).
+      if (!event.isError && isPrCreateMcpTool(event.toolName)) {
+        void advanceTaskBoardForRun(ctx, "in_review");
+      }
       const orgId = ctx.organization?.id;
       const userId = ctx.auth?.user?.id;
       if (!orgId || !userId) return;

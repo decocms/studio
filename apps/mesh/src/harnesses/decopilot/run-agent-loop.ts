@@ -40,6 +40,10 @@ import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
 import type { BuiltinToolParams } from "./built-in-tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
+import {
+  advanceTaskBoardForRun,
+  isPrCreateBashCommand,
+} from "@/tools/task-board/run-reactions";
 import type { SubtaskParams } from "./built-in-tools/subtask";
 import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
 import {
@@ -203,6 +207,31 @@ export async function runAgentLoop(
     ? (undefined as never)
     : createLanguageModel(opts.provider, opts.models.thinking);
 
+  // For a Super Agent task run, watch each step's bash calls for `gh pr create`
+  // and move the card to In Review. Only wrap when this run is task-linked, so
+  // normal runs pay nothing. (The GitHub MCP tool path is caught separately via
+  // `onToolCalled`, whose raw tool name is reliable; here the model-facing tool
+  // name can be mangled, so we key off the built-in `bash` tool + its command.)
+  const taskLinked = !!opts.ctx.metadata?.runMetadata?.taskBoardItemId;
+  const onStepFinish: StreamTextOnStepFinishCallback<ToolSet> | undefined =
+    taskLinked
+      ? (step) => {
+          for (const call of step.toolCalls ?? []) {
+            const command = (call.input as { command?: string } | undefined)
+              ?.command;
+            if (
+              call.toolName === "bash" &&
+              command &&
+              isPrCreateBashCommand(command)
+            ) {
+              void advanceTaskBoardForRun(opts.ctx, "in_review");
+              break;
+            }
+          }
+          return opts.onStepFinish?.(step);
+        }
+      : opts.onStepFinish;
+
   const handle = runNativeAgentLoopCore({
     model,
     systemMessages,
@@ -218,7 +247,7 @@ export async function runAgentLoop(
     ),
     stopWhen: stepCountIs(stepLimit),
     abortSignal: opts.abortSignal,
-    onStepFinish: opts.onStepFinish,
+    onStepFinish,
     streamText: (opts as { __streamText?: typeof import("ai").streamText })
       .__streamText,
     onError: (message, error) => {

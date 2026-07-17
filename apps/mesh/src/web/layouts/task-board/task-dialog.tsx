@@ -15,22 +15,46 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@deco/ui/components/command.tsx";
 import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Calendar, ChevronDown, Trash01, User01, X } from "@untitledui/icons";
+import {
+  AlertCircle,
+  AlertSquare,
+  Calendar,
+  CheckCircle,
+  ChevronRight,
+  HelpCircle,
+  Loading02,
+  Plus,
+  Trash03,
+  User01,
+  X,
+} from "@untitledui/icons";
+import { SuperAgentIcon } from "@/web/components/super-agent-icon";
 import { useMembers } from "@/web/hooks/use-members";
 import { getInitials } from "@/web/lib/get-initials";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
+  primaryThread,
   PRIORITIES,
   PRIORITY_CONFIG,
   STATUS_CONFIG,
   STATUSES,
+  SUPER_AGENT_ASSIGNEE_ID,
+  type Member,
   type TaskBoardItem,
   type TaskBoardItemPriority,
   type TaskBoardItemStatus,
-  type Member,
+  type TaskBoardItemThread,
 } from "./config";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
@@ -57,12 +81,45 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
 });
 
+/** Sidebar property row — ghost button that opens an editor popover/menu. */
+const PROPERTY_BUTTON =
+  "inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted";
+
+const THREAD_STATUS: Record<
+  NonNullable<TaskBoardItemThread["status"]>,
+  { label: string; className: string; icon: typeof AlertSquare; spin?: boolean }
+> = {
+  failed: { label: "Error", className: "text-red-600", icon: AlertSquare },
+  requires_action: {
+    label: "Needs input",
+    className: "text-amber-600",
+    icon: HelpCircle,
+  },
+  in_progress: {
+    label: "Running",
+    className: "text-blue-600",
+    icon: Loading02,
+    spin: true,
+  },
+  completed: {
+    label: "Completed",
+    className: "text-green-600",
+    icon: CheckCircle,
+  },
+  expired: {
+    label: "Expired",
+    className: "text-muted-foreground",
+    icon: AlertCircle,
+  },
+};
+
 export function TaskBoardItemDialog({
   open,
   onClose,
   item,
   onSubmit,
   onDelete,
+  onOpenThread,
   isSaving,
 }: {
   open: boolean;
@@ -78,6 +135,7 @@ export function TaskBoardItemDialog({
     dueDate: string | null;
   }) => void;
   onDelete?: () => void;
+  onOpenThread?: (thread: TaskBoardItemThread) => void;
   isSaving?: boolean;
 }) {
   const { data } = useMembers();
@@ -98,6 +156,7 @@ export function TaskBoardItemDialog({
     parseIsoDate(item?.dueDate),
   );
   const [dueOpen, setDueOpen] = useState(false);
+  const [assigneeOpen, setAssigneeOpen] = useState(false);
 
   const reset = () => {
     setTitle(item?.title ?? "");
@@ -126,46 +185,75 @@ export function TaskBoardItemDialog({
     });
   };
 
+  const isSuperAgent = assigneeId === SUPER_AGENT_ASSIGNEE_ID;
   const assignee = members.find((m) => m.userId === assigneeId);
+  const assignedBy = item?.assignedBy
+    ? members.find((m) => m.userId === item.assignedBy)
+    : undefined;
+  const StatusIcon = STATUS_CONFIG[status].icon;
+  const thread = item ? primaryThread(item) : undefined;
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent
-        className="flex h-[85vh] max-h-[720px] flex-col gap-0 overflow-hidden p-0 sm:max-w-[820px]"
+        className="flex h-[85vh] max-h-[640px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[850px]"
         closeButtonClassName="hidden"
       >
         <DialogTitle className="sr-only">
           {item ? "Edit task" : "New task"}
         </DialogTitle>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="flex flex-col gap-4 border-b border-border px-6 pt-6 pb-5">
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={close}
+          className="absolute right-2.5 top-2.5 z-10 flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <X size={16} />
+        </button>
+
+        <div className="flex min-h-0 flex-1">
+          {/* Editor pane */}
+          <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto p-8">
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Task title"
+              placeholder="Task title..."
               autoFocus
-              className="w-full border-0 bg-transparent text-xl font-semibold text-foreground outline-none placeholder:text-muted-foreground/70"
+              className="w-full border-0 bg-transparent text-xl font-medium text-foreground outline-none placeholder:text-foreground/30"
             />
 
-            <div className="flex flex-wrap items-center gap-2">
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe a task for an agent..."
+              className="min-h-[120px] w-full flex-1 resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50"
+            />
+
+            {thread && (
+              <ActivityCard
+                thread={thread}
+                startedBy={assignedBy ?? assignee}
+                onOpen={onOpenThread}
+              />
+            )}
+          </div>
+
+          {/* Properties pane */}
+          <div className="flex w-[220px] shrink-0 flex-col gap-4 border-l border-border px-6 py-10">
+            <span className="px-3 text-sm text-muted-foreground">
+              Properties
+            </span>
+
+            <div className="flex flex-col gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground transition-colors hover:bg-muted"
-                  >
-                    {(() => {
-                      const Icon = STATUS_CONFIG[status].icon;
-                      return (
-                        <Icon
-                          size={13}
-                          className={STATUS_CONFIG[status].iconClassName}
-                        />
-                      );
-                    })()}
+                  <button type="button" className={PROPERTY_BUTTON}>
+                    <StatusIcon
+                      size={16}
+                      className={STATUS_CONFIG[status].iconClassName}
+                    />
                     {STATUS_CONFIG[status].label}
-                    <ChevronDown size={12} className="text-muted-foreground" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
@@ -178,7 +266,7 @@ export function TaskBoardItemDialog({
                         className="gap-2"
                       >
                         <Icon
-                          size={13}
+                          size={16}
                           className={STATUS_CONFIG[s].iconClassName}
                         />
                         {STATUS_CONFIG[s].label}
@@ -190,10 +278,7 @@ export function TaskBoardItemDialog({
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground transition-colors hover:bg-muted"
-                  >
+                  <button type="button" className={PROPERTY_BUTTON}>
                     <span
                       className={cn(
                         "size-2 rounded-full",
@@ -201,76 +286,150 @@ export function TaskBoardItemDialog({
                       )}
                     />
                     {PRIORITY_CONFIG[priority].label}
-                    <ChevronDown size={12} className="text-muted-foreground" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-40">
                   {PRIORITIES.map((p) => (
                     <DropdownMenuItem key={p} onSelect={() => setPriority(p)}>
+                      <span
+                        className={cn(
+                          "size-2 rounded-full",
+                          PRIORITY_CONFIG[p].badgeClassName,
+                        )}
+                      />
                       {PRIORITY_CONFIG[p].label}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground transition-colors hover:bg-muted"
-                  >
-                    {assignee ? (
-                      <Avatar
-                        url={assignee.user?.image ?? undefined}
-                        fallback={getInitials(assignee.user?.name)}
-                        shape="circle"
-                        size="2xs"
-                      />
-                    ) : (
-                      <User01 size={13} className="text-muted-foreground" />
-                    )}
-                    {assignee?.user?.name ?? "Unassigned"}
-                    <ChevronDown size={12} className="text-muted-foreground" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuItem onSelect={() => setAssigneeId(null)}>
-                    Unassigned
-                  </DropdownMenuItem>
-                  {members.map((m) => (
-                    <DropdownMenuItem
-                      key={m.userId}
-                      onSelect={() => setAssigneeId(m.userId)}
-                      className="gap-2"
+              <div className="flex flex-col">
+                <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
+                  <PopoverTrigger asChild>
+                    <button type="button" className={PROPERTY_BUTTON}>
+                      {isSuperAgent && assignedBy ? (
+                        <>
+                          <Avatar
+                            url={assignedBy.user?.image ?? undefined}
+                            fallback={getInitials(assignedBy.user?.name)}
+                            shape="circle"
+                            size="2xs"
+                          />
+                          <span className="truncate">
+                            {assignedBy.user?.name ?? "Super Agent"}
+                          </span>
+                        </>
+                      ) : isSuperAgent ? (
+                        <>
+                          <SuperAgentIcon size={16} />
+                          Super Agent
+                        </>
+                      ) : assignee ? (
+                        <>
+                          <Avatar
+                            url={assignee.user?.image ?? undefined}
+                            fallback={getInitials(assignee.user?.name)}
+                            shape="circle"
+                            size="2xs"
+                          />
+                          <span className="truncate">
+                            {assignee.user?.name ?? "Unassigned"}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <User01 size={16} className="text-muted-foreground" />
+                          Assignee
+                        </>
+                      )}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-56 p-0">
+                    <Command>
+                      <CommandInput placeholder="Assign to…" className="h-9" />
+                      <CommandList>
+                        <CommandEmpty>No members found.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="Super Agent"
+                            onSelect={() => {
+                              setAssigneeId(SUPER_AGENT_ASSIGNEE_ID);
+                              setAssigneeOpen(false);
+                            }}
+                            className="gap-2"
+                          >
+                            <SuperAgentIcon size={16} />
+                            <span className="truncate">Super Agent</span>
+                          </CommandItem>
+                          <CommandItem
+                            value="Unassigned"
+                            onSelect={() => {
+                              setAssigneeId(null);
+                              setAssigneeOpen(false);
+                            }}
+                            className="gap-2"
+                          >
+                            <User01
+                              size={16}
+                              className="text-muted-foreground"
+                            />
+                            <span className="truncate">Unassigned</span>
+                          </CommandItem>
+                        </CommandGroup>
+                        <CommandGroup heading="Members">
+                          {members.map((m) => (
+                            <CommandItem
+                              key={m.userId}
+                              value={m.user?.name ?? m.userId}
+                              onSelect={() => {
+                                setAssigneeId(m.userId);
+                                setAssigneeOpen(false);
+                              }}
+                              className="gap-2"
+                            >
+                              <Avatar
+                                url={m.user?.image ?? undefined}
+                                fallback={getInitials(m.user?.name)}
+                                shape="circle"
+                                size="2xs"
+                              />
+                              <span className="truncate">
+                                {m.user?.name ?? m.userId}
+                              </span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+
+                {/* Delegation: the Super Agent doing the work, nested under
+                    the human who handed it off. */}
+                {isSuperAgent && assignedBy && (
+                  <div className="relative flex items-center pl-5">
+                    <span className="absolute left-3 top-0 h-1/2 w-2.5 rounded-bl-md border-b border-l border-border" />
+                    <span
+                      className={cn(PROPERTY_BUTTON, "pointer-events-none")}
                     >
-                      <Avatar
-                        url={m.user?.image ?? undefined}
-                        fallback={getInitials(m.user?.name)}
-                        shape="circle"
-                        size="2xs"
-                      />
-                      <span className="truncate">
-                        {m.user?.name ?? m.userId}
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      <SuperAgentIcon size={16} />
+                      Super Agent
+                    </span>
+                  </div>
+                )}
+              </div>
 
               <Popover open={dueOpen} onOpenChange={setDueOpen}>
                 <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground transition-colors hover:bg-muted"
-                  >
-                    <Calendar size={13} className="text-muted-foreground" />
+                  <button type="button" className={PROPERTY_BUTTON}>
+                    <Calendar size={16} className="text-muted-foreground" />
                     {dueDate ? DUE_DATE_FMT.format(dueDate) : "Due date"}
-                    {dueDate ? (
+                    {dueDate && (
                       <span
                         role="button"
                         tabIndex={0}
                         aria-label="Clear due date"
-                        className="-mr-0.5 ml-0.5 flex size-4 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="-mr-1 ml-0.5 flex size-4 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
                         onClick={(e) => {
                           e.stopPropagation();
                           setDueDate(null);
@@ -285,11 +444,6 @@ export function TaskBoardItemDialog({
                       >
                         <X size={12} />
                       </span>
-                    ) : (
-                      <ChevronDown
-                        size={12}
-                        className="text-muted-foreground"
-                      />
                     )}
                   </button>
                 </PopoverTrigger>
@@ -307,40 +461,101 @@ export function TaskBoardItemDialog({
               </Popover>
             </div>
           </div>
-
-          <div className="flex flex-1 flex-col px-6 py-5">
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add a description…"
-              className="min-h-[320px] w-full flex-1 resize-none border-0 bg-transparent text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70"
-            />
-          </div>
         </div>
 
-        <div className="flex items-center gap-2 border-t border-border px-6 py-3">
-          {item && onDelete && (
+        <div className="flex h-16 items-center justify-between border-t border-border px-4">
+          {item && onDelete ? (
             <Button
               variant="ghost"
               size="icon"
               aria-label="Delete task"
-              className="text-muted-foreground hover:text-destructive"
+              className="size-10 text-muted-foreground hover:text-destructive"
               onClick={onDelete}
             >
-              <Trash01 size={14} />
+              <Trash03 size={16} />
             </Button>
+          ) : (
+            <span />
           )}
 
           <Button
             size="sm"
-            className="ml-auto"
             disabled={!title.trim() || isSaving}
             onClick={submit}
           >
+            <Plus size={16} />
             {item ? "Save" : "Create task"}
           </Button>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The linked run's activity: a header ("Super Agent started by X") and a status
+ * row (Error / Running / …). Clicking opens the run's thread.
+ */
+function ActivityCard({
+  thread,
+  startedBy,
+  onOpen,
+}: {
+  thread: TaskBoardItemThread;
+  startedBy?: Member;
+  onOpen?: (thread: TaskBoardItemThread) => void;
+}) {
+  const state = thread.status ? THREAD_STATUS[thread.status] : null;
+  const message = thread.lastMessage ?? thread.title;
+
+  return (
+    <div className="flex flex-col overflow-hidden rounded-lg border border-border">
+      <div className="flex items-center gap-2 px-4 py-3.5">
+        <SuperAgentIcon size={16} />
+        <span className="text-sm text-foreground">Super Agent</span>
+        {startedBy && (
+          <>
+            <span className="text-sm text-muted-foreground/50">started by</span>
+            <Avatar
+              url={startedBy.user?.image ?? undefined}
+              fallback={getInitials(startedBy.user?.name)}
+              shape="circle"
+              size="2xs"
+            />
+            <span className="truncate text-sm text-foreground">
+              {startedBy.user?.name ?? "someone"}
+            </span>
+          </>
+        )}
+      </div>
+
+      {state && (
+        <button
+          type="button"
+          disabled={!onOpen}
+          onClick={() => onOpen?.(thread)}
+          className="flex items-center gap-2 border-t border-border px-4 py-2 text-left transition-colors enabled:hover:bg-muted disabled:cursor-default"
+        >
+          <span className={cn("flex items-center gap-1.5", state.className)}>
+            <state.icon
+              size={16}
+              className={cn(state.spin && "animate-spin")}
+            />
+            <span className="text-sm">{state.label}</span>
+          </span>
+          {message && (
+            <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+              {message}
+            </span>
+          )}
+          {onOpen && (
+            <ChevronRight
+              size={16}
+              className="ml-auto shrink-0 text-muted-foreground"
+            />
+          )}
+        </button>
+      )}
+    </div>
   );
 }

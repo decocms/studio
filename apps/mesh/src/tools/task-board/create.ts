@@ -2,12 +2,15 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import {
+  SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
 import { requireTaskBoardEnabled } from "./require-enabled";
+import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
+import { emitTaskBoardUpdated } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
   name: "TASK_BOARD_ITEM_CREATE",
@@ -45,16 +48,29 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       await assertValidAssignee(ctx, organizationId, input.assigneeId);
     }
 
+    const delegatedToSuperAgent = input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+
     const item = await ctx.storage.taskBoard.create({
       organizationId,
       title: input.title,
       description: input.description ?? null,
-      status: input.status,
+      // A task handed to the Super Agent is queued to run — land it in To Do.
+      status: delegatedToSuperAgent ? "todo" : input.status,
       priority: input.priority,
       assigneeId: input.assigneeId ?? null,
+      assignedBy: input.assigneeId ? getUserId(ctx)! : null,
       dueDate: input.dueDate ?? null,
       by: getUserId(ctx)!,
     });
+
+    if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
+      emitTaskBoardUpdated(organizationId, item);
+      // Best-effort: the task is already persisted, so a dispatch failure
+      // (e.g. no model configured) must not fail the create.
+      await enqueueSuperAgentForTask(ctx, item).catch((err) => {
+        console.error("[task-board] Super Agent enqueue failed", err);
+      });
+    }
 
     return { item };
   },

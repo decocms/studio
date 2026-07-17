@@ -13,6 +13,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { StudioContext } from "@/core/studio-context";
 import { assertValidAssignee } from "./validate-assignee";
+import { SUPER_AGENT_ASSIGNEE_ID } from "./schema";
 
 function ctxWithListMembers(
   listMembers: (options?: {
@@ -34,6 +35,15 @@ describe("assertValidAssignee", () => {
     await expect(
       assertValidAssignee(ctx, "org-1", "user-101"),
     ).resolves.toBeUndefined();
+  });
+
+  it("accepts the Super Agent sentinel without a membership lookup", async () => {
+    const listMembers = mock(async () => ({ members: [] }));
+    const ctx = ctxWithListMembers(listMembers);
+    await expect(
+      assertValidAssignee(ctx, "org-1", SUPER_AGENT_ASSIGNEE_ID),
+    ).resolves.toBeUndefined();
+    expect(listMembers).not.toHaveBeenCalled();
   });
 
   it("throws when the filtered lookup returns no match", async () => {

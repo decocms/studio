@@ -7,9 +7,27 @@ import {
 } from "@untitledui/icons";
 import type { ToolOutput } from "@/tools/io-types";
 
+export { SUPER_AGENT_ASSIGNEE_ID } from "@/shared/task-board";
+
 export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 export type TaskBoardItemStatus = TaskBoardItem["status"];
 export type TaskBoardItemPriority = TaskBoardItem["priority"];
+export type TaskBoardItemThread = TaskBoardItem["threads"][number];
+
+/**
+ * A task is "blocked" when one of its agent threads is waiting on human input
+ * (`requires_action` — the agent called `user_ask` or needs an approval).
+ */
+export function isTaskBlocked(item: TaskBoardItem): boolean {
+  return item.threads.some((t) => t.status === "requires_action");
+}
+
+/** The thread to surface in the card — the most recent linked run. */
+export function primaryThread(
+  item: TaskBoardItem,
+): TaskBoardItemThread | undefined {
+  return item.threads[0];
+}
 
 /** Shape of an org member as returned by `useMembers()`, trimmed to the fields used here. */
 export type Member = {
