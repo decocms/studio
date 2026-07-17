@@ -4,7 +4,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  type ConnectionEntity,
   getCommerceDiscoveryAgentId,
+  type GithubRepo,
   WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -21,7 +23,11 @@ import { DialogFooter } from "@deco/ui/components/dialog.tsx";
 import { SearchSm } from "@untitledui/icons";
 import { KEYS, invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
-import { fetchGithubInstallations } from "@/web/lib/github-installations";
+import {
+  fetchGithubInstallations,
+  findGithubInstallation,
+} from "@/web/lib/github-installations";
+import { provisionRepoScopedGithubConnection } from "@/web/lib/provision-repo-scoped-github-connection";
 import { unwrapToolResult } from "../companions-core.ts";
 import { SelectableList } from "./selectable-list.tsx";
 import { LoadingIndicator } from "../loading-indicator.tsx";
@@ -214,22 +220,90 @@ export function GitHubConfigForm({
         },
       });
 
-      // Also mirror onto the Report Agent virtual MCP's `metadata.githubRepo`
-      // — the field `agentHasClonableSource` reads to decide whether the
-      // Preview/Code tabs show up next to the report view. Without this, a
-      // reports-only org's GitHub connection lived only on the connection's
-      // `configuration_state` and Preview never appeared.
+      // Mirror onto the Report Agent virtual MCP's `metadata.githubRepo` —
+      // `agentHasClonableSource` reads it to show the Preview/Code tabs and
+      // SANDBOX_START reads it to clone. A bare `{ owner, name, url }` clones
+      // anonymously (fails on a private store repo), so provision a repo-scoped
+      // GitHub connection (same path the repo picker uses) and store its
+      // `connectionId` so the clone is authenticated.
       const [owner, name] = githubRepo.split("/");
+      if (!owner || !name) {
+        throw new Error(
+          `Repositório inválido: "${githubRepo}". Use o formato owner/nome.`,
+        );
+      }
+      const agentId = getCommerceDiscoveryAgentId(org.id);
+
+      const existingRepo = unwrapToolResult<{
+        item: { metadata?: { githubRepo?: GithubRepo | null } | null } | null;
+      }>(
+        await selfClient.callTool({
+          name: "COLLECTION_VIRTUAL_MCP_GET",
+          arguments: { id: agentId },
+        }),
+      ).item?.metadata?.githubRepo;
+
+      // Reuse the existing repo-scoped connection when the same repo is
+      // re-saved so a no-op save doesn't orphan a fresh connection each time.
+      const reuse =
+        existingRepo?.connectionId &&
+        existingRepo.owner === owner &&
+        existingRepo.name === name
+          ? existingRepo
+          : null;
+
+      let repoConnectionId = reuse?.connectionId;
+      let installationId = reuse?.installationId;
+
+      if (!repoConnectionId) {
+        const { installations } = await fetchGithubInstallations(
+          (req) => selfClient.callTool(req),
+          connectionId,
+        );
+        const installation = findGithubInstallation(installations, owner);
+        if (!installation) {
+          throw new Error(
+            `Nenhuma instalação do GitHub encontrada para "${owner}".`,
+          );
+        }
+        installationId = installation.installationId;
+        const sourceConnection = unwrapToolResult<{
+          item: ConnectionEntity | null;
+        }>(
+          await selfClient.callTool({
+            name: "COLLECTION_CONNECTIONS_GET",
+            arguments: { id: connectionId },
+          }),
+        ).item;
+        if (!sourceConnection) {
+          throw new Error("Conexão do GitHub não encontrada.");
+        }
+        const { childConnectionId } = await provisionRepoScopedGithubConnection(
+          {
+            orgSlug: org.slug,
+            sourceConnection,
+            installationId,
+            owner,
+            repo: name,
+            githubCallTool: (req) => companionClient.callTool(req),
+            selfCallTool: (req) => selfClient.callTool(req),
+          },
+        );
+        repoConnectionId = childConnectionId;
+      }
+
       await selfClient.callTool({
         name: "COLLECTION_VIRTUAL_MCP_UPDATE",
         arguments: {
-          id: getCommerceDiscoveryAgentId(org.id),
+          id: agentId,
           data: {
             metadata: {
               githubRepo: {
                 owner,
                 name,
                 url: `https://github.com/${githubRepo}`,
+                installationId,
+                connectionId: repoConnectionId,
               },
             },
           },
