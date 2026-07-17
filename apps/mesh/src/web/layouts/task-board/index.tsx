@@ -216,7 +216,10 @@ export function TaskBoardPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    // Cap the whole page (header + board/list) and center it so content
+    // doesn't stretch edge-to-edge on wide monitors; the panel background
+    // still spans full width. Board lanes scroll horizontally within this cap.
+    <div className="mx-auto flex min-h-0 w-full max-w-[1680px] flex-1 flex-col">
       {/* Header — shares the board/list left edge so the two views line up. */}
       <div className="flex flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
         <h1 className="text-xl font-medium text-foreground">Tasks</h1>
@@ -401,84 +404,78 @@ function Lanes({
     // board scrolls horizontally when they don't all fit (incl. mobile).
     <div
       ref={boardRef}
-      className="min-h-0 flex-1 overflow-x-auto overflow-y-auto px-4 pt-6 pb-16 sm:px-8"
+      className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-auto px-4 pt-6 pb-16 sm:px-8"
     >
-      {/* w-max + mx-auto centers the lane row on wide monitors instead of
-          leaving it edge-to-edge, while staying fully scrollable when it
-          overflows (auto margins collapse to 0, so the first lane stays
-          reachable — unlike justify-center). */}
-      <div className="mx-auto flex w-max gap-3">
-        {STATUSES.map((status) => {
-          const laneItems = items.filter((t) => t.status === status);
-          const config = STATUS_CONFIG[status];
-          const LaneIcon = config.icon;
-          return (
-            <div
-              key={status}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setOverLane(status);
-              }}
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                  setOverLane(null);
-                }
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                const id = e.dataTransfer.getData("text/plain");
-                if (id) onMove(id, status);
+      {STATUSES.map((status) => {
+        const laneItems = items.filter((t) => t.status === status);
+        const config = STATUS_CONFIG[status];
+        const LaneIcon = config.icon;
+        return (
+          <div
+            key={status}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setOverLane(status);
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                 setOverLane(null);
-              }}
-              className={cn(
-                "flex w-[300px] shrink-0 flex-col rounded-xl p-1 transition-colors",
-                overLane === status && "bg-muted/50",
-              )}
-            >
-              <div className="flex items-center gap-2 px-2 py-1.5">
-                <LaneIcon
-                  size={15}
-                  className={cn("shrink-0", config.iconClassName)}
-                />
-                <span className="text-sm font-medium text-foreground">
-                  {config.label}
-                </span>
-                <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
-                  {laneItems.length}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`New task in ${config.label}`}
-                  title={`New task in ${config.label}`}
-                  onClick={() => onCreate(status)}
-                  className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <Plus size={15} />
-                </button>
-              </div>
-              <div className="flex min-h-12 flex-col gap-2 pt-1">
-                {laneItems.map((item) => (
-                  <TaskCard
-                    key={item.id}
-                    item={item}
-                    assignee={
-                      item.assigneeId
-                        ? memberByUserId.get(item.assigneeId)
-                        : undefined
-                    }
-                    assignedBy={
-                      item.assignedBy
-                        ? memberByUserId.get(item.assignedBy)
-                        : undefined
-                    }
-                    onOpen={() => onOpen(item)}
-                  />
-                ))}
-              </div>
+              }
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const id = e.dataTransfer.getData("text/plain");
+              if (id) onMove(id, status);
+              setOverLane(null);
+            }}
+            className={cn(
+              "flex w-[300px] shrink-0 flex-col rounded-xl p-1 transition-colors",
+              overLane === status && "bg-muted/50",
+            )}
+          >
+            <div className="flex items-center gap-2 px-2 py-1.5">
+              <LaneIcon
+                size={15}
+                className={cn("shrink-0", config.iconClassName)}
+              />
+              <span className="text-sm font-medium text-foreground">
+                {config.label}
+              </span>
+              <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+                {laneItems.length}
+              </span>
+              <button
+                type="button"
+                aria-label={`New task in ${config.label}`}
+                title={`New task in ${config.label}`}
+                onClick={() => onCreate(status)}
+                className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <Plus size={15} />
+              </button>
             </div>
-          );
-        })}
-      </div>
+            <div className="flex min-h-12 flex-col gap-2 pt-1">
+              {laneItems.map((item) => (
+                <TaskCard
+                  key={item.id}
+                  item={item}
+                  assignee={
+                    item.assigneeId
+                      ? memberByUserId.get(item.assigneeId)
+                      : undefined
+                  }
+                  assignedBy={
+                    item.assignedBy
+                      ? memberByUserId.get(item.assignedBy)
+                      : undefined
+                  }
+                  onOpen={() => onOpen(item)}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
