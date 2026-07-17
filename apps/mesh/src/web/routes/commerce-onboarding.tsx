@@ -1,6 +1,7 @@
 import {
   isConnectionClaimedForSite,
   normalizeReportsSiteUrl,
+  siteUrlToHost,
 } from "@/reports/site-url";
 import { AuthEntry } from "@/web/components/auth-entry";
 import { ErrorBoundary } from "@/web/components/error-boundary";
@@ -17,7 +18,6 @@ import { KEYS } from "@/web/lib/query-keys";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import {
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   getCommerceDiscoveryAgentId,
   getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
@@ -67,16 +67,6 @@ interface EnsureOrganizationResponse {
 
 interface CollectionGetResult<T = unknown> {
   item: T | null;
-}
-
-interface CommerceDiscoveryReportApp {
-  connectionId: string;
-  virtualMcpId: string;
-  toolName: typeof COMMERCE_DISCOVERY_REPORT_TOOL_NAME;
-}
-
-interface CommerceDiscoverySetupResult {
-  reportApp?: CommerceDiscoveryReportApp;
 }
 
 export default function CommerceOnboardingRoute() {
@@ -162,12 +152,6 @@ const COMMERCE_AUTH_COPY = {
   signUp: "Criar conta",
   signInWithEmailCode: "Entrar com código por e-mail",
 };
-
-function siteUrlToHost(siteUrl?: string): string | null {
-  if (!siteUrl) return null;
-  const normalized = normalizeReportsSiteUrl(siteUrl);
-  return normalized.ok ? new URL(normalized.value).hostname : null;
-}
 
 function commerceSiteUrlErrorPtBr(error: string): string {
   switch (error) {
@@ -693,7 +677,7 @@ function CommerceSetupContent({
         name: "COMMERCE_DISCOVERY_SETUP",
         arguments: { siteUrl },
       });
-      return parseSelfToolResult<CommerceDiscoverySetupResult>(result);
+      return parseSelfToolResult<unknown>(result);
     },
     retry: false,
     onSuccess: (_result, submittedSiteUrl) => {

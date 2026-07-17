@@ -95,3 +95,14 @@ export function isConnectionClaimedForSite(
   const claimed = normalizeReportsSiteUrl(claimedSiteUrl);
   return claimed.ok && claimed.value === requested.value;
 }
+
+/**
+ * Hostname derived from a raw site URL (e.g. "fila.com.br"), or `null` when the
+ * input is missing or not a valid site URL. Used for analytics `domain` tags and
+ * the site badge across the commerce onboarding flow.
+ */
+export function siteUrlToHost(siteUrl?: string): string | null {
+  if (!siteUrl) return null;
+  const normalized = normalizeReportsSiteUrl(siteUrl);
+  return normalized.ok ? new URL(normalized.value).hostname : null;
+}

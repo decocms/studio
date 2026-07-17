@@ -1,4 +1,4 @@
-import { normalizeReportsSiteUrl } from "@/reports/site-url";
+import { normalizeReportsSiteUrl, siteUrlToHost } from "@/reports/site-url";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { authClient } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
@@ -37,19 +37,13 @@ import {
 import { parseSelfToolResult } from "./self-tool-result.ts";
 import { SiteBadge } from "./site-badge.tsx";
 
-function siteUrlToHost(siteUrl?: string): string | null {
-  if (!siteUrl) return null;
-  const normalized = normalizeReportsSiteUrl(siteUrl);
-  return normalized.ok ? new URL(normalized.value).hostname : null;
-}
-
 /**
  * Blocking commerce-onboarding connections step, rendered as a modal OVER the
  * org (the report page behind it stays mounted and blurred) instead of as a
  * standalone `/commerce-onboarding` screen. Non-dismissable: no close button, no
  * escape/overlay close — the only way forward is connecting at least one data
- * source, which enables the "Ver relatório completo" CTA. `onDone` is called once
- * the run is triggered so the caller can drop the `connect` search param and
+ * source, which enables the "Ver relatório completo" CTA. `onComplete` is called
+ * once the run is triggered so the caller can drop the `connect` search param and
  * reveal the report.
  */
 export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {

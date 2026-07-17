@@ -441,7 +441,18 @@ test.describe("Commerce onboarding route isolation", () => {
     const virtualMcpId = commerceDiscoveryVirtualMcpId(orgId);
 
     await page.goto("/commerce-onboarding?siteUrl=example.com");
-    await page.getByRole("button", { name: "Ver relatório completo" }).click();
+
+    // The connect step is a blocking modal over the org: it must NOT be
+    // dismissable. Pressing Escape leaves it open; the only way forward is the
+    // "Ver relatório completo" CTA.
+    const reportCta = page.getByRole("button", {
+      name: "Ver relatório completo",
+    });
+    await expect(reportCta).toBeVisible({ timeout: 20_000 });
+    await page.keyboard.press("Escape");
+    await expect(reportCta).toBeVisible();
+
+    await reportCta.click();
 
     // Report app open in the main panel, chat side panel closed
     // (sidepanel=0 overrides the report agent's chatDefaultOpen).
