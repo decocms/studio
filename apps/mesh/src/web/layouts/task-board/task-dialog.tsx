@@ -341,14 +341,37 @@ export function TaskBoardItemDialog({
                     >
                       {isSuperAgent && assignedBy ? (
                         <>
-                          <Avatar
-                            url={assignedBy.user?.image ?? undefined}
-                            fallback={getInitials(assignedBy.user?.name)}
-                            shape="circle"
-                            size="2xs"
-                          />
-                          <span className="truncate">
-                            {assignedBy.user?.name ?? "Super Agent"}
+                          {/* Desktop: the assigner; the Super Agent doing the
+                              work is the nested elbow row below. */}
+                          <span className="hidden items-center gap-2 sm:flex">
+                            <Avatar
+                              url={assignedBy.user?.image ?? undefined}
+                              fallback={getInitials(assignedBy.user?.name)}
+                              shape="circle"
+                              size="2xs"
+                            />
+                            <span className="truncate">
+                              {assignedBy.user?.name ?? "Super Agent"}
+                            </span>
+                          </span>
+                          {/* Mobile: no room for the elbow tree — fold the
+                              delegation into one chip, the assigner eclipsed by
+                              the Super Agent. */}
+                          <span className="flex items-center gap-2 sm:hidden">
+                            <span className="inline-flex items-center">
+                              <Avatar
+                                url={assignedBy.user?.image ?? undefined}
+                                fallback={getInitials(assignedBy.user?.name)}
+                                shape="circle"
+                                size="2xs"
+                                className="-mr-1.5 ring-2 ring-background"
+                              />
+                              <SuperAgentIcon
+                                size={16}
+                                className="ring-2 ring-background"
+                              />
+                            </span>
+                            Super Agent
                           </span>
                         </>
                       ) : isSuperAgent ? (
@@ -440,9 +463,10 @@ export function TaskBoardItemDialog({
                 </Popover>
 
                 {/* Delegation: the Super Agent doing the work, nested under
-                    the human who handed it off. */}
+                    the human who handed it off. Desktop only — on mobile the
+                    assignee chip folds this in (see above). */}
                 {isSuperAgent && assignedBy && (
-                  <div className="relative mt-1.5 flex items-center pl-5">
+                  <div className="relative mt-1.5 hidden items-center pl-5 sm:flex">
                     {/* Elbow drops from the center of the assigner's avatar
                         (px-3 padding + half of the w-4 "2xs" avatar = 20px).
                         Starts 6px above the row to bridge the mt-1.5 gap and
