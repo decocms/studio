@@ -103,7 +103,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
+          # Multi-arch to match every sibling image (mesh, orgfs-sidecar,
+          # sandbox-netinit, s3-sync). Without arm64 the sandbox can't run
+          # natively on Apple Silicon / arm64 nodes. buildx emulates arm64 via
+          # the runner's preinstalled binfmt, same as orgfs-sidecar.
+          platforms: linux/amd64,linux/arm64
 
       - name: Install cosign
         if: steps.tag-check.outputs.exists != 'true'
