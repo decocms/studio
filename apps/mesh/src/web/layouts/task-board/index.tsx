@@ -40,6 +40,9 @@ import { TaskBoardItemDialog } from "./task-dialog";
 import { useFlipLanes } from "./use-flip-lanes";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 
+// Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
+void import("../agent-shell-layout/index.tsx").catch(() => {});
+
 type Layout = "board" | "list";
 
 export default function TaskBoard() {
