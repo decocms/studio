@@ -21,17 +21,9 @@ import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri, MCP_APP_DISPLAY_MODES } from "@/mcp-apps/types.ts";
 import { useChatStream, useChatPrefs } from "@/web/components/chat/context.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { resolveAppNavigateTarget } from "@/web/routes/project-app-navigate.ts";
 
 const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
-
-// An app can request in-panel navigation (instead of sending content to chat)
-// by emitting a lone `studio://navigate?main=<tab>` resource-link message —
-// e.g. the commerce diagnostic report's "task board" button. Restricted to the
-// agent-independent overlay tabs (mirrors OVERLAY_TABS in
-// main-panel-tabs/main-panel-with-drawer.tsx) so a message can't drive
-// arbitrary navigation.
-const NAVIGATE_SCHEME = "studio://navigate";
-const APP_NAVIGABLE_TABS = new Set(["board", "files"]);
 
 function AppRenderer({
   client,
@@ -87,19 +79,9 @@ function AppRenderer({
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
     // Intercept a navigate request and drive the router instead of inserting
     // it into chat; any other message falls through to the normal path.
-    const [block] = params.content;
-    if (
-      params.content.length === 1 &&
-      block?.type === "resource_link" &&
-      block.uri.startsWith(NAVIGATE_SCHEME)
-    ) {
-      let main: string | null = null;
-      try {
-        main = new URL(block.uri).searchParams.get("main");
-      } catch {
-        // malformed navigate URI — ignore
-      }
-      if (main && APP_NAVIGABLE_TABS.has(main)) openTab(main);
+    const navigateResult = resolveAppNavigateTarget(params.content);
+    if (navigateResult.isNavigate) {
+      if (navigateResult.tab) openTab(navigateResult.tab);
       return;
     }
     const doc = contentBlocksToTiptapDoc(params.content);
