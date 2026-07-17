@@ -186,7 +186,12 @@ export function useMainPanelTabs(ctx: {
   const devConnId = entity?.id ? getDevConnectionId(entity.id) : null;
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
   const hasActiveGithubRepo = agentHasConnectedGithub(entity);
-  const hasClonableSource = agentHasClonableSource(entity?.metadata);
+  // A thread-scoped repo (bound by `load_repo`) makes the source tabs
+  // (Preview, Code) available even when the agent itself has no repo — e.g.
+  // the ephemeral Decopilot agent.
+  const hasClonableSource =
+    agentHasClonableSource(entity?.metadata) ||
+    agentHasClonableSource(metadata);
   const { granted: canManageAgents } = useCapability("agents:manage");
   const reportsOnly = useReportsOnly();
   const connections = useConnections({ includeVirtual: true });
