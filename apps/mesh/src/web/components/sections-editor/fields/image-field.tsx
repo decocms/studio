@@ -14,6 +14,7 @@ import { useFileConfigsQuery } from "@/web/hooks/use-file-configs";
 import { useFilePickerUpload } from "@/web/hooks/use-file-picker";
 import { extractUrl } from "./extract-url";
 import type { FieldProps } from "./field-props";
+import { MediaTransformControls } from "./media-transform-controls";
 
 function basename(url: string): string {
   try {
@@ -175,7 +176,12 @@ export function ImageField({
       >
         {strValue ? (
           <>
-            <div className="relative h-40 w-full bg-[image:linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%),linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%)] bg-[position:0_0,8px_8px] [background-size:16px_16px]">
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              aria-label="Replace image"
+              className="relative block h-40 w-full cursor-pointer bg-[image:linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%),linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%)] bg-[position:0_0,8px_8px] [background-size:16px_16px]"
+            >
               {!imageErrored && (
                 <img
                   // Remount whenever the URL changes so onLoad/onError
@@ -201,7 +207,13 @@ export function ImageField({
               {!imageLoaded && !imageErrored && (
                 <div className="absolute inset-0 animate-pulse bg-muted/60" />
               )}
-            </div>
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                <span className="flex items-center gap-1.5 rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow">
+                  <Upload01 size={14} />
+                  Click to replace
+                </span>
+              </div>
+            </button>
             <div className="flex items-center gap-2 border-t border-border/60 bg-background/50 px-3 py-2">
               <span className="min-w-0 flex-1 truncate text-xs font-medium">
                 {fileName}
@@ -249,27 +261,36 @@ export function ImageField({
           placeholder="https://..."
           className="h-9 min-w-0 flex-1"
         />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setPickerOpen(true)}
-          className="h-9 shrink-0"
-        >
-          <Upload01 size={14} />
-          {strValue ? "Replace" : "Browse"}
-        </Button>
-        {strValue && (
+        {!strValue && (
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
-            onClick={() => setValue("")}
+            onClick={() => setPickerOpen(true)}
             className="h-9 shrink-0"
-            aria-label="Remove image"
           >
-            <Trash01 size={14} />
+            <Upload01 size={14} />
+            Browse
           </Button>
+        )}
+        {strValue && (
+          <>
+            <MediaTransformControls
+              value={strValue}
+              onChange={setValue}
+              path={path}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setValue("")}
+              className="h-9 shrink-0"
+              aria-label="Remove image"
+            >
+              <Trash01 size={14} />
+            </Button>
+          </>
         )}
       </div>
 

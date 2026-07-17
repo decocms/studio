@@ -14,6 +14,7 @@ import { useFileConfigsQuery } from "@/web/hooks/use-file-configs";
 import { useFilePickerUpload } from "@/web/hooks/use-file-picker";
 import { extractUrl } from "./extract-url";
 import type { FieldProps } from "./field-props";
+import { MediaTransformControls } from "./media-transform-controls";
 
 function ExtBadge({ ext }: { ext: string }) {
   if (!ext) return null;
@@ -150,14 +151,25 @@ export function FileField({
         {strValue ? (
           isVideo ? (
             <>
-              <div className="relative h-40 w-full overflow-hidden bg-black">
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                aria-label="Replace video"
+                className="relative block h-40 w-full cursor-pointer overflow-hidden bg-black"
+              >
                 <video
                   key={strValue}
                   src={strValue}
                   preload="metadata"
                   className="h-full w-full object-contain"
                 />
-              </div>
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                  <span className="flex items-center gap-1.5 rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow">
+                    <Upload01 size={14} />
+                    Click to replace
+                  </span>
+                </div>
+              </button>
               <div className="flex items-center gap-2 border-t border-border/60 bg-background/50 px-3 py-2">
                 <Film01 size={14} className="shrink-0 text-muted-foreground" />
                 <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
@@ -167,7 +179,12 @@ export function FileField({
               </div>
             </>
           ) : (
-            <div className="flex items-center gap-3 px-3 py-2.5">
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              aria-label="Replace file"
+              className="flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/60"
+            >
               <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-background">
                 <File02 size={18} className="text-muted-foreground" />
               </div>
@@ -178,7 +195,7 @@ export function FileField({
                 </p>
               </div>
               <ExtBadge ext={ext} />
-            </div>
+            </button>
           )
         ) : (
           <button
@@ -216,16 +233,26 @@ export function FileField({
           placeholder="https://..."
           className="h-9 min-w-0 flex-1"
         />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setPickerOpen(true)}
-          className="h-9 shrink-0"
-        >
-          <Upload01 size={14} />
-          {strValue ? "Replace" : "Browse"}
-        </Button>
+        {!strValue && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setPickerOpen(true)}
+            className="h-9 shrink-0"
+          >
+            <Upload01 size={14} />
+            Browse
+          </Button>
+        )}
+        {isVideo && strValue && (
+          <MediaTransformControls
+            value={strValue}
+            onChange={onChange}
+            path={path}
+            showMuted
+          />
+        )}
         {strValue && (
           <Button
             type="button"

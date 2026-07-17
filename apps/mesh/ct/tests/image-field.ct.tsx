@@ -78,7 +78,7 @@ test("paste URL: shows filename and extension chip", async ({ mount }) => {
   await expect(component.getByText("png", { exact: true })).toBeVisible();
 });
 
-test("paste URL: Browse becomes Replace and Remove image appears", async ({
+test("paste URL: Browse disappears; clickable preview + Remove image appear", async ({
   mount,
 }) => {
   const component = await mount(
@@ -87,8 +87,9 @@ test("paste URL: Browse becomes Replace and Remove image appears", async ({
 
   await component.getByLabel("Hero").fill("https://x.test/a.png");
 
+  // Replacing is done by clicking the preview now — no separate Replace button.
   await expect(
-    component.getByRole("button", { name: "Replace" }),
+    component.getByRole("button", { name: "Replace image" }),
   ).toBeVisible();
   await expect(
     component.getByRole("button", { name: "Browse", exact: true }),
@@ -98,7 +99,7 @@ test("paste URL: Browse becomes Replace and Remove image appears", async ({
   ).toBeVisible();
 });
 
-test("populated: renders Replace + Remove image from initialValue", async ({
+test("populated: renders clickable preview + Remove image from initialValue", async ({
   mount,
 }) => {
   const component = await mount(
@@ -113,7 +114,7 @@ test("populated: renders Replace + Remove image from initialValue", async ({
     "https://x.test/a.png",
   );
   await expect(
-    component.getByRole("button", { name: "Replace" }),
+    component.getByRole("button", { name: "Replace image" }),
   ).toBeVisible();
   await expect(
     component.getByRole("button", { name: "Remove image" }),
@@ -207,4 +208,45 @@ test("browse + pick: picker closes after selecting a file", async ({
   await component.getByTestId("file-picker-pick").click();
 
   await expect(component.getByTestId("file-picker-stub")).toHaveCount(0);
+});
+
+test("preview: clicking the image opens the picker in image mode", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <FieldHarness
+      schema={IMAGE_SCHEMA}
+      label="Hero"
+      initialValue="https://x.test/a.png"
+    />,
+  );
+
+  await expect(component.getByTestId("file-picker-stub")).toHaveCount(0);
+
+  await component.getByRole("button", { name: "Replace image" }).click();
+
+  const stub = component.getByTestId("file-picker-stub");
+  await expect(stub).toBeVisible();
+  await expect(stub).toHaveAttribute("data-mode", "image");
+});
+
+test("quality: picking a level via the ⋮ menu writes ?quality= to the value", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <FieldHarness
+      schema={IMAGE_SCHEMA}
+      label="Hero"
+      initialValue="https://x.test/a.png"
+    />,
+  );
+
+  await component.getByRole("button", { name: "Media options" }).click();
+  // The popover content is portaled to <body>, outside the mounted root.
+  await page.getByRole("radio", { name: "high" }).click();
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual("https://x.test/a.png?quality=high");
 });
