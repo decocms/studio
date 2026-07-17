@@ -50,8 +50,8 @@ export const STATUS_CONFIG: Record<StatusKey, StatusConfig> = {
     label: "Timed out",
     verb: "Stopped responding",
     icon: Hourglass03,
-    iconClassName: "text-amber-500",
-    labelColor: "text-amber-600 dark:text-amber-400",
+    iconClassName: "text-warning",
+    labelColor: "text-warning",
   },
   in_progress: {
     label: "Running",
