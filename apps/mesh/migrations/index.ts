@@ -129,6 +129,7 @@ import * as migration127taskboardduedate from "./127-task-board-due-date.ts";
 import * as migration128reportsonly from "./128-reports-only.ts";
 import * as migration129taskboardassignedby from "./129-task-board-assigned-by.ts";
 import * as migration130taskboardthreadid from "./130-task-board-thread-id.ts";
+import * as migration131taskboardthreadlinkcascade from "./131-task-board-thread-link-cascade.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -283,6 +284,7 @@ const migrations: Record<string, Migration> = {
   "128-reports-only": migration128reportsonly,
   "129-task-board-assigned-by": migration129taskboardassignedby,
   "130-task-board-thread-id": migration130taskboardthreadid,
+  "131-task-board-thread-link-cascade": migration131taskboardthreadlinkcascade,
 };
 
 export default migrations;
