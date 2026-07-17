@@ -47,6 +47,21 @@ export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
 }
 
 /**
+ * Which task item(s) a run-driven advance targets: the enqueue-set
+ * `runMetadata.taskBoardItemId` when present (the task's own dispatched run),
+ * else the thread's `task_board_item_threads` link rows. Metadata wins over
+ * the link — it never unions the two, so the task's own run advances exactly
+ * its item, and only a metadata-less re-prompt falls back to the link. Pure so
+ * the fallback decision is unit-tested without a StudioContext.
+ */
+export function resolveAdvanceTargets(
+  metadataItemId: string | undefined,
+  linkedIds: string[],
+): string[] {
+  return metadataItemId ? [metadataItemId] : linkedIds;
+}
+
+/**
  * Advance the run's linked task board item(s) forward to `status` and
  * broadcast each move. Resolves the linked item(s) from `runMetadata` first
  * (set at enqueue for the task's own run), falling back to the
@@ -65,12 +80,13 @@ export async function advanceTaskBoardForRun(
   if (!orgId) return;
   try {
     const metadataItemId = ctx.metadata?.runMetadata?.taskBoardItemId;
-    const itemIds = metadataItemId
-      ? [metadataItemId]
-      : threadId
+    // Query the thread link only on the fallback path (no metadata + a
+    // threadId) — the task's own run never reads it.
+    const linkedIds =
+      !metadataItemId && threadId
         ? await ctx.storage.taskBoard.linkedTaskIds(threadId, orgId)
         : [];
-    for (const itemId of itemIds) {
+    for (const itemId of resolveAdvanceTargets(metadataItemId, linkedIds)) {
       const current = await ctx.storage.taskBoard.getById(itemId, orgId);
       // ponytail: read-then-write rank guard. A single run's transitions are
       // sequential, so the race window is negligible; it buys idempotency (a
