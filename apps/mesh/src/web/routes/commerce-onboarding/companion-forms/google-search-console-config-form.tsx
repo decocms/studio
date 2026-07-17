@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -63,10 +63,39 @@ export function GoogleSearchConsoleConfigForm({
     onDone,
   });
 
+  // Applies the persisted/auto-matched site to the form ONCE. Without this
+  // guard, every render caused by the user picking a different site would
+  // see `card.configurationState` (only refreshed after a successful save)
+  // still holding the old value and immediately revert the selection to it.
+  const prefilledRef = useRef(false);
+  const savedSiteUrl = card.configurationState?.siteUrl as string | undefined;
+
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- notify parent of save pending state
   useEffect(() => {
     onIsPendingChange?.(isPending);
   }, [isPending, onIsPendingChange]);
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- prefill the form once from the persisted/auto-matched site (async query result), not on every render
+  useEffect(() => {
+    if (prefilledRef.current || !sitesQuery.isSuccess) return;
+    prefilledRef.current = true;
+    if (savedSiteUrl) {
+      if (form.getValues("siteUrl") !== savedSiteUrl) {
+        form.setValue("siteUrl", savedSiteUrl);
+      }
+      return;
+    }
+    if (!form.getValues("siteUrl")) {
+      const matchedSite = matchGscSite(contextSiteUrl, sitesQuery.data ?? []);
+      if (matchedSite) form.setValue("siteUrl", matchedSite);
+    }
+  }, [
+    sitesQuery.isSuccess,
+    sitesQuery.data,
+    savedSiteUrl,
+    contextSiteUrl,
+    form,
+  ]);
 
   const handleSubmit = form.handleSubmit(async (data) => {
     save(data);
@@ -101,16 +130,6 @@ export function GoogleSearchConsoleConfigForm({
         </p>
       </div>
     );
-  }
-
-  const savedSiteUrl = card.configurationState?.siteUrl as string | undefined;
-  if (savedSiteUrl && form.getValues("siteUrl") !== savedSiteUrl) {
-    form.setValue("siteUrl", savedSiteUrl);
-  } else if (!savedSiteUrl && !form.getValues("siteUrl")) {
-    const matchedSite = matchGscSite(contextSiteUrl, sites);
-    if (matchedSite) {
-      form.setValue("siteUrl", matchedSite);
-    }
   }
 
   return (

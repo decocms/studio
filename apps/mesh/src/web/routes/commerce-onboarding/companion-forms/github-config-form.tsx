@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -142,6 +142,12 @@ export function GitHubConfigForm({
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
+  // Applies the persisted repo to the form ONCE, the first time the prefill
+  // query resolves. selectedQuery only refetches after a successful save, so
+  // without this guard every render caused by the user picking a different
+  // repo would see the (still-stale) persisted value and immediately revert
+  // their selection back to it before they could hit Save.
+  const prefilledRef = useRef(false);
 
   // Prefill: the repo currently persisted on the CD connection.
   const selectedQuery = useQuery({
@@ -223,14 +229,17 @@ export function GitHubConfigForm({
     onIsPendingChange?.(isPending);
   }, [isPending, onIsPendingChange]);
 
+  const selectedRepo = selectedQuery.data ?? "";
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- prefill the form once from the persisted repo (an async query result), not on every render
+  useEffect(() => {
+    if (!selectedQuery.isSuccess || prefilledRef.current) return;
+    prefilledRef.current = true;
+    if (selectedQuery.data) form.setValue("githubRepo", selectedQuery.data);
+  }, [selectedQuery.isSuccess, selectedQuery.data, form]);
+
   const handleSubmit = form.handleSubmit(async (data) => {
     saveMutation.mutate(data.githubRepo);
   });
-
-  const selectedRepo = selectedQuery.data ?? "";
-  if (selectedRepo && form.getValues("githubRepo") !== selectedRepo) {
-    form.setValue("githubRepo", selectedRepo);
-  }
 
   const results = reposQuery.data?.repos ?? [];
   const failedAccounts = reposQuery.data?.failed ?? 0;
