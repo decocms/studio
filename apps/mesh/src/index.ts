@@ -187,12 +187,27 @@ console.log(`[dbos] application version: ${DBOS.applicationVersion}`);
 // transient boot-time DB connect timeout (shared RDS under connection pressure)
 // retries instead of exiting the process — otherwise one blip crash-loops every
 // pod at once.
-await retry(() => app.initDbos(), {
-  maxAttempts: 5,
-  minTimeout: 1000,
-  maxTimeout: 10_000,
-  jitter: 0.5,
-});
+let initDbosAttempt = 0;
+await retry(
+  async () => {
+    initDbosAttempt++;
+    try {
+      return await app.initDbos();
+    } catch (error) {
+      console.warn(
+        `[dbos] initDbos attempt ${initDbosAttempt}/5 failed, retrying`,
+        error,
+      );
+      throw error;
+    }
+  },
+  {
+    maxAttempts: 5,
+    minTimeout: 1000,
+    maxTimeout: 10_000,
+    jitter: 0.5,
+  },
+);
 
 // When running via CLI, the calling script handles its own banner/config output
 if (!settings.isCli) {
