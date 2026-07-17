@@ -67,7 +67,7 @@ export const STATUS_CONFIG: Record<
   in_review: {
     label: "In Review",
     icon: Eye,
-    iconClassName: "text-amber-500",
+    iconClassName: "text-warning",
   },
   done: {
     label: "Done",
