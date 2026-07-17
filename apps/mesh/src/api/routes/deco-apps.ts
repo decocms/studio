@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 import { getSettings } from "../../settings";
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 
 export interface SupabaseAppRow {
   name: string;
@@ -76,7 +76,7 @@ const requireAuth = async (
   c: import("hono").Context<{ Variables: Variables }>,
   next: () => Promise<void>,
 ) => {
-  const ctx = c.get("meshContext");
+  const ctx = c.get("studioContext");
   if (!ctx.auth.user?.id) {
     return c.json({ error: "Unauthorized" }, 401);
   }

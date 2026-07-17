@@ -38,11 +38,11 @@ export const WellKnownOrgMCPId = {
 // Public origin for the Commerce Discovery (reports) service. Deliberately the
 // stable custom domain, NOT the Cloudflare `workers.dev` URL, so the service can
 // move off Workers later by just repointing DNS — no code change or data
-// migration. Feeds two things: the write/claim path default (auth-client.ts uses
-// its .origin, overridable per-deploy via COMMERCE_DISCOVERY_INTERNAL_API_URL)
-// and the read-path "Store Report" connection URL (getWellKnownCommerceDiscovery
-// Connection below), which is not env-configurable — so keeping this a domain we
-// control is what keeps the whole integration portable.
+// migration. This is only the prod default: both the write/claim path
+// (auth-client.ts's .origin) and the read-path "Store Report" connection URL
+// (getWellKnownCommerceDiscoveryConnection below, via its connectionUrl param)
+// are overridable per-deploy through COMMERCE_DISCOVERY_INTERNAL_API_URL, so
+// staging derives both from reports-stg.decocms.com instead.
 export const COMMERCE_DISCOVERY_MCP_URL =
   "https://reports.decocms.com/api/v2/mcp";
 export const COMMERCE_DISCOVERY_REPORT_TOOL_NAME = "get_my_diagnostic";

@@ -12,7 +12,7 @@ import { serveMcpRequest } from "../utils/serve-mcp";
 
 // Define Hono variables type
 type Variables = {
-  meshContext: StudioContext;
+  studioContext: StudioContext;
 };
 
 type SelfEnv = { Variables: Variables };
@@ -27,7 +27,7 @@ export const createSelfRoutes = () => {
    * Exposes all PROJECT_* and CONNECTION_* tools via MCP protocol
    */
   app.all("/", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     const server = await managementMCP(ctx);
     const transport = new WebStandardStreamableHTTPServerTransport({
       enableJsonResponse:

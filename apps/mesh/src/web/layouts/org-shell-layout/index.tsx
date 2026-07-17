@@ -13,10 +13,9 @@
  *           ├── SidebarResizeHandle (desktop only)
  *           └── SidebarInset         — routed content
  *
- * When SIDEBAR_NAV_BUTTONS is on (desktop), the sidebar owns the full height
- * and the toolbar header moves INTO the right column so it only spans above
- * the panels — the org selector + collapse toggle live in the sidebar's own
- * header instead of the top bar.
+ * On desktop the sidebar owns the full height and the toolbar header lives in
+ * the right column so it only spans above the panels — the org selector +
+ * collapse toggle live in the sidebar's own header instead of the top bar.
  *
  *   + Sheet for mobile sidebar (rendered alongside, portal-based)
  */
@@ -88,8 +87,7 @@ export default function OrgShellLayout() {
   const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
 
   // On desktop the header lives in the right column above the panels only (not
-  // spanning the sidebar). SIDEBAR_NAV_BUTTONS additionally relocates the
-  // toolbar toggles/tabs into the sidebar.
+  // spanning the sidebar).
   const headerInRightColumn = !isMobile;
   const desktopHeader = (
     <Toolbar.Header>

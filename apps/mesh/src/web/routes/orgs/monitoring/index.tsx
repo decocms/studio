@@ -699,7 +699,7 @@ function MonitoringDashboardContent({
   const tabs = [
     { id: "overview" as const, label: "Overview" },
     { id: "audit" as const, label: "Audit" },
-    { id: "threads" as const, label: "Threads" },
+    { id: "threads" as const, label: "Chats" },
     { id: "automations" as const, label: "Automations" },
   ];
 
@@ -960,7 +960,7 @@ export default function MonitoringDashboard() {
                       tabs={[
                         { id: "overview", label: "Overview" },
                         { id: "audit", label: "Audit" },
-                        { id: "threads", label: "Threads" },
+                        { id: "threads", label: "Chats" },
                         { id: "automations", label: "Automations" },
                       ]}
                       activeTab={tab}

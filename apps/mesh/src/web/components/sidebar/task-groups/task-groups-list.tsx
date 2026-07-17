@@ -58,6 +58,7 @@ import { AgentAvatar } from "@/web/components/agent-icon";
 import { MyThreadsSection } from "./my-threads-section";
 import type { SidebarFilters } from "./next-page-offset";
 import { findArchiveFallback } from "./archive-fallback";
+import { forgetThreadLayout } from "@/web/lib/thread-layout-memory";
 
 type TypeFilter = "all" | "manual" | "automation";
 type GroupBy = "flat" | "status";
@@ -244,6 +245,9 @@ export function TaskGroupsList({
     }
     const wasActive = task.id === activeTaskId;
     hide(task.id);
+    // Drop the archived thread's remembered layout so it can't resurface if a
+    // new thread ever reuses the id within this session.
+    forgetThreadLayout(task.id);
     if (!wasActive) return;
     // Follow the sidebar's current filtered order across agents, while keeping
     // teammate threads opt-in even when Team scope renders them.
@@ -348,7 +352,7 @@ export function TaskGroupsList({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="New thread"
+              tooltip="New chat"
               onClick={() => void handleNewThread()}
             >
               <Edit05 size={16} />
@@ -386,7 +390,7 @@ export function TaskGroupsList({
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <ToolbarIconButton
-              aria-label="Filter threads"
+              aria-label="Filter chats"
               active={filtersActive}
               className="md:size-[34px] rounded-lg"
             >
@@ -397,7 +401,7 @@ export function TaskGroupsList({
             </ToolbarIconButton>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Filter threads</TooltipContent>
+        <TooltipContent side="bottom">Filter chats</TooltipContent>
       </Tooltip>
       <PopoverContent align="start" className="w-64 flex flex-col gap-3 p-3">
         <FilterRow
@@ -456,7 +460,7 @@ export function TaskGroupsList({
         {/* Right: search + new thread. */}
         <div className="flex items-center gap-0.5">
           <ToolbarTooltipButton
-            label="Search threads"
+            label="Search chats"
             onClick={() => {
               track("tasks_panel_search_opened");
               setSearchEverOpened(true);
@@ -466,7 +470,7 @@ export function TaskGroupsList({
             <SearchSm size={16} />
           </ToolbarTooltipButton>
           <ToolbarTooltipButton
-            label="New thread"
+            label="New chat"
             onClick={() => void handleNewThread()}
           >
             <Edit05 size={16} />

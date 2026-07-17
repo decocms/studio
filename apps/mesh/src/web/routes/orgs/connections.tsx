@@ -548,12 +548,12 @@ function CatalogItemCard({
 
   const appName = getRegistryItemAppName(item) ?? "";
   const isConnected = connectedAppNames.has(appName);
-  const meshMeta = item._meta?.["mcp.mesh"] as
+  const studioMeta = item._meta?.["mcp.mesh"] as
     | Record<string, string>
     | undefined;
   const title =
-    meshMeta?.friendlyName ||
-    meshMeta?.friendly_name ||
+    studioMeta?.friendlyName ||
+    studioMeta?.friendly_name ||
     item.server?.title ||
     item.title ||
     item.server?.name ||

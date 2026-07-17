@@ -59,7 +59,7 @@ export interface CommerceDiscoveryAuthOptions {
   >;
 }
 
-function resolveBaseUrl(options: CommerceDiscoveryAuthOptions): string {
+export function resolveBaseUrl(options: CommerceDiscoveryAuthOptions): string {
   if (options.baseUrl) return options.baseUrl.replace(/\/+$/, "");
   const settings = options.settings ?? getSettings();
   return (
@@ -79,7 +79,7 @@ export function resolveCommerceDiscoveryMcpUrl(
   return `${resolveBaseUrl(options)}/api/v2/mcp`;
 }
 
-function resolveApiKey(options: CommerceDiscoveryAuthOptions): string {
+export function resolveApiKey(options: CommerceDiscoveryAuthOptions): string {
   const apiKey =
     options.apiKey ??
     (options.settings ?? getSettings()).commerceDiscoveryInternalApiKey;
@@ -330,10 +330,10 @@ export async function bindCommerceDiscoveryResource(
 }
 
 /**
- * Trigger the Commerce Discovery diagnostic run for a store — called once the
+ * Trigger the Commerce Discovery report run for a store — called once the
  * user has connected their data sources ("See full report"). This is the run
  * whose private probes resolve creds and whose completion fires the enriched
- * agent loop. Soft-tolerant: a 409 (diagnostic not upgraded yet) is returned as
+ * agent loop. Soft-tolerant: a 409 (report not upgraded yet) is returned as
  * { triggered: false } rather than thrown, so the UI can still open the report.
  */
 export async function triggerCommerceDiscoveryRun(
@@ -390,7 +390,7 @@ export type CommerceDiscoveryConnectionStatus = z.infer<
 /**
  * Read per-provider connection status for a store — the single source of truth
  * the studio card renders as "Conectado", unifying both lanes (Studio-vault
- * OAuth and shared-SA binding). Read-only; soft-tolerant: a diagnostic that was
+ * OAuth and shared-SA binding). Read-only; soft-tolerant: a report that was
  * never upgraded (404/409) reports everything disconnected rather than throwing,
  * so the onboarding UI degrades cleanly before the first upgrade.
  */

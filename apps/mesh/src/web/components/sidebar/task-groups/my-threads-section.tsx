@@ -44,7 +44,7 @@ export function MyThreadsSection({
       <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center text-muted-foreground">
         <Inbox01 className="size-6 opacity-60" />
         <p className="text-sm">
-          {filtersActive ? "No threads match your filters" : "No threads yet"}
+          {filtersActive ? "No chats match your filters" : "No chats yet"}
         </p>
       </div>
     );

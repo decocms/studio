@@ -84,6 +84,14 @@ export type VmContext = {
    * thread isn't deducible from the sandbox identity alone.
    */
   threadId: string;
+  /**
+   * When true, the sandbox fs layer mints a virtual-MCP endpoint and fires
+   * POST /_sandbox/tools/sync after provisioning so the daemon materializes
+   * the tool catalog + endpoint file under `<repo>/.deco/tools/` — hosted
+   * harnesses never send a /dispatch envelope, so this is the cloud-path
+   * counterpart of the daemon's onDispatchMcp hook.
+   */
+  syncTools?: boolean;
 };
 
 export interface BuiltinToolParams {
@@ -232,6 +240,7 @@ async function buildAllTools(
       virtualMcpId: vmContext.virtualMcpId,
       branch: vmContext.branch,
       userId: vmContext.userId,
+      syncTools: vmContext.syncTools,
     });
     vmTools = createVmTools({
       fs,
@@ -537,19 +546,18 @@ export interface BuildBuiltInToolsOptions {
 export function buildBuiltInTools(
   opts: BuildBuiltInToolsOptions,
 ): Record<string, unknown> {
-  const {
-    ctx,
-    writer,
-    toolOutputMap,
-    subtaskParams,
-    planMode: _planMode,
-  } = opts;
+  const { ctx, writer, toolOutputMap, subtaskParams, planMode } = opts;
   const tools: Record<string, unknown> = {
     user_ask: userAskTool,
     todo_write: todoWriteTool,
-    propose_plan: proposePlanTool,
     read_tool_output: createReadToolOutputTool({ toolOutputMap }),
   };
+  // Mirrors getBuiltInTools' plan-mode gate: propose_plan's UX ("approve →
+  // new thread seeded with this plan") only makes sense in Plan Mode —
+  // outside it the model must not be able to trigger that flow.
+  if (planMode) {
+    tools.propose_plan = proposePlanTool;
+  }
   // subtask requires a provider — skip when provider is null.
   if (subtaskParams.provider) {
     tools.subtask = createSubtaskTool(writer, subtaskParams, ctx);

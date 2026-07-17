@@ -48,7 +48,7 @@ export const createToolsRestRoutes = () => {
 
   // POST /api/:org/tools/:toolName — call a builtin tool.
   app.post("/:toolName", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     const toolName = c.req.param("toolName");
 
     // Manual tool-identifier check: 404 if the name isn't part of the builtin

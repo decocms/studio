@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import type { ReactNode } from "react";
 import { retry, RetryError } from "@decocms/std";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { UnifiedAuthForm } from "@/web/components/unified-auth-form";
-import type { UnifiedAuthFormCopy } from "@/web/components/unified-auth-form";
+import type {
+  AuthFlowEvent,
+  UnifiedAuthFormCopy,
+} from "@/web/components/unified-auth-form";
 import { authClient } from "@/web/lib/auth-client";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 
@@ -19,6 +22,14 @@ export interface AuthEntryProps {
   brand?: ReactNode;
   /** Optional localized copy for the auth form. */
   copy?: Partial<UnifiedAuthFormCopy>;
+  /** Compact layout for embedded auth surfaces. */
+  variant?: "default" | "compact";
+  /** Limit social buttons without changing the global login page. */
+  allowedSocialProviders?: string[];
+  /** Hide password auth in OTP-first embedded surfaces. */
+  allowPassword?: boolean;
+  /** Optional lifecycle sink for embedded surfaces with their own funnel. */
+  onAuthEvent?: (event: AuthFlowEvent) => void;
 }
 
 class RetriableAutoLoginResponse {
@@ -35,14 +46,28 @@ function safeRelativeRedirect(redirectTo: string): string {
  * Auto-login for local mode.
  * Calls the local-session endpoint and reloads to pick up the session cookie.
  */
-function AutoLogin({ redirectTo }: { redirectTo: string }) {
+function AutoLogin({
+  redirectTo,
+  onAuthEvent,
+}: {
+  redirectTo: string;
+  onAuthEvent?: (event: AuthFlowEvent) => void;
+}) {
   const [error, setError] = useState<string | null>(null);
+  const emitAuthEvent = useEffectEvent((event: AuthFlowEvent) => {
+    try {
+      onAuthEvent?.(event);
+    } catch {
+      // An analytics sink must never interrupt authentication.
+    }
+  });
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
+      emitAuthEvent({ type: "started", method: "local" });
       try {
         let res: Response;
         try {
@@ -80,10 +105,17 @@ function AutoLogin({ redirectTo }: { redirectTo: string }) {
           throw new Error(data?.error || "Auto-login failed");
         }
         if (!cancelled) {
+          emitAuthEvent({ type: "succeeded", method: "local" });
           window.location.href = safeRelativeRedirect(redirectTo);
         }
       } catch (err) {
         if (!cancelled) {
+          emitAuthEvent({
+            type: "failed",
+            method: "local",
+            stage: "authenticate",
+            error: err instanceof Error ? err.message : String(err),
+          });
           setError(err instanceof Error ? err.message : "Auto-login failed");
         }
       }
@@ -113,17 +145,45 @@ function AutoLogin({ redirectTo }: { redirectTo: string }) {
 function RunSSO({
   callbackURL,
   providerId,
+  onAuthEvent,
 }: {
   providerId: string;
   callbackURL: string;
+  onAuthEvent?: (event: AuthFlowEvent) => void;
 }) {
+  const emitAuthEvent = useEffectEvent((event: AuthFlowEvent) => {
+    try {
+      onAuthEvent?.(event);
+    } catch {
+      // An analytics sink must never interrupt authentication.
+    }
+  });
+
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     (async () => {
-      await authClient.signIn.sso({
-        providerId,
-        callbackURL,
+      emitAuthEvent({
+        type: "started",
+        method: "sso",
+        provider: providerId,
       });
+      try {
+        const result = await authClient.signIn.sso({
+          providerId,
+          callbackURL,
+        });
+        if (result.error) {
+          throw new Error(result.error.message || "SSO redirect failed");
+        }
+      } catch (error) {
+        emitAuthEvent({
+          type: "failed",
+          method: "sso",
+          provider: providerId,
+          stage: "redirect",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     })();
   }, [providerId, callbackURL]);
 
@@ -138,6 +198,10 @@ export function AuthEntry({
   subtitle,
   brand,
   copy,
+  variant,
+  allowedSocialProviders,
+  allowPassword,
+  onAuthEvent,
 }: AuthEntryProps) {
   const {
     sso,
@@ -150,12 +214,18 @@ export function AuthEntry({
   const redirectAfterLogin = redirectUrl || callbackUrl;
 
   if (localMode && allowAutoLogin) {
-    return <AutoLogin redirectTo={redirectAfterLogin} />;
+    return (
+      <AutoLogin redirectTo={redirectAfterLogin} onAuthEvent={onAuthEvent} />
+    );
   }
 
   if (sso.enabled) {
     return (
-      <RunSSO callbackURL={redirectAfterLogin} providerId={sso.providerId} />
+      <RunSSO
+        callbackURL={redirectAfterLogin}
+        providerId={sso.providerId}
+        onAuthEvent={onAuthEvent}
+      />
     );
   }
 
@@ -173,6 +243,10 @@ export function AuthEntry({
         subtitle={subtitle}
         brand={brand}
         copy={copy}
+        variant={variant}
+        allowedSocialProviders={allowedSocialProviders}
+        allowPassword={allowPassword}
+        onAuthEvent={onAuthEvent}
       />
     );
   }

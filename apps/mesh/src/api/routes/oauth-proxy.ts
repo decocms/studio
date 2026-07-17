@@ -33,7 +33,7 @@ import {
 
 // Define Hono variables type
 type Variables = {
-  meshContext: StudioContext;
+  studioContext: StudioContext;
 };
 
 type HonoEnv = { Variables: Variables };
@@ -221,13 +221,13 @@ async function getOriginAuthServer(
  */
 async function ensureContext(c: {
   req: { raw: Request };
-  get: (key: "meshContext") => StudioContext | undefined;
-  set: (key: "meshContext", value: StudioContext) => void;
+  get: (key: "studioContext") => StudioContext | undefined;
+  set: (key: "studioContext", value: StudioContext) => void;
 }): Promise<StudioContext> {
-  let ctx = c.get("meshContext");
+  let ctx = c.get("studioContext");
   if (!ctx) {
     ctx = await ContextFactory.create(c.req.raw);
-    c.set("meshContext", ctx);
+    c.set("studioContext", ctx);
   }
   return ctx;
 }
@@ -335,8 +335,8 @@ export const protectedResourceMetadataHandler = async (c: {
     raw: Request;
     url: string;
   };
-  get: (key: "meshContext") => StudioContext | undefined;
-  set: (key: "meshContext", value: StudioContext) => void;
+  get: (key: "studioContext") => StudioContext | undefined;
+  set: (key: "studioContext", value: StudioContext) => void;
   json: (data: unknown, status?: number) => Response;
 }) => {
   const connectionId = c.req.param("connectionId");
@@ -354,7 +354,7 @@ export const protectedResourceMetadataHandler = async (c: {
   //    `activeOrganizationId`, and multi-org users hitting another org's URL
   //    silently lookup against their active org and 404.
   // 2. `ctx.organization?.slug` — set by `resolveOrgFromPath` for routes
-  //    inside the `/api/:org` sub-app, or by the meshContext factory from
+  //    inside the `/api/:org` sub-app, or by the studioContext factory from
   //    the session's active org. Used only when the path doesn't carry a
   //    slug (legacy `/mcp/:id/.well-known/...` mount).
   // 3. undefined — legacy routes have no slug; the prefix is empty and
@@ -661,8 +661,8 @@ export async function fetchAuthorizationServerMetadata(
  */
 const authServerMetadataHandler = async (c: {
   req: { param: (key: string) => string; raw: Request; url: string };
-  get: (key: "meshContext") => StudioContext | undefined;
-  set: (key: "meshContext", value: StudioContext) => void;
+  get: (key: "studioContext") => StudioContext | undefined;
+  set: (key: "studioContext", value: StudioContext) => void;
   json: (data: unknown, status?: number) => Response;
 }) => {
   const connectionId = c.req.param("connectionId");

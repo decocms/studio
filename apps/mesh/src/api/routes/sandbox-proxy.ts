@@ -123,7 +123,7 @@ function quickFileOpSignal(c: Context<VmEnv>): AbortSignal {
  * that case; other handlers return 503 JSON via `requireRunner()`.
  */
 const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
-  const ctx = c.var.meshContext;
+  const ctx = c.var.studioContext;
   try {
     requireAuth(ctx);
   } catch {
@@ -552,11 +552,11 @@ export const createSandboxRoutes = () => {
     if (step === "start") {
       const claim = c.get("vmClaim");
       if (claim.runner) {
-        const organization = requireOrganization(c.var.meshContext);
+        const organization = requireOrganization(c.var.studioContext);
         const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);
         try {
           await resolveAndPushEnv({
-            ctx: c.var.meshContext,
+            ctx: c.var.studioContext,
             runner: claim.runner,
             handle: claim.claimName,
             orgId: organization.id,
@@ -598,7 +598,7 @@ export const createSandboxRoutes = () => {
     }
 
     return handleVmEvents(c as unknown as Context<Env>, {
-      ctx: c.var.meshContext,
+      ctx: c.var.studioContext,
       claimName: claim.claimName,
       runner: claim.runner,
       virtualMcpId: claim.virtualMcpId,
@@ -640,7 +640,7 @@ export const createSandboxRoutes = () => {
     if (runner instanceof Response) return runner;
 
     const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
-    const ctx = c.var.meshContext;
+    const ctx = c.var.studioContext;
 
     try {
       await patchSandboxOperator(ctx, runner, claimName);
@@ -675,7 +675,7 @@ export const createSandboxRoutes = () => {
     if (runner instanceof Response) return runner;
 
     const { claimName } = c.get("vmClaim");
-    const ctx = c.var.meshContext;
+    const ctx = c.var.studioContext;
 
     try {
       await patchSandboxOperator(ctx, runner, claimName);
@@ -705,7 +705,7 @@ export const createSandboxRoutes = () => {
       if (runner instanceof Response) return runner;
 
       const { claimName, userId, projectRef } = c.get("vmClaim");
-      const ctx = c.var.meshContext;
+      const ctx = c.var.studioContext;
 
       try {
         const body = (await c.req.json().catch(() => ({}))) as {

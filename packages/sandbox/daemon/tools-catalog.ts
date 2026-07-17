@@ -16,9 +16,22 @@ import { safePath } from "./paths";
 /** Where the catalog lands, relative to the repo root. */
 export const CATALOG_DIR = ".deco/tools";
 
+/**
+ * The run's pre-authenticated MCP endpoint, written next to the catalog. A
+ * dotfile so `ls`-style browsing shows only tool schemas, and so the catalog
+ * prune (which targets non-dot `*.json`) never deletes it. Consumers
+ * (`@decocms/typegen` CLI/client) discover it by walking up from cwd — that's
+ * what lets `typegen call` run flagless inside a sandbox. Re-read on every
+ * connect, so a rewrite with refreshed credentials is picked up without
+ * restarting anything (unlike env vars, which are frozen at process start).
+ */
+export const ENDPOINT_FILENAME = ".endpoint.json";
+
 export interface McpEndpoint {
   url: string;
   headers: Record<string, string>;
+  /** Epoch ms when the endpoint's credential expires (from the wire input). */
+  expiresAt?: number;
 }
 
 export interface CatalogTool {
@@ -131,22 +144,58 @@ export async function writeToolCatalog(
   const keep = new Set(ok.map((w) => w.filename));
 
   // Prune files from a previous sync that this one didn't write, so a
-  // renamed/removed tool doesn't linger as a stale catalog entry.
+  // renamed/removed tool doesn't linger as a stale catalog entry. Dotfiles
+  // (the endpoint file) are not catalog entries — never prune them.
   const existing = await readdir(dir).catch(() => [] as string[]);
   await Promise.all(
     existing
-      .filter((name) => name.endsWith(".json") && !keep.has(name))
+      .filter(
+        (name) =>
+          name.endsWith(".json") && !name.startsWith(".") && !keep.has(name),
+      )
       .map((name) => unlink(join(dir, name)).catch(() => {})),
   );
 
   return { count: ok.length, tools: ok.map((w) => w.name) };
 }
 
-/** Fetch the catalog from the endpoint and write it to disk. */
+/**
+ * Write the run's MCP endpoint (`{ url, headers, expiresAt? }`) to
+ * `<repoDir>/.deco/tools/.endpoint.json` so in-workspace scripts and the
+ * typegen CLI can call tools without flags or env. 0600 — it holds a bearer
+ * credential (the same one the run's harness already wields on the user's
+ * behalf; the daemon and the agent share a uid, so this guards against
+ * accidental exposure, not the agent itself).
+ */
+export async function writeEndpointFile(
+  mcp: McpEndpoint,
+  opts: { appRoot: string; repoDir: string },
+): Promise<boolean> {
+  const target = safePath(
+    opts.appRoot,
+    opts.repoDir,
+    `${CATALOG_DIR}/${ENDPOINT_FILENAME}`,
+  );
+  if (!target) return false; // escapes the workspace root
+  await mkdir(dirname(target), { recursive: true });
+  await ensureGitExclude(opts.repoDir, `/${CATALOG_DIR}/`);
+  const body: Record<string, unknown> = { url: mcp.url, headers: mcp.headers };
+  if (mcp.expiresAt) body.expiresAt = mcp.expiresAt;
+  await writeFile(target, `${JSON.stringify(body, null, 2)}\n`, {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
+  return true;
+}
+
+/** Fetch the catalog from the endpoint and write it to disk. The endpoint
+ *  file lands first — it needs no MCP round-trip, so `call` keeps working
+ *  even when the listing fails. */
 async function syncToolCatalog(
   mcp: McpEndpoint,
   opts: { appRoot: string; repoDir: string },
 ): Promise<{ count: number; tools: string[] }> {
+  await writeEndpointFile(mcp, opts);
   const tools = await fetchToolCatalog(mcp);
   return writeToolCatalog(tools, opts);
 }

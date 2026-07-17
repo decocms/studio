@@ -20,7 +20,7 @@ export interface RunStatusCopy {
 export const RUN_STATUS_COPY: Record<RunStatusStage, RunStatusCopy> = {
   sending: {
     label: "Sending your message",
-    detail: "Posting the message to the thread",
+    detail: "Posting the message to the chat",
   },
   received: {
     label: "Request received",
@@ -28,7 +28,7 @@ export const RUN_STATUS_COPY: Record<RunStatusStage, RunStatusCopy> = {
   },
   "waiting-runner": {
     label: "Waiting for an available runner",
-    detail: "Waiting for the per-thread dispatch slot",
+    detail: "Waiting for the per-chat dispatch slot",
   },
   "starting-run": {
     label: "Starting the run",

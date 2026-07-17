@@ -28,6 +28,7 @@ import {
   breadcrumbPathForActiveField,
   consumedBreadcrumbPrefix,
   fieldDisplayLabel,
+  isArrayDrillDownField,
   resolveActiveFieldKey,
 } from "./schema-form-breadcrumb";
 import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
@@ -476,6 +477,15 @@ export function SchemaForm({
       ? objValue.__resolveType
       : undefined;
 
+  // When more than one array/drill-down field lives in this scope, an item's
+  // bare `[itemLabel]` breadcrumb is ambiguous (two label-less arrays both fall
+  // back to "Item N"), so array fields keep their own label as a disambiguator.
+  const hasSiblingDrillDownFields =
+    keys.filter((key) => {
+      const s = properties[key];
+      return s != null && isArrayDrillDownField(s, objValue[key]);
+    }).length > 1;
+
   const activeKey =
     breadcrumbPath.length > 0
       ? resolveActiveFieldKey(keys, properties, objValue, breadcrumbPath)
@@ -520,6 +530,7 @@ export function SchemaForm({
           label,
           breadcrumbPath: fieldBreadcrumbPath,
           onBreadcrumbChange: fieldOnBreadcrumbChange,
+          hasSiblingDrillDownFields,
           meta,
           decofile,
           onSaveReferencedBlock,

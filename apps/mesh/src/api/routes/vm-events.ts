@@ -71,7 +71,7 @@ const HEARTBEAT_MS = 15_000;
 export const createVmEventsRoutes = () => {
   const app = new Hono<Env>();
   app.get("/", async (c) => {
-    const ctx = c.var.meshContext;
+    const ctx = c.var.studioContext;
     try {
       requireAuth(ctx);
     } catch {

@@ -5,19 +5,38 @@
  * on/off state rides the board layout (see home-grid + the add-tile drawer's
  * "Built-in tiles" section).
  *
- * The default board is the four product tiles below: Tasks (real task-board
- * data) plus Coding / Analytics / Sales (visual mocks whose hover CTA invites
- * the user to connect the backing integration). Recent conversations is still
- * available but `defaultHidden` — re-add it from Customize.
+ * The default board is the home-redesign metric cards, each as its own tile:
+ * Pageviews / Sessions / Orders / Revenue (striped area charts) and Coding (a
+ * GitHub contributions calendar). Each tile shows the card design with a sample
+ * preview and a hover "Connect" that runs the real connect flow for its backing
+ * integration (Google Analytics / VTEX·Shopify / GitHub); once connected it
+ * shows real data (GitHub PRs) or an honest placeholder. Tasks is NOT a tile —
+ * it's the fixed section above the board (see home-tasks + overview-tab).
+ * Recent conversations is available but `defaultHidden` — re-add from Customize.
+ *
+ * The board wraps every tile in `bg-card card-shadow rounded-2xl`, so each tile
+ * body is just the card interior (label + content), matching the redesign.
  */
-import { Suspense, useState } from "react";
+import { Suspense, useId, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
+import { formatTimeAgo } from "@/web/lib/format-time";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@deco/ui/components/chart.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
+  ArrowUpRight,
   BarChart10,
   CheckCircle,
   GitBranch01,
@@ -25,22 +44,27 @@ import {
   MessageChatCircle,
   ShoppingCart01,
 } from "@untitledui/icons";
+import { Area, AreaChart, XAxis } from "recharts";
 import { useConnections, useProjectContext } from "@decocms/mesh-sdk";
 import { getOrgGithubConnections } from "@/shared/github-repo-scope";
+import { useConnectApp } from "@/web/hooks/use-connect-app";
 import { useGithubRecentPrs } from "@/web/hooks/use-github-recent-prs";
+import {
+  useGithubContributions,
+  CONTRIB_WEEKS,
+  type ContribGrid,
+} from "@/web/hooks/use-github-contributions";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { useMembers } from "@/web/hooks/use-members";
-import { useTaskBoardItems } from "@/web/hooks/use-task-board-items";
-import { STATUS_CONFIG } from "@/web/layouts/task-board/config";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
-import { useConnectApp } from "@/web/hooks/use-connect-app";
 import { KEYS } from "@/web/lib/query-keys";
 
-const TASKS_TILE_ID = "tasks";
+const PAGEVIEWS_TILE_ID = "pageviews";
+const SESSIONS_TILE_ID = "sessions";
+const ORDERS_TILE_ID = "orders";
 const CODING_TILE_ID = "coding";
-const ANALYTICS_TILE_ID = "analytics";
-const SALES_TILE_ID = "sales";
+const REVENUE_TILE_ID = "revenue";
 const RECENT_CONVERSATIONS_TILE_ID = "recent-conversations";
 
 export interface NativeTileDef {
@@ -53,38 +77,46 @@ export interface NativeTileDef {
   defaultHidden?: boolean;
 }
 
-/** Native tiles offered on the home board, in display order. The first four
- *  form the default board (2×2 in the 4-col grid). */
+/** Native tiles offered on the home board, in display order. All but Recent
+ *  conversations form the default board on the 6-column grid: three cards
+ *  across (Pageviews + Sessions + Orders, w:2 each), then Revenue + Coding
+ *  below at half width (w:3 each). */
 export const NATIVE_TILES: NativeTileDef[] = [
   {
-    id: TASKS_TILE_ID,
-    title: "Tasks",
-    defaultSize: { w: 2, h: 4 },
+    id: PAGEVIEWS_TILE_ID,
+    title: "Pageviews",
+    defaultSize: { w: 2, h: 3 },
+    minSize: { w: 1, h: 2 },
+  },
+  {
+    id: SESSIONS_TILE_ID,
+    title: "Sessions",
+    defaultSize: { w: 2, h: 3 },
+    minSize: { w: 1, h: 2 },
+  },
+  {
+    id: ORDERS_TILE_ID,
+    title: "Orders",
+    defaultSize: { w: 2, h: 3 },
+    minSize: { w: 1, h: 2 },
+  },
+  {
+    id: REVENUE_TILE_ID,
+    title: "Revenue",
+    defaultSize: { w: 3, h: 3 },
     minSize: { w: 2, h: 2 },
   },
   {
     id: CODING_TILE_ID,
     title: "Coding",
-    defaultSize: { w: 2, h: 4 },
-    minSize: { w: 2, h: 2 },
-  },
-  {
-    id: ANALYTICS_TILE_ID,
-    title: "Analytics",
-    defaultSize: { w: 2, h: 4 },
-    minSize: { w: 2, h: 2 },
-  },
-  {
-    id: SALES_TILE_ID,
-    title: "Sales",
-    defaultSize: { w: 2, h: 4 },
+    defaultSize: { w: 3, h: 3 },
     minSize: { w: 2, h: 2 },
   },
   {
     id: RECENT_CONVERSATIONS_TILE_ID,
     title: "Recent conversations",
-    // Full width (grid is 4 cols) × 4 rows.
-    defaultSize: { w: 4, h: 4 },
+    // Full width (grid is 6 cols) × 4 rows.
+    defaultSize: { w: 6, h: 4 },
     minSize: { w: 2, h: 2 },
     defaultHidden: true,
   },
@@ -93,6 +125,388 @@ export const NATIVE_TILES: NativeTileDef[] = [
 /** The board candidate id for a native tile. */
 export function nativeCandidateId(nativeId: string): string {
   return `native:${nativeId}`;
+}
+
+// ---------------------------------------------------------------------------
+// Metric chart — recharts area chart with a vertical-line fill pattern.
+// ---------------------------------------------------------------------------
+
+interface MetricPoint {
+  label: string;
+  value: number;
+}
+
+function MetricChart({
+  points,
+  metricLabel,
+}: {
+  points: MetricPoint[];
+  metricLabel: string;
+}) {
+  const patternId = useId().replace(/:/g, "");
+  const color = "var(--success)";
+  return (
+    <ChartContainer
+      config={{ value: { label: metricLabel, color } }}
+      className="h-full w-full"
+    >
+      <AreaChart
+        data={points}
+        margin={{ top: 6, right: 0, bottom: 0, left: 0 }}
+      >
+        <defs>
+          <pattern
+            id={patternId}
+            width={6}
+            height={8}
+            patternUnits="userSpaceOnUse"
+          >
+            <line
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={8}
+              stroke={color}
+              strokeOpacity={0.22}
+              strokeWidth={4}
+            />
+          </pattern>
+        </defs>
+        <XAxis dataKey="label" hide />
+        <ChartTooltip
+          cursor={{ stroke: "var(--border)" }}
+          content={<ChartTooltipContent indicator="line" />}
+        />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke={color}
+          strokeWidth={2}
+          fill={`url(#${patternId})`}
+          fillOpacity={1}
+          animationDuration={350}
+          dot={false}
+          activeDot={{
+            r: 4,
+            fill: color,
+            stroke: "var(--background)",
+            strokeWidth: 2,
+          }}
+        />
+      </AreaChart>
+    </ChartContainer>
+  );
+}
+
+interface MetricConfig {
+  value: string;
+  delta: string;
+  series: number[];
+}
+
+const METRIC_CONFIG: Record<string, MetricConfig> = {
+  pageviews: {
+    value: "12.2k",
+    delta: "+1.9%",
+    series: [
+      9800, 10100, 9950, 10600, 10400, 11000, 11200, 11500, 11900, 12200,
+    ],
+  },
+  sessions: {
+    value: "3.2k",
+    delta: "+25.6%",
+    series: [2100, 2250, 2200, 2500, 2600, 2750, 2900, 3000, 3100, 3200],
+  },
+  orders: {
+    value: "142",
+    delta: "+8.4%",
+    series: [96, 102, 99, 110, 108, 118, 124, 131, 137, 142],
+  },
+  revenue: {
+    value: "$8,240",
+    delta: "+12.0%",
+    series: [6100, 6400, 6250, 6800, 6700, 7100, 7400, 7700, 8000, 8240],
+  },
+};
+
+function toPoints(data: number[]): MetricPoint[] {
+  return data.map((value, i) => {
+    const daysAgo = data.length - 1 - i;
+    const label =
+      daysAgo === 0 ? "Today" : daysAgo === 1 ? "Yesterday" : `${daysAgo}d ago`;
+    return { label, value };
+  });
+}
+
+function MetricValue({ value, delta }: { value: string; delta: string }) {
+  return (
+    <div className="mt-3 flex items-center gap-2.5">
+      <span className="text-2xl font-medium tabular-nums text-foreground">
+        {value}
+      </span>
+      <span className="inline-flex items-center gap-1 text-sm font-medium tabular-nums text-success">
+        <ArrowUpRight className="size-4" />
+        {delta}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Contributions grid — a GitHub-style commit heatmap (the "collab calendar").
+// ---------------------------------------------------------------------------
+
+/** Fake deterministic data shown before GitHub is connected. */
+function mockCommitsAt(week: number, day: number): number {
+  const h = (week * 31 + day * 17 + 7) % 100;
+  if (h < 38) return 0;
+  if (h < 60) return 1 + (h % 2);
+  if (h < 80) return 3 + (h % 3);
+  if (h < 93) return 6 + (h % 3);
+  return 9 + (h % 4);
+}
+
+function contribLevelClass(count: number): string {
+  if (count === 0) return "bg-muted-foreground/15";
+  if (count <= 2) return "bg-success/25";
+  if (count <= 5) return "bg-success/45";
+  if (count <= 8) return "bg-success/70";
+  return "bg-success";
+}
+
+function ContributionsGrid({ grid }: { grid?: ContribGrid }) {
+  return (
+    <TooltipProvider delayDuration={0}>
+      <div
+        className="grid w-full gap-1"
+        style={{ gridTemplateColumns: `repeat(${CONTRIB_WEEKS}, 1fr)` }}
+      >
+        {Array.from({ length: CONTRIB_WEEKS }, (_, week) => (
+          <div key={week} className="flex flex-col gap-1">
+            {Array.from({ length: 5 }, (_, day) => {
+              const count = grid
+                ? (grid[week]?.[day] ?? 0)
+                : mockCommitsAt(week, day);
+              return (
+                <Tooltip key={day}>
+                  <TooltipTrigger asChild>
+                    <div
+                      className={cn(
+                        "aspect-square rounded-[2px]",
+                        contribLevelClass(count),
+                      )}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {count === 0
+                      ? "No commits"
+                      : `${count} commit${count === 1 ? "" : "s"}`}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </TooltipProvider>
+  );
+}
+
+/** Soft always-visible overlay with a connect button over the preview chart. */
+function ConnectOverlay({
+  label,
+  icon,
+  onConnect,
+  pending,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onConnect: () => void;
+  pending?: boolean;
+}) {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-background/30 backdrop-blur-[2px]">
+      <Button
+        size="sm"
+        onClick={onConnect}
+        disabled={pending}
+        className="gap-2 shadow-sm"
+      >
+        {pending ? <Loading01 className="size-4 animate-spin" /> : icon}
+        {label}
+      </Button>
+    </div>
+  );
+}
+
+/** Connected but the source's reporting isn't wired yet. Honest placeholder,
+ *  never a fabricated number. */
+function ConnectedSoon({ label }: { label: string }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+      <CheckCircle className="size-6 text-success/60" />
+      <p className="text-xs text-muted-foreground">
+        {label} connected. Live data coming soon.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Analytics metric tiles (Google Analytics) — Pageviews / Sessions
+// ---------------------------------------------------------------------------
+
+function AnalyticsMetricTile({
+  metricKey,
+}: {
+  metricKey: keyof typeof METRIC_CONFIG;
+}) {
+  const connected = useConnections({ slug: "google-analytics" }).length > 0;
+  const { connect, isConnecting } = useConnectApp("deco/google-analytics");
+  const cfg = METRIC_CONFIG[metricKey];
+  if (connected || !cfg) return <ConnectedSoon label="Analytics" />;
+  return (
+    <div className="relative flex h-full flex-col">
+      <div className="min-h-0 flex-1">
+        <MetricChart points={toPoints(cfg.series)} metricLabel={metricKey} />
+      </div>
+      <MetricValue value={cfg.value} delta={cfg.delta} />
+      <ConnectOverlay
+        label="Connect Google Analytics"
+        icon={<BarChart10 className="size-4" />}
+        onConnect={connect}
+        pending={isConnecting}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Commerce metric tiles (VTEX or Shopify) — Orders / Revenue
+// ---------------------------------------------------------------------------
+
+function CommerceMetricTile({
+  metricKey,
+}: {
+  metricKey: keyof typeof METRIC_CONFIG;
+}) {
+  const connected =
+    useConnections({ slug: "vtex" }).length > 0 ||
+    useConnections({ slug: "shopify" }).length > 0;
+  const [open, setOpen] = useState(false);
+  const cfg = METRIC_CONFIG[metricKey];
+  if (connected || !cfg) return <ConnectedSoon label="Commerce" />;
+  return (
+    <>
+      <div className="relative flex h-full flex-col">
+        <div className="min-h-0 flex-1">
+          <MetricChart points={toPoints(cfg.series)} metricLabel={metricKey} />
+        </div>
+        <MetricValue value={cfg.value} delta={cfg.delta} />
+        <ConnectOverlay
+          label="Connect commerce platform"
+          icon={<ShoppingCart01 className="size-4" />}
+          onConnect={() => setOpen(true)}
+        />
+      </div>
+      <AddConnectionDialog
+        mode="browse"
+        open={open}
+        onOpenChange={setOpen}
+        defaultTab="all"
+        initialSearch="shopify vtex"
+      />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Coding tile (GitHub) — contributions calendar + headline; real PRs once
+// connected.
+// ---------------------------------------------------------------------------
+
+function CodingTileBody() {
+  const connection = getOrgGithubConnections(
+    useConnections({ slug: "mcp-github" }),
+  )[0];
+  return connection ? (
+    <CodingConnected connectionId={connection.id} />
+  ) : (
+    <CodingDisconnected />
+  );
+}
+
+function CodingDisconnected() {
+  const { connect, isConnecting } = useConnectApp("deco/mcp-github");
+  return (
+    <div className="relative flex h-full flex-col">
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <ContributionsGrid />
+      </div>
+      <ConnectOverlay
+        label="Connect GitHub"
+        icon={<GitHubIcon className="size-4" />}
+        onConnect={connect}
+        pending={isConnecting}
+      />
+    </div>
+  );
+}
+
+function CodingConnected({ connectionId }: { connectionId: string }) {
+  const { data, isLoading } = useGithubRecentPrs(connectionId);
+  const { data: grid } = useGithubContributions(connectionId);
+  return (
+    <div className="flex h-full flex-col gap-3 overflow-hidden">
+      <ContributionsGrid grid={grid} />
+      {isLoading ? (
+        <div className="flex flex-col gap-1.5">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div
+              key={`pr-skeleton-${i}`}
+              className="h-5 w-full animate-pulse rounded-md bg-muted/40"
+            />
+          ))}
+        </div>
+      ) : !data || data.repos.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No recent pull requests.
+        </p>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          {data.repos.map((group) => (
+            <div key={group.repo} className="flex flex-col gap-0.5">
+              <div className="truncate text-xs text-muted-foreground">
+                {group.repo}
+              </div>
+              {group.prs.map((pr) => (
+                <a
+                  key={`${group.repo}#${pr.number}`}
+                  href={pr.htmlUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm transition-colors hover:bg-accent/60"
+                >
+                  <GitBranch01 className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-foreground">{pr.title}</span>
+                  <span
+                    className={cn(
+                      "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-xs font-medium",
+                      pr.merged
+                        ? "bg-success/10 text-success"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    #{pr.number}
+                  </span>
+                </a>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +556,7 @@ function RecentConversationsList() {
 
   if (threads.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
         <MessageChatCircle className="size-6 text-muted-foreground/50" />
         <p className="text-xs text-muted-foreground">
           No conversations yet. Start one and it'll show up here for your team.
@@ -152,16 +566,14 @@ function RecentConversationsList() {
   }
 
   return (
-    <div className="flex flex-col gap-0.5 overflow-y-auto p-1.5">
+    <div className="flex h-full flex-col gap-0.5 overflow-y-auto">
       {threads.map((thread) => {
         const member = memberByUserId.get(thread.created_by);
         const authorName =
           member?.user?.name ?? member?.user?.email?.split("@")[0] ?? "Someone";
         const status = thread.status ? STATUS_LABEL[thread.status] : undefined;
         const when = thread.updated_at
-          ? formatDistanceToNow(new Date(thread.updated_at), {
-              addSuffix: true,
-            })
+          ? formatTimeAgo(new Date(thread.updated_at))
           : null;
         return (
           <button
@@ -206,441 +618,49 @@ function RecentConversationsList() {
 }
 
 // ---------------------------------------------------------------------------
-// Tasks (real task-board data)
-// ---------------------------------------------------------------------------
-
-function TasksTileBody() {
-  const { org } = useProjectContext();
-  const navigate = useNavigate();
-  const { items, isLoading, error } = useTaskBoardItems();
-
-  const openBoard = () =>
-    navigate({ to: "/$org/board", params: { org: org.slug } });
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col gap-2 p-3">
-        {Array.from({ length: 4 }, (_, i) => (
-          <div
-            key={`task-skeleton-${i}`}
-            className="h-6 w-full animate-pulse rounded-md bg-muted/40"
-          />
-        ))}
-      </div>
-    );
-  }
-
-  // An error usually means the task board is off for this org; either way,
-  // show the empty affordance rather than a scary error.
-  if (error || items.length === 0) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-        <CheckCircle className="size-6 text-muted-foreground/50" />
-        <p className="text-xs text-muted-foreground">No tasks yet.</p>
-        <Button size="sm" variant="ghost" onClick={openBoard} className="h-7">
-          Open task board
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-0.5 overflow-y-auto p-1.5">
-      {items.slice(0, 8).map((item) => {
-        const cfg = STATUS_CONFIG[item.status];
-        const Icon = cfg.icon;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={openBoard}
-            className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-accent/60"
-          >
-            <Icon className={cn("size-4 shrink-0", cfg.iconClassName)} />
-            <span className="truncate text-sm text-foreground">
-              {item.title}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Product tiles — Coding / Analytics / Sales.
-//
-// Disconnected: sample data behind a hover "Connect" overlay (GitHub / Google
-// Analytics connect directly; Sales opens the catalog for VTEX or Shopify).
-// Connected: Coding shows real recent PRs; Analytics / Sales show a "live data
-// coming soon" placeholder until their reporting tools are wired.
-// ---------------------------------------------------------------------------
-
-function TileSkeleton() {
-  return (
-    <div className="flex flex-col gap-2 p-3">
-      {Array.from({ length: 4 }, (_, i) => (
-        <div
-          key={`tile-skeleton-${i}`}
-          className="h-6 w-full animate-pulse rounded-md bg-muted/40"
-        />
-      ))}
-    </div>
-  );
-}
-
-function ComingSoonPanel({ label }: { label: string }) {
-  return (
-    <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-      <CheckCircle className="size-6 text-success/60" />
-      <p className="text-xs text-muted-foreground">
-        {label} connected. Live data coming soon.
-      </p>
-    </div>
-  );
-}
-
-function MockConnectOverlay({
-  label,
-  icon,
-  onConnect,
-  pending,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  onConnect: () => void;
-  pending?: boolean;
-}) {
-  return (
-    <div className="absolute inset-0 flex items-center justify-center bg-background/70 opacity-0 backdrop-blur-sm transition-opacity duration-150 group-hover/mock:opacity-100">
-      <Button
-        size="sm"
-        variant="secondary"
-        className="gap-2 shadow-sm"
-        onClick={onConnect}
-        disabled={pending}
-      >
-        {pending ? <Loading01 className="size-4 animate-spin" /> : icon}
-        {label}
-      </Button>
-    </div>
-  );
-}
-
-/** Presentational mock-tile shell: sample content + hover connect overlay. */
-function MockTile({
-  children,
-  connectLabel,
-  connectIcon,
-  onConnect,
-  pending,
-}: {
-  children: React.ReactNode;
-  connectLabel: string;
-  connectIcon: React.ReactNode;
-  onConnect: () => void;
-  pending?: boolean;
-}) {
-  return (
-    <div className="group/mock relative flex h-full flex-col overflow-hidden">
-      <div className="flex flex-1 flex-col p-3">{children}</div>
-      <MockConnectOverlay
-        label={connectLabel}
-        icon={connectIcon}
-        onConnect={onConnect}
-        pending={pending}
-      />
-    </div>
-  );
-}
-
-/** A tiny deterministic contributions grid (7 rows × 14 weeks). Static
- *  classes so Tailwind keeps the opacity variants. */
-const CONTRIB_LEVEL_CLASS = [
-  "bg-foreground/10",
-  "bg-foreground/25",
-  "bg-foreground/45",
-  "bg-foreground/70",
-];
-function ContributionsGrid() {
-  return (
-    <div className="flex gap-1">
-      {Array.from({ length: 14 }, (_, col) => (
-        <div key={`col-${col}`} className="flex flex-col gap-1">
-          {Array.from({ length: 7 }, (_, row) => {
-            // Deterministic pseudo-pattern — stable render, no randomness.
-            const cls = CONTRIB_LEVEL_CLASS[(col * 7 + row) % 4];
-            return (
-              <div
-                key={`cell-${col}-${row}`}
-                className={cn("size-2 rounded-[2px]", cls)}
-              />
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-const MOCK_PRS = [
-  { id: 128, title: "Fix checkout flow", state: "merged" },
-  { id: 127, title: "Add product search", state: "open" },
-  { id: 126, title: "Bump deps", state: "merged" },
-];
-
-function CodingTileBody() {
-  return (
-    <Suspense fallback={<TileSkeleton />}>
-      <CodingTileInner />
-    </Suspense>
-  );
-}
-
-function CodingTileInner() {
-  const connection = getOrgGithubConnections(
-    useConnections({ slug: "mcp-github" }),
-  )[0];
-  return connection ? (
-    <CodingConnected connectionId={connection.id} />
-  ) : (
-    <CodingMock />
-  );
-}
-
-function CodingMock() {
-  const { connect, isConnecting } = useConnectApp("deco/mcp-github");
-  return (
-    <MockTile
-      connectLabel="Connect GitHub"
-      connectIcon={<GitHubIcon className="size-4" />}
-      onConnect={connect}
-      pending={isConnecting}
-    >
-      <ContributionsGrid />
-      <div className="mt-3 flex flex-col gap-1.5">
-        {MOCK_PRS.map((pr) => (
-          <div key={pr.id} className="flex items-center gap-2 text-xs">
-            <GitBranch01 className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate text-foreground">{pr.title}</span>
-            <span
-              className={cn(
-                "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                pr.state === "merged"
-                  ? "bg-success/10 text-success"
-                  : "bg-muted text-muted-foreground",
-              )}
-            >
-              #{pr.id}
-            </span>
-          </div>
-        ))}
-      </div>
-    </MockTile>
-  );
-}
-
-function CodingConnected({ connectionId }: { connectionId: string }) {
-  const { data, isLoading } = useGithubRecentPrs(connectionId);
-  if (isLoading) return <TileSkeleton />;
-  if (!data || data.prs.length === 0) return <ComingSoonPanel label="Coding" />;
-  return (
-    <div className="flex h-full flex-col overflow-y-auto p-3">
-      {data.repo && (
-        <div className="mb-2 truncate text-xs text-muted-foreground">
-          {data.repo}
-        </div>
-      )}
-      <div className="flex flex-col gap-0.5">
-        {data.prs.map((pr) => (
-          <a
-            key={pr.number}
-            href={pr.htmlUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-2 rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-accent/60"
-          >
-            <GitBranch01 className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate text-foreground">{pr.title}</span>
-            <span
-              className={cn(
-                "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                pr.merged
-                  ? "bg-success/10 text-success"
-                  : "bg-muted text-muted-foreground",
-              )}
-            >
-              #{pr.number}
-            </span>
-          </a>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const MOCK_SPARKLINE = [8, 12, 10, 16, 14, 20, 18, 26, 24, 30];
-function Sparkline() {
-  const max = Math.max(...MOCK_SPARKLINE);
-  const pts = MOCK_SPARKLINE.map((v, i) => {
-    const x = (i / (MOCK_SPARKLINE.length - 1)) * 100;
-    const y = 32 - (v / max) * 30;
-    return `${x},${y}`;
-  }).join(" ");
-  return (
-    <svg
-      viewBox="0 0 100 32"
-      preserveAspectRatio="none"
-      className="h-10 w-full text-foreground/70"
-      aria-hidden
-    >
-      <polyline
-        points={pts}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.5}
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
-}
-
-function StatNumber({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="flex flex-col">
-      <span className="text-lg font-semibold text-foreground">{value}</span>
-      <span className="text-xs text-muted-foreground">{label}</span>
-    </div>
-  );
-}
-
-function AnalyticsTileBody() {
-  return (
-    <Suspense fallback={<TileSkeleton />}>
-      <AnalyticsTileInner />
-    </Suspense>
-  );
-}
-
-function AnalyticsTileInner() {
-  const connected = useConnections({ slug: "google-analytics" }).length > 0;
-  return connected ? <ComingSoonPanel label="Analytics" /> : <AnalyticsMock />;
-}
-
-function AnalyticsMock() {
-  const { connect, isConnecting } = useConnectApp("deco/google-analytics");
-  return (
-    <MockTile
-      connectLabel="Connect Google Analytics"
-      connectIcon={<BarChart10 className="size-4" />}
-      onConnect={connect}
-      pending={isConnecting}
-    >
-      <div className="flex gap-6">
-        <StatNumber value="12.4k" label="Pageviews" />
-        <StatNumber value="3.2k" label="Sessions" />
-      </div>
-      <div className="mt-auto pt-3">
-        <Sparkline />
-      </div>
-    </MockTile>
-  );
-}
-
-const MOCK_BARS = [40, 65, 50, 80, 70, 95, 60];
-function BarChartMock() {
-  const max = Math.max(...MOCK_BARS);
-  return (
-    <div className="flex h-12 items-end gap-1.5">
-      {MOCK_BARS.map((v, i) => (
-        <div
-          key={`bar-${i}`}
-          className="flex-1 rounded-t-sm bg-foreground/60"
-          style={{ height: `${(v / max) * 100}%` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function SalesTileBody() {
-  return (
-    <Suspense fallback={<TileSkeleton />}>
-      <SalesTileInner />
-    </Suspense>
-  );
-}
-
-function SalesTileInner() {
-  // Sales is backed by either provider — connected if either is present.
-  const vtex = useConnections({ slug: "vtex" });
-  const shopify = useConnections({ slug: "shopify" });
-  const connected = vtex.length > 0 || shopify.length > 0;
-  return connected ? <ComingSoonPanel label="Sales" /> : <SalesMock />;
-}
-
-function SalesMock() {
-  // VTEX or Shopify — the user picks, so open the catalog rather than
-  // connecting a single app directly.
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <MockTile
-        connectLabel="Connect VTEX or Shopify"
-        connectIcon={<ShoppingCart01 className="size-4" />}
-        onConnect={() => setOpen(true)}
-      >
-        <div className="flex gap-6">
-          <StatNumber value="$8,240" label="Revenue" />
-          <StatNumber value="142" label="Orders" />
-        </div>
-        <div className="mt-auto pt-3">
-          <BarChartMock />
-        </div>
-      </MockTile>
-      <AddConnectionDialog
-        mode="browse"
-        open={open}
-        onOpenChange={setOpen}
-        defaultTab="all"
-        initialSearch="shopify vtex"
-      />
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Registry renderer
 // ---------------------------------------------------------------------------
 
+function NativeTileBody({ nativeId }: { nativeId: string }) {
+  switch (nativeId) {
+    case PAGEVIEWS_TILE_ID:
+      return <AnalyticsMetricTile metricKey="pageviews" />;
+    case SESSIONS_TILE_ID:
+      return <AnalyticsMetricTile metricKey="sessions" />;
+    case ORDERS_TILE_ID:
+      return <CommerceMetricTile metricKey="orders" />;
+    case REVENUE_TILE_ID:
+      return <CommerceMetricTile metricKey="revenue" />;
+    case CODING_TILE_ID:
+      return <CodingTileBody />;
+    case RECENT_CONVERSATIONS_TILE_ID:
+      return (
+        <Suspense
+          fallback={<div className="h-full animate-pulse bg-muted/30" />}
+        >
+          <RecentConversationsList />
+        </Suspense>
+      );
+    default:
+      return null;
+  }
+}
+
 /**
- * Renders a native tile's body by id. Unknown ids render nothing (the tile
- * still occupies its cell, but degrades gracefully). Chrome (drag handle,
- * remove menu) is supplied by the board in edit mode, same as any tile.
+ * Renders a native tile by id. The board supplies the card frame
+ * (`bg-card card-shadow rounded-2xl`) and edit-mode chrome, so this is just the
+ * card interior — a label + body, matching the home-redesign card design.
+ * Unknown ids render nothing (the tile still occupies its cell).
  */
 export function NativeTile({ nativeId }: { nativeId: string }) {
   const def = NATIVE_TILES.find((t) => t.id === nativeId);
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-background">
-      <div className="shrink-0 border-b border-border/60 px-3 py-2 text-xs font-medium text-muted-foreground">
+    <div className="flex h-full flex-col overflow-hidden p-4">
+      <span className="shrink-0 text-xs font-medium text-muted-foreground">
         {def?.title ?? "Tile"}
-      </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {nativeId === RECENT_CONVERSATIONS_TILE_ID ? (
-          <Suspense
-            fallback={<div className="h-full animate-pulse bg-muted/30" />}
-          >
-            <RecentConversationsList />
-          </Suspense>
-        ) : nativeId === TASKS_TILE_ID ? (
-          <TasksTileBody />
-        ) : nativeId === CODING_TILE_ID ? (
-          <CodingTileBody />
-        ) : nativeId === ANALYTICS_TILE_ID ? (
-          <AnalyticsTileBody />
-        ) : nativeId === SALES_TILE_ID ? (
-          <SalesTileBody />
-        ) : null}
+      </span>
+      <div className="relative mt-2 min-h-0 flex-1">
+        <NativeTileBody nativeId={nativeId} />
       </div>
     </div>
   );

@@ -252,7 +252,7 @@ function ConnectionDialogContent({
         const appName = getRegistryItemAppName(item);
         if (appName && connectedAppNames.has(appName)) return false;
         if (!searchLower) return true;
-        const meshMeta = item._meta?.["mcp.mesh"];
+        const studioMeta = item._meta?.["mcp.mesh"];
         const haystack = [
           item.title,
           item.description,
@@ -260,8 +260,8 @@ function ConnectionDialogContent({
           item.server?.title,
           item.server?.description,
           item.server?.name,
-          meshMeta?.friendly_name,
-          meshMeta?.friendlyName,
+          studioMeta?.friendly_name,
+          studioMeta?.friendlyName,
         ]
           .filter(Boolean)
           .join(" ")
@@ -391,10 +391,10 @@ function ConnectionDialogContent({
 
   // Render a catalog item card — no instances yet
   const renderCatalogItem = (item: RegistryItem) => {
-    const meshMeta = item._meta?.["mcp.mesh"];
+    const studioMeta = item._meta?.["mcp.mesh"];
     const title =
-      meshMeta?.friendlyName ||
-      meshMeta?.friendly_name ||
+      studioMeta?.friendlyName ||
+      studioMeta?.friendly_name ||
       item.server?.title ||
       item.title ||
       item.server?.name ||
@@ -406,9 +406,9 @@ function ConnectionDialogContent({
       item.server?.icons?.[0]?.src ||
       getGitHubAvatarUrl(item.server?.repository) ||
       null;
-    const isOfficial = meshMeta?.official === true;
-    const isVerified = meshMeta?.verified === true;
-    const isMadeByDeco = meshMeta?.owner === "deco";
+    const isOfficial = studioMeta?.official === true;
+    const isVerified = studioMeta?.verified === true;
+    const isMadeByDeco = studioMeta?.owner === "deco";
 
     return (
       <ConnectionCard
@@ -465,7 +465,7 @@ function ConnectionDialogContent({
                   action: "connect_new",
                   registry_item_id: item.id,
                   app_name:
-                    meshMeta?.friendlyName ||
+                    studioMeta?.friendlyName ||
                     item.server?.name ||
                     item.name ||
                     null,

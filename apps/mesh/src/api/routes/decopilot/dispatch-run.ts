@@ -116,7 +116,8 @@ import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
 import { resolveCliSessionRef } from "./cli-session-messages";
-import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
+import { getPublicUrl } from "@/core/server-constants";
+import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
 import { safeMemoryUsage } from "@/observability/profiling/safe-memory";
@@ -327,64 +328,6 @@ async function resolveSecretModelSource(
     apiKey,
     modelId,
   });
-}
-
-/**
- * Mint a 1h-TTL API key + return the MCP endpoint URL/headers a CLI
- * harness will use to talk to mesh's virtual-MCP gateway over HTTP. Only
- * called for harnesses that actually open an HTTP MCP connection
- * (claude-code, codex); decopilot's in-process passthrough doesn't need
- * this.
- *
- * `sandboxProviderKind` decides which base URL to mint:
- *   - `"agent-sandbox"` — `getInternalUrl()` (loopback; the harness runs
- *     in hosted execution alongside the API).
- *   - `"user-desktop"` — `getPublicUrl()` (the harness runs on the user's
- *     laptop and dials mesh back over the public network).
- */
-const MCP_KEY_TTL_SECONDS = 3600;
-
-async function mintMcpEndpoint(
-  ctx: StudioContext,
-  agentId: string,
-  organization: { id: string; slug?: string; name?: string },
-  apiKeyName: string,
-  sandboxProviderKind: DispatchTarget["sandboxProviderKind"],
-): Promise<{
-  url: string;
-  headers: Record<string, string>;
-  expiresAt: number;
-}> {
-  const apiKey = await ctx.boundAuth.apiKey.create({
-    name: apiKeyName,
-    // The per-run key is the agent's own callback credential — it proxies to
-    // `/mcp/virtual-mcp/<agentId>` (a `vir_*` resource) and acts on behalf of
-    // the user for the duration of the run, so it needs full access. With no
-    // implicit default (auth/index.ts), the scope must be explicit; wildcard
-    // matches the prior behavior (full access via the admin bypass).
-    permissions: { "*": ["*"] },
-    expiresIn: MCP_KEY_TTL_SECONDS,
-    metadata: {
-      organization: {
-        id: organization.id,
-        slug: organization.slug,
-        name: organization.name,
-      },
-    },
-  });
-  const baseUrl =
-    sandboxProviderKind === "user-desktop" ? getPublicUrl() : getInternalUrl();
-  return {
-    url: `${baseUrl}/mcp/virtual-mcp/${agentId}`,
-    headers: {
-      Authorization: `Bearer ${apiKey.key}`,
-      "x-org-id": organization.id,
-    },
-    // Wire-shape: HarnessStreamInputWire requires expiresAt for the
-    // remote-cli path so the daemon can pre-empt expiry with a refresh
-    // (v2 — currently only used for logging / forward-compat).
-    expiresAt: Date.now() + MCP_KEY_TTL_SECONDS * 1000,
-  };
 }
 
 // ============================================================================

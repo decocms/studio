@@ -26,9 +26,9 @@ export {
  * Ensure organization context exists and matches route param
  */
 export function ensureOrganization(
-  c: Context<{ Variables: { meshContext: StudioContext } }>,
+  c: Context<{ Variables: { studioContext: StudioContext } }>,
 ): OrganizationScope {
-  const organization = c.get("meshContext").organization;
+  const organization = c.get("studioContext").organization;
   if (!organization) {
     throw new Error("Organization context is required");
   }
@@ -44,9 +44,9 @@ export function ensureOrganization(
  * Use this for read-only / observability endpoints (e.g. stream).
  */
 export async function validateThreadAccess(
-  c: Context<{ Variables: { meshContext: StudioContext } }>,
+  c: Context<{ Variables: { studioContext: StudioContext } }>,
 ) {
-  const ctx = c.get("meshContext");
+  const ctx = c.get("studioContext");
   const userId = ctx.auth?.user?.id;
   if (!userId) {
     throw new HTTPException(401, { message: "Unauthorized" });
@@ -72,7 +72,7 @@ export async function validateThreadAccess(
  * should be allowed to act.
  */
 export async function validateThreadOwnership(
-  c: Context<{ Variables: { meshContext: StudioContext } }>,
+  c: Context<{ Variables: { studioContext: StudioContext } }>,
 ) {
   const result = await validateThreadAccess(c);
   if (result.thread.created_by !== result.userId) {

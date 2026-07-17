@@ -158,7 +158,7 @@ function ThreadSheetHeader({
             onClick={onPrev}
             disabled={selectedIndex === 0}
             className="h-7 w-7 text-muted-foreground"
-            aria-label="Previous thread"
+            aria-label="Previous chat"
           >
             <ChevronUp size={14} />
           </Button>
@@ -168,7 +168,7 @@ function ThreadSheetHeader({
             onClick={onNext}
             disabled={selectedIndex === total - 1}
             className="h-7 w-7 text-muted-foreground"
-            aria-label="Next thread"
+            aria-label="Next chat"
           >
             <ChevronDown size={14} />
           </Button>
@@ -471,7 +471,7 @@ function ThreadConversationPanel({
 
       {messages.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-          No messages in this thread
+          No messages in this chat
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto min-h-0">
@@ -636,7 +636,7 @@ export function ThreadsFiltersPopover({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[280px]">
         <div className="space-y-4">
-          <h4 className="font-medium text-sm">Filter Threads</h4>
+          <h4 className="font-medium text-sm">Filter Chats</h4>
 
           <div className="space-y-3">
             <div>
@@ -914,13 +914,13 @@ export function ThreadsTabContent({
                   <EmptyState
                     title={
                       hasActiveFilters
-                        ? "No matching threads"
-                        : "No threads in this time range"
+                        ? "No matching chats"
+                        : "No chats in this time range"
                     }
                     description={
                       hasActiveFilters
                         ? "Try adjusting your filters or search query."
-                        : "Try expanding the time range to see older threads."
+                        : "Try expanding the time range to see older chats."
                     }
                   />
                 </div>

@@ -173,7 +173,7 @@ describe("hostedHarnessWorkflowFn's try/catch contract (Finding 1)", () => {
     } as unknown as NonNullable<HostedHarnessRuntime["deps"]["streamBuffer"]>;
     const rt: HostedHarnessRuntime = {
       dispatchRunFn,
-      meshContextFactory: async () => null,
+      studioContextFactory: async () => null,
       deps: {
         runRegistry: {} as HostedHarnessRuntime["deps"]["runRegistry"],
         cancelBroadcast: {} as HostedHarnessRuntime["deps"]["cancelBroadcast"],
@@ -249,7 +249,7 @@ describe("half-terminal invariant (T9 proof obligation 1): done is never publish
     } as unknown as NonNullable<HostedHarnessRuntime["deps"]["streamBuffer"]>;
     setHostedHarnessRuntime({
       dispatchRunFn: mock(() => Promise.resolve({ taskId: "t" })),
-      meshContextFactory: async () => null,
+      studioContextFactory: async () => null,
       deps: {
         runRegistry: {} as HostedHarnessRuntime["deps"]["runRegistry"],
         cancelBroadcast: {} as HostedHarnessRuntime["deps"]["cancelBroadcast"],
@@ -273,7 +273,7 @@ describe("half-terminal invariant (T9 proof obligation 1): done is never publish
     } as unknown as NonNullable<HostedHarnessRuntime["deps"]["streamBuffer"]>;
     setHostedHarnessRuntime({
       dispatchRunFn: mock(() => Promise.resolve({ taskId: "t" })),
-      meshContextFactory: async () => null,
+      studioContextFactory: async () => null,
       deps: {
         runRegistry: {} as HostedHarnessRuntime["deps"]["runRegistry"],
         cancelBroadcast: {} as HostedHarnessRuntime["deps"]["cancelBroadcast"],
@@ -298,7 +298,7 @@ describe("half-terminal invariant (T9 proof obligation 1): done is never publish
     } as unknown as NonNullable<HostedHarnessRuntime["deps"]["streamBuffer"]>;
     setHostedHarnessRuntime({
       dispatchRunFn: mock(() => Promise.reject(dispatchErr)),
-      meshContextFactory: async () => null,
+      studioContextFactory: async () => null,
       deps: {
         runRegistry: {} as HostedHarnessRuntime["deps"]["runRegistry"],
         cancelBroadcast: {} as HostedHarnessRuntime["deps"]["cancelBroadcast"],

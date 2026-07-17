@@ -131,7 +131,7 @@ export function shouldPersistRequestMessage(input: {
 // ============================================================================
 
 async function validateRequest(
-  c: Context<{ Variables: { meshContext: StudioContext } }>,
+  c: Context<{ Variables: { studioContext: StudioContext } }>,
 ) {
   const organization = ensureOrganization(c);
   const rawPayload = await c.req.json();
@@ -381,7 +381,7 @@ export function applyThreadLock(args: {
  * Legacy callers that supply the id in the body alone are unaffected.
  */
 async function validate(
-  c: Context<{ Variables: { meshContext: StudioContext } }>,
+  c: Context<{ Variables: { studioContext: StudioContext } }>,
   threadIdParam: string | undefined,
 ): Promise<
   DispatchRunInput & {
@@ -389,7 +389,7 @@ async function validate(
     harnessId?: HarnessId | null;
   }
 > {
-  const ctx = c.get("meshContext");
+  const ctx = c.get("studioContext");
 
   const {
     organization,
@@ -508,7 +508,7 @@ export interface DecopilotDeps {
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
   const { cancelBroadcast, streamBuffer, runRegistry } = deps;
-  const app = new Hono<{ Variables: { meshContext: StudioContext } }>();
+  const app = new Hono<{ Variables: { studioContext: StudioContext } }>();
 
   // ============================================================================
   // Allowed Models Endpoint
@@ -516,7 +516,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.get("/:org/decopilot/allowed-models", async (c) => {
     try {
-      const ctx = c.get("meshContext");
+      const ctx = c.get("studioContext");
       const organization = ensureOrganization(c);
       const role = ctx.auth.user?.role;
 
@@ -563,7 +563,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
-      const ctx = c.get("meshContext");
+      const ctx = c.get("studioContext");
       const input = await validate(c, c.req.param("threadId"));
       const taskId = input.taskId;
       if (!taskId) {

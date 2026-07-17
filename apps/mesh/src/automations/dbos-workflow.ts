@@ -123,7 +123,7 @@ export async function cleanupOrphanedOrgQueues(pool: Pool): Promise<void> {
 
 export interface AutomationRuntime {
   storage: AutomationsStorage;
-  meshContextFactory: StudioContextFactory;
+  studioContextFactory: StudioContextFactory;
 }
 
 let runtime: AutomationRuntime | null = null;
@@ -204,11 +204,11 @@ async function prepareFireStep(
   if (!automation) return { skip: "not_found" };
   if (!automation.active) return { skip: "inactive" };
 
-  const meshCtx = await rt.meshContextFactory(
+  const studioCtx = await rt.studioContextFactory(
     automation.organization_id,
     automation.created_by,
   );
-  if (!meshCtx) {
+  if (!studioCtx) {
     console.warn(
       `[fireAutomationWorkflow] deactivating "${automation.name}" — creator ${automation.created_by} no longer in org ${automation.organization_id}`,
     );
@@ -245,11 +245,11 @@ async function prepareFireStep(
   // even when the org has Perplexity/Gemini Deep Research configured.
   const [resolved, image, webSearch, deepResearch] = await Promise.all([
     pinned
-      ? resolveSpecificModel(meshCtx, pinned.credentialId, pinned.modelId)
-      : resolveTier(meshCtx, tier),
-    tryResolveTier(meshCtx, "image"),
-    tryResolveTier(meshCtx, "web_search"),
-    tryResolveTier(meshCtx, "deep_research"),
+      ? resolveSpecificModel(studioCtx, pinned.credentialId, pinned.modelId)
+      : resolveTier(studioCtx, tier),
+    tryResolveTier(studioCtx, "image"),
+    tryResolveTier(studioCtx, "web_search"),
+    tryResolveTier(studioCtx, "deep_research"),
   ]);
   const toModel = (r: Awaited<ReturnType<typeof resolveTier>>) => ({
     id: r.modelId,
@@ -342,11 +342,11 @@ async function buildDispatchRequestStep(
 ): Promise<BuildDispatchRequestOutcome> {
   const rt = requireRuntime();
 
-  const meshCtx = await rt.meshContextFactory(
+  const studioCtx = await rt.studioContextFactory(
     automation.organization_id,
     automation.created_by,
   );
-  if (!meshCtx) {
+  if (!studioCtx) {
     return { ok: false, reason: "creator membership lost mid-fire" };
   }
 

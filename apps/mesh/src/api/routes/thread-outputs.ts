@@ -8,7 +8,7 @@
  *
  * Route: GET /api/threads/:threadId/outputs
  *
- * Auth: standard `meshContext` user-session middleware. The thread
+ * Auth: standard `studioContext` user-session middleware. The thread
  * lookup uses `OrgScopedThreadStorage` so an authenticated user can
  * only see threads belonging to their org.
  */
@@ -17,13 +17,13 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { StudioContext } from "@/core/studio-context";
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 
 export const createThreadOutputsRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
 
   app.get("/threads/:threadId/outputs", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     const userId = ctx.auth?.user?.id;
     if (!userId) {
       throw new HTTPException(401, { message: "Unauthorized" });
