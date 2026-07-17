@@ -13,8 +13,9 @@
  * The last two are LINK-based (`task_board_item_threads`), not runMetadata-based,
  * so they hold for a re-prompted thread that carries no run metadata.
  *
- * The link is `ctx.metadata.runMetadata.taskBoardItemId` (set at enqueue), which
- * flows onto the run's StudioContext — so these hooks need no thread↔task column.
+ * The PR-open path resolves the item from `ctx.metadata.runMetadata.taskBoardItemId`
+ * (set at enqueue) first, falling back to the same thread link when that's absent —
+ * so a repo-backed task's SECOND PR, opened after a re-prompt, still lands In Review.
  * Each transition also pushes the updated item over SSE for a real-time board.
  */
 
@@ -46,33 +47,45 @@ export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
 }
 
 /**
- * Advance the run's linked task board item forward to `status` and broadcast it.
- * No-op when the run isn't tied to a task, when the item is gone, or when the
- * target status wouldn't move the card forward. Best-effort: a failure here
- * never disturbs the agent run.
+ * Advance the run's linked task board item(s) forward to `status` and
+ * broadcast each move. Resolves the linked item(s) from `runMetadata` first
+ * (set at enqueue for the task's own run), falling back to the
+ * `task_board_item_threads` link by `threadId` — the fallback is what makes
+ * this fire for a re-prompted, repo-backed task's second PR, which carries no
+ * run metadata. No-op when neither resolves, when an item is gone, or when
+ * the target status wouldn't move its card forward. Best-effort: a failure
+ * here never disturbs the agent run.
  */
 export async function advanceTaskBoardForRun(
   ctx: StudioContext,
   status: TaskBoardItemStatus,
+  threadId?: string,
 ): Promise<void> {
-  const itemId = ctx.metadata?.runMetadata?.taskBoardItemId;
   const orgId = ctx.organization?.id;
-  if (!itemId || !orgId) return;
+  if (!orgId) return;
   try {
-    const current = await ctx.storage.taskBoard.getById(itemId, orgId);
-    // ponytail: read-then-write rank guard. A single run's transitions are
-    // sequential, so the race window is negligible; it buys idempotency (a
-    // repeated PR tool call, or in_progress re-fired on a DBOS retry, won't
-    // regress a card that's already further along). Upgrade to a conditional
-    // UPDATE ... WHERE status-rank < new-rank only if concurrency ever bites.
-    if (!current || RANK[status] <= RANK[current.status]) return;
-    const item = await ctx.storage.taskBoard.update(
-      itemId,
-      orgId,
-      { status },
-      ctx.auth?.user?.id ?? current.updatedBy,
-    );
-    emitTaskBoardUpdated(orgId, item);
+    const metadataItemId = ctx.metadata?.runMetadata?.taskBoardItemId;
+    const itemIds = metadataItemId
+      ? [metadataItemId]
+      : threadId
+        ? await ctx.storage.taskBoard.linkedTaskIds(threadId, orgId)
+        : [];
+    for (const itemId of itemIds) {
+      const current = await ctx.storage.taskBoard.getById(itemId, orgId);
+      // ponytail: read-then-write rank guard. A single run's transitions are
+      // sequential, so the race window is negligible; it buys idempotency (a
+      // repeated PR tool call, or in_progress re-fired on a DBOS retry, won't
+      // regress a card that's already further along). Upgrade to a conditional
+      // UPDATE ... WHERE status-rank < new-rank only if concurrency ever bites.
+      if (!current || RANK[status] <= RANK[current.status]) continue;
+      const item = await ctx.storage.taskBoard.update(
+        itemId,
+        orgId,
+        { status },
+        ctx.auth?.user?.id ?? current.updatedBy,
+      );
+      emitTaskBoardUpdated(orgId, item);
+    }
   } catch (err) {
     console.error("[task-board] run transition failed", err);
   }

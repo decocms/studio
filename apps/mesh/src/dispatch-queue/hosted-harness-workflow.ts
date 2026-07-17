@@ -210,12 +210,22 @@ export async function runHostedHarness(
 
   // A Super Agent task run is starting to execute — move its card to In Progress.
   // Fire-and-forget: the transition is best-effort and must not delay the loop.
-  void advanceTaskBoardForRun(studioCtx, "in_progress");
+  void advanceTaskBoardForRun(studioCtx, "in_progress", input.threadId);
 
   // If the user re-engaged a task that had moved to In Review, pull it back to
   // In Progress. Link-based (`task_board_item_threads`), so it fires for a
   // re-prompt that carries no run metadata — unlike the forward advance above.
-  void reopenTasksOnThreadRun(studioCtx, input.threadId);
+  //
+  // Skipped when `runMetadata.taskBoardItemId` is set: that means this
+  // execution IS the Super Agent's own task run (dispatched by
+  // `enqueueSuperAgentForTask`, or DBOS recovering/retrying it after a pod
+  // death) — never a human re-prompt, which never carries that key. Firing
+  // unconditionally here would regress an already-reviewed card (PR opened,
+  // pod died, DBOS re-runs the workflow) back to In Progress every time the
+  // run resumes, with no second PR coming to re-advance it.
+  if (!request.runMetadata?.taskBoardItemId) {
+    void reopenTasksOnThreadRun(studioCtx, input.threadId);
+  }
 
   // No wall-clock cap: a hosted run lives as long as it makes progress. The
   // RunRegistry idle reaper aborts + fails a run that goes RUN_IDLE_TIMEOUT_MS
