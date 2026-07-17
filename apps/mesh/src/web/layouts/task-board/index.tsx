@@ -398,82 +398,87 @@ function Lanes({
 
   return (
     // A kanban isn't fit-width: lanes keep a comfortable fixed width and the
-    // board scrolls horizontally when they don't all fit (incl. mobile). The
-    // px matches the header so lane 1 lines up with the "Tasks" title.
+    // board scrolls horizontally when they don't all fit (incl. mobile).
     <div
       ref={boardRef}
-      className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-auto px-4 pt-6 pb-16 sm:px-8"
+      className="min-h-0 flex-1 overflow-x-auto overflow-y-auto px-4 pt-6 pb-16 sm:px-8"
     >
-      {STATUSES.map((status) => {
-        const laneItems = items.filter((t) => t.status === status);
-        const config = STATUS_CONFIG[status];
-        const LaneIcon = config.icon;
-        return (
-          <div
-            key={status}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setOverLane(status);
-            }}
-            onDragLeave={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      {/* w-max + mx-auto centers the lane row on wide monitors instead of
+          leaving it edge-to-edge, while staying fully scrollable when it
+          overflows (auto margins collapse to 0, so the first lane stays
+          reachable — unlike justify-center). */}
+      <div className="mx-auto flex w-max gap-3">
+        {STATUSES.map((status) => {
+          const laneItems = items.filter((t) => t.status === status);
+          const config = STATUS_CONFIG[status];
+          const LaneIcon = config.icon;
+          return (
+            <div
+              key={status}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setOverLane(status);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setOverLane(null);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const id = e.dataTransfer.getData("text/plain");
+                if (id) onMove(id, status);
                 setOverLane(null);
-              }
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              const id = e.dataTransfer.getData("text/plain");
-              if (id) onMove(id, status);
-              setOverLane(null);
-            }}
-            className={cn(
-              "flex w-[300px] shrink-0 flex-col rounded-xl p-1 transition-colors",
-              overLane === status && "bg-muted/50",
-            )}
-          >
-            <div className="flex items-center gap-2 px-2 py-1.5">
-              <LaneIcon
-                size={15}
-                className={cn("shrink-0", config.iconClassName)}
-              />
-              <span className="text-sm font-medium text-foreground">
-                {config.label}
-              </span>
-              <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
-                {laneItems.length}
-              </span>
-              <button
-                type="button"
-                aria-label={`New task in ${config.label}`}
-                title={`New task in ${config.label}`}
-                onClick={() => onCreate(status)}
-                className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <Plus size={15} />
-              </button>
-            </div>
-            <div className="flex min-h-12 flex-col gap-2 pt-1">
-              {laneItems.map((item) => (
-                <TaskCard
-                  key={item.id}
-                  item={item}
-                  assignee={
-                    item.assigneeId
-                      ? memberByUserId.get(item.assigneeId)
-                      : undefined
-                  }
-                  assignedBy={
-                    item.assignedBy
-                      ? memberByUserId.get(item.assignedBy)
-                      : undefined
-                  }
-                  onOpen={() => onOpen(item)}
+              }}
+              className={cn(
+                "flex w-[300px] shrink-0 flex-col rounded-xl p-1 transition-colors",
+                overLane === status && "bg-muted/50",
+              )}
+            >
+              <div className="flex items-center gap-2 px-2 py-1.5">
+                <LaneIcon
+                  size={15}
+                  className={cn("shrink-0", config.iconClassName)}
                 />
-              ))}
+                <span className="text-sm font-medium text-foreground">
+                  {config.label}
+                </span>
+                <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+                  {laneItems.length}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`New task in ${config.label}`}
+                  title={`New task in ${config.label}`}
+                  onClick={() => onCreate(status)}
+                  className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Plus size={15} />
+                </button>
+              </div>
+              <div className="flex min-h-12 flex-col gap-2 pt-1">
+                {laneItems.map((item) => (
+                  <TaskCard
+                    key={item.id}
+                    item={item}
+                    assignee={
+                      item.assigneeId
+                        ? memberByUserId.get(item.assigneeId)
+                        : undefined
+                    }
+                    assignedBy={
+                      item.assignedBy
+                        ? memberByUserId.get(item.assignedBy)
+                        : undefined
+                    }
+                    onOpen={() => onOpen(item)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
