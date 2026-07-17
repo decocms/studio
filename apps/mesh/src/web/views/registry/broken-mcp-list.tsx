@@ -33,7 +33,7 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
         className="w-full text-left p-3 flex items-start gap-3 hover:bg-muted/30 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        <span className="text-red-500 text-sm mt-0.5">✗</span>
+        <span className="text-destructive text-sm mt-0.5">✗</span>
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-medium truncate">
@@ -53,7 +53,7 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
             <span>tools listed: {result.tools_listed ? "✓" : "✗"}</span>
             <span>{result.duration_ms}ms</span>
             {failedTools.length > 0 && (
-              <span className="text-red-600">
+              <span className="text-destructive">
                 {failedTools.length} tool{failedTools.length > 1 ? "s" : ""}{" "}
                 failed
               </span>
@@ -67,7 +67,7 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
 
           {/* Error message preview */}
           {result.error_message && (
-            <p className="text-xs text-red-600 line-clamp-2">
+            <p className="text-xs text-destructive line-clamp-2">
               {result.error_message}
             </p>
           )}
@@ -82,10 +82,10 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
           {/* Full error message */}
           {result.error_message && (
             <div className="space-y-0.5">
-              <p className="text-[10px] font-semibold text-red-600">
+              <p className="text-[10px] font-semibold text-destructive">
                 Full Error
               </p>
-              <pre className="text-[11px] bg-red-500/5 border border-red-500/10 rounded px-2.5 py-1.5 whitespace-pre-wrap break-all text-red-700">
+              <pre className="text-[11px] bg-destructive/5 border border-destructive/10 rounded px-2.5 py-1.5 whitespace-pre-wrap break-all text-destructive">
                 {result.error_message}
               </pre>
             </div>
@@ -98,7 +98,7 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
               <p
                 className={cn(
                   "text-xs font-medium",
-                  result.connection_ok ? "text-emerald-600" : "text-red-600",
+                  result.connection_ok ? "text-success" : "text-destructive",
                 )}
               >
                 {result.connection_ok ? "OK" : "Failed"}
@@ -109,7 +109,7 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
               <p
                 className={cn(
                   "text-xs font-medium",
-                  result.tools_listed ? "text-emerald-600" : "text-red-600",
+                  result.tools_listed ? "text-success" : "text-destructive",
                 )}
               >
                 {result.tools_listed ? "Yes" : "No"}
@@ -124,16 +124,16 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
           {/* Failed tool details */}
           {failedTools.length > 0 && (
             <div className="space-y-1">
-              <p className="text-[10px] font-semibold text-red-600">
+              <p className="text-[10px] font-semibold text-destructive">
                 Failed Tools ({failedTools.length})
               </p>
               {failedTools.map((tool) => (
                 <div
                   key={`${result.id}-${tool.toolName}`}
-                  className="rounded border border-red-500/10 bg-red-500/5 px-2.5 py-1.5 space-y-1"
+                  className="rounded border border-destructive/10 bg-destructive/5 px-2.5 py-1.5 space-y-1"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-medium text-red-700">
+                    <span className="text-xs font-mono font-medium text-destructive">
                       {tool.toolName}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
@@ -141,7 +141,7 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
                     </span>
                   </div>
                   {tool.error && (
-                    <pre className="text-[11px] whitespace-pre-wrap break-all text-red-600">
+                    <pre className="text-[11px] whitespace-pre-wrap break-all text-destructive">
                       {tool.error}
                     </pre>
                   )}
