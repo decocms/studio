@@ -128,6 +128,21 @@ describe("Task Board Import Route", () => {
     expect(res.status).toBe(400);
   });
 
+  it("does not auto-enable the task board when the body is rejected", async () => {
+    // org_1 (seeded) has no settings row → board disabled by default. A 400
+    // must leave it untouched — flipping it on with nothing written would
+    // silently opt the org into a feature it never asked for.
+    const res = await app.fetch(post("org_1", "svc-secret", { items: [] }));
+    expect(res.status).toBe(400);
+
+    const settings = await database.db
+      .selectFrom("organization_settings")
+      .select(["task_board_enabled"])
+      .where("organizationId", "=", "org_1")
+      .executeTakeFirst();
+    expect(settings?.task_board_enabled).not.toBe(true);
+  });
+
   it("creates triage items as the system principal, resolving the org by id", async () => {
     const res = await app.fetch(post("org_board", "svc-secret", BODY));
     expect(res.status).toBe(200);
