@@ -164,7 +164,7 @@ export function TaskGroupsList({
     fetchNextPage,
   } = useThreads();
   const visibleThreads = allThreads.filter((thread) => !thread.hidden);
-  const { hide } = useThreadActions();
+  const { hide, setScope } = useThreadActions();
 
   const navigate = useNavigate();
   const { setTaskId, createNewTask } = usePanelActions();
@@ -198,17 +198,23 @@ export function TaskGroupsList({
   const [searchEverOpened, setSearchEverOpened] = useState(false);
 
   // `filters` drives the per-status / per-group server pagination (status mode),
-  // where `member: "mine"` scopes the query to the current user. The flat list,
-  // by contrast, paginates the shared org-wide thread store and filters to the
-  // active scope (My/All) client-side — so in "My" mode a "Show more" can page
-  // in teammate-only rows that get filtered out.
-  // ponytail: proper per-scope flat pagination needs a store fetch that accepts
-  // a created_by filter; deferred as a follow-up.
+  // where `member: "mine"` scopes the query to the current user.
   const filters: SidebarFilters = {
     type: typeFilter,
     member: "mine",
     currentUserId: currentUserId ?? null,
   };
+
+  // Keep the shared thread feed scoped, server-side, to what the flat list
+  // currently shows (scope + type), so "Show more" pages matching rows instead
+  // of the org-wide feed and then dropping them client-side. Idempotent — a
+  // no-op unless scope/type actually changed. The client-side filters below
+  // stay as defense against live SSE rows arriving outside the current scope.
+  const scopeWhere: Record<string, unknown> = {};
+  if (!showAll) scopeWhere.created_by = "me";
+  if (typeFilter === "automation") scopeWhere.has_trigger = true;
+  else if (typeFilter === "manual") scopeWhere.has_trigger = false;
+  setScope(scopeWhere);
 
   // Until the session resolves, `currentUserId` is undefined — render nothing
   // rather than leaking every member's threads into the "My threads" list.
