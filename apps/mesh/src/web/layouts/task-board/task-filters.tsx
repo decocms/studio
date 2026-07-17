@@ -117,7 +117,7 @@ export function taskMatchesFilters(
       const now = Date.now();
       if (f.due === "overdue" && t >= now) return false;
       if (f.due === "today" && !isSameDay(t, now)) return false;
-      if (f.due === "week" && t > now + 7 * DAY_MS) return false;
+      if (f.due === "week" && (t < now || t > now + 7 * DAY_MS)) return false;
     }
   }
   return true;
