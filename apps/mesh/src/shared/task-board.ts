@@ -13,3 +13,10 @@ export const SUPER_AGENT_ASSIGNEE_ID = "super-agent";
  * react-query cache from it, so the board is real-time with no polling.
  */
 export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
+
+/**
+ * Org-scoped SSE event pushed on `sseHub` whenever a task board item is deleted.
+ * Its `data` is `{ id }`; the web board drops that item from its react-query
+ * cache, so a delete on one client clears the card on every open board.
+ */
+export const TASK_BOARD_ITEM_DELETED_EVENT = "task-board.item.deleted";

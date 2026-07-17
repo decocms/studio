@@ -5,7 +5,10 @@
  */
 
 import { ALL_DECOPILOT_EVENT_TYPES } from "@decocms/mesh-sdk";
-import { TASK_BOARD_ITEM_UPDATED_EVENT } from "@/shared/task-board";
+import {
+  TASK_BOARD_ITEM_DELETED_EVENT,
+  TASK_BOARD_ITEM_UPDATED_EVENT,
+} from "@/shared/task-board";
 import {
   createSSESubscription,
   filterEventTypes,
@@ -16,6 +19,7 @@ import {
 const WATCH_TYPES = [
   ...ALL_DECOPILOT_EVENT_TYPES,
   TASK_BOARD_ITEM_UPDATED_EVENT,
+  TASK_BOARD_ITEM_DELETED_EVENT,
 ];
 
 /** `?types=` patterns sent to the server. */
@@ -38,7 +42,8 @@ export const decopilotWatchView: SSESubscription = filterEventTypes(watchSSE, [
   ...ALL_DECOPILOT_EVENT_TYPES,
 ]);
 
-/** Task board item transitions (`task-board.item.updated`). */
+/** Task board item lifecycle (`task-board.item.updated` / `.deleted`). */
 export const taskBoardWatchView: SSESubscription = filterEventTypes(watchSSE, [
   TASK_BOARD_ITEM_UPDATED_EVENT,
+  TASK_BOARD_ITEM_DELETED_EVENT,
 ]);

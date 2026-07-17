@@ -10,6 +10,7 @@ import {
 import { assertValidAssignee } from "./validate-assignee";
 import { requireTaskBoardEnabled } from "./require-enabled";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { emitTaskBoardUpdated } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
   name: "TASK_BOARD_ITEM_CREATE",
@@ -62,6 +63,8 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       by: getUserId(ctx)!,
     });
 
+    // Broadcast the new card so every open board adds it live, no polling.
+    emitTaskBoardUpdated(organizationId, item);
     await reactToSuperAgentDelegation(ctx, item);
 
     return { item };
