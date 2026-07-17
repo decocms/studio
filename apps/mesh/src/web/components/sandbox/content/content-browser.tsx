@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Code01,
   Copy01,
+  CornerUpRight,
   Database01,
   DotsHorizontal,
   Edit01,
@@ -119,6 +120,14 @@ import {
 import { PageFormDialog, type PageFormMode } from "./page-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
 import {
+  buildRedirectBlock,
+  extractRedirects,
+  generateRedirectBlockKey,
+  REDIRECT_STATUS,
+  type RedirectEntry,
+  type RedirectType,
+} from "./redirect-data";
+import {
   type BlogEntry,
   type BlogKind,
   type CategoryRef,
@@ -187,6 +196,10 @@ const VariantCalendar = lazy(() =>
   })),
 );
 
+const RedirectEditor = lazy(() =>
+  import("./redirect-editor").then((m) => ({ default: m.RedirectEditor })),
+);
+
 const VARIANT_GREEN = "oklch(0.65 0.15 160)";
 
 type CollectionId =
@@ -198,6 +211,7 @@ type CollectionId =
   | "calendar"
   | "loaders"
   | "actions"
+  | "redirects"
   | BlogKind;
 
 type CollectionCounts = Record<
@@ -206,6 +220,7 @@ type CollectionCounts = Record<
   | "apps"
   | "loaders"
   | "actions"
+  | "redirects"
   | "posts"
   | "authors"
   | "categories",
@@ -221,6 +236,7 @@ type Selection =
       title: string;
     }
   | { collection: "apps"; key: string }
+  | { collection: "redirects"; key: string }
   | { collection: BlogKind; key: string }
   | null;
 
@@ -288,6 +304,7 @@ type PageDialogState = {
 type DeleteTarget =
   | { kind: "page"; key: string; label: string }
   | { kind: "section"; key: string; label: string }
+  | { kind: "redirect"; key: string; label: string }
   | { kind: "blog"; blogKind: BlogKind; key: string; label: string }
   | { kind: "blog-bulk"; keys: string[]; count: number }
   | null;
@@ -587,6 +604,9 @@ function ContentBrowserReady({
   const pages = extractPages(decofile).sort((a, b) =>
     a.name.localeCompare(b.name),
   );
+  const redirects = extractRedirects(decofile).sort((a, b) =>
+    a.from.localeCompare(b.from),
+  );
   const globalSections = extractGlobalSections(decofile, meta);
   // Only the Sections tab needs the raw catalog. Use the cheap lister (labels
   // only, no per-section schema resolution) — resolving every section's schema
@@ -632,7 +652,8 @@ function ContentBrowserReady({
     !hasEditableDecoContent(decofile, meta) &&
     !showBlog &&
     loadersCount === 0 &&
-    actionsCount === 0
+    actionsCount === 0 &&
+    redirects.length === 0
   ) {
     return (
       <EmptyMessage
@@ -649,6 +670,7 @@ function ContentBrowserReady({
     apps: appCatalog.length,
     loaders: loadersCount,
     actions: actionsCount,
+    redirects: redirects.length,
     posts: allBlogEntries.posts.length,
     authors: allBlogEntries.authors.length,
     categories: allBlogEntries.categories.length,
@@ -855,6 +877,28 @@ function ContentBrowserReady({
       setRenameSectionKey(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Rename failed");
+    }
+  };
+
+  // ------------------ Redirect CRUD ------------------
+  // Redirects are standalone `website/loaders/redirect.ts` blocks; the site's
+  // routes auto-discover them, so create/delete is a plain block write.
+  const handleCreateRedirect = async () => {
+    const key = generateRedirectBlockKey(decofile, "");
+    const data = buildRedirectBlock({
+      from: "",
+      to: "",
+      type: "temporary",
+      discardQueryParameters: false,
+    });
+    try {
+      await saveBlock.mutateAsync({ blockKey: key, data });
+      toast.success("Created redirect");
+      setSelection({ collection: "redirects", key });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not create redirect",
+      );
     }
   };
 
@@ -1081,6 +1125,7 @@ function ContentBrowserReady({
             blocksMode={mode === "blocks"}
             activeCollection={activeCollection}
             pages={pages}
+            redirects={redirects}
             sections={globalSections}
             availableSections={availableSections}
             appCatalog={appCatalog}
@@ -1124,6 +1169,8 @@ function ContentBrowserReady({
             onCreate={() => {
               if (activeCollection === "pages") {
                 openCreatePage();
+              } else if (activeCollection === "redirects") {
+                void handleCreateRedirect();
               } else if (isBlogKind(activeCollection)) {
                 void handleCreateBlog(activeCollection);
               }
@@ -1155,6 +1202,13 @@ function ContentBrowserReady({
             onRenameSection={(s) => setRenameSectionKey(s.key)}
             onDeleteSection={(s) =>
               setDeleteTarget({ kind: "section", key: s.key, label: s.name })
+            }
+            onDeleteRedirect={(entry) =>
+              setDeleteTarget({
+                kind: "redirect",
+                key: entry.key,
+                label: entry.from || entry.key,
+              })
             }
             onDuplicateBlog={handleDuplicateBlog}
             onDeleteBlog={(e) =>
@@ -1322,6 +1376,15 @@ function ContentBrowserReady({
                   blockKey={selection.key}
                   block={decofile[selection.key] as Record<string, unknown>}
                 />
+              ) : selection.collection === "redirects" ? (
+                <RedirectEditor
+                  key={`redirect:${selection.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  blockKey={selection.key}
+                  block={decofile[selection.key] as Record<string, unknown>}
+                />
               ) : (
                 <SectionsEditor
                   key={
@@ -1365,7 +1428,9 @@ function ContentBrowserReady({
                       ? "a page"
                       : activeCollection === "apps"
                         ? "an app"
-                        : "a section"
+                        : activeCollection === "redirects"
+                          ? "a redirect"
+                          : "a section"
                 } to edit`}
                 description={
                   activeCollection === "apps"
@@ -1631,6 +1696,14 @@ function CollectionsSidebar({
           onSelect={onSelect}
         />
         <CollectionRow
+          id="redirects"
+          icon={CornerUpRight}
+          label="Redirects"
+          count={counts.redirects}
+          active={active === "redirects"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
           id="loaders"
           icon={Database01}
           label="Loaders"
@@ -1750,6 +1823,7 @@ function ItemList({
   blocksMode,
   activeCollection,
   pages,
+  redirects,
   sections,
   availableSections,
   appCatalog,
@@ -1784,12 +1858,14 @@ function ItemList({
   onDuplicateSection,
   onRenameSection,
   onDeleteSection,
+  onDeleteRedirect,
   onDuplicateBlog,
   onDeleteBlog,
 }: {
   blocksMode: boolean;
   activeCollection: CollectionId;
   pages: PageEntry[];
+  redirects: RedirectEntry[];
   sections: GlobalSectionEntry[];
   availableSections: AvailableSectionEntry[];
   appCatalog: AppCatalogEntry[];
@@ -1827,6 +1903,7 @@ function ItemList({
   onDuplicateSection: (section: GlobalSectionEntry) => void;
   onRenameSection: (section: GlobalSectionEntry) => void;
   onDeleteSection: (section: GlobalSectionEntry) => void;
+  onDeleteRedirect: (entry: RedirectEntry) => void;
   onDuplicateBlog: (entry: BlogEntry) => void;
   onDeleteBlog: (entry: BlogEntry) => void;
 }) {
@@ -1836,6 +1913,10 @@ function ItemList({
       !q ||
       p.name.toLowerCase().includes(q) ||
       p.path.toLowerCase().includes(q),
+  );
+  const filteredRedirects = redirects.filter(
+    (r) =>
+      !q || r.from.toLowerCase().includes(q) || r.to.toLowerCase().includes(q),
   );
   const filteredSections = sections.filter(
     (s) =>
@@ -1952,7 +2033,9 @@ function ItemList({
   const placeholder = `Search ${activeCollection}…`;
   const createTooltip = isBlogKind(activeCollection)
     ? `Create new ${BLOG_SINGULAR[activeCollection]}`
-    : "Create new page";
+    : activeCollection === "redirects"
+      ? "Create new redirect"
+      : "Create new page";
   // Sections are created by saving an available section, not via the "+".
   const showCreateButton =
     activeCollection !== "apps" && activeCollection !== "sections";
@@ -2220,6 +2303,34 @@ function ItemList({
                   />
                 );
               })
+            )
+          ) : activeCollection === "redirects" ? (
+            filteredRedirects.length === 0 ? (
+              <ListEmpty
+                hasItems={redirects.length > 0}
+                emptyLabel="No redirects yet."
+                emptyHint='Click "+" to create your first redirect.'
+              />
+            ) : (
+              filteredRedirects.map((entry) => (
+                <ItemRow
+                  key={entry.key}
+                  icon={CornerUpRight}
+                  title={entry.from || "(no source)"}
+                  subtitle={`→ ${entry.to || "(no target)"}`}
+                  active={
+                    selection?.collection === "redirects" &&
+                    selection.key === entry.key
+                  }
+                  trailing={<RedirectTypeBadge type={entry.type} />}
+                  onClick={() =>
+                    onSelect({ collection: "redirects", key: entry.key })
+                  }
+                  menu={
+                    <ItemActions onDelete={() => onDeleteRedirect(entry)} />
+                  }
+                />
+              ))
             )
           ) : isPostsCollection ? (
             sortedPosts.length === 0 ? (
@@ -2761,7 +2872,7 @@ function ItemActions({
   onViewJson,
   onDelete,
 }: {
-  onDuplicate: () => void;
+  onDuplicate?: () => void;
   onRename?: () => void;
   onAddVariant?: () => void;
   onEditSeo?: () => void;
@@ -2787,10 +2898,12 @@ function ItemActions({
             Rename
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={onDuplicate}>
-          <Copy01 size={14} />
-          Duplicate
-        </DropdownMenuItem>
+        {onDuplicate && (
+          <DropdownMenuItem onClick={onDuplicate}>
+            <Copy01 size={14} />
+            Duplicate
+          </DropdownMenuItem>
+        )}
         {onAddVariant && (
           <>
             <DropdownMenuSeparator />
@@ -2831,6 +2944,22 @@ function ItemActions({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** Compact status-code badge for a redirect row (301 permanent / 307 temporary). */
+function RedirectTypeBadge({ type }: { type: RedirectType }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+          {REDIRECT_STATUS[type]}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="left">
+        {type === "permanent" ? "Permanent" : "Temporary"}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
