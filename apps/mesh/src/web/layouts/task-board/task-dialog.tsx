@@ -26,12 +26,15 @@ import {
 import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { useCopy } from "@deco/ui/hooks/use-copy.ts";
 import {
   AlertCircle,
   AlertSquare,
   Calendar,
+  Check,
   CheckCircle,
   ChevronRight,
+  Copy01,
   DotsHorizontal,
   GitMerge,
   GitPullRequest,
@@ -154,6 +157,7 @@ export function TaskBoardItemDialog({
 }) {
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
+  const { handleCopy, copied } = useCopy();
 
   const [title, setTitle] = useState(item?.title ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
@@ -238,12 +242,26 @@ export function TaskBoardItemDialog({
               className="w-full border-0 bg-transparent text-xl font-medium text-foreground outline-none placeholder:text-foreground/30"
             />
 
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe a task for an agent..."
-              className="min-h-[96px] w-full flex-1 resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[120px]"
-            />
+            <div className="group relative flex flex-1 flex-col">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe a task for an agent..."
+                className="min-h-[96px] w-full flex-1 resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[120px]"
+              />
+              {description && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Copy description"
+                  className="absolute right-0 top-0 size-7 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                  onClick={() => handleCopy(description)}
+                >
+                  {copied ? <Check size={14} /> : <Copy01 size={14} />}
+                </Button>
+              )}
+            </div>
 
             {thread && (
               <ActivityCard
