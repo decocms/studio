@@ -81,19 +81,19 @@ const VARIANT_OVERLAY: Record<HighlightVariant, string> = {
   error:
     "isolate after:content-[''] after:absolute after:inset-0 after:rounded-xl after:bg-destructive/5 after:pointer-events-none after:-z-10",
   warning:
-    "isolate after:content-[''] after:absolute after:inset-0 after:rounded-xl after:bg-amber-500/5 after:pointer-events-none after:-z-10",
+    "isolate after:content-[''] after:absolute after:inset-0 after:rounded-xl after:bg-warning/5 after:pointer-events-none after:-z-10",
 };
 
 const VARIANT_BORDER: Record<HighlightVariant, string> = {
   default: "border-border",
   error: "border-destructive/30",
-  warning: "border-amber-500/30",
+  warning: "border-warning/30",
 };
 
 const VARIANT_ICON_COLOR: Record<HighlightVariant, string> = {
   default: "text-muted-foreground",
   error: "text-destructive",
-  warning: "text-amber-600 dark:text-amber-500",
+  warning: "text-warning",
 };
 
 export function CollapsibleHighlight({
