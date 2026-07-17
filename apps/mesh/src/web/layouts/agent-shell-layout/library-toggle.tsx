@@ -1,6 +1,7 @@
 import { Folder } from "@untitledui/icons";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { useMainOverlayToggle } from "./use-main-overlay-toggle";
 
 /**
@@ -14,11 +15,12 @@ import { useMainOverlayToggle } from "./use-main-overlay-toggle";
  * tab (see useMainOverlayToggle) rather than closing the panel outright.
  */
 export function LibraryToggle() {
+  const reportsOnly = useReportsOnly();
   const { active, enabled, toggle } = useMainOverlayToggle("files");
 
   // Needs a task route to toggle the main panel against; render nothing on
-  // routes without one.
-  if (!enabled) return null;
+  // routes without one. Commerce (reports-only) orgs hide the Library button.
+  if (!enabled || reportsOnly) return null;
 
   return (
     <HeaderTabButton
