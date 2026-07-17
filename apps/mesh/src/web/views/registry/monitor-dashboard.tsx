@@ -574,7 +574,7 @@ export function MonitorDashboard({
             </div>
             <div className="flex items-center gap-2">
               {isRunning && (
-                <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20 animate-pulse">
+                <Badge className="bg-primary/10 text-primary border-primary/20 animate-pulse">
                   run in progress
                 </Badge>
               )}
