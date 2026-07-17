@@ -17,7 +17,6 @@
  */
 
 import type { APIRequestContext, Page } from "@playwright/test";
-import { sleep } from "@decocms/std";
 import { z } from "zod";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import {
@@ -31,7 +30,6 @@ import { expect, test } from "../fixtures/test";
 const cdConnectionId = (orgId: string) => `${orgId}_commerce-discovery`;
 const REPORT_TOOL = "get_my_diagnostic";
 
-const BANNER_EYEBROW = "Diagnóstico de commerce";
 const READY_TITLE = "Seu relatório está pronto";
 const GENERATING_TITLE = "Gerando seu diagnóstico";
 
@@ -122,10 +120,14 @@ test.describe("commerce report banner", () => {
   }) => {
     const { page, orgSlug } = authedPage;
     await waitForHome(page, orgSlug);
-    // The banner mounts with the Overview and resolves its (local, fast)
-    // connection gate right after paint; give it a beat, then assert absence.
-    await sleep(4000);
-    await expect(page.getByText(BANNER_EYEBROW)).toHaveCount(0);
+    // Wait for the connection gate query to settle before asserting absence.
+    await page.waitForLoadState("networkidle", { timeout: HOME_TIMEOUT_MS });
+    await expect(
+      page.getByRole("button", { name: new RegExp(READY_TITLE) }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: new RegExp(GENERATING_TITLE) }),
+    ).toHaveCount(0);
     // Home is still functional.
     await expect(page.getByRole("button", { name: "Customize" })).toBeVisible();
   });
@@ -154,12 +156,13 @@ test.describe("commerce report banner", () => {
       await expect(banner).toContainText("minha-loja.example");
 
       await banner.click();
-      // New task URL carrying the CD agent + the pinned report view.
-      await expect(page).toHaveURL(/virtualmcpid=commerce-discovery/, {
-        timeout: 15_000,
-      });
-      await expect(page).toHaveURL(new RegExp(REPORT_TOOL));
-      await expect(page).toHaveURL(new RegExp(`/${orgSlug}/[0-9a-f-]{36}`));
+      // New task URL: /$org/<uuid>?virtualmcpid=commerce-discovery_<orgId>&main=...<tool>
+      await expect(page).toHaveURL(
+        new RegExp(
+          `/${orgSlug}/[0-9a-f-]{36}.*virtualmcpid=commerce-discovery_[^&]+.*${REPORT_TOOL}`,
+        ),
+        { timeout: 15_000 },
+      );
     } finally {
       await mcp.stop();
     }
@@ -203,9 +206,14 @@ test.describe("commerce report banner", () => {
       "http://127.0.0.1:9/dead",
     );
     await waitForHome(page, orgSlug);
-    // Long enough for the connection gate + the failing client attempt.
-    await sleep(8000);
-    await expect(page.getByText(BANNER_EYEBROW)).toHaveCount(0);
+    // Wait for the connection gate + the failing client attempt to settle.
+    await page.waitForLoadState("networkidle", { timeout: HOME_TIMEOUT_MS });
+    await expect(
+      page.getByRole("button", { name: new RegExp(READY_TITLE) }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: new RegExp(GENERATING_TITLE) }),
+    ).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Customize" })).toBeVisible();
   });
 });

@@ -30,6 +30,7 @@ import { ErrorBoundary } from "@/web/components/error-boundary";
 import { formatPinnedViewTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { track } from "@/web/lib/posthog-client";
 import { KEYS } from "@/web/lib/query-keys";
+import { unwrapToolResult } from "@/web/routes/commerce-onboarding/companions-core";
 import {
   type CommerceDiagnosticRunState,
   type CommerceReportBannerStatus,
@@ -39,30 +40,14 @@ import {
 /** Poll cadence while a run is live; a run takes minutes, not seconds. */
 const GENERATING_POLL_MS = 20_000;
 
-interface ToolCallResult {
-  structuredContent?: unknown;
-  isError?: boolean;
-  content?: Array<{ text?: string }>;
-}
-
 interface ConnectionItem {
   metadata?: Record<string, unknown> | null;
-}
-
-function unwrapToolResult<T>(result: unknown): T {
-  const toolResult = result as ToolCallResult;
-  if (toolResult.isError) {
-    throw new Error(
-      toolResult.content?.find((item) => item.text)?.text ?? "Tool call failed",
-    );
-  }
-  return (toolResult.structuredContent ?? result) as T;
 }
 
 function hostFromSiteUrl(siteUrl: unknown): string | null {
   if (typeof siteUrl !== "string" || !siteUrl) return null;
   try {
-    return new URL(siteUrl).hostname;
+    return new URL(siteUrl).hostname || null;
   } catch {
     return null;
   }
@@ -245,7 +230,8 @@ function CommerceReportBannerInner() {
     retry: false,
     staleTime: 60_000,
     queryFn: async () => {
-      const result = await selfClient!.callTool({
+      if (!selfClient) throw new Error("selfClient not ready");
+      const result = await selfClient.callTool({
         name: "COLLECTION_CONNECTIONS_GET",
         arguments: { id: connectionId },
       });
@@ -266,15 +252,17 @@ function CommerceReportBannerInner() {
   });
 
   const diagnosticQuery = useQuery({
-    queryKey: KEYS.commerceDiscoveryDiagnostic(org.id),
+    queryKey: KEYS.commerceDiscoveryDiagnostic(org.id, connectionId),
     enabled: !!cdClient,
     retry: 1,
     refetchInterval: (query) =>
+      query.state.status !== "error" &&
       deriveCommerceReportBannerStatus(query.state.data) === "generating"
         ? GENERATING_POLL_MS
         : false,
     queryFn: async () => {
-      const result = await cdClient!.callTool({
+      if (!cdClient) throw new Error("cdClient not ready");
+      const result = await cdClient.callTool({
         name: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
         arguments: {},
       });

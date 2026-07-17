@@ -40,4 +40,13 @@ describe("deriveCommerceReportBannerStatus", () => {
     expect(deriveCommerceReportBannerStatus({ scanned_at: null })).toBe("none");
     expect(deriveCommerceReportBannerStatus({})).toBe("none");
   });
+
+  test("run_in_progress: false with a completed scan is ready", () => {
+    expect(
+      deriveCommerceReportBannerStatus({
+        run_in_progress: false,
+        scanned_at: "2026-07-01T00:00:00.000Z",
+      }),
+    ).toBe("ready");
+  });
 });
