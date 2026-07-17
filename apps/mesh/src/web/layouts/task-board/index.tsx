@@ -451,7 +451,9 @@ function Lanes({
                 overLane === status && "bg-muted/50",
               )}
             >
-              <div className="flex items-center gap-2 px-2 py-1.5">
+              {/* Sticky so the column header stays visible while the cards
+                  scroll vertically under it. */}
+              <div className="sticky top-0 z-10 flex items-center gap-2 bg-background px-2 py-1.5">
                 <LaneIcon
                   size={15}
                   className={cn("shrink-0", config.iconClassName)}
