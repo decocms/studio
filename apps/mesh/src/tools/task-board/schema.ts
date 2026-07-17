@@ -11,6 +11,7 @@ export const TaskBoardItemStatusSchema = z.enum([
 ]);
 
 export const TaskBoardItemPrioritySchema = z.enum([
+  "none",
   "low",
   "medium",
   "high",

@@ -287,7 +287,13 @@ export function TaskBoardItemDialog({
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button type="button" className={PROPERTY_BUTTON}>
+                  <button
+                    type="button"
+                    className={cn(
+                      PROPERTY_BUTTON,
+                      priority === "none" && "text-muted-foreground",
+                    )}
+                  >
                     <span
                       className={cn(
                         "size-2 rounded-full",
@@ -315,7 +321,13 @@ export function TaskBoardItemDialog({
               <div className="flex flex-col">
                 <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
                   <PopoverTrigger asChild>
-                    <button type="button" className={PROPERTY_BUTTON}>
+                    <button
+                      type="button"
+                      className={cn(
+                        PROPERTY_BUTTON,
+                        !assigneeId && "text-muted-foreground",
+                      )}
+                    >
                       {isSuperAgent && assignedBy ? (
                         <>
                           <Avatar
@@ -430,7 +442,13 @@ export function TaskBoardItemDialog({
 
               <Popover open={dueOpen} onOpenChange={setDueOpen}>
                 <PopoverTrigger asChild>
-                  <button type="button" className={PROPERTY_BUTTON}>
+                  <button
+                    type="button"
+                    className={cn(
+                      PROPERTY_BUTTON,
+                      !dueDate && "text-muted-foreground",
+                    )}
+                  >
                     <Calendar size={16} className="text-muted-foreground" />
                     {dueDate ? DUE_DATE_FMT.format(dueDate) : "Due date"}
                     {dueDate && (

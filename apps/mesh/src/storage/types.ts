@@ -1491,7 +1491,12 @@ export type TaskBoardItemStatus =
   | "in_review"
   | "done";
 
-export type TaskBoardItemPriority = "low" | "medium" | "high" | "urgent";
+export type TaskBoardItemPriority =
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "urgent";
 
 export interface TaskBoardItemTable {
   id: string;

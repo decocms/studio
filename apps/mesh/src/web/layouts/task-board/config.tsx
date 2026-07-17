@@ -75,6 +75,7 @@ export const STATUS_CONFIG: Record<
 };
 
 export const PRIORITIES: TaskBoardItemPriority[] = [
+  "none",
   "low",
   "medium",
   "high",
@@ -89,6 +90,11 @@ export const PRIORITY_CONFIG: Record<
     dotClassName: string;
   }
 > = {
+  none: {
+    label: "No priority",
+    flagClassName: "text-muted-foreground",
+    dotClassName: "border border-muted-foreground/50",
+  },
   low: {
     label: "Low",
     flagClassName: "text-muted-foreground",

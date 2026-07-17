@@ -527,11 +527,17 @@ function TaskCard({
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-1.5 pl-6">
-        {isTaskBlocked(item) && <BlockedBadge />}
-        <PriorityPill priority={item.priority} />
-        {item.dueDate && <DueDatePill iso={item.dueDate} />}
-      </div>
+      {(isTaskBlocked(item) ||
+        item.priority !== "none" ||
+        Boolean(item.dueDate)) && (
+        <div className="flex flex-wrap items-center gap-1.5 pl-6">
+          {isTaskBlocked(item) && <BlockedBadge />}
+          {item.priority !== "none" && (
+            <PriorityPill priority={item.priority} />
+          )}
+          {item.dueDate && <DueDatePill iso={item.dueDate} />}
+        </div>
+      )}
     </button>
   );
 }
@@ -560,9 +566,11 @@ function ListRow({
         {item.title}
       </span>
       {isTaskBlocked(item) && <BlockedBadge />}
-      <span className="hidden sm:inline-flex">
-        <PriorityPill priority={item.priority} />
-      </span>
+      {item.priority !== "none" && (
+        <span className="hidden sm:inline-flex">
+          <PriorityPill priority={item.priority} />
+        </span>
+      )}
       {item.dueDate && (
         <span className="hidden sm:inline-flex">
           <DueDatePill iso={item.dueDate} />
