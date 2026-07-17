@@ -44,6 +44,22 @@ services:
       retries: 5
       start_period: 5s
 
+  # External S3 (object store). Runs as its OWN container so it survives a
+  # mesh pod SIGKILL+restart — the rollout-churn scenario needs pods to reboot
+  # cleanly, and mesh's DECOCMS_LOCAL_MODE otherwise spawns an embedded MinIO
+  # *child* that dies with the container and races/crashes on reprovision. With
+  # S3_ENDPOINT + bucket + creds set below, ensureServices takes the external
+  # path (skipMinio) and never manages an embedded instance. Also faithful to
+  # prod, which uses external S3. No healthcheck: the minio server image ships
+  # no curl/wget/shell to probe with, and mesh's provisionMinioBucket already
+  # retries the startup ECONNREFUSED race.
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+
   # Migrations run once before any mesh pod starts. Pods themselves skip the
   # migration step (we override the entrypoint with a direct start command) to
   # avoid races on parallel boot.
@@ -90,6 +106,11 @@ services:
       DECOCMS_LOCAL_MODE: "true"
       ENCRYPTION_KEY: test-encryption-key-32chars-long!
       DATA_DIR: /app/data
+      # External S3 → ensureServices skips embedded MinIO (survives restarts).
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: studio-dev
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
       # Pin the sandbox provider so POST /decopilot/messages doesn't default
       # to "user-desktop" — there's no link daemon in this cluster, and
       # resolveDispatchTarget would 409 with link_offline. "agent-sandbox"
@@ -109,6 +130,8 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+      minio:
+        condition: service_started
       migrate:
         condition: service_completed_successfully
     healthcheck:
@@ -137,6 +160,8 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+      minio:
+        condition: service_started
       migrate:
         condition: service_completed_successfully
       mesh-1:
@@ -154,6 +179,8 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+      minio:
+        condition: service_started
       migrate:
         condition: service_completed_successfully
       mesh-2:
