@@ -920,7 +920,7 @@ function OrgMembersContent() {
                                 <div className="flex items-center gap-2">
                                   <Badge
                                     variant="outline"
-                                    className="w-fit text-amber-600 border-amber-400"
+                                    className="w-fit text-warning border-warning/40"
                                   >
                                     Pending
                                   </Badge>
