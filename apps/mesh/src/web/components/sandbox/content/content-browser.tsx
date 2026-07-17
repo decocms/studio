@@ -883,10 +883,13 @@ function ContentBrowserReady({
   // Redirects are standalone `website/loaders/redirect.ts` blocks; the site's
   // routes auto-discover them, so create/delete is a plain block write.
   const handleCreateRedirect = async () => {
-    const key = generateRedirectBlockKey(decofile, "");
+    // Seed non-empty placeholder paths so the new block is a valid redirect
+    // (never an empty from/to that would emit a broken route once published).
+    const from = "/redirect-from";
+    const key = generateRedirectBlockKey(decofile, from);
     const data = buildRedirectBlock({
-      from: "",
-      to: "",
+      from,
+      to: "/redirect-to",
       type: "temporary",
       discardQueryParameters: false,
     });
