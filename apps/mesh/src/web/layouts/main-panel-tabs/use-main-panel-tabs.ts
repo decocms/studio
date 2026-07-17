@@ -267,14 +267,9 @@ export function useMainPanelTabs(ctx: {
   });
   const showContentTab = hasEditableDecoContent(decofile, meta);
 
-  // Commerce (reports-only) orgs default to the task board when no ?main param
-  // is set — the board is their primary surface.
-  const effectiveMainParam =
-    reportsOnly && search.main === undefined ? "board" : search.main;
-
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
-      mainParam: effectiveMainParam,
+      mainParam: search.main,
       metadata:
         effectiveDefaultMainView || entityLayout
           ? {
