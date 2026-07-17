@@ -192,6 +192,22 @@ test("video: with a value a <video> element and the filename render", async ({
   await expect(component.getByText("clip.mp4", { exact: true })).toBeVisible();
 });
 
+test("video: clicking the preview opens the file picker", async ({ mount }) => {
+  const component = await mount(
+    <FieldHarness
+      schema={VIDEO_SCHEMA}
+      label="Clip"
+      path="clip"
+      initialValue="https://x.test/clip.mp4"
+    />,
+  );
+
+  await expect(component.getByTestId("file-picker-stub")).toHaveCount(0);
+  await component.getByRole("button", { name: "Replace video" }).click();
+
+  await expect(component.getByTestId("file-picker-stub")).toBeVisible();
+});
+
 test("video: quality picked via the ⋮ menu writes ?quality= to the value", async ({
   mount,
   page,

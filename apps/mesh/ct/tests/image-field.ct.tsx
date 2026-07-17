@@ -37,9 +37,9 @@ test("empty state: drop-zone prompt, empty url input, Browse button", async ({
   await expect(
     component.getByRole("button", { name: "Browse", exact: true }),
   ).toBeVisible();
-  await expect(component.getByRole("button", { name: "Replace" })).toHaveCount(
-    0,
-  );
+  await expect(
+    component.getByRole("button", { name: "Replace image" }),
+  ).toHaveCount(0);
   await expect(
     component.getByRole("button", { name: "Remove image" }),
   ).toHaveCount(0);
@@ -249,4 +249,42 @@ test("quality: picking a level via the ⋮ menu writes ?quality= to the value", 
   await expect
     .poll(() => readFormValue(component))
     .toEqual("https://x.test/a.png?quality=high");
+});
+
+test("quality: toggling the active level off clears ?quality= from the value", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <FieldHarness
+      schema={IMAGE_SCHEMA}
+      label="Hero"
+      initialValue="https://x.test/a.png?quality=high"
+    />,
+  );
+
+  await component.getByRole("button", { name: "Media options" }).click();
+  // Radix single-select emits "" on toggle-off → the param is removed.
+  await page.getByRole("radio", { name: "high" }).click();
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual("https://x.test/a.png");
+});
+
+test("image ⋮ menu has no Muted switch (muted is video-only)", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <FieldHarness
+      schema={IMAGE_SCHEMA}
+      label="Hero"
+      initialValue="https://x.test/a.png"
+    />,
+  );
+
+  await component.getByRole("button", { name: "Media options" }).click();
+  await expect(page.getByRole("radio", { name: "high" })).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Muted" })).toHaveCount(0);
 });

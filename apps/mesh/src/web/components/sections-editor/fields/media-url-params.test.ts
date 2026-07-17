@@ -55,6 +55,53 @@ describe("quality", () => {
     expect(isQuality("original")).toBe(true);
     expect(isQuality("nope")).toBe(false);
     expect(isQuality(null)).toBe(false);
+    // "" is the sentinel Radix ToggleGroup emits when the active item is
+    // toggled off — it must NOT narrow to a quality.
+    expect(isQuality("")).toBe(false);
+  });
+
+  it("reads an empty string as no quality", () => {
+    expect(getQualityFromUrl("")).toBeUndefined();
+  });
+
+  it("replaces an existing quality on a non-URL string (mid and end)", () => {
+    // The param is not last → exercises the middle-of-query path.
+    expect(setQualityOnUrl("/x.png?quality=low&w=10", "high")).toBe(
+      "/x.png?w=10&quality=high",
+    );
+    // Reading back through the raw fallback still finds it.
+    expect(getQualityFromUrl("/x.png?w=1&quality=high&h=2")).toBe("high");
+  });
+
+  it("clears a mid-string quality without leaving a dangling separator", () => {
+    expect(setQualityOnUrl("/x.png?quality=low&w=10", undefined)).toBe(
+      "/x.png?w=10",
+    );
+    expect(setQualityOnUrl("/x.png?quality=low", undefined)).toBe("/x.png");
+  });
+
+  it("preserves a #fragment when writing on a non-URL string", () => {
+    expect(setQualityOnUrl("/x.png#frag", "high")).toBe(
+      "/x.png?quality=high#frag",
+    );
+    expect(setQualityOnUrl("/x.png?quality=high#frag", undefined)).toBe(
+      "/x.png#frag",
+    );
+    expect(setQualityOnUrl("/x.png?w=1#frag", "low")).toBe(
+      "/x.png?w=1&quality=low#frag",
+    );
+  });
+
+  it("does not re-encode untouched params on an absolute URL", () => {
+    expect(
+      setQualityOnUrl("https://cdn.deco.cx/x.png?caption=a b", "high"),
+    ).toBe("https://cdn.deco.cx/x.png?caption=a b&quality=high");
+  });
+
+  it("clears every occurrence of a repeated quality param", () => {
+    expect(setQualityOnUrl("/x.png?quality=low&quality=high", undefined)).toBe(
+      "/x.png",
+    );
   });
 });
 
@@ -84,5 +131,16 @@ describe("muted", () => {
     expect(unmuted).toContain("quality=high");
     expect(getMutedFromUrl(unmuted)).toBe(false);
     expect(getMutedFromUrl(setMutedOnUrl(unmuted, true))).toBe(true);
+  });
+
+  it("clears a mid-string muted param and keeps the fragment", () => {
+    expect(setMutedOnUrl("/v.mp4?muted=false&quality=high", true)).toBe(
+      "/v.mp4?quality=high",
+    );
+    expect(setMutedOnUrl("/v.mp4?muted=false#frag", true)).toBe("/v.mp4#frag");
+  });
+
+  it("reads an empty string as muted (the default)", () => {
+    expect(getMutedFromUrl("")).toBe(true);
   });
 });

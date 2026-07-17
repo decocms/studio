@@ -12,6 +12,7 @@ import {
 import { matchSiteSlugConfig } from "@/web/components/file-picker/match-site-slug-config";
 import { useFileConfigsQuery } from "@/web/hooks/use-file-configs";
 import { useFilePickerUpload } from "@/web/hooks/use-file-picker";
+import { ClickToReplaceOverlay } from "./click-to-replace-overlay";
 import { extractUrl } from "./extract-url";
 import type { FieldProps } from "./field-props";
 import { MediaTransformControls } from "./media-transform-controls";
@@ -207,12 +208,7 @@ export function ImageField({
               {!imageLoaded && !imageErrored && (
                 <div className="absolute inset-0 animate-pulse bg-muted/60" />
               )}
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                <span className="flex items-center gap-1.5 rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow">
-                  <Upload01 size={14} />
-                  Click to replace
-                </span>
-              </div>
+              <ClickToReplaceOverlay />
             </button>
             <div className="flex items-center gap-2 border-t border-border/60 bg-background/50 px-3 py-2">
               <span className="min-w-0 flex-1 truncate text-xs font-medium">
@@ -275,11 +271,7 @@ export function ImageField({
         )}
         {strValue && (
           <>
-            <MediaTransformControls
-              value={strValue}
-              onChange={setValue}
-              path={path}
-            />
+            <MediaTransformControls value={strValue} onChange={setValue} />
             <Button
               type="button"
               variant="ghost"

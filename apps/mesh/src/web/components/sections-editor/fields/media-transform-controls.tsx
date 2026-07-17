@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { DotsVertical } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
@@ -29,15 +30,13 @@ import {
 export function MediaTransformControls({
   value,
   onChange,
-  path,
   showMuted = false,
 }: {
   value: string;
   onChange: (next: string) => void;
-  /** Field path — used to give the muted switch a stable, unique id. */
-  path: string;
   showMuted?: boolean;
 }) {
+  const mutedId = useId();
   const quality = getQualityFromUrl(value);
   const muted = getMutedFromUrl(value);
 
@@ -84,13 +83,13 @@ export function MediaTransformControls({
           {showMuted && (
             <div className="flex items-center justify-between gap-3">
               <Label
-                htmlFor={`${path}-muted`}
+                htmlFor={mutedId}
                 className="text-xs text-muted-foreground"
               >
                 Muted
               </Label>
               <Switch
-                id={`${path}-muted`}
+                id={mutedId}
                 checked={muted}
                 onCheckedChange={(v) => onChange(setMutedOnUrl(value, v))}
               />
