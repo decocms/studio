@@ -1,26 +1,25 @@
 import {
   isConnectionClaimedForSite,
   normalizeReportsSiteUrl,
+  siteUrlToHost,
 } from "@/reports/site-url";
 import { AuthEntry } from "@/web/components/auth-entry";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { AuthSplitLayout } from "@/web/components/auth-split-layout";
 import { OrganizationChoice } from "@/web/components/organization-choice";
 import { ScrollReveal } from "@/web/components/scroll-reveal";
-import { formatPinnedViewTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import {
   authClient,
   invalidateOrganizationListCache,
   useActiveOrganizations,
 } from "@/web/lib/auth-client";
-import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { isPostHogInitialized, track } from "@/web/lib/posthog-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import {
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   getCommerceDiscoveryAgentId,
+  getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   WellKnownOrgMCPId,
@@ -30,21 +29,18 @@ import {
   useMutation,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowRight } from "@untitledui/icons";
 import { createContext, Suspense, useContext, useRef, useState } from "react";
 import type { ComponentProps, FormEvent, ReactNode } from "react";
-import {
-  CompanionMcpsSection,
-  CompanionMcpsSectionSkeleton,
-} from "./commerce-onboarding/companion-mcps-section.tsx";
+import { CompanionMcpsSectionSkeleton } from "./commerce-onboarding/companion-mcps-section.tsx";
 import {
   buildScheduleMeetingUrl,
-  ScheduleMeetingBanner,
   ScheduleMeetingVisual,
 } from "./commerce-onboarding/schedule-meeting.tsx";
 import { SiteBadge } from "./commerce-onboarding/site-badge.tsx";
 import { CommerceOnboardingLoadingIndicator } from "./commerce-onboarding/loading-state.tsx";
+import { parseSelfToolResult } from "./commerce-onboarding/self-tool-result.ts";
 
 interface CommerceOrganization {
   id: string;
@@ -71,22 +67,6 @@ interface EnsureOrganizationResponse {
 
 interface CollectionGetResult<T = unknown> {
   item: T | null;
-}
-
-interface CommerceDiscoveryReportApp {
-  connectionId: string;
-  virtualMcpId: string;
-  toolName: typeof COMMERCE_DISCOVERY_REPORT_TOOL_NAME;
-}
-
-interface CommerceDiscoverySetupResult {
-  reportApp?: CommerceDiscoveryReportApp;
-}
-
-interface SelfToolResult {
-  structuredContent?: unknown;
-  isError?: boolean;
-  content?: Array<{ text?: string }>;
 }
 
 export default function CommerceOnboardingRoute() {
@@ -172,12 +152,6 @@ const COMMERCE_AUTH_COPY = {
   signUp: "Criar conta",
   signInWithEmailCode: "Entrar com código por e-mail",
 };
-
-function siteUrlToHost(siteUrl?: string): string | null {
-  if (!siteUrl) return null;
-  const normalized = normalizeReportsSiteUrl(siteUrl);
-  return normalized.ok ? new URL(normalized.value).hostname : null;
-}
 
 function commerceSiteUrlErrorPtBr(error: string): string {
   switch (error) {
@@ -565,21 +539,6 @@ function CommerceErrorState({
   );
 }
 
-function getToolErrorMessage(result: SelfToolResult): string {
-  return (
-    result.content?.find((item) => item.text)?.text ??
-    "A configuração do Commerce Discovery falhou."
-  );
-}
-
-function parseSelfToolResult<T>(result: unknown): T {
-  const toolResult = result as SelfToolResult;
-  if (toolResult.isError) {
-    throw new Error(getToolErrorMessage(toolResult));
-  }
-  return (toolResult.structuredContent ?? result) as T;
-}
-
 function CommerceSetup({
   org,
   initialSiteUrl,
@@ -676,15 +635,12 @@ function CommerceSetupContent({
   initialSiteUrl?: string;
   sessionEmail?: string | null;
 }) {
-  const navigate = useNavigate();
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
     orgSlug: org.slug,
   });
   const [siteUrlInput, setSiteUrlInput] = useState(initialSiteUrl ?? "");
-  const [setupResult, setSetupResult] =
-    useState<CommerceDiscoverySetupResult | null>(null);
   const [inlineError, setInlineError] = useState<string | null>(null);
   const autoSetupStartedRef = useRef(false);
 
@@ -721,15 +677,14 @@ function CommerceSetupContent({
         name: "COMMERCE_DISCOVERY_SETUP",
         arguments: { siteUrl },
       });
-      return parseSelfToolResult<CommerceDiscoverySetupResult>(result);
+      return parseSelfToolResult<unknown>(result);
     },
     retry: false,
-    onSuccess: (result, submittedSiteUrl) => {
+    onSuccess: (_result, submittedSiteUrl) => {
       track("commerce_onboarding_setup_succeeded", {
         domain: siteUrlToHost(submittedSiteUrl) ?? undefined,
         organization_id: org.id,
       });
-      setSetupResult(result);
       setInlineError(null);
       void connectionQuery.refetch();
       void virtualMcpQuery.refetch();
@@ -747,24 +702,6 @@ function CommerceSetupContent({
       );
     },
   });
-
-  // Triggers the diagnostic run now that the user has connected their data
-  // sources ("See full report"). We await the TRIGGER so a failure surfaces (a
-  // generic error, no navigation) instead of silently opening an empty report;
-  // the run itself is async — the report view polls for the enriched deck.
-  const runMutation = useMutation({
-    mutationFn: async (siteUrl: string) => {
-      const result = await selfClient.callTool({
-        name: "COMMERCE_DISCOVERY_RUN",
-        arguments: { siteUrl },
-      });
-      return parseSelfToolResult<{ triggered: boolean; reason?: string }>(
-        result,
-      );
-    },
-    retry: false,
-  });
-  const [runError, setRunError] = useState<string | null>(null);
 
   const connectionExists =
     !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
@@ -834,96 +771,23 @@ function CommerceSetupContent({
     runSetup(siteUrlInput);
   };
 
-  const reportApp = setupResult?.reportApp ?? {
-    connectionId,
-    virtualMcpId,
-    toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-  };
-
-  const openReport = async () => {
-    setRunError(null);
-    // The onboarding-completion intent: the click, not the report render
-    // (mcp_app_opened covers the render after navigation).
-    track("commerce_onboarding_open_report_clicked", {
-      domain: siteUrlToHost(currentSiteUrl) ?? undefined,
-      organization_id: org.id,
-    });
-    // Trigger the enriching run now that the user is done connecting. Await it so a
-    // failure surfaces (generic message, stay put) instead of silently opening an
-    // empty report. No resolvable site (legacy session) ⇒ nothing to trigger, just open.
-    const normalized = normalizeReportsSiteUrl(currentSiteUrl);
-    if (normalized.ok) {
-      try {
-        // Always run setup before triggering the run. Setup is idempotent
-        // (/upgrade per (org, site)) and ensures the CD connection's
-        // connection_url and token are always in sync with the current
-        // environment (prod vs. stg) before the report view opens.
-        await setupMutation.mutateAsync(normalized.value);
-        let runResult = await runMutation.mutateAsync(normalized.value);
-        // triggered:false means the site still isn't claimed after the setup
-        // above (e.g. /upgrade failed silently, or a race). Keep the fallback
-        // reclaim path so a second attempt can recover.
-        if (!runResult.triggered) {
-          track("commerce_onboarding_run_reclaim", {
-            domain: siteUrlToHost(currentSiteUrl) ?? undefined,
-            organization_id: org.id,
-            reason: runResult.reason ?? "not_upgraded",
-          });
-          await setupMutation.mutateAsync(normalized.value);
-          runResult = await runMutation.mutateAsync(normalized.value);
-        }
-        // Still not claimed after re-upgrading (e.g. the site belongs to another
-        // org). Opening the report anyway would render whatever the connection's
-        // token still points at (a previously-claimed site's diagnostic), so
-        // surface the error and stay put instead of showing the wrong store.
-        if (!runResult.triggered) {
-          track("commerce_onboarding_run_failed", {
-            domain: siteUrlToHost(currentSiteUrl) ?? undefined,
-            organization_id: org.id,
-            error: runResult.reason ?? "not_triggered",
-          });
-          setRunError(
-            "Não foi possível gerar o relatório para este site. Recarregue a página e tente novamente.",
-          );
-          return;
-        }
-      } catch (err) {
-        track("commerce_onboarding_run_failed", {
-          domain: siteUrlToHost(currentSiteUrl) ?? undefined,
-          organization_id: org.id,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        setRunError(
-          "Algo deu errado ao gerar seu relatório. Tente novamente em instantes.",
-        );
-        return;
-      }
-    }
-    localStorage.setItem(
-      LOCALSTORAGE_KEYS.sidebarOpen(),
-      JSON.stringify(false),
-    );
-    navigate({
-      to: "/$org/$taskId",
-      params: { org: org.slug, taskId: crypto.randomUUID() },
-      search: {
-        virtualmcpid: reportApp.virtualMcpId,
-        main: formatPinnedViewTabId(reportApp.connectionId, reportApp.toolName),
-      },
-    });
-  };
-
+  // Site is claimed → hand off to the org. The blocking connections modal
+  // (mounted by the org shell when it sees `?connect=1`) takes over from here:
+  // the user connects at least one data source over the blurred ORG HOME, then
+  // the modal triggers the run and opens the report. We land on the Super Agent
+  // home thread (not `/$org`, which reports-only orgs bounce back here) so the
+  // modal sits over real org content instead of a blank report.
   if (setupReady) {
     return (
-      <CommerceDiscoveryReady
-        org={org}
-        reportApp={reportApp}
-        onOpenReport={openReport}
-        isSubmitting={runMutation.isPending}
-        error={runError}
-        meetingUrl={currentMeetingUrl}
-        meetingVisual={currentMeetingVisual}
-        siteUrl={currentSiteUrl}
+      <Navigate
+        to="/$org/$taskId"
+        params={{ org: org.slug, taskId: crypto.randomUUID() }}
+        search={{
+          virtualmcpid: getWellKnownDecopilotVirtualMCP(org.id).id,
+          connect: "1",
+          siteUrl: currentSiteUrl || undefined,
+        }}
+        replace
       />
     );
   }
@@ -1042,72 +906,6 @@ function SiteUrlForm({
         <ArrowRight size={16} />
       </Button>
     </form>
-  );
-}
-
-function CommerceDiscoveryReady({
-  org,
-  reportApp,
-  onOpenReport,
-  isSubmitting,
-  error,
-  meetingUrl,
-  meetingVisual,
-  siteUrl,
-}: {
-  org: CommerceOrganization;
-  reportApp: CommerceDiscoveryReportApp;
-  onOpenReport: () => void;
-  isSubmitting?: boolean;
-  error?: string | null;
-  meetingUrl: string;
-  meetingVisual: ReactNode;
-  siteUrl?: string;
-}) {
-  // Fails open: stays true (and the CTA usable) unless the companions section
-  // positively confirms there are required sources still unconnected. A
-  // section load error shouldn't be able to permanently trap the user behind
-  // a disabled button — see onReadinessChange below.
-  const [hasConnectedSource, setHasConnectedSource] = useState(true);
-
-  return (
-    <CommerceOnboardingLayout align="fill" visual={meetingVisual}>
-      {/* align="fill" hands us a flex column sized to the visible viewport, so we
-          just flex-1 into it — header pinned top, cards scroll in the middle, and
-          the footer (report CTA + talk-to-a-human banner) pinned to the bottom.
-          On md+ it collapses back to a natural block (right panel has the card). */}
-      <div className="flex min-h-0 flex-1 flex-col gap-6 md:grid md:gap-4">
-        <CommerceHeader />
-        <CompanionMcpsSection
-          org={org}
-          cdConnectionId={reportApp.connectionId}
-          siteUrl={siteUrl}
-          onReadinessChange={setHasConnectedSource}
-        />
-        <div className="flex shrink-0 flex-col gap-3 md:mt-8">
-          {/* Right-side ScheduleMeetingVisual is hidden on mobile, so the human
-              escape hatch rides in the footer above the report CTA. */}
-          <ScheduleMeetingBanner
-            className="md:hidden"
-            href={meetingUrl}
-            orgId={org.id}
-          />
-          {error ? <InlineError message={error} /> : null}
-          <Button
-            type="button"
-            size="xl"
-            className="w-full rounded-2xl text-base font-medium"
-            onClick={onOpenReport}
-            disabled={
-              isSubmitting || !reportApp.virtualMcpId || !hasConnectedSource
-            }
-          >
-            {isSubmitting ? "Abrindo relatório..." : "Ver relatório completo"}
-            {!isSubmitting ? <ArrowRight size={18} /> : null}
-          </Button>
-        </div>
-      </div>
-    </CommerceOnboardingLayout>
   );
 }
 

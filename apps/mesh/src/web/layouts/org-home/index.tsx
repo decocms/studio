@@ -10,7 +10,7 @@
  * `metadata.ui.layout`, no special-casing here.
  */
 import { useState } from "react";
-import { Navigate } from "@tanstack/react-router";
+import { Navigate, useSearch } from "@tanstack/react-router";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
@@ -25,6 +25,10 @@ export default function OrgHome() {
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const { data: session } = authClient.useSession();
   const { threads, status } = useThreads();
+  const { connect, siteUrl } = useSearch({ strict: false }) as {
+    connect?: string;
+    siteUrl?: string;
+  };
   // Stable id for this mount, used only when there's no reusable "New chat".
   const [freshId] = useState(() => crypto.randomUUID());
 
@@ -41,7 +45,7 @@ export default function OrgHome() {
     <Navigate
       to="/$org/$taskId"
       params={{ org: org.slug, taskId }}
-      search={{ virtualmcpid: decopilotId }}
+      search={{ virtualmcpid: decopilotId, connect, siteUrl }}
       replace
     />
   );

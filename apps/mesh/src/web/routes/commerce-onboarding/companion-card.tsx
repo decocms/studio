@@ -44,11 +44,11 @@ import {
  */
 export function CompanionCardSkeleton() {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 sm:h-full sm:flex-col sm:items-stretch">
+    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 sm:h-full sm:flex-col sm:items-stretch sm:p-4">
       <div className="size-9 shrink-0 animate-pulse rounded-lg bg-muted/60" />
       <div className="min-w-0 flex-1 space-y-2">
         <div className="h-4 w-24 animate-pulse rounded bg-muted/60" />
-        <div className="h-3 w-full animate-pulse rounded bg-muted/60" />
+        <div className="hidden h-3 w-full animate-pulse rounded bg-muted/60 sm:block" />
       </div>
       <div className="h-8 w-20 shrink-0 animate-pulse rounded-lg bg-muted/60 sm:mt-auto sm:w-full" />
     </div>
@@ -170,11 +170,11 @@ export function CompanionCard({
     // Responsive: a compact horizontal row on mobile (icon · text · action),
     // a vertical tile in the desktop grid (sm+). The old inline "Configuração"
     // block lives in the gear's dialog so a connected card stays compact.
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 sm:h-full sm:flex-col sm:items-stretch">
+    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 sm:h-full sm:flex-col sm:items-stretch sm:p-4">
       {/* Icon row: on the desktop tile the badge sits top-right, centered with
-          the icon; on mobile the badge renders as an eyebrow in the text block
-          instead, so the name never clips against it. */}
-      <div className="shrink-0 self-start sm:flex sm:w-full sm:items-center sm:justify-between sm:gap-2">
+          the icon. Mobile is a compact list row (icon · name · action) — the
+          area tag and benefit line are dropped there to keep it dense. */}
+      <div className="shrink-0 sm:flex sm:w-full sm:items-center sm:justify-between sm:gap-2">
         <IntegrationIcon
           icon={card.icon}
           name={card.title}
@@ -190,14 +190,9 @@ export function CompanionCard({
       </div>
 
       <div className="min-w-0 flex-1">
-        {card.area && (
-          <span className={cn("mb-1 inline-block sm:hidden", AREA_BADGE_CLASS)}>
-            {card.area}
-          </span>
-        )}
         <p className="text-sm font-medium text-foreground">{card.title}</p>
         {card.headline && (
-          <p className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+          <p className="hidden text-sm leading-5 text-muted-foreground sm:mt-0.5 sm:line-clamp-2 sm:block">
             {card.headline}
           </p>
         )}

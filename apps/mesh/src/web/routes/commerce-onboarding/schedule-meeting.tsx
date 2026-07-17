@@ -14,8 +14,7 @@ type MeetingCtaPlacement = "visual_card" | "mobile_banner";
 const SCHEDULE_MEETING_URL = "https://decocms.com/agendar";
 
 const HEADLINE = "Precisa de ajuda? Fale conosco";
-const BODY =
-  "Agende uma chamada de 20 minutos e rodamos o diagnóstico com você, ao vivo.";
+const BODY = "Agende uma chamada e ajudamos você a conectar suas ferramentas.";
 
 const TEAM = [
   {
@@ -206,19 +205,19 @@ export function ScheduleMeetingBanner({
         })
       }
       className={cn(
-        "flex items-center gap-4 rounded-2xl border border-border bg-card p-5 card-shadow transition-colors hover:bg-accent",
+        "flex items-center gap-3 rounded-xl border border-border bg-card p-3 card-shadow transition-colors hover:bg-accent",
         className,
       )}
     >
       <span
         className="relative flex shrink-0 items-center"
-        style={{ height: 44, width: 44 + 2 * Math.round(44 * 0.7) }}
+        style={{ height: 32, width: 32 + 2 * Math.round(32 * 0.7) }}
       >
         {TEAM.map((member, i) => (
           <span
             key={member.photo}
-            className="absolute block h-11 w-11 overflow-hidden rounded-full border-2 border-card"
-            style={{ left: i * Math.round(44 * 0.7), zIndex: TEAM.length - i }}
+            className="absolute block h-8 w-8 overflow-hidden rounded-full border-2 border-card"
+            style={{ left: i * Math.round(32 * 0.7), zIndex: TEAM.length - i }}
           >
             <img
               src={member.photo}
@@ -229,19 +228,17 @@ export function ScheduleMeetingBanner({
           </span>
         ))}
         <span
-          className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-card bg-success"
+          className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-success"
           aria-hidden
           style={{ zIndex: TEAM.length + 1 }}
         />
       </span>
-      {/* Mobile-only banner: headline over two lines, no description (the
-          desktop ScheduleMeetingVisual keeps the description). */}
-      <span className="flex-1 text-base font-medium leading-5 text-foreground">
-        Precisa de ajuda?
-        <br />
-        Fale conosco
+      {/* Mobile-only banner: compact single line (the desktop
+          ScheduleMeetingVisual keeps the full headline + description). */}
+      <span className="flex-1 text-sm font-medium leading-tight text-foreground">
+        Precisa de ajuda? Fale conosco
       </span>
-      <ArrowUpRight size={18} className="shrink-0 text-muted-foreground" />
+      <ArrowUpRight size={16} className="shrink-0 text-muted-foreground" />
     </a>
   );
 }

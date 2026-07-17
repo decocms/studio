@@ -251,8 +251,11 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await signUpOnCurrentLoginPage(page, email);
 
-    await page.waitForURL((url) => url.pathname === "/commerce-onboarding", {
-      timeout: 15_000,
+    // After site setup the flow hands off to the org: it redirects off
+    // /commerce-onboarding to the report route, where the blocking connections
+    // modal (with the "Ver relatório completo" CTA) opens over the report.
+    await page.waitForURL((url) => url.pathname !== "/commerce-onboarding", {
+      timeout: 20_000,
     });
     await expect(
       page.getByRole("button", { name: "Ver relatório completo" }),
@@ -438,16 +441,28 @@ test.describe("Commerce onboarding route isolation", () => {
     const virtualMcpId = commerceDiscoveryVirtualMcpId(orgId);
 
     await page.goto("/commerce-onboarding?siteUrl=example.com");
-    await page.getByRole("button", { name: "Ver relatório completo" }).click();
 
-    // No sidepanel param: chatDefaultOpen selects Chat in the side panel.
+    // The connect step is a blocking modal over the org: it must NOT be
+    // dismissable. Pressing Escape leaves it open; the only way forward is the
+    // "Ver relatório completo" CTA.
+    const reportCta = page.getByRole("button", {
+      name: "Ver relatório completo",
+    });
+    await expect(reportCta).toBeVisible({ timeout: 20_000 });
+    await page.keyboard.press("Escape");
+    await expect(reportCta).toBeVisible();
+
+    await reportCta.click();
+
+    // Report app open in the main panel, chat side panel closed
+    // (sidepanel=0 overrides the report agent's chatDefaultOpen).
     await page.waitForURL(
       (url) =>
         url.pathname.startsWith(`/${user.orgSlug}/`) &&
         url.searchParams.get("virtualmcpid") === virtualMcpId &&
         url.searchParams.get("main") ===
           `app:${connectionId}:get_my_diagnostic` &&
-        url.searchParams.get("sidepanel") === null,
+        url.searchParams.get("sidepanel") === "0",
       { timeout: 20_000 },
     );
 
