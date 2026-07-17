@@ -652,8 +652,7 @@ function ContentBrowserReady({
     !hasEditableDecoContent(decofile, meta) &&
     !showBlog &&
     loadersCount === 0 &&
-    actionsCount === 0 &&
-    redirects.length === 0
+    actionsCount === 0
   ) {
     return (
       <EmptyMessage

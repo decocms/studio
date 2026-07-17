@@ -4,6 +4,7 @@ import {
   type LiveMeta,
 } from "@/web/components/sections-editor/resolve-schema";
 import { labelFromResolveType } from "@/web/components/sections-editor/section-types";
+import { REDIRECT_LOADER_RESOLVE_TYPES } from "./redirect-data";
 
 /** The two block kinds surfaced by the Loaders / Actions content tabs. */
 export type RunnableKind = "loaders" | "actions";
@@ -114,6 +115,7 @@ export function listAvailableRunnables(
 
   for (const resolveType of allKeys) {
     if (resolveType.toLowerCase().includes("preview")) continue;
+    if (REDIRECT_LOADER_RESOLVE_TYPES.has(resolveType)) continue;
     if (HIDDEN_RUNNABLE_GROUPS.has(runnableGroupKey(resolveType))) continue;
     if (hasSuffixedAlias(resolveType, allKeys)) continue;
     const metadata = resolveBlockSchemaMetadata(resolveType, meta);
@@ -202,6 +204,7 @@ export function listSavedRunnables(
     const obj = val as Record<string, unknown>;
     const rt = obj.__resolveType;
     if (typeof rt !== "string") continue;
+    if (REDIRECT_LOADER_RESOLVE_TYPES.has(rt)) continue;
     if (HIDDEN_RUNNABLE_GROUPS.has(runnableGroupKey(rt))) continue;
     if (!isManifestRunnableResolveType(meta, rt, kind)) continue;
 

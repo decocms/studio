@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
   REDIRECT_RESOLVE_TYPE,
+  REDIRECT_STATUS,
   buildRedirectBlock,
   extractRedirects,
   generateRedirectBlockKey,
   getRedirectPayload,
 } from "./redirect-data";
+
+test("REDIRECT_STATUS locks the HTTP status contract", () => {
+  expect(REDIRECT_STATUS).toEqual({ temporary: 307, permanent: 301 });
+});
 
 const redirectBlock = (
   redirect: Record<string, unknown>,
@@ -116,17 +121,38 @@ describe("buildRedirectBlock / getRedirectPayload round-trip", () => {
 });
 
 describe("generateRedirectBlockKey", () => {
-  test("derives a slug from the `from` path and never collides", () => {
+  test("derives a slug from the `from` path, stripping the query string", () => {
     const key = generateRedirectBlockKey({}, "/Bazar-Farm/Short?map=c");
     expect(key.startsWith("redirects-Bazar-Farm-Short-")).toBe(true);
   });
 
-  test("falls back to a stable slug for a rootish path", () => {
-    expect(
-      generateRedirectBlockKey({}, "/").startsWith("redirects-redirect-"),
-    ).toBe(true);
-    expect(
-      generateRedirectBlockKey({}, "").startsWith("redirects-redirect-"),
-    ).toBe(true);
+  test("caps the slug at 32 chars for a long `from`", () => {
+    const long = `/${"a".repeat(100)}`;
+    const key = generateRedirectBlockKey({}, long);
+    // key = `redirects-<slug>-<uuid>`; the slug segment is capped at 32.
+    const slug = key.slice(
+      "redirects-".length,
+      -"-00000000-0000-0000-0000-000000000000".length,
+    );
+    expect(slug).toBe("a".repeat(32));
+  });
+
+  test("falls back to a stable slug for empty / rootish / all-special `from`", () => {
+    for (const from of ["/", "", "   ", "/@#$%"]) {
+      expect(
+        generateRedirectBlockKey({}, from).startsWith("redirects-redirect-"),
+      ).toBe(true);
+    }
+  });
+
+  test("returns a distinct key for the same `from` (uniqueness guard)", () => {
+    // Exercises the collision-retry loop: seed the decofile with a key, then
+    // confirm two fresh generations for the same `from` never collide.
+    const decofile: Record<string, unknown> = {};
+    const first = generateRedirectBlockKey(decofile, "/x");
+    decofile[first] = { __resolveType: REDIRECT_RESOLVE_TYPE };
+    const second = generateRedirectBlockKey(decofile, "/x");
+    expect(second).not.toBe(first);
+    expect(Object.hasOwn(decofile, second)).toBe(false);
   });
 });

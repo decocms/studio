@@ -13,6 +13,16 @@
 
 export const REDIRECT_RESOLVE_TYPE = "website/loaders/redirect.ts";
 
+/**
+ * Both redirect loader resolveTypes (the per-redirect block and the plural
+ * aggregator). Redirects have a dedicated collection, so these are excluded
+ * from the generic Loaders catalog to avoid double-listing the same blocks.
+ */
+export const REDIRECT_LOADER_RESOLVE_TYPES: ReadonlySet<string> = new Set([
+  REDIRECT_RESOLVE_TYPE,
+  "website/loaders/redirects.ts",
+]);
+
 export type RedirectType = "temporary" | "permanent";
 
 /** HTTP status the deco redirect handler emits for each type. */

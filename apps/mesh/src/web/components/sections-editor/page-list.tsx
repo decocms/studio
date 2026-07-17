@@ -6,6 +6,7 @@ import {
 } from "./resolve-schema";
 import { normalizePagePath } from "./page-path-utils";
 import { listSavedSectionBlocks } from "./section-catalog";
+import { extractRedirects } from "@/web/components/sandbox/content/redirect-data";
 
 export interface PageEntry {
   key: string;
@@ -92,6 +93,7 @@ export function hasEditableDecoContent(
 ): boolean {
   if (!decofile) return false;
   if (extractPages(decofile).length > 0) return true;
+  if (extractRedirects(decofile).length > 0) return true;
   if (!meta) return false;
   if (extractGlobalSections(decofile, meta).length > 0) return true;
   if (findSiteAppEntry(decofile, meta)) return true;
