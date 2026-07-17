@@ -125,7 +125,10 @@ export function buildClusterEnvironmentTools(args: {
       const runContext = requireDecopilotRunContext(streamInput);
       const toolOutputMap = new Map<string, string>();
       const pendingImages: PendingImage[] = [];
-      const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(ctx);
+      const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(
+        ctx,
+        streamInput.threadId,
+      );
 
       const assembled = await assembleDecopilotTools(streamInput, ctx, {
         writer: sideChannel.writer,

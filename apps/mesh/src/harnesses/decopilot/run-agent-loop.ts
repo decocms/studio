@@ -182,7 +182,10 @@ export async function runAgentLoop(
   // ── Tools ─────────────────────────────────────────────────────────
   // Cluster MCP tool-call hooks: storage-ref resolution + posthog
   // analytics, built from ctx. The portable assembler forwards them as-is.
-  const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(opts.ctx);
+  const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(
+    opts.ctx,
+    opts.currentThreadId,
+  );
   const { tools: assembledTools } = await assembleAgentTools({
     kind: opts.kind,
     ctx: opts.ctx,
@@ -207,30 +210,33 @@ export async function runAgentLoop(
     ? (undefined as never)
     : createLanguageModel(opts.provider, opts.models.thinking);
 
-  // For a Super Agent task run, watch each step's bash calls for `gh pr create`
-  // and move the card to In Review. Only wrap when this run is task-linked, so
-  // normal runs pay nothing. (The GitHub MCP tool path is caught separately via
+  // Watch each step's bash calls for `gh pr create` (or a REST fallback) and
+  // move a linked task card to In Review. The scan itself is a cheap per-step
+  // array walk, so it's unconditional — a normal run never has a `bash` call
+  // matching the PR regexes, and `advanceTaskBoardForRun` only touches the DB
+  // when one does. (The GitHub MCP tool path is caught separately via
   // `onToolCalled`, whose raw tool name is reliable; here the model-facing tool
   // name can be mangled, so we key off the built-in `bash` tool + its command.)
-  const taskLinked = !!opts.ctx.metadata?.runMetadata?.taskBoardItemId;
-  const onStepFinish: StreamTextOnStepFinishCallback<ToolSet> | undefined =
-    taskLinked
-      ? (step) => {
-          for (const call of step.toolCalls ?? []) {
-            const command = (call.input as { command?: string } | undefined)
-              ?.command;
-            if (
-              call.toolName === "bash" &&
-              command &&
-              isPrCreateBashCommand(command)
-            ) {
-              void advanceTaskBoardForRun(opts.ctx, "in_review");
-              break;
-            }
-          }
-          return opts.onStepFinish?.(step);
-        }
-      : opts.onStepFinish;
+  // `currentThreadId` lets the resolution fall back to the thread link when the
+  // run carries no `runMetadata.taskBoardItemId` (a re-prompted task's 2nd PR).
+  const onStepFinish: StreamTextOnStepFinishCallback<ToolSet> = (step) => {
+    for (const call of step.toolCalls ?? []) {
+      const command = (call.input as { command?: string } | undefined)?.command;
+      if (
+        call.toolName === "bash" &&
+        command &&
+        isPrCreateBashCommand(command)
+      ) {
+        void advanceTaskBoardForRun(
+          opts.ctx,
+          "in_review",
+          opts.currentThreadId,
+        );
+        break;
+      }
+    }
+    return opts.onStepFinish?.(step);
+  };
 
   const handle = runNativeAgentLoopCore({
     model,

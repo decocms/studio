@@ -180,11 +180,18 @@ export class TaskBoardStorage {
   }
 
   async delete(id: string, organizationId: string): Promise<void> {
-    await this.db
-      .deleteFrom("task_board_items")
-      .where("id", "=", id)
-      .where("organization_id", "=", organizationId)
-      .execute();
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .deleteFrom("task_board_item_threads")
+        .where("task_board_item_id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .execute();
+      await trx
+        .deleteFrom("task_board_items")
+        .where("id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .execute();
+    });
   }
 
   /**
@@ -209,8 +216,12 @@ export class TaskBoardStorage {
       .execute();
   }
 
-  /** Task ids linked to a run thread (reverse of the many-to-many link). */
-  private async linkedTaskIds(
+  /**
+   * Task ids linked to a run thread (reverse of the many-to-many link). Public
+   * so a run-metadata-less caller (a PR opened on a re-prompted thread) can
+   * resolve its task the same way the thread-finish/reopen hooks do.
+   */
+  async linkedTaskIds(
     threadId: string,
     organizationId: string,
   ): Promise<string[]> {

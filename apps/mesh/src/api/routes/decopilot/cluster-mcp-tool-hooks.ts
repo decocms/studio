@@ -35,9 +35,14 @@ export interface ClusterMcpToolHooks {
  * Build the cluster `resolveArgs` + `onToolCalled` hooks from a
  * StudioContext. The closures are byte-equivalent to the originals that
  * lived in `helpers.ts`'s `toolsFromMCP` wrapper.
+ *
+ * `threadId` is passed through to the PR-open task-board reaction so it can
+ * resolve a linked task via `task_board_item_threads` when the run carries no
+ * `runMetadata.taskBoardItemId` (a re-prompted, repo-backed task's PR).
  */
 export function buildClusterMcpToolHooks(
   ctx: StudioContext,
+  threadId?: string,
 ): ClusterMcpToolHooks {
   return {
     resolveArgs: (input) => resolveArgsStorageRefs(input, ctx),
@@ -45,7 +50,7 @@ export function buildClusterMcpToolHooks(
       // A Super Agent task run just opened a PR via the GitHub MCP tool —
       // move its card to In Review. Fire-and-forget (no-ops off a task run).
       if (!event.isError && isPrCreateMcpTool(event.toolName)) {
-        void advanceTaskBoardForRun(ctx, "in_review");
+        void advanceTaskBoardForRun(ctx, "in_review", threadId);
       }
       const orgId = ctx.organization?.id;
       const userId = ctx.auth?.user?.id;
