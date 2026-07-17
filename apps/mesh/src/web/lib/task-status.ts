@@ -36,8 +36,8 @@ export const STATUS_CONFIG: Record<StatusKey, StatusConfig> = {
     label: "Needs review",
     verb: "Waiting for your review",
     icon: AlertCircle,
-    iconClassName: "text-orange-500",
-    labelColor: "text-orange-600 dark:text-orange-400",
+    iconClassName: "text-warning",
+    labelColor: "text-warning",
   },
   failed: {
     label: "Failed",
