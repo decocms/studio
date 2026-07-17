@@ -1151,8 +1151,15 @@ async function prepareRun(
       }
     }
 
-    // Purge stale buffered chunks from any previous run on this thread
-    streamBuffer?.purge(mem.thread.id);
+    // Purge stale buffered chunks from any PREVIOUS run on this thread — but
+    // NOT on resume. A resumed run (DBOS recovery after its owner pod died) IS
+    // "the previous run": purging here beheads the very chunk log its projector
+    // must replay, so replay hits a StreamGapError ("missing seq 1") and the
+    // recovered run is marked `failed` instead of completing. Recovery depends
+    // on the seq 1..N log surviving the pod that owned it.
+    if (!input.isResume) {
+      streamBuffer?.purge(mem.thread.id);
+    }
 
     let systemMessages: ChatMessage[] = [];
     let materializedRequestMessage: ChatMessage | undefined;
