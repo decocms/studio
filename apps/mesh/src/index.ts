@@ -6,7 +6,7 @@
  * Or: bun run src/index.ts
  */
 
-import { sleep } from "@decocms/std";
+import { retry, sleep } from "@decocms/std";
 // Side-effect-free queue names — safe to import before DBOS.setConfig (unlike
 // the workflow modules, which register workflows at import time).
 import {
@@ -183,8 +183,16 @@ await DBOS.launch({
 console.log(`[dbos] application version: ${DBOS.applicationVersion}`);
 // Post-launch DBOS setup (queue registration, schedule reconciliation).
 // Must run after launch because registerQueue / listSchedules require an
-// initialized executor.
-await app.initDbos();
+// initialized executor. Retry: registerQueue + reconcile are idempotent, so a
+// transient boot-time DB connect timeout (shared RDS under connection pressure)
+// retries instead of exiting the process — otherwise one blip crash-loops every
+// pod at once.
+await retry(() => app.initDbos(), {
+  maxAttempts: 5,
+  minTimeout: 1000,
+  maxTimeout: 10_000,
+  jitter: 0.5,
+});
 
 // When running via CLI, the calling script handles its own banner/config output
 if (!settings.isCli) {
