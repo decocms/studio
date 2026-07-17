@@ -442,10 +442,12 @@ export function TaskBoardItemDialog({
                 {/* Delegation: the Super Agent doing the work, nested under
                     the human who handed it off. */}
                 {isSuperAgent && assignedBy && (
-                  <div className="relative flex items-center pl-5">
+                  <div className="relative mt-1.5 flex items-center pl-5">
                     {/* Elbow drops from the center of the assigner's avatar
-                        (px-3 padding + half of the w-4 "2xs" avatar = 20px). */}
-                    <span className="absolute left-5 top-0 h-1/2 w-2.5 rounded-bl-md border-b border-l border-border" />
+                        (px-3 padding + half of the w-4 "2xs" avatar = 20px).
+                        Starts 6px above the row to bridge the mt-1.5 gap and
+                        still land at this row's vertical center. */}
+                    <span className="absolute -top-1.5 left-5 h-[calc(50%+0.375rem)] w-2.5 rounded-bl-md border-b border-l border-border" />
                     <span
                       className={cn(PROPERTY_BUTTON, "pointer-events-none")}
                     >
