@@ -9,8 +9,7 @@ import {
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
 import { requireTaskBoardEnabled } from "./require-enabled";
-import { enqueueSuperAgentForTask } from "./enqueue-super-agent";
-import { emitTaskBoardUpdated } from "./run-reactions";
+import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
   name: "TASK_BOARD_ITEM_UPDATE",
@@ -83,13 +82,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       getUserId(ctx)!,
     );
 
+    // Only the transition INTO Super Agent reacts — a later edit of an
+    // already-delegated task must not re-enqueue.
     if (becameSuperAgent) {
-      emitTaskBoardUpdated(organizationId, item);
-      // Best-effort: the task is already persisted, so a dispatch failure
-      // (e.g. no model configured) must not fail the update.
-      await enqueueSuperAgentForTask(ctx, item).catch((err) => {
-        console.error("[task-board] Super Agent enqueue failed", err);
-      });
+      await reactToSuperAgentDelegation(ctx, item);
     }
 
     return { item };
