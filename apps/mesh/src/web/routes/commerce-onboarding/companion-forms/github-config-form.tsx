@@ -28,6 +28,11 @@ import {
   findGithubInstallation,
 } from "@/web/lib/github-installations";
 import { provisionRepoScopedGithubConnection } from "@/web/lib/provision-repo-scoped-github-connection";
+import {
+  parseRepoFullName,
+  planAgentConnections,
+  planRepoReuse,
+} from "./report-agent-repo-plan";
 import { unwrapToolResult } from "../companions-core.ts";
 import { SelectableList } from "./selectable-list.tsx";
 import { LoadingIndicator } from "../loading-indicator.tsx";
@@ -226,12 +231,13 @@ export function GitHubConfigForm({
       // anonymously (fails on a private store repo), so provision a repo-scoped
       // GitHub connection (same path the repo picker uses) and store its
       // `connectionId` so the clone is authenticated.
-      const [owner, name] = githubRepo.split("/");
-      if (!owner || !name) {
+      const parsed = parseRepoFullName(githubRepo);
+      if (!parsed) {
         throw new Error(
           `Repositório inválido: "${githubRepo}". Use o formato owner/nome.`,
         );
       }
+      const { owner, name } = parsed;
       const agentId = getCommerceDiscoveryAgentId(org.id);
 
       const agentItem = unwrapToolResult<{
@@ -250,13 +256,7 @@ export function GitHubConfigForm({
 
       // Reuse the existing repo-scoped connection when the same repo is
       // re-saved so a no-op save doesn't orphan a fresh connection each time.
-      // GitHub owner/name are case-insensitive, so compare lowercased.
-      const reuse =
-        existingRepo?.connectionId &&
-        existingRepo.owner.toLowerCase() === owner.toLowerCase() &&
-        existingRepo.name.toLowerCase() === name.toLowerCase()
-          ? existingRepo
-          : null;
+      const reuse = planRepoReuse({ existingRepo, owner, name });
 
       let repoConnectionId = reuse?.connectionId;
       let installationId = reuse?.installationId;
@@ -302,31 +302,18 @@ export function GitHubConfigForm({
         provisionedConnectionId = childConnectionId;
       }
 
-      // A previous save may have linked a different repo with its own
-      // repo-scoped connection. The metadata write below overwrites it, and
-      // COLLECTION_VIRTUAL_MCP_UPDATE does no cascade — so once it's no longer
-      // referenced, delete it (after the write succeeds) or it leaks a
-      // connection + its vault token on every repo switch.
-      const staleConnectionId =
-        existingRepo?.connectionId &&
-        existingRepo.connectionId !== repoConnectionId
-          ? existingRepo.connectionId
-          : undefined;
-
       // Aggregate the repo-scoped connection onto the agent — `git publish`
       // (parseGithubRepoFromMetadata) only trusts `githubRepo.connectionId` when
-      // it's one of the agent's connections. `selected_tools: []` keeps it as a
-      // credential-only link without surfacing GitHub tools on the report agent.
-      // Drop the stale one from the list so the de-aggregation lands before its
-      // delete below (child_connection_id is ON DELETE RESTRICT, migration 026).
-      const mergedConnections = [
-        ...existingConnections.filter(
-          (c) =>
-            c.connection_id !== repoConnectionId &&
-            c.connection_id !== staleConnectionId,
-        ),
-        { connection_id: repoConnectionId, selected_tools: [] },
-      ];
+      // it's one of the agent's connections. A previous save may have linked a
+      // different repo whose connection now leaks (metadata overwrite does no
+      // cascade); planAgentConnections drops it from the list so the
+      // de-aggregation lands before its delete below (child_connection_id is
+      // ON DELETE RESTRICT, migration 026).
+      const { staleConnectionId, mergedConnections } = planAgentConnections({
+        existingRepo,
+        existingConnections,
+        repoConnectionId,
+      });
 
       try {
         await selfClient.callTool({
