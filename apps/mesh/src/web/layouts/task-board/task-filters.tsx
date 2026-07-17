@@ -7,6 +7,15 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerFooter,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@deco/ui/components/drawer.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,6 +76,14 @@ function hasActiveFilters(f: TaskFilters): boolean {
   return f.assignee !== null || f.priority !== null || f.due !== null;
 }
 
+function activeFilterCount(f: TaskFilters): number {
+  return (
+    (f.assignee !== null ? 1 : 0) +
+    (f.priority !== null ? 1 : 0) +
+    (f.due !== null ? 1 : 0)
+  );
+}
+
 const DAY_MS = 86_400_000;
 
 function isSameDay(a: number, b: number): boolean {
@@ -113,10 +130,14 @@ const DUE_OPTIONS: { value: DueFilter; label: string }[] = [
   { value: "none", label: "No due date" },
 ];
 
-/** Shared trigger styling — a compact chip that fills in when a value is set. */
-function chipClass(active: boolean): string {
+/**
+ * Shared trigger styling — a compact chip that fills in when a value is set.
+ * `block` makes it a full-width row for the mobile filter drawer.
+ */
+function chipClass(active: boolean, block = false): string {
   return cn(
     "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium outline-none transition-colors",
+    block && "h-10 w-full justify-start px-3 text-sm",
     active
       ? "border-transparent bg-accent text-foreground"
       : "border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground",
@@ -127,10 +148,12 @@ function AssigneeFilter({
   value,
   members,
   onChange,
+  block,
 }: {
   value: string | null;
   members: Member[];
   onChange: (next: string | null) => void;
+  block?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -159,7 +182,8 @@ function AssigneeFilter({
     setOpen(false);
   };
 
-  const triggerClass = chipClass(value !== null);
+  const triggerClass = chipClass(value !== null, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -167,7 +191,7 @@ function AssigneeFilter({
         <button type="button" className={triggerClass}>
           {glyph}
           <span className="max-w-[10rem] truncate">{label}</span>
-          <ChevronDown size={12} className="shrink-0 opacity-60" />
+          <ChevronDown size={12} className={chevronClass} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-56 p-0">
@@ -224,11 +248,14 @@ function AssigneeFilter({
 function PriorityFilter({
   value,
   onChange,
+  block,
 }: {
   value: TaskBoardItemPriority | null;
   onChange: (next: TaskBoardItemPriority | null) => void;
+  block?: boolean;
 }) {
-  const triggerClass = chipClass(value !== null);
+  const triggerClass = chipClass(value !== null, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -244,7 +271,7 @@ function PriorityFilter({
             <Flag01 size={14} className="shrink-0" />
           )}
           {value ? PRIORITY_CONFIG[value].label : "Priority"}
-          <ChevronDown size={12} className="shrink-0 opacity-60" />
+          <ChevronDown size={12} className={chevronClass} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-40">
@@ -274,19 +301,22 @@ function PriorityFilter({
 function DueDateFilter({
   value,
   onChange,
+  block,
 }: {
   value: DueFilter | null;
   onChange: (next: DueFilter | null) => void;
+  block?: boolean;
 }) {
   const label = DUE_OPTIONS.find((o) => o.value === value)?.label;
-  const triggerClass = chipClass(value !== null);
+  const triggerClass = chipClass(value !== null, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button type="button" className={triggerClass}>
           <Calendar size={14} className="shrink-0" />
           {label ?? "Due date"}
-          <ChevronDown size={12} className="shrink-0 opacity-60" />
+          <ChevronDown size={12} className={chevronClass} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-44">
@@ -318,6 +348,41 @@ function DueDateFilter({
   );
 }
 
+/** The three filter controls, shared by the inline bar and the mobile drawer. */
+function FilterControls({
+  filters,
+  members,
+  onChange,
+  block,
+}: {
+  filters: TaskFilters;
+  members: Member[];
+  onChange: (next: TaskFilters) => void;
+  block?: boolean;
+}) {
+  return (
+    <>
+      <AssigneeFilter
+        block={block}
+        value={filters.assignee}
+        members={members}
+        onChange={(assignee) => onChange({ ...filters, assignee })}
+      />
+      <PriorityFilter
+        block={block}
+        value={filters.priority}
+        onChange={(priority) => onChange({ ...filters, priority })}
+      />
+      <DueDateFilter
+        block={block}
+        value={filters.due}
+        onChange={(due) => onChange({ ...filters, due })}
+      />
+    </>
+  );
+}
+
+/** Inline filter bar for desktop widths. */
 export function TaskFiltersBar({
   filters,
   members,
@@ -333,19 +398,7 @@ export function TaskFiltersBar({
         size={16}
         className="mr-0.5 shrink-0 text-muted-foreground"
       />
-      <AssigneeFilter
-        value={filters.assignee}
-        members={members}
-        onChange={(assignee) => onChange({ ...filters, assignee })}
-      />
-      <PriorityFilter
-        value={filters.priority}
-        onChange={(priority) => onChange({ ...filters, priority })}
-      />
-      <DueDateFilter
-        value={filters.due}
-        onChange={(due) => onChange({ ...filters, due })}
-      />
+      <FilterControls filters={filters} members={members} onChange={onChange} />
       {hasActiveFilters(filters) && (
         <button
           type="button"
@@ -356,5 +409,66 @@ export function TaskFiltersBar({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * Mobile filters: a single button (with an active-count badge) that opens a
+ * bottom drawer holding the controls full-width — instead of the inline bar
+ * wrapping across several rows on a narrow header.
+ */
+export function TaskFiltersDrawer({
+  filters,
+  members,
+  onChange,
+}: {
+  filters: TaskFilters;
+  members: Member[];
+  onChange: (next: TaskFilters) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const count = activeFilterCount(filters);
+  const triggerClass = chipClass(count > 0);
+  return (
+    <Drawer open={open} onOpenChange={setOpen} direction="bottom">
+      <DrawerTrigger asChild>
+        <button type="button" className={triggerClass}>
+          <FilterLines size={14} className="shrink-0" />
+          Filters
+          {count > 0 && (
+            <span className="ml-0.5 flex size-4 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background">
+              {count}
+            </span>
+          )}
+        </button>
+      </DrawerTrigger>
+      <DrawerContent className="p-0">
+        <DrawerTitle className="px-4 pt-4 text-base font-medium text-foreground">
+          Filters
+        </DrawerTitle>
+        <div className="flex flex-col gap-2 p-4">
+          <FilterControls
+            block
+            filters={filters}
+            members={members}
+            onChange={onChange}
+          />
+        </div>
+        <DrawerFooter className="flex-row gap-2">
+          {count > 0 && (
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => onChange(EMPTY_FILTERS)}
+            >
+              Clear all
+            </Button>
+          )}
+          <DrawerClose asChild>
+            <Button className="flex-1">Done</Button>
+          </DrawerClose>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 }

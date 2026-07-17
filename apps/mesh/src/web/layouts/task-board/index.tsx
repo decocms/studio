@@ -40,6 +40,7 @@ import { TaskBoardItemDialog } from "./task-dialog";
 import {
   EMPTY_FILTERS,
   TaskFiltersBar,
+  TaskFiltersDrawer,
   taskMatchesFilters,
   type TaskFilters,
 } from "./task-filters";
@@ -224,18 +225,29 @@ export function TaskBoardPage() {
       <div className="flex flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
         <h1 className="text-xl font-medium text-foreground">Tasks</h1>
 
-        {/* Toolbar — filters on the left, view toggle + New task aligned to
-            their right. Controls take their own full-width row on mobile. */}
+        {/* Toolbar — filters on the left (inline bar on desktop, a single
+            drawer button on mobile), view toggle + New task on the right. */}
         <div className="flex flex-wrap items-center gap-2">
           {items.length > 0 && (
-            <TaskFiltersBar
-              filters={filters}
-              members={members}
-              onChange={setFilters}
-            />
+            <>
+              <div className="sm:hidden">
+                <TaskFiltersDrawer
+                  filters={filters}
+                  members={members}
+                  onChange={setFilters}
+                />
+              </div>
+              <div className="hidden sm:block">
+                <TaskFiltersBar
+                  filters={filters}
+                  members={members}
+                  onChange={setFilters}
+                />
+              </div>
+            </>
           )}
 
-          <div className="flex w-full items-center justify-between gap-2 sm:ml-auto sm:w-auto sm:justify-end">
+          <div className="ml-auto flex items-center gap-2">
             <div className="inline-flex rounded-lg bg-muted p-0.5">
               <LayoutToggle
                 active={layout === "list"}
