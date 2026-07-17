@@ -525,7 +525,7 @@ export function MonitorDashboard({
                 <div
                   className={cn(
                     "h-full transition-all duration-500",
-                    run.failed_items > 0 ? "bg-orange-500" : "bg-emerald-500",
+                    run.failed_items > 0 ? "bg-warning" : "bg-success",
                     isRunning ? "animate-pulse" : "",
                   )}
                   style={{ width: `${pct(run)}%` }}
