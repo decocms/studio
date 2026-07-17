@@ -213,8 +213,10 @@ export async function runAgentLoop(
   // Watch each step's bash calls for `gh pr create` (or a REST fallback) and
   // move a linked task card to In Review. The scan itself is a cheap per-step
   // array walk, so it's unconditional — a normal run never has a `bash` call
-  // matching the PR regexes, and `advanceTaskBoardForRun` only touches the DB
-  // when one does. (The GitHub MCP tool path is caught separately via
+  // matching the PR regexes, and `advanceTaskBoardForRun` hits the DB only when
+  // one does: a link SELECT to resolve the target, then a write only if that
+  // run is actually task-linked (a non-task match reads nothing to update).
+  // (The GitHub MCP tool path is caught separately via
   // `onToolCalled`, whose raw tool name is reliable; here the model-facing tool
   // name can be mangled, so we key off the built-in `bash` tool + its command.)
   // `currentThreadId` lets the resolution fall back to the thread link when the

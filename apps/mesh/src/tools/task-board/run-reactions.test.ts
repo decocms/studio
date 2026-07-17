@@ -1,5 +1,34 @@
 import { describe, expect, it } from "bun:test";
-import { isPrCreateBashCommand, isPrCreateMcpTool } from "./run-reactions";
+import {
+  isPrCreateBashCommand,
+  isPrCreateMcpTool,
+  resolveAdvanceTargets,
+} from "./run-reactions";
+
+describe("resolveAdvanceTargets", () => {
+  it("uses the metadata item alone when present (the task's own run)", () => {
+    expect(resolveAdvanceTargets("item-1", [])).toEqual(["item-1"]);
+  });
+
+  it("never unions metadata with the thread link", () => {
+    // The task's own run: metadata wins, link rows are ignored even if present.
+    expect(resolveAdvanceTargets("item-1", ["item-2", "item-3"])).toEqual([
+      "item-1",
+    ]);
+  });
+
+  it("falls back to the thread link when there is no metadata", () => {
+    // A re-prompted, repo-backed task's 2nd PR carries no run metadata.
+    expect(resolveAdvanceTargets(undefined, ["item-2", "item-3"])).toEqual([
+      "item-2",
+      "item-3",
+    ]);
+  });
+
+  it("targets nothing when neither resolves (a normal run)", () => {
+    expect(resolveAdvanceTargets(undefined, [])).toEqual([]);
+  });
+});
 
 describe("isPrCreateMcpTool", () => {
   it("matches the GitHub MCP PR-create tools", () => {
