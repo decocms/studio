@@ -53,6 +53,10 @@ export const KEYS = {
 
   commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "connection", orgId, connectionId] as const,
+  // Owner diagnostic (get_my_diagnostic) polled by the home report banner —
+  // keyed per org; the store itself is pinned by the connection's token.
+  commerceDiscoveryDiagnostic: (orgId: string) =>
+    ["commerce-discovery", "diagnostic", orgId] as const,
   commerceDiscoveryVirtualMcp: (orgId: string, virtualMcpId: string) =>
     ["commerce-discovery", "virtual-mcp", orgId, virtualMcpId] as const,
 

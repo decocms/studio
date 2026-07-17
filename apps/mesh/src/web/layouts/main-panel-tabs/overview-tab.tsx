@@ -18,6 +18,7 @@ import {
   HomeEditProvider,
   useHomeEdit,
 } from "@/web/components/home/home-edit-context";
+import { CommerceReportBanner } from "@/web/components/home/commerce-report-banner";
 import { HomeGrid } from "@/web/components/home/home-grid";
 import { AddTileDrawer } from "@/web/components/home/add-tile-drawer";
 import { HomeTasks } from "@/web/components/home/home-tasks";
@@ -99,6 +100,9 @@ function OverviewBoard() {
         {/* Fixed top: the agent "resume" (summary + Super Agent icon) and the
             tasks that need attention. Not tiles. */}
         <HomeTasks />
+        {/* Commerce diagnostic banner — self-hides for orgs without the
+            Commerce Discovery connection. */}
+        <CommerceReportBanner />
         {/* The metric cards live on the customizable tile board below. */}
         <div className="flex flex-col gap-4">
           {/* Commerce (reports-only) home is curated: no Customize, so the
