@@ -15,6 +15,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement, useSyncExternalStore } from "react";
 import {
+  getCommerceDiscoveryAgentId,
   getDevConnectionId,
   useConnections,
   useMCPClientOptional,
@@ -57,7 +58,10 @@ import {
   type AutomationTabParsed,
 } from "./tab-id";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
-import { getSourceSystemTabs } from "./source-system-tabs";
+import {
+  getSourceSystemTabs,
+  shouldDeepLinkSourceTab,
+} from "./source-system-tabs";
 import { useCapability } from "@/web/hooks/use-capability";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
@@ -316,7 +320,14 @@ export function useMainPanelTabs(ctx: {
   if (effectiveDefaultMainView?.type === "overview") {
     leadingSystemTabs.push({ id: "overview", title: "Overview" });
   }
-  leadingSystemTabs.push(...getSourceSystemTabs(hasClonableSource));
+  // Reports-only orgs get a persistent Preview/Code entry point to their
+  // storefront regardless of which agent/screen they're on — visibility is
+  // keyed to the settled org flag, not to whether the current agent happens to
+  // have a mirrored `githubRepo`. Clicking from off the Report Agent deep-links
+  // into it (see setActiveTab).
+  leadingSystemTabs.push(
+    ...getSourceSystemTabs(hasClonableSource || reportsOnly),
+  );
 
   const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasClonableSource && showContentTab) {
@@ -489,7 +500,23 @@ export function useMainPanelTabs(ctx: {
     })),
   ];
 
+  const onReportAgent =
+    ctx.virtualMcpId === getCommerceDiscoveryAgentId(org.id);
+
   const setActiveTab = (id: string) => {
+    // On a reports-only org sitting on any shell other than the Report Agent
+    // (e.g. the Super Agent home), the storefront preview lives on the Report
+    // Agent — so deep-link into it with the panel open instead of trying to
+    // preview the current agent, which has no source. On the Report Agent
+    // itself this falls through to the normal tab-toggle below.
+    if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: id })) {
+      navigate({
+        to: "/$org/$taskId",
+        params: { org: org.slug, taskId: crypto.randomUUID() },
+        search: { virtualmcpid: getCommerceDiscoveryAgentId(org.id), main: id },
+      });
+      return;
+    }
     const target = resolveTabClickTarget({
       clickedId: id,
       activeTab,
