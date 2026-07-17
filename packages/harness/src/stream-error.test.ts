@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   classifyStreamError,
   isCreditError,
+  mcpConnectionErrorMessage,
   sanitizeStreamError,
 } from "./stream-error";
 
@@ -37,6 +38,40 @@ describe("sanitizeStreamError", () => {
 
   it("falls back to JSON for opaque objects without a message", () => {
     expect(sanitizeStreamError({ foo: "bar" })).toContain("foo");
+  });
+});
+
+describe("mcpConnectionErrorMessage", () => {
+  const AUTH_RAW =
+    'Streamable HTTP error: Error POSTing to endpoint: {"jsonrpc":"2.0","error":{"code":-32000,"message":"Unauthorized: Authentication required"},"id":null}';
+
+  it("maps a downstream 401 to a re-auth message", () => {
+    expect(mcpConnectionErrorMessage(AUTH_RAW)).toMatch(/re-authenticated/i);
+  });
+
+  it("maps an open circuit breaker to a temporarily-unreachable message", () => {
+    const raw =
+      "Connection conn_l6eqXMhVzGPAYKHCdLRP0 circuit breaker is open — downstream server unreachable. Retry in 7s.";
+    expect(mcpConnectionErrorMessage(raw)).toMatch(/temporarily unreachable/i);
+  });
+
+  it("maps a non-auth MCP transport failure to a generic reach message", () => {
+    const raw =
+      "Streamable HTTP error: Error POSTing to endpoint: 502 Bad Gateway";
+    expect(mcpConnectionErrorMessage(raw)).toMatch(/couldn't reach/i);
+  });
+
+  it("does NOT map a model-provider auth failure (no MCP markers)", () => {
+    expect(
+      mcpConnectionErrorMessage("Incorrect API key provided. 401 Unauthorized"),
+    ).toBeNull();
+  });
+
+  it("sanitizeStreamError returns the friendly text, never the raw -32000 blob", () => {
+    const out = sanitizeStreamError(new Error(AUTH_RAW));
+    expect(out).not.toContain("-32000");
+    expect(out).not.toContain("jsonrpc");
+    expect(out).toMatch(/re-authenticated/i);
   });
 });
 

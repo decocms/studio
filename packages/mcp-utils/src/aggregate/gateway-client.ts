@@ -296,6 +296,31 @@ export class GatewayClient extends Client {
   // Auto-pagination helpers
   // ---------------------------------------------------------------------------
 
+  /**
+   * Resolve one upstream client and list its items, tolerating failure. A
+   * single unreachable/unauthenticated connection (401, circuit-breaker-open,
+   * transport error) must NOT abort the whole aggregation — that would take
+   * down the entire agent run over one broken connection. Log and contribute
+   * nothing instead; the caller degrades to the connections that did resolve.
+   */
+  private async listFromClient<T>(
+    clientKey: string,
+    fetchAll: (client: IClient) => Promise<T[]>,
+    kind: string,
+  ): Promise<T[]> {
+    try {
+      const client = await this.resolveClient(clientKey);
+      return await fetchAll(client);
+    } catch (err) {
+      console.warn(
+        `GatewayClient: skipping ${kind} from client "${clientKey}" — ${
+          (err as Error)?.message ?? err
+        }`,
+      );
+      return [];
+    }
+  }
+
   private async fetchAllTools(client: IClient): Promise<Tool[]> {
     const tools: Tool[] = [];
     let cursor: string | undefined;
@@ -364,8 +389,11 @@ export class GatewayClient extends Client {
     const tools: Tool[] = [];
 
     for (const [clientKey, entry] of Object.entries(this.clients)) {
-      const client = await this.resolveClient(clientKey);
-      const clientTools = await this.fetchAllTools(client);
+      const clientTools = await this.listFromClient(
+        clientKey,
+        (c) => this.fetchAllTools(c),
+        "tools",
+      );
 
       const selected = entry.tools;
       const selectedSet = selected ? new Set(selected) : null;
@@ -403,8 +431,11 @@ export class GatewayClient extends Client {
     const routeMap = new Map<string, string>();
 
     for (const [clientKey, entry] of Object.entries(this.clients)) {
-      const client = await this.resolveClient(clientKey);
-      const clientResources = await this.fetchAllResources(client);
+      const clientResources = await this.listFromClient(
+        clientKey,
+        (c) => this.fetchAllResources(c),
+        "resources",
+      );
 
       const selected = entry.resources;
       const selectedSet = selected ? new Set(selected) : null;
@@ -455,8 +486,11 @@ export class GatewayClient extends Client {
     const resourceTemplates: ResourceTemplate[] = [];
 
     for (const [clientKey, _entry] of Object.entries(this.clients)) {
-      const client = await this.resolveClient(clientKey);
-      const clientTemplates = await this.fetchAllResourceTemplates(client);
+      const clientTemplates = await this.listFromClient(
+        clientKey,
+        (c) => this.fetchAllResourceTemplates(c),
+        "resource templates",
+      );
 
       for (const template of clientTemplates) {
         if (seen.has(template.uriTemplate)) {
@@ -494,8 +528,11 @@ export class GatewayClient extends Client {
     const prompts: Prompt[] = [];
 
     for (const [clientKey, entry] of Object.entries(this.clients)) {
-      const client = await this.resolveClient(clientKey);
-      const clientPrompts = await this.fetchAllPrompts(client);
+      const clientPrompts = await this.listFromClient(
+        clientKey,
+        (c) => this.fetchAllPrompts(c),
+        "prompts",
+      );
 
       const selected = entry.prompts;
       const selectedSet = selected ? new Set(selected) : null;
