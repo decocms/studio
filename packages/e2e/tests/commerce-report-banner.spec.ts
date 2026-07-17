@@ -121,12 +121,11 @@ test.describe("commerce report banner", () => {
     const { page, orgSlug } = authedPage;
     // Register before navigating so we don't miss the response if the gate
     // resolves before we can await below (the app has persistent SSE
-    // connections so waitForLoadState("networkidle") never settles).
+    // connections so waitForLoadState("networkidle") never settles). The self
+    // client calls builtin tools over REST (POST /api/:org/tools/:name), so
+    // the tool name is in the URL path, not the /mcp/self body.
     const connectionGateDone = page.waitForResponse(
-      (resp) =>
-        resp.url().includes("/mcp/self") &&
-        (resp.request().postData()?.includes("COLLECTION_CONNECTIONS_GET") ??
-          false),
+      (resp) => resp.url().includes("/tools/COLLECTION_CONNECTIONS_GET"),
       { timeout: HOME_TIMEOUT_MS },
     );
     await waitForHome(page, orgSlug);
