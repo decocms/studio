@@ -6,7 +6,7 @@
  * kanban shows, with status tabs. Always present above the customizable card
  * board (the metric tiles).
  */
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
@@ -145,7 +145,7 @@ function buildSummary(tasks: TaskBoardItem[]): string {
   return notes.length > 0 ? `${lead} ${notes.join(" ")}` : lead;
 }
 
-export function HomeTasks() {
+export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
   const navigate = useNavigate();
   const { items, error } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
@@ -180,6 +180,8 @@ export function HomeTasks() {
           {summary}
         </p>
       </div>
+
+      {afterSummary}
 
       <section className="flex flex-col gap-4">
         <div className="flex items-center gap-3">

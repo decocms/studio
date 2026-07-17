@@ -40,10 +40,7 @@ import {
   shouldOffload,
   type MessagesRef,
 } from "@decocms/harness/offload-messages";
-import {
-  findStudioPackAgentByMcpId,
-  resolveStudioPackRuntime,
-} from "@/tools/virtual/studio-pack";
+import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
 import { computeClaimHandle } from "@/sandbox/claim-handle";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 import { normalizeCoAuthorIdentity } from "@decocms/sandbox/shared";
@@ -782,28 +779,12 @@ export async function resolveEffectiveVirtualMcpForHarness({
   organizationId: string;
   ctx: StudioContext;
 }): Promise<VirtualMCPEntity> {
-  const studioPackAgent = findStudioPackAgentByMcpId(agentId);
-  if (!studioPackAgent) return virtualMcp;
-
-  const resolved = await resolveStudioPackRuntime(studioPackAgent, {
-    orgId: organizationId,
+  return resolveEffectiveStudioPackVirtualMcp({
+    virtualMcp,
+    agentId,
+    organizationId,
     ctx,
   });
-  const selectedTools = resolved.selectedTools
-    ? [...resolved.selectedTools]
-    : null;
-
-  return {
-    ...virtualMcp,
-    metadata: {
-      ...((virtualMcp.metadata as Record<string, unknown>) ?? {}),
-      instructions: resolved.instructions,
-    },
-    connections: virtualMcp.connections.map((connection) => ({
-      ...connection,
-      selected_tools: selectedTools,
-    })),
-  };
 }
 
 /**

@@ -1,5 +1,12 @@
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { ImageField } from "@/web/components/sections-editor/fields/image-field";
 import { buildBlogBlock, getBlogPayload, type BlogKind } from "./blog-data";
@@ -13,13 +20,24 @@ type RecordKind = Extract<BlogKind, "authors">;
 interface FieldDef {
   key: string;
   label: string;
-  widget: "text" | "textarea" | "image";
+  widget: "text" | "textarea" | "image" | "select";
   placeholder?: string;
+  /** Choices for the "select" widget; the first one is the display default. */
+  options?: Array<{ value: string; label: string }>;
 }
 
 const FIELDS: Record<RecordKind, FieldDef[]> = {
   authors: [
     { key: "name", label: "Name", widget: "text" },
+    {
+      key: "type",
+      label: "Type",
+      widget: "select",
+      options: [
+        { value: "Person", label: "Person" },
+        { value: "Organization", label: "Organization" },
+      ],
+    },
     {
       key: "email",
       label: "Email",
@@ -83,6 +101,25 @@ export function RecordEditor({
                   path={field.key}
                   label={field.label}
                 />
+              ) : field.widget === "select" ? (
+                <>
+                  <Label htmlFor={field.key}>{field.label}</Label>
+                  <Select
+                    value={str(payload[field.key]) || field.options?.[0]?.value}
+                    onValueChange={(v) => setField(field.key, v)}
+                  >
+                    <SelectTrigger id={field.key} className="h-10 w-full">
+                      <SelectValue placeholder={field.label} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(field.options ?? []).map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
               ) : (
                 <>
                   <Label htmlFor={field.key}>{field.label}</Label>

@@ -145,4 +145,40 @@ describe("installStudioPack", () => {
       "COLLECTION_CONNECTIONS_GET",
     ]);
   });
+
+  test("overwrites stale tool selections on an existing API Key Manager", async () => {
+    await installStudioPack(orgId, userId, virtualMcpStorage);
+    const managerId = StudioPackAgentId.API_KEY_MANAGER(orgId);
+
+    await virtualMcpStorage.update(managerId, userId, {
+      metadata: {
+        instructions: "Never reproduce the key value in your response.",
+      },
+      connections: [
+        {
+          connection_id: WellKnownOrgMCPId.SELF(orgId),
+          selected_tools: ["COLLECTION_CONNECTIONS_LIST"],
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ],
+    });
+
+    await installStudioPack(orgId, userId, virtualMcpStorage);
+    const manager = await virtualMcpStorage.findById(managerId, orgId);
+
+    expect(manager?.connections[0]?.selected_tools).toEqual([
+      "API_KEY_CREATE",
+      "API_KEY_LIST",
+      "API_KEY_UPDATE",
+      "API_KEY_DELETE",
+      "COLLECTION_VIRTUAL_MCP_LIST",
+      "COLLECTION_VIRTUAL_MCP_GET",
+      "COLLECTION_CONNECTIONS_LIST",
+      "COLLECTION_CONNECTIONS_GET",
+    ]);
+    expect(manager?.metadata?.instructions).toContain(
+      "print that value exactly once in a fenced plain-text code block",
+    );
+  });
 });

@@ -32,11 +32,13 @@ import {
   Calendar,
   CheckCircle,
   ChevronRight,
+  DotsHorizontal,
   HelpCircle,
   Loading02,
   Plus,
   Trash03,
   User01,
+  UserPlus01,
   X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/web/components/super-agent-icon";
@@ -81,9 +83,12 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
 });
 
-/** Sidebar property row — ghost button that opens an editor popover/menu. */
+/**
+ * Property control that opens an editor popover/menu. Outlined chip on mobile
+ * (wrapping row); a borderless ghost row in the desktop sidebar.
+ */
 const PROPERTY_BUTTON =
-  "inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted";
+  "inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:border-transparent";
 
 const THREAD_STATUS: Record<
   NonNullable<TaskBoardItemThread["status"]>,
@@ -117,6 +122,7 @@ export function TaskBoardItemDialog({
   open,
   onClose,
   item,
+  defaultStatus,
   onSubmit,
   onDelete,
   onOpenThread,
@@ -126,6 +132,9 @@ export function TaskBoardItemDialog({
   onClose: () => void;
   /** Present in edit mode, prefills the form. */
   item?: TaskBoardItem;
+  /** In create mode, the status to start the new task in (e.g. the lane the
+   * "+" was clicked from). Falls back to "triage". */
+  defaultStatus?: TaskBoardItemStatus;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -144,7 +153,7 @@ export function TaskBoardItemDialog({
   const [title, setTitle] = useState(item?.title ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
   const [status, setStatus] = useState<TaskBoardItemStatus>(
-    item?.status ?? "triage",
+    item?.status ?? defaultStatus ?? "triage",
   );
   const [priority, setPriority] = useState<TaskBoardItemPriority>(
     item?.priority ?? "medium",
@@ -161,7 +170,7 @@ export function TaskBoardItemDialog({
   const reset = () => {
     setTitle(item?.title ?? "");
     setDescription(item?.description ?? "");
-    setStatus(item?.status ?? "triage");
+    setStatus(item?.status ?? defaultStatus ?? "triage");
     setPriority(item?.priority ?? "medium");
     setAssigneeId(item?.assigneeId ?? null);
     setDueDate(parseIsoDate(item?.dueDate));
@@ -196,7 +205,7 @@ export function TaskBoardItemDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent
-        className="flex h-[85vh] max-h-[640px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[850px]"
+        className="flex max-h-[90vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:h-[85vh] sm:max-h-[640px] sm:max-w-[850px]"
         closeButtonClassName="hidden"
       >
         <DialogTitle className="sr-only">
@@ -212,9 +221,10 @@ export function TaskBoardItemDialog({
           <X size={16} />
         </button>
 
-        <div className="flex min-h-0 flex-1">
-          {/* Editor pane */}
-          <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto p-8">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:flex-row sm:overflow-hidden">
+          {/* Editor pane — content-height on mobile so it doesn't leave a big
+              gap above the properties; fills the column on desktop. */}
+          <div className="flex min-w-0 flex-col gap-6 p-6 sm:flex-1 sm:overflow-y-auto sm:p-8">
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -227,7 +237,7 @@ export function TaskBoardItemDialog({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe a task for an agent..."
-              className="min-h-[120px] w-full flex-1 resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50"
+              className="min-h-[96px] w-full flex-1 resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[120px]"
             />
 
             {thread && (
@@ -239,13 +249,14 @@ export function TaskBoardItemDialog({
             )}
           </div>
 
-          {/* Properties pane */}
-          <div className="flex w-[220px] shrink-0 flex-col gap-4 border-l border-border px-6 py-10">
-            <span className="px-3 text-sm text-muted-foreground">
+          {/* Properties pane — wrapping chips under the editor on mobile, a
+              stacked sidebar on desktop. */}
+          <div className="flex w-full shrink-0 flex-col gap-4 border-t border-border p-6 sm:w-[220px] sm:border-t-0 sm:border-l sm:px-6 sm:py-10">
+            <span className="hidden px-3 text-sm text-muted-foreground sm:block">
               Properties
             </span>
 
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2 sm:flex-col">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button type="button" className={PROPERTY_BUTTON}>
@@ -278,14 +289,29 @@ export function TaskBoardItemDialog({
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button type="button" className={PROPERTY_BUTTON}>
-                    <span
-                      className={cn(
-                        "size-2 rounded-full",
-                        PRIORITY_CONFIG[priority].badgeClassName,
-                      )}
-                    />
-                    {PRIORITY_CONFIG[priority].label}
+                  <button
+                    type="button"
+                    className={cn(
+                      PROPERTY_BUTTON,
+                      priority === "none" && "text-muted-foreground",
+                    )}
+                  >
+                    {priority === "none" ? (
+                      <>
+                        <DotsHorizontal size={16} />
+                        Set priority
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          className={cn(
+                            "size-2 rounded-full",
+                            PRIORITY_CONFIG[priority].dotClassName,
+                          )}
+                        />
+                        {PRIORITY_CONFIG[priority].label}
+                      </>
+                    )}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-40">
@@ -294,7 +320,7 @@ export function TaskBoardItemDialog({
                       <span
                         className={cn(
                           "size-2 rounded-full",
-                          PRIORITY_CONFIG[p].badgeClassName,
+                          PRIORITY_CONFIG[p].dotClassName,
                         )}
                       />
                       {PRIORITY_CONFIG[p].label}
@@ -306,17 +332,46 @@ export function TaskBoardItemDialog({
               <div className="flex flex-col">
                 <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
                   <PopoverTrigger asChild>
-                    <button type="button" className={PROPERTY_BUTTON}>
+                    <button
+                      type="button"
+                      className={cn(
+                        PROPERTY_BUTTON,
+                        !assigneeId && "text-muted-foreground",
+                      )}
+                    >
                       {isSuperAgent && assignedBy ? (
                         <>
-                          <Avatar
-                            url={assignedBy.user?.image ?? undefined}
-                            fallback={getInitials(assignedBy.user?.name)}
-                            shape="circle"
-                            size="2xs"
-                          />
-                          <span className="truncate">
-                            {assignedBy.user?.name ?? "Super Agent"}
+                          {/* Desktop: the assigner; the Super Agent doing the
+                              work is the nested elbow row below. */}
+                          <span className="hidden items-center gap-2 sm:flex">
+                            <Avatar
+                              url={assignedBy.user?.image ?? undefined}
+                              fallback={getInitials(assignedBy.user?.name)}
+                              shape="circle"
+                              size="2xs"
+                            />
+                            <span className="truncate">
+                              {assignedBy.user?.name ?? "Super Agent"}
+                            </span>
+                          </span>
+                          {/* Mobile: no room for the elbow tree — fold the
+                              delegation into one chip, the assigner eclipsed by
+                              the Super Agent. */}
+                          <span className="flex items-center gap-2 sm:hidden">
+                            <span className="inline-flex items-center">
+                              <Avatar
+                                url={assignedBy.user?.image ?? undefined}
+                                fallback={getInitials(assignedBy.user?.name)}
+                                shape="circle"
+                                size="2xs"
+                                className="-mr-1.5 ring-2 ring-background"
+                              />
+                              <SuperAgentIcon
+                                size={16}
+                                className="ring-2 ring-background"
+                              />
+                            </span>
+                            Super Agent
                           </span>
                         </>
                       ) : isSuperAgent ? (
@@ -338,8 +393,11 @@ export function TaskBoardItemDialog({
                         </>
                       ) : (
                         <>
-                          <User01 size={16} className="text-muted-foreground" />
-                          Assignee
+                          <UserPlus01
+                            size={16}
+                            className="text-muted-foreground"
+                          />
+                          Assign
                         </>
                       )}
                     </button>
@@ -405,10 +463,15 @@ export function TaskBoardItemDialog({
                 </Popover>
 
                 {/* Delegation: the Super Agent doing the work, nested under
-                    the human who handed it off. */}
+                    the human who handed it off. Desktop only — on mobile the
+                    assignee chip folds this in (see above). */}
                 {isSuperAgent && assignedBy && (
-                  <div className="relative flex items-center pl-5">
-                    <span className="absolute left-3 top-0 h-1/2 w-2.5 rounded-bl-md border-b border-l border-border" />
+                  <div className="relative mt-1.5 hidden items-center pl-5 sm:flex">
+                    {/* Elbow drops from the center of the assigner's avatar
+                        (px-3 padding + half of the w-4 "2xs" avatar = 20px).
+                        Starts 6px above the row to bridge the mt-1.5 gap and
+                        still land at this row's vertical center. */}
+                    <span className="absolute -top-1.5 left-5 h-[calc(50%+0.375rem)] w-2.5 rounded-bl-md border-b border-l border-border" />
                     <span
                       className={cn(PROPERTY_BUTTON, "pointer-events-none")}
                     >
@@ -421,7 +484,13 @@ export function TaskBoardItemDialog({
 
               <Popover open={dueOpen} onOpenChange={setDueOpen}>
                 <PopoverTrigger asChild>
-                  <button type="button" className={PROPERTY_BUTTON}>
+                  <button
+                    type="button"
+                    className={cn(
+                      PROPERTY_BUTTON,
+                      !dueDate && "text-muted-foreground",
+                    )}
+                  >
                     <Calendar size={16} className="text-muted-foreground" />
                     {dueDate ? DUE_DATE_FMT.format(dueDate) : "Due date"}
                     {dueDate && (
