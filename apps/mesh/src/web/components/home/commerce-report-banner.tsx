@@ -190,9 +190,6 @@ function BannerShell({
       <MiniReportPage generating={generating} />
       <div className="relative flex h-36 items-center gap-6 pr-6 pl-6 sm:pl-52">
         <div className="hidden min-w-0 flex-1 flex-col gap-1 sm:flex">
-          <span className="text-xs font-medium text-muted-foreground">
-            Diagnóstico de commerce
-          </span>
           <span className="text-lg font-medium leading-6 text-foreground">
             {generating
               ? "Gerando seu diagnóstico"
@@ -200,15 +197,12 @@ function BannerShell({
           </span>
           <span className="truncate text-sm text-muted-foreground">
             {generating
-              ? `Analisando ${store}. Isso leva alguns minutos, acompanhe em tempo real.`
+              ? `Analisando ${store}. Isso leva alguns minutos.`
               : `Veja a análise completa de ${store}.`}
           </span>
         </div>
         {/* mobile: the page is hidden, keep the copy compact */}
         <div className="flex min-w-0 flex-1 flex-col gap-1 sm:hidden">
-          <span className="text-xs font-medium text-muted-foreground">
-            Diagnóstico de commerce
-          </span>
           <span className="text-base font-medium leading-6 text-foreground">
             {generating
               ? "Gerando seu diagnóstico"
