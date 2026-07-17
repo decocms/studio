@@ -10,6 +10,7 @@ import {
 import { assertValidAssignee } from "./validate-assignee";
 import { requireTaskBoardEnabled } from "./require-enabled";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { emitTaskBoardUpdated } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
   name: "TASK_BOARD_ITEM_UPDATE",
@@ -82,9 +83,11 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       getUserId(ctx)!,
     );
 
-    // Only the transition INTO Super Agent reacts — a later edit of an
-    // already-delegated task must not re-enqueue.
+    // Broadcast the delegation flip (assignee + forced To Do) so every open
+    // board reflects it live. Plain edits already round-trip through the
+    // mutation's optimistic patch + invalidate on the acting client.
     if (becameSuperAgent) {
+      emitTaskBoardUpdated(organizationId, item);
       await reactToSuperAgentDelegation(ctx, item);
     }
 

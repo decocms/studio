@@ -32,6 +32,12 @@ export function useTaskBoardItems() {
           : [patched, ...next];
       });
     },
+    // Live deletes: drop the removed card so it clears on every open board.
+    onDelete: (id) => {
+      queryClient.setQueryData<TaskBoardItem[]>(queryKey, (prev) =>
+        prev?.filter((t) => t.id !== id),
+      );
+    },
   });
 
   // Live run status of linked threads (in_progress / requires_action / …).
