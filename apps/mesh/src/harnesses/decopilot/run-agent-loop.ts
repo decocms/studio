@@ -212,7 +212,7 @@ export async function runAgentLoop(
   // normal runs pay nothing. (The GitHub MCP tool path is caught separately via
   // `onToolCalled`, whose raw tool name is reliable; here the model-facing tool
   // name can be mangled, so we key off the built-in `bash` tool + its command.)
-  const taskLinked = !!opts.ctx.metadata.runMetadata?.taskBoardItemId;
+  const taskLinked = !!opts.ctx.metadata?.runMetadata?.taskBoardItemId;
   const onStepFinish: StreamTextOnStepFinishCallback<ToolSet> | undefined =
     taskLinked
       ? (step) => {
