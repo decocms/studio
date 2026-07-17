@@ -119,9 +119,19 @@ test.describe("commerce report banner", () => {
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
+    // Register before navigating so we don't miss the response if the gate
+    // resolves before we can await below (the app has persistent SSE
+    // connections so waitForLoadState("networkidle") never settles).
+    const connectionGateDone = page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/mcp/self") &&
+        (resp.request().postData()?.includes("COLLECTION_CONNECTIONS_GET") ??
+          false),
+      { timeout: HOME_TIMEOUT_MS },
+    );
     await waitForHome(page, orgSlug);
-    // Wait for the connection gate query to settle before asserting absence.
-    await page.waitForLoadState("networkidle", { timeout: HOME_TIMEOUT_MS });
+    // Gate 1 resolved with { item: null } — banner correctly stays hidden.
+    await connectionGateDone;
     await expect(
       page.getByRole("button", { name: new RegExp(READY_TITLE) }),
     ).toHaveCount(0);
@@ -205,9 +215,15 @@ test.describe("commerce report banner", () => {
       orgId,
       "http://127.0.0.1:9/dead",
     );
+    // Register before navigating — the failing CD probe fires after the
+    // connection gate resolves and might complete before we await below.
+    const diagnosticFailed = page.waitForResponse(
+      (resp) => resp.url().includes(cdConnectionId(orgId)) && !resp.ok(),
+      { timeout: HOME_TIMEOUT_MS },
+    );
     await waitForHome(page, orgSlug);
-    // Wait for the connection gate + the failing client attempt to settle.
-    await page.waitForLoadState("networkidle", { timeout: HOME_TIMEOUT_MS });
+    // diagnosticQuery entered error state — banner stays hidden.
+    await diagnosticFailed;
     await expect(
       page.getByRole("button", { name: new RegExp(READY_TITLE) }),
     ).toHaveCount(0);
