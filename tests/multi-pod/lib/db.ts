@@ -114,3 +114,23 @@ export async function countThreadMessageParts(
   );
   return Number(rows[0]?.n ?? "0");
 }
+
+/**
+ * Count assistant parts that would actually RENDER in the chat — i.e. every
+ * kind except the `finish` anchor (text/reasoning/tool_call/tool_result/
+ * file/error). Zero of these on a terminal thread is exactly the
+ * "No response was generated" condition: a message with a finish anchor
+ * (or nothing) but no visible content. This is the invariant the
+ * rollout-churn scenario asserts.
+ */
+export async function countRenderableAssistantParts(
+  threadId: string,
+): Promise<number> {
+  const rows = await dbQuery<{ n: string }>(
+    `SELECT COUNT(*) AS n FROM thread_message_parts
+     WHERE thread_id = '${sqlLit(threadId)}'
+       AND role = 'assistant'
+       AND kind <> 'finish'`,
+  );
+  return Number(rows[0]?.n ?? "0");
+}
