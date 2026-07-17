@@ -18,7 +18,7 @@ export const TaskBoardItemPrioritySchema = z.enum([
 ]);
 
 /** A thread linked to a task, with the live run state the board renders. */
-export const TaskBoardItemThreadSchema = z.object({
+const TaskBoardItemThreadSchema = z.object({
   threadId: z.string(),
   virtualMcpId: z.string().nullable(),
   status: z

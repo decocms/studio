@@ -55,7 +55,7 @@ export async function advanceTaskBoardForRun(
   ctx: StudioContext,
   status: TaskBoardItemStatus,
 ): Promise<void> {
-  const itemId = ctx.metadata.runMetadata?.taskBoardItemId;
+  const itemId = ctx.metadata?.runMetadata?.taskBoardItemId;
   const orgId = ctx.organization?.id;
   if (!itemId || !orgId) return;
   try {
