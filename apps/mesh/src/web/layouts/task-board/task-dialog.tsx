@@ -32,11 +32,13 @@ import {
   Calendar,
   CheckCircle,
   ChevronRight,
+  DotsHorizontal,
   HelpCircle,
   Loading02,
   Plus,
   Trash03,
   User01,
+  UserPlus01,
   X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/web/components/super-agent-icon";
@@ -294,13 +296,22 @@ export function TaskBoardItemDialog({
                       priority === "none" && "text-muted-foreground",
                     )}
                   >
-                    <span
-                      className={cn(
-                        "size-2 rounded-full",
-                        PRIORITY_CONFIG[priority].dotClassName,
-                      )}
-                    />
-                    {PRIORITY_CONFIG[priority].label}
+                    {priority === "none" ? (
+                      <>
+                        <DotsHorizontal size={16} />
+                        Set priority
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          className={cn(
+                            "size-2 rounded-full",
+                            PRIORITY_CONFIG[priority].dotClassName,
+                          )}
+                        />
+                        {PRIORITY_CONFIG[priority].label}
+                      </>
+                    )}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-40">
@@ -359,8 +370,11 @@ export function TaskBoardItemDialog({
                         </>
                       ) : (
                         <>
-                          <User01 size={16} className="text-muted-foreground" />
-                          Assignee
+                          <UserPlus01
+                            size={16}
+                            className="text-muted-foreground"
+                          />
+                          Assign
                         </>
                       )}
                     </button>
