@@ -90,10 +90,12 @@ export class ThreadManagerStore {
    * server-side) so the sidebar's default "Mine" scope paginates only the
    * user's threads. Without it, "Show more" pages the org-wide feed while the
    * sidebar filters to the user client-side — so a page of teammates' rows is
-   * fetched, discarded, and nothing new appears. `setScope` swaps it (e.g. `{}`
-   * for Team scope, adding `has_trigger` for the type filter). Other readers
-   * (org-home, breadcrumb) re-filter to the user themselves, so widening the
-   * scope for Team view is harmless to them.
+   * fetched, discarded, and nothing new appears. `setScope` swaps it (`{}` for
+   * Team scope). Only the owner scope is pushed here, never the type filter:
+   * other readers (org-home, breadcrumb) read this shared store via
+   * `findReusableNewChat`, so narrowing by `has_trigger` would hide the user's
+   * manual "New chat" and make them mint a duplicate. Widening to Team scope is
+   * harmless because those readers re-filter to the user themselves.
    */
   private scopeWhere: Record<string, unknown> = { created_by: "me" };
   private scopeKey = JSON.stringify({ created_by: "me" });

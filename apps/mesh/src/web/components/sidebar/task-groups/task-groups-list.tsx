@@ -205,15 +205,19 @@ export function TaskGroupsList({
     currentUserId: currentUserId ?? null,
   };
 
-  // Keep the shared thread feed scoped, server-side, to what the flat list
-  // currently shows (scope + type), so "Show more" pages matching rows instead
-  // of the org-wide feed and then dropping them client-side. Idempotent — a
-  // no-op unless scope/type actually changed. The client-side filters below
-  // stay as defense against live SSE rows arriving outside the current scope.
+  // Keep the shared thread feed scoped, server-side, to the current owner scope
+  // (Mine/Team), so "Show more" pages matching rows instead of the org-wide feed
+  // and then dropping them client-side. Idempotent — a no-op unless the scope
+  // actually changed. The client-side filters below stay as defense against live
+  // SSE rows arriving outside the current scope.
+  //
+  // Only `created_by` is pushed server-side, NOT the type filter: this store is
+  // shared, and org-home / breadcrumb read it via `findReusableNewChat` to reuse
+  // the user's empty manual "New chat". Narrowing by `has_trigger` would hide
+  // that manual thread whenever the Automation filter is active, so those
+  // readers would mint a duplicate. Type stays a client-side filter.
   const scopeWhere: Record<string, unknown> = {};
   if (!showAll) scopeWhere.created_by = "me";
-  if (typeFilter === "automation") scopeWhere.has_trigger = true;
-  else if (typeFilter === "manual") scopeWhere.has_trigger = false;
   setScope(scopeWhere);
 
   // Until the session resolves, `currentUserId` is undefined — render nothing
