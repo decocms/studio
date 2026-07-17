@@ -112,8 +112,10 @@ export const createTaskBoardImportRoutes = () => {
     }
 
     // A Super Agent delegation needs a real-member principal for its run —
-    // resolve the org's (first) owner once. No owner should be impossible for
-    // a live org; refuse loudly rather than enqueue runs that die downstream.
+    // resolve the org's (first) owner once. A live org always has one; if it
+    // somehow doesn't, assigned_by stays null and the enqueue fails inside
+    // reactToSuperAgentDelegation's best-effort catch (logged, task and batch
+    // preserved) — same degradation as an org with no model configured.
     let ownerId: string | null = null;
     if (items.some((i) => i.assigneeId === SUPER_AGENT_ASSIGNEE_ID)) {
       const owner = await ctx.db
@@ -124,9 +126,6 @@ export const createTaskBoardImportRoutes = () => {
         .orderBy("createdAt", "asc")
         .executeTakeFirst();
       ownerId = owner?.userId ?? null;
-      if (!ownerId) {
-        return c.json({ error: "no_org_owner" }, 409);
-      }
     }
 
     let created = 0;

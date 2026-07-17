@@ -64,19 +64,14 @@ describe("Task Board Import Route", () => {
     } as never);
 
     // An org whose id ≠ slug, so the tests prove the service caller can
-    // resolve by ID (the worker holds the org id, never the slug). Plus one
-    // with the board enabled but NO owner member (the delegation refusal).
+    // resolve by ID (the worker holds the org id, never the slug).
     const now = new Date().toISOString();
     await sql`
       INSERT INTO "organization" (id, name, slug, "createdAt")
-      VALUES ('org_board', 'Board Org', 'board-org', ${now}),
-             ('org_ownerless', 'Ownerless Org', 'ownerless-org', ${now})
+      VALUES ('org_board', 'Board Org', 'board-org', ${now})
       ON CONFLICT (id) DO NOTHING
     `.execute(database.db);
     await new OrganizationSettingsStorage(database.db).upsert("org_board", {
-      task_board_enabled: true,
-    });
-    await new OrganizationSettingsStorage(database.db).upsert("org_ownerless", {
       task_board_enabled: true,
     });
     // user_1 (seeded) is org_board's owner — the delegation principal.
@@ -215,15 +210,5 @@ describe("Task Board Import Route", () => {
       }),
     );
     expect(bad.status).toBe(400);
-  });
-
-  it("refuses a super-agent delegation when the org has no owner", async () => {
-    const res = await app.fetch(
-      post("org_ownerless", "svc-secret", {
-        items: [{ title: "t", assigneeId: "super-agent" }],
-      }),
-    );
-    expect(res.status).toBe(409);
-    await expect(res.json()).resolves.toEqual({ error: "no_org_owner" });
   });
 });
