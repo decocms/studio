@@ -3,7 +3,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import {
+  getCommerceDiscoveryAgentId,
+  WellKnownOrgMCPId,
+} from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   Form,
@@ -16,7 +19,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
 import { SearchSm } from "@untitledui/icons";
-import { KEYS } from "@/web/lib/query-keys";
+import { KEYS, invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
 import { fetchGithubInstallations } from "@/web/lib/github-installations";
 import { unwrapToolResult } from "../companions-core.ts";
@@ -210,6 +213,28 @@ export function GitHubConfigForm({
           data: { configuration_state: merged },
         },
       });
+
+      // Also mirror onto the Report Agent virtual MCP's `metadata.githubRepo`
+      // — the field `agentHasClonableSource` reads to decide whether the
+      // Preview/Code tabs show up next to the report view. Without this, a
+      // reports-only org's GitHub connection lived only on the connection's
+      // `configuration_state` and Preview never appeared.
+      const [owner, name] = githubRepo.split("/");
+      await selfClient.callTool({
+        name: "COLLECTION_VIRTUAL_MCP_UPDATE",
+        arguments: {
+          id: getCommerceDiscoveryAgentId(org.id),
+          data: {
+            metadata: {
+              githubRepo: {
+                owner,
+                name,
+                url: `https://github.com/${githubRepo}`,
+              },
+            },
+          },
+        },
+      });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -218,6 +243,7 @@ export function GitHubConfigForm({
       await queryClient.invalidateQueries({
         queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
       });
+      invalidateVirtualMcpQueries(queryClient, org.id);
       onDone();
     },
   });
