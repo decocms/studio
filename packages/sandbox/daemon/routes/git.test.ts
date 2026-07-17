@@ -361,6 +361,36 @@ describe("git routes", () => {
     });
   });
 
+  it("publish() does not commit org-fs mount content excluded via .git/info/exclude", () => {
+    const { appRoot, repoDir } = initRepo();
+    // Simulate the org-fs mount landing inside the working tree (org/…), as it
+    // did on the deco-sites farm repo. gitSetup registers `/org` at boot.
+    mkdirSync(join(repoDir, ".git", "info"), { recursive: true });
+    writeFileSync(join(repoDir, ".git", "info", "exclude"), "/org\n");
+    mkdirSync(join(repoDir, "org", "home", "pages"), { recursive: true });
+    writeFileSync(
+      join(repoDir, "org", "home", "pages", "ver27-performance.html"),
+      "<html></html>\n",
+    );
+    // A real tracked change so the commit isn't empty.
+    writeFileSync(join(repoDir, "README.md"), "changed\n");
+
+    // No remote configured → the push throws, but the commit lands first.
+    try {
+      publish({ appRoot, repoDir }, "shutdown sync");
+    } catch {
+      // expected: push fails without a remote
+    }
+
+    const files = gitSync(["show", "--name-only", "--pretty=", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    expect(files).toContain("README.md");
+    expect(files).not.toContain("ver27-performance.html");
+    expect(files).not.toContain("org/");
+  });
+
   it("publish() rejects a tokenless github origin with a clear error", () => {
     const { appRoot, repoDir } = initRepo();
     gitSync(["remote", "add", "origin", "https://github.com/owner/repo.git"], {
