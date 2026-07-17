@@ -656,27 +656,36 @@ function prStateStyle(pr: TaskBoardItemPr): {
   return { label: "Open", className: "text-green-600", icon: GitPullRequest };
 }
 
-/** One PR row — state badge, title (falls back to repo#number), external link. */
+/** One PR row — state badge, title (falls back to repo#number), external link,
+ *  and the PR description (live-fetched) clamped below when present. */
 function PullRequestRow({ pr }: { pr: TaskBoardItemPr }) {
   const style = prStateStyle(pr);
+  const body = pr.body?.trim();
   return (
     <a
       href={pr.url}
       target="_blank"
       rel="noreferrer"
-      className="flex items-center gap-2 border-t border-border px-4 py-2 transition-colors hover:bg-muted"
+      className="flex flex-col gap-1 border-t border-border px-4 py-2 transition-colors hover:bg-muted"
     >
-      <span className={cn("flex items-center gap-1.5", style.className)}>
-        <style.icon size={16} />
-        <span className="text-sm">{style.label}</span>
+      <span className="flex items-center gap-2">
+        <span className={cn("flex items-center gap-1.5", style.className)}>
+          <style.icon size={16} />
+          <span className="text-sm">{style.label}</span>
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+          {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
+        </span>
+        <span className="shrink-0 text-sm text-muted-foreground">
+          #{pr.number}
+        </span>
+        <LinkExternal01 size={16} className="shrink-0 text-muted-foreground" />
       </span>
-      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-        {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
-      </span>
-      <span className="shrink-0 text-sm text-muted-foreground">
-        #{pr.number}
-      </span>
-      <LinkExternal01 size={16} className="shrink-0 text-muted-foreground" />
+      {body ? (
+        <span className="line-clamp-3 whitespace-pre-line text-xs text-muted-foreground">
+          {body}
+        </span>
+      ) : null}
     </a>
   );
 }

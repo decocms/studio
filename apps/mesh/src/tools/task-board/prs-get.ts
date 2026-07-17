@@ -60,6 +60,7 @@ function toolResultJson(result: unknown): Record<string, unknown> | null {
 
 type PrLiveState = {
   title: string | null;
+  body: string | null;
   state: "open" | "closed" | null;
   draft: boolean | null;
   merged: boolean | null;
@@ -67,6 +68,7 @@ type PrLiveState = {
 
 const NO_LIVE_STATE: PrLiveState = {
   title: null,
+  body: null,
   state: null,
   draft: null,
   merged: null,
@@ -101,6 +103,7 @@ async function fetchPrLiveState(
     const rawState = obj.state;
     return {
       title: typeof obj.title === "string" ? obj.title : null,
+      body: typeof obj.body === "string" ? obj.body : null,
       state:
         rawState === "closed" ? "closed" : rawState === "open" ? "open" : null,
       draft: typeof obj.draft === "boolean" ? obj.draft : null,
