@@ -1,13 +1,11 @@
 import type { ContentBlock } from "@modelcontextprotocol/sdk/types.js";
+import { OVERLAY_TABS } from "@/web/layouts/main-panel-tabs/tab-id";
 
 // An app can request in-panel navigation (instead of sending content to chat)
 // by emitting a lone `studio://navigate?main=<tab>` resource-link message —
-// e.g. the commerce diagnostic report's "task board" button. Restricted to the
-// agent-independent overlay tabs (mirrors OVERLAY_TABS in
-// main-panel-tabs/main-panel-with-drawer.tsx) so a message can't drive
-// arbitrary navigation.
+// e.g. the commerce diagnostic report's "task board" button. Restricted to
+// OVERLAY_TABS so a message can't drive arbitrary navigation.
 const NAVIGATE_SCHEME = "studio://navigate";
-const APP_NAVIGABLE_TABS = new Set(["board", "files"]);
 
 /**
  * Classifies a `handleAppMessage` payload as a navigate request or not.
@@ -40,6 +38,6 @@ export function resolveAppNavigateTarget(
 
   return {
     isNavigate: true,
-    tab: main && APP_NAVIGABLE_TABS.has(main) ? main : null,
+    tab: main && OVERLAY_TABS.has(main) ? main : null,
   };
 }

@@ -9,12 +9,8 @@ import { useChatTask } from "@/web/components/chat/chat-context";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
+import { OVERLAY_TABS } from "./tab-id";
 import { PreviewDrawerHost } from "./preview-drawer-host";
-
-// Agent-independent overlays (Tasks `board`, Library `files`) take over the
-// whole panel and aren't sandbox-backed views — the dev terminal drawer must
-// not stay glued below them when switching over from Preview/Code.
-const OVERLAY_TABS = new Set(["board", "files"]);
 
 export function MainPanelWithDrawer({
   virtualMcpId,
