@@ -54,6 +54,10 @@ import {
   createAdminRoutes,
   fenceRawAdminSurface,
 } from "./routes/admin";
+import {
+  createServiceMembershipRoutes,
+  SERVICE_MEMBERSHIP_API_PREFIX,
+} from "./routes/service-membership";
 import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
@@ -1774,7 +1778,10 @@ export async function createApp(options: CreateAppOptions = {}) {
       // Instance-level operator surface — not governed by any single org's SSO
       // policy. Without this, an admin whose active org enforces SSO gets 403'd
       // off the whole dashboard, and the UI reads that as "not an admin".
-      path.startsWith(`${ADMIN_API_PREFIX}/`)
+      path.startsWith(`${ADMIN_API_PREFIX}/`) ||
+      // Service-token authenticated, not session-based — no org's SSO policy
+      // applies (there is no user session on this path at all).
+      path.startsWith(`${SERVICE_MEMBERSHIP_API_PREFIX}/`)
     ) {
       return next();
     }
@@ -2101,6 +2108,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // admin surface. The `_` prefix just keeps well-behaved slugs from ever
   // wanting the name (a bare `admin` is a legal, live slug).
   app.route(ADMIN_API_PREFIX, createAdminRoutes());
+
+  // Service-to-service org-membership check for downstream apps. Same
+  // static-segment-before-catch-all reasoning as ADMIN_API_PREFIX above —
+  // `_` keeps it out of the org-slug namespace.
+  app.route(SERVICE_MEMBERSHIP_API_PREFIX, createServiceMembershipRoutes());
 
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup
