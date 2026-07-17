@@ -419,9 +419,11 @@ function Lanes({
     // overflows this row to scroll when it doesn't fit.
     <div
       ref={boardRef}
-      className="min-h-0 flex-1 overflow-x-auto overflow-y-auto px-4 pt-6 pb-16 sm:px-8"
+      className="min-h-0 flex-1 overflow-x-auto overflow-y-auto"
     >
-      <div className="mx-auto flex w-full max-w-[1680px] gap-3">
+      {/* Padding lives on the capped row (not the scroll container) so its left
+          edge matches the header's max-w + px exactly. */}
+      <div className="mx-auto flex w-full max-w-[1680px] gap-3 px-4 pt-6 pb-16 sm:px-8">
         {STATUSES.map((status) => {
           const laneItems = items.filter((t) => t.status === status);
           const config = STATUS_CONFIG[status];
