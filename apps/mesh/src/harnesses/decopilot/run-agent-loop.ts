@@ -42,6 +42,7 @@ import type { BuiltinToolParams } from "./built-in-tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import {
   advanceTaskBoardForRun,
+  capturePrForRun,
   isPrCreateBashCommand,
 } from "@/tools/task-board/run-reactions";
 import type { SubtaskParams } from "./built-in-tools/subtask";
@@ -182,7 +183,7 @@ export async function runAgentLoop(
   // ── Tools ─────────────────────────────────────────────────────────
   // Cluster MCP tool-call hooks: storage-ref resolution + posthog
   // analytics, built from ctx. The portable assembler forwards them as-is.
-  const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(
+  const { resolveArgs, onToolCalled, onPrOpened } = buildClusterMcpToolHooks(
     opts.ctx,
     opts.currentThreadId,
   );
@@ -196,6 +197,7 @@ export async function runAgentLoop(
     subtaskParams: opts.subtaskParams,
     resolveArgs,
     onToolCalled,
+    onPrOpened,
     fullBuiltInParams: opts.subagentBuiltInParams,
   });
   // Merge extra tools (e.g., parent's state-dependent `enable_tool`) after
@@ -232,6 +234,18 @@ export async function runAgentLoop(
         void advanceTaskBoardForRun(
           opts.ctx,
           "in_review",
+          opts.currentThreadId,
+        );
+        // Link the PR too — its URL is in the bash call's stdout (`gh pr create`
+        // prints it; a `curl … /pulls` POST returns it in the response body).
+        // Only parse the matched call's own output, never every bash stdout.
+        const output = (step.toolResults ?? []).find(
+          (r) => (r as { toolCallId?: string }).toolCallId === call.toolCallId,
+        ) as { output?: unknown } | undefined;
+        void capturePrForRun(
+          opts.ctx,
+          output?.output,
+          null,
           opts.currentThreadId,
         );
         break;

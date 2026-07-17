@@ -10,6 +10,7 @@ import type {
   Database,
   TaskBoardItem,
   TaskBoardItemPriority,
+  TaskBoardItemPrRef,
   TaskBoardItemStatus,
   TaskBoardItemThreadRef,
 } from "./types";
@@ -187,6 +188,11 @@ export class TaskBoardStorage {
         .where("organization_id", "=", organizationId)
         .execute();
       await trx
+        .deleteFrom("task_board_item_prs")
+        .where("task_board_item_id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .execute();
+      await trx
         .deleteFrom("task_board_items")
         .where("id", "=", id)
         .where("organization_id", "=", organizationId)
@@ -232,6 +238,67 @@ export class TaskBoardStorage {
       .where("organization_id", "=", organizationId)
       .execute();
     return rows.map((r) => r.taskId);
+  }
+
+  /**
+   * Link a GitHub PR to a task (idempotent per (task, url) — a run replay or a
+   * repeated PR tool call can't duplicate the row). `prNumber`/`repoOwner`/
+   * `repoName` are derived from the PR url at capture time.
+   */
+  async linkPr(params: {
+    taskBoardItemId: string;
+    organizationId: string;
+    url: string;
+    prNumber: number;
+    repoOwner: string;
+    repoName: string;
+    connectionId?: string | null;
+  }): Promise<void> {
+    await this.db
+      .insertInto("task_board_item_prs")
+      .values({
+        task_board_item_id: params.taskBoardItemId,
+        organization_id: params.organizationId,
+        url: params.url,
+        pr_number: params.prNumber,
+        repo_owner: params.repoOwner,
+        repo_name: params.repoName,
+        connection_id: params.connectionId ?? null,
+      })
+      .onConflict((oc) => oc.columns(["task_board_item_id", "url"]).doNothing())
+      .execute();
+  }
+
+  /** PRs linked to a task (most-recent first), identity only. */
+  async listPrs(
+    taskBoardItemId: string,
+    organizationId: string,
+  ): Promise<TaskBoardItemPrRef[]> {
+    const rows = await this.db
+      .selectFrom("task_board_item_prs")
+      .select([
+        "url",
+        "pr_number as prNumber",
+        "repo_owner as repoOwner",
+        "repo_name as repoName",
+        "connection_id as connectionId",
+        "created_at as createdAt",
+      ])
+      .where("task_board_item_id", "=", taskBoardItemId)
+      .where("organization_id", "=", organizationId)
+      .orderBy("created_at", "desc")
+      .execute();
+    return rows.map((r) => ({
+      url: r.url,
+      number: r.prNumber,
+      repoOwner: r.repoOwner,
+      repoName: r.repoName,
+      connectionId: r.connectionId ?? null,
+      createdAt:
+        r.createdAt instanceof Date
+          ? r.createdAt.toISOString()
+          : (r.createdAt as unknown as string),
+    }));
   }
 
   /**

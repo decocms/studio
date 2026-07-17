@@ -31,6 +31,21 @@ const TaskBoardItemThreadSchema = z.object({
   createdAt: z.string(),
 });
 
+/** A GitHub PR linked to a task. Identity is persisted; title/body/state/draft/
+ *  merged are fetched live from GitHub and are null when that fetch failed. */
+export const TaskBoardItemPrSchema = z.object({
+  url: z.string(),
+  number: z.number(),
+  repoOwner: z.string(),
+  repoName: z.string(),
+  createdAt: z.string(),
+  title: z.string().nullable(),
+  body: z.string().nullable(),
+  state: z.enum(["open", "closed"]).nullable(),
+  draft: z.boolean().nullable(),
+  merged: z.boolean().nullable(),
+});
+
 export const TaskBoardItemSchema = z.object({
   id: z.string(),
   organizationId: z.string(),

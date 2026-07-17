@@ -41,6 +41,10 @@ export const KEYS = {
   taskBoardItems: (locator: ProjectLocator) =>
     [locator, "task-board-items"] as const,
 
+  // A task's linked pull requests (live state fetched from GitHub)
+  taskBoardItemPrs: (locator: ProjectLocator, itemId: string) =>
+    [locator, "task-board-item-prs", itemId] as const,
+
   homeGithubRecentPrs: (orgId: string, connectionId: string) =>
     ["home-github-recent-prs", orgId, connectionId] as const,
 

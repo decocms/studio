@@ -33,7 +33,10 @@ import {
   CheckCircle,
   ChevronRight,
   DotsHorizontal,
+  GitMerge,
+  GitPullRequest,
   HelpCircle,
+  LinkExternal01,
   Loading02,
   Plus,
   Trash03,
@@ -54,10 +57,12 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
   type Member,
   type TaskBoardItem,
+  type TaskBoardItemPr,
   type TaskBoardItemPriority,
   type TaskBoardItemStatus,
   type TaskBoardItemThread,
 } from "./config";
+import { useTaskBoardItemPrs } from "@/web/hooks/use-task-board-item-prs";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -247,6 +252,8 @@ export function TaskBoardItemDialog({
                 onOpen={onOpenThread}
               />
             )}
+
+            {item?.id && <PullRequestsCard itemId={item.id} />}
           </div>
 
           {/* Properties pane — wrapping chips under the editor on mobile, a
@@ -624,6 +631,87 @@ function ActivityCard({
             />
           )}
         </button>
+      )}
+    </div>
+  );
+}
+
+/** Icon + label + color for a PR's live state (merged/closed/draft/open). */
+function prStateStyle(pr: TaskBoardItemPr): {
+  label: string;
+  className: string;
+  icon: typeof GitPullRequest;
+} {
+  if (pr.merged)
+    return { label: "Merged", className: "text-purple-600", icon: GitMerge };
+  if (pr.state === "closed")
+    return { label: "Closed", className: "text-red-600", icon: GitPullRequest };
+  if (pr.draft)
+    return {
+      label: "Draft",
+      className: "text-muted-foreground",
+      icon: GitPullRequest,
+    };
+  // "open" or unknown live state — still a link the user can follow.
+  return { label: "Open", className: "text-green-600", icon: GitPullRequest };
+}
+
+/** One PR row — state badge, title (falls back to repo#number), external link,
+ *  and the PR description (live-fetched) clamped below when present. */
+function PullRequestRow({ pr }: { pr: TaskBoardItemPr }) {
+  const style = prStateStyle(pr);
+  const body = pr.body?.trim();
+  return (
+    <a
+      href={pr.url}
+      target="_blank"
+      rel="noreferrer"
+      className="flex flex-col gap-1 border-t border-border px-4 py-2 transition-colors hover:bg-muted"
+    >
+      <span className="flex items-center gap-2">
+        <span className={cn("flex items-center gap-1.5", style.className)}>
+          <style.icon size={16} />
+          <span className="text-sm">{style.label}</span>
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+          {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
+        </span>
+        <span className="shrink-0 text-sm text-muted-foreground">
+          #{pr.number}
+        </span>
+        <LinkExternal01 size={16} className="shrink-0 text-muted-foreground" />
+      </span>
+      {body ? (
+        <span className="line-clamp-3 whitespace-pre-line text-xs text-muted-foreground">
+          {body}
+        </span>
+      ) : null}
+    </a>
+  );
+}
+
+/**
+ * The task's linked pull requests, each with live state fetched from GitHub.
+ * Hidden entirely when the task has none (the common case), so it never adds
+ * empty chrome to a task that never opened a PR.
+ */
+function PullRequestsCard({ itemId }: { itemId: string }) {
+  const { data: prs, isLoading } = useTaskBoardItemPrs(itemId);
+  if (!isLoading && (!prs || prs.length === 0)) return null;
+
+  return (
+    <div className="flex flex-col overflow-hidden rounded-lg border border-border">
+      <div className="flex items-center gap-2 px-4 py-3.5">
+        <GitPullRequest size={16} className="text-muted-foreground" />
+        <span className="text-sm text-foreground">Pull requests</span>
+      </div>
+      {!prs ? (
+        <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-sm text-muted-foreground">
+          <Loading02 size={16} className="animate-spin" />
+          <span>Loading…</span>
+        </div>
+      ) : (
+        prs.map((pr) => <PullRequestRow key={pr.url} pr={pr} />)
       )}
     </div>
   );
