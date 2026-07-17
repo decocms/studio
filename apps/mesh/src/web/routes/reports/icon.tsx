@@ -9,18 +9,27 @@ import {
   ArrowRight,
   ArrowUp,
   BarChart01,
+  BarChartSquare01,
   BellRinging01,
   CheckCircle,
   CheckDone01,
+  Eye,
+  FileCheck02,
   Flag01,
   InfoCircle,
+  LineChartUp01,
   Link01,
   Lock01,
   Package,
+  SearchLg,
   Share01,
+  Shield01,
+  ShoppingCart01,
+  Stars01,
   TrendDown01,
   TrendUp01,
   XCircle,
+  Zap,
 } from "@untitledui/icons";
 import type { ComponentType } from "react";
 
@@ -46,6 +55,15 @@ const ICONS: Record<
   error: AlertCircle,
   trending_up: TrendUp01,
   trending_down: TrendDown01,
+  bolt: Zap,
+  search: SearchLg,
+  shopping_cart: ShoppingCart01,
+  monitoring: LineChartUp01,
+  accessibility_new: Eye,
+  shield: Shield01,
+  article: FileCheck02,
+  smart_toy: Stars01,
+  bar_chart: BarChartSquare01,
 };
 
 const SIZE_PX = {
