@@ -79,6 +79,15 @@ export interface SubtaskParams {
     id: string;
   };
   /**
+   * The parent run's current thread id. Forwarded to the subagent's
+   * `runAgentLoop` so its PR-open task-board reactions (GitHub MCP tool /
+   * `gh pr create`) can resolve a linked task via the `task_board_item_threads`
+   * link when the run carries no `runMetadata.taskBoardItemId` — the case for a
+   * re-prompted or repo-backed task whose PR is opened inside a subtask. Without
+   * it the subagent's fallback path is dead and the card never reaches In Review.
+   */
+  currentThreadId?: string;
+  /**
    * Usage roll-up sink (Task 17). When present, the subtask tool calls this
    * with each completed child run's token totals so the PARENT run's usage
    * accumulator can fold them into its final `message-metadata.usage` (the
@@ -177,6 +186,7 @@ export function createSubtaskTool(
     vmTools,
     codingWorkspace,
     parentBuiltInParams,
+    currentThreadId,
   } = params;
 
   return tool({
@@ -305,6 +315,10 @@ export function createSubtaskTool(
           provider,
           models,
           messages: [{ role: "user", content: prompt }],
+          // Inherit the parent's thread id so a PR the subagent opens still
+          // moves the linked task board card to In Review via the thread link
+          // (see SubtaskParams.currentThreadId).
+          currentThreadId,
           systemAgentInstructions: targetRef.instructions,
           abortSignal: abortSignal ?? new AbortController().signal,
           stepLimit: SUBAGENT_STEP_LIMIT,

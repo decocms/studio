@@ -283,6 +283,9 @@ async function buildAllTools(
           // Pass the caller's own agent id so the model can clone itself by
           // omitting agent_id (heavy discovery → fresh, isolated context).
           self: { id: agentId },
+          // The current thread id (taskId) — lets a subagent-opened PR advance
+          // the linked task board card via the thread link (In Review).
+          currentThreadId: taskId,
           needsApproval:
             toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false,
           // Roll the child run's usage into the parent's accumulator (Task 17).
