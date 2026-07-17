@@ -234,12 +234,20 @@ export function TaskBoardItemDialog({
           {/* Editor pane — content-height on mobile so it doesn't leave a big
               gap above the properties; fills the column on desktop. */}
           <div className="flex min-w-0 flex-col gap-6 p-6 sm:flex-1 sm:overflow-y-auto sm:p-8">
-            <input
+            <textarea
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+              }}
               placeholder="Task title..."
               autoFocus
-              className="w-full border-0 bg-transparent text-xl font-medium text-foreground outline-none placeholder:text-foreground/30"
+              rows={1}
+              className="w-full resize-none overflow-hidden border-0 bg-transparent text-xl font-medium leading-snug text-foreground outline-none placeholder:text-foreground/30"
             />
 
             <div className="group relative flex flex-1 flex-col">
