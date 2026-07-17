@@ -234,14 +234,19 @@ export function GitHubConfigForm({
       }
       const agentId = getCommerceDiscoveryAgentId(org.id);
 
-      const existingRepo = unwrapToolResult<{
-        item: { metadata?: { githubRepo?: GithubRepo | null } | null } | null;
+      const agentItem = unwrapToolResult<{
+        item: {
+          metadata?: { githubRepo?: GithubRepo | null } | null;
+          connections?: Array<{ connection_id: string }> | null;
+        } | null;
       }>(
         await selfClient.callTool({
           name: "COLLECTION_VIRTUAL_MCP_GET",
           arguments: { id: agentId },
         }),
-      ).item?.metadata?.githubRepo;
+      ).item;
+      const existingRepo = agentItem?.metadata?.githubRepo;
+      const existingConnections = agentItem?.connections ?? [];
 
       // Reuse the existing repo-scoped connection when the same repo is
       // re-saved so a no-op save doesn't orphan a fresh connection each time.
@@ -297,12 +302,39 @@ export function GitHubConfigForm({
         provisionedConnectionId = childConnectionId;
       }
 
+      // A previous save may have linked a different repo with its own
+      // repo-scoped connection. The metadata write below overwrites it, and
+      // COLLECTION_VIRTUAL_MCP_UPDATE does no cascade — so once it's no longer
+      // referenced, delete it (after the write succeeds) or it leaks a
+      // connection + its vault token on every repo switch.
+      const staleConnectionId =
+        existingRepo?.connectionId &&
+        existingRepo.connectionId !== repoConnectionId
+          ? existingRepo.connectionId
+          : undefined;
+
+      // Aggregate the repo-scoped connection onto the agent — `git publish`
+      // (parseGithubRepoFromMetadata) only trusts `githubRepo.connectionId` when
+      // it's one of the agent's connections. `selected_tools: []` keeps it as a
+      // credential-only link without surfacing GitHub tools on the report agent.
+      // Drop the stale one from the list so the de-aggregation lands before its
+      // delete below (child_connection_id is ON DELETE RESTRICT, migration 026).
+      const mergedConnections = [
+        ...existingConnections.filter(
+          (c) =>
+            c.connection_id !== repoConnectionId &&
+            c.connection_id !== staleConnectionId,
+        ),
+        { connection_id: repoConnectionId, selected_tools: [] },
+      ];
+
       try {
         await selfClient.callTool({
           name: "COLLECTION_VIRTUAL_MCP_UPDATE",
           arguments: {
             id: agentId,
             data: {
+              connections: mergedConnections,
               metadata: {
                 githubRepo: {
                   owner,
@@ -315,6 +347,14 @@ export function GitHubConfigForm({
             },
           },
         });
+        if (staleConnectionId) {
+          await selfClient
+            .callTool({
+              name: "COLLECTION_CONNECTIONS_DELETE",
+              arguments: { id: staleConnectionId, force: true },
+            })
+            .catch(() => {});
+        }
       } catch (err) {
         // The connectionId lives only on the metadata we just failed to write,
         // so the reuse guard can never recover it — delete it now, else every
