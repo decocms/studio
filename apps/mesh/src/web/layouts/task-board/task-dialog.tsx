@@ -235,6 +235,11 @@ export function TaskBoardItemDialog({
               gap above the properties; fills the column on desktop. */}
           <div className="flex min-w-0 flex-col gap-6 p-6 sm:flex-1 sm:overflow-y-auto sm:p-8">
             <textarea
+              ref={(el) => {
+                if (!el) return;
+                el.style.height = "auto";
+                el.style.height = `${el.scrollHeight}px`;
+              }}
               value={title}
               onChange={(e) => {
                 setTitle(e.target.value);
