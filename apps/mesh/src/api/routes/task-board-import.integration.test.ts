@@ -1,0 +1,145 @@
+// CredentialVault requires a valid 32-byte base64 ENCRYPTION_KEY.
+// Must be set before any import triggers getSettings(), which freezes
+// the settings singleton on first access.
+process.env.ENCRYPTION_KEY ??= Buffer.from("0".repeat(32)).toString("base64");
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { sql } from "kysely";
+import { auth } from "../../auth";
+import type { StudioDatabase } from "../../database";
+import {
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../../database/test-db-pg";
+import { getSettings, setGlobalSettings } from "../../settings";
+import { OrganizationSettingsStorage } from "../../storage/organization-settings";
+import { createApp } from "../app";
+
+if (!getSettings().encryptionKey) {
+  setGlobalSettings({
+    ...getSettings(),
+    encryptionKey: process.env.ENCRYPTION_KEY!,
+  });
+}
+
+const IMPORT_URL = (org: string) =>
+  `http://test/api/${org}/internal/task-board/import`;
+
+const post = (org: string, token: string | null, body: unknown) =>
+  new Request(IMPORT_URL(org), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+const BODY = {
+  items: [
+    { title: "Adicionar H1 na home", priority: "high" },
+    { title: "Liberar o GPTBot no WAF", description: "403 no WAF." },
+  ],
+  source: { url: "shop.com" },
+};
+
+describe("Task Board Import Route", () => {
+  let database: StudioDatabase;
+  let app: Awaited<ReturnType<typeof createApp>>;
+  const prevServiceToken = process.env.VAULT_SERVICE_TOKEN;
+
+  beforeEach(async () => {
+    process.env.VAULT_SERVICE_TOKEN = "svc-secret";
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
+
+    vi.spyOn(auth.api, "getMcpSession").mockResolvedValue(null);
+    vi.spyOn(auth.api, "verifyApiKey").mockResolvedValue({
+      valid: false,
+      error: { message: "invalid api key" },
+      key: null,
+    } as never);
+
+    // An org whose id ≠ slug, so the tests prove the service caller can
+    // resolve by ID (the worker holds the org id, never the slug).
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES ('org_board', 'Board Org', 'board-org', ${new Date().toISOString()})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+    await new OrganizationSettingsStorage(database.db).upsert("org_board", {
+      task_board_enabled: true,
+    });
+
+    app = await createApp({ database, disableNats: true });
+  });
+
+  afterEach(async () => {
+    if (prevServiceToken === undefined) {
+      delete process.env.VAULT_SERVICE_TOKEN;
+    } else {
+      process.env.VAULT_SERVICE_TOKEN = prevServiceToken;
+    }
+    vi.restoreAllMocks();
+    if (app) {
+      await app.shutdown();
+    }
+    if (database) {
+      await closeTestPgDatabase(database);
+    }
+  });
+
+  it("rejects requests without the service token", async () => {
+    const noToken = await app.fetch(post("org_board", null, BODY));
+    expect(noToken.status).toBe(401);
+
+    const wrongToken = await app.fetch(post("org_board", "not-it", BODY));
+    expect(wrongToken.status).toBe(401);
+  });
+
+  it("refuses to write when the org has not enabled the task board", async () => {
+    // org_1 (seeded) has no settings row → board disabled.
+    const res = await app.fetch(post("org_1", "svc-secret", BODY));
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({
+      error: "task_board_disabled",
+    });
+  });
+
+  it("rejects an invalid body", async () => {
+    const res = await app.fetch(post("org_board", "svc-secret", { items: [] }));
+    expect(res.status).toBe(400);
+  });
+
+  it("creates triage items as the system principal, resolving the org by id", async () => {
+    const res = await app.fetch(post("org_board", "svc-secret", BODY));
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ created: 2 });
+
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", "org_board")
+      .orderBy("title")
+      .execute();
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.title).sort()).toEqual([
+      "Adicionar H1 na home",
+      "Liberar o GPTBot no WAF",
+    ]);
+    for (const row of rows) {
+      expect(row.status).toBe("triage");
+      expect(row.created_by).toBe("system");
+      expect(row.updated_by).toBe("system");
+    }
+    const byTitle = new Map(rows.map((r) => [r.title, r]));
+    expect(byTitle.get("Adicionar H1 na home")?.priority).toBe("high");
+    expect(byTitle.get("Liberar o GPTBot no WAF")?.priority).toBe("medium");
+    expect(byTitle.get("Liberar o GPTBot no WAF")?.description).toBe(
+      "403 no WAF.",
+    );
+  });
+});

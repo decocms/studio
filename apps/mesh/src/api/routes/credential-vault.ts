@@ -12,7 +12,7 @@ type Variables = {
   studioContext: StudioContext;
 };
 
-function bearerToken(value: string | undefined): string | null {
+export function bearerToken(value: string | undefined): string | null {
   const match = value?.match(/^Bearer\s+(.+)$/i);
   const token = match?.[1]?.trim();
   return token ? token : null;
