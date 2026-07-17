@@ -245,15 +245,19 @@ export function GitHubConfigForm({
 
       // Reuse the existing repo-scoped connection when the same repo is
       // re-saved so a no-op save doesn't orphan a fresh connection each time.
+      // GitHub owner/name are case-insensitive, so compare lowercased.
       const reuse =
         existingRepo?.connectionId &&
-        existingRepo.owner === owner &&
-        existingRepo.name === name
+        existingRepo.owner.toLowerCase() === owner.toLowerCase() &&
+        existingRepo.name.toLowerCase() === name.toLowerCase()
           ? existingRepo
           : null;
 
       let repoConnectionId = reuse?.connectionId;
       let installationId = reuse?.installationId;
+      // The connection we mint below, if any — deleted on a later failure so a
+      // partial save leaves nothing behind (the picker flow does the same).
+      let provisionedConnectionId: string | undefined;
 
       if (!repoConnectionId) {
         const { installations } = await fetchGithubInstallations(
@@ -290,25 +294,41 @@ export function GitHubConfigForm({
           },
         );
         repoConnectionId = childConnectionId;
+        provisionedConnectionId = childConnectionId;
       }
 
-      await selfClient.callTool({
-        name: "COLLECTION_VIRTUAL_MCP_UPDATE",
-        arguments: {
-          id: agentId,
-          data: {
-            metadata: {
-              githubRepo: {
-                owner,
-                name,
-                url: `https://github.com/${githubRepo}`,
-                installationId,
-                connectionId: repoConnectionId,
+      try {
+        await selfClient.callTool({
+          name: "COLLECTION_VIRTUAL_MCP_UPDATE",
+          arguments: {
+            id: agentId,
+            data: {
+              metadata: {
+                githubRepo: {
+                  owner,
+                  name,
+                  url: `https://github.com/${githubRepo}`,
+                  installationId,
+                  connectionId: repoConnectionId,
+                },
               },
             },
           },
-        },
-      });
+        });
+      } catch (err) {
+        // The connectionId lives only on the metadata we just failed to write,
+        // so the reuse guard can never recover it — delete it now, else every
+        // retry mints another orphan.
+        if (provisionedConnectionId) {
+          await selfClient
+            .callTool({
+              name: "COLLECTION_CONNECTIONS_DELETE",
+              arguments: { id: provisionedConnectionId, force: true },
+            })
+            .catch(() => {});
+        }
+        throw err;
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
