@@ -280,7 +280,11 @@ function forcePushRebasedBranch(
         throw err;
       }
 
-      runGit(repoDir, ["fetch", "origin", branch]);
+      runGit(repoDir, [
+        "fetch",
+        "origin",
+        `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+      ]);
       const refreshed = remoteBranchSha(repoDir, branch);
       if (refreshed) {
         runGit(repoDir, [
@@ -328,7 +332,16 @@ function rebaseOntoBaseInner(
     throw new Error("Cannot rebase from a detached HEAD");
   }
 
-  runGit(repoDir, ["fetch", "-p", "origin", base, branch]);
+  // Explicit refspecs for the same reason as integrateRemoteBranch below:
+  // shallow single-branch clones don't map plain command-line refnames onto
+  // refs/remotes/origin/*, which would leave the force-push lease stale.
+  runGit(repoDir, [
+    "fetch",
+    "-p",
+    "origin",
+    `+refs/heads/${base}:refs/remotes/origin/${base}`,
+    `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+  ]);
   const leaseSha = remoteBranchSha(repoDir, branch);
 
   tryGit(repoDir, [
@@ -346,15 +359,21 @@ function rebaseOntoBaseInner(
   }
 
   commitBeforeRebase(repoDir, operator);
+  performRebase(repoDir, upstream);
 
+  forcePushRebasedBranch(repoDir, branch, leaseSha);
+  return { rebased: true };
+}
+
+function performRebase(repoDir: string, upstreamRef: string): void {
   try {
     // --autostash: the sandbox dev server keeps regenerating tracked files
     // (e.g. src/server/cms/blocks.gen.json, .deco/blocks/*.json). It can dirty
-    // the working tree in the window between commitBeforeRebase and the rebase's
-    // internal checkout, which otherwise aborts with "Your local changes would
-    // be overwritten by checkout / could not detach HEAD". Autostash stashes
-    // that churn, runs the rebase, and restores it afterwards.
-    runGit(repoDir, ["rebase", "--autostash", "-X", "theirs", upstream]);
+    // the working tree in the window between the pre-rebase commit and the
+    // rebase's internal checkout, which otherwise aborts with "Your local
+    // changes would be overwritten by checkout / could not detach HEAD".
+    // Autostash stashes that churn, runs the rebase, and restores it afterwards.
+    runGit(repoDir, ["rebase", "--autostash", "-X", "theirs", upstreamRef]);
   } catch (err) {
     if (!isRebaseInProgress(repoDir)) {
       throw err;
@@ -366,7 +385,68 @@ function rebaseOntoBaseInner(
     abortRebase(repoDir);
     throw new Error("Rebase did not complete");
   }
+}
 
-  forcePushRebasedBranch(repoDir, branch, leaseSha);
+/**
+ * Integrate commits already on `origin/{branch}` into the local branch by
+ * replaying local commits on top — same conflict strategy as rebaseOntoBase
+ * (`-X theirs` + auto-resolution, so the latest local save wins). Used by
+ * publish() before pushing: when another session pushed to the same branch,
+ * a blind push is rejected as non-fast-forward and the save fails.
+ *
+ * No-op when the remote branch is missing (first publish) or already an
+ * ancestor of HEAD. A failed fetch is also a no-op — the subsequent push
+ * surfaces the real error.
+ */
+export function integrateRemoteBranch(
+  repoDir: string,
+  branch: string,
+  options?: RebaseOntoBaseOptions,
+): { rebased: boolean } {
+  const previousAsUser = rebaseGitAsUser;
+  rebaseGitAsUser = options?.asUser ?? true;
+  try {
+    return integrateRemoteBranchInner(repoDir, branch, options?.operator);
+  } finally {
+    rebaseGitAsUser = previousAsUser;
+  }
+}
+
+function integrateRemoteBranchInner(
+  repoDir: string,
+  branch: string,
+  operator?: OperatorIdentity,
+): { rebased: boolean } {
+  assertValidRemoteBranchName(branch);
+
+  // Explicit refspec, not `fetch origin <branch>`: sandbox clones are shallow
+  // single-branch (setup/clone.ts), so their fetch refspec only covers the
+  // branch they were cloned on. For a workspace branch forked locally that's
+  // the *default* branch — a plain fetch would only write FETCH_HEAD, leave
+  // refs/remotes/origin/<branch> missing/stale, and the divergence check below
+  // would report a false "up to date" (the exact non-fast-forward publish
+  // failure this function exists to prevent). Fails when the branch isn't on
+  // origin yet (first publish) — that's the no-op path.
+  const fetched = tryGit(repoDir, [
+    "fetch",
+    "origin",
+    `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+  ]);
+  if (fetched === null) {
+    return { rebased: false };
+  }
+  const remoteSha = remoteBranchSha(repoDir, branch);
+  if (!remoteSha) {
+    return { rebased: false };
+  }
+  const upToDate =
+    tryGit(repoDir, ["merge-base", "--is-ancestor", remoteSha, "HEAD"]) !==
+    null;
+  if (upToDate) {
+    return { rebased: false };
+  }
+
+  commitBeforeRebase(repoDir, operator);
+  performRebase(repoDir, `origin/${branch}`);
   return { rebased: true };
 }
