@@ -112,13 +112,20 @@ describe("Task Board Import Route", () => {
     expect(wrongToken.status).toBe(401);
   });
 
-  it("refuses to write when the org has not enabled the task board", async () => {
-    // org_1 (seeded) has no settings row → board disabled.
+  it("auto-enables the task board for an org that never touched it", async () => {
+    // org_1 (seeded) has no settings row → board disabled by default. The
+    // report push is the org's introduction to the board, so the import flips
+    // the setting on and writes.
     const res = await app.fetch(post("org_1", "svc-secret", BODY));
-    expect(res.status).toBe(403);
-    await expect(res.json()).resolves.toEqual({
-      error: "task_board_disabled",
-    });
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ created: 2, delegated: 0 });
+
+    const settings = await database.db
+      .selectFrom("organization_settings")
+      .select(["task_board_enabled"])
+      .where("organizationId", "=", "org_1")
+      .executeTakeFirst();
+    expect(settings?.task_board_enabled).toBe(true);
   });
 
   it("rejects an invalid body", async () => {

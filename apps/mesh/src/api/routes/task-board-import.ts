@@ -3,7 +3,6 @@ import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@/shared/task-board";
 import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
-import { requireTaskBoardEnabled } from "@/tools/task-board/require-enabled";
 import { TaskBoardItemPrioritySchema } from "@/tools/task-board/schema";
 import { bearerToken, isVaultServiceToken } from "./credential-vault";
 
@@ -20,11 +19,12 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * caller holds the org *id*, so resolve-org-from-path also matches this route
  * in its resolve-by-id allowlist.
  *
- * The endpoint enforces the org's `task_board_enabled` setting before writing
- * (403 `task_board_disabled` — an expected, fail-soft skip for the caller).
- * Items land as status "triage" with `created_by = "system"` (the established
- * sentinel for non-user principals). `source` is accepted for observability /
- * future dedup and not persisted yet.
+ * The import AUTO-ENABLES the org's task board before writing: the report push
+ * is typically the org's first contact with the board, and the disabled
+ * default would otherwise silently drop every task (nobody flips a setting
+ * they've never seen). Items land as status "triage" with
+ * `created_by = "system"` (the established sentinel for non-user principals).
+ * `source` is accepted for observability / future dedup and not persisted yet.
  *
  * An item may carry `assigneeId` — a real org member, or the Super Agent
  * sentinel to queue the task for an agent run (status forced to To Do, same as
@@ -73,11 +73,12 @@ export const createTaskBoardImportRoutes = () => {
       return c.json({ error: "Organization context required" }, 403);
     }
 
-    try {
-      await requireTaskBoardEnabled(ctx, organizationId);
-    } catch {
-      return c.json({ error: "task_board_disabled" }, 403);
-    }
+    // Auto-enable: the tasks ARE the org's introduction to the board. The
+    // upsert only touches task_board_enabled (absent fields are skipped on
+    // conflict), so existing org settings are never clobbered.
+    await ctx.storage.organizationSettings.upsert(organizationId, {
+      task_board_enabled: true,
+    });
 
     const parsed = importBodySchema.safeParse(
       await c.req.json().catch(() => null),
