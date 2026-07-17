@@ -46,6 +46,7 @@ import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import {
   getThreadGithubRepo,
   setThreadSandboxMapEntry,
+  syntheticBranchToGitRef,
   threadIdFromBranch,
 } from "./thread-repo";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
@@ -402,6 +403,13 @@ async function provisionSandbox(
       }
     }
 
+    // The git branch the daemon actually checks out and pushes. A synthetic
+    // isolation key (thread:*) maps to a real, deterministic ref so work is
+    // persisted to git on its own branch — never the repo default. The isolation
+    // key itself (projectRef, handle, sandboxMap) stays synthetic below.
+    const gitBranch = branch.startsWith("thread:")
+      ? syntheticBranchToGitRef(branch)
+      : branch;
     repoOpts = {
       cloneUrl,
       // Persisted so the runner can re-mint on recovery; absent for anonymous.
@@ -410,7 +418,7 @@ async function provisionSandbox(
         : {}),
       userName: gitUserName,
       userEmail: gitUserEmail,
-      branch,
+      branch: gitBranch,
       displayName: `${githubRepo.owner}/${githubRepo.name}`,
     };
   }
