@@ -443,7 +443,9 @@ export function TaskBoardItemDialog({
                     the human who handed it off. */}
                 {isSuperAgent && assignedBy && (
                   <div className="relative flex items-center pl-5">
-                    <span className="absolute left-3 top-0 h-1/2 w-2.5 rounded-bl-md border-b border-l border-border" />
+                    {/* Elbow drops from the center of the assigner's avatar
+                        (px-3 padding + half of the w-4 "2xs" avatar = 20px). */}
+                    <span className="absolute left-5 top-0 h-1/2 w-2.5 rounded-bl-md border-b border-l border-border" />
                     <span
                       className={cn(PROPERTY_BUTTON, "pointer-events-none")}
                     >
