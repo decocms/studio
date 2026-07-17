@@ -110,10 +110,10 @@ function ResultLogEntry({
           className={cn(
             "shrink-0",
             r.status === "passed"
-              ? "text-emerald-600"
+              ? "text-success"
               : r.status === "needs_auth"
-                ? "text-amber-600"
-                : "text-red-600",
+                ? "text-warning"
+                : "text-destructive",
           )}
         >
           {r.status === "passed" ? "✓" : r.status === "needs_auth" ? "🔑" : "✗"}
@@ -129,25 +129,25 @@ function ResultLogEntry({
           className={cn(
             "text-[9px] capitalize shrink-0",
             r.status === "passed"
-              ? "text-emerald-600 border-emerald-500/20"
+              ? "text-success border-success/20"
               : r.status === "needs_auth"
-                ? "text-amber-600 border-amber-500/20"
-                : "text-red-600 border-red-500/20",
+                ? "text-warning border-warning/20"
+                : "text-destructive border-destructive/20",
           )}
         >
           {r.status.replace("_", " ")}
         </Badge>
         {r.connection_ok ? (
-          <span className="text-[10px] text-emerald-600 shrink-0">conn✓</span>
+          <span className="text-[10px] text-success shrink-0">conn✓</span>
         ) : (
-          <span className="text-[10px] text-red-600 shrink-0">conn✗</span>
+          <span className="text-[10px] text-destructive shrink-0">conn✗</span>
         )}
         {r.tools_listed && (
           <span className="text-[10px] text-muted-foreground shrink-0">
             {hasToolTests ? (
               <>
-                <span className="text-emerald-600">{passedTools}✓</span>{" "}
-                <span className={cn(failedTools > 0 ? "text-red-600" : "")}>
+                <span className="text-success">{passedTools}✓</span>{" "}
+                <span className={cn(failedTools > 0 ? "text-destructive" : "")}>
                   {failedTools}✗
                 </span>
               </>
@@ -170,8 +170,10 @@ function ResultLogEntry({
         <div className="border-t border-border px-3 py-2 space-y-2 bg-muted/10">
           {r.error_message && (
             <div className="space-y-0.5">
-              <p className="text-[10px] font-semibold text-red-600">Error</p>
-              <pre className="text-[11px] bg-red-500/5 border border-red-500/10 rounded px-2 py-1.5 whitespace-pre-wrap break-all text-red-700 max-h-20 overflow-auto">
+              <p className="text-[10px] font-semibold text-destructive">
+                Error
+              </p>
+              <pre className="text-[11px] bg-destructive/5 border border-destructive/10 rounded px-2 py-1.5 whitespace-pre-wrap break-all text-destructive max-h-20 overflow-auto">
                 {r.error_message}
               </pre>
             </div>
@@ -182,7 +184,7 @@ function ResultLogEntry({
               Connection:{" "}
               <span
                 className={cn(
-                  r.connection_ok ? "text-emerald-600" : "text-red-600",
+                  r.connection_ok ? "text-success" : "text-destructive",
                 )}
               >
                 {r.connection_ok ? "OK" : "Failed"}
@@ -192,7 +194,7 @@ function ResultLogEntry({
               Tools listed:{" "}
               <span
                 className={cn(
-                  r.tools_listed ? "text-emerald-600" : "text-red-600",
+                  r.tools_listed ? "text-success" : "text-destructive",
                 )}
               >
                 {r.tools_listed ? "Yes" : "No"}
@@ -266,7 +268,7 @@ function ToolMiniRow({ tool }: { tool: MonitorToolResult }) {
         <span
           className={cn(
             "font-bold",
-            tool.success ? "text-emerald-600" : "text-red-600",
+            tool.success ? "text-success" : "text-destructive",
           )}
         >
           {tool.success ? "✓" : "✗"}
@@ -276,7 +278,10 @@ function ToolMiniRow({ tool }: { tool: MonitorToolResult }) {
           {tool.durationMs}ms
         </span>
         {tool.error && (
-          <span className="text-red-500 truncate max-w-28" title={tool.error}>
+          <span
+            className="text-destructive truncate max-w-28"
+            title={tool.error}
+          >
             {tool.error}
           </span>
         )}
@@ -285,7 +290,7 @@ function ToolMiniRow({ tool }: { tool: MonitorToolResult }) {
       {showDetails && (
         <div className="border-t border-border px-2 py-1.5 space-y-1 bg-muted/10 text-[11px]">
           {tool.error && (
-            <pre className="bg-red-500/5 border border-red-500/10 rounded px-2 py-1 whitespace-pre-wrap break-all text-red-700 max-h-20 overflow-auto">
+            <pre className="bg-destructive/5 border border-destructive/10 rounded px-2 py-1 whitespace-pre-wrap break-all text-destructive max-h-20 overflow-auto">
               {tool.error}
             </pre>
           )}
@@ -529,14 +534,14 @@ export function MonitorDashboard({
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <Card className="p-2.5 space-y-0.5">
-                  <p className="text-[10px] text-emerald-600">Passed</p>
-                  <p className="text-lg font-bold text-emerald-600">
+                  <p className="text-[10px] text-success">Passed</p>
+                  <p className="text-lg font-bold text-success">
                     {run.passed_items}
                   </p>
                 </Card>
                 <Card className="p-2.5 space-y-0.5">
-                  <p className="text-[10px] text-red-600">Failed</p>
-                  <p className="text-lg font-bold text-red-600">
+                  <p className="text-[10px] text-destructive">Failed</p>
+                  <p className="text-lg font-bold text-destructive">
                     {run.failed_items}
                   </p>
                 </Card>
