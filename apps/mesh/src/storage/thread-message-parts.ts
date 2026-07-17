@@ -176,6 +176,25 @@ export class SqlThreadMessagePartStorage {
         await trx
           .insertInto("thread_message_parts")
           .values(rowsToInsert)
+          // Concurrency / DBOS-retry safety: this DELETE-then-INSERT is not
+          // atomic against a concurrent writer (the projector's `appendParts`,
+          // or a redelivered `consumeRunProjection` step) that commits a
+          // colliding `id` between our DELETE and INSERT. A bare INSERT then
+          // fails the whole batch on `thread_message_parts_pkey`, the
+          // projection step throws, and the assistant message is left empty
+          // ("No response was generated"). This method owns the authoritative
+          // snapshot, so overwrite the row on conflict rather than aborting.
+          .onConflict((oc) =>
+            oc.column("id").doUpdateSet((eb) => ({
+              seq: eb.ref("excluded.seq"),
+              role: eb.ref("excluded.role"),
+              kind: eb.ref("excluded.kind"),
+              payload: eb.ref("excluded.payload"),
+              payload_ref: eb.ref("excluded.payload_ref"),
+              metadata: eb.ref("excluded.metadata"),
+              created_at: eb.ref("excluded.created_at"),
+            })),
+          )
           .execute();
       }
     });
