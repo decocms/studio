@@ -13,6 +13,7 @@ import {
   Calendar,
   Columns03,
   HelpCircle,
+  Lightning01,
   List,
   Loading01,
   Plus,
@@ -46,6 +47,7 @@ import {
 } from "./task-filters";
 import { useFlipLanes } from "./use-flip-lanes";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
 void import("../agent-shell-layout/index.tsx").catch(() => {});
@@ -171,6 +173,7 @@ function AssigneeDisplay({
 export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
+  const reportsOnly = useReportsOnly();
   const { data: membersData } = useMembers();
   const members = (membersData?.data?.members ?? []) as Member[];
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
@@ -301,6 +304,15 @@ export function TaskBoardPage() {
           onOpen={openTask}
           onCreate={openCreateInLane}
           onMove={(id, status) => actions.update.mutate({ id, status })}
+          onAutoFix={
+            reportsOnly
+              ? (item) =>
+                  actions.update.mutate({
+                    id: item.id,
+                    assigneeId: SUPER_AGENT_ASSIGNEE_ID,
+                  })
+              : undefined
+          }
         />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-16 sm:px-8">
@@ -401,12 +413,14 @@ function Lanes({
   onOpen,
   onCreate,
   onMove,
+  onAutoFix,
 }: {
   items: TaskBoardItem[];
   memberByUserId: Map<string, Member>;
   onOpen: (item: TaskBoardItem) => void;
   onCreate: (status: TaskBoardItemStatus) => void;
   onMove: (id: string, status: TaskBoardItemStatus) => void;
+  onAutoFix?: (item: TaskBoardItem) => void;
 }) {
   const [overLane, setOverLane] = useState<TaskBoardItemStatus | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -493,6 +507,7 @@ function Lanes({
                         : undefined
                     }
                     onOpen={() => onOpen(item)}
+                    onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
                   />
                 ))}
               </div>
@@ -509,15 +524,22 @@ function TaskCard({
   assignee,
   assignedBy,
   onOpen,
+  onAutoFix,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
   onOpen: () => void;
+  onAutoFix?: () => void;
 }) {
   const statusConfig = STATUS_CONFIG[item.status];
   const StatusIcon = statusConfig.icon;
   const lastMessage = primaryThread(item)?.lastMessage;
+
+  const showAutoFix =
+    onAutoFix &&
+    (item.status === "triage" || item.status === "todo") &&
+    item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID;
 
   return (
     <button
@@ -563,6 +585,20 @@ function TaskCard({
           )}
           {item.dueDate && <DueDatePill iso={item.dueDate} />}
         </div>
+      )}
+
+      {showAutoFix && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAutoFix();
+          }}
+          className="flex items-center gap-1.5 self-end rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+        >
+          <Lightning01 size={12} />
+          Auto-fix
+        </button>
       )}
     </button>
   );
