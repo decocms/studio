@@ -1,4 +1,7 @@
 # Build: docker build -t studio-sandbox:local -f packages/sandbox/image/Dockerfile packages/sandbox
+# Published multi-arch (linux/amd64 + linux/arm64) by
+# .github/workflows/release-studio-sandbox.yaml so sandboxes run natively on
+# arm64 nodes (Apple Silicon, arm64 cloud) as well as amd64.
 FROM oven/bun:1.3.14-debian
 
 ARG NODE_MAJOR=26
