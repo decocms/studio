@@ -102,10 +102,10 @@ const THREAD_STATUS: Record<
   NonNullable<TaskBoardItemThread["status"]>,
   { label: string; className: string; icon: typeof AlertSquare; spin?: boolean }
 > = {
-  failed: { label: "Error", className: "text-red-600", icon: AlertSquare },
+  failed: { label: "Error", className: "text-destructive", icon: AlertSquare },
   requires_action: {
     label: "Needs input",
-    className: "text-amber-600",
+    className: "text-warning",
     icon: HelpCircle,
   },
   in_progress: {
@@ -116,7 +116,7 @@ const THREAD_STATUS: Record<
   },
   completed: {
     label: "Completed",
-    className: "text-green-600",
+    className: "text-success",
     icon: CheckCircle,
   },
   expired: {
@@ -676,7 +676,11 @@ function prStateStyle(pr: TaskBoardItemPr): {
   if (pr.merged)
     return { label: "Merged", className: "text-purple-600", icon: GitMerge };
   if (pr.state === "closed")
-    return { label: "Closed", className: "text-red-600", icon: GitPullRequest };
+    return {
+      label: "Closed",
+      className: "text-destructive",
+      icon: GitPullRequest,
+    };
   if (pr.draft)
     return {
       label: "Draft",
@@ -684,7 +688,7 @@ function prStateStyle(pr: TaskBoardItemPr): {
       icon: GitPullRequest,
     };
   // "open" or unknown live state — still a link the user can follow.
-  return { label: "Open", className: "text-green-600", icon: GitPullRequest };
+  return { label: "Open", className: "text-success", icon: GitPullRequest };
 }
 
 /** One PR row — state badge, title (falls back to repo#number), external link,
