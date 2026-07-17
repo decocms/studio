@@ -76,7 +76,9 @@ function MiniReportPage({ generating }: { generating: boolean }) {
     <div
       aria-hidden
       className={cn(
-        "pointer-events-none absolute -bottom-14 left-6 h-48 w-36 -rotate-6 rounded-xl border border-border bg-background shadow-lg",
+        // Decorative — hidden below sm so it never crowds the copy on narrow
+        // screens; the text reclaims the full width there.
+        "pointer-events-none absolute -bottom-14 left-6 hidden h-48 w-36 -rotate-6 rounded-xl border border-border bg-background shadow-lg sm:block",
         "transition-transform duration-500 ease-out group-hover:-translate-y-2 group-hover:-rotate-3",
       )}
     >
@@ -188,9 +190,10 @@ function BannerShell({
         )}
       />
       <MiniReportPage generating={generating} />
-      <div className="relative flex h-36 items-center gap-6 pr-6 pl-6 sm:pl-52">
-        <div className="hidden min-w-0 flex-1 flex-col gap-1 sm:flex">
-          <span className="text-lg font-medium leading-6 text-foreground">
+      {/* pl steps up to clear the decorative page once it appears at sm. */}
+      <div className="relative flex min-h-28 items-center gap-4 px-5 py-5 sm:h-36 sm:gap-6 sm:pr-6 sm:pl-52">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="text-base font-medium leading-6 text-foreground sm:text-lg">
             {generating
               ? "Gerando seu diagnóstico"
               : "Seu relatório está pronto"}
@@ -199,14 +202,6 @@ function BannerShell({
             {generating
               ? `Analisando ${store}. Isso leva alguns minutos.`
               : `Veja a análise completa de ${store}.`}
-          </span>
-        </div>
-        {/* mobile: the page is hidden, keep the copy compact */}
-        <div className="flex min-w-0 flex-1 flex-col gap-1 sm:hidden">
-          <span className="text-base font-medium leading-6 text-foreground">
-            {generating
-              ? "Gerando seu diagnóstico"
-              : "Seu relatório está pronto"}
           </span>
         </div>
         <div
