@@ -50,14 +50,10 @@ import {
 } from "@/web/views/settings/org-role-detail.tsx";
 import { RequirePrivileged } from "@/web/components/require-privileged";
 
-// ============================================================================
-// Role color helpers
-// ============================================================================
-
 const BUILTIN_ROLES = [
-  { role: "owner", label: "Owner", color: "bg-red-500" },
-  { role: "admin", label: "Admin", color: "bg-blue-500" },
-  { role: "user", label: "User", color: "bg-green-500" },
+  { role: "owner", label: "Owner" },
+  { role: "admin", label: "Admin" },
+  { role: "user", label: "User" },
 ] as const;
 
 // ============================================================================
