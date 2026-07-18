@@ -729,14 +729,14 @@ function ToolDetailsAuthenticated({
             {/* MCP Status */}
             <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
               {toolsQuery.isSuccess ? (
-                <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
+                <div className="h-1.5 w-1.5 rounded-full bg-success animate-pulse shrink-0" />
               ) : toolsQuery.isLoading ? (
                 <Loading01
                   size={10}
                   className="animate-spin text-yellow-500 shrink-0"
                 />
               ) : (
-                <div className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
+                <div className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
               )}
               <span className="font-mono text-xs capitalize text-muted-foreground leading-none">
                 {toolsQuery.isSuccess
