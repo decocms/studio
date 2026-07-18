@@ -57,8 +57,8 @@ export const STATUS_CONFIG: Record<StatusKey, StatusConfig> = {
     label: "Running",
     verb: "Agent is working",
     icon: Loading01,
-    iconClassName: "text-blue-500",
-    labelColor: "text-blue-600 dark:text-blue-400",
+    iconClassName: "text-primary",
+    labelColor: "text-primary",
   },
   completed: {
     label: "Done",
