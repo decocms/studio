@@ -117,13 +117,10 @@ export function CreditsEmptyState() {
       >
         {/* Header */}
         <div className="relative px-6 pt-7 pb-5">
-          <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-amber-500/8 to-transparent pointer-events-none rounded-t-lg" />
+          <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-warning/8 to-transparent pointer-events-none rounded-t-lg" />
           <DialogHeader className="relative gap-3">
-            <div className="flex items-center justify-center size-11 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-200/60 dark:border-amber-800/40 mx-auto">
-              <Coins04
-                size={20}
-                className="text-amber-600 dark:text-amber-400"
-              />
+            <div className="flex items-center justify-center size-11 rounded-full bg-warning/10 border border-warning/20 mx-auto">
+              <Coins04 size={20} className="text-warning" />
             </div>
             <div className="text-center">
               <DialogTitle className="text-lg font-semibold">
