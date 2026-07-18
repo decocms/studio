@@ -326,11 +326,11 @@ function ConnectionRow({
                   authFlavor === "server_error"
                     ? "border-destructive/40 text-destructive"
                     : authFlavor === "oauth_connected"
-                      ? "border-emerald-500/30 text-emerald-600"
+                      ? "border-success/30 text-success"
                       : authFlavor === "oauth_available"
                         ? "border-sky-500/30 text-sky-600"
                         : authFlavor === "token_required"
-                          ? "border-amber-500/30 text-amber-600"
+                          ? "border-warning/30 text-warning"
                           : "text-muted-foreground",
                 )}
               >
