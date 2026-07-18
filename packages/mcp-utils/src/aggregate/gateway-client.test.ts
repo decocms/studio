@@ -185,7 +185,9 @@ describe("GatewayClient", () => {
       });
       const result = await gw.listTools();
 
-      expect(result.tools.map((t) => t.name)).toEqual(["healthy_ok_tool"]);
+      expect(result.tools.map((t) => t.name)).toEqual([
+        ns("healthy", "ok_tool"),
+      ]);
     });
 
     it("skips a connection whose lazy factory throws on resolve", async () => {
@@ -201,7 +203,9 @@ describe("GatewayClient", () => {
       });
       const result = await gw.listTools();
 
-      expect(result.tools.map((t) => t.name)).toEqual(["healthy_ok_tool"]);
+      expect(result.tools.map((t) => t.name)).toEqual([
+        ns("healthy", "ok_tool"),
+      ]);
     });
 
     it("degrades resources and prompts the same way", async () => {
@@ -227,7 +231,7 @@ describe("GatewayClient", () => {
         "res://ok",
       ]);
       expect((await gw.listPrompts()).prompts.map((p) => p.name)).toEqual([
-        "healthy_ok_prompt",
+        ns("healthy", "ok_prompt"),
       ]);
     });
   });
