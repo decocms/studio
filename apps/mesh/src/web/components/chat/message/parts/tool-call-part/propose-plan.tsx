@@ -27,7 +27,7 @@ export function ProposePlanPart({ part }: ProposePlanPartProps) {
           Implementation Plan
         </span>
         {isApproved && (
-          <span className="flex items-center gap-1 text-xs text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded-md">
+          <span className="flex items-center gap-1 text-xs text-success bg-success/10 px-1.5 py-0.5 rounded-md">
             <Check size={12} />
             Approved
           </span>
