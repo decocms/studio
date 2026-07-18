@@ -910,8 +910,8 @@ export function RegistryItemDialog({
           </div>
 
           {discoverStatus === "success" && tools.length > 0 && (
-            <div className="rounded-lg border border-green-500/20 bg-green-50 dark:bg-green-950/20 px-3 py-2 space-y-1.5">
-              <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
+            <div className="rounded-lg border border-success/20 bg-success/10 px-3 py-2 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs text-success">
                 <CheckCircle size={14} className="shrink-0" />
                 <span className="font-medium">
                   {tools.length} tool{tools.length !== 1 ? "s" : ""} discovered
@@ -941,7 +941,7 @@ export function RegistryItemDialog({
           )}
 
           {discoverStatus === "auth_required" && discoverError && (
-            <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border border-amber-500/20 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 text-xs text-warning bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
               <AlertCircle size={14} className="shrink-0" />
               <span>
                 This server requires authentication. The connection is valid but
