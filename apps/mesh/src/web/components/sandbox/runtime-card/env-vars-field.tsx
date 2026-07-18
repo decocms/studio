@@ -195,8 +195,8 @@ function RunningSandboxNotice<T extends FieldValues>({
   };
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs dark:border-amber-900/40 dark:bg-amber-950/30">
-      <div className="flex min-w-0 items-center gap-2 text-amber-900 dark:text-amber-200">
+    <div className="flex items-center justify-between gap-3 rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs">
+      <div className="flex min-w-0 items-center gap-2 text-warning">
         <AlertTriangle className="size-3.5 shrink-0" />
         <span className="truncate">
           Your sandbox is running. Restart the dev script to apply the new env.
