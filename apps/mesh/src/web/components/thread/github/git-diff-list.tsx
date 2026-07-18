@@ -61,10 +61,10 @@ export function GitDiffList({
         const directory = lastSlash >= 0 ? raw.slice(0, lastSlash) : null;
         const language = getLanguageFromPath(filepath);
         const dotColor = isNew
-          ? "bg-green-500"
+          ? "bg-success"
           : isDeleted
-            ? "bg-red-500"
-            : "bg-amber-500";
+            ? "bg-destructive"
+            : "bg-warning";
 
         return (
           <div key={filepath}>
