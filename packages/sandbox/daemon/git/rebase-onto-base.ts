@@ -4,6 +4,7 @@ import path from "node:path";
 import { appendCoAuthorTrailer } from "../../git-co-author";
 import { gitSync as rawGitSync } from "./git-sync";
 import { parsePorcelainEntry } from "./porcelain";
+import { protectedBranches } from "./protect-branch";
 import { assertValidRemoteBranchName } from "./ref-name";
 import type { OperatorIdentity } from "../types";
 
@@ -326,6 +327,14 @@ function rebaseOntoBaseInner(
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
     throw new Error("Cannot rebase from a detached HEAD");
+  }
+  // Same guard as publish() (protect-branch.ts): this ends in a force-push,
+  // which is even more destructive than a normal push, so a sandbox sitting
+  // on main/master/default must never reach it.
+  if (protectedBranches(repoDir).has(branch)) {
+    throw new Error(
+      `Refusing to rebase and force-push protected branch "${branch}" from a sandbox. Work on a feature branch; changes reach the default branch via PR.`,
+    );
   }
 
   runGit(repoDir, ["fetch", "-p", "origin", base, branch]);
