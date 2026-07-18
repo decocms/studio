@@ -100,7 +100,7 @@ function MenuItemButton({
 
 function ImpersonatingPill() {
   return (
-    <span className="shrink-0 inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+    <span className="shrink-0 inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
       Impersonating
     </span>
   );
@@ -462,7 +462,7 @@ export function AccountPopover() {
             label: "Admin Dashboard",
             icon: <ShieldTick size={16} />,
             onClick: () => navigate({ to: "/_admin" }),
-            className: "text-amber-700 dark:text-amber-400",
+            className: "text-warning",
           } satisfies MenuItem,
         ]
       : []),
@@ -498,7 +498,7 @@ export function AccountPopover() {
           }
           window.location.href = "/";
         },
-        className: "text-amber-700 dark:text-amber-400",
+        className: "text-warning",
       }
     : null;
 
@@ -535,7 +535,7 @@ export function AccountPopover() {
             onClick={() => setOpen(true)}
             className={cn(
               "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-              isImpersonating && "border-2 border-dashed border-amber-500",
+              isImpersonating && "border-2 border-dashed border-warning",
             )}
           >
             <Avatar
@@ -559,7 +559,7 @@ export function AccountPopover() {
               tooltip={user?.name ?? "Account"}
               className={cn(
                 "rounded-md",
-                isImpersonating && "border-2 border-dashed border-amber-500",
+                isImpersonating && "border-2 border-dashed border-warning",
               )}
             >
               <Avatar
