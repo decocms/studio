@@ -88,7 +88,7 @@ const PILL =
 function BlockedBadge() {
   return (
     <span
-      className={cn(PILL, "border-amber-500/30 text-amber-600")}
+      className={cn(PILL, "border-warning/30 text-warning")}
       title="The agent is waiting for your input"
     >
       <HelpCircle size={14} />
