@@ -278,7 +278,7 @@ export function SettingsSidebar() {
                         <span className="relative shrink-0">
                           {item.icon}
                           {item.badge ? (
-                            <span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500 pointer-events-none" />
+                            <span className="absolute -right-1 -top-1 size-2 rounded-full bg-destructive pointer-events-none" />
                           ) : null}
                         </span>
                         <span className="truncate">{item.label}</span>
@@ -369,7 +369,7 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
                 <span className="relative shrink-0">
                   {item.icon}
                   {item.badge ? (
-                    <span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500 pointer-events-none" />
+                    <span className="absolute -right-1 -top-1 size-2 rounded-full bg-destructive pointer-events-none" />
                   ) : null}
                 </span>
                 <span className="truncate">{item.label}</span>
