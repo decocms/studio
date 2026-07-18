@@ -110,7 +110,7 @@ const THREAD_STATUS: Record<
   },
   in_progress: {
     label: "Running",
-    className: "text-blue-600",
+    className: "text-primary",
     icon: Loading02,
     spin: true,
   },
@@ -674,7 +674,7 @@ function prStateStyle(pr: TaskBoardItemPr): {
   icon: typeof GitPullRequest;
 } {
   if (pr.merged)
-    return { label: "Merged", className: "text-purple-600", icon: GitMerge };
+    return { label: "Merged", className: "text-special", icon: GitMerge };
   if (pr.state === "closed")
     return {
       label: "Closed",
