@@ -733,7 +733,7 @@ function ToolDetailsAuthenticated({
               ) : toolsQuery.isLoading ? (
                 <Loading01
                   size={10}
-                  className="animate-spin text-yellow-500 shrink-0"
+                  className="animate-spin text-warning shrink-0"
                 />
               ) : (
                 <div className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
