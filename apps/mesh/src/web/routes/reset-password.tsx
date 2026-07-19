@@ -104,7 +104,7 @@ export default function ResetPasswordRoute() {
           {/* Success state */}
           {success && (
             <>
-              <div className="rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-600 dark:text-emerald-400 text-center">
+              <div className="rounded-xl bg-success/10 p-3 text-sm text-success text-center">
                 Your password has been reset. You can now sign in with your new
                 password.
               </div>
