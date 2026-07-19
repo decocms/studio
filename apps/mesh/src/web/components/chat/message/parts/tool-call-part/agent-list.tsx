@@ -121,7 +121,7 @@ export function AgentListPart({ part, latency }: AgentListPartProps) {
   return (
     <>
       <ToolCallShell
-        icon={<UserCircle className="text-emerald-500" />}
+        icon={<UserCircle className="text-success" />}
         title={items.length === 1 ? "1 agent" : `${items.length} agents`}
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
