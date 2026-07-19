@@ -432,7 +432,7 @@ function ToolDetailsAuthenticated({
         {tool?.inputSchema?.required &&
           tool.inputSchema.required.length > 0 && (
             <span className="text-xs text-muted-foreground">
-              <span className="text-red-500">*</span> Required
+              <span className="text-destructive">*</span> Required
             </span>
           )}
       </div>
@@ -447,7 +447,7 @@ function ToolDetailsAuthenticated({
                   <label className="text-sm font-medium leading-none flex items-center gap-1.5">
                     {key}
                     {tool.inputSchema?.required?.includes(key) && (
-                      <span className="text-red-500 text-xs">*</span>
+                      <span className="text-destructive text-xs">*</span>
                     )}
                   </label>
                   <span className="text-xs text-muted-foreground font-mono">
