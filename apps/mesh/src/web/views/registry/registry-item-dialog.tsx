@@ -80,7 +80,7 @@ const STEP_LABELS = ["Essentials", "Details", "Advanced"] as const;
 type WizardStep = 1 | 2 | 3;
 
 const AI_BUTTON_CLASS =
-  "h-7 text-xs border-green-500/30 text-green-600 dark:text-green-400 shadow-[0_0_8px_rgba(34,197,94,0.3)] hover:shadow-[0_0_14px_rgba(34,197,94,0.5)] hover:border-green-500/50 transition-all";
+  "h-7 text-xs border-success/30 text-success shadow-[0_0_8px_color-mix(in_oklch,var(--success)_30%,transparent)] hover:shadow-[0_0_14px_color-mix(in_oklch,var(--success)_50%,transparent)] hover:border-success/50 transition-all";
 
 function parseRemoteInput(value: string): string {
   return value.replace(/^https?:\/\//i, "").trim();
