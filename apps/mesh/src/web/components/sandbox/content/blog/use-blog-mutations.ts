@@ -23,6 +23,14 @@ function decofileQueryKey({
   return KEYS.decofile(`${orgSlug}/${virtualMcpId}/${branch}`);
 }
 
+function liveMetaQueryKey({
+  orgSlug,
+  virtualMcpId,
+  branch,
+}: BlogMutationParams) {
+  return KEYS.liveMeta(`${orgSlug}/${virtualMcpId}/${branch}`);
+}
+
 function writeUrl(
   { orgSlug, virtualMcpId, branch }: BlogMutationParams,
   op: "write" | "unlink",
@@ -117,6 +125,11 @@ export function useDeleteBlogBlock(params: BlogMutationParams) {
       if (context?.queryKey) {
         queryClient.setQueryData(context.queryKey, context.previous);
       }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: liveMetaQueryKey(params),
+      });
     },
   });
 }
