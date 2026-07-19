@@ -168,17 +168,24 @@ function OnboardingContent({
     ? domainLabel
     : (userName?.split(" ")[0] ?? "");
 
-  const { data: domainLookup, isLoading: domainLoading } =
-    useQuery<DomainLookupResult>({
-      queryKey: KEYS.domainLookup(emailDomain),
-      queryFn: async () => {
-        const res = await fetch("/api/auth/custom/domain-lookup", {
-          credentials: "include",
-        });
-        return res.json();
-      },
-      enabled: isCorporateEmail,
-    });
+  const {
+    data: domainLookup,
+    isLoading: domainLoading,
+    isError: domainLookupFailed,
+    refetch: refetchDomainLookup,
+  } = useQuery<DomainLookupResult>({
+    queryKey: KEYS.domainLookup(emailDomain),
+    queryFn: async () => {
+      const res = await fetch("/api/auth/custom/domain-lookup", {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to look up domain (${res.status})`);
+      }
+      return res.json();
+    },
+    enabled: isCorporateEmail,
+  });
 
   // Track which orgs the user has already requested, per-slug, to prevent
   // duplicate access requests across the shared organization picker.
@@ -194,6 +201,29 @@ function OnboardingContent({
           <span className="text-sm text-muted-foreground">
             Checking {emailDomain}...
           </span>
+        </div>
+      </AuthSplitLayout>
+    );
+  }
+
+  // A failed lookup must not silently fall through to "no matching org" —
+  // that would route a corporate-domain user straight into creating a
+  // duplicate organization instead of joining the one they already have
+  // access to.
+  if (domainLookupFailed) {
+    return (
+      <AuthSplitLayout>
+        <div className="flex flex-col items-start gap-3 py-4">
+          <span className="text-sm text-muted-foreground">
+            Couldn't check {emailDomain} for an existing organization.
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetchDomainLookup()}
+          >
+            Retry
+          </Button>
         </div>
       </AuthSplitLayout>
     );
