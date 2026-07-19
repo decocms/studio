@@ -55,7 +55,7 @@ function createMethodNotFoundFallback(notSupportedMessage: string) {
     // Check for "Method not found" error (code -32601)
     const isMethodNotFound =
       error?.message?.includes("Method not found") ||
-      (error as any)?.code === -32601;
+      (error as { code?: number } | null)?.code === -32601;
 
     if (isMethodNotFound) {
       return (
