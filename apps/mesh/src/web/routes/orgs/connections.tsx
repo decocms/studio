@@ -21,6 +21,7 @@ import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { useMergedStoreDiscovery } from "@/web/hooks/use-merged-store-discovery";
 import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
+import { BulkDeleteDialog } from "./bulk-delete-dialog.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -454,47 +455,6 @@ function AddToAgentDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Bulk delete confirmation dialog
-// ---------------------------------------------------------------------------
-
-function BulkDeleteDialog({
-  open,
-  onOpenChange,
-  count,
-  onConfirm,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  count: number;
-  onConfirm: () => void;
-}) {
-  return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            Delete {count} connection{count !== 1 ? "s" : ""}?
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            This will permanently delete the selected connection
-            {count !== 1 ? "s" : ""}. This action cannot be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            Delete {count} connection{count !== 1 ? "s" : ""}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }
 
