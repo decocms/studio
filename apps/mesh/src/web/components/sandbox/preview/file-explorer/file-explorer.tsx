@@ -253,7 +253,9 @@ export function FileExplorer({
         return rest;
       },
     );
-    void queryClient.invalidateQueries({ queryKey: KEYS.liveMeta(cacheKey) });
+    void queryClient.invalidateQueries({
+      queryKey: KEYS.liveMeta(orgSlug, virtualMcpId, branch),
+    });
   }
 
   function invalidateDecofileCachesForDeletedNode(node: TreeNode) {

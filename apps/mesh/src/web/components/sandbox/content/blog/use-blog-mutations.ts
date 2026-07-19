@@ -28,7 +28,7 @@ function liveMetaQueryKey({
   virtualMcpId,
   branch,
 }: BlogMutationParams) {
-  return KEYS.liveMeta(`${orgSlug}/${virtualMcpId}/${branch}`);
+  return KEYS.liveMeta(orgSlug, virtualMcpId, branch);
 }
 
 function writeUrl(

@@ -62,8 +62,9 @@ export function useDeleteBlock({
       }
     },
     onSuccess: () => {
-      const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
-      void queryClient.invalidateQueries({ queryKey: KEYS.liveMeta(cacheKey) });
+      void queryClient.invalidateQueries({
+        queryKey: KEYS.liveMeta(orgSlug, virtualMcpId, branch),
+      });
     },
   });
 }
