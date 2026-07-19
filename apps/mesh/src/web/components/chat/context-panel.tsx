@@ -223,7 +223,7 @@ function SubtaskRow({ part }: { part: SubtaskToolPart }) {
         ) : isApproval ? (
           <AlertCircle size={12} className="text-warning" />
         ) : (
-          <CheckCircle size={12} className="text-emerald-500" />
+          <CheckCircle size={12} className="text-success" />
         )}
       </span>
     </div>
