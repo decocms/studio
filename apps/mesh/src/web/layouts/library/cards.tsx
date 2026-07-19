@@ -85,6 +85,13 @@ function extOf(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() ?? "";
 }
 
+/** Shared fetch-as-text helper for the card thumbnail/preview queries below. */
+async function fetchText(url: string, init?: RequestInit): Promise<string> {
+  const res = await fetch(url, { credentials: "include", ...init });
+  if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+  return res.text();
+}
+
 /** Shared "Share" menu item — opens the share dialog for a file/folder. */
 function ShareMenuItem({ onShare }: { onShare: () => void }) {
   return (
@@ -389,11 +396,7 @@ export function SkillCard({
 }) {
   const { data } = useQuery({
     queryKey: KEYS.fileText(skillMdUrl),
-    queryFn: async () => {
-      const res = await fetch(skillMdUrl, { credentials: "include" });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      return res.text();
-    },
+    queryFn: () => fetchText(skillMdUrl),
     staleTime: 60_000,
     retry: false,
   });
@@ -475,11 +478,7 @@ export function BrandCard({
 }) {
   const { data } = useQuery({
     queryKey: KEYS.fileText(tokensUrl),
-    queryFn: async () => {
-      const res = await fetch(tokensUrl, { credentials: "include" });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      return res.text();
-    },
+    queryFn: () => fetchText(tokensUrl),
     staleTime: 60_000,
     retry: false,
   });
@@ -573,11 +572,7 @@ function LazyThumb({ children }: { children: ReactNode }) {
 function TextThumb({ url }: { url: string }) {
   const { data } = useQuery({
     queryKey: KEYS.fileText(url),
-    queryFn: async () => {
-      const res = await fetch(url, { credentials: "include" });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      return res.text();
-    },
+    queryFn: () => fetchText(url),
     staleTime: 60_000,
     retry: false,
   });
@@ -592,14 +587,7 @@ function TextThumb({ url }: { url: string }) {
 function CsvThumb({ url, ext }: { url: string; ext: string }) {
   const { data } = useQuery({
     queryKey: KEYS.csvThumb(url),
-    queryFn: async () => {
-      const res = await fetch(url, {
-        credentials: "include",
-        headers: { Range: "bytes=0-8191" },
-      });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      return res.text();
-    },
+    queryFn: () => fetchText(url, { headers: { Range: "bytes=0-8191" } }),
     staleTime: 60_000,
     retry: false,
   });
