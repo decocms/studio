@@ -21,7 +21,7 @@ interface ConnectionListPartProps {
 }
 
 const STATUS_DOT: Record<ConnectionEntity["status"], string> = {
-  active: "bg-emerald-500",
+  active: "bg-success",
   inactive: "bg-muted-foreground",
   error: "bg-destructive",
 };
@@ -125,7 +125,7 @@ export function ConnectionListPart({ part, latency }: ConnectionListPartProps) {
   return (
     <>
       <ToolCallShell
-        icon={<Link01 className="text-emerald-500" />}
+        icon={<Link01 className="text-success" />}
         title={
           items.length === 1 ? "1 connection" : `${items.length} connections`
         }
