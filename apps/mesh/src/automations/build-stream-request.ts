@@ -54,6 +54,18 @@ function parseToolAllowlist(raw: string | null): string[] | null {
   return null;
 }
 
+/**
+ * Deterministic id for the synthetic context-event message
+ * (`buildDispatchRequestStep`'s fallback when the automation's stored
+ * messages contain no non-system message to prepend event parts onto).
+ * Must stay stable across a step re-invocation for the same reason the
+ * message ids below are taskId-derived rather than random — see comment
+ * on `messages` below.
+ */
+export function contextMessageId(taskId: string): string {
+  return `${taskId}:context`;
+}
+
 export function buildStreamRequest(
   automation: Automation,
   triggerId: string | null,

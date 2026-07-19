@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Automation } from "@/storage/types";
 import {
   buildStreamRequest,
+  contextMessageId,
   type ResolvedAutomationModel,
 } from "./build-stream-request";
 
@@ -249,5 +250,21 @@ describe("buildStreamRequest", () => {
       makeResolvedModel(),
     );
     expect(result.maxAgentSteps).toBe(50);
+  });
+});
+
+describe("contextMessageId", () => {
+  it("is stable across repeated calls for the same taskId", () => {
+    // buildDispatchRequestStep's fallback (no non-system message to prepend
+    // event parts onto) uses this id for the synthetic message it pre-persists
+    // via PartEmitter before its own step output is durably recorded — a
+    // crash mid-step forces a full re-invocation, so a random id here would
+    // orphan a duplicate message row the same way the fix in #4790 prevented
+    // for the taskId-derived `${taskId}:${i}` ids above.
+    expect(contextMessageId("thrd_1")).toBe(contextMessageId("thrd_1"));
+  });
+
+  it("never collides with a rawMessages index id", () => {
+    expect(contextMessageId("thrd_1")).not.toMatch(/^thrd_1:\d+$/);
   });
 });
