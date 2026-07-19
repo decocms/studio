@@ -57,6 +57,7 @@ import {
   getDirectoryContextPath,
   getLanguageFromPath,
   getParentTreePath,
+  isSafeExplorerOpenPath,
   joinTreePath,
   mergeGlobLists,
   pathExistsInFileList,
@@ -93,18 +94,6 @@ function buildApiUrl(
   endpoint: string,
 ) {
   return `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/${endpoint}`;
-}
-
-/** Reject path traversal and absolute paths outside the workspace root. */
-function isSafeExplorerOpenPath(path: string): boolean {
-  const normalized = toDaemonPath(path);
-  if (!normalized || normalized.includes("..") || normalized.includes("\\")) {
-    return false;
-  }
-  return (
-    normalized.startsWith(".deco/blocks/") ||
-    (!normalized.startsWith("/") && !normalized.includes("://"))
-  );
 }
 
 type FileIcon = React.ComponentType<{

@@ -25,6 +25,24 @@ export function toDaemonPath(treePath: string) {
   return treePath.startsWith("/") ? treePath.slice(1) : treePath;
 }
 
+/**
+ * Guards the deep-link `openPath` (sourced from the `?main=code:<path>` URL
+ * param) before it's used to read a file from the sandbox: rejects `..`
+ * traversal, backslashes, remote-looking URLs, and paths that stay absolute
+ * even after the single-leading-slash strip in `toDaemonPath`, so a crafted
+ * link can't make the daemon resolve outside the workspace root.
+ */
+export function isSafeExplorerOpenPath(path: string): boolean {
+  const normalized = toDaemonPath(path);
+  if (!normalized || normalized.includes("..") || normalized.includes("\\")) {
+    return false;
+  }
+  return (
+    normalized.startsWith(".deco/blocks/") ||
+    (!normalized.startsWith("/") && !normalized.includes("://"))
+  );
+}
+
 /** Path as shown in the explorer tree (leading slash). */
 export function toTreePath(daemonPath: string) {
   if (!daemonPath.trim()) return "/";
