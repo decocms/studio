@@ -2,15 +2,7 @@ import { Suspense, lazy, useState } from "react";
 import { type Query } from "@tanstack/react-query";
 import {
   AlertCircle,
-  BookOpen01,
-  Calendar,
   CornerUpRight,
-  Database01,
-  Code01,
-  Copy01,
-  CornerUpRight,
-  DotsHorizontal,
-  Edit01,
   File02,
   Globe02,
   Grid01,
@@ -19,7 +11,6 @@ import {
   Plus,
   SearchLg,
   Tag01,
-  CreditCardSearch,
   Users01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
