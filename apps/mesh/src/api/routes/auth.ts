@@ -492,7 +492,7 @@ app.post("/domain-join", async (c) => {
           role: "user",
           organizationId: org.id,
         },
-      } as any);
+      } as unknown as Parameters<typeof auth.api.addMember>[0]);
     } catch (addError) {
       if (!isAlreadyMemberError(addError)) {
         console.error("[Auth] Domain join addMember failed:", addError);
@@ -635,7 +635,9 @@ app.post("/domain-setup", async (c) => {
               slug: orgSlug,
               userId: session.user.id,
             },
-          } as any)) as unknown as { id: string; slug: string } | null;
+          } as unknown as Parameters<
+            typeof auth.api.createOrganization
+          >[0])) as unknown as { id: string; slug: string } | null;
           break;
         } catch (createError) {
           const isConflict =
