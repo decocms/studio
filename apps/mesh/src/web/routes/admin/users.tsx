@@ -91,7 +91,7 @@ export default function AdminUsersPage() {
       header: "Email",
       render: (user) =>
         user.emailVerified ? (
-          <Badge variant="outline" className="text-green-600 border-green-400">
+          <Badge variant="outline" className="text-success border-success/20">
             Verified
           </Badge>
         ) : (
