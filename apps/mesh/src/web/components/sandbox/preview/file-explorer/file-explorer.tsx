@@ -21,16 +21,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
 import { toast } from "sonner";
 import { useChatStream } from "@/web/components/chat/context";
 import { usePanelActions } from "@/web/layouts/shell-layout";
@@ -45,6 +35,7 @@ import {
   FileExplorerNameDialog,
   type FileExplorerNameDialogMode,
 } from "./file-explorer-name-dialog";
+import { FileExplorerDeleteDialog } from "./file-explorer-delete-dialog";
 import { FileTreeRow } from "./file-tree-row";
 import {
   buildFileTree,
@@ -1171,49 +1162,15 @@ export function FileExplorer({
         }}
       />
 
-      <AlertDialog
-        open={deleteTarget !== null}
+      <FileExplorerDeleteDialog
+        deleteTarget={deleteTarget}
+        deleteDirtyPaths={deleteDirtyPaths}
+        fsActionPending={fsActionPending}
         onOpenChange={(open) => {
           if (!open && !fsActionPending) setDeleteTarget(null);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {deleteTarget?.kind === "directory" ? "folder" : "file"}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete{" "}
-              <span className="font-mono">{deleteTarget?.name}</span>
-              {deleteTarget?.kind === "directory"
-                ? " and everything inside it."
-                : "."}
-              {deleteDirtyPaths.length > 0 && (
-                <>
-                  {" "}
-                  {deleteDirtyPaths.length === 1
-                    ? "One open file has unsaved changes that will be lost."
-                    : `${deleteDirtyPaths.length} open files have unsaved changes that will be lost.`}
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={fsActionPending}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={fsActionPending || !deleteTarget}
-              onClick={(e) => {
-                e.preventDefault();
-                if (deleteTarget) void handleDelete(deleteTarget);
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={(node) => void handleDelete(node)}
+      />
     </div>
   );
 }
