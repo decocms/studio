@@ -66,7 +66,7 @@ export function AutomationListRow({
           className={cn(
             "inline-block size-2 rounded-full shrink-0",
             automation.active && automation.trigger_count > 0
-              ? "bg-emerald-500"
+              ? "bg-success"
               : "bg-muted-foreground/40",
           )}
           aria-label={
