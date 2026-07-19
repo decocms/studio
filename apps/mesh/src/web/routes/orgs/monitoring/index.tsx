@@ -727,7 +727,7 @@ function MonitoringDashboardContent({
                     onClick={onStreamingToggle}
                   >
                     {isStreaming && (
-                      <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="size-2 rounded-full bg-success animate-pulse" />
                     )}
                     <span>Live</span>
                     {isStreaming && (
