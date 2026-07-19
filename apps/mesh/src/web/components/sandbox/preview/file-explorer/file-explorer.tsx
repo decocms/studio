@@ -618,16 +618,10 @@ export function FileExplorer({
     });
 
     try {
-      const res = await fetch(
-        buildApiUrl(orgSlug, virtualMcpId, branch, "read"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ path: toDaemonPath(path), full: true }),
-        },
-      );
-      if (!res.ok) return;
-      const data = (await res.json()) as {
+      const data = (await postSandbox("read", {
+        path: toDaemonPath(path),
+        full: true,
+      })) as {
         kind?: string;
         content?: string;
       };
@@ -648,21 +642,7 @@ export function FileExplorer({
 
   async function saveFile(path: string, content: string) {
     try {
-      const res = await fetch(
-        buildApiUrl(orgSlug, virtualMcpId, branch, "write"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ path: toDaemonPath(path), content }),
-        },
-      );
-      if (!res.ok) {
-        saveChangesDebug("file save failed", {
-          path,
-          status: res.status,
-        });
-        return;
-      }
+      await postSandbox("write", { path: toDaemonPath(path), content });
       saveChangesDebug("file saved via sandbox /write", { path });
       void queryClient.invalidateQueries({
         queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
@@ -684,8 +664,11 @@ export function FileExplorer({
         }
         return next;
       });
-    } catch {
-      // Save failed silently
+    } catch (err) {
+      saveChangesDebug("file save failed", {
+        path,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
