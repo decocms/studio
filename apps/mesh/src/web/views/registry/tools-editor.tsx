@@ -122,7 +122,7 @@ export function ToolsEditor({
 
       {/* Status feedback */}
       {discoverStatus === "success" && (
-        <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 text-xs text-success bg-success/10 rounded-lg px-3 py-2">
           <CheckCircle size={14} className="shrink-0" />
           <span>
             Discovered {tools.length} tool{tools.length !== 1 ? "s" : ""}{" "}
