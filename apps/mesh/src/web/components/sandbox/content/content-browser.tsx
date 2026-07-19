@@ -6,6 +6,11 @@ import {
   Calendar,
   CornerUpRight,
   Database01,
+  Code01,
+  Copy01,
+  CornerUpRight,
+  DotsHorizontal,
+  Edit01,
   File02,
   Globe02,
   Grid01,
@@ -13,11 +18,9 @@ import {
   Loading01,
   Plus,
   SearchLg,
-  Settings01,
   Tag01,
   CreditCardSearch,
   Users01,
-  Zap,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -76,6 +79,7 @@ import { suggestBlockId } from "@/web/components/sections-editor/page-sections";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
 import { AvailableSectionEditor } from "./available-section-editor";
 import { SavedSectionEditor } from "./saved-section-editor";
+import { CollectionsSidebar } from "./collections-sidebar";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
   sandboxUserStop,
@@ -184,7 +188,9 @@ const RedirectEditor = lazy(() =>
   import("./redirect-editor").then((m) => ({ default: m.RedirectEditor })),
 );
 
-type CollectionId =
+const VARIANT_GREEN = "oklch(0.65 0.15 160)";
+
+export type CollectionId =
   | "pages"
   | "sections"
   | "apps"
@@ -196,7 +202,7 @@ type CollectionId =
   | "redirects"
   | BlogKind;
 
-type CollectionCounts = Record<
+export type CollectionCounts = Record<
   | "pages"
   | "sections"
   | "apps"
@@ -1635,171 +1641,6 @@ function GroupHeader({
       <Icon size={13} className="shrink-0" />
       {label}
     </div>
-  );
-}
-
-function CollectionsSidebar({
-  active,
-  counts,
-  showBlog,
-  onSelect,
-}: {
-  active: CollectionId;
-  counts: CollectionCounts;
-  showBlog: boolean;
-  onSelect: (id: CollectionId) => void;
-}) {
-  return (
-    <div className="w-[208px] shrink-0 border-r flex flex-col">
-      <div className="px-3 h-12 flex items-center border-b shrink-0">
-        <span className="text-sm font-medium">Content</span>
-      </div>
-      <nav className="flex flex-col p-1.5 gap-0.5">
-        <CollectionRow
-          id="pages"
-          icon={LayoutAlt01}
-          label="Pages"
-          count={counts.pages}
-          active={active === "pages"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="sections"
-          icon={Globe02}
-          label="Sections"
-          count={counts.sections}
-          active={active === "sections"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="apps"
-          icon={Grid01}
-          label="Apps"
-          count={counts.apps}
-          active={active === "apps"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="redirects"
-          icon={CornerUpRight}
-          label="Redirects"
-          count={counts.redirects}
-          active={active === "redirects"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="loaders"
-          icon={Database01}
-          label="Loaders"
-          count={counts.loaders}
-          active={active === "loaders"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="actions"
-          icon={Zap}
-          label="Actions"
-          count={counts.actions}
-          active={active === "actions"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="site"
-          icon={Settings01}
-          label="Site"
-          active={active === "site"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="seo"
-          icon={CreditCardSearch}
-          label="SEO"
-          active={active === "seo"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="calendar"
-          icon={Calendar}
-          label="Calendar"
-          active={active === "calendar"}
-          onSelect={onSelect}
-        />
-        {showBlog && (
-          <>
-            <div className="mt-3 flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70">
-              <BookOpen01 size={13} className="shrink-0" />
-              Blog
-            </div>
-            <CollectionRow
-              id="posts"
-              icon={File02}
-              label="Posts"
-              count={counts.posts}
-              active={active === "posts"}
-              onSelect={onSelect}
-            />
-            <CollectionRow
-              id="authors"
-              icon={Users01}
-              label="Authors"
-              count={counts.authors}
-              active={active === "authors"}
-              onSelect={onSelect}
-            />
-            <CollectionRow
-              id="categories"
-              icon={Tag01}
-              label="Categories"
-              count={counts.categories}
-              active={active === "categories"}
-              onSelect={onSelect}
-            />
-          </>
-        )}
-      </nav>
-    </div>
-  );
-}
-
-function CollectionRow({
-  id,
-  icon: Icon,
-  label,
-  count,
-  active,
-  onSelect,
-}: {
-  id: CollectionId;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
-  count?: number;
-  active: boolean;
-  onSelect: (id: CollectionId) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(id)}
-      className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
-        active
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      <Icon size={16} className="shrink-0" />
-      <span className="flex-1 truncate">{label}</span>
-      {count !== undefined && (
-        <span
-          className={cn(
-            "shrink-0 text-xs tabular-nums",
-            active ? "text-accent-foreground/70" : "text-muted-foreground/70",
-          )}
-        >
-          {count}
-        </span>
-      )}
-    </button>
   );
 }
 

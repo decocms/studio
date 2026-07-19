@@ -77,7 +77,10 @@ import { toast } from "sonner";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { IntegrationIcon } from "@/web/components/integration-icon";
-import { ToolInputForm } from "@/web/components/tool-input-form";
+import {
+  ToolInputForm,
+  type ToolInputProperty,
+} from "@/web/components/tool-input-form";
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
@@ -95,8 +98,10 @@ interface UITool {
   name: string;
   description?: string;
   resourceUri: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  inputSchema?: { properties?: Record<string, any>; required?: string[] };
+  inputSchema?: {
+    properties?: Record<string, ToolInputProperty>;
+    required?: string[];
+  };
 }
 
 interface ConnectionUITools {
@@ -827,8 +832,7 @@ function AgentToolList({
  * should toast). */
 function coerceFormValues(
   values: Record<string, unknown>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  properties: Record<string, any>,
+  properties: Record<string, ToolInputProperty>,
 ): Record<string, unknown> | null {
   const out: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(values)) {
@@ -857,8 +861,7 @@ function coerceFormValues(
  * JSON strings so they render in a Textarea. */
 function seedFormValues(
   toolInput: Record<string, unknown> | undefined,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  properties: Record<string, any> | undefined,
+  properties: Record<string, ToolInputProperty> | undefined,
 ): Record<string, unknown> {
   if (!toolInput || !properties) return {};
   const init: Record<string, unknown> = {};

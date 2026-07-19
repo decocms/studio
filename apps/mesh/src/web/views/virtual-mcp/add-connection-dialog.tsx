@@ -119,6 +119,23 @@ export function AddConnectionDialog({
     });
   };
 
+  // Shared post-OAuth-success bookkeeping for the three attach flows below:
+  // track the event, then refresh the MCP-auth check and connections list.
+  const invalidateAfterOAuthSuccess = async (
+    id: string,
+    flow: "clone" | "connect_new" | "custom_create",
+  ) => {
+    track("connection_oauth_succeeded", { connection_id: id, flow });
+    const mcpProxyUrl = new URL(
+      `/api/${org.slug}/mcp/${id}`,
+      window.location.origin,
+    );
+    await queryClient.invalidateQueries({
+      queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
+    });
+    invalidateConnections();
+  };
+
   // For connected apps: clone existing connection + add to agent
   const handleCloneAndAdd = async (base: ConnectionEntity) => {
     setConnectingItemId(base.app_name ?? base.id);
@@ -165,18 +182,7 @@ export function AddConnectionDialog({
       }
 
       if (auth.ran) {
-        track("connection_oauth_succeeded", {
-          connection_id: id,
-          flow: "clone",
-        });
-        const mcpProxyUrl = new URL(
-          `/api/${org.slug}/mcp/${id}`,
-          window.location.origin,
-        );
-        await queryClient.invalidateQueries({
-          queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
-        });
-        invalidateConnections();
+        await invalidateAfterOAuthSuccess(id, "clone");
       }
 
       trackAttach(id, base.app_name ?? null, "clone");
@@ -246,18 +252,7 @@ export function AddConnectionDialog({
       }
 
       if (auth.ran) {
-        track("connection_oauth_succeeded", {
-          connection_id: id,
-          flow: "connect_new",
-        });
-        const mcpProxyUrl = new URL(
-          `/api/${org.slug}/mcp/${id}`,
-          window.location.origin,
-        );
-        await queryClient.invalidateQueries({
-          queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
-        });
-        invalidateConnections();
+        await invalidateAfterOAuthSuccess(id, "connect_new");
         toast.success("Connected and authenticated");
       } else {
         toast.success("Connected");
@@ -349,18 +344,7 @@ export function AddConnectionDialog({
           }
 
           if (auth.ran) {
-            track("connection_oauth_succeeded", {
-              connection_id: id,
-              flow: "custom_create",
-            });
-            const mcpProxyUrl = new URL(
-              `/api/${org.slug}/mcp/${id}`,
-              window.location.origin,
-            );
-            await queryClient.invalidateQueries({
-              queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
-            });
-            invalidateConnections();
+            await invalidateAfterOAuthSuccess(id, "custom_create");
           }
 
           // app_name unknown for custom-create; record null and let the
