@@ -171,6 +171,52 @@ function FileActions({
   );
 }
 
+/** Shared "Actions" dropdown for a card: browse/share/delete, whichever
+ *  the caller passes. Renders nothing if none are given. */
+function EntryActionsMenu({
+  label,
+  onBrowse,
+  onShare,
+  onDelete,
+}: {
+  label: string;
+  onBrowse?: () => void;
+  onShare?: () => void;
+  onDelete?: () => void;
+}) {
+  if (!onBrowse && !onShare && !onDelete) return undefined;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Actions for ${label}`}
+        >
+          <DotsVertical size={14} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        {onBrowse && (
+          <DropdownMenuItem onClick={onBrowse}>
+            <Folder size={14} />
+            Browse files
+          </DropdownMenuItem>
+        )}
+        {onShare && <ShareMenuItem onShare={onShare} />}
+        {onDelete && (
+          <DropdownMenuItem variant="destructive" onClick={onDelete}>
+            <Trash01 size={14} />
+            Delete
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function CardShell({
   onOpen,
   children,
@@ -290,33 +336,11 @@ export function FolderCard({
         subtitle={subtitle}
         publicState={publicState}
         actions={
-          onShare || onDelete ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
-                  onClick={(e) => e.stopPropagation()}
-                  aria-label={`Actions for ${name}`}
-                >
-                  <DotsVertical size={14} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {onShare && <ShareMenuItem onShare={onShare} />}
-                {onDelete && (
-                  <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                    <Trash01 size={14} />
-                    Delete
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : undefined
+          <EntryActionsMenu
+            label={name}
+            onShare={onShare}
+            onDelete={onDelete}
+          />
         }
       />
     </CardShell>
@@ -415,35 +439,12 @@ export function SkillCard({
         subtitle="Skill"
         publicState={publicState}
         actions={
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
-                onClick={(e) => e.stopPropagation()}
-                aria-label={`Actions for ${dirName}`}
-              >
-                <DotsVertical size={14} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <DropdownMenuItem onClick={onBrowse}>
-                <Folder size={14} />
-                Browse files
-              </DropdownMenuItem>
-              {onShare && <ShareMenuItem onShare={onShare} />}
-              {onDelete && (
-                <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                  <Trash01 size={14} />
-                  Delete
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <EntryActionsMenu
+            label={dirName}
+            onBrowse={onBrowse}
+            onShare={onShare}
+            onDelete={onDelete}
+          />
         }
       />
       <p className="line-clamp-2 min-h-8 text-xs leading-4 text-muted-foreground">
@@ -500,34 +501,11 @@ export function BrandCard({
         meta={timeAgo(updatedAt)}
         subtitle="Brand"
         actions={
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
-                onClick={(e) => e.stopPropagation()}
-                aria-label={`Actions for ${dirName}`}
-              >
-                <DotsVertical size={14} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <DropdownMenuItem onClick={onBrowse}>
-                <Folder size={14} />
-                Browse files
-              </DropdownMenuItem>
-              {onDelete && (
-                <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                  <Trash01 size={14} />
-                  Delete
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <EntryActionsMenu
+            label={dirName}
+            onBrowse={onBrowse}
+            onDelete={onDelete}
+          />
         }
       />
       <div className="flex min-h-5 items-center gap-1.5">
