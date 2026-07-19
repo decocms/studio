@@ -497,7 +497,7 @@ function PublishDialogBody({
               {openPrFromCommits ? "Submit for review" : publishLabel}
             </p>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-green-500" />
+              <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-success" />
               {diffCount} {diffCount === 1 ? "change" : "changes"}{" "}
               {openPrFromCommits ? "in this PR" : "to publish"}
             </div>
