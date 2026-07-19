@@ -624,7 +624,7 @@ export function UnifiedAuthForm({
 
       {/* Success message for forgot password */}
       {resetEmailSent && (
-        <div className="rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-600 dark:text-emerald-400 text-center">
+        <div className="rounded-xl bg-success/10 p-3 text-sm text-success text-center">
           {copy.resetEmailSent}
         </div>
       )}
