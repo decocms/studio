@@ -383,7 +383,7 @@ function AgentInsetProvider() {
   // Fetch entity (Suspense-based — resolved before render)
   const entity = useVirtualMCP(virtualMcpId);
 
-  const layoutMetadata = (entity?.metadata as any)?.ui?.layout ?? null;
+  const layoutMetadata = entity?.metadata?.ui?.layout ?? null;
   const entityMetadata = layoutMetadata
     ? {
         defaultMainView: layoutMetadata.defaultMainView ?? null,
