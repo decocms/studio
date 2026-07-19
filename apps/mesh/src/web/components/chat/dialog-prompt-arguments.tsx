@@ -23,7 +23,7 @@ import { Spinner } from "@deco/ui/components/spinner.tsx";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { useId } from "react";
-import { useForm, type Resolver } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 export type PromptArgumentValues = Record<string, string>;
@@ -36,10 +36,10 @@ interface PromptArgsDialogProps {
   defaultValues?: PromptArgumentValues;
 }
 
-function buildArgumentSchema(prompt: Prompt) {
-  const shape: Record<string, z.ZodTypeAny> = {};
+function buildArgumentSchema(prompt: Prompt | null) {
+  const shape: Record<string, z.ZodString> = {};
 
-  for (const arg of prompt.arguments ?? []) {
+  for (const arg of prompt?.arguments ?? []) {
     shape[arg.name] = arg.required ? z.string().min(1, "Required") : z.string();
   }
 
@@ -64,10 +64,9 @@ export function PromptArgsDialog({
   defaultValues,
 }: PromptArgsDialogProps) {
   const id = useId();
-  const schema = prompt ? buildArgumentSchema(prompt) : z.object({});
-  const resolver = zodResolver(schema as any);
+  const schema = buildArgumentSchema(prompt);
   const form = useForm<PromptArgumentValues>({
-    resolver: resolver as unknown as Resolver<PromptArgumentValues>,
+    resolver: zodResolver(schema),
     defaultValues: prompt ? buildDefaultValues(prompt, defaultValues) : {},
     mode: "onChange",
   });
