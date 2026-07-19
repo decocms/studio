@@ -50,7 +50,7 @@ export function ToolInputForm({
             <label className="text-xs font-medium leading-none flex items-center gap-1">
               {key}
               {requiredSet.has(key) && (
-                <span className="text-red-500 text-[10px]">*</span>
+                <span className="text-destructive text-[10px]">*</span>
               )}
             </label>
             <span className="text-[10px] text-muted-foreground font-mono">
