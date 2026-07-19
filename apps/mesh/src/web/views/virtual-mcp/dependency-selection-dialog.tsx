@@ -619,6 +619,25 @@ function recordToConnections(formData: FormData): VirtualMCPConnection[] {
   }));
 }
 
+// Helper: Set a single field's selection for a connection, initializing the
+// entry (all fields null) if it doesn't exist yet.
+function withFieldValue(
+  formData: FormData,
+  connId: string,
+  field: "tools" | "resources" | "prompts",
+  value: SelectionValue,
+): FormData {
+  const existing = formData[connId] ?? {
+    tools: null,
+    resources: null,
+    prompts: null,
+  };
+  return {
+    ...formData,
+    [connId]: { ...existing, [field]: value },
+  };
+}
+
 // Dialog state reducer
 interface DialogState {
   activeTab: TabId;
@@ -675,18 +694,13 @@ export function DependencySelectionDialog({
       }
     }
 
-    const updatedFormData: FormData = { ...formData };
-    if (!updatedFormData[connId]) {
-      updatedFormData[connId] = { tools: null, resources: null, prompts: null };
-    } else {
-      updatedFormData[connId] = { ...updatedFormData[connId] };
-    }
-    updatedFormData[connId][field] = newSelection;
-
-    form.setValue("connections", recordToConnections(updatedFormData), {
-      shouldDirty: true,
-      shouldTouch: true,
-    });
+    form.setValue(
+      "connections",
+      recordToConnections(
+        withFieldValue(formData, connId, field, newSelection),
+      ),
+      { shouldDirty: true, shouldTouch: true },
+    );
   };
 
   const toggleAll = (
@@ -696,18 +710,13 @@ export function DependencySelectionDialog({
     const current = formData[connId]?.[field];
     const newSelection = current === null ? [] : null;
 
-    const updatedFormData: FormData = { ...formData };
-    if (!updatedFormData[connId]) {
-      updatedFormData[connId] = { tools: null, resources: null, prompts: null };
-    } else {
-      updatedFormData[connId] = { ...updatedFormData[connId] };
-    }
-    updatedFormData[connId][field] = newSelection;
-
-    form.setValue("connections", recordToConnections(updatedFormData), {
-      shouldDirty: true,
-      shouldTouch: true,
-    });
+    form.setValue(
+      "connections",
+      recordToConnections(
+        withFieldValue(formData, connId, field, newSelection),
+      ),
+      { shouldDirty: true, shouldTouch: true },
+    );
   };
 
   const toggleTool = (
