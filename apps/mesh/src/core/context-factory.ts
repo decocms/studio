@@ -56,6 +56,7 @@ import {
   MonitorResultStorage,
   MonitorConnectionStorage,
 } from "../storage/registry";
+import type { PrivateRegistryDatabase } from "../storage/registry/types";
 import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
@@ -1306,12 +1307,24 @@ export async function createStudioContextFactory(
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),
     orgSsoSessions: new OrgSsoSessionStorage(config.db),
     registry: {
-      items: new RegistryItemStorage(config.db as any),
-      publishRequests: new PublishRequestStorage(config.db as any),
-      publishApiKeys: new PublishApiKeyStorage(config.db as any),
-      monitorRuns: new MonitorRunStorage(config.db as any),
-      monitorResults: new MonitorResultStorage(config.db as any),
-      monitorConnections: new MonitorConnectionStorage(config.db as any),
+      items: new RegistryItemStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      publishRequests: new PublishRequestStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      publishApiKeys: new PublishApiKeyStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      monitorRuns: new MonitorRunStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      monitorResults: new MonitorResultStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      monitorConnections: new MonitorConnectionStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
     },
     brandContext: new BrandContextStorage(config.db),
     organizationDomains: new OrganizationDomainStorage(config.db),
