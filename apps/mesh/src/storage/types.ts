@@ -15,6 +15,7 @@ import type { ColumnType } from "kysely";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import { ThreadStatus, type ProviderId } from "@decocms/mesh-sdk";
+import type { PrivateRegistryDatabase } from "./registry/types";
 
 // ============================================================================
 // Type Utilities
@@ -1654,7 +1655,7 @@ export interface BrandContext {
  * NOTE: This uses *Table types with ColumnType for proper Kysely type mapping
  * NOTE: Organizations, teams, members, and roles are managed by Better Auth organization plugin
  */
-export interface Database {
+export interface Database extends PrivateRegistryDatabase {
   // Core tables (all within organization scope)
   users: UserTable; // System users
   user: BetterAuthUserTable; // Better Auth core table (singular)
