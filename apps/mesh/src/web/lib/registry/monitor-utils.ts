@@ -42,3 +42,34 @@ export function collapseLatestToolResults(
   }
   return Array.from(byToolName.values());
 }
+
+export interface ToolResultSummary {
+  latestToolResults: MonitorToolResult[];
+  realToolTests: MonitorToolResult[];
+  isHealthCheck: boolean;
+  passedTools: number;
+  failedTools: number;
+  hasToolTests: boolean;
+}
+
+export function summarizeToolResults(
+  toolResults: MonitorToolResult[],
+): ToolResultSummary {
+  const latestToolResults = collapseLatestToolResults(toolResults);
+  const isHealthCheck = latestToolResults.every(
+    (t) => t.outputPreview === "health_check: not called",
+  );
+  const realToolTests = latestToolResults.filter(
+    (t) => t.outputPreview !== "health_check: not called",
+  );
+  const passedTools = realToolTests.filter((t) => t.success).length;
+  const failedTools = realToolTests.filter((t) => !t.success).length;
+  return {
+    latestToolResults,
+    realToolTests,
+    isHealthCheck,
+    passedTools,
+    failedTools,
+    hasToolTests: realToolTests.length > 0,
+  };
+}

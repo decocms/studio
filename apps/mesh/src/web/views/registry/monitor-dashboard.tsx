@@ -28,9 +28,9 @@ import type {
 } from "@/web/lib/registry/types";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
-  collapseLatestToolResults,
   formatMonitorDuration,
   monitorStatusBadgeClass,
+  summarizeToolResults,
 } from "@/web/lib/registry/monitor-utils";
 import { Play, StopSquare } from "@untitledui/icons";
 
@@ -59,16 +59,14 @@ function ResultLogEntry({
   icon?: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const latestToolResults = collapseLatestToolResults(r.tool_results);
-  const isHealthCheck = latestToolResults.every(
-    (t) => t.outputPreview === "health_check: not called",
-  );
-  const realToolTests = latestToolResults.filter(
-    (t) => t.outputPreview !== "health_check: not called",
-  );
-  const passedTools = realToolTests.filter((t) => t.success).length;
-  const failedTools = realToolTests.filter((t) => !t.success).length;
-  const hasToolTests = realToolTests.length > 0;
+  const {
+    latestToolResults,
+    realToolTests,
+    isHealthCheck,
+    passedTools,
+    failedTools,
+    hasToolTests,
+  } = summarizeToolResults(r.tool_results);
   const testedToolsCount = realToolTests.length;
   const inferredDiscoveredToolsCount = inferDiscoveredToolsCountFromSummary(
     r.agent_summary,
