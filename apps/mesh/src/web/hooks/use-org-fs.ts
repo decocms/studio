@@ -71,18 +71,20 @@ function fsUrl(
   return `/api/${encodeURIComponent(orgSlug)}/fs/${encodeURIComponent(volume)}/${op}${qs ? `?${qs}` : ""}`;
 }
 
-async function fsFetch(url: string, init?: RequestInit): Promise<Response> {
+async function fsFetch(
+  url: string,
+  init?: RequestInit,
+  opts?: { allow404?: boolean },
+): Promise<Response> {
   const res = await fetch(url, init);
-  if (!res.ok) {
-    let detail = "";
-    try {
-      detail = ((await res.json()) as { error?: string }).error ?? "";
-    } catch {
-      // non-JSON body
-    }
-    throw new Error(detail || `HTTP ${res.status}`);
+  if (res.ok || (opts?.allow404 && res.status === 404)) return res;
+  let detail = "";
+  try {
+    detail = ((await res.json()) as { error?: string }).error ?? "";
+  } catch {
+    // non-JSON body
   }
-  return res;
+  throw new Error(detail || `HTTP ${res.status}`);
 }
 
 /** Children of `path` ("" = volume root), dirs first then by name. */
@@ -123,9 +125,12 @@ export function useOrgFsStat(
           query.state.data ? false : (opts.refetchIntervalWhenAbsent ?? false)
       : undefined,
     queryFn: async (): Promise<OrgFsEntry | null> => {
-      const res = await fetch(fsUrl(org.slug, volume ?? "", "stat", { path }));
+      const res = await fsFetch(
+        fsUrl(org.slug, volume ?? "", "stat", { path }),
+        undefined,
+        { allow404: true },
+      );
       if (res.status === 404) return null;
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return ((await res.json()) as { entry: OrgFsEntry }).entry;
     },
   });
