@@ -43,7 +43,7 @@ function makeResolvedModel(
 }
 
 describe("buildStreamRequest", () => {
-  it("generates fresh message ids (not the stored ones)", () => {
+  it("generates fresh message ids derived from taskId (not the stored ones)", () => {
     const result = buildStreamRequest(
       makeAutomation(),
       "trig_1",
@@ -55,9 +55,27 @@ describe("buildStreamRequest", () => {
     expect(msg.role).toBe("user");
     expect(msg.parts).toEqual([{ type: "text", text: "hello" }]);
     expect(msg.id).not.toBe("m1");
-    expect(msg.id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    expect(msg.id).toBe("thrd_1:0");
+  });
+
+  it("generates the SAME message ids across repeated calls for the same taskId", () => {
+    // buildDispatchRequestStep (the DBOS step wrapping this call) pre-persists
+    // this message via PartEmitter before the step's own output is recorded.
+    // A crash mid-step forces a full re-invocation with the same taskId — the
+    // id must stay stable or the replay orphans a duplicate message row.
+    const first = buildStreamRequest(
+      makeAutomation(),
+      "trig_1",
+      "thrd_1",
+      makeResolvedModel(),
     );
+    const second = buildStreamRequest(
+      makeAutomation(),
+      "trig_1",
+      "thrd_1",
+      makeResolvedModel(),
+    );
+    expect(second.messages[0]!.id).toBe(first.messages[0]!.id);
   });
 
   it("places the resolved model in the request body", () => {
