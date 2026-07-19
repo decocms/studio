@@ -209,7 +209,7 @@ function RolesPageContent() {
             <span className="text-sm text-muted-foreground">Basic access</span>
           );
         }
-        const r = row.role as OrganizationRole;
+        const r = row.role;
         const parts: string[] = [];
         if (r.allowsAllStaticPermissions) {
           parts.push("Full org access");
@@ -265,7 +265,7 @@ function RolesPageContent() {
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => {
-                  const r = row.role as OrganizationRole;
+                  const r = row.role;
                   if (r.id) setRoleToDelete({ id: r.id, label: r.label });
                 }}
               >
@@ -284,7 +284,7 @@ function RolesPageContent() {
     if (row.kind === "builtin") {
       setActiveRole(`builtin-${row.role.role}`);
     } else {
-      const r = row.role as OrganizationRole;
+      const r = row.role;
       setActiveRole(r.id);
     }
   };
