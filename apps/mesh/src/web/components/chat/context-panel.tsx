@@ -494,13 +494,7 @@ export function ChatContextPanel({
                       </div>
                       {createdAt && (
                         <span className="shrink-0 text-muted-foreground tabular-nums">
-                          {new Date(createdAt).toLocaleString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
+                          {formatDate(createdAt)}
                         </span>
                       )}
                     </button>
