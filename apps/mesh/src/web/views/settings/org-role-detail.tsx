@@ -219,7 +219,7 @@ function OrgPermissionsTab({
                           {cap.dangerous && (
                             <AlertTriangle
                               size={12}
-                              className="text-amber-500 shrink-0"
+                              className="text-warning shrink-0"
                             />
                           )}
                         </span>
