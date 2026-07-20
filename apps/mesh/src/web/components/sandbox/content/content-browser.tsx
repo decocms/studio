@@ -57,6 +57,7 @@ import {
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
 import type { AppCatalogEntry } from "./app-catalog";
+import { ListEmpty } from "./list-empty";
 import { useDecoAppsCatalog } from "@/web/hooks/use-deco-apps-catalog";
 import { normalizePagePath } from "@/web/components/sections-editor/page-path-utils";
 import {
@@ -2385,29 +2386,6 @@ function RedirectTypeBadge({ type }: { type: RedirectType }) {
         {type === "permanent" ? "Permanent" : "Temporary"}
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-function ListEmpty({
-  hasItems,
-  emptyLabel,
-  emptyHint,
-}: {
-  hasItems: boolean;
-  emptyLabel: string;
-  emptyHint: string;
-}) {
-  return (
-    <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-      {hasItems ? (
-        "No results match your search."
-      ) : (
-        <>
-          <div>{emptyLabel}</div>
-          <div className="mt-1 text-muted-foreground/80">{emptyHint}</div>
-        </>
-      )}
-    </div>
   );
 }
 
