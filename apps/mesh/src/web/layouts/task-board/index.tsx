@@ -19,6 +19,18 @@ import {
   Plus,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/web/components/super-agent-icon";
+import { GitHubIcon } from "@/web/components/icons/github-icon";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@deco/ui/components/dialog.tsx";
+import { useConnections } from "@decocms/mesh-sdk";
+import { getOrgGithubConnections } from "@/shared/github-repo-scope";
+import { useConnectApp } from "@/web/hooks/use-connect-app";
 import { useMembers } from "@/web/hooks/use-members";
 import {
   useTaskBoardItemActions,
@@ -174,6 +186,12 @@ export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const reportsOnly = useReportsOnly();
+  // Auto-fix hands the task to the Super Agent, which opens a PR — so it needs
+  // an org-level GitHub connection. If the org has none, prompt to connect
+  // instead of enqueueing a run that can't push.
+  const hasGithub =
+    getOrgGithubConnections(useConnections({ slug: "mcp-github" })).length > 0;
+  const [connectGithubOpen, setConnectGithubOpen] = useState(false);
   const { data: membersData } = useMembers();
   const members = (membersData?.data?.members ?? []) as Member[];
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
@@ -306,11 +324,16 @@ export function TaskBoardPage() {
           onMove={(id, status) => actions.update.mutate({ id, status })}
           onAutoFix={
             reportsOnly
-              ? (item) =>
+              ? (item) => {
+                  if (!hasGithub) {
+                    setConnectGithubOpen(true);
+                    return;
+                  }
                   actions.update.mutate({
                     id: item.id,
                     assigneeId: SUPER_AGENT_ASSIGNEE_ID,
-                  })
+                  });
+                }
               : undefined
           }
         />
@@ -373,7 +396,57 @@ export function TaskBoardPage() {
           });
         }}
       />
+
+      <ConnectGitHubDialog
+        open={connectGithubOpen}
+        onOpenChange={setConnectGithubOpen}
+      />
     </div>
+  );
+}
+
+/**
+ * Small prompt shown when Auto-fix is used in an org with no GitHub connection.
+ * The Super Agent needs GitHub to open a PR, so we connect first. Once the
+ * connection lands the card's Auto-fix button works on the next click.
+ */
+function ConnectGitHubDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { connect, isConnecting } = useConnectApp("deco/mcp-github");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Connect GitHub</DialogTitle>
+          <DialogDescription>
+            Auto-fix hands the task to the Super Agent, which opens a pull
+            request with the change. Connect GitHub so it can push and open PRs.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            onClick={async () => {
+              await connect();
+              onOpenChange(false);
+            }}
+            disabled={isConnecting}
+            className="gap-2"
+          >
+            {isConnecting ? (
+              <Loading01 size={16} className="animate-spin" />
+            ) : (
+              <GitHubIcon className="size-4" />
+            )}
+            Connect GitHub
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
