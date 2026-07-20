@@ -20,10 +20,10 @@ export function coerceFormValues(
       }
     } else if (
       (type === "number" || type === "integer") &&
-      typeof raw === "string"
+      (typeof raw === "string" || typeof raw === "number")
     ) {
-      if (!raw.trim()) continue;
-      const parsed = Number(raw);
+      if (typeof raw === "string" && !raw.trim()) continue;
+      const parsed = typeof raw === "string" ? Number(raw) : raw;
       if (!Number.isFinite(parsed)) return null;
       if (type === "integer" && !Number.isInteger(parsed)) return null;
       out[key] = parsed;
