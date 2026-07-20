@@ -19,6 +19,21 @@ function resolveDispatchRole(raw: string | undefined): DispatchRole {
     : "all";
 }
 
+// The shutdown drain only exists to outlast NLB ip-target deregistration of the
+// frontdoor HTTP listener. "worker" pods aren't frontdoor targets (no
+// `decocms.com/frontdoor` label), so draining just steals the grace budget
+// DBOS.shutdown() needs to drain in-flight runs — skip it. `SHUTDOWN_DRAIN_MS`
+// overrides either way.
+export function resolveShutdownDrainMs(
+  role: DispatchRole,
+  forceExitMs: number,
+  envOverride: string | undefined,
+): number {
+  return Number(
+    envOverride ?? (role === "worker" ? 0 : Math.floor(forceExitMs * 0.6)),
+  );
+}
+
 function toBool(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
@@ -134,6 +149,10 @@ export function resolveConfig(
     localMode,
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,
+    deploymentAdminEmails: (envVars.DEPLOYMENT_ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
 
     // Observability
     clickhouseUrl: envVars.CLICKHOUSE_URL,

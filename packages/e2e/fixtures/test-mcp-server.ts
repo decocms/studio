@@ -3,9 +3,9 @@
  *
  * Spins up a tiny HTTP MCP server on a random port using `node:http` (NOT
  * `Bun.serve` — Playwright runs specs under Node, not Bun) so a test can
- * create a real mesh connection that points at something real but
+ * create a real studio connection that points at something real but
  * controlled. Uses the SDK's `StreamableHTTPServerTransport` (Node
- * wrapper around the same Web-Standard transport mesh uses internally),
+ * wrapper around the same Web-Standard transport studio uses internally),
  * so the wire protocol matches production exactly.
  *
  * Why not Docker (like tests/resilience/everything-server)? Per-test
@@ -40,7 +40,7 @@ export interface TestMcpTool {
    * handler's (object) return value is ALSO surfaced as `structuredContent`
    * on the MCP result — the SDK only emits/validates structuredContent for
    * tools that declare an outputSchema. Consumers that read
-   * `result.structuredContent` (e.g. mesh's MINT_REPO_TOKEN caller) need
+   * `result.structuredContent` (e.g. studio's MINT_REPO_TOKEN caller) need
    * this; plain text-only tools can omit it.
    */
   outputSchema?: Record<string, z.ZodTypeAny>;
@@ -72,7 +72,7 @@ export interface RecordedRequest {
 }
 
 export interface TestMcpServer {
-  /** Base URL ending in `/`. Pass this as the connection URL in mesh. */
+  /** Base URL ending in `/`. Pass this as the connection URL in studio. */
   url: string;
   /** Every JSON-RPC request the server saw, in arrival order. */
   requests: ReadonlyArray<RecordedRequest>;
@@ -114,7 +114,7 @@ export async function startTestMcpServer(
   const recorded: RecordedRequest[] = [];
 
   // Build a fresh server per request — the streamable transport is designed
-  // to be one-shot in stateless mode, mirroring how mesh's /mcp/self mounts
+  // to be one-shot in stateless mode, mirroring how studio's /mcp/self mounts
   // (see apps/mesh/src/api/routes/self.ts).
   const buildServer = (): McpServer => {
     const server = new McpServer({ name: "test-mcp", version: "1.0.0" });
@@ -185,7 +185,7 @@ export async function startTestMcpServer(
         }
 
         const server = buildServer();
-        // Stateless mode so each request stands alone — matches mesh's
+        // Stateless mode so each request stands alone — matches studio's
         // per-request server pattern in self.ts.
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined,

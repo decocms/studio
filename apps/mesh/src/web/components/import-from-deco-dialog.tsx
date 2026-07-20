@@ -45,13 +45,25 @@ interface DecoSitesResponse {
   sites: DecoSite[];
 }
 
-async function loadDecoSites(orgSlug: string): Promise<DecoSitesResponse> {
-  const res = await fetch(`/api/${orgSlug}/deco-sites`);
+async function fetchJson<T>(
+  url: string,
+  init: RequestInit | undefined,
+  fallbackMessage: string,
+): Promise<T> {
+  const res = await fetch(url, init);
+  const body = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? `Failed to load sites (${res.status})`);
+    throw new Error(body.error ?? `${fallbackMessage} (${res.status})`);
   }
-  return res.json() as Promise<DecoSitesResponse>;
+  return body;
+}
+
+function loadDecoSites(orgSlug: string): Promise<DecoSitesResponse> {
+  return fetchJson<DecoSitesResponse>(
+    `/api/${orgSlug}/deco-sites`,
+    undefined,
+    "Failed to load sites",
+  );
 }
 
 interface ImportFromDecoDialogProps {
@@ -217,21 +229,18 @@ export function ImportFromDecoDialog({
       try {
         // 1. Create the connection server-side so the deco.cx API key never
         //    reaches the browser — the backend fetches and encrypts it directly.
-        const connRes = await fetch(`/api/${org.slug}/deco-sites/connection`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ siteName }),
-        });
-        const connBody = (await connRes.json().catch(() => ({}))) as {
+        const connBody = await fetchJson<{
           connId?: string;
           icon?: string | null;
-          error?: string;
-        };
-        if (!connRes.ok) {
-          throw new Error(
-            connBody.error ?? `Failed to create connection (${connRes.status})`,
-          );
-        }
+        }>(
+          `/api/${org.slug}/deco-sites/connection`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ siteName }),
+          },
+          "Failed to create connection",
+        );
 
         const connId = connBody.connId;
         if (!connId) {

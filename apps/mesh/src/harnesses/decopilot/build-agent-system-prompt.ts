@@ -74,6 +74,7 @@ export interface BuildAgentSystemPromptOptions {
     id: string;
     instructions?: string;
     repo?: GithubRepo;
+    delegationTargetIds?: string[] | null;
   };
   kind: "agent" | "subagent";
   planMode: boolean;
@@ -196,10 +197,21 @@ export async function buildAgentSystemPrompt(
     await listPromptsBlock(opts.ctx, opts.organization, opts.passthroughClient),
   );
 
-  if (opts.kind === "agent" && opts.userContext?.agents) {
+  if (
+    opts.kind === "agent" &&
+    (opts.userContext?.agents || opts.connectionsData?.tools.length)
+  ) {
+    const connectionIds = opts.connectionsData?.tools.map(
+      (tool) => tool.connectionId,
+    );
     add(
       "agents",
-      buildAgentsBlock(opts.userContext.agents, opts.virtualMcp.id),
+      buildAgentsBlock(
+        opts.userContext?.agents ?? [],
+        opts.virtualMcp.id,
+        opts.virtualMcp.delegationTargetIds,
+        connectionIds,
+      ),
     );
   }
 

@@ -22,6 +22,7 @@
 import type { ToolSet, UIMessageStreamWriter } from "ai";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { StudioContext } from "@/core/studio-context";
+import { getThreadGithubRepo, threadBranch } from "@/tools/sandbox/thread-repo";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
 import type { MeshProvider } from "@/ai-providers/types";
 import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
@@ -34,6 +35,7 @@ import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-too
 import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
 import {
   toolsFromMCP,
+  type PrOpenedEvent,
   type ToolCallAnalytics,
 } from "@decocms/harness/decopilot/mcp-tools";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@decocms/harness/decopilot/harness-constants";
@@ -145,6 +147,9 @@ export interface AssembleDecopilotToolsExtras {
   /** Cluster-injected hook: emit per-tool-call analytics (posthog). Omitted
    *  on desktop → no analytics. */
   onToolCalled?: (event: ToolCallAnalytics) => void;
+  /** Cluster-injected hook: a PR was opened via the GitHub MCP — link it to
+   *  the run's task. Omitted on desktop. */
+  onPrOpened?: (event: PrOpenedEvent) => void;
 }
 
 /**
@@ -259,6 +264,7 @@ export async function assembleDecopilotTools(
         timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
         resolveArgs: extras.resolveArgs,
         onToolCalled: extras.onToolCalled,
+        onPrOpened: extras.onPrOpened,
       },
     );
     // Restrict to the allowlist (if any) so enable_tool enumeration, the
@@ -286,18 +292,32 @@ export async function assembleDecopilotTools(
     const vmMetadata = runContext.virtualMcp.metadata as {
       githubRepo?: GithubRepo | null;
     };
-    const isEphemeralAgent = !vmMetadata.githubRepo;
+    // A thread-scoped repo (set by `load_repo`) wins: it's the only place a repo
+    // can persist for the synthetic Decopilot agent, and a per-conversation
+    // override for real repo-agents. When present it pins the thread to a
+    // dedicated `thread:<id>` sandbox branch (not the shared "ephemeral" one).
+    const threadRepo = await getThreadGithubRepo(ctx, extras.threadId);
+    const effectiveRepo = threadRepo ?? vmMetadata.githubRepo;
+    const isEphemeralAgent = !effectiveRepo;
     const vmContext: VmContext | null = input.user.id
       ? {
           virtualMcpId: input.agent.id,
-          branch: isEphemeralAgent
-            ? "ephemeral"
-            : (runContext.branch ?? `thread:${extras.threadId}`),
+          branch: threadRepo
+            ? threadBranch(extras.threadId, threadRepo.connectionId)
+            : isEphemeralAgent
+              ? "ephemeral"
+              : (runContext.branch ?? `thread:${extras.threadId}`),
           userId: input.user.id,
           // Used by share_with_user to scope artifacts under
           // model-outputs/<threadId>/. Cannot be derived from the
           // sandbox row since one ephemeral sandbox serves many threads.
           threadId: extras.threadId,
+          // Lets the fs layer mint an endpoint and materialize the tool
+          // catalog into the sandbox once it's provisioned (hosted runs
+          // never send a /dispatch envelope, so the daemon can't do it
+          // itself; `input.mcp` is decopilot's in-process sentinel with an
+          // empty url — never forward it).
+          syncTools: true,
         }
       : null;
 

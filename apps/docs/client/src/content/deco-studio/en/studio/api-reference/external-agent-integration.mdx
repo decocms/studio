@@ -77,10 +77,10 @@ The `virtual_mcp_id` is the agent (Virtual MCP) id — find it in the agent's UR
 or via `COLLECTION_CONNECTIONS_LIST`.
 
 ```bash
-curl -X POST "$MESH_BASE_URL/api/$MESH_ORG/tools/COLLECTION_THREADS_CREATE" \
-  -H "Authorization: Bearer $MESH_API_KEY" \
+curl -X POST "$STUDIO_BASE_URL/api/$STUDIO_ORG/tools/COLLECTION_THREADS_CREATE" \
+  -H "Authorization: Bearer $STUDIO_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{ "data": { "title": "Support chat", "virtual_mcp_id": "'"$MESH_AGENT_ID"'" } }'
+  -d '{ "data": { "title": "Support chat", "virtual_mcp_id": "'"$STUDIO_AGENT_ID"'" } }'
 # → { "item": { "id": "thrd_...", "status": "...", ... } }
 ```
 
@@ -92,12 +92,12 @@ supply your own `data.id`.)
 This enqueues a run and returns `202` immediately — the body carries no output.
 
 ```bash
-curl -X POST "$MESH_BASE_URL/api/$MESH_ORG/decopilot/threads/$THREAD_ID/messages" \
-  -H "Authorization: Bearer $MESH_API_KEY" \
+curl -X POST "$STUDIO_BASE_URL/api/$STUDIO_ORG/decopilot/threads/$THREAD_ID/messages" \
+  -H "Authorization: Bearer $STUDIO_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{ "role": "user", "parts": [{ "type": "text", "text": "Hello!" }] }],
-    "agent": { "id": "'"$MESH_AGENT_ID"'" },
+    "agent": { "id": "'"$STUDIO_AGENT_ID"'" },
     "tier": "smart"
   }'
 # → 202 { "taskId": "thrd_..." }
@@ -116,8 +116,8 @@ The agent output is a [Server-Sent Events](https://developer.mozilla.org/en-US/d
 stream (AI SDK UI-message chunks), backed by NATS JetStream server-side.
 
 ```bash
-curl -N "$MESH_BASE_URL/api/$MESH_ORG/decopilot/threads/$THREAD_ID/stream" \
-  -H "Authorization: Bearer $MESH_API_KEY" \
+curl -N "$STUDIO_BASE_URL/api/$STUDIO_ORG/decopilot/threads/$THREAD_ID/stream" \
+  -H "Authorization: Bearer $STUDIO_API_KEY" \
   -H "Accept: text/event-stream"
 ```
 
@@ -137,8 +137,8 @@ curl -N "$MESH_BASE_URL/api/$MESH_ORG/decopilot/threads/$THREAD_ID/stream" \
 The authoritative, durable transcript is available any time:
 
 ```bash
-curl -X POST "$MESH_BASE_URL/api/$MESH_ORG/tools/COLLECTION_THREAD_MESSAGES_LIST" \
-  -H "Authorization: Bearer $MESH_API_KEY" \
+curl -X POST "$STUDIO_BASE_URL/api/$STUDIO_ORG/tools/COLLECTION_THREAD_MESSAGES_LIST" \
+  -H "Authorization: Bearer $STUDIO_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{ "thread_id": "'"$THREAD_ID"'", "limit": 200 }'
 ```

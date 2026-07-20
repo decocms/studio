@@ -5,6 +5,7 @@ type QueryStatus = "pending" | "error" | "success";
 export interface BlocksQueryState {
   status: QueryStatus;
   hasData: boolean;
+  errorStatus?: number;
 }
 
 export interface BlocksTabStateInput {
@@ -34,6 +35,12 @@ export function resolveBlocksTabState(
     return { kind: "error", source: "sandbox" };
   }
   if (input.lifecyclePhase !== "running") return { kind: "loading" };
+
+  const blocksFrameworkMissing = [input.decofile, input.meta].some(
+    (query) =>
+      query.status === "error" && !query.hasData && query.errorStatus === 404,
+  );
+  if (blocksFrameworkMissing) return { kind: "empty" };
 
   const initialDataFailed =
     (input.decofile.status === "error" && !input.decofile.hasData) ||

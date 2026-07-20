@@ -65,6 +65,15 @@ describe("SubtaskInputSchema", () => {
       SubtaskInputSchema.safeParse({ prompt: "go", agent_id: "vir_x" }).success,
     ).toBe(true);
   });
+
+  test("accepts a concrete MCP connection id", () => {
+    expect(
+      SubtaskInputSchema.safeParse({
+        prompt: "go",
+        agent_id: "conn_orders",
+      }).success,
+    ).toBe(true);
+  });
   test("accepts missing agent_id (self-clone)", () => {
     expect(SubtaskInputSchema.safeParse({ prompt: "go" }).success).toBe(true);
   });

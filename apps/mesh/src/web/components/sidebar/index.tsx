@@ -8,6 +8,11 @@ import { SidebarAccountFooterMobile } from "./footer/sidebar-footer-mobile";
 import { TaskGroupsList } from "./task-groups/task-groups-list";
 import { TaskGroupsSkeleton } from "./task-groups/task-groups-skeleton";
 import { SidebarAgentGroupsProvider } from "./sidebar-agent-groups-context";
+import {
+  AgentSwitcherCrumb,
+  OrgSwitcherCrumb,
+} from "@/web/components/header/shell-breadcrumb";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 export type {
   NavigationSidebarItem,
@@ -15,6 +20,21 @@ export type {
   SidebarItemGroup,
   Invitation,
 } from "./types";
+
+function SidebarOwnHeader() {
+  const reportsOnly = useReportsOnly();
+  // Commerce (reports-only) orgs get no agent navigation in the sidebar header —
+  // just the org, named.
+  if (reportsOnly) {
+    return <OrgSwitcherCrumb showName />;
+  }
+  return (
+    <>
+      <OrgSwitcherCrumb />
+      <AgentSwitcherCrumb />
+    </>
+  );
+}
 
 export function StudioSidebar() {
   const sections = useProjectSidebarItems();
@@ -24,6 +44,7 @@ export function StudioSidebar() {
       <NavigationSidebar
         sections={sections}
         footer={<SidebarAccountFooter />}
+        header={<SidebarOwnHeader />}
         additionalContent={
           <ErrorBoundary>
             <Suspense fallback={<TaskGroupsSkeleton />}>

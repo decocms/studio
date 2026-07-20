@@ -7,6 +7,7 @@ import {
   SettingsSection,
 } from "@/web/components/settings/settings-section";
 import {
+  getPreset,
   OPENAI_COMPATIBLE_PRESETS,
   type OpenAICompatiblePreset,
 } from "@/web/utils/openai-compatible-presets";
@@ -82,7 +83,7 @@ export function ProviderGrid({
       return ai - bi;
     });
   const openaiCompatible = providers.find((p) => p.id === "openai-compatible");
-  const openaiPreset = OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === "openai");
+  const openaiPreset = getPreset("openai");
 
   const allCloudTiles = [
     ...cloud.map((provider) => (

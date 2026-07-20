@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveConfig } from "./resolve-config";
+import { resolveConfig, resolveShutdownDrainMs } from "./resolve-config";
 import type { CliFlags } from "./types";
 
 const flags: CliFlags = {
@@ -78,4 +78,41 @@ describe("resolveConfig NATS tunnel settings", () => {
       ).toThrow("NATS_TUNNEL_SESSION_TTL_SECONDS must be a positive integer");
     },
   );
+});
+
+describe("resolveConfig deployment admin emails", () => {
+  it("defaults to an empty list when unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.deploymentAdminEmails).toEqual([]);
+  });
+
+  it("normalizes case, whitespace, and trailing commas", () => {
+    const result = resolveConfig(flags, {
+      DEPLOYMENT_ADMIN_EMAILS: " Alice@Example.com, bob@example.com ,,",
+    });
+
+    expect(result.settings.deploymentAdminEmails).toEqual([
+      "alice@example.com",
+      "bob@example.com",
+    ]);
+  });
+});
+
+describe("resolveShutdownDrainMs", () => {
+  const forceExitMs = 115_000;
+
+  it("worker skips the NLB drain (not a frontdoor target)", () => {
+    expect(resolveShutdownDrainMs("worker", forceExitMs, undefined)).toBe(0);
+  });
+
+  it("api and all drain ~60% of the force-exit budget", () => {
+    expect(resolveShutdownDrainMs("api", forceExitMs, undefined)).toBe(69_000);
+    expect(resolveShutdownDrainMs("all", forceExitMs, undefined)).toBe(69_000);
+  });
+
+  it("SHUTDOWN_DRAIN_MS overrides every role", () => {
+    expect(resolveShutdownDrainMs("worker", forceExitMs, "5000")).toBe(5_000);
+    expect(resolveShutdownDrainMs("api", forceExitMs, "0")).toBe(0);
+  });
 });

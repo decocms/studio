@@ -54,6 +54,15 @@
        (3rem) for the WCO case only. */
     height: env(titlebar-area-height, 3rem);
   }
+  /* On desktop the sidebar — not the toolbar — owns the top-left corner where
+     the OS window controls (macOS traffic lights) overlay sits, so its header
+     reserves the same left inset. Left-only: the sidebar isn't full width, so
+     the 100vw right inset .app-titlebar uses doesn't apply. max() keeps the
+     header's default px-2 gutter when there's no OS inset. */
+  .sidebar-titlebar {
+    padding-left: max(env(titlebar-area-x, 0), 0.5rem);
+    height: env(titlebar-area-height, 3rem);
+  }
   .wco-drag {
     -webkit-app-region: drag;
     app-region: drag;

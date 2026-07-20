@@ -8,6 +8,7 @@ import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { Suspense } from "react";
 import {
   getHomeTiles,
+  isStudioPackAgent,
   mcpClientQueryOptions,
   useMCPClient,
   useMCPToolsListQuery,
@@ -49,10 +50,11 @@ interface HomeGridProps {
   isEditMode: boolean;
 }
 
-// Default tile footprint before the user resizes it.
-const TILE_DEFAULT_SIZE = { w: 2, h: 4 } as const;
+// Default tile footprint before the user resizes it. w:3 keeps agent tiles at
+// half width on the 6-column grid (see tile-board/constants).
+const TILE_DEFAULT_SIZE = { w: 3, h: 4 } as const;
 const TILE_MIN_SIZE = { w: 1, h: 2 } as const;
-const PROMPT_DEFAULT_SIZE = { w: 1, h: 1 } as const;
+const PROMPT_DEFAULT_SIZE = { w: 2, h: 1 } as const;
 
 /** Stable, deterministic id so the persisted layout matches the same item
  *  on the next render. */
@@ -413,7 +415,16 @@ function TileErrorFallback({
 
 export function HomeGrid({ isEditMode }: HomeGridProps) {
   const { org } = useProjectContext();
-  const { isLoading, prompts, tiles } = useHomeNextActions(org.slug);
+  const {
+    isLoading,
+    prompts: allPrompts,
+    tiles: allTiles,
+  } = useHomeNextActions(org.slug);
+  // Studio Pack onboarding agents (Brand Manager et al.) are no longer part of
+  // the default board — their prompt/tile cards are filtered out so the board
+  // is the native product tiles (Tasks / Coding / Analytics / Sales).
+  const prompts = allPrompts.filter((p) => !isStudioPackAgent(p.agentId));
+  const tiles = allTiles.filter((t) => !isStudioPackAgent(t.agentId));
   const homeIds = useDefaultHomeAgents()?.ids ?? [];
   const pinnedAgentIds = new Set(homeIds);
   const homeWriter = useHomeAgentsWriter();
@@ -464,6 +475,7 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
           id: c.id,
           defaultSize: c.data.defaultSize,
           minSize: c.data.minSize,
+          defaultHidden: c.data.defaultHidden,
         };
       }
       return {

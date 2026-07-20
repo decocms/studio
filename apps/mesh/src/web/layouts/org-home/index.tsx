@@ -10,19 +10,25 @@
  * `metadata.ui.layout`, no special-casing here.
  */
 import { useState } from "react";
-import { Navigate } from "@tanstack/react-router";
+import { Navigate, useSearch } from "@tanstack/react-router";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { useThreads } from "@/web/components/chat/store/hooks";
+import { authClient } from "@/web/lib/auth-client.ts";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 import { findReusableNewChat } from "@/web/lib/reusable-new-chat";
 
 export default function OrgHome() {
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const { data: session } = authClient.useSession();
   const { threads, status } = useThreads();
+  const { connect, siteUrl } = useSearch({ strict: false }) as {
+    connect?: string;
+    siteUrl?: string;
+  };
   // Stable id for this mount, used only when there's no reusable "New chat".
   const [freshId] = useState(() => crypto.randomUUID());
 
@@ -32,14 +38,14 @@ export default function OrgHome() {
 
   // Reuse the Super Agent's existing empty "New chat" so revisiting `/$org`
   // doesn't pile up duplicates (see findReusableNewChat).
-  const existing = findReusableNewChat(threads, decopilotId);
+  const existing = findReusableNewChat(threads, decopilotId, session?.user?.id);
   const taskId = existing?.id ?? freshId;
 
   return (
     <Navigate
       to="/$org/$taskId"
       params={{ org: org.slug, taskId }}
-      search={{ virtualmcpid: decopilotId }}
+      search={{ virtualmcpid: decopilotId, connect, siteUrl }}
       replace
     />
   );

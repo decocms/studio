@@ -17,7 +17,7 @@ export type ReadOutcome =
 
 /**
  * Reads `<repoDir>/.decocms/daemon.json` as a read-only fallback for fields
- * the mesh didn't supply (package manager, runtime, port). The daemon
+ * the studio didn't supply (package manager, runtime, port). The daemon
  * never writes this file; it exists only if a tenant committed one to the
  * repo themselves.
  */

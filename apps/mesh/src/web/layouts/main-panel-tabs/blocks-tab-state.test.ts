@@ -55,10 +55,22 @@ describe("resolveBlocksTabState", () => {
     });
   });
 
-  test("renders a data error when an initial request fails", () => {
+  test("renders setup when a Blocks endpoint is missing", () => {
     expect(
       resolveBlocksTabState(
-        input({ meta: { status: "error", hasData: false } }),
+        input({
+          meta: { status: "error", hasData: false, errorStatus: 404 },
+        }),
+      ),
+    ).toEqual({ kind: "empty" });
+  });
+
+  test("renders a data error when another initial request fails", () => {
+    expect(
+      resolveBlocksTabState(
+        input({
+          meta: { status: "error", hasData: false, errorStatus: 500 },
+        }),
       ),
     ).toEqual({ kind: "error", source: "data" });
   });

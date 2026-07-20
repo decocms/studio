@@ -10,7 +10,7 @@
  *   Owns: per-task streaming state (useChat, messages, status)
  *
  * The split allows a Suspense boundary between the sidebar (task list) and
- * the active chat panel. Switching tasks shows a skeleton while keeping the
+ * the active Chat side-panel view. Switching tasks shows a skeleton while keeping the
  * sidebar interactive.
  */
 
@@ -46,13 +46,14 @@ import type { HarnessId } from "@/harnesses";
 import {
   AGENT_OPTION_PINS,
   agentOptionFor,
+  resolveOfflineAgentOption,
   type AgentOption,
 } from "./pills/agent-options";
+import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import {
   isDeepResearchModel,
   isQuickSearchModel,
-  pickSimpleModeDefaults,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
@@ -63,7 +64,6 @@ import { toast } from "sonner";
 import {
   useAiProviderKeys,
   useAiProviderModels,
-  type AiProviderKey,
   type AiProviderModel,
 } from "../../hooks/collections/use-ai-providers";
 import { useContext as useContextHook } from "../../hooks/use-context";
@@ -128,6 +128,13 @@ import { textFromParts } from "./queue-items";
 import { useMessageQueueActions } from "./use-message-queue";
 import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
+import {
+  findModel,
+  pickFallbackChatModel,
+  resolveActiveTier,
+  type ModelRef,
+  type SimpleTier,
+} from "./resolve-chat-model";
 
 // ============================================================================
 // Context Types
@@ -260,92 +267,6 @@ export interface ChatPrefsContextValue {
   pendingHarnessId: HarnessId | null;
   /** Derived from `pendingAgentOption`. Read-only. */
   pendingSandboxProviderKind: SandboxProviderKind | null;
-}
-
-// ============================================================================
-// Model resolution helpers (shared across chat / image / deep-research paths)
-// ============================================================================
-
-type ModelRef = { keyId: string; modelId: string };
-type SimpleTier = "fast" | "smart" | "thinking";
-
-/**
- * Resolve a stored ModelRef against the currently available keys and models.
- * Returns null when the ref's key no longer exists. Match is by `modelId`
- * only within `allModels` — the API-returned model objects don't carry
- * `keyId` (it's a client-side-only field), so we attach it ourselves.
- * When the model isn't in the provided list (list still loading, or list
- * scoped to a different credential), synthesize a minimal AiProviderModel
- * from the ref so callers always get a routable `{ keyId, modelId }`.
- */
-function findModel(
-  ref: ModelRef | null,
-  allKeys: AiProviderKey[],
-  allModels: AiProviderModel[],
-  title?: string,
-): AiProviderModel | null {
-  if (!ref) return null;
-  const key = allKeys.find((k) => k.id === ref.keyId);
-  if (!key) return null;
-  const hit = allModels.find((m) => m.modelId === ref.modelId);
-  if (hit) return { ...hit, keyId: ref.keyId };
-  return {
-    modelId: ref.modelId,
-    title: title ?? ref.modelId,
-    keyId: ref.keyId,
-    providerId: key.providerId,
-    description: null,
-    logo: null,
-    capabilities: [],
-    limits: null,
-    costs: null,
-  } as AiProviderModel;
-}
-
-/**
- * Pick the active chat tier from the user's stored choice, defaulting to
- * "smart". All three chat tiers are always selectable — the backend's
- * resolveTier() falls back to SDK provider defaults when the org's tier
- * slot is unset, so we don't need to gate on slot configuration here.
- */
-function resolveActiveTier(stored: SimpleTier | null): SimpleTier {
-  if (stored === "fast" || stored === "smart" || stored === "thinking") {
-    return stored;
-  }
-  return "smart";
-}
-
-/**
- * Mirror backend resolveTier() when no slot is explicitly assigned: pick a
- * tier-appropriate default from the effective key's catalog so the UI can
- * read capabilities (file upload, vision, etc.) instead of falling back to
- * a null model. Backend pickSimpleModeDefaults considers all keys; we only
- * have the effective key's catalog client-side, so multi-key orgs may see a
- * single-key-derived default. This matches the backend's pick when the
- * effective key is also the first match for the tier.
- */
-function pickFallbackChatModel(
-  tier: SimpleTier,
-  keys: AiProviderKey[],
-  effectiveKeyId: string | null,
-  models: AiProviderModel[],
-): AiProviderModel | null {
-  if (!effectiveKeyId || models.length === 0) return null;
-  const key = keys.find((k) => k.id === effectiveKeyId);
-  if (!key) return null;
-  const defaults = pickSimpleModeDefaults([key], {
-    [effectiveKeyId]: models,
-  });
-  const slot =
-    tier === "fast"
-      ? defaults.chat.fast
-      : tier === "thinking"
-        ? defaults.chat.thinking
-        : defaults.chat.smart;
-  if (!slot) return null;
-  const full = models.find((m) => m.modelId === slot.modelId);
-  if (!full) return null;
-  return { ...full, keyId: effectiveKeyId };
 }
 
 // ============================================================================
@@ -601,12 +522,17 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
         )
       : null;
 
-  // Preserve the user's selected runtime exactly. Presence/capability probes are
-  // advisory only; dispatch should surface the real backend error if the choice
-  // cannot run. (Cloud chat via the org router works even where the cloud
-  // *sandbox* is unavailable, so we must not rewrite the harness here — the
-  // preview's cloud-vs-local fallback is handled at the sandbox layer.)
-  const selectedAgentOption = pendingAgentOption;
+  // Capability probes are advisory — we don't rewrite the harness for a missing
+  // CLI (cloud chat via the org router works even where the cloud *sandbox*
+  // doesn't). The one exception is a desktop pick whose link is *confirmed*
+  // offline: it can't run anywhere and nothing prompted the user to reconnect,
+  // so we auto-switch it to cloud. Derived (not persisted), so the desktop pick
+  // returns on its own once the link reconnects.
+  const link = useCurrentLink();
+  const selectedAgentOption = resolveOfflineAgentOption(
+    pendingAgentOption,
+    link.ready && !link.online,
+  );
 
   // When the thread is locked, the agent option is dictated by the persisted
   // (harness, sandbox) pair — period. Otherwise, fall through to the user's
@@ -1018,6 +944,50 @@ export function ActiveTaskProvider({
             search: (prev: Record<string, unknown>) => ({
               ...prev,
               main: formatDeckTabId(path),
+            }),
+            replace: true,
+          });
+          return;
+        }
+        // `load_repo` finished cloning a repo into the thread's sandbox. Patch
+        // the local thread row (branch + repo + sandbox record) so the preview
+        // resolves without a refetch, then open the "preview" main-panel tab.
+        if (chunk.type === "data-open-preview") {
+          const data = (
+            chunk as unknown as {
+              data: {
+                branch?: string | null;
+                githubRepo?: unknown;
+                sandboxMap?: unknown;
+                sandboxProviderKind?: string | null;
+              };
+            }
+          ).data;
+          const cb = cbRef.current;
+          const id = cb.taskId;
+          if (id) {
+            const current = cb.manager.threads.get().find((t) => t.id === id);
+            cb.manager.patchThread({
+              id,
+              ...(data?.branch ? { branch: data.branch } : {}),
+              ...(data?.sandboxProviderKind
+                ? {
+                    sandbox_provider_kind:
+                      data.sandboxProviderKind as Task["sandbox_provider_kind"],
+                  }
+                : {}),
+              metadata: {
+                ...(current?.metadata ?? {}),
+                ...(data?.githubRepo ? { githubRepo: data.githubRepo } : {}),
+                ...(data?.sandboxMap ? { sandboxMap: data.sandboxMap } : {}),
+              } as Task["metadata"],
+            });
+          }
+          cb.navigate({
+            to: ".",
+            search: (prev: Record<string, unknown>) => ({
+              ...prev,
+              main: "preview",
             }),
             replace: true,
           });

@@ -15,7 +15,7 @@ import type { StudioContext } from "../../core/studio-context";
 import { ADMIN_ROLES } from "../../auth/roles";
 
 type Variables = {
-  meshContext: StudioContext;
+  studioContext: StudioContext;
 };
 
 export const createSsoRoutes = () => {
@@ -37,7 +37,7 @@ function registerSsoRoutes(app: SsoApp) {
    * Route: GET /api/org-sso/status?orgId=<id>
    */
   app.get("/status", async (c) => {
-    const ctx = c.get("meshContext") as StudioContext;
+    const ctx = c.get("studioContext") as StudioContext;
     if (!ctx.auth.user) {
       return c.json({ error: "Authentication required" }, 401);
     }
@@ -81,7 +81,7 @@ function registerSsoRoutes(app: SsoApp) {
    * Route: GET /api/org-sso/authorize?orgId=<id>
    */
   app.get("/authorize", async (c) => {
-    const ctx = c.get("meshContext") as StudioContext;
+    const ctx = c.get("studioContext") as StudioContext;
     if (!ctx.auth.user) {
       return c.json({ error: "Authentication required" }, 401);
     }
@@ -152,7 +152,7 @@ function registerSsoRoutes(app: SsoApp) {
    * Route: GET /api/org-sso/callback
    */
   app.get("/callback", async (c) => {
-    const ctx = c.get("meshContext") as StudioContext;
+    const ctx = c.get("studioContext") as StudioContext;
 
     const code = c.req.query("code");
     const state = c.req.query("state");
@@ -297,7 +297,7 @@ function registerSsoRoutes(app: SsoApp) {
    * Route: GET /api/org-sso/config
    */
   app.get("/config", async (c) => {
-    const ctx = c.get("meshContext") as StudioContext;
+    const ctx = c.get("studioContext") as StudioContext;
     if (!ctx.auth.user) {
       return c.json({ error: "Authentication required" }, 401);
     }
@@ -329,7 +329,7 @@ function registerSsoRoutes(app: SsoApp) {
    * Route: POST /api/org-sso/config
    */
   app.post("/config", async (c) => {
-    const ctx = c.get("meshContext") as StudioContext;
+    const ctx = c.get("studioContext") as StudioContext;
     if (!ctx.auth.user) {
       return c.json({ error: "Authentication required" }, 401);
     }
@@ -408,7 +408,7 @@ function registerSsoRoutes(app: SsoApp) {
    * Route: POST /api/org-sso/config/enforce
    */
   app.post("/config/enforce", async (c) => {
-    const ctx = c.get("meshContext") as StudioContext;
+    const ctx = c.get("studioContext") as StudioContext;
     if (!ctx.auth.user) {
       return c.json({ error: "Authentication required" }, 401);
     }
@@ -441,7 +441,7 @@ function registerSsoRoutes(app: SsoApp) {
    * Route: DELETE /api/org-sso/config
    */
   app.delete("/config", async (c) => {
-    const ctx = c.get("meshContext") as StudioContext;
+    const ctx = c.get("studioContext") as StudioContext;
     if (!ctx.auth.user) {
       return c.json({ error: "Authentication required" }, 401);
     }

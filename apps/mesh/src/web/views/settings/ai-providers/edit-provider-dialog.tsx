@@ -23,7 +23,7 @@ import {
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import {
-  OPENAI_COMPATIBLE_PRESETS,
+  getPreset,
   type OpenAICompatiblePreset,
 } from "@/web/utils/openai-compatible-presets";
 
@@ -220,7 +220,7 @@ export function EditProviderKeyDialog({
 
   const preset: OpenAICompatiblePreset | undefined =
     provider.id === "openai-compatible" && providerKey.presetId
-      ? OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === providerKey.presetId)
+      ? getPreset(providerKey.presetId)
       : undefined;
 
   const displayName = preset?.name ?? provider.name;

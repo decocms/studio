@@ -54,3 +54,75 @@ describe("handleApiError", () => {
     expect(res.status).toBe(403);
   });
 });
+
+/** Stand-in for a better-call APIError: an Error whose `name` is "APIError"
+ *  carrying `statusCode` + `body` (matches error.mjs in every bundled copy). */
+function apiError(
+  statusCode: number,
+  body?: { message?: string; code?: string; cause?: unknown },
+): Error {
+  const err = new Error(body?.message ?? "api error");
+  err.name = "APIError";
+  Object.assign(err, { statusCode, body });
+  return err;
+}
+
+describe("handleApiError APIError shape-mapping", () => {
+  it("forwards a better-call APIError's status, message, and code", async () => {
+    const res = handleApiError(
+      apiError(404, {
+        message: "Organization not found",
+        code: "ORG_NOT_FOUND",
+      }),
+      fakeCtx,
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      error: "Organization not found",
+      code: "ORG_NOT_FOUND",
+    });
+  });
+
+  it("never forwards body.cause (may hold internals)", async () => {
+    const res = handleApiError(
+      apiError(400, { message: "bad", code: "X", cause: "secret-internal" }),
+      fakeCtx,
+    );
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(JSON.stringify(json)).not.toContain("secret-internal");
+    expect(json).toEqual({ error: "bad", code: "X" });
+  });
+
+  it("forwards a 5xx APIError's status (does not flatten to 500-generic)", () => {
+    const res = handleApiError(apiError(503, { message: "down" }), fakeCtx);
+    expect(res.status).toBe(503);
+  });
+
+  it("falls back to err.message and omits code when body is absent", async () => {
+    const res = handleApiError(apiError(404), fakeCtx);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "api error" });
+  });
+
+  it("does NOT match a foreign Error with statusCode but a different name", async () => {
+    // e.g. the AI SDK's AI_APICallError carries statusCode but is not ours —
+    // must 500, not relabel an upstream failure as a client-facing 4xx.
+    const foreign = new Error("Incorrect API key provided");
+    foreign.name = "AI_APICallError";
+    Object.assign(foreign, { statusCode: 401 });
+    const res = handleApiError(foreign, fakeCtx);
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({
+      error: "Internal Server Error",
+      message: "Incorrect API key provided",
+    });
+  });
+
+  it("does not match out-of-range or non-numeric statusCodes (falls to 500)", () => {
+    expect(handleApiError(apiError(399), fakeCtx).status).toBe(500);
+    expect(handleApiError(apiError(600), fakeCtx).status).toBe(500);
+    const stringCode = apiError(400);
+    Object.assign(stringCode, { statusCode: "400" });
+    expect(handleApiError(stringCode, fakeCtx).status).toBe(500);
+  });
+});

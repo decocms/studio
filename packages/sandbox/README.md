@@ -61,3 +61,9 @@ require a bearer token.
 - `SANDBOX_ROOT_URL` — production template for the pod URL. Either a bare
   base (`https://sandboxes.example.com` → handle becomes leading subdomain)
   or a `{handle}` template (`https://{handle}.sandboxes.example.com`).
+
+## Design follow-ups
+
+- [First-class run attachment](./run-attachment.md) records the lifecycle and
+  concurrency questions exposed by run-specific tool catalogs and workspace
+  links.

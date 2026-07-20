@@ -1,18 +1,11 @@
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { toast } from "sonner";
 import type { PublicConfig } from "@/api/routes/public-config";
 import { KEYS } from "@/web/lib/query-keys";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
+const TOAST_ID = "version-check";
 
 // A rolling deploy always has old and new pods answering simultaneously for a
 // stretch (inherent to maxSurge/maxUnavailable, not fully eliminable by the
@@ -74,22 +67,22 @@ export function VersionCheckDialog() {
 
   const isStale = drift.count >= CONFIRMATIONS_REQUIRED;
 
-  return (
-    <AlertDialog open={isStale}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>A new version is available</AlertDialogTitle>
-          <AlertDialogDescription>
-            You're viewing an outdated version of this page. Refresh to get the
-            latest updates.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogAction onClick={() => window.location.reload()}>
-            Refresh
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
+  // Fire once on the false -> true transition, not every render — the toast
+  // is non-blocking, so unlike the old dialog it never needs to re-open.
+  const [notified, setNotified] = useState(false);
+  if (isStale && !notified) {
+    setNotified(true);
+    toast("A new version is available", {
+      id: TOAST_ID,
+      description:
+        "You're viewing an outdated version of this page. Refresh to get the latest updates.",
+      duration: Infinity,
+      action: {
+        label: "Refresh",
+        onClick: () => window.location.reload(),
+      },
+    });
+  }
+
+  return null;
 }

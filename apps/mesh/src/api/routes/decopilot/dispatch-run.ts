@@ -40,10 +40,7 @@ import {
   shouldOffload,
   type MessagesRef,
 } from "@decocms/harness/offload-messages";
-import {
-  findStudioPackAgentByMcpId,
-  resolveStudioPackRuntime,
-} from "@/tools/virtual/studio-pack";
+import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
 import { computeClaimHandle } from "@/sandbox/claim-handle";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 import { normalizeCoAuthorIdentity } from "@decocms/sandbox/shared";
@@ -116,7 +113,8 @@ import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
 import { resolveCliSessionRef } from "./cli-session-messages";
-import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
+import { getPublicUrl } from "@/core/server-constants";
+import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
 import { safeMemoryUsage } from "@/observability/profiling/safe-memory";
@@ -329,64 +327,6 @@ async function resolveSecretModelSource(
   });
 }
 
-/**
- * Mint a 1h-TTL API key + return the MCP endpoint URL/headers a CLI
- * harness will use to talk to mesh's virtual-MCP gateway over HTTP. Only
- * called for harnesses that actually open an HTTP MCP connection
- * (claude-code, codex); decopilot's in-process passthrough doesn't need
- * this.
- *
- * `sandboxProviderKind` decides which base URL to mint:
- *   - `"agent-sandbox"` — `getInternalUrl()` (loopback; the harness runs
- *     in hosted execution alongside the API).
- *   - `"user-desktop"` — `getPublicUrl()` (the harness runs on the user's
- *     laptop and dials mesh back over the public network).
- */
-const MCP_KEY_TTL_SECONDS = 3600;
-
-async function mintMcpEndpoint(
-  ctx: StudioContext,
-  agentId: string,
-  organization: { id: string; slug?: string; name?: string },
-  apiKeyName: string,
-  sandboxProviderKind: DispatchTarget["sandboxProviderKind"],
-): Promise<{
-  url: string;
-  headers: Record<string, string>;
-  expiresAt: number;
-}> {
-  const apiKey = await ctx.boundAuth.apiKey.create({
-    name: apiKeyName,
-    // The per-run key is the agent's own callback credential — it proxies to
-    // `/mcp/virtual-mcp/<agentId>` (a `vir_*` resource) and acts on behalf of
-    // the user for the duration of the run, so it needs full access. With no
-    // implicit default (auth/index.ts), the scope must be explicit; wildcard
-    // matches the prior behavior (full access via the admin bypass).
-    permissions: { "*": ["*"] },
-    expiresIn: MCP_KEY_TTL_SECONDS,
-    metadata: {
-      organization: {
-        id: organization.id,
-        slug: organization.slug,
-        name: organization.name,
-      },
-    },
-  });
-  const baseUrl =
-    sandboxProviderKind === "user-desktop" ? getPublicUrl() : getInternalUrl();
-  return {
-    url: `${baseUrl}/mcp/virtual-mcp/${agentId}`,
-    headers: {
-      Authorization: `Bearer ${apiKey.key}`,
-      "x-org-id": organization.id,
-    },
-    // Wire-shape: HarnessStreamInputWire requires expiresAt for the
-    // remote-cli path so the daemon can pre-empt expiry with a refresh
-    // (v2 — currently only used for logging / forward-compat).
-    expiresAt: Date.now() + MCP_KEY_TTL_SECONDS * 1000,
-  };
-}
-
 // ============================================================================
 // Types
 // ============================================================================
@@ -496,6 +436,18 @@ export interface FrozenRunSnapshot {
   sandboxProviderKind?: SandboxProviderKind | null;
   harnessId?: HarnessId | null;
   target?: DispatchTarget;
+  /**
+   * Per-turn system context the client attached to this user turn (the
+   * `role:"system"` message in the POST body — e.g. the currently-open file,
+   * selected agent, viewed resource; see `useContext` on the web client).
+   *
+   * Carried in the frozen snapshot rather than reloaded from history because
+   * it is ephemeral: the system message is NOT persisted as a thread message,
+   * so the durable dispatch branch (which reloads history from the DB) would
+   * otherwise lose it. Rehydrated into `systemMessages` and appended to the
+   * server-built base system prompt for this run only.
+   */
+  systemContext?: string;
 }
 
 export interface DurableDispatchRunInput extends FrozenRunSnapshot {
@@ -532,6 +484,20 @@ export function buildDurableDispatchInput(
   if (!input.taskId) {
     throw new Error("buildDurableDispatchInput: taskId is required");
   }
+
+  // The client attaches per-turn context as a `role:"system"` message that is
+  // never persisted, so fold its text into the frozen snapshot before the
+  // durable branch drops the `messages` array entirely.
+  const systemContext = input.messages
+    .filter((m) => m.role === "system")
+    .flatMap((m) => m.parts)
+    .filter(
+      (p): p is { type: "text"; text: string } =>
+        p.type === "text" && typeof p.text === "string",
+    )
+    .map((p) => p.text)
+    .join("\n\n")
+    .trim();
 
   return {
     models: input.models,
@@ -570,6 +536,7 @@ export function buildDurableDispatchInput(
       ? { runFenceToken: options.runFenceToken }
       : {}),
     ...(input.isResume !== undefined ? { isResume: input.isResume } : {}),
+    ...(systemContext ? { systemContext } : {}),
   };
 }
 
@@ -839,28 +806,12 @@ export async function resolveEffectiveVirtualMcpForHarness({
   organizationId: string;
   ctx: StudioContext;
 }): Promise<VirtualMCPEntity> {
-  const studioPackAgent = findStudioPackAgentByMcpId(agentId);
-  if (!studioPackAgent) return virtualMcp;
-
-  const resolved = await resolveStudioPackRuntime(studioPackAgent, {
-    orgId: organizationId,
+  return resolveEffectiveStudioPackVirtualMcp({
+    virtualMcp,
+    agentId,
+    organizationId,
     ctx,
   });
-  const selectedTools = resolved.selectedTools
-    ? [...resolved.selectedTools]
-    : null;
-
-  return {
-    ...virtualMcp,
-    metadata: {
-      ...((virtualMcp.metadata as Record<string, unknown>) ?? {}),
-      instructions: resolved.instructions,
-    },
-    connections: virtualMcp.connections.map((connection) => ({
-      ...connection,
-      selected_tools: selectedTools,
-    })),
-  };
 }
 
 /**
@@ -1227,8 +1178,15 @@ async function prepareRun(
       }
     }
 
-    // Purge stale buffered chunks from any previous run on this thread
-    streamBuffer?.purge(mem.thread.id);
+    // Purge stale buffered chunks from any PREVIOUS run on this thread — but
+    // NOT on resume. A resumed run (DBOS recovery after its owner pod died) IS
+    // "the previous run": purging here beheads the very chunk log its projector
+    // must replay, so replay hits a StreamGapError ("missing seq 1") and the
+    // recovered run is marked `failed` instead of completing. Recovery depends
+    // on the seq 1..N log surviving the pod that owned it.
+    if (!input.isResume) {
+      streamBuffer?.purge(mem.thread.id);
+    }
 
     let systemMessages: ChatMessage[] = [];
     let materializedRequestMessage: ChatMessage | undefined;
@@ -1240,6 +1198,18 @@ async function prepareRun(
         durableHistory,
         input.messageId,
       );
+      // Rehydrate the per-turn system context folded into the frozen snapshot
+      // (it isn't a persisted thread message, so it's absent from history).
+      // Deterministic id keyed by messageId so DBOS replay is stable.
+      if (input.systemContext) {
+        systemMessages = [
+          {
+            id: `system-${input.messageId}`,
+            role: "system",
+            parts: [{ type: "text", text: input.systemContext }],
+          } as ChatMessage,
+        ];
+      }
     } else {
       // Split system messages from user message.
       systemMessages = input.messages.filter((m) => m.role === "system");

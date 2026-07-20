@@ -78,12 +78,12 @@ export function MonitorConfiguration() {
         </div>
         <div className="flex items-center gap-2">
           {isDirty && (
-            <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-[10px]">
+            <Badge className="bg-warning/10 text-warning border-warning/20 text-[10px]">
               Unsaved changes
             </Badge>
           )}
           {justSaved && (
-            <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-[10px]">
+            <Badge className="bg-success/10 text-success border-success/20 text-[10px]">
               ✓ Saved
             </Badge>
           )}

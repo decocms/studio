@@ -185,4 +185,35 @@ describe("runnable-catalog", () => {
       },
     ]);
   });
+
+  it("excludes redirect loaders — they have a dedicated Redirects collection", () => {
+    // `website/loaders/redirect.ts` is a real manifest loader, so without the
+    // guard it would double-list under Loaders alongside the Redirects tab.
+    const redirectMeta: LiveMeta = {
+      manifest: {
+        blocks: {
+          loaders: {
+            "site/loaders/products.ts": { $ref: "#/definitions/Products" },
+            "website/loaders/redirect.ts": { $ref: "#/definitions/Redirect" },
+            "website/loaders/redirects.ts": { $ref: "#/definitions/Redirects" },
+          },
+        },
+      },
+      schema: {},
+    };
+    const decofile: Record<string, unknown> = {
+      "redirects-old-abc": {
+        __resolveType: "website/loaders/redirect.ts",
+        redirect: { from: "/old", to: "/new", type: "permanent" },
+      },
+      MyProducts: { __resolveType: "site/loaders/products.ts" },
+    };
+
+    expect(
+      listAvailableRunnables(redirectMeta, "loaders").map((l) => l.resolveType),
+    ).toEqual(["site/loaders/products.ts"]);
+    expect(
+      listSavedRunnables(redirectMeta, decofile, "loaders").map((e) => e.key),
+    ).toEqual(["MyProducts"]);
+  });
 });

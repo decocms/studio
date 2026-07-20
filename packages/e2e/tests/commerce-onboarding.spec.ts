@@ -251,8 +251,11 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await signUpOnCurrentLoginPage(page, email);
 
-    await page.waitForURL((url) => url.pathname === "/commerce-onboarding", {
-      timeout: 15_000,
+    // After site setup the flow hands off to the org: it redirects off
+    // /commerce-onboarding to the report route, where the blocking connections
+    // modal (with the "Ver relatório completo" CTA) opens over the report.
+    await page.waitForURL((url) => url.pathname !== "/commerce-onboarding", {
+      timeout: 20_000,
     });
     await expect(
       page.getByRole("button", { name: "Ver relatório completo" }),
@@ -298,9 +301,11 @@ test.describe("Commerce onboarding route isolation", () => {
       [connectionId],
     );
     expect(concrete.rows[0]).toMatchObject({
-      connection_url: "https://commerce-skills.deco-cx.workers.dev/api/v2/mcp",
+      // The host is environment-specific (COMMERCE_DISCOVERY_INTERNAL_API_URL);
+      // assert only the invariant path suffix.
+      connection_url: expect.stringMatching(/\/api\/v2\/mcp$/),
       connection_type: "HTTP",
-      title: "Commerce Discovery",
+      title: "Store Report",
     });
     // Setup must mint and persist a client token (stored encrypted at rest) —
     // a non-null token guards against the old stub silently creating a
@@ -321,7 +326,7 @@ test.describe("Commerce onboarding route isolation", () => {
     expect(virtual.rows[0]).toMatchObject({
       connection_url: `virtual://${virtualMcpId}`,
       connection_type: "VIRTUAL",
-      title: "Commerce Discovery",
+      title: "Report Agent",
       pinned: true,
     });
   });
@@ -424,7 +429,7 @@ test.describe("Commerce onboarding route isolation", () => {
     });
   });
 
-  test("opens the full Commerce Discovery report with app tab and chat closed", async ({
+  test("opens the full Commerce Discovery report with app tab", async ({
     page,
   }) => {
     const user = await signUpViaApi(page.context().request, {
@@ -436,15 +441,28 @@ test.describe("Commerce onboarding route isolation", () => {
     const virtualMcpId = commerceDiscoveryVirtualMcpId(orgId);
 
     await page.goto("/commerce-onboarding?siteUrl=example.com");
-    await page.getByRole("button", { name: "Ver relatório completo" }).click();
 
+    // The connect step is a blocking modal over the org: it must NOT be
+    // dismissable. Pressing Escape leaves it open; the only way forward is the
+    // "Ver relatório completo" CTA.
+    const reportCta = page.getByRole("button", {
+      name: "Ver relatório completo",
+    });
+    await expect(reportCta).toBeVisible({ timeout: 20_000 });
+    await page.keyboard.press("Escape");
+    await expect(reportCta).toBeVisible();
+
+    await reportCta.click();
+
+    // Report app open in the main panel, chat side panel closed
+    // (sidepanel=0 overrides the report agent's chatDefaultOpen).
     await page.waitForURL(
       (url) =>
         url.pathname.startsWith(`/${user.orgSlug}/`) &&
         url.searchParams.get("virtualmcpid") === virtualMcpId &&
         url.searchParams.get("main") ===
           `app:${connectionId}:get_my_diagnostic` &&
-        url.searchParams.get("chat") === "0",
+        url.searchParams.get("sidepanel") === "0",
       { timeout: 20_000 },
     );
 

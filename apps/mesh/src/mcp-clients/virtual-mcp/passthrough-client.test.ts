@@ -259,6 +259,24 @@ describe("PassthroughClient", () => {
   });
 
   describe("getInstructions", () => {
+    it("supports an ephemeral connection-scoped identity without a virtual MCP", () => {
+      const conn = makeConnection("conn_ephemeral", "Orders");
+      mockCreateLazyClient.mockReturnValue(makeMockClient() as any);
+
+      const pt = new PassthroughClient(
+        {
+          connections: [conn],
+          instructions: "Ephemeral Orders specialist",
+        },
+        mockCtx,
+      );
+
+      expect(pt.getInstructions()).toBe("Ephemeral Orders specialist");
+      expect(pt.getConnectionTitleMap()).toEqual(
+        new Map([["conn_ephemeral", "Orders"]]),
+      );
+    });
+
     it("returns instructions from virtualMcp metadata", () => {
       const conn = makeConnection("conn_ins", "Ins");
       mockCreateLazyClient.mockReturnValue(makeMockClient() as any);

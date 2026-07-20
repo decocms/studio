@@ -162,6 +162,68 @@ describe("GatewayClient", () => {
     });
   });
 
+  describe("resilience to failing connections", () => {
+    it("skips a connection whose listTools throws, keeps the rest", async () => {
+      const healthy = createMockClient([{ name: "ok_tool" }]);
+      const broken = createMockClient([{ name: "dead_tool" }]);
+      // Simulate a 401 / circuit-breaker-open upstream.
+      broken.listTools = mock(async () => {
+        throw new Error("circuit breaker is open — downstream unreachable");
+      });
+
+      const gw = new GatewayClient({
+        healthy: { client: healthy },
+        broken: { client: broken },
+      });
+      const result = await gw.listTools();
+
+      expect(result.tools.map((t) => t.name)).toEqual(["healthy_ok_tool"]);
+    });
+
+    it("skips a connection whose lazy factory throws on resolve", async () => {
+      const healthy = createMockClient([{ name: "ok_tool" }]);
+
+      const gw = new GatewayClient({
+        healthy: { client: healthy },
+        broken: {
+          client: () => {
+            throw new Error("Unauthorized: Authentication required");
+          },
+        },
+      });
+      const result = await gw.listTools();
+
+      expect(result.tools.map((t) => t.name)).toEqual(["healthy_ok_tool"]);
+    });
+
+    it("degrades resources and prompts the same way", async () => {
+      const healthy = createMockClient(
+        [],
+        [{ uri: "res://ok", name: "ok" }],
+        [{ name: "ok_prompt" }],
+      );
+      const broken = createMockClient();
+      broken.listResources = mock(async () => {
+        throw new Error("boom");
+      });
+      broken.listPrompts = mock(async () => {
+        throw new Error("boom");
+      });
+
+      const gw = new GatewayClient({
+        healthy: { client: healthy },
+        broken: { client: broken },
+      });
+
+      expect((await gw.listResources()).resources.map((r) => r.uri)).toEqual([
+        "res://ok",
+      ]);
+      expect((await gw.listPrompts()).prompts.map((p) => p.name)).toEqual([
+        "healthy_ok_prompt",
+      ]);
+    });
+  });
+
   describe("prompt namespacing", () => {
     it("prefixes prompt names with slugified client key", async () => {
       const client = createMockClient([], [], [{ name: "greet" }]);

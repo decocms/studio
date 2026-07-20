@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { shouldSkipStudioContext, SYSTEM_PATHS } from "./paths";
+import { isServerPath, shouldSkipStudioContext, SYSTEM_PATHS } from "./paths";
+
+describe("report page paths", () => {
+  test("routes report pages through Hono for dynamic metadata", () => {
+    expect(isServerPath("/report/nike.com")).toBe(true);
+  });
+
+  test("does not reserve similarly named organization paths", () => {
+    expect(isServerPath("/report-team")).toBe(false);
+    expect(isServerPath("/reports/nike.com")).toBe(false);
+  });
+});
 
 describe("DBOS queue-depth path", () => {
   test("skips StudioContext for the queue-depth endpoint", () => {
@@ -15,5 +26,15 @@ describe("DBOS queue-depth path", () => {
       false,
     );
     expect(shouldSkipStudioContext("/dbos-queue-depth")).toBe(false);
+  });
+});
+
+describe("hosted-run-pending path", () => {
+  test("skips StudioContext for the hosted-run-pending endpoint", () => {
+    expect(shouldSkipStudioContext(SYSTEM_PATHS.HOSTED_RUN_PENDING)).toBe(true);
+  });
+
+  test("does not match the API-prefixed variant", () => {
+    expect(shouldSkipStudioContext("/api/hosted-run-pending")).toBe(false);
   });
 });

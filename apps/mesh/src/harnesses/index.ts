@@ -26,7 +26,7 @@ registerClusterEnvironmentBuilder((args) => {
 //
 // CLI harnesses (claude-code, codex) are also imported by the desktop link
 // daemon; decopilot pulls in cluster-only modules (RunRegistry, run-stream,
-// mesh tools) and is only usable on the cluster side.
+// studio tools) and is only usable on the cluster side.
 registerHarnessFactory(decopilotHarnessFactory);
 registerHarnessFactory(claudeCodeHarnessFactory);
 registerHarnessFactory(codexHarnessFactory);

@@ -30,7 +30,11 @@ import {
 import { KEYS } from "../lib/query-keys";
 import { readCachedTaskBranch } from "../lib/read-cached-task-branch";
 import { useOptionalThreadManager } from "@/web/components/chat/store/hooks";
-import { isPerThreadTab } from "@/web/layouts/main-panel-tabs/tab-id";
+import { resolveTaskSwitchSearch } from "@/web/layouts/resolve-task-switch-search";
+import {
+  readThreadLayout,
+  saveThreadLayout,
+} from "@/web/lib/thread-layout-memory";
 import { useOrganizationSettingsNonBlocking } from "../hooks/use-organization-settings";
 import { homeNextActionsQueryOptions } from "../hooks/use-home-next-actions";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
@@ -90,7 +94,11 @@ export function usePanelActions() {
     org?: string;
     taskId?: string;
   };
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
+  const search = useSearch({ strict: false }) as {
+    virtualmcpid?: string;
+    main?: string | 0;
+    sidepanel?: "chat" | 0;
+  };
   const orgSlug = params.org ?? "";
   const currentTaskId = params.taskId ?? "";
 
@@ -111,59 +119,42 @@ export function usePanelActions() {
     replace = true,
   ) => navWith(currentTaskId, searchFn, replace);
 
-  const setChatOpen = (open: boolean) =>
-    nav((prev) => ({ ...prev, chat: open ? 1 : 0 }));
+  const openSidePanel = (sidePanel: "chat") =>
+    nav((prev) => ({ ...prev, sidepanel: sidePanel }));
 
   const setTaskId = (
     id: string,
     virtualMcpId?: string,
     opts?: { autosend?: boolean; main?: string },
-  ) =>
-    navWith(
+  ) => {
+    const isSameThread = !!currentTaskId && currentTaskId === id;
+    // Remember the layout of the thread we're leaving so returning to it
+    // restores the same tabs/side-panel instead of the agent default.
+    if (currentTaskId && !isSameThread) {
+      saveThreadLayout(currentTaskId, {
+        main: search.main,
+        sidepanel: search.sidepanel,
+      });
+    }
+    // Restore the target thread's own remembered layout (null when unseen this
+    // session, or when re-selecting the current thread — then keep its URL).
+    const savedLayout = isSameThread ? null : readThreadLayout(id);
+    const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+
+    return navWith(
       id,
-      (prev) => {
-        const next: Record<string, unknown> = { chat: 1 };
-        if (virtualMcpId) next.virtualmcpid = virtualMcpId;
-        else if (prev.virtualmcpid) next.virtualmcpid = prev.virtualmcpid;
-        // An agent switch (target vMCP differs from the current) must NOT carry
-        // the previous agent's view — those tabs are agent-specific. Carrying
-        // "overview" onto a repo agent, or "preview" onto the Super Agent
-        // ("No source to preview"), is exactly the stuck-view bug. Leaving
-        // `main` unset lets the new agent's own defaultMainView resolve.
-        // The Super Agent is the default agent when the URL carries no
-        // `virtualmcpid`, so treat an absent id as the Super Agent on BOTH
-        // sides. Otherwise switching FROM the param-less Super Agent TO a repo
-        // agent isn't detected as a switch and wrongly carries "overview" onto
-        // an agent that has no Overview tab.
-        const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
-        const prevVmcp =
-          typeof prev.virtualmcpid === "string"
-            ? prev.virtualmcpid
-            : decopilotId;
-        const targetVmcp = virtualMcpId ?? prevVmcp;
-        const isAgentSwitch = targetVmcp !== prevVmcp;
-        // Explicit main tab takes priority (e.g. home tile → pinned view).
-        if (opts?.main) {
-          next.main = opts.main;
-        } else if (!isAgentSwitch) {
-          // Preserve system-level panel tabs (git, preview, settings, …) across
-          // thread switches WITHIN the same agent, but drop per-thread tabs
-          // (expanded tool views, web-page previews, automation details) that
-          // are specific to the previous task.
-          const prevMain = prev.main;
-          if (
-            prevMain &&
-            typeof prevMain === "string" &&
-            !isPerThreadTab(prevMain)
-          ) {
-            next.main = prevMain;
-          }
-        }
-        if (opts?.autosend) next.autosend = AUTOSEND_QUERY_VALUE;
-        return next;
-      },
+      (prev) =>
+        resolveTaskSwitchSearch({
+          prev: prev as { virtualmcpid?: unknown; main?: unknown },
+          virtualMcpId,
+          decopilotId,
+          savedLayout,
+          opts,
+          autosendValue: AUTOSEND_QUERY_VALUE,
+        }),
       false,
     );
+  };
 
   // Create a new task carrying the current task's branch (if any) so the
   // new thread lands on the same warm sandbox. Server picks from sandboxMap when
@@ -207,23 +198,11 @@ export function usePanelActions() {
       main: tabId,
     }));
 
-  const toggleMain = () =>
-    nav((prev) => {
-      const isOpen = prev.main !== undefined && prev.main !== "0";
-      if (isOpen) {
-        return { ...prev, main: "0" };
-      }
-      const next: Record<string, unknown> = { ...prev };
-      delete next.main;
-      return next;
-    });
-
   return {
-    setChatOpen,
+    openSidePanel,
     setTaskId,
     createNewTask,
     openTab,
-    toggleMain,
   };
 }
 

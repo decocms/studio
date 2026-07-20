@@ -3,13 +3,13 @@ import addFormats from "ajv-formats";
 
 /**
  * Shared, content-memoized JSON-schema validator for all MCP Client/Server
- * instances in the mesh.
+ * instances in the studio.
  *
  * Why this exists — a multi-hour leak hunt: MCP SDK ≥1.27 validates tool I/O
  * with Ajv. Two compounding behaviours made this leak unboundedly under load:
  *
  *   1. Each `Client`/`Server` constructs its OWN `new AjvJsonSchemaValidator()`
- *      when none is injected. The mesh builds these per request / per Decopilot
+ *      when none is injected. The studio builds these per request / per Decopilot
  *      turn (proxy routes, passthrough aggregator, management server), so the
  *      Ajv instances pile up.
  *   2. Ajv's `compile()` keeps every compiled schema in its internal cache

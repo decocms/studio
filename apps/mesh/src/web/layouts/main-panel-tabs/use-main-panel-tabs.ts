@@ -15,6 +15,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement, useSyncExternalStore } from "react";
 import {
+  getCommerceDiscoveryAgentId,
   getDevConnectionId,
   useConnections,
   useMCPClientOptional,
@@ -39,7 +40,6 @@ import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
-import { useCapability } from "@/web/hooks/use-capability";
 import type {
   ThreadExpandedTool,
   ThreadMetadata,
@@ -58,7 +58,12 @@ import {
   type AutomationTabParsed,
 } from "./tab-id";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
-import { getSourceSystemTabs } from "./source-system-tabs";
+import {
+  getSourceSystemTabs,
+  shouldDeepLinkSourceTab,
+} from "./source-system-tabs";
+import { useCapability } from "@/web/hooks/use-capability";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 export type AgentTabDef = {
   id: string;
@@ -136,7 +141,7 @@ export function useMainPanelTabs(ctx: {
 }): MainPanelTabs {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as {
-    main?: string;
+    main?: string | 0;
   };
   const entity = useVirtualMCP(ctx.virtualMcpId);
   const metadata = useTaskMetadata(ctx.taskId);
@@ -185,8 +190,14 @@ export function useMainPanelTabs(ctx: {
   const devConnId = entity?.id ? getDevConnectionId(entity.id) : null;
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
   const hasActiveGithubRepo = agentHasConnectedGithub(entity);
-  const hasClonableSource = agentHasClonableSource(entity?.metadata);
+  // A thread-scoped repo (bound by `load_repo`) makes the source tabs
+  // (Preview, Code) available even when the agent itself has no repo — e.g.
+  // the ephemeral Decopilot agent.
+  const hasClonableSource =
+    agentHasClonableSource(entity?.metadata) ||
+    agentHasClonableSource(metadata);
   const { granted: canManageAgents } = useCapability("agents:manage");
+  const reportsOnly = useReportsOnly();
   const connections = useConnections({ includeVirtual: true });
 
   // Show "Content" only when decofile/meta confirm editable pages or sections
@@ -301,15 +312,22 @@ export function useMainPanelTabs(ctx: {
   // Settings + Automations stay anchored at the right.
   // The Overview view (the Super Agent's default) leads the bar so it reads as
   // the agent's home. Data-driven off the configured default view — no
-  // per-agent special-case. Source tabs (Blocks · Preview · Code) share one
-  // capability gate via getSourceSystemTabs.
+  // per-agent special-case. Source tabs (Preview · Code) share one capability
+  // gate via getSourceSystemTabs; Blocks is an editing mode inside Preview.
   const leadingSystemTabs: Array<{ id: string; title: string }> = [];
   // Library is agent-independent, so it lives in the LEFT toolbar group next to
   // the Chat toggle (see LibraryToggle), NOT in this per-agent tab bar.
   if (effectiveDefaultMainView?.type === "overview") {
     leadingSystemTabs.push({ id: "overview", title: "Overview" });
   }
-  leadingSystemTabs.push(...getSourceSystemTabs(hasClonableSource));
+  // Reports-only orgs get a persistent Preview/Code entry point to their
+  // storefront regardless of which agent/screen they're on — visibility is
+  // keyed to the settled org flag, not to whether the current agent happens to
+  // have a mirrored `githubRepo`. Clicking from off the Report Agent deep-links
+  // into it (see setActiveTab).
+  leadingSystemTabs.push(
+    ...getSourceSystemTabs(hasClonableSource || reportsOnly),
+  );
 
   const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasClonableSource && showContentTab) {
@@ -318,10 +336,13 @@ export function useMainPanelTabs(ctx: {
   if (gitTabVisible) {
     systemTabs.push({ id: "git", title: "Review changes" });
   }
-  systemTabs.push({ id: "automations", title: "Automations" });
-  // Settings is always the last tab (Library moved to the leading anchor above).
-  if (canManageAgents) {
-    systemTabs.push({ id: "settings", title: "Settings" });
+  // Commerce (reports-only) orgs get a curated top bar: no Automations, no
+  // Settings.
+  if (!reportsOnly) {
+    systemTabs.push({ id: "automations", title: "Automations" });
+    if (canManageAgents) {
+      systemTabs.push({ id: "settings", title: "Settings" });
+    }
   }
 
   // Merge pinned views + per-task expanded tools into a single list keyed
@@ -479,7 +500,23 @@ export function useMainPanelTabs(ctx: {
     })),
   ];
 
+  const onReportAgent =
+    ctx.virtualMcpId === getCommerceDiscoveryAgentId(org.id);
+
   const setActiveTab = (id: string) => {
+    // On a reports-only org sitting on any shell other than the Report Agent
+    // (e.g. the Super Agent home), the storefront preview lives on the Report
+    // Agent — so deep-link into it with the panel open instead of trying to
+    // preview the current agent, which has no source. On the Report Agent
+    // itself this falls through to the normal tab-toggle below.
+    if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: id })) {
+      navigate({
+        to: "/$org/$taskId",
+        params: { org: org.slug, taskId: crypto.randomUUID() },
+        search: { virtualmcpid: getCommerceDiscoveryAgentId(org.id), main: id },
+      });
+      return;
+    }
     const target = resolveTabClickTarget({
       clickedId: id,
       activeTab,
@@ -487,7 +524,10 @@ export function useMainPanelTabs(ctx: {
     });
     navigate({
       to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main: target }),
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        main: target,
+      }),
       replace: true,
     });
   };

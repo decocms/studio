@@ -12,8 +12,9 @@ import { Suspense, lazy } from "react";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
 import { OverviewTab } from "./overview-tab";
+import { TaskBoardPage } from "@/web/layouts/task-board";
 import { GitTab } from "@/web/components/thread/github/git-tab";
-import { PreviewBlocksTab } from "./preview-blocks-tab";
+import { PreviewTab } from "./preview-tab";
 import { CodeTab } from "./code-tab";
 import { ContentTab } from "./content-tab";
 import { AutomationTab } from "./automation-tab";
@@ -72,6 +73,16 @@ function TabBody({
   if (activeTab === "overview") {
     return <OverviewTab />;
   }
+  if (activeTab === "board") {
+    // Task board opened next to chat via the Tasks toggle (`?main=board`).
+    // The main panel already supplies the card chrome, so render the inner
+    // page inside a full-height flex column (mirrors the standalone route).
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <TaskBoardPage />
+      </div>
+    );
+  }
   if (isLegacySettingsTab(activeTab)) {
     return <SettingsTab virtualMcpId={virtualMcpId} />;
   }
@@ -81,8 +92,8 @@ function TabBody({
   if (activeTab === "automations") {
     return <AutomationsListTab virtualMcpId={virtualMcpId} />;
   }
-  if (activeTab === "preview" || activeTab === "blocks") {
-    return <PreviewBlocksTab surface={activeTab} virtualMcpId={virtualMcpId} />;
+  if (activeTab === "preview") {
+    return <PreviewTab virtualMcpId={virtualMcpId} />;
   }
   const codeTab = parseCodeTabId(activeTab);
   if (codeTab) {
@@ -164,16 +175,8 @@ export function MainPanelContent({
       taskId,
     });
 
-  // Preview and Blocks render one shared `PreviewContent` (see PreviewBlocksTab),
-  // so they must sit under the SAME ErrorBoundary instance — keying it per-tab
-  // would remount the subtree and reload the preview iframe on every switch.
-  const boundaryKey =
-    activeTab === "preview" || activeTab === "blocks"
-      ? "preview-blocks"
-      : activeTab;
-
   return (
-    <ErrorBoundary key={boundaryKey}>
+    <ErrorBoundary key={activeTab}>
       <Suspense fallback={<MainPanelLoading />}>
         <TabBody
           activeTab={activeTab}

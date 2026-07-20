@@ -2,7 +2,7 @@
  * Files Route
  *
  * Serves org-scoped storage files via a stable, non-expiring URL.
- * Proxies the object bytes through mesh on every request (presigning
+ * Proxies the object bytes through studio on every request (presigning
  * internally), so the caller never sees storage URLs or manages expiry.
  *
  * Route: GET /api/:org/files/:key
@@ -22,7 +22,7 @@ import { generatePresignedGetUrl } from "./decopilot/file-materializer";
 import { usesLocalObjectStorage } from "@/tools/connection/dev-assets";
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 
 const app = new Hono<{ Variables: Variables }>();
 
@@ -45,7 +45,7 @@ const FORWARDED_RESPONSE_HEADERS = [
 ] as const;
 
 /** Now that bytes are served same-origin (no more redirect to the storage
- * domain), member-authored active content must not run with mesh's origin.
+ * domain), member-authored active content must not run with studio's origin.
  * CSP-sandbox it so scripts get an opaque origin and can't make credentialed
  * same-origin calls (same posture as the org-fs /read route). */
 function applyContentPolicy(headers: Headers, contentType: string): void {
@@ -62,7 +62,7 @@ function applyContentPolicy(headers: Headers, contentType: string): void {
 }
 
 app.get("/:org/files/*", async (c) => {
-  const ctx = c.get("meshContext");
+  const ctx = c.get("studioContext");
 
   const orgId = ctx.organization?.id;
 
@@ -112,7 +112,7 @@ app.get("/:org/files/*", async (c) => {
     return new Response(bytes, { status: 200, headers });
   }
 
-  // Proxy the object through mesh instead of redirecting: the storage origin
+  // Proxy the object through studio instead of redirecting: the storage origin
   // and signed URLs never reach the client.
   const upstreamHeaders = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {

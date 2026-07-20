@@ -10,6 +10,11 @@ type GithubMcpClient = {
 };
 
 const FILE_FETCH_CONCURRENCY = 10;
+const FILES_PER_PAGE = 100;
+// GitHub's PR files endpoint itself stops paginating past 3000 files
+// (returns whatever it has and no further pages) — this bounds our loop
+// to the same ceiling so a huge PR can't spin forever.
+const MAX_FILE_PAGES = 30;
 
 export function decodeGithubFileContent(result: unknown): string | null {
   const typed = result as {
@@ -75,6 +80,8 @@ function parsePrFiles(result: unknown): PrFile[] {
       additions,
       deletions,
       blobUrl: typeof f.blob_url === "string" ? f.blob_url : null,
+      previousFilename:
+        typeof f.previous_filename === "string" ? f.previous_filename : null,
     };
   });
 }
@@ -101,6 +108,30 @@ async function mapWithConcurrency<T>(
  * Fallback when the sandbox shallow clone can't resolve merge-base: load full
  * file blobs from GitHub at the PR head and merge-base (when known).
  */
+async function fetchAllPrFiles(
+  client: GithubMcpClient,
+  args: { owner: string; repo: string; pullNumber: number },
+): Promise<PrFile[]> {
+  const files: PrFile[] = [];
+  for (let page = 1; page <= MAX_FILE_PAGES; page++) {
+    const filesResult = await client.callTool({
+      name: "pull_request_read",
+      arguments: {
+        method: "get_files",
+        owner: args.owner,
+        repo: args.repo,
+        pullNumber: args.pullNumber,
+        page,
+        perPage: FILES_PER_PAGE,
+      },
+    });
+    const pageFiles = parsePrFiles(filesResult);
+    files.push(...pageFiles);
+    if (pageFiles.length < FILES_PER_PAGE) break;
+  }
+  return files;
+}
+
 export async function fetchGithubPrDiff(
   client: GithubMcpClient,
   args: {
@@ -112,18 +143,8 @@ export async function fetchGithubPrDiff(
     mergeBaseSha?: string;
   },
 ): Promise<GitDiffResult> {
-  const filesResult = await client.callTool({
-    name: "pull_request_read",
-    arguments: {
-      method: "get_files",
-      owner: args.owner,
-      repo: args.repo,
-      pullNumber: args.pullNumber,
-      perPage: 100,
-    },
-  });
-
-  const files = parsePrFiles(filesResult).filter((f) => f.filename.length > 0);
+  const allFiles = await fetchAllPrFiles(client, args);
+  const files = allFiles.filter((f) => f.filename.length > 0);
   const diffs: GitDiffResult["diffs"] = {};
   const fromRef = args.mergeBaseSha
     ? { sha: args.mergeBaseSha }
@@ -154,10 +175,13 @@ export async function fetchGithubPrDiff(
       return;
     }
 
+    // A renamed file's old content lives at `previousFilename`, not `path`
+    // (the new name) — fetching `path` at the base ref 404s there instead.
+    const fromPath = file.previousFilename ?? path;
     const [from, to] = await Promise.all([
       getFileAtRef(
         client,
-        { owner: args.owner, repo: args.repo, path },
+        { owner: args.owner, repo: args.repo, path: fromPath },
         fromRef,
       ),
       getFileAtRef(

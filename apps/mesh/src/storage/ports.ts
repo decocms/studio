@@ -300,6 +300,8 @@ export interface OrganizationSettingsStoragePort {
         | "registry_config"
         | "simple_mode"
         | "default_home_agents"
+        | "reports_only"
+        | "task_board_enabled"
       >
     >,
   ): Promise<OrganizationSettings>;

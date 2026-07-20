@@ -175,13 +175,17 @@ export const FIXED_SYSTEM_TABS = [
   "settings",
   "automations",
   "preview",
-  "blocks",
   "code",
   "content",
   "git",
 ] as const;
 
 const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
+
+// Agent-independent overlays (Tasks `board`, Library `files`) take over the
+// whole panel and aren't sandbox-backed views. Shared by the drawer-visibility
+// check and the in-panel-app navigate allowlist so the two stay in sync.
+export const OVERLAY_TABS = new Set(["board", "files"]);
 
 /**
  * Returns true for tab ids that are scoped to a specific thread and must not
@@ -250,15 +254,16 @@ export function resolveDefaultTabId(
 }
 
 export function resolveActiveTabAndOpen(ctx: {
-  mainParam: string | undefined;
+  mainParam: string | 0 | undefined;
   metadata: EntityLayoutMetadata | null;
 }): { mainOpen: boolean; activeTab: string } {
+  const mainParam = ctx.mainParam === 0 ? "0" : ctx.mainParam;
   const def = resolveDefaultTabId(ctx.metadata);
 
-  if (ctx.mainParam === "0") {
+  if (mainParam === "0") {
     return { mainOpen: false, activeTab: def };
   }
-  if (ctx.mainParam === undefined) {
+  if (mainParam === undefined) {
     // Mirror resolveDefaultPanelState: a chat-default (or absent default)
     // keeps the main panel closed so the header tab bar doesn't highlight
     // a tab while the panel is 0px wide.
@@ -267,10 +272,10 @@ export function resolveActiveTabAndOpen(ctx: {
     return { mainOpen: !defaultIsChat, activeTab: def };
   }
   // Legacy ids coming from URL state migrate to the unified settings tab.
-  if (LEGACY_SETTINGS_TABS.has(ctx.mainParam)) {
+  if (LEGACY_SETTINGS_TABS.has(mainParam)) {
     return { mainOpen: true, activeTab: "settings" };
   }
-  return { mainOpen: true, activeTab: ctx.mainParam };
+  return { mainOpen: true, activeTab: mainParam };
 }
 
 /**
@@ -278,20 +283,13 @@ export function resolveActiveTabAndOpen(ctx: {
  *
  * Clicking the currently-active tab while the panel is open closes it
  * (navigates to `?main=0`). Any other click opens or switches.
- *
- * Exception: Blocks is Preview *with* the sections editor — you can't view
- * Blocks without Preview. So collapsing the active Blocks tab falls back to
- * Preview (closing the editor, keeping the surface visible) rather than closing
- * the panel outright, which felt like an accidental dismiss.
  */
 export function resolveTabClickTarget(ctx: {
   clickedId: string;
   activeTab: string;
   mainOpen: boolean;
-}): string {
-  if (ctx.mainOpen && ctx.clickedId === ctx.activeTab) {
-    return ctx.clickedId === "blocks" ? "preview" : "0";
-  }
+}): string | 0 {
+  if (ctx.mainOpen && ctx.clickedId === ctx.activeTab) return 0;
   return ctx.clickedId;
 }
 
@@ -312,14 +310,14 @@ export function isAutomationsPillActive(ctx: {
 /**
  * Click target for the Automations pill.
  *
- * - On the list with the panel open → close (`"0"`).
+ * - On the list with the panel open → close (`0`).
  * - On a detail view → navigate up to the list (`"automations"`).
  * - Otherwise (panel closed or on a different tab) → open the list.
  */
 export function resolveAutomationsPillClickTarget(ctx: {
   activeTab: string;
   mainOpen: boolean;
-}): string {
-  if (ctx.mainOpen && ctx.activeTab === "automations") return "0";
+}): string | 0 {
+  if (ctx.mainOpen && ctx.activeTab === "automations") return 0;
   return "automations";
 }

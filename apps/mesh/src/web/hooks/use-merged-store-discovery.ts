@@ -12,6 +12,7 @@
 import { useInfiniteQuery, keepPreviousData } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { createMCPClient } from "@decocms/mesh-sdk";
+import { retry, RetryError } from "@decocms/std";
 import {
   inferRegistryListToolName,
   flattenPaginatedItems,
@@ -56,20 +57,22 @@ function isCommunityRegistry(registry: RegistrySource): boolean {
 /**
  * Build a where expression for server-side search on registry items.
  * Searches title, description, name (server.name), and server.title.
+ *
+ * The search is split on whitespace into keywords, each OR'd across every
+ * field — so "vtex shopify" surfaces items matching either (union), letting a
+ * caller open the catalog pre-filtered to several providers at once.
  */
 function buildRegistrySearchWhere(
   search: string | undefined,
 ): Record<string, unknown> | undefined {
-  const trimmed = search?.trim();
-  if (!trimmed) return undefined;
+  const tokens = search?.trim().split(/\s+/).filter(Boolean) ?? [];
+  if (tokens.length === 0) return undefined;
+  const fields = [["title"], ["description"], ["name"], ["server", "title"]];
   return {
     operator: "or",
-    conditions: [
-      { field: ["title"], operator: "contains", value: trimmed },
-      { field: ["description"], operator: "contains", value: trimmed },
-      { field: ["name"], operator: "contains", value: trimmed },
-      { field: ["server", "title"], operator: "contains", value: trimmed },
-    ],
+    conditions: tokens.flatMap((token) =>
+      fields.map((field) => ({ field, operator: "contains", value: token })),
+    ),
   };
 }
 
@@ -111,74 +114,82 @@ function useRegistryGroupQuery(
 
             const listToolName = inferRegistryListToolName(registry.id, orgId);
 
-            // Per-registry retry (2 attempts) since Promise.all would
-            // otherwise let one failure reject the entire group
-            let lastError: unknown;
-            for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
-              let client: Awaited<ReturnType<typeof createMCPClient>> | null =
-                null;
-              try {
-                client = await createMCPClient({
-                  connectionId: registry.id,
-                  orgId,
-                  orgSlug,
-                });
+            // Per-registry retry since Promise.all would otherwise let one
+            // failure reject the entire group.
+            try {
+              return await retry(
+                async (): Promise<RegistryPageResult> => {
+                  let client: Awaited<
+                    ReturnType<typeof createMCPClient>
+                  > | null = null;
+                  try {
+                    client = await createMCPClient({
+                      connectionId: registry.id,
+                      orgId,
+                      orgSlug,
+                    });
 
-                const params: Record<string, unknown> = { limit: PAGE_SIZE };
-                if (cursor) {
-                  params.cursor = cursor;
-                }
-                if (where) {
-                  params.where = where;
-                }
+                    const params: Record<string, unknown> = {
+                      limit: PAGE_SIZE,
+                    };
+                    if (cursor) {
+                      params.cursor = cursor;
+                    }
+                    if (where) {
+                      params.where = where;
+                    }
 
-                const result = (await client.callTool({
-                  name: listToolName,
-                  arguments: params,
-                })) as { structuredContent?: unknown };
+                    const result = (await client.callTool({
+                      name: listToolName,
+                      arguments: params,
+                    })) as { structuredContent?: unknown };
 
-                const payload = (result.structuredContent ?? result) as Record<
-                  string,
-                  unknown
-                >;
+                    const payload = (result.structuredContent ??
+                      result) as Record<string, unknown>;
 
-                const nextCursor =
-                  (payload as { nextCursor?: string; cursor?: string })
-                    .nextCursor ||
-                  (payload as { nextCursor?: string; cursor?: string })
-                    .cursor ||
-                  undefined;
+                    const nextCursor =
+                      (payload as { nextCursor?: string; cursor?: string })
+                        .nextCursor ||
+                      (payload as { nextCursor?: string; cursor?: string })
+                        .cursor ||
+                      undefined;
 
-                const items = flattenPaginatedItems<RegistryItem>(
-                  payload ? [payload] : [],
-                );
+                    const items = flattenPaginatedItems<RegistryItem>(
+                      payload ? [payload] : [],
+                    );
 
-                return {
-                  registryId: registry.id,
-                  registryTitle: registry.title,
-                  registryIcon: registry.icon,
-                  items,
-                  nextCursor,
-                };
-              } catch (err) {
-                lastError = err;
-              } finally {
-                await client?.close().catch(() => {});
-              }
+                    return {
+                      registryId: registry.id,
+                      registryTitle: registry.title,
+                      registryIcon: registry.icon,
+                      items,
+                      nextCursor,
+                    };
+                  } finally {
+                    await client?.close().catch(() => {});
+                  }
+                },
+                {
+                  maxAttempts: RETRY_ATTEMPTS,
+                  minTimeout: 0,
+                  maxTimeout: 1000,
+                  jitter: 0,
+                },
+              );
+            } catch (err) {
+              // All retries exhausted — log and return empty so other
+              // registries in the group are not affected
+              console.warn(
+                `[useMergedStoreDiscovery] Registry "${registry.title}" (${registry.id}) failed after ${RETRY_ATTEMPTS} attempts:`,
+                err instanceof RetryError ? err.cause : err,
+              );
+              return {
+                registryId: registry.id,
+                registryTitle: registry.title,
+                registryIcon: registry.icon,
+                items: [],
+              };
             }
-
-            // All retries exhausted — log and return empty so other registries
-            // in the group are not affected
-            console.warn(
-              `[useMergedStoreDiscovery] Registry "${registry.title}" (${registry.id}) failed after ${RETRY_ATTEMPTS} attempts:`,
-              lastError,
-            );
-            return {
-              registryId: registry.id,
-              registryTitle: registry.title,
-              registryIcon: registry.icon,
-              items: [],
-            };
           }),
         );
 

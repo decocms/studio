@@ -28,4 +28,8 @@ export interface BoardLayout {
   tiles: Record<string, { x: number; y: number; w: number; h: number }>;
   /** Tile ids the user has explicitly hidden from the board. */
   hidden: string[];
+  /** Tile ids the user has explicitly added for candidates that are OFF the
+   *  board by default (`defaultHidden`). A default-hidden tile shows only when
+   *  it's in `shown` and not in `hidden`; normal tiles ignore this. */
+  shown?: string[];
 }

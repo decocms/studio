@@ -81,11 +81,11 @@ export function MonitorRunHistory({
                   <span className="text-muted-foreground">
                     {run.tested_items}/{run.total_items} tested
                   </span>
-                  <span className="text-emerald-600 font-medium">
+                  <span className="text-success font-medium">
                     {run.passed_items} passed
                   </span>
                   {run.failed_items > 0 && (
-                    <span className="text-red-600 font-medium">
+                    <span className="text-destructive font-medium">
                       {run.failed_items} failed
                     </span>
                   )}
@@ -114,7 +114,7 @@ export function MonitorRunHistory({
                     {run.config_snapshot.onFailure !== "none" && (
                       <Badge
                         variant="outline"
-                        className="text-[9px] text-red-600"
+                        className="text-[9px] text-destructive"
                       >
                         on fail:{" "}
                         {run.config_snapshot.onFailure.replace(/_/g, " ")}

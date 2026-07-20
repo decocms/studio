@@ -84,6 +84,29 @@ export function preferredLocalAgentOption(
   return null;
 }
 
+/**
+ * Auto-switch a desktop pick to cloud when its link is confirmed offline. A
+ * `user-desktop` option can't run anywhere while the link is down and nothing
+ * prompts the user to reconnect, so it strands them on an impossible "This
+ * device" state. Non-desktop picks (and a live/unknown link) pass through
+ * unchanged. `desktopOffline` MUST come from a resolved probe (`link.ready`),
+ * never the initial unresolved state — otherwise a genuinely-linked user is
+ * briefly demoted on load.
+ */
+export function resolveOfflineAgentOption(
+  option: AgentOption | null,
+  desktopOffline: boolean,
+): AgentOption | null {
+  if (
+    desktopOffline &&
+    option &&
+    AGENT_OPTION_PINS[option].sandbox === "user-desktop"
+  ) {
+    return "decopilot";
+  }
+  return option;
+}
+
 /** Whether `option` can run given the current `availability`. */
 export function agentOptionIsAvailable(
   option: AgentOption,

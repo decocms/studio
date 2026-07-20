@@ -19,6 +19,9 @@ interface CandidateTile {
    *  `hidden` list — membership is owned by the manage-home drawer now, so a
    *  stale board-level hide must never suppress an explicitly-pinned agent. */
   pinned?: boolean;
+  /** Off the default board: shows only once the user adds it (i.e. it has a
+   *  stored position), unlike a normal candidate which shows unless hidden. */
+  defaultHidden?: boolean;
 }
 
 interface BoardSnapshot {
@@ -126,13 +129,18 @@ export interface BoardLayoutApi {
 export function useBoardLayout(candidates: CandidateTile[]): BoardLayoutApi {
   const { layout, isLayoutLoading, commitLayout } = useHomeEdit();
   const hiddenSet = new Set(layout.hidden);
+  const shownSet = new Set(layout.shown ?? []);
 
   // Build the visible-tile list deterministically from candidates +
   // layout. Auto-place anything that doesn't have a stored position yet.
   const placed: TileInstance[] = [];
-  const visibleCandidates = candidates.filter(
-    (c) => c.pinned || !hiddenSet.has(c.id),
-  );
+  const visibleCandidates = candidates.filter((c) => {
+    if (c.pinned) return true;
+    // A default-hidden tile is off the board until the user explicitly adds it
+    // (`shown`), and hidden again if they remove it.
+    if (c.defaultHidden) return shownSet.has(c.id) && !hiddenSet.has(c.id);
+    return !hiddenSet.has(c.id);
+  });
   const minByCandidate = new Map<string, { w: number; h: number }>();
   for (const cand of candidates) {
     if (cand.minSize) minByCandidate.set(cand.id, cand.minSize);
@@ -183,6 +191,9 @@ export function useBoardLayout(candidates: CandidateTile[]): BoardLayoutApi {
       version: STORAGE_VERSION,
       tiles,
       hidden: hidden.filter((id) => candidateIds.has(id)),
+      // Preserve the user's explicit adds for default-hidden tiles — moves and
+      // resizes rebuild the layout and would otherwise drop them.
+      shown: (layout.shown ?? []).filter((id) => candidateIds.has(id)),
     });
   };
 

@@ -41,15 +41,26 @@ export const KEYS = {
   taskBoardItems: (locator: ProjectLocator) =>
     [locator, "task-board-items"] as const,
 
-  // Connections (scoped by project)
-  connections: (locator: ProjectLocator) => [locator, "connections"] as const,
-  connectionsByBinding: (locator: ProjectLocator, binding: string) =>
-    [locator, "connections", `binding:${binding}`] as const,
-  connection: (locator: ProjectLocator, id: string) =>
-    [locator, "connection", id] as const,
+  // A task's linked pull requests (live state fetched from GitHub)
+  taskBoardItemPrs: (locator: ProjectLocator, itemId: string) =>
+    [locator, "task-board-item-prs", itemId] as const,
+
+  homeGithubRecentPrs: (orgId: string, connectionId: string) =>
+    ["home-github-recent-prs", orgId, connectionId] as const,
+
+  homeGithubContributions: (orgId: string, connectionId: string) =>
+    ["home-github-contributions", orgId, connectionId] as const,
+
+  // Authenticated report deck for a scanned domain (/report/:domain).
+  report: (domain: string, key?: string) =>
+    ["report", domain, key ?? ""] as const,
 
   commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "connection", orgId, connectionId] as const,
+  // Owner diagnostic (get_my_diagnostic) polled by the home report banner —
+  // keyed per org + connection so a credential rotation forces a fresh fetch.
+  commerceDiscoveryDiagnostic: (orgId: string, connectionId: string) =>
+    ["commerce-discovery", "diagnostic", orgId, connectionId] as const,
   commerceDiscoveryVirtualMcp: (orgId: string, virtualMcpId: string) =>
     ["commerce-discovery", "virtual-mcp", orgId, virtualMcpId] as const,
 
@@ -474,6 +485,15 @@ export const KEYS = {
   // Domain lookup (for onboarding — scoped by email domain)
   domainLookup: (domain: string) => ["domain-lookup", domain] as const,
 
+  // Deployment admin dashboard (instance-level, not org-scoped)
+  deploymentAdminMe: () => ["deployment-admin", "me"] as const,
+  deploymentAdminUsers: (search: string) =>
+    ["deployment-admin", "users", search] as const,
+  deploymentAdminOrgs: (search: string) =>
+    ["deployment-admin", "orgs", search] as const,
+  // Prefix key: invalidates every orgs query regardless of the search term.
+  deploymentAdminOrgsList: () => ["deployment-admin", "orgs"] as const,
+
   // Brand context (scoped by organization)
   brandContext: (organizationId: string) =>
     ["brand-context", organizationId] as const,
@@ -492,7 +512,9 @@ export const KEYS = {
 
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
-  liveMeta: (previewUrl: string) => ["live-meta", previewUrl] as const,
+  // Variadic so an invalidation call can pass just the org/vmid/branch prefix
+  // and still partial-match the full org/vmid/branch/previewUrl query key.
+  liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   sandboxRepoDir: (orgSlug: string, virtualMcpId: string, branch: string) =>

@@ -228,7 +228,56 @@ jobs:
             };
           });
 
-          const summary = updated
+          // Charts that pin an image tag in lockstep with a workspace package
+          // version. The package.json bump above publishes a new image
+          // (release-studio-sandbox.yaml tags it from package.json); without
+          // this the chart's image.tag / appVersion silently drift behind it
+          // (they had drifted 5 minors — #4870). Sync both to the new version
+          // and patch-bump the chart's own version so release-sandbox-charts
+          // republishes it. All committed in this same [release]: commit, whose
+          // App-token push re-triggers the chart publish workflow.
+          const CHART_IMAGE_LOCKSTEP = {
+            "packages/sandbox/package.json": "deploy/helm/sandbox-env",
+          };
+          const extra = [];
+          for (const { manifest, newVersion } of updated) {
+            const chartDir = CHART_IMAGE_LOCKSTEP[manifest];
+            if (!chartDir) continue;
+
+            const valuesPath = `${chartDir}/values.yaml`;
+            const values = fs.readFileSync(valuesPath, "utf8");
+            const nextValues = values.replace(
+              /(repository: ghcr\.io\/decocms\/studio\/studio-sandbox[\s\S]*?\n\s*tag: )"[^"]*"/,
+              `$1"${newVersion}"`,
+            );
+            if (nextValues === values) {
+              throw new Error(`could not find studio-sandbox image tag in ${valuesPath}`);
+            }
+            fs.writeFileSync(valuesPath, nextValues);
+
+            const chartPath = `${chartDir}/Chart.yaml`;
+            const chart = fs.readFileSync(chartPath, "utf8");
+            let chartVersion;
+            const nextChart = chart
+              .replace(/(\nappVersion: )"[^"]*"/, `$1"${newVersion}"`)
+              .replace(/\nversion: (\d+)\.(\d+)\.(\d+)/, (_m, a, b, c) => {
+                chartVersion = `${a}.${b}.${Number(c) + 1}`;
+                return `\nversion: ${chartVersion}`;
+              });
+            if (!chartVersion) {
+              throw new Error(`could not bump chart version in ${chartPath}`);
+            }
+            fs.writeFileSync(chartPath, nextChart);
+
+            extra.push({
+              name: `${chartDir} (chart ${chartVersion})`,
+              manifest: `${valuesPath} ${chartPath}`,
+              currentVersion: "image.tag/appVersion",
+              newVersion,
+            });
+          }
+
+          const summary = [...updated, ...extra]
             .map(({ name, manifest, currentVersion, newVersion }) =>
               `- ${name} (${manifest}): ${currentVersion} -> ${newVersion}`,
             )
@@ -251,7 +300,7 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `updated=true\n`);
           fs.appendFileSync(
             process.env.GITHUB_OUTPUT,
-            `changed_paths=${updated.map(({ manifest }) => manifest).join(" ")}\n`,
+            `changed_paths=${[...updated, ...extra].map(({ manifest }) => manifest).join(" ")}\n`,
           );
 
           console.log(summary);

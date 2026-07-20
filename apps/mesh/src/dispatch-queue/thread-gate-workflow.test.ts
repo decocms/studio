@@ -21,7 +21,7 @@ describe("threadGateWorkflow plumbing", () => {
 
   it("setThreadGateRuntime accepts a runtime shape", () => {
     const rt: ThreadGateRuntime = {
-      meshContextFactory: async () => null,
+      studioContextFactory: async () => null,
       deps: {
         runRegistry: {} as ThreadGateRuntime["deps"]["runRegistry"],
         cancelBroadcast: {} as ThreadGateRuntime["deps"]["cancelBroadcast"],

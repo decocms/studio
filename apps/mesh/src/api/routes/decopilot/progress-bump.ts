@@ -53,7 +53,7 @@ export class ProgressBumpThrottle {
  *
  * This is the run's liveness heartbeat for BOTH topologies: desktop chunks
  * go daemon → NATS directly, so the projector's live chunk consumption is
- * the only mesh component that ever sees them; hosted runs are also
+ * the only studio component that ever sees them; hosted runs are also
  * live-tailed by the projector post-unification, so this one tap covers
  * both — see the reaper's `RUN_IDLE_TIMEOUT_MS` in run-registry.ts.
  */

@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn as nodeSpawn } from "node:child_process";
 import { readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { appLogPath } from "../paths";
 import { LogTee } from "./log-tee";
 import { spawnPty } from "./pty-spawn";
@@ -497,6 +498,12 @@ export class TaskManager {
     );
     task.pid = child.pid;
     task.pgid = child.pid;
+    // A multi-byte UTF-8 character can straddle two separate stdout/stderr
+    // 'data' events — decoding each Buffer chunk independently below would
+    // mangle it into replacement characters. StringDecoder carries the
+    // dangling bytes over to the next chunk instead.
+    const stdoutDecoder = new StringDecoder("utf-8");
+    const stderrDecoder = new StringDecoder("utf-8");
 
     const killGroup = (signal: NodeJS.Signals) => {
       if (task.pgid === undefined) return;
@@ -527,13 +534,13 @@ export class TaskManager {
     task.kill = (signal) => killGroup(signal ?? "SIGTERM");
 
     child.stdout?.on("data", (chunk: Buffer) => {
-      const data = chunk.toString("utf-8");
+      const data = stdoutDecoder.write(chunk);
       task.stdout.append(data);
       task.tee.write(data);
       this.fanOut(task, { stream: "stdout", data });
     });
     child.stderr?.on("data", (chunk: Buffer) => {
-      const data = chunk.toString("utf-8");
+      const data = stderrDecoder.write(chunk);
       task.stderr.append(data);
       task.tee.write(data);
       this.fanOut(task, { stream: "stderr", data });
@@ -551,6 +558,21 @@ export class TaskManager {
       if (task.timer) clearTimeout(task.timer);
       // Reap survivors of any backgrounded children.
       killGroup("SIGKILL");
+      // A trailing multi-byte UTF-8 sequence can still be buffered inside
+      // the decoder when the stream ends (no more bytes ever arrive to
+      // complete it) — flush it now so it isn't silently dropped.
+      const stdoutTail = stdoutDecoder.end();
+      if (stdoutTail) {
+        task.stdout.append(stdoutTail);
+        task.tee.write(stdoutTail);
+        this.fanOut(task, { stream: "stdout", data: stdoutTail });
+      }
+      const stderrTail = stderrDecoder.end();
+      if (stderrTail) {
+        task.stderr.append(stderrTail);
+        task.tee.write(stderrTail);
+        this.fanOut(task, { stream: "stderr", data: stderrTail });
+      }
       // A signal-terminated child (e.g. our own SIGTERM/SIGKILL via
       // kill()/killByLogName()) reports `code: null` here — mapping that
       // to `1` collapsed every explicit kill into status "exited" instead

@@ -132,7 +132,7 @@ export interface PromptAgentSummary {
   status: "active" | "inactive" | "error";
 }
 
-/** Pre-resolved per-user prompt data, read agent-side (mesh) before dispatch
+/** Pre-resolved per-user prompt data, read agent-side (studio) before dispatch
  *  and rendered by the portable prompt builder. Each sub-block is independently
  *  optional; absent ⇒ the corresponding prompt section is skipped (desktop). */
 export interface HarnessUserContext {

@@ -8,10 +8,9 @@ import { useAgentOptionAvailability } from "./use-agent-availability";
  * a valid runtime, so once the user picks one (and it's actually available)
  * this flips to false.
  *
- * Two surfaces read this so they stay in lockstep:
- *  - the chat panel shows the provider-setup empty state, and
- *  - the main-panel view tabs (Overview / Settings / …) are disabled — you
- *    can't browse the app until a runtime exists.
+ * Read only by the chat side panel, which shows the provider-setup empty state
+ * when true. The main-panel view tabs stay navigable regardless — browsing the
+ * app (Overview / Content / Settings / …) is never gated on runtime setup.
  */
 export function useNeedsRuntimeSetup(): boolean {
   const allKeys = useAiProviderKeys();

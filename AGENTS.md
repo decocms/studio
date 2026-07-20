@@ -17,10 +17,10 @@ Studio is an open-source control plane for Model Context Protocol (MCP) traffic.
 # Start full dev environment (migrations + client + server)
 bun run dev
 
-# Start mesh client only (Vite dev server on port 4000)
+# Start Studio client only (Vite dev server on port 4000)
 bun run --cwd=apps/mesh dev:client
 
-# Start mesh server only (Hono with hot reload)
+# Start Studio server only (Hono with hot reload)
 bun run --cwd=apps/mesh dev:server
 
 # Run documentation site locally
@@ -93,17 +93,17 @@ await client.end();
 EOF
 ```
 
-Replace `<PORT>` with the port found in step 1. The `--cwd apps/mesh` is required so bun resolves the `pg` dependency from the mesh workspace.
+Replace `<PORT>` with the port found in step 1. The `--cwd apps/mesh` is required so bun resolves the `pg` dependency from the `apps/mesh` workspace.
 
 ### Build & Deploy
 ```bash
 # Build runtime package
 bun run build:runtime
 
-# Build mesh client (production)
+# Build Studio client (production)
 bun run --cwd=apps/mesh build:client
 
-# Build mesh server (bundle for deployment)
+# Build Studio server (bundle for deployment)
 bun run --cwd=apps/mesh build:server
 
 # Run production build
@@ -321,6 +321,13 @@ isolation) and is intentionally separate.
 - Files in shared packages: kebab-case (enforced by `plugins/enforce-kebab-case-file-names.ts`)
 - A comment that takes a paragraph to justify a workaround is a signal the code is wrong, not the comment—fix the code, don't explain it away
 
+### "Thread" vs "Chat" naming
+The domain concept is a **thread** — that's the name on the backend and in all code: DB columns/tables, storage, tools, API routes, wire payloads, query keys, types, hooks, variables, functions. Do NOT rename any of these to "chat".
+
+User-facing copy calls it a **chat** — anything a person reads in the UI: JSX text, button/menu labels, placeholders, tooltips, `aria-label`s, headings, empty states, toasts/error messages. Write these as "chat".
+
+So a `thread`-named identifier can render "New chat" in a label; keep the code identifier as `thread` and only the displayed string as "chat". When in doubt: if it crosses the wire or lives in code, it's "thread"; if a user reads it, it's "chat".
+
 ### React 19 Patterns
 - Uses React 19 with React Compiler (babel-plugin-react-compiler)
 - **DO NOT** use `useEffect` (banned by `plugins/ban-use-effect.ts`)—prefer alternatives
@@ -357,12 +364,12 @@ The e2e suite is a **black-box contract** over HTTP + DB: spin the server, hit i
 assert on responses. It must stay decoupled from the implementation so a component can be rewritten
 — even in another language — and the same suite still holds. The in-sandbox daemon's suite
 (`packages/sandbox/daemon/daemon.e2e.*.test.ts`) already works this way: it spawns the built binary
-(swap it via the `DAEMON_E2E_CMD` env) and asserts only over HTTP. The mesh suite lives in the
+(swap it via the `DAEMON_E2E_CMD` env) and asserts only over HTTP. The Studio suite lives in the
 dedicated `packages/e2e` (`@decocms/e2e`) workspace behind the same wall — its Playwright config
 spawns the app dev server from `apps/mesh` via `webServer.cwd` (a process boundary, not an import).
 
 Rules:
-- **No imports from `apps/*/src/**` and no `@/` mesh alias** in `packages/e2e`. Enforced by
+- **No imports from `apps/*/src/**` and no `@/` app alias** in `packages/e2e`. Enforced by
   `plugins/ban-e2e-app-imports.js` (oxlint, `error`, deny-by-default) + a `paths: {}` override in
   `packages/e2e/tsconfig.json`. Only a small explicit allowlist of published packages is permitted
   (any unlisted `@decocms/*` is denied too, so app code creeping into `packages/` can't silently
@@ -421,7 +428,92 @@ PRs should include:
 - Run `bun test` before requesting review
 - Flag follow-up work with TODOs linked to issues
 
+## Ship it review-ready — the first-pass checklist
+
+Auditing ~300 merged PRs shows a consistent shape: a first draft ships the **happy
+path**, then a **hardening pass** (frequently a second person — the author who
+vibecoded it opens, an engineer takes over the branch, adds commits, and merges)
+adds the *same categories of change* every time. Those categories are below. Do
+them in the **first** PR — they are the difference between "works in the demo" and
+"survives production." Each item cites a real PR.
+
+1. **Handle the variants, not just the happy path.** Cover empty / null /
+   whitespace / duplicate / oversized inputs and every schema shape, not the one
+   in front of you. *(sections-editor #4008 added `@hide`, Lazy-wrapped, and
+   blank-title cases the first pass skipped; storage #4426 had to measure payload
+   size **before** `JSON.stringify`, not after; sandbox #4445 added pagination +
+   filename-collision disambiguation + stale-file pruning to a catalog writer.)*
+
+2. **Scope by tenant and permission.** Reads/writes are scoped to the current
+   user/org; other people's data is **read-only unless owned**. A validation or
+   dedup gate must inspect the **complete** payload, not one representative slice.
+   Never reuse a cache/list/React key across two shapes, and never conflate ids.
+   *(#4230 fix: teammates' threads must be read-only in the "All" view; #4416: the
+   publish gate had to union the committed **and** working-tree diffs; #4373: list
+   keys collided across skill/prompt of the same name.)*
+
+3. **Get concurrency right — no silent data loss.** For any "start B while A is in
+   flight" path, trace what happens to A's output and B's input under
+   concurrency-1 / a latch / a retry. Make side-effecting steps **non-retriable
+   unless idempotent**, claim fences/slots at **dispatch**, not at request time,
+   and coalesce fire-and-forget writes that share a path. *(#4365: a fence claimed
+   at POST time silently dropped an in-flight run's reply; #4409: a retriable
+   agent-loop step re-ran 3× and spliced generations; #4445: per-run catalog
+   re-sync raced itself.)*
+
+4. **Test each behavior you touch — in the right tier** (see [Testing](#testing)).
+   Add a test *per fix*. When you fix a bug, find the test that encodes the **old**
+   behavior and **invert** it — don't just append a new one. `grep` **all** tiers
+   (unit **and** `packages/e2e`) for any string or wire/storage contract you
+   changed. Storage changes need a real-Postgres test (in-memory fakes accept
+   columns the `update()` whitelist silently drops). E2E must not depend on a model
+   tier/provider absent in the test org. *(#4008 shipped a test with each fix;
+   #4446/#4430 had to invert tests that asserted the bug; #4350's e2e still
+   asserted pre-redesign copy; #4355 needed real-PG; #4365's e2e depended on a
+   provider tier.)*
+
+5. **Leave no dead code.** After you change who calls a symbol, narrow its export
+   to module-private and delete the newly-orphaned helpers/components/branches in
+   the **same** PR. Run `knip` before declaring done (see Gotcha #6). *(#4230
+   deleted 297 lines of components the refactor orphaned; #4449, #4350, #4373 each
+   shipped a follow-up un-exporting a now-internal symbol knip flagged.)*
+
+6. **Complete the lifecycle and reset state.** New persisted state ships
+   **create + update + delete together**; make the writer idempotent (clear-then-write
+   for index/slug-named files); clean it up when the parent is deleted. A
+   "start/reset" transition must clear the previous cycle's terminal columns.
+   *(#4449 implemented create only — update ignored the field, delete orphaned the
+   subtree; #4355 left a stale `failure_reason` because `RUN_STARTED` didn't null
+   it.)*
+
+7. **Make risky and infra changes reversible and bounded.** Any change on a
+   boot/install/dispatch hot path gets its **own** default-off flag — never
+   piggyback on a neighbor's flag, and never let "deployed" mean "enabled." New
+   caches/artifacts need eviction (TTL + cap), bad-entry invalidation (publish only
+   **after** a health signal), and `.git/info/exclude` so they don't leak onto user
+   branches. Prefer the idle reaper to a fixed wall-clock timeout; emit heartbeats
+   during silent phases. *(#4357: golden cache shipped dormant behind
+   `GOLDEN_CACHE_ENABLED`, with GC and health-gated publish; #4445 git-excluded its
+   artifact; #4355 dropped a fixed timeout for progress-based reaping; #4409 added
+   heartbeats.)* Overstating a safety property in a comment/doc is itself a bug
+   (#4357, #4363).
+
+8. **Validate external input; don't over-engineer.** Validate URLs and user input.
+   Prefer schema-driven behavior to clever runtime inference — an engineer reverted
+   exactly that "infer from runtime data" cleverness in #4008. Use design-system
+   tokens, not raw palette (#4350: `text-emerald-600` → `text-success`), and run
+   `bun run fmt` before the first push (#4461 was a pure-format follow-up).
+
+9. **Keep type-safety at compile time.** Don't `as`-cast to read a field off a
+   union — narrow with an `in` / discriminant check so a rename is a **compile**
+   error, not a runtime regression only e2e catches (#4365). Respect
+   `noUncheckedIndexedAccess`.
+
 ## Common Gotchas
+
+> The [first-pass checklist](#ship-it-review-ready--the-first-pass-checklist) above
+> captures the review-driven gotchas mined from PR history. The list below is the
+> always-load-bearing set.
 
 1. **Never access environment variables directly in tools**—use StudioContext
 2. **Never access HTTP context in tools**—use StudioContext for all state
@@ -451,6 +543,10 @@ The aggregator that mounts every org-scoped sub-router lives at
 
 Org slugs are **immutable** — `ORGANIZATION_UPDATE` rejects slug changes — so URLs remain
 stable.
+
+Instance-level routes (no org context, e.g. the deployment-admin surface) use an
+underscore-prefixed namespace like `/api/_admin/...`, mounted before the `/api/:org`
+catch-all so the static segment wins over the slug param.
 
 ## License
 

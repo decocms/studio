@@ -12,6 +12,7 @@ import { COMMERCE_COMPANION_MCPS } from "./companions.ts";
 import {
   buildCompanionCards,
   buildRegistryWhere,
+  FALLBACK_COMPANION_REQUIREMENTS,
   parseBindingRequirements,
   type SaBindings,
   unwrapToolResult,
@@ -59,7 +60,12 @@ export function useCommerceCompanions({
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const schemaQuery = useSuspenseQuery({
+  // Soft (non-suspense) on purpose: this call proxies to the CD origin
+  // (commerce-skills) and can 401 when the connection lost its credential. As a
+  // hard Suspense dependency, that 401 threw and collapsed the whole section —
+  // no cards, no connect, no disconnect. Now a failure just drops us to the
+  // static requirements below so the integrations still render.
+  const schemaQuery = useQuery({
     queryKey: KEYS.commerceDiscoveryCompanionSchema(org.id, cdConnectionId),
     queryFn: async () => {
       const result = await cdClient.callTool({
@@ -70,11 +76,18 @@ export function useCommerceCompanions({
         result,
       );
     },
+    retry: false,
   });
 
-  const requirements = parseBindingRequirements(
-    schemaQuery.data?.stateSchema ?? { type: "object", properties: {} },
-  );
+  const schemaRequirements = schemaQuery.data?.stateSchema
+    ? parseBindingRequirements(schemaQuery.data.stateSchema)
+    : null;
+  // Live schema wins; fall back to the known companion set while it loads or
+  // when it's unreachable, so the section is never empty due to a CD proxy 401.
+  const requirements =
+    schemaRequirements && schemaRequirements.length > 0
+      ? schemaRequirements
+      : FALLBACK_COMPANION_REQUIREMENTS;
   const bindingTypes = requirements.map((r) => r.bindingType);
   const registryAppIds = requirements
     .map((r) => COMMERCE_COMPANION_MCPS[r.bindingType]?.registryAppId)

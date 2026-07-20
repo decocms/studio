@@ -4,21 +4,37 @@
  * Gated behind the org's task_board_enabled setting (see org settings).
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { getInitials } from "@/web/lib/get-initials";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
-import { Badge } from "@deco/ui/components/badge.tsx";
 import {
   Calendar,
   Columns03,
-  Flag01,
+  HelpCircle,
+  Lightning01,
   List,
   Loading01,
   Plus,
-  User01,
 } from "@untitledui/icons";
+import { SuperAgentIcon } from "@/web/components/super-agent-icon";
+import { GitHubIcon } from "@/web/components/icons/github-icon";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@deco/ui/components/dialog.tsx";
+import {
+  getWellKnownDecopilotVirtualMCP,
+  useConnections,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
+import { getOrgGithubConnections } from "@/shared/github-repo-scope";
+import { useConnectApp } from "@/web/hooks/use-connect-app";
 import { useMembers } from "@/web/hooks/use-members";
 import {
   useTaskBoardItemActions,
@@ -26,14 +42,34 @@ import {
 } from "@/web/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import {
+  isTaskBlocked,
+  primaryThread,
   PRIORITY_CONFIG,
   STATUS_CONFIG,
   STATUSES,
+  SUPER_AGENT_ASSIGNEE_ID,
   type TaskBoardItem,
+  type TaskBoardItemPriority,
   type TaskBoardItemStatus,
   type Member,
 } from "./config";
 import { TaskBoardItemDialog } from "./task-dialog";
+import {
+  EMPTY_FILTERS,
+  TaskFiltersBar,
+  TaskFiltersDrawer,
+  taskMatchesFilters,
+  type TaskFilters,
+} from "./task-filters";
+import { useFlipLanes } from "./use-flip-lanes";
+import { usePanelActions } from "@/web/layouts/shell-layout";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useThreadActions } from "@/web/components/chat/store/hooks";
+import { writeStoredAutosend } from "@/web/lib/autosend";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
+
+// Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
+void import("../agent-shell-layout/index.tsx").catch(() => {});
 
 type Layout = "board" | "list";
 
@@ -60,42 +96,210 @@ function formatDueDate(iso: string): { label: string; overdue: boolean } {
   return { label: DATE_FMT.format(d), overdue };
 }
 
+/**
+ * Shared meta chip: outlined (border, no fill), lightly rounded (not a full
+ * pill), with room for a larger leading icon.
+ */
+const PILL =
+  "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground";
+
+/** Card flag for a task whose agent is paused waiting on human input. */
+function BlockedBadge() {
+  return (
+    <span
+      className={cn(PILL, "border-warning/30 text-warning")}
+      title="The agent is waiting for your input"
+    >
+      <HelpCircle size={14} />
+      Needs input
+    </span>
+  );
+}
+
+function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
+  const config = PRIORITY_CONFIG[priority];
+  return (
+    <span className={PILL}>
+      <span className={cn("size-2 rounded-full", config.dotClassName)} />
+      {config.label}
+    </span>
+  );
+}
+
 function DueDatePill({ iso }: { iso: string }) {
   const { label, overdue } = formatDueDate(iso);
   return (
     <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px]",
-        overdue
-          ? "bg-red-500/10 text-red-600"
-          : "bg-muted text-muted-foreground",
-      )}
+      className={cn(PILL, overdue && "border-destructive/30 text-destructive")}
     >
-      <Calendar size={10} />
+      <Calendar size={14} />
       {label}
     </span>
   );
 }
 
-function TaskBoardPage() {
+/**
+ * Assignee glyph for a card/row. For a Super Agent task it renders the
+ * delegation as overlapping avatars — the assigner's avatar eclipsed by the
+ * Super Agent capybara — so it's clear a human handed the task off. Otherwise a
+ * plain member avatar.
+ */
+function AssigneeDisplay({
+  item,
+  assignee,
+  assignedBy,
+}: {
+  item: TaskBoardItem;
+  assignee?: Member;
+  assignedBy?: Member;
+}) {
+  if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
+    return (
+      <span
+        className="inline-flex items-center"
+        title={
+          assignedBy?.user?.name
+            ? `Assigned to Super Agent by ${assignedBy.user.name}`
+            : "Assigned to Super Agent"
+        }
+      >
+        {assignedBy && (
+          <Avatar
+            url={assignedBy.user?.image ?? undefined}
+            fallback={getInitials(assignedBy.user?.name)}
+            shape="circle"
+            size="2xs"
+            className="-mr-1.5 ring-2 ring-background"
+          />
+        )}
+        <SuperAgentIcon size={16} className="ring-2 ring-background" />
+      </span>
+    );
+  }
+  if (assignee) {
+    return (
+      <Avatar
+        url={assignee.user?.image ?? undefined}
+        fallback={getInitials(assignee.user?.name)}
+        shape="circle"
+        size="2xs"
+      />
+    );
+  }
+  return null;
+}
+
+export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
+  const reportsOnly = useReportsOnly();
+  // Auto-fix hands the task to the Super Agent, which opens a PR — so it needs
+  // an org-level GitHub connection. If the org has none, prompt to connect
+  // instead of enqueueing a run that can't push.
+  const hasGithub =
+    getOrgGithubConnections(useConnections({ slug: "mcp-github" })).length > 0;
+  const [connectGithubOpen, setConnectGithubOpen] = useState(false);
   const { data: membersData } = useMembers();
   const members = (membersData?.data?.members ?? []) as Member[];
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
   const [layout, setLayout] = useState<Layout>("board");
+  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<TaskBoardItem | null>(null);
+  // Status a newly-created task should start in (set by a lane's "+"); null for
+  // the generic "New task" button.
+  const [createStatus, setCreateStatus] = useState<TaskBoardItemStatus | null>(
+    null,
+  );
+  const { setTaskId } = usePanelActions();
+  const { create } = useThreadActions();
+  const { org, locator } = useProjectContext();
+  const navigate = useNavigate();
+  // Deep link: `/$org/board?task=<id>` opens that task's modal (from a linked
+  // chat's "open in board" button). Derived, so it opens as soon as the item
+  // loads without an effect.
+  const { task: deepLinkTaskId } = useSearch({ strict: false }) as {
+    task?: string;
+  };
+  const deepLinkItem = deepLinkTaskId
+    ? (items.find((i) => i.id === deepLinkTaskId) ?? null)
+    : null;
+
+  const clearDeepLink = () => {
+    if (deepLinkTaskId)
+      navigate({
+        to: "/$org/board",
+        params: { org: org.slug },
+        search: {},
+        replace: true,
+      });
+  };
+
+  // Start a fresh chat on the default Decopilot agent, seeded with the task's
+  // title + description as the first user message (via the autosend buffer),
+  // and link the new thread to the task so it shows on the modal.
+  const startChatFromTask = async (task: TaskBoardItem) => {
+    const newId = crypto.randomUUID();
+    const agentId = getWellKnownDecopilotVirtualMCP(org.id).id;
+    const context = [task.title, task.description?.trim()]
+      .filter(Boolean)
+      .join("\n\n");
+    writeStoredAutosend(sessionStorage, locator, newId, {
+      tiptapDoc: {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: context }] },
+        ],
+      },
+    });
+    setDialogOpen(false);
+    try {
+      await create({ id: newId, virtual_mcp_id: agentId });
+      // Best-effort — a link failure shouldn't block navigating into the chat.
+      await actions.link.mutateAsync({ id: task.id, linkThreadId: newId });
+    } catch {
+      // Toast already fired by the manager; navigate anyway so the route
+      // loader's ensure-fallback can retry the create.
+    }
+    setTaskId(newId, agentId, { autosend: true });
+  };
+
+  const visibleItems = items.filter((item) =>
+    taskMatchesFilters(item, filters),
+  );
 
   const openCreate = () => {
     setEditingItem(null);
+    setCreateStatus(null);
+    setDialogOpen(true);
+  };
+
+  const openCreateInLane = (status: TaskBoardItemStatus) => {
+    setEditingItem(null);
+    setCreateStatus(status);
     setDialogOpen(true);
   };
 
   const openEdit = (item: TaskBoardItem) => {
     setEditingItem(item);
     setDialogOpen(true);
+  };
+
+  // Opening a card always opens the task modal. The modal's activity area is
+  // what navigates into the run's chat (see onOpenThread below).
+  const openTask = openEdit;
+
+  // The task the modal is editing — a locally-opened card, or the deep-linked
+  // one. The modal is open when either is set.
+  const activeItem = editingItem ?? deepLinkItem;
+  const modalOpen = dialogOpen || !!deepLinkItem;
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingItem(null);
+    setCreateStatus(null);
+    clearDeepLink();
   };
 
   if (isLoading && items.length === 0) {
@@ -107,51 +311,106 @@ function TaskBoardPage() {
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div
-        className={cn(
-          "mx-auto flex w-full flex-col gap-6 px-10 pt-10 pb-16",
-          layout === "board" ? "max-w-[1400px]" : "max-w-[900px]",
-        )}
-      >
-        <h1 className="text-xl font-medium text-foreground">Board</h1>
+    // Full-width so each region's scroll container spans the whole panel — the
+    // max-width lives on the *content* inside (header + lanes), so the mouse can
+    // sit in the empty margins on wide monitors and still scroll the board.
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Header — capped + centered to the same width as the board content so
+          they line up; content-capped, not scroll-capped. */}
+      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
+        <h1 className="text-xl font-medium text-foreground">Tasks</h1>
 
+        {/* Toolbar — filters on the left (inline bar on desktop, a single
+            drawer button on mobile), view toggle + New task on the right. */}
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={openCreate}>
-            <Plus size={16} />
-            New task
-          </Button>
+          {items.length > 0 && (
+            <>
+              <div className="sm:hidden">
+                <TaskFiltersDrawer
+                  filters={filters}
+                  members={members}
+                  onChange={setFilters}
+                />
+              </div>
+              <div className="hidden sm:block">
+                <TaskFiltersBar
+                  filters={filters}
+                  members={members}
+                  onChange={setFilters}
+                />
+              </div>
+            </>
+          )}
 
-          <div className="ml-auto inline-flex rounded-lg bg-muted p-0.5">
-            <LayoutToggle
-              active={layout === "list"}
-              onClick={() => setLayout("list")}
-              icon={List}
-              label="List"
-            />
-            <LayoutToggle
-              active={layout === "board"}
-              onClick={() => setLayout("board")}
-              icon={Columns03}
-              label="Board"
-            />
+          <div className="ml-auto flex items-center gap-2">
+            <div className="inline-flex rounded-lg bg-muted p-0.5">
+              <LayoutToggle
+                active={layout === "list"}
+                onClick={() => setLayout("list")}
+                icon={List}
+                label="List"
+              />
+              <LayoutToggle
+                active={layout === "board"}
+                onClick={() => setLayout("board")}
+                icon={Columns03}
+                label="Board"
+              />
+            </div>
+
+            <Button size="sm" onClick={openCreate}>
+              <Plus size={16} />
+              New task
+            </Button>
           </div>
         </div>
+      </div>
 
-        {items.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
+      {items.length === 0 ? (
+        <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
+          <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
             No tasks yet. Start one with New task.
           </div>
-        ) : layout === "board" ? (
-          <Lanes
-            items={items}
-            memberByUserId={memberByUserId}
-            onOpen={openEdit}
-            onMove={(id, status) => actions.update.mutate({ id, status })}
-          />
-        ) : (
-          <div className="flex flex-col gap-2">
-            {items.map((item) => (
+        </div>
+      ) : visibleItems.length === 0 ? (
+        <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
+          <div className="flex flex-col items-center gap-3 rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
+            No tasks match these filters.
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFilters(EMPTY_FILTERS)}
+            >
+              Clear filters
+            </Button>
+          </div>
+        </div>
+      ) : layout === "board" ? (
+        <Lanes
+          items={visibleItems}
+          memberByUserId={memberByUserId}
+          onOpen={openTask}
+          onCreate={openCreateInLane}
+          onMove={(id, status) => actions.update.mutate({ id, status })}
+          onAutoFix={
+            reportsOnly
+              ? (item) => {
+                  if (!hasGithub) {
+                    setConnectGithubOpen(true);
+                    return;
+                  }
+                  actions.update.mutate({
+                    id: item.id,
+                    assigneeId: SUPER_AGENT_ASSIGNEE_ID,
+                  });
+                }
+              : undefined
+          }
+        />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-16 sm:px-8">
+          <div className="mx-auto flex max-w-[820px] flex-col gap-2">
+            {visibleItems.map((item) => (
               <ListRow
                 key={item.id}
                 item={item}
@@ -160,37 +419,107 @@ function TaskBoardPage() {
                     ? memberByUserId.get(item.assigneeId)
                     : undefined
                 }
-                onOpen={() => openEdit(item)}
+                assignedBy={
+                  item.assignedBy
+                    ? memberByUserId.get(item.assignedBy)
+                    : undefined
+                }
+                onOpen={() => openTask(item)}
               />
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <TaskBoardItemDialog
-        key={dialogOpen ? (editingItem?.id ?? "new") : "closed"}
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        item={editingItem ?? undefined}
+        key={
+          modalOpen
+            ? (activeItem?.id ?? `new-${createStatus ?? "default"}`)
+            : "closed"
+        }
+        open={modalOpen}
+        onClose={closeDialog}
+        item={activeItem ?? undefined}
+        defaultStatus={createStatus ?? undefined}
         isSaving={actions.create.isPending || actions.update.isPending}
         onSubmit={(input) => {
-          if (editingItem) {
-            actions.update.mutate({ id: editingItem.id, ...input });
+          if (activeItem) {
+            actions.update.mutate({ id: activeItem.id, ...input });
           } else {
             actions.create.mutate(input);
           }
-          setDialogOpen(false);
+          closeDialog();
         }}
         onDelete={
-          editingItem
+          activeItem
             ? () => {
-                actions.remove.mutate(editingItem.id);
-                setDialogOpen(false);
+                actions.remove.mutate(activeItem.id);
+                closeDialog();
               }
             : undefined
         }
+        onNewChat={
+          activeItem ? () => void startChatFromTask(activeItem) : undefined
+        }
+        onOpenThread={(thread) => {
+          if (!thread.virtualMcpId) return;
+          closeDialog();
+          setTaskId(thread.threadId, thread.virtualMcpId, {
+            main: thread.hasPreview ? "preview" : "board",
+          });
+        }}
+      />
+
+      <ConnectGitHubDialog
+        open={connectGithubOpen}
+        onOpenChange={setConnectGithubOpen}
       />
     </div>
+  );
+}
+
+/**
+ * Small prompt shown when Auto-fix is used in an org with no GitHub connection.
+ * The Super Agent needs GitHub to open a PR, so we connect first. Once the
+ * connection lands the card's Auto-fix button works on the next click.
+ */
+function ConnectGitHubDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { connect, isConnecting } = useConnectApp("deco/mcp-github");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Connect GitHub</DialogTitle>
+          <DialogDescription>
+            Auto-fix hands the task to the Super Agent, which opens a pull
+            request with the change. Connect GitHub so it can push and open PRs.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            onClick={async () => {
+              await connect();
+              onOpenChange(false);
+            }}
+            disabled={isConnecting}
+            className="gap-2"
+          >
+            {isConnecting ? (
+              <Loading01 size={16} className="animate-spin" />
+            ) : (
+              <GitHubIcon className="size-4" />
+            )}
+            Connect GitHub
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -228,71 +557,110 @@ function Lanes({
   items,
   memberByUserId,
   onOpen,
+  onCreate,
   onMove,
+  onAutoFix,
 }: {
   items: TaskBoardItem[];
   memberByUserId: Map<string, Member>;
   onOpen: (item: TaskBoardItem) => void;
+  onCreate: (status: TaskBoardItemStatus) => void;
   onMove: (id: string, status: TaskBoardItemStatus) => void;
+  onAutoFix?: (item: TaskBoardItem) => void;
 }) {
   const [overLane, setOverLane] = useState<TaskBoardItemStatus | null>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  // Re-run FLIP whenever a card's lane or ordering changes.
+  const signature = items.map((t) => `${t.id}:${t.status}`).join(",");
+  useFlipLanes(boardRef, signature);
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-      {STATUSES.map((status) => {
-        const laneItems = items.filter((t) => t.status === status);
-        const config = STATUS_CONFIG[status];
-        const LaneIcon = config.icon;
-        return (
-          <div
-            key={status}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setOverLane(status);
-            }}
-            onDragLeave={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+    // Scroll container spans the full panel width so the wheel works even when
+    // the pointer is in the empty margins on wide monitors. The lane row inside
+    // is capped + centered to the same width as the header (so they align), and
+    // overflows this row to scroll when it doesn't fit.
+    <div
+      ref={boardRef}
+      className="min-h-0 flex-1 overflow-x-auto overflow-y-auto"
+    >
+      {/* Padding lives on the capped row (not the scroll container) so its left
+          edge matches the header's max-w + px exactly. */}
+      <div className="mx-auto flex w-full max-w-[1680px] gap-3 px-4 pt-6 pb-16 sm:px-8">
+        {STATUSES.map((status) => {
+          const laneItems = items.filter((t) => t.status === status);
+          const config = STATUS_CONFIG[status];
+          const LaneIcon = config.icon;
+          return (
+            <div
+              key={status}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setOverLane(status);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setOverLane(null);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const id = e.dataTransfer.getData("text/plain");
+                if (id) onMove(id, status);
                 setOverLane(null);
-              }
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              const id = e.dataTransfer.getData("text/plain");
-              if (id) onMove(id, status);
-              setOverLane(null);
-            }}
-            className={cn(
-              "flex flex-col rounded-xl p-1 transition-colors",
-              overLane === status && "bg-muted/50",
-            )}
-          >
-            <div className="flex items-center gap-2 p-2">
-              <LaneIcon
-                size={14}
-                className={cn("shrink-0", config.iconClassName)}
-              />
-              <span className="text-xs text-foreground">{config.label}</span>
-              <span className="text-[11px] text-muted-foreground">
-                {laneItems.length}
-              </span>
-            </div>
-            <div className="flex min-h-12 flex-col gap-2">
-              {laneItems.map((item) => (
-                <TaskCard
-                  key={item.id}
-                  item={item}
-                  assignee={
-                    item.assigneeId
-                      ? memberByUserId.get(item.assigneeId)
-                      : undefined
-                  }
-                  onOpen={() => onOpen(item)}
+              }}
+              className={cn(
+                "flex w-[300px] shrink-0 flex-col rounded-xl p-1 transition-colors",
+                overLane === status && "bg-muted/50",
+              )}
+            >
+              {/* Sticky so the column header stays visible while the cards
+                  scroll vertically under it. */}
+              <div className="sticky top-0 z-10 flex items-center gap-2 bg-background px-2 py-1.5">
+                <LaneIcon
+                  size={15}
+                  className={cn("shrink-0", config.iconClassName)}
                 />
-              ))}
+                <span className="text-sm font-medium text-foreground">
+                  {config.label}
+                </span>
+                <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+                  {laneItems.length}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`New task in ${config.label}`}
+                  title={`New task in ${config.label}`}
+                  onClick={() => onCreate(status)}
+                  className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Plus size={15} />
+                </button>
+              </div>
+              <div className="flex min-h-12 flex-col gap-2 pt-1">
+                {laneItems.map((item) => (
+                  <TaskCard
+                    key={item.id}
+                    item={item}
+                    assignee={
+                      item.assigneeId
+                        ? memberByUserId.get(item.assigneeId)
+                        : undefined
+                    }
+                    assignedBy={
+                      item.assignedBy
+                        ? memberByUserId.get(item.assignedBy)
+                        : undefined
+                    }
+                    onOpen={() => onOpen(item)}
+                    onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -300,104 +668,97 @@ function Lanes({
 function TaskCard({
   item,
   assignee,
+  assignedBy,
   onOpen,
+  onAutoFix,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
+  assignedBy?: Member;
   onOpen: () => void;
+  onAutoFix?: () => void;
 }) {
-  const priorityConfig = PRIORITY_CONFIG[item.priority];
-  const due = item.dueDate ? formatDueDate(item.dueDate) : null;
+  const statusConfig = STATUS_CONFIG[item.status];
+  const StatusIcon = statusConfig.icon;
+  const lastMessage = primaryThread(item)?.lastMessage;
+
+  const showAutoFix =
+    onAutoFix &&
+    (item.status === "triage" || item.status === "todo") &&
+    item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID;
 
   return (
     <button
       type="button"
       draggable
+      data-flip-id={item.id}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", item.id);
         e.dataTransfer.effectAllowed = "move";
       }}
       onClick={onOpen}
-      className="flex cursor-grab flex-col gap-2.5 rounded-[10px] border border-border bg-card px-3.5 py-3 text-left transition-colors hover:border-ring/40 active:cursor-grabbing"
+      className="group flex cursor-grab flex-col gap-2 rounded-xl bg-card px-3 py-2.5 text-left card-shadow transition-colors will-change-transform hover:bg-accent/60 active:cursor-grabbing"
+      title={item.title}
     >
-      <span className="min-w-0 truncate text-[13px] font-medium leading-snug text-foreground">
-        {item.title}
-      </span>
-
-      <div className="flex flex-col gap-1.5 text-[12px] text-muted-foreground">
-        <CardMetaRow
-          icon={
-            assignee ? (
-              <Avatar
-                url={assignee.user?.image ?? undefined}
-                fallback={getInitials(assignee.user?.name)}
-                shape="circle"
-                size="2xs"
-              />
-            ) : (
-              <User01 size={13} className="text-muted-foreground/60" />
-            )
-          }
-          value={assignee?.user?.name}
+      <div className="flex items-start gap-2">
+        <StatusIcon
+          size={16}
+          className={cn("mt-px shrink-0", statusConfig.iconClassName)}
         />
-        <CardMetaRow
-          icon={
-            <Calendar
-              size={13}
-              className={cn(
-                due?.overdue ? "text-red-500" : "text-muted-foreground/60",
-              )}
-            />
-          }
-          value={due?.label}
-          valueClassName={due?.overdue ? "text-red-600" : undefined}
-        />
-        <CardMetaRow
-          icon={<Flag01 size={13} className={priorityConfig.flagClassName} />}
-          value={priorityConfig.label}
+        <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground line-clamp-2">
+          {item.title}
+        </span>
+        <AssigneeDisplay
+          item={item}
+          assignee={assignee}
+          assignedBy={assignedBy}
         />
       </div>
 
-      <span className="text-[10px] text-muted-foreground/60">
-        {formatTimeAgo(new Date(item.createdAt))}
-      </span>
-    </button>
-  );
-}
+      {lastMessage && (
+        <p className="line-clamp-2 pl-6 text-xs leading-snug text-muted-foreground">
+          {lastMessage}
+        </p>
+      )}
 
-function CardMetaRow({
-  icon,
-  value,
-  valueClassName,
-}: {
-  icon: React.ReactNode;
-  value?: string | null;
-  valueClassName?: string;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        {icon}
-      </span>
-      <span
-        className={cn(
-          "min-w-0 truncate",
-          value ? valueClassName : "text-muted-foreground/50",
-        )}
-      >
-        {value ?? "—"}
-      </span>
-    </div>
+      {(isTaskBlocked(item) ||
+        item.priority !== "none" ||
+        Boolean(item.dueDate)) && (
+        <div className="flex flex-wrap items-center gap-1.5 pl-6">
+          {isTaskBlocked(item) && <BlockedBadge />}
+          {item.priority !== "none" && (
+            <PriorityPill priority={item.priority} />
+          )}
+          {item.dueDate && <DueDatePill iso={item.dueDate} />}
+        </div>
+      )}
+
+      {showAutoFix && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAutoFix();
+          }}
+          className="flex items-center gap-1.5 self-end rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+        >
+          <Lightning01 size={12} />
+          Auto-fix
+        </button>
+      )}
+    </button>
   );
 }
 
 function ListRow({
   item,
   assignee,
+  assignedBy,
   onOpen,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
+  assignedBy?: Member;
   onOpen: () => void;
 }) {
   const config = STATUS_CONFIG[item.status];
@@ -406,30 +767,29 @@ function ListRow({
     <button
       type="button"
       onClick={onOpen}
-      className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:border-ring/40"
+      className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 text-left card-shadow transition-colors hover:bg-accent/60"
     >
-      <StatusIcon size={15} className={cn("shrink-0", config.iconClassName)} />
+      <StatusIcon size={16} className={cn("shrink-0", config.iconClassName)} />
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
         {item.title}
       </span>
-      <Badge
-        className={cn(
-          "shrink-0 text-[10px]",
-          PRIORITY_CONFIG[item.priority].badgeClassName,
-        )}
-      >
-        {PRIORITY_CONFIG[item.priority].label}
-      </Badge>
-      {item.dueDate && <DueDatePill iso={item.dueDate} />}
-      {assignee && (
-        <Avatar
-          url={assignee.user?.image ?? undefined}
-          fallback={getInitials(assignee.user?.name)}
-          shape="circle"
-          size="2xs"
-        />
+      {isTaskBlocked(item) && <BlockedBadge />}
+      {item.priority !== "none" && (
+        <span className="hidden sm:inline-flex">
+          <PriorityPill priority={item.priority} />
+        </span>
       )}
-      <span className="shrink-0 text-[11px] text-muted-foreground/70">
+      {item.dueDate && (
+        <span className="hidden sm:inline-flex">
+          <DueDatePill iso={item.dueDate} />
+        </span>
+      )}
+      <AssigneeDisplay
+        item={item}
+        assignee={assignee}
+        assignedBy={assignedBy}
+      />
+      <span className="hidden shrink-0 text-[11px] text-muted-foreground/70 sm:inline">
         {formatTimeAgo(new Date(item.createdAt))}
       </span>
     </button>

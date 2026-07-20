@@ -1,6 +1,6 @@
 /**
  * WebDAV serve layer — integration tier. Exercises the FULL daemon read path
- * with no mocks: WebDAV handler → OrgFsClient → (in-process) mesh
+ * with no mocks: WebDAV handler → OrgFsClient → (in-process) studio
  * `/api/:org/fs/*` routes + real `resolveOrgFromPath` → real `OrgFs` (real
  * Postgres + DevObjectStorage). Only the NFS kernel mount is out of scope here
  * (covered by the manual end-to-end harness `.context/webdav-nfs-smoke`).
@@ -41,12 +41,12 @@ const VOLUME = "skills";
 const ASSETS_DIR = `./data/assets/${ORG}`;
 const HOOK_TIMEOUT_MS = 30_000;
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 
 function buildMeshApp(db: StudioDatabase) {
   const app = new Hono<{ Variables: Variables }>();
   app.use("*", async (c, next) => {
-    c.set("meshContext", {
+    c.set("studioContext", {
       auth: { user: { id: USER } },
       db: db.db,
       baseUrl: "http://test",

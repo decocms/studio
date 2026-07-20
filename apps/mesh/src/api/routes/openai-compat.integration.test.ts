@@ -28,7 +28,7 @@ const ENDPOINT = `/${MOCK_ORG_SLUG}/v1/chat/completions`;
 
 describe("OpenAI-compat: Schema Validation", () => {
   let database: StudioDatabase;
-  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
+  let app: Hono<{ Variables: { studioContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -50,7 +50,7 @@ describe("OpenAI-compat: Schema Validation", () => {
 
     app = new Hono();
     app.use("*", async (c, next) => {
-      c.set("meshContext", ctx);
+      c.set("studioContext", ctx);
       await next();
     });
     app.route("/", openaiCompatRoutes);
@@ -182,7 +182,7 @@ describe("OpenAI-compat: Schema Validation", () => {
 
 describe("OpenAI-compat: Authentication", () => {
   let database: StudioDatabase;
-  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
+  let app: Hono<{ Variables: { studioContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -208,7 +208,7 @@ describe("OpenAI-compat: Authentication", () => {
 
     app = new Hono();
     app.use("*", async (c, next) => {
-      c.set("meshContext", ctx);
+      c.set("studioContext", ctx);
       await next();
     });
     app.route("/", openaiCompatRoutes);
@@ -244,7 +244,7 @@ describe("OpenAI-compat: Authentication", () => {
 
     app = new Hono();
     app.use("*", async (c, next) => {
-      c.set("meshContext", ctx);
+      c.set("studioContext", ctx);
       await next();
     });
     app.route("/", openaiCompatRoutes);
@@ -279,7 +279,7 @@ describe("OpenAI-compat: Authentication", () => {
 
     app = new Hono();
     app.use("*", async (c, next) => {
-      c.set("meshContext", ctx);
+      c.set("studioContext", ctx);
       await next();
     });
     app.route("/", openaiCompatRoutes);
@@ -308,7 +308,7 @@ describe("OpenAI-compat: Authentication", () => {
 
 describe("OpenAI-compat: Authorization", () => {
   let database: StudioDatabase;
-  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
+  let app: Hono<{ Variables: { studioContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -334,7 +334,7 @@ describe("OpenAI-compat: Authorization", () => {
 
     app = new Hono();
     app.use("*", async (c, next) => {
-      c.set("meshContext", ctx);
+      c.set("studioContext", ctx);
       await next();
     });
     app.route("/", openaiCompatRoutes);
@@ -364,7 +364,7 @@ describe("OpenAI-compat: Authorization", () => {
 
 describe("OpenAI-compat: Tools Schema", () => {
   let database: StudioDatabase;
-  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
+  let app: Hono<{ Variables: { studioContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -383,7 +383,7 @@ describe("OpenAI-compat: Tools Schema", () => {
 
     app = new Hono();
     app.use("*", async (c, next) => {
-      c.set("meshContext", ctx);
+      c.set("studioContext", ctx);
       await next();
     });
     app.route("/", openaiCompatRoutes);
@@ -478,7 +478,7 @@ describe("OpenAI-compat: Tools Schema", () => {
 
 describe("OpenAI-compat: Response Format", () => {
   let database: StudioDatabase;
-  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
+  let app: Hono<{ Variables: { studioContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -497,7 +497,7 @@ describe("OpenAI-compat: Response Format", () => {
 
     app = new Hono();
     app.use("*", async (c, next) => {
-      c.set("meshContext", ctx);
+      c.set("studioContext", ctx);
       await next();
     });
     app.route("/", openaiCompatRoutes);
@@ -581,7 +581,7 @@ describe("OpenAI-compat: Response Format", () => {
 
 describe("OpenAI-compat: Message Formats", () => {
   let database: StudioDatabase;
-  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
+  let app: Hono<{ Variables: { studioContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -600,7 +600,7 @@ describe("OpenAI-compat: Message Formats", () => {
 
     app = new Hono();
     app.use("*", async (c, next) => {
-      c.set("meshContext", ctx);
+      c.set("studioContext", ctx);
       await next();
     });
     app.route("/", openaiCompatRoutes);

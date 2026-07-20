@@ -237,10 +237,10 @@ export {
   getWellKnownCommunityRegistryConnection,
   getWellKnownSelfConnection,
   getWellKnownDevAssetsConnection,
-  getWellKnownMcpStudioConnection,
   getWellKnownCommerceDiscoveryConnection,
   // Virtual MCP factory functions
   getWellKnownDecopilotVirtualMCP,
+  SUPER_AGENT_ICON_URL,
   getWellKnownDecopilotConnection,
   getWellKnownCommerceDiscoveryVirtualMCP,
   // Decopilot utilities

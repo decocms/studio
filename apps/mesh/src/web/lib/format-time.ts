@@ -1,5 +1,14 @@
 import { differenceInSeconds } from "date-fns";
 
+/** Long calendar date, e.g. "January 5, 2026". */
+export function formatDate(value: string | Date): string {
+  return new Date(value).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 export function formatTimeAgo(date: Date): string {
   const seconds = differenceInSeconds(new Date(), date);
 

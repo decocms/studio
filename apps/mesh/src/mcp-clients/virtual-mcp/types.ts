@@ -11,7 +11,13 @@ import type { McpListCache } from "../../mcp-clients/mcp-list-cache";
 /** Options for creating an aggregator */
 export interface VirtualClientOptions {
   connections: ConnectionEntity[];
-  virtualMcp: VirtualMCPEntity;
+  /**
+   * Persisted agent configuration. Concrete-connection subagents omit this:
+   * they use the same gateway over one connection with an ephemeral identity.
+   */
+  virtualMcp?: VirtualMCPEntity;
+  /** Instructions for an ephemeral, connection-scoped subagent. */
+  instructions?: string;
   /** Whether to use superuser mode for background processes (bypasses auth checks on sub-clients) */
   superUser?: boolean;
   /** Cross-pod NATS KV cache for MCP lists (avoids MCP handshake on listTools/listResources/listPrompts) */

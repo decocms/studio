@@ -15,7 +15,7 @@ import {
 
 // Define Hono variables type
 type Variables = {
-  meshContext: StudioContext;
+  studioContext: StudioContext;
 };
 
 export const createDownstreamTokenRoutes = () => {
@@ -28,7 +28,7 @@ export const createDownstreamTokenRoutes = () => {
    * Called from frontend after OAuth flow completes.
    */
   app.post("/connections/:connectionId/oauth-token", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     const connectionId = c.req.param("connectionId");
 
     // Require authentication
@@ -141,7 +141,7 @@ export const createDownstreamTokenRoutes = () => {
    * Delete OAuth token for a connection.
    */
   app.delete("/connections/:connectionId/oauth-token", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     const connectionId = c.req.param("connectionId");
 
     const userId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null;
@@ -175,7 +175,7 @@ export const createDownstreamTokenRoutes = () => {
    * Check if there's a valid cached token for a connection.
    */
   app.get("/connections/:connectionId/oauth-token/status", async (c) => {
-    const ctx = c.get("meshContext");
+    const ctx = c.get("studioContext");
     const connectionId = c.req.param("connectionId");
 
     const userId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId ?? null;

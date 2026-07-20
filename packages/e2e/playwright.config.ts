@@ -5,7 +5,7 @@ const appPort = process.env.VITE_PORT || "4000";
 const appOrigin = process.env.BASE_URL || `http://localhost:${appPort}`;
 
 // Commerce Discovery setup mints a one-time client token by calling the
-// commerce-skills internal upgrade API. We point the mesh server at a local
+// commerce-skills internal upgrade API. We point the studio server at a local
 // mock (commerce-upgrade-mock.ts, started as a webServer below) so onboarding
 // specs exercise the real setup path without hitting the production worker.
 const commerceMockPort = process.env.COMMERCE_MOCK_PORT || "4100";
@@ -30,7 +30,12 @@ const commerceMockKey = "e2e-commerce-key";
 // in_progress and opens the live tail before the daemon ever receives
 // anything) so no other spec's legitimately-slow-but-alive turn is
 // misclassified as dead.
-const webServerCommand = `MCP_CACHE_ENABLED=true COMMERCE_DISCOVERY_INTERNAL_API_URL=${commerceMockOrigin} COMMERCE_DISCOVERY_INTERNAL_API_KEY=${commerceMockKey} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 bun run dev:servers`;
+// deployment-admin@e2e.local + deployment-admin-2@e2e.local are reserved for
+// deployment-admin.spec.ts only (consistent with the suite's unique-domain-per-
+// run rule). The second admin exists so an admin-impersonating-an-admin test can
+// reach the 409 re-impersonation guard — impersonating a NON-admin is rejected
+// by requireDeploymentAdmin first, before that guard runs.
+const webServerCommand = `MCP_CACHE_ENABLED=true COMMERCE_DISCOVERY_INTERNAL_API_URL=${commerceMockOrigin} COMMERCE_DISCOVERY_INTERNAL_API_KEY=${commerceMockKey} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev:servers`;
 
 export default defineConfig({
   testDir: "./tests",
@@ -62,7 +67,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      // Mock commerce-skills upgrade API. Started before the mesh server so
+      // Mock commerce-skills upgrade API. Started before the studio server so
       // COMMERCE_DISCOVERY_SETUP can mint a token over HTTP without reaching
       // the production worker. Standalone process (no app imports).
       command: `COMMERCE_MOCK_PORT=${commerceMockPort} bun run fixtures/commerce-upgrade-mock.ts`,

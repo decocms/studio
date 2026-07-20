@@ -51,7 +51,7 @@ import {
 
 interface VmClaim {
   claimName: string;
-  /** Null when no sandbox runner is configured on this mesh instance. */
+  /** Null when no sandbox runner is configured on this studio instance. */
   runner: SandboxProvider | null;
   virtualMcpId: string;
   branch: string;
@@ -66,14 +66,21 @@ type VmEnv = Env & { Variables: Env["Variables"] & { vmClaim: VmClaim } };
 const SANDBOX_BRANCH_NAME = /^[a-zA-Z0-9][a-zA-Z0-9/._-]*$/;
 
 function assertSandboxBranchParam(branch: string): void {
+  // "thread:<id>" is a synthetic sandbox-identity branch (bound by `load_repo`
+  // for thread-scoped repos) — the daemon accepts it and never checks it out as
+  // a git ref, so the ':' is legal here even though the git-ref charset below
+  // forbids it. Validate the id part after the prefix.
+  const ref = branch.startsWith("thread:")
+    ? branch.slice("thread:".length)
+    : branch;
   if (
-    !branch ||
-    branch.length > 255 ||
-    branch.includes("..") ||
-    branch.startsWith("/") ||
-    branch.endsWith("/") ||
-    branch.endsWith(".lock") ||
-    !SANDBOX_BRANCH_NAME.test(branch)
+    !ref ||
+    ref.length > 255 ||
+    ref.includes("..") ||
+    ref.startsWith("/") ||
+    ref.endsWith("/") ||
+    ref.endsWith(".lock") ||
+    !SANDBOX_BRANCH_NAME.test(ref)
   ) {
     throw new Error(`Invalid branch name: ${branch}`);
   }
@@ -116,7 +123,7 @@ function quickFileOpSignal(c: Context<VmEnv>): AbortSignal {
  * that case; other handlers return 503 JSON via `requireRunner()`.
  */
 const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
-  const ctx = c.var.meshContext;
+  const ctx = c.var.studioContext;
   try {
     requireAuth(ctx);
   } catch {
@@ -545,11 +552,11 @@ export const createSandboxRoutes = () => {
     if (step === "start") {
       const claim = c.get("vmClaim");
       if (claim.runner) {
-        const organization = requireOrganization(c.var.meshContext);
+        const organization = requireOrganization(c.var.studioContext);
         const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);
         try {
           await resolveAndPushEnv({
-            ctx: c.var.meshContext,
+            ctx: c.var.studioContext,
             runner: claim.runner,
             handle: claim.claimName,
             orgId: organization.id,
@@ -584,14 +591,14 @@ export const createSandboxRoutes = () => {
           data: JSON.stringify({
             kind: "failed",
             reason: "unknown",
-            message: "No sandbox runner configured on this mesh.",
+            message: "No sandbox runner configured on this studio instance.",
           } satisfies ClaimPhase),
         });
       });
     }
 
     return handleVmEvents(c as unknown as Context<Env>, {
-      ctx: c.var.meshContext,
+      ctx: c.var.studioContext,
       claimName: claim.claimName,
       runner: claim.runner,
       virtualMcpId: claim.virtualMcpId,
@@ -633,7 +640,7 @@ export const createSandboxRoutes = () => {
     if (runner instanceof Response) return runner;
 
     const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
-    const ctx = c.var.meshContext;
+    const ctx = c.var.studioContext;
 
     try {
       await patchSandboxOperator(ctx, runner, claimName);
@@ -668,7 +675,7 @@ export const createSandboxRoutes = () => {
     if (runner instanceof Response) return runner;
 
     const { claimName } = c.get("vmClaim");
-    const ctx = c.var.meshContext;
+    const ctx = c.var.studioContext;
 
     try {
       await patchSandboxOperator(ctx, runner, claimName);
@@ -698,7 +705,7 @@ export const createSandboxRoutes = () => {
       if (runner instanceof Response) return runner;
 
       const { claimName, userId, projectRef } = c.get("vmClaim");
-      const ctx = c.var.meshContext;
+      const ctx = c.var.studioContext;
 
       try {
         const body = (await c.req.json().catch(() => ({}))) as {

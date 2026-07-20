@@ -7,13 +7,13 @@ import type { StudioContext } from "../core/studio-context";
 /**
  * InProcessSandboxClient — the cluster (in-process) SandboxClient (spec §5.2/§5.3).
  *
- * MESH-OWNED: it closes over StudioContext, so it cannot live in
+ * STUDIO-OWNED: it closes over StudioContext, so it cannot live in
  * @decocms/sandbox. `dispatch(input)` runs the harness IN-PROCESS — a direct
  * call, no HTTP, no wire, no serialization (the cluster fast path is preserved).
  *
  * STEP 1a (this commit): a behavior-preserving wrapper. It delegates to the
  * existing `localDispatch(harnessId, input, ctx)` path UNCHANGED and returns the
- * same AsyncIterable<UIMessageChunk>, which mesh's consumeHarnessStream consumes
+ * same AsyncIterable<UIMessageChunk>, which studio's consumeHarnessStream consumes
  * with no adapter. The HarnessDeps merge (fs-hooks from AgentSandboxProvider,
  * cluster hooks built from StudioContext) is layered in later sub-steps (1b…);
  * `localDispatch` is then folded fully into this client (§5.4).

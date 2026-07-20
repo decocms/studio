@@ -219,6 +219,11 @@ function formatYAxisValue(value: number): string {
   return String(value);
 }
 
+interface KPITooltipPayloadItem {
+  value?: unknown;
+  payload?: BucketPoint;
+}
+
 function KPITooltipContent({
   active,
   payload,
@@ -226,8 +231,7 @@ function KPITooltipContent({
   colorVar,
 }: {
   active?: boolean;
-  // biome-ignore lint: recharts payload is loosely typed
-  payload?: any[];
+  payload?: KPITooltipPayloadItem[];
   dataKey: string;
   colorVar: string;
 }) {

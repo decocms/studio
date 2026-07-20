@@ -2,7 +2,7 @@ import type { Task } from "@/web/components/chat/task/types";
 import type { StatusKey } from "@/web/lib/task-status";
 
 /** Synthetic group key for threads with no virtual_mcp_id (tool-call runs etc). */
-export const TOOL_CALL_RUNS_GROUP_KEY = "__tool_call_runs__";
+const TOOL_CALL_RUNS_GROUP_KEY = "__tool_call_runs__";
 
 export interface TaskGroupData {
   virtualMcpId: string;

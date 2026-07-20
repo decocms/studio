@@ -125,7 +125,7 @@ export function GlobalSearchDialog({
                       <McpAvatar virtualMcpId={item.virtual_mcp_id} size="xs" />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-foreground truncate">
-                          {item.title || "Untitled thread"}
+                          {item.title || "Untitled chat"}
                         </div>
                       </div>
                       <span className="text-xs text-muted-foreground shrink-0">

@@ -75,3 +75,27 @@ export function basename(path: string): string {
   const i = path.lastIndexOf("/");
   return i === -1 ? path : path.slice(i + 1);
 }
+
+/**
+ * Sandbox mount path for a Library browse path — where the agent's file tools
+ * (`read`/`edit`/`grep`) actually reach the file: `org/home/…`,
+ * `org/public/<set>/…`, etc.
+ *
+ * Client mirror of the server's `orgFsSandboxPath`
+ * (`apps/mesh/src/file-storage/mount/provisioning.ts`); the browse-path →
+ * mount mapping must stay in sync with the mount table there. Returns null for
+ * the root / public-sets listing (no single file).
+ */
+export function orgFsMountPath(browsePath: string): string | null {
+  const { volume, dirPath } = parseLibraryPath(browsePath);
+  if (!volume) return null;
+  let base: string;
+  if (volume === "home") base = "org/home";
+  else if (volume === "outputs") base = "org/.outputs";
+  else if (volume === "uploads") base = "org/.uploads";
+  else {
+    const set = publicSetOf(volume);
+    base = set ? `org/public/${set}` : `org/${volume}`;
+  }
+  return dirPath ? `${base}/${dirPath}` : base;
+}

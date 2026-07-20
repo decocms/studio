@@ -4,6 +4,7 @@ import {
   type LiveMeta,
 } from "@/web/components/sections-editor/resolve-schema";
 import { labelFromResolveType } from "@/web/components/sections-editor/section-types";
+import { REDIRECT_LOADER_RESOLVE_TYPES } from "./redirect-data";
 
 /** The two block kinds surfaced by the Loaders / Actions content tabs. */
 export type RunnableKind = "loaders" | "actions";
@@ -59,6 +60,27 @@ export function isManifestRunnableResolveType(
 }
 
 /**
+ * All manifest resolveTypes of the given runnable kind (loaders/actions). Unlike
+ * {@link listAvailableRunnables} this is the raw set — no hidden/preview
+ * filtering — for callers that need to pattern-match against every registered
+ * loader (e.g. discovering a store's product-search loader dynamically).
+ */
+export function manifestLoaderResolveTypes(
+  meta: LiveMeta,
+  kind: RunnableKind,
+): Set<string> {
+  const resolveTypes = new Set<string>();
+  const blocks = meta.manifest?.blocks ?? {};
+  for (const [blockType, blockMap] of Object.entries(blocks)) {
+    if (!blockType.includes(kind)) continue;
+    for (const resolveType of Object.keys(blockMap)) {
+      resolveTypes.add(resolveType);
+    }
+  }
+  return resolveTypes;
+}
+
+/**
  * Tanstack manifests register most modules twice: a bare invoke-by-key alias
  * (`site/loaders/CheckStock`) plus the real module path
  * (`site/loaders/CheckStock.ts`). Only the suffixed entry carries the
@@ -93,6 +115,7 @@ export function listAvailableRunnables(
 
   for (const resolveType of allKeys) {
     if (resolveType.toLowerCase().includes("preview")) continue;
+    if (REDIRECT_LOADER_RESOLVE_TYPES.has(resolveType)) continue;
     if (HIDDEN_RUNNABLE_GROUPS.has(runnableGroupKey(resolveType))) continue;
     if (hasSuffixedAlias(resolveType, allKeys)) continue;
     const metadata = resolveBlockSchemaMetadata(resolveType, meta);
@@ -181,6 +204,7 @@ export function listSavedRunnables(
     const obj = val as Record<string, unknown>;
     const rt = obj.__resolveType;
     if (typeof rt !== "string") continue;
+    if (REDIRECT_LOADER_RESOLVE_TYPES.has(rt)) continue;
     if (HIDDEN_RUNNABLE_GROUPS.has(runnableGroupKey(rt))) continue;
     if (!isManifestRunnableResolveType(meta, rt, kind)) continue;
 

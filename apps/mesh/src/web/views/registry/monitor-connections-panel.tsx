@@ -40,11 +40,11 @@ type SourceFilter = "all" | "store" | "request";
 function authBadgeStyle(status: MonitorConnectionAuthStatus) {
   switch (status) {
     case "authenticated":
-      return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
+      return "bg-success/10 text-success border-success/20";
     case "needs_auth":
-      return "bg-amber-500/10 text-amber-600 border-amber-500/20";
+      return "bg-warning/10 text-warning border-warning/20";
     default:
-      return "bg-zinc-500/10 text-zinc-500 border-zinc-500/20";
+      return "bg-muted text-muted-foreground border-border";
   }
 }
 
@@ -326,11 +326,11 @@ function ConnectionRow({
                   authFlavor === "server_error"
                     ? "border-destructive/40 text-destructive"
                     : authFlavor === "oauth_connected"
-                      ? "border-emerald-500/30 text-emerald-600"
+                      ? "border-success/30 text-success"
                       : authFlavor === "oauth_available"
                         ? "border-sky-500/30 text-sky-600"
                         : authFlavor === "token_required"
-                          ? "border-amber-500/30 text-amber-600"
+                          ? "border-warning/30 text-warning"
                           : "text-muted-foreground",
                 )}
               >

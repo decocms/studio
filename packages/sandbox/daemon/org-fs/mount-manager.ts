@@ -3,7 +3,7 @@
  * ones (Claude Code, Codex) that only read real files — sees them at
  * `<appRoot>/org/<volume>`, kext-free.
  *
- * Per volume: serve the WebDAV layer (over the mesh `/api/:org/fs` client) on a
+ * Per volume: serve the WebDAV layer (over the studio `/api/:org/fs` client) on a
  * loopback port, then hand that URL to a `Mounter` which has the OS mount it
  * (rclone nfsmount on macOS / rclone mount on Linux — see mounter.ts). The
  * `Mounter` is injected so this orchestration is unit-testable without a real
@@ -11,7 +11,7 @@
  *
  * Boot-safety: a mount is purely additive. Every step is wrapped so a failure
  * logs and is skipped — it never breaks the daemon, the dev server, the fs
- * routes, or the harnesses. Mounting only happens when the mesh pushes
+ * routes, or the harnesses. Mounting only happens when the studio pushes
  * `TenantConfig.orgFs` (it won't for cluster pods, whose security posture
  * blocks mounts — desktop links are the target).
  */
@@ -20,7 +20,7 @@ import { mkdirSync } from "node:fs";
 import * as net from "node:net";
 import { join, isAbsolute } from "node:path";
 import { safePath } from "../paths";
-// Portable serve-layer leaves from the mesh workspace (same cross-package
+// Portable serve-layer leaves from the studio workspace (same cross-package
 // import style entry.ts uses for harness factories).
 import { OrgFsClient } from "../../../../apps/mesh/src/file-storage/mount/client";
 import { createWebdavHandler } from "../../../../apps/mesh/src/file-storage/mount/webdav";
@@ -63,7 +63,7 @@ export interface VolumeInvalidator {
 /**
  * Starts near-realtime invalidation for a freshly-mounted volume. Injected so
  * MountManager's orchestration is unit-testable without a real rclone rc or
- * mesh (mirrors the `Mounter` seam).
+ * studio (mirrors the `Mounter` seam).
  */
 export type InvalidatorFactory = (opts: {
   client: OrgFsClient;

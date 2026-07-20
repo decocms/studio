@@ -483,7 +483,7 @@ export async function resolveStorageRefs(
   // Generate fresh presigned URLs for all file-part keys.
   //
   // DEV-ONLY branch: local rigs presign plain-http URLs (DevObjectStorage
-  // mesh URLs, local MinIO — no TLS on a laptop) and Anthropic rejects
+  // studio URLs, local MinIO — no TLS on a laptop) and Anthropic rejects
   // non-https file URLs outright. There — and only there — inline the
   // bytes as base64 instead. Gated on local mode, not just the URL scheme,
   // so production can never silently fall into base64-bloated requests; a

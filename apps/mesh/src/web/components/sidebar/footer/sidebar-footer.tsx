@@ -8,13 +8,13 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { Settings02, UserPlus01, ZapSquare } from "@untitledui/icons";
 import { useState } from "react";
-import { RepoSwitcher } from "@/web/components/sidebar/footer/repo-switcher";
 import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
 import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dialog";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { SidebarTopActions } from "@/web/components/sidebar/top-actions";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 function SettingsFullButton() {
   const navigate = useNavigate();
@@ -35,12 +35,23 @@ function SettingsFullButton() {
   );
 }
 
-/**
- * Sidebar footer actions — org-wide entry points that aren't tied to a single
- * agent: invite teammates, add a repo as an org-shared GitHub connection
- * (available to every agent), and add any connection. Rendered as full-width
- * rows above the account row.
- */
+function SettingsIconButton() {
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  return (
+    <button
+      type="button"
+      aria-label="Settings"
+      onClick={() =>
+        navigate({ to: "/$org/settings", params: { org: org.slug } })
+      }
+      className="shrink-0 flex items-center justify-center size-7 rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+    >
+      <Settings02 size={15} />
+    </button>
+  );
+}
+
 function SidebarExtraActions() {
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   return (
@@ -55,9 +66,6 @@ function SidebarExtraActions() {
               </SidebarMenuButton>
             }
           />
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <RepoSwitcher />
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
@@ -78,14 +86,69 @@ function SidebarExtraActions() {
   );
 }
 
-/**
- * Sidebar footer: org-wide actions + the account row. (The old global "Inbox"
- * was removed — invitations now live in the org switcher, join requests in
- * Settings, and release updates in the floating release card.)
- */
+function SidebarExtraActionsCommerce() {
+  return (
+    <SidebarMenu className="gap-0.5">
+      <SidebarMenuItem>
+        <InviteMemberDialog
+          trigger={
+            <SidebarMenuButton tooltip="Invite members">
+              <UserPlus01 />
+              <span>Invite members</span>
+            </SidebarMenuButton>
+          }
+        />
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
 export function SidebarAccountFooter() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
+  const reportsOnly = useReportsOnly();
+
+  if (reportsOnly) {
+    if (isCollapsed) {
+      return (
+        <SidebarFooter className="px-2 pb-3 gap-1">
+          <SidebarExtraActionsCommerce />
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <div className="flex justify-center">
+                <LinkedDesktopIndicator />
+              </div>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SettingsFullButton />
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <AccountPopover />
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      );
+    }
+
+    return (
+      <SidebarFooter className="px-2 pb-3 gap-0.5">
+        <SidebarExtraActionsCommerce />
+        <SidebarMenu className="gap-0.5">
+          <SidebarMenuItem>
+            <LinkedDesktopIndicator variant="full" />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <div className="flex items-center gap-1">
+              <div className="flex-1 min-w-0">
+                <AccountPopover />
+              </div>
+              <SettingsIconButton />
+            </div>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    );
+  }
 
   if (isCollapsed) {
     return (

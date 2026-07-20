@@ -1,5 +1,5 @@
 /**
- * Database Types for MCP Mesh
+ * Database Types for Studio
  *
  * These TypeScript interfaces define the database schema using Kysely's type-only approach.
  * PostgreSQL database schema types.
@@ -15,6 +15,7 @@ import type { ColumnType } from "kysely";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import { ThreadStatus, type ProviderId } from "@decocms/mesh-sdk";
+import type { PrivateRegistryDatabase } from "./registry/types";
 
 // ============================================================================
 // Type Utilities
@@ -160,6 +161,7 @@ export interface OrganizationSettingsTable {
   registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
+  reports_only: boolean | null;
   task_board_enabled: ColumnType<boolean, boolean | undefined, boolean>;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
@@ -172,6 +174,7 @@ export interface OrganizationSettings {
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
+  reports_only: boolean | null;
   task_board_enabled: boolean;
   createdAt: Date | string;
   updatedAt: Date | string;
@@ -1039,6 +1042,13 @@ export interface Thread {
   run_owner_pod: string | null;
   run_config: Record<string, unknown> | null;
   run_started_at: string | null;
+  /**
+   * Progress-liveness heartbeat, bumped per streamed chunk (throttled). Used to
+   * derive the virtual "expired" status while a run is streaming — the same
+   * signal the reaper trusts — so a still-streaming thread never shows expired.
+   * Null when the run has never streamed a chunk.
+   */
+  last_progress_at: string | null;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
@@ -1489,7 +1499,12 @@ export type TaskBoardItemStatus =
   | "in_review"
   | "done";
 
-export type TaskBoardItemPriority = "low" | "medium" | "high" | "urgent";
+export type TaskBoardItemPriority =
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "urgent";
 
 export interface TaskBoardItemTable {
   id: string;
@@ -1507,6 +1522,7 @@ export interface TaskBoardItemTable {
     string
   >;
   assignee_id: string | null;
+  assigned_by: string | null;
   due_date: ColumnType<
     Date | null,
     Date | string | null | undefined,
@@ -1518,6 +1534,53 @@ export interface TaskBoardItemTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+/** Join row: a task board item ↔ an agent thread (many-to-many). */
+export interface TaskBoardItemThreadTable {
+  task_board_item_id: string;
+  thread_id: string;
+  organization_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/** Join row: a task board item ↔ a GitHub pull request an agent opened for it. */
+export interface TaskBoardItemPrTable {
+  task_board_item_id: string;
+  organization_id: string;
+  url: string;
+  pr_number: number;
+  repo_owner: string;
+  repo_name: string;
+  /** Source GitHub MCP connection, when the PR was opened via MCP. Null for
+   *  bash-opened PRs — the live fetcher falls back to the org's shared conn. */
+  connection_id: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/** A PR linked to a task — identity only. Title/state are fetched live. */
+export interface TaskBoardItemPrRef {
+  url: string;
+  number: number;
+  repoOwner: string;
+  repoName: string;
+  connectionId: string | null;
+  createdAt: string;
+}
+
+/** A thread linked to a task, with the run state the board needs to render it. */
+export interface TaskBoardItemThreadRef {
+  threadId: string;
+  /** Owning agent — needed to open the thread's chat. */
+  virtualMcpId: string | null;
+  status: ThreadStatus | null;
+  title: string | null;
+  /** Latest assistant text, for the card's one-line activity preview. */
+  lastMessage: string | null;
+  /** True when a repo is bound to the thread (`metadata.githubRepo`) — the
+   *  card opens the live dev Preview instead of staying on the board. */
+  hasPreview: boolean;
+  createdAt: string;
+}
+
 export interface TaskBoardItem {
   id: string;
   organizationId: string;
@@ -1526,7 +1589,10 @@ export interface TaskBoardItem {
   status: TaskBoardItemStatus;
   priority: TaskBoardItemPriority;
   assigneeId: string | null;
+  assignedBy: string | null;
   dueDate: string | null;
+  /** Agent threads linked to this task (most-recent first). */
+  threads: TaskBoardItemThreadRef[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -1596,7 +1662,7 @@ export interface BrandContext {
  * NOTE: This uses *Table types with ColumnType for proper Kysely type mapping
  * NOTE: Organizations, teams, members, and roles are managed by Better Auth organization plugin
  */
-export interface Database {
+export interface Database extends PrivateRegistryDatabase {
   // Core tables (all within organization scope)
   users: UserTable; // System users
   user: BetterAuthUserTable; // Better Auth core table (singular)
@@ -1656,7 +1722,7 @@ export interface Database {
   automations: AutomationTable;
   automation_triggers: AutomationTriggerTable;
 
-  // Trigger callback tokens (for external MCP → Mesh callbacks)
+  // Trigger callback tokens (for external MCP → Studio callbacks)
   trigger_callback_tokens: TriggerCallbackTokenTable;
 
   // Organization SSO tables
@@ -1678,6 +1744,8 @@ export interface Database {
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
   task_board_items: TaskBoardItemTable;
+  task_board_item_threads: TaskBoardItemThreadTable;
+  task_board_item_prs: TaskBoardItemPrTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

@@ -161,7 +161,7 @@ export type StudioContextFactory = (
 ) => Promise<StudioContext | null>;
 
 export interface ThreadGateRuntime {
-  meshContextFactory: StudioContextFactory;
+  studioContextFactory: StudioContextFactory;
   deps: Pick<
     DispatchRunDeps,
     "runRegistry" | "cancelBroadcast" | "streamBuffer" | "sseHub"
@@ -271,11 +271,11 @@ async function dispatchRunAndWaitStep(
     await publishRunStatusStage(rt.deps.streamBuffer, taskId, "starting-run");
   }
 
-  const meshCtx = await rt.meshContextFactory(
+  const studioCtx = await rt.studioContextFactory(
     request.organizationId,
     request.userId,
   );
-  if (!meshCtx) {
+  if (!studioCtx) {
     // Throw so DBOS records the step (and the workflow) as failed.
     // Swallowing into `{error}` would mark the workflow SUCCESS and
     // break retry / failure tooling.
@@ -307,7 +307,7 @@ async function dispatchRunAndWaitStep(
   const { runFenceToken, claimedRequest, shouldPersistFence } =
     claimRunFenceForDispatch(request);
   if (shouldPersistFence) {
-    await meshCtx.storage.threads.setRunFence(fenceThreadId, runFenceToken);
+    await studioCtx.storage.threads.setRunFence(fenceThreadId, runFenceToken);
   }
 
   if (executionSite === "cluster") {
@@ -362,7 +362,7 @@ async function dispatchRunAndWaitStep(
       orgSlug,
     } = await rt.prepareLinkWorkFn!(
       { ...claimedRequest, abortSignal: abortController.signal },
-      meshCtx,
+      studioCtx,
       rt.deps,
     );
     if (linkFenceToken !== runFenceToken) {
@@ -420,7 +420,7 @@ async function dispatchRunAndWaitStep(
         `[thread-gate] link work publish failed for run=${taskId}; marking failed`,
         err,
       );
-      await meshCtx.storage.threads.forceFailIfInProgress(taskId);
+      await studioCtx.storage.threads.forceFailIfInProgress(taskId);
       return { runFenceToken };
     }
 

@@ -151,7 +151,7 @@ function QuickTopUp() {
 
 function creditColorClass(dollars: number): string {
   if (dollars <= 0) return "text-destructive";
-  if (dollars <= 1) return "text-amber-500 dark:text-amber-400";
+  if (dollars <= 1) return "text-warning";
   return "text-foreground";
 }
 

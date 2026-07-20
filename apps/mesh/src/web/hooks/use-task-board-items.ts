@@ -3,16 +3,66 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import type { ToolInput, ToolOutput } from "@/tools/io-types";
+import { useTaskBoardEvents } from "@/web/hooks/use-task-board-events";
+import { useDecopilotEvents } from "@/web/hooks/use-decopilot-events";
 
 type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 
 export function useTaskBoardItems() {
-  const { locator } = useProjectContext();
+  const { org, locator } = useProjectContext();
   const studio = useStudioTools();
+  const queryClient = useQueryClient();
+  const queryKey = KEYS.taskBoardItems(locator);
 
   const query = useQuery({
-    queryKey: KEYS.taskBoardItems(locator),
+    queryKey,
     queryFn: async () => (await studio.call("TASK_BOARD_ITEM_LIST", {})).items,
+  });
+
+  // Live Super Agent transitions (todo → in_progress → in_review). Upsert the
+  // pushed item into the cached list so the board moves cards without polling.
+  useTaskBoardEvents({
+    orgSlug: org.slug,
+    onUpdate: (item) => {
+      queryClient.setQueryData<TaskBoardItem[]>(queryKey, (prev) => {
+        const next = (prev ?? []) as TaskBoardItem[];
+        const patched = item as unknown as TaskBoardItem;
+        return next.some((t) => t.id === patched.id)
+          ? next.map((t) => (t.id === patched.id ? patched : t))
+          : [patched, ...next];
+      });
+    },
+    // Live deletes: drop the removed card so it clears on every open board.
+    onDelete: (id) => {
+      queryClient.setQueryData<TaskBoardItem[]>(queryKey, (prev) =>
+        prev?.filter((t) => t.id !== id),
+      );
+    },
+  });
+
+  // Live run status of linked threads (in_progress / requires_action / …).
+  // A task's card derives its "blocked, waiting for input" flag from a linked
+  // thread's `requires_action` status; that transition rides the decopilot
+  // thread-status SSE (it doesn't change the task's own lane), so patch the
+  // matching thread's status straight into the cached item.
+  useDecopilotEvents({
+    orgSlug: org.slug,
+    onTaskStatus: (event) => {
+      const threadId = event.subject;
+      const status = event.data.status;
+      queryClient.setQueryData<TaskBoardItem[]>(queryKey, (prev) =>
+        prev?.map((item) =>
+          item.threads.some((t) => t.threadId === threadId)
+            ? {
+                ...item,
+                threads: item.threads.map((t) =>
+                  t.threadId === threadId ? { ...t, status } : t,
+                ),
+              }
+            : item,
+        ),
+      );
+    },
   });
 
   return {
@@ -61,5 +111,14 @@ export function useTaskBoardItemActions() {
     onSuccess: invalidate,
   });
 
-  return { create, update, remove };
+  // Link a chat thread to a task (folded into UPDATE via linkThreadId). Kept as
+  // its own mutation so it invalidates without the optimistic field-patch that
+  // `update` applies.
+  const link = useMutation({
+    mutationFn: (input: { id: string; linkThreadId: string }) =>
+      studio.call("TASK_BOARD_ITEM_UPDATE", input),
+    onSuccess: invalidate,
+  });
+
+  return { create, update, remove, link };
 }

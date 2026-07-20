@@ -173,7 +173,9 @@ describe("loginCommand", () => {
       const callback = parsed.searchParams.get("redirect_uri")!;
       const state = parsed.searchParams.get("state")!;
       await new Promise((r) => setTimeout(r, 10));
-      await fetch(`${callback}?code=c&state=${state}`);
+      await fetch(`${callback}?code=c&state=${state}`, {
+        redirect: "manual",
+      });
     });
     const code = await loginCommand({
       dataDir: dir,

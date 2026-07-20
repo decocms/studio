@@ -116,7 +116,7 @@ export function useStartThreadFromPrompt({
       setTaskId(newId, agentId, { autosend: true });
     } catch (error) {
       console.error("[start-thread-from-prompt] failed", error);
-      toast.error("Failed to start thread. Please try again.");
+      toast.error("Failed to start chat. Please try again.");
     } finally {
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- release in-flight guard
       inFlightRef.current = false;
@@ -151,7 +151,7 @@ export function useStartThreadFromPrompt({
       setTaskId(newId, agentId, opts?.main ? { main: opts.main } : undefined);
     } catch (error) {
       console.error("[start-thread-from-prompt] startBlank failed", error);
-      toast.error("Failed to start thread. Please try again.");
+      toast.error("Failed to start chat. Please try again.");
     } finally {
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- release in-flight guard
       inFlightRef.current = false;

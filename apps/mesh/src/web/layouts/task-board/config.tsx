@@ -7,9 +7,29 @@ import {
 } from "@untitledui/icons";
 import type { ToolOutput } from "@/tools/io-types";
 
+export { SUPER_AGENT_ASSIGNEE_ID } from "@/shared/task-board";
+
 export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 export type TaskBoardItemStatus = TaskBoardItem["status"];
 export type TaskBoardItemPriority = TaskBoardItem["priority"];
+export type TaskBoardItemThread = TaskBoardItem["threads"][number];
+export type TaskBoardItemPr =
+  ToolOutput<"TASK_BOARD_ITEM_PRS_GET">["prs"][number];
+
+/**
+ * A task is "blocked" when one of its agent threads is waiting on human input
+ * (`requires_action` — the agent called `user_ask` or needs an approval).
+ */
+export function isTaskBlocked(item: TaskBoardItem): boolean {
+  return item.threads.some((t) => t.status === "requires_action");
+}
+
+/** The thread to surface in the card — the most recent linked run. */
+export function primaryThread(
+  item: TaskBoardItem,
+): TaskBoardItemThread | undefined {
+  return item.threads[0];
+}
 
 /** Shape of an org member as returned by `useMembers()`, trimmed to the fields used here. */
 export type Member = {
@@ -30,7 +50,7 @@ export const STATUS_CONFIG: Record<
   { label: string; icon: typeof Circle; iconClassName: string }
 > = {
   triage: {
-    label: "Triage",
+    label: "Backlog",
     icon: AlertCircle,
     iconClassName: "text-muted-foreground",
   },
@@ -42,21 +62,22 @@ export const STATUS_CONFIG: Record<
   in_progress: {
     label: "In Progress",
     icon: Loading02,
-    iconClassName: "text-blue-500",
+    iconClassName: "text-primary",
   },
   in_review: {
     label: "In Review",
     icon: Eye,
-    iconClassName: "text-amber-500",
+    iconClassName: "text-warning",
   },
   done: {
     label: "Done",
     icon: CheckCircle,
-    iconClassName: "text-green-600",
+    iconClassName: "text-success",
   },
 };
 
 export const PRIORITIES: TaskBoardItemPriority[] = [
+  "none",
   "low",
   "medium",
   "high",
@@ -65,26 +86,35 @@ export const PRIORITIES: TaskBoardItemPriority[] = [
 
 export const PRIORITY_CONFIG: Record<
   TaskBoardItemPriority,
-  { label: string; badgeClassName: string; flagClassName: string }
+  {
+    label: string;
+    flagClassName: string;
+    dotClassName: string;
+  }
 > = {
+  none: {
+    label: "No priority",
+    flagClassName: "text-muted-foreground",
+    dotClassName: "border border-muted-foreground/50",
+  },
   low: {
     label: "Low",
-    badgeClassName: "bg-muted text-muted-foreground",
     flagClassName: "text-muted-foreground",
+    dotClassName: "bg-muted-foreground/40",
   },
   medium: {
     label: "Medium",
-    badgeClassName: "bg-blue-500/10 text-blue-600",
     flagClassName: "text-blue-500",
+    dotClassName: "bg-blue-500",
   },
   high: {
     label: "High",
-    badgeClassName: "bg-orange-500/10 text-orange-600",
-    flagClassName: "text-orange-500",
+    flagClassName: "text-warning",
+    dotClassName: "bg-warning",
   },
   urgent: {
     label: "Urgent",
-    badgeClassName: "bg-red-500/10 text-red-600",
-    flagClassName: "text-red-500",
+    flagClassName: "text-destructive",
+    dotClassName: "bg-destructive",
   },
 };

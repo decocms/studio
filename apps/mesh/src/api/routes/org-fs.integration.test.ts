@@ -42,7 +42,7 @@ const USER = "user_fs_api";
 const ASSETS_DIR = `./data/assets/${ORG}`;
 const BASE = `/api/${SLUG}/fs`;
 
-type Variables = { meshContext: StudioContext };
+type Variables = { studioContext: StudioContext };
 
 function buildApp(
   db: StudioDatabase,
@@ -63,7 +63,7 @@ function buildApp(
     );
   }
   app.use("*", async (c, next) => {
-    c.set("meshContext", {
+    c.set("studioContext", {
       auth: authed ? { user: { id: USER } } : {},
       db: db.db,
       baseUrl: "http://test",

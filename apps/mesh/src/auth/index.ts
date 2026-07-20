@@ -48,6 +48,14 @@ import { getBuiltinRoleStatements } from "./builtin-role-permission";
 import { createSSOConfig } from "./sso";
 import { GENERIC_EMAIL_DOMAINS } from "./org-assurance-policy";
 import { ensureUserOrganization } from "./ensure-user-organization";
+import { isReservedOrganizationSlug } from "@/shared/organization-slugs";
+
+function rejectReservedOrganizationSlug(slug: unknown): void {
+  if (!isReservedOrganizationSlug(slug)) return;
+  throw new APIError("BAD_REQUEST", {
+    message: `Organization slug "${String(slug).trim()}" is reserved by Studio`,
+  });
+}
 
 const allTools = Object.values(getToolsByCategory())
   .map((tool) => tool.map((t) => t.name))
@@ -104,6 +112,39 @@ const owner = ac.newRole(builtinRoleStatements.owner as NewRoleArg) as Role;
 const scopes = Object.values(getToolsByCategory())
   .map((tool) => tool.map((t) => `self:${t.name}`))
   .flat();
+
+/**
+ * Deployment admin user IDs, resolved lazily from `deploymentAdminEmails` by
+ * the `/api/_admin/*` middleware (apps/mesh/src/api/routes/admin.ts) on each
+ * verified admin's first request. Better Auth's admin plugin shallow-spreads
+ * the options object it's given at plugin-init time, so `adminUserIds` below
+ * keeps a reference to THIS array — `hasPermission` (better-auth 1.4.22,
+ * plugins/admin/has-permission.mjs) reads `options.adminUserIds.includes(id)`
+ * at call time, so pushing here is visible immediately. Push-only and
+ * per-process: it rebuilds empty on every restart, so revocation (removing an
+ * email from config) is exactly as fresh as a restart. Re-verify this note on
+ * any better-auth upgrade that touches the admin plugin's options handling.
+ *
+ * IMPORTANT: this makes the id a full admin for the ENTIRE admin plugin, so the
+ * raw `/api/auth/admin/*` HTTP surface (set-role, set-user-password, ...) is
+ * fenced off in app.ts — everything the dashboard needs goes through the
+ * curated `/api/_admin/*` routes, which call `auth.api.*` in-process and
+ * re-check the email allowlist on every request. Without that fence a pushed id
+ * could mint a persistent, restart-surviving admin via set-role.
+ */
+const deploymentAdminUserIds: string[] = [];
+
+/**
+ * Register a verified, allowlisted operator's id for the raw admin-plugin
+ * privilege (see above). The `/api/_admin/*` middleware calls this on each such
+ * request; the grant logic and the shallow-spread caveat live here in one place
+ * rather than the route poking the module array directly. Push-only + deduped.
+ */
+export function grantDeploymentAdmin(userId: string): void {
+  if (!deploymentAdminUserIds.includes(userId)) {
+    deploymentAdminUserIds.push(userId);
+  }
+}
 
 export const authConfig = getConfig().auth;
 
@@ -198,10 +239,20 @@ const plugins = [
       },
     },
     organizationHooks: {
+      // This is the canonical creation boundary: it also covers direct calls
+      // to Better Auth's /organization/create endpoint, not only Studio's UI
+      // and MCP tool wrappers.
+      beforeCreateOrganization: async ({ organization }) => {
+        rejectReservedOrganizationSlug(organization.slug);
+      },
       // Keep base64 logos out of the org row (they bloat every
       // organization.list response). Mirrors `backfill-assets
       // --target organizations`; raster only — SVG stays inline.
       beforeUpdateOrganization: async ({ organization, member }) => {
+        // Better Auth allows slug changes directly, so creation-only
+        // validation could otherwise be bypassed by renaming an existing org.
+        rejectReservedOrganizationSlug(organization.slug);
+
         const logo = organization.logo;
         if (typeof logo !== "string" || !logo.startsWith("data:")) return;
         const hoisted = await hoistOrgLogo(member.organizationId, logo);
@@ -286,6 +337,7 @@ const plugins = [
       ...systemDefaultRoles,
       owner: systemAdminAc,
     },
+    adminUserIds: deploymentAdminUserIds,
   }),
 
   // OpenAPI plugin for API documentation
@@ -357,7 +409,7 @@ const database = getDbDialect(databaseUrl);
 const baseUrl = getBaseUrl();
 
 // Build trusted origins: include both localhost and 127.0.0.1 variants
-function getTrustedOrigins(): string[] {
+export function getTrustedOrigins(): string[] {
   const origins = [baseUrl];
   try {
     const url = new URL(baseUrl);
@@ -385,7 +437,7 @@ export const auth = betterAuth({
   secret: settings.betterAuthSecret || "deco-default-secret-k7x9m2p4q8w3n5v6",
 
   // customAPIKeyGetter probes every `Authorization: Bearer …` as an API key,
-  // so OAuth tokens, mesh JWTs and stale keys routinely miss and Better Auth
+  // so OAuth tokens, studio JWTs and stale keys routinely miss and Better Auth
   // logs an ERROR + full source-mapped stack on each one — flooding prod logs.
   // Drop only that expected 401; forward everything else with the same format.
   logger: {

@@ -12,7 +12,7 @@ import type { KVStorage } from "@/storage/kv";
 import { INTERESTS_KEY_PREFIX } from "@/storage/interests";
 
 type Variables = {
-  meshContext: StudioContext;
+  studioContext: StudioContext;
 };
 
 interface KVRouteDeps {
@@ -33,8 +33,8 @@ export function createKVRoutes(deps: KVRouteDeps) {
   const app = new Hono<{ Variables: Variables }>();
 
   app.get("/kv/:key", async (c) => {
-    const meshContext = c.get("meshContext");
-    const orgId = meshContext.organization?.id;
+    const studioContext = c.get("studioContext");
+    const orgId = studioContext.organization?.id;
     if (!orgId) {
       return c.json({ error: "Organization required" }, 400);
     }
@@ -59,8 +59,8 @@ export function createKVRoutes(deps: KVRouteDeps) {
       onError: (c) => c.json({ error: "Payload too large" }, 413),
     }),
     async (c) => {
-      const meshContext = c.get("meshContext");
-      const orgId = meshContext.organization?.id;
+      const studioContext = c.get("studioContext");
+      const orgId = studioContext.organization?.id;
       if (!orgId) {
         return c.json({ error: "Organization required" }, 400);
       }
@@ -83,8 +83,8 @@ export function createKVRoutes(deps: KVRouteDeps) {
   );
 
   app.delete("/kv/:key", async (c) => {
-    const meshContext = c.get("meshContext");
-    const orgId = meshContext.organization?.id;
+    const studioContext = c.get("studioContext");
+    const orgId = studioContext.organization?.id;
     if (!orgId) {
       return c.json({ error: "Organization required" }, 400);
     }

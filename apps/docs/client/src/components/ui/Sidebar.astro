@@ -214,7 +214,7 @@ function buildTree(docs: any[]): TreeNode[] {
           // Order follows improved information architecture
           studio: 0, // decocms docs (main product)
           "getting-started": 1, // Getting Started (after intro)
-          decopilot: 3, // Decopilot (elevated section within mcp-mesh)
+          decopilot: 3, // Decopilot (elevated section within studio)
           "self-hosting": 4, // Self-hosting section
           deploy: 5, // Deploy section (under self-hosting)
           "no-code-guides": 6, // Legacy admin guides
@@ -289,13 +289,13 @@ function groupLegacyAdminSections(
     return legacyChildren;
   }
 
-  // Flatten mcp-mesh folder - bring its children to the top level
+  // Flatten studio folder - bring its children to the top level
   const next: TreeNode[] = [];
 
   // Add any top-level files first (e.g. introduction.mdx)
   next.push(...files);
 
-  // Add all mcp-mesh children directly at top level (order controlled by studioFolderOrder array)
+  // Add all studio children directly at top level (order controlled by studioFolderOrder array)
   if (studioFolder && studioFolder.children.length > 0) {
     next.push(...studioFolder.children);
   }

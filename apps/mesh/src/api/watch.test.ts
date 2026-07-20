@@ -4,7 +4,7 @@
  * The handler emits only a `connected` frame on connect followed by live
  * events. Clients use `COLLECTION_THREADS_LIST` for their initial state.
  * The handler logic itself lives in `app.ts`; we mount it directly on an
- * inline Hono app so the test doesn't have to bootstrap the full mesh
+ * inline Hono app so the test doesn't have to bootstrap the full studio
  * application.
  */
 
@@ -45,7 +45,7 @@ function makeWatchApp(opts?: {
 
   const app = new Hono<Env>();
   app.use("*", async (c, next) => {
-    c.set("meshContext", ctx);
+    c.set("studioContext", ctx);
     await next();
   });
   app.get("/watch", watchHandler);
@@ -135,6 +135,7 @@ function makeThread(overrides: Partial<Thread>): Thread {
     run_owner_pod: overrides.run_owner_pod ?? null,
     run_config: overrides.run_config ?? null,
     run_started_at: overrides.run_started_at ?? null,
+    last_progress_at: overrides.last_progress_at ?? null,
     virtual_mcp_id: overrides.virtual_mcp_id ?? "",
     branch: overrides.branch ?? null,
     sandbox_provider_kind: overrides.sandbox_provider_kind ?? null,

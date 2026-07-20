@@ -1,7 +1,8 @@
 import { Folder } from "@untitledui/icons";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
+import { useMainOverlayToggle } from "./use-main-overlay-toggle";
 
 /**
  * Library toggle — sits in the LEFT toolbar group beside the Chat toggle.
@@ -10,21 +11,16 @@ import { track } from "@/web/lib/posthog-client";
  * every agent — so it doesn't belong in the per-agent view tab bar on the
  * right. Pinning it next to Chat keeps a stable, always-present entry point
  * that never shuffles as agent-specific tabs (Overview / Preview / …) come and
- * go. Opens `?main=files`; clicking while open closes it (main=0).
+ * go. Opens `?main=files`; clicking while open restores the previously shown
+ * tab (see useMainOverlayToggle) rather than closing the panel outright.
  */
 export function LibraryToggle() {
-  const navigate = useNavigate();
-  const params = useParams({ strict: false }) as {
-    org?: string;
-    taskId?: string;
-  };
-  const search = useSearch({ strict: false }) as { main?: string };
-  const active = search.main === "files";
+  const reportsOnly = useReportsOnly();
+  const { active, enabled, toggle } = useMainOverlayToggle("files");
 
   // Needs a task route to toggle the main panel against; render nothing on
-  // routes without one.
-  if (!params.org || !params.taskId) return null;
-  const { org, taskId } = params;
+  // routes without one. Commerce (reports-only) orgs hide the Library button.
+  if (!enabled || reportsOnly) return null;
 
   return (
     <HeaderTabButton
@@ -37,15 +33,7 @@ export function LibraryToggle() {
           button: "library",
           next_state: active ? "closed" : "open",
         });
-        navigate({
-          to: "/$org/$taskId",
-          params: { org, taskId },
-          search: (prev: Record<string, unknown>) => ({
-            ...prev,
-            main: active ? "0" : "files",
-          }),
-          replace: true,
-        });
+        toggle();
       }}
     />
   );

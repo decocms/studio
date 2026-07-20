@@ -118,14 +118,14 @@ describe("createStudioContextFactory", () => {
         headers: {}, // No Authorization
       });
 
-      const meshCtx = await factory(request);
+      const studioCtx = await factory(request);
 
-      expect(meshCtx).toBeDefined();
-      expect(meshCtx.auth).toBeDefined();
-      expect(meshCtx.storage).toBeDefined();
-      expect(meshCtx.access).toBeDefined();
-      expect(meshCtx.baseUrl).toBe("https://mesh.example.com");
-      expect(meshCtx.metadata.requestId).toBeDefined();
+      expect(studioCtx).toBeDefined();
+      expect(studioCtx.auth).toBeDefined();
+      expect(studioCtx.storage).toBeDefined();
+      expect(studioCtx.access).toBeDefined();
+      expect(studioCtx.baseUrl).toBe("https://mesh.example.com");
+      expect(studioCtx.metadata.requestId).toBeDefined();
     });
 
     it("should derive base URL from request", async () => {
@@ -146,9 +146,9 @@ describe("createStudioContextFactory", () => {
         headers: {},
       });
 
-      const meshCtx = await factory(request);
+      const studioCtx = await factory(request);
 
-      expect(meshCtx.baseUrl).toBe("http://localhost:3000");
+      expect(studioCtx.baseUrl).toBe("http://localhost:3000");
     });
 
     it("should populate request metadata", async () => {
@@ -172,11 +172,11 @@ describe("createStudioContextFactory", () => {
         },
       });
 
-      const meshCtx = await factory(request);
+      const studioCtx = await factory(request);
 
-      expect(meshCtx.metadata.userAgent).toBe("Test/1.0");
-      expect(meshCtx.metadata.ipAddress).toBe("192.168.1.1");
-      expect(meshCtx.metadata.timestamp).toBeInstanceOf(Date);
+      expect(studioCtx.metadata.userAgent).toBe("Test/1.0");
+      expect(studioCtx.metadata.ipAddress).toBe("192.168.1.1");
+      expect(studioCtx.metadata.timestamp).toBeInstanceOf(Date);
     });
   });
 
@@ -196,12 +196,12 @@ describe("createStudioContextFactory", () => {
 
       const request = createMockRequest();
 
-      const meshCtx = await factory(request);
+      const studioCtx = await factory(request);
 
-      expect(meshCtx.organization).toBeDefined();
-      expect(meshCtx.organization?.id).toBe("org_123");
-      expect(meshCtx.organization?.slug).toBe("test-org");
-      expect(meshCtx.organization?.name).toBe("Test Organization");
+      expect(studioCtx.organization).toBeDefined();
+      expect(studioCtx.organization?.id).toBe("org_123");
+      expect(studioCtx.organization?.slug).toBe("test-org");
+      expect(studioCtx.organization?.name).toBe("Test Organization");
     });
 
     it("should work without organization (system-level)", async () => {
@@ -233,9 +233,9 @@ describe("createStudioContextFactory", () => {
       });
 
       const request = createMockRequest();
-      const meshCtx = await factory(request);
+      const studioCtx = await factory(request);
 
-      expect(meshCtx.organization).toBeUndefined();
+      expect(studioCtx.organization).toBeUndefined();
     });
   });
 
@@ -258,10 +258,10 @@ describe("createStudioContextFactory", () => {
         headers: {},
       });
 
-      const meshCtx = await factory(request);
+      const studioCtx = await factory(request);
 
-      expect(meshCtx.storage.connections).toBeDefined();
-      expect(meshCtx.storage.organizationSettings).toBeDefined();
+      expect(studioCtx.storage.connections).toBeDefined();
+      expect(studioCtx.storage.organizationSettings).toBeDefined();
     });
   });
 
@@ -284,12 +284,12 @@ describe("createStudioContextFactory", () => {
         headers: {},
       });
 
-      const meshCtx = await factory(request);
+      const studioCtx = await factory(request);
 
-      expect(meshCtx.access).toBeDefined();
-      expect(meshCtx.access.granted).toBeDefined();
-      expect(meshCtx.access.check).toBeDefined();
-      expect(meshCtx.access.grant).toBeDefined();
+      expect(studioCtx.access).toBeDefined();
+      expect(studioCtx.access.granted).toBeDefined();
+      expect(studioCtx.access.check).toBeDefined();
+      expect(studioCtx.access.grant).toBeDefined();
     });
   });
 
@@ -334,13 +334,13 @@ describe("createStudioContextFactory", () => {
         headers: { Authorization: "Bearer api_key_org_a" },
       });
 
-      const meshCtx = await factory(request);
+      const studioCtx = await factory(request);
 
       // Organization should be extracted from API key metadata
-      expect(meshCtx.organization).toBeDefined();
-      expect(meshCtx.organization?.id).toBe("org_a");
-      expect(meshCtx.organization?.slug).toBe("org-a");
-      expect(meshCtx.organization?.name).toBe("Organization A");
+      expect(studioCtx.organization).toBeDefined();
+      expect(studioCtx.organization?.id).toBe("org_a");
+      expect(studioCtx.organization?.slug).toBe("org-a");
+      expect(studioCtx.organization?.name).toBe("Organization A");
     });
 
     it("should have undefined organization when API key has no org metadata", async () => {
@@ -376,10 +376,10 @@ describe("createStudioContextFactory", () => {
         headers: { Authorization: "Bearer api_key_no_org" },
       });
 
-      const meshCtx = await factory(request);
+      const studioCtx = await factory(request);
 
       // Organization should be undefined when not in API key metadata
-      expect(meshCtx.organization).toBeUndefined();
+      expect(studioCtx.organization).toBeUndefined();
     });
 
     it("should set different organizations for different API keys", async () => {

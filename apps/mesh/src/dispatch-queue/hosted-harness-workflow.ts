@@ -85,6 +85,11 @@ import type { StudioContext } from "@/core/studio-context";
 
 export { HOSTED_HARNESS_QUEUE } from "./queue-names";
 import { HOSTED_HARNESS_QUEUE } from "./queue-names";
+import { acquireHostedRunSlot } from "./hosted-run-concurrency";
+import {
+  advanceTaskBoardForRun,
+  reopenTasksOnThreadRun,
+} from "@/tools/task-board/run-reactions";
 
 // These types mirror the thread-gate runtime's shapes. They're defined locally
 // (rather than imported from `./thread-gate-workflow`) to avoid an import cycle
@@ -138,7 +143,7 @@ export interface HostedHarnessRuntime {
   /** The hosted in-process agent loop — `dispatchRunAndWait` in production. */
   dispatchRunFn: DispatchRunAndWaitFn;
   /** Resolves a StudioContext for an (org, user) pair (membership-checked). */
-  meshContextFactory: StudioContextFactory;
+  studioContextFactory: StudioContextFactory;
   deps: Pick<
     DispatchRunDeps,
     "runRegistry" | "cancelBroadcast" | "streamBuffer" | "sseHub"
@@ -188,10 +193,10 @@ export async function runHostedHarness(
   const rt = requireRuntime();
   const { request } = input;
 
-  const meshCtx =
+  const studioCtx =
     ctx ??
-    (await rt.meshContextFactory(request.organizationId, request.userId));
-  if (!meshCtx) {
+    (await rt.studioContextFactory(request.organizationId, request.userId));
+  if (!studioCtx) {
     // Throw so DBOS records the step (and the workflow) as failed. Swallowing
     // would mark it SUCCESS and break retry / failure tooling.
     throw new Error("user membership lost mid-dispatch");
@@ -200,7 +205,26 @@ export async function runHostedHarness(
   // Carry per-run metadata (from a webhook trigger's run_metadata) onto the run
   // context so every downstream MCP tool call forwards it as x-mesh-run-metadata.
   if (request.runMetadata) {
-    meshCtx.metadata.runMetadata = request.runMetadata;
+    studioCtx.metadata.runMetadata = request.runMetadata;
+  }
+
+  // A Super Agent task run is starting to execute — move its card to In Progress.
+  // Fire-and-forget: the transition is best-effort and must not delay the loop.
+  void advanceTaskBoardForRun(studioCtx, "in_progress", input.threadId);
+
+  // If the user re-engaged a task that had moved to In Review, pull it back to
+  // In Progress. Link-based (`task_board_item_threads`), so it fires for a
+  // re-prompt that carries no run metadata — unlike the forward advance above.
+  //
+  // Skipped when `runMetadata.taskBoardItemId` is set: that means this
+  // execution IS the Super Agent's own task run (dispatched by
+  // `enqueueSuperAgentForTask`, or DBOS recovering/retrying it after a pod
+  // death) — never a human re-prompt, which never carries that key. Firing
+  // unconditionally here would regress an already-reviewed card (PR opened,
+  // pod died, DBOS re-runs the workflow) back to In Progress every time the
+  // run resumes, with no second PR coming to re-advance it.
+  if (!request.runMetadata?.taskBoardItemId) {
+    void reopenTasksOnThreadRun(studioCtx, input.threadId);
   }
 
   // No wall-clock cap: a hosted run lives as long as it makes progress. The
@@ -209,11 +233,19 @@ export async function runHostedHarness(
   // explicit cancellation and the reaper's force-fail.
   const abortController = new AbortController();
 
-  await rt.dispatchRunFn(
-    { ...request, abortSignal: abortController.signal },
-    meshCtx,
-    rt.deps,
-  );
+  // Cap concurrent agent loops per pod (see hosted-run-concurrency.ts). The
+  // slot is held only for the loop itself, not the ctx resolution above; excess
+  // runs park here until a slot frees.
+  const releaseSlot = await acquireHostedRunSlot();
+  try {
+    await rt.dispatchRunFn(
+      { ...request, abortSignal: abortController.signal },
+      studioCtx,
+      rt.deps,
+    );
+  } finally {
+    releaseSlot();
+  }
 }
 
 /**

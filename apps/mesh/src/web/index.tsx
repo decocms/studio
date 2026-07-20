@@ -100,6 +100,47 @@ const oauthCallbackAiProviderRoute = createRoute({
 });
 
 // ============================================
+// DEPLOYMENT ADMIN DASHBOARD (instance-level, not org-scoped)
+// ============================================
+
+// Mounted at `/_admin`, not `/admin`. TanStack ranks the static `/_admin`
+// segment above the `$org` param, so this route wins even if an `_admin`
+// slug were ever minted (ORGANIZATION_CREATE rejects `_`, but the raw
+// better-auth endpoint enforces no charset) — the org gets shadowed, never
+// this surface. A bare `/admin` would shadow a legal, live slug.
+const adminLayout = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/_admin",
+  component: lazyRouteComponent(() => import("./routes/admin/layout.tsx")),
+});
+
+const adminIndexRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/",
+  beforeLoad: () => {
+    throw redirect({ to: "/_admin/users" });
+  },
+});
+
+const adminUsersRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/users",
+  component: lazyRouteComponent(() => import("./routes/admin/users.tsx")),
+});
+
+const adminOrgsRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/orgs",
+  component: lazyRouteComponent(() => import("./routes/admin/orgs.tsx")),
+});
+
+const adminLayoutWithChildren = adminLayout.addChildren([
+  adminIndexRoute,
+  adminUsersRoute,
+  adminOrgsRoute,
+]);
+
+// ============================================
 // SHELL LAYOUT (authenticated wrapper)
 // ============================================
 
@@ -114,23 +155,15 @@ const homeRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/",
   beforeLoad: async () => {
-    // Restore where the user last was. lastLocation is recorded on every
-    // org-scoped navigation (orgLayout writes the org; the thread route adds
-    // the taskId), so it's always current — including after an in-app org
-    // switch, which the queryFn-driven lastOrgSlug can miss when the new org
-    // is already cached. Reads are synchronous so cold entry stays instant. A
-    // stale org/thread self-heals: OrgAccessGate clears it and bounces back to
-    // "/", and an unknown taskId is re-fetched/created by useEnsureTask.
+    // Restore the last ORG the user was in, but always land on its HOME (the
+    // Super Agent) — never resume the last conversation. Cold entry / a fresh
+    // tab is a "start from home" gesture (ChatGPT-style), so we deliberately
+    // ignore any recorded taskId here. lastLocation's org is recorded on every
+    // org-scoped navigation (orgLayout.beforeLoad), so it's current even after
+    // an in-app org switch that the queryFn-driven lastOrgSlug can miss. Reads
+    // are synchronous so cold entry stays instant. A stale org self-heals:
+    // OrgAccessGate clears it and bounces back to "/".
     const lastLocation = readLastLocation();
-    if (lastLocation?.taskId) {
-      throw redirect({
-        to: "/$org/$taskId",
-        params: { org: lastLocation.org, taskId: lastLocation.taskId },
-        search: lastLocation.virtualmcpid
-          ? { virtualmcpid: lastLocation.virtualmcpid }
-          : {},
-      });
-    }
     if (lastLocation) {
       throw redirect({ to: "/$org", params: { org: lastLocation.org } });
     }
@@ -197,6 +230,20 @@ const commerceOnboardingRoute = createRoute({
   ),
 });
 
+// Auth-gated commerce report for a scanned domain. The route itself stays
+// outside the org shell so login can happen inline over its locked preview.
+const reportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/report/$domain",
+  component: lazyRouteComponent(() => import("./routes/reports.tsx")),
+  validateSearch: z.lazy(() =>
+    z.object({
+      // Reviewer preview password — bypasses the engine's publish gate only.
+      key: z.string().optional(),
+    }),
+  ),
+});
+
 // ============================================
 // ORG LAYOUT
 // ============================================
@@ -249,7 +296,8 @@ const agentShellLayout = createRoute({
 const unifiedChatSearchSchema = z.object({
   virtualmcpid: z.string().optional(),
   tab: z.string().optional(),
-  main: z.string().optional(),
+  sidepanel: z.union([z.literal("chat"), z.literal(0)]).optional(),
+  main: z.union([z.string(), z.literal(0)]).optional(),
   /** Open the Library file-preview overlay over the chat (browse-grammar path
    *  "<volume>/<path…>"). Set by clickable org-file refs in agent messages. */
   preview: z.string().optional(),
@@ -257,12 +305,19 @@ const unifiedChatSearchSchema = z.object({
   toolName: z.string().optional(),
   tasks: z.number().optional(),
   mainOpen: z.number().optional(),
-  chat: z.number().optional(),
   autosend: z.string().optional(),
   /** Carried from the homepage composer so the new thread's first send
    *  inherits the "Run locally" toggle state. ChatPrefsProvider seeds
    *  runLocally from this on mount. */
   runLocally: z.string().optional(),
+  /** Commerce onboarding hand-off: `"1"` mounts the blocking connections modal
+   *  over this report route until at least one data source is connected. Dropped
+   *  by the modal once the enriching run is triggered. */
+  connect: z.coerce.string().optional(),
+  /** Commerce onboarding hand-off: the claimed site the connect modal is for,
+   *  carried in the URL (same context as `/commerce-onboarding?siteUrl=…`) so the
+   *  modal is self-describing. Falls back to the connection's stored metadata. */
+  siteUrl: z.string().optional(),
 });
 
 const unifiedChatRoute = createRoute({
@@ -287,6 +342,8 @@ const unifiedChatRoute = createRoute({
 // redirect, mirroring the thread's main-panel tabs.
 const orgIndexSearchSchema = z.object({
   main: z.string().optional(),
+  connect: z.coerce.string().optional(),
+  siteUrl: z.string().optional(),
 });
 
 const orgIndexRoute = createRoute({
@@ -316,10 +373,16 @@ const libraryRoute = createRoute({
 });
 
 // Task board (/$org/board) — org-owned task board, gated behind the org's
-// task_board_enabled setting.
+// task_board_enabled setting. `task` deep-links a specific card's modal open
+// (used by the "open in board" button from a linked chat).
+const boardSearchSchema = z.object({
+  task: z.string().optional(),
+});
+
 const boardRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/board",
+  validateSearch: boardSearchSchema,
   component: lazyRouteComponent(() => import("./layouts/task-board/index.tsx")),
 });
 
@@ -595,8 +658,10 @@ const shellRouteTree = shellLayout.addChildren([
 
 const routeTree = rootRoute.addChildren([
   shellRouteTree,
+  adminLayoutWithChildren,
   onboardingRoute,
   commerceOnboardingRoute,
+  reportRoute,
   loginRoute,
   cliAuthSuccessRoute,
   resetPasswordRoute,

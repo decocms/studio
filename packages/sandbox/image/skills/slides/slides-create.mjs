@@ -209,8 +209,13 @@ function main() {
     html = Mustache.render(theme, { title: deck.title, slides: slidesHtml });
   } else {
     const titled = Mustache.render(theme, { title: deck.title });
+    // Match the real `<deck-viewer width=… height=…>` element by requiring a
+    // whitespace-led attribute after the tag name. Without the `\s`, the regex
+    // also matches the bare `<deck-viewer>` mention inside the head authoring
+    // comment that every generated deck ships, swallowing the <style>/<head>
+    // and stripping all theme CSS from the output.
     html = titled.replace(
-      /(<deck-viewer[^>]*>)[\s\S]*?(<\/deck-viewer>)/i,
+      /(<deck-viewer\s[^>]*>)[\s\S]*?(<\/deck-viewer>)/i,
       (_m, open, close) => `${open}\n${slidesHtml}\n${close}`,
     );
     if (html === titled) {

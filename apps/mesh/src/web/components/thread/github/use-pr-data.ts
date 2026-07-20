@@ -57,6 +57,8 @@ export interface PrFile {
   additions: number;
   deletions: number;
   blobUrl: string | null;
+  /** Path before the rename, when `status === "renamed"`. */
+  previousFilename: string | null;
 }
 
 export interface CheckRun {

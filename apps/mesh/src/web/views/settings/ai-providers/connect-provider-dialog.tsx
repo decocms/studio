@@ -17,7 +17,7 @@ import type { ToolInput } from "@/tools/io-types";
 import { useAiProviders } from "@/web/hooks/collections/use-ai-providers";
 import { KEYS } from "@/web/lib/query-keys";
 import { track } from "@/web/lib/posthog-client";
-import { OPENAI_COMPATIBLE_PRESETS } from "@/web/utils/openai-compatible-presets";
+import { getPreset } from "@/web/utils/openai-compatible-presets";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
 import {
   ConnectApiKeyForm,
@@ -279,9 +279,7 @@ export function ConnectProviderDialog({
     ? providers.find((p) => p.id === currentProviderId)
     : null;
   const currentPreset =
-    state.kind === "form" && state.presetId
-      ? OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === state.presetId)
-      : null;
+    state.kind === "form" && state.presetId ? getPreset(state.presetId) : null;
   const currentTitle =
     currentPreset?.name ?? currentProvider?.name ?? "Connect an AI provider";
   const showBack = state.kind !== "grid" && state.kind !== "closed";
@@ -324,13 +322,7 @@ export function ConnectProviderDialog({
         {state.kind === "form" &&
           (state.providerId === "openai-compatible" ? (
             <ConnectOpenAICompatibleForm
-              preset={
-                state.presetId
-                  ? OPENAI_COMPATIBLE_PRESETS.find(
-                      (p) => p.id === state.presetId,
-                    )
-                  : undefined
-              }
+              preset={state.presetId ? getPreset(state.presetId) : undefined}
               onCancel={() => dispatch({ type: "back" })}
               onSuccess={() => {
                 invalidateKeys();

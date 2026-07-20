@@ -45,6 +45,7 @@ export class OrganizationSettingsStorage
           ? JSON.parse(record.default_home_agents)
           : record.default_home_agents
         : null,
+      reports_only: record.reports_only ?? null,
       task_board_enabled: record.task_board_enabled,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
@@ -61,6 +62,7 @@ export class OrganizationSettingsStorage
         | "registry_config"
         | "simple_mode"
         | "default_home_agents"
+        | "reports_only"
         | "task_board_enabled"
       >
     >,
@@ -81,7 +83,6 @@ export class OrganizationSettingsStorage
     const defaultHomeAgentsJson = data?.default_home_agents
       ? JSON.stringify(data.default_home_agents)
       : null;
-
     await this.db
       .insertInto("organization_settings")
       .values({
@@ -91,6 +92,7 @@ export class OrganizationSettingsStorage
         registry_config: registryConfigJson,
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
+        reports_only: data?.reports_only ?? null,
         task_board_enabled: data?.task_board_enabled,
         createdAt: now,
         updatedAt: now,
@@ -104,6 +106,9 @@ export class OrganizationSettingsStorage
           default_home_agents: defaultHomeAgentsJson
             ? defaultHomeAgentsJson
             : undefined,
+          // Boolean flag: explicit `false` must persist; `undefined` (field
+          // absent) skips the column in doUpdateSet, same as task_board_enabled.
+          reports_only: data?.reports_only,
           task_board_enabled: data?.task_board_enabled,
           updatedAt: now,
         }),
@@ -120,6 +125,7 @@ export class OrganizationSettingsStorage
         registry_config: data?.registry_config ?? null,
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
+        reports_only: data?.reports_only ?? null,
         task_board_enabled: data?.task_board_enabled ?? false,
         createdAt: now,
         updatedAt: now,

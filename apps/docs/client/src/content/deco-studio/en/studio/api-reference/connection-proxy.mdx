@@ -15,7 +15,7 @@ The **Connection Proxy** endpoint enables MCP clients (like Cursor, Claude Deskt
 The canonical path is org-scoped:
 
 ```
-POST https://your-mesh-instance.com/api/:org/mcp/:connectionId
+POST https://your-studio-instance.com/api/:org/mcp/:connectionId
 ```
 
 <Callout type="warning">
@@ -40,7 +40,7 @@ When unauthenticated, the endpoint returns a `401` response with an `WWW-Authent
 
 ```http
 HTTP/1.1 401 Unauthorized
-WWW-Authenticate: Bearer realm="mcp",resource_metadata="https://your-mesh-instance.com/api/:org/mcp/:connectionId/.well-known/oauth-protected-resource"
+WWW-Authenticate: Bearer realm="mcp",resource_metadata="https://your-studio-instance.com/api/:org/mcp/:connectionId/.well-known/oauth-protected-resource"
 ```
 
 <Callout type="info">

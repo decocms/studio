@@ -1,4 +1,5 @@
 import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
+import { getRepoScope } from "@/shared/github-repo-scope";
 import type { CompanionCopy } from "./companions.ts";
 
 export interface BindingRequirement {
@@ -13,6 +14,7 @@ export interface CandidateConnection {
   connection_token?: string | null;
   oauth_config?: unknown | null;
   configuration_state?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
   status?: string | null;
   updated_at?: string | null;
 }
@@ -92,6 +94,27 @@ export function parseBindingRequirements(
   }
   return reqs;
 }
+
+/**
+ * Static binding requirements for the four Commerce Discovery companions — a
+ * fallback for when the CD connection's live MCP_CONFIGURATION schema can't be
+ * fetched (e.g. the CD proxy returns 401 because the connection lost its
+ * credential to reach commerce-skills). Without this the schema fetch is a hard
+ * dependency: one 401 collapses the whole integrations section to an error and
+ * the user can neither connect nor disconnect anything.
+ *
+ * `fieldKey` is the CD `configuration_state` key and `bindingType` is the
+ * binding `__type` (== the curated COMMERCE_COMPANION_MCPS key). Kept in sync
+ * with commerce-discovery's CONNECTION_PROVIDERS (vtex/ga4/gsc/github); if the
+ * CD schema gains a binding it still appears via the live schema — this
+ * fallback only applies when the schema is unreachable.
+ */
+export const FALLBACK_COMPANION_REQUIREMENTS: BindingRequirement[] = [
+  { fieldKey: "vtex", bindingType: "vtex" },
+  { fieldKey: "ga4", bindingType: "google-analytics" },
+  { fieldKey: "gsc", bindingType: "google-search-console" },
+  { fieldKey: "github", bindingType: "github" },
+];
 
 /** Build a registry LIST `where` matching items by id-set OR server-name-set.
  * `["id"]` is the top-level column; `["name"]` maps to the virtual server_json->>'name'. */
@@ -214,8 +237,12 @@ export function resolveCandidate(
 ): string | null {
   const matches = connections.filter(
     (c) =>
-      c.app_name === bindingType ||
-      (!!registryAppId && c.app_id === registryAppId),
+      (c.app_name === bindingType ||
+        (!!registryAppId && c.app_id === registryAppId)) &&
+      // Repo-scoped github children (per-agent import / "Add repo") share the
+      // deco/mcp-github identity but can't list installations — linking one
+      // breaks the repo picker. Only org-level connections are valid candidates.
+      getRepoScope(c) === null,
   );
   if (matches.length === 0) return null;
   matches.sort((a, b) => {
@@ -335,18 +362,20 @@ export function matchGscSite(
   if (!contextSiteUrl) return null;
 
   const normalize = (url: string): string => {
-    // Strip sc-domain: prefix
-    if (url.startsWith("sc-domain:")) return url.substring(10);
-    // Parse URL and extract hostname
-    try {
-      const parsed = new URL(url.startsWith("http") ? url : `https://${url}`);
-      let host = parsed.hostname || "";
-      // Remove leading www.
-      if (host.startsWith("www.")) host = host.substring(4);
-      return host;
-    } catch {
-      return url;
-    }
+    // Strip sc-domain: prefix, then fall through to the same www-stripping
+    // as the URL branch below so both formats compare equal.
+    const host = url.startsWith("sc-domain:")
+      ? url.substring(10)
+      : (() => {
+          try {
+            return new URL(url.startsWith("http") ? url : `https://${url}`)
+              .hostname;
+          } catch {
+            return null;
+          }
+        })();
+    if (host === null) return url;
+    return host.startsWith("www.") ? host.substring(4) : host;
   };
 
   const contextNorm = normalize(contextSiteUrl);

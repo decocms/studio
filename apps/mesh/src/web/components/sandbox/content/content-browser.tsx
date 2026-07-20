@@ -1,32 +1,17 @@
-import { Suspense, forwardRef, lazy, useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import { type Query } from "@tanstack/react-query";
 import {
   AlertCircle,
-  BookOpen01,
-  Calendar,
-  ChevronDown,
-  Code01,
-  Copy01,
-  Database01,
-  DotsHorizontal,
-  Edit01,
+  CornerUpRight,
   File02,
-  FilterFunnel01,
-  Flag01,
   Globe02,
   Grid01,
   LayoutAlt01,
   Loading01,
   Plus,
   SearchLg,
-  Settings01,
-  SwitchVertical01,
   Tag01,
-  CreditCardSearch,
-  Trash01,
   Users01,
-  X,
-  Zap,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -40,17 +25,6 @@ import {
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import {
   Tooltip,
@@ -82,6 +56,7 @@ import {
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
 import type { AppCatalogEntry } from "./app-catalog";
+import { ListEmpty } from "./list-empty";
 import { useDecoAppsCatalog } from "@/web/hooks/use-deco-apps-catalog";
 import { normalizePagePath } from "@/web/components/sections-editor/page-path-utils";
 import {
@@ -90,24 +65,17 @@ import {
   getPageVariantSectionsAt,
 } from "@/web/components/sections-editor/page-variants";
 import { listAvailableSections } from "@/web/components/sections-editor/section-catalog";
-import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/section-types";
-import { suggestBlockId } from "@/web/components/sections-editor/page-sections";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
-import { AvailableSectionEditor } from "./available-section-editor";
-import { SavedSectionEditor } from "./saved-section-editor";
+import { CollectionsSidebar } from "./collections-sidebar";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
   sandboxUserStop,
   useSandboxStart,
   type SandboxStartArgs,
 } from "@/web/components/sandbox/hooks/use-sandbox-start";
-import { SandboxStateCard } from "@/web/components/sandbox/preview/state-card";
-import { derivePhaseProgress } from "@/web/components/sandbox/preview/derive-phase-progress";
-import {
-  computePreviewState,
-  type SandboxStartError,
-} from "@/web/components/sandbox/preview/preview-state";
+import { computePreviewState } from "@/web/components/sandbox/preview/preview-state";
 import { decodeSandboxStartError } from "@/shared/sandbox-start-errors";
+import { SandboxStateRenderer } from "./sandbox-state-renderer";
 import {
   buildDuplicatePage,
   buildEmptyPage,
@@ -118,6 +86,13 @@ import {
 } from "./content-mutations";
 import { PageFormDialog, type PageFormMode } from "./page-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
+import {
+  buildRedirectBlock,
+  extractRedirects,
+  generateRedirectBlockKey,
+  type RedirectEntry,
+} from "./redirect-data";
+import { RedirectTypeBadge } from "./redirect-type-badge";
 import {
   type BlogEntry,
   type BlogKind,
@@ -135,6 +110,7 @@ import {
   removeCategoryFromPost,
   replaceCategoryOnPost,
   scanBlogEntries,
+  stampPostModified,
 } from "./blog/blog-data";
 import {
   useDeleteBlogBlock,
@@ -143,6 +119,17 @@ import {
 import { PageJsonDialog } from "@/web/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
+import { EmptyMessage } from "./empty-message";
+import { SectionsRightPane } from "./sections-right-pane";
+import { PostFilterBar, PostSelectionToolbar } from "./post-toolbar";
+import { ItemActions } from "./item-actions";
+import { ItemRow } from "./item-row";
+import {
+  GroupHeader,
+  groupSavedSectionsByResolveType,
+} from "./section-group-header";
+import { useBlocksPreviewWorkspace } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
+import type { BlocksTarget } from "@/web/components/sandbox/blocks/blocks-preview-workspace-state";
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
@@ -184,9 +171,11 @@ const VariantCalendar = lazy(() =>
   })),
 );
 
-const VARIANT_GREEN = "oklch(0.65 0.15 160)";
+const RedirectEditor = lazy(() =>
+  import("./redirect-editor").then((m) => ({ default: m.RedirectEditor })),
+);
 
-type CollectionId =
+export type CollectionId =
   | "pages"
   | "sections"
   | "apps"
@@ -195,14 +184,16 @@ type CollectionId =
   | "calendar"
   | "loaders"
   | "actions"
+  | "redirects"
   | BlogKind;
 
-type CollectionCounts = Record<
+export type CollectionCounts = Record<
   | "pages"
   | "sections"
   | "apps"
   | "loaders"
   | "actions"
+  | "redirects"
   | "posts"
   | "authors"
   | "categories",
@@ -218,47 +209,29 @@ type Selection =
       title: string;
     }
   | { collection: "apps"; key: string }
+  | { collection: "redirects"; key: string }
   | { collection: BlogKind; key: string }
   | null;
+
+function selectionFromBlocksTarget(target: BlocksTarget | null): Selection {
+  if (!target) return null;
+  return target.kind === "page"
+    ? { collection: "pages", key: target.key, path: target.path }
+    : { collection: "sections", key: target.key };
+}
+
+function blocksTargetKey(target: BlocksTarget | null): string | null {
+  if (!target) return null;
+  return target.kind === "page"
+    ? `page:${target.key}:${target.path}`
+    : `section:${target.key}`;
+}
 
 /** A raw manifest section the user can customize and save as a global block. */
 export interface AvailableSectionEntry {
   resolveType: string;
   title: string;
   description?: string;
-}
-
-interface SavedSectionGroup {
-  label: string;
-  sections: GlobalSectionEntry[];
-}
-
-/** Short label for a section's underlying component resolveType. */
-function sectionTypeLabel(resolveType: string): string {
-  return (
-    resolveType
-      .split("/")
-      .pop()
-      ?.replace(/\.tsx?$/, "") ||
-    resolveType ||
-    "Section"
-  );
-}
-
-/** Group saved sections by their underlying `resolveType`, sorted by label. */
-function groupSavedSectionsByResolveType(
-  sections: GlobalSectionEntry[],
-): SavedSectionGroup[] {
-  const byLabel = new Map<string, GlobalSectionEntry[]>();
-  for (const section of sections) {
-    const label = sectionTypeLabel(section.resolveType);
-    const bucket = byLabel.get(label);
-    if (bucket) bucket.push(section);
-    else byLabel.set(label, [section]);
-  }
-  return [...byLabel.entries()]
-    .map(([label, groupSections]) => ({ label, sections: groupSections }))
-    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 type PageDialogState = {
@@ -271,13 +244,18 @@ type PageDialogState = {
 type DeleteTarget =
   | { kind: "page"; key: string; label: string }
   | { kind: "section"; key: string; label: string }
+  | { kind: "redirect"; key: string; label: string }
   | { kind: "blog"; blogKind: BlogKind; key: string; label: string }
   | { kind: "blog-bulk"; keys: string[]; count: number }
   | null;
 
-type PostSort = "date-desc" | "date-asc" | "az" | "za";
+export type PostSort = "date-desc" | "date-asc" | "az" | "za";
 
-export function ContentBrowser() {
+export interface ContentBrowserProps {
+  mode?: "content" | "blocks";
+}
+
+export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
   const inset = useInsetContext();
   const { data: session } = authClient.useSession();
   const { currentBranch: branch } = useChatTask();
@@ -351,6 +329,7 @@ export function ContentBrowser() {
       virtualMcpId={virtualMcpId}
       branch={branch}
       previewUrl={previewUrl}
+      mode={mode}
     />
   );
 }
@@ -378,21 +357,62 @@ function ContentBrowserReady({
   virtualMcpId,
   branch,
   previewUrl,
+  mode,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   previewUrl: string | null;
+  mode: "content" | "blocks";
 }) {
+  const workspace = useBlocksPreviewWorkspace();
   const fetchParams = { orgSlug, virtualMcpId, branch, previewUrl };
   const { data: decofile, isLoading: decofileLoading } =
     useDecofile(fetchParams);
 
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
-  const [selection, setSelection] = useState<Selection>(null);
+  const [selection, setSelection] = useState<Selection>(() =>
+    mode === "blocks"
+      ? selectionFromBlocksTarget(workspace.state.target)
+      : null,
+  );
   // Page that should open with the inline SEO form in SectionsEditor.
-  const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
+  const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(() =>
+    mode === "blocks" ? workspace.state.editSeoPageKey : null,
+  );
+  const currentWorkspaceTargetKey = blocksTargetKey(workspace.state.target);
+  const [handledWorkspaceTargetKey, setHandledWorkspaceTargetKey] = useState(
+    currentWorkspaceTargetKey,
+  );
+  if (
+    mode === "blocks" &&
+    handledWorkspaceTargetKey !== currentWorkspaceTargetKey
+  ) {
+    setHandledWorkspaceTargetKey(currentWorkspaceTargetKey);
+    const next = selectionFromBlocksTarget(workspace.state.target);
+    setSelection(next);
+    if (next?.collection === "pages" || next?.collection === "sections") {
+      setActiveCollection(next.collection);
+    }
+  }
+  const [handledSeoPageKey, setHandledSeoPageKey] = useState(
+    workspace.state.editSeoPageKey,
+  );
+  if (
+    mode === "blocks" &&
+    handledSeoPageKey !== workspace.state.editSeoPageKey
+  ) {
+    setHandledSeoPageKey(workspace.state.editSeoPageKey);
+    if (workspace.state.editSeoPageKey) {
+      const target = workspace.state.target;
+      if (target?.kind === "page") {
+        setActiveCollection("pages");
+        setSelection(selectionFromBlocksTarget(target));
+        setOpenPageSeoKey(target.key);
+      }
+    }
+  }
   const [searchQuery, setSearchQuery] = useState("");
   // Posts-only filter/sort + bulk selection state.
   const [postCategoryFilter, setPostCategoryFilter] = useState<string | null>(
@@ -413,6 +433,20 @@ function ContentBrowserReady({
   const clearSelection = () => {
     setSelectedPostKeys(new Set());
     setBulkCategorySeed(null);
+  };
+  const selectItem = (next: Selection) => {
+    setSelection(next);
+    setOpenPageSeoKey(null);
+    if (mode !== "blocks" || !next) return;
+    if (next.collection === "pages") {
+      workspace.selectTarget({
+        kind: "page",
+        key: next.key,
+        path: next.path,
+      });
+    } else if (next.collection === "sections") {
+      workspace.selectTarget({ kind: "section", key: next.key });
+    }
   };
   // Reset search + post filters/selection when switching collections
   // (derived-state sync pattern).
@@ -510,6 +544,9 @@ function ContentBrowserReady({
   const pages = extractPages(decofile).sort((a, b) =>
     a.name.localeCompare(b.name),
   );
+  const redirects = extractRedirects(decofile).sort((a, b) =>
+    a.from.localeCompare(b.from),
+  );
   const globalSections = extractGlobalSections(decofile, meta);
   // Only the Sections tab needs the raw catalog. Use the cheap lister (labels
   // only, no per-section schema resolution) — resolving every section's schema
@@ -572,6 +609,7 @@ function ContentBrowserReady({
     apps: appCatalog.length,
     loaders: loadersCount,
     actions: actionsCount,
+    redirects: redirects.length,
     posts: allBlogEntries.posts.length,
     authors: allBlogEntries.authors.length,
     categories: allBlogEntries.categories.length,
@@ -781,6 +819,31 @@ function ContentBrowserReady({
     }
   };
 
+  // ------------------ Redirect CRUD ------------------
+  // Redirects are standalone `website/loaders/redirect.ts` blocks; the site's
+  // routes auto-discover them, so create/delete is a plain block write.
+  const handleCreateRedirect = async () => {
+    // Seed non-empty placeholder paths so the new block is a valid redirect
+    // (never an empty from/to that would emit a broken route once published).
+    const from = "/redirect-from";
+    const key = generateRedirectBlockKey(decofile, from);
+    const data = buildRedirectBlock({
+      from,
+      to: "/redirect-to",
+      type: "temporary",
+      discardQueryParameters: false,
+    });
+    try {
+      await saveBlock.mutateAsync({ blockKey: key, data });
+      toast.success("Created redirect");
+      setSelection({ collection: "redirects", key });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not create redirect",
+      );
+    }
+  };
+
   // ------------------ Blog CRUD ------------------
   const handleCreateBlog = async (kind: BlogKind) => {
     const key = generateBlogKey(decofile, kind);
@@ -870,7 +933,7 @@ function ContentBrowserReady({
       if (next === payload) continue;
       await saveBlogBlock.mutateAsync({
         blockKey: key,
-        data: buildBlogBlock(key, "posts", next),
+        data: buildBlogBlock(key, "posts", stampPostModified(next)),
       });
       changed += 1;
     }
@@ -943,7 +1006,7 @@ function ContentBrowserReady({
               if (next === payload) continue;
               await saveBlogBlock.mutateAsync({
                 blockKey: postKey,
-                data: buildBlogBlock(postKey, "posts", next),
+                data: buildBlogBlock(postKey, "posts", stampPostModified(next)),
               });
             }
           }
@@ -983,24 +1046,28 @@ function ContentBrowserReady({
         : (deleteTarget?.kind ?? "item");
   return (
     <div className="flex h-full w-full">
-      <CollectionsSidebar
-        active={activeCollection}
-        counts={counts}
-        showBlog={showBlog}
-        onSelect={(id) => {
-          setActiveCollection(id);
-          setSelection(null);
-          setOpenPageSeoKey(null);
-        }}
-      />
+      {mode === "content" && (
+        <CollectionsSidebar
+          active={activeCollection}
+          counts={counts}
+          showBlog={showBlog}
+          onSelect={(id) => {
+            setActiveCollection(id);
+            setSelection(null);
+            setOpenPageSeoKey(null);
+          }}
+        />
+      )}
       {activeCollection !== "seo" &&
         activeCollection !== "site" &&
         activeCollection !== "calendar" &&
         activeCollection !== "loaders" &&
         activeCollection !== "actions" && (
           <ItemList
+            blocksMode={mode === "blocks"}
             activeCollection={activeCollection}
             pages={pages}
+            redirects={redirects}
             sections={globalSections}
             availableSections={availableSections}
             appCatalog={appCatalog}
@@ -1035,13 +1102,17 @@ function ContentBrowserReady({
               })
             }
             selection={selection}
-            onSelect={(next) => {
-              setSelection(next);
+            onSelect={selectItem}
+            onCollectionSelect={(collection) => {
+              setActiveCollection(collection);
+              setSelection(null);
               setOpenPageSeoKey(null);
             }}
             onCreate={() => {
               if (activeCollection === "pages") {
                 openCreatePage();
+              } else if (activeCollection === "redirects") {
+                void handleCreateRedirect();
               } else if (isBlogKind(activeCollection)) {
                 void handleCreateBlog(activeCollection);
               }
@@ -1053,18 +1124,33 @@ function ContentBrowserReady({
               setDeleteTarget({ kind: "page", key: page.key, label: page.name })
             }
             onEditPageSeo={(page) => {
-              setSelection({
+              const target = {
                 collection: "pages",
                 key: page.key,
                 path: page.path,
-              });
+              } as const;
+              setSelection(target);
               setOpenPageSeoKey(page.key);
+              if (mode === "blocks") {
+                workspace.editSeo({
+                  kind: "page",
+                  key: page.key,
+                  path: page.path,
+                });
+              }
             }}
             onViewPageJson={(page) => setJsonPageKey(page.key)}
             onDuplicateSection={handleDuplicateSection}
             onRenameSection={(s) => setRenameSectionKey(s.key)}
             onDeleteSection={(s) =>
               setDeleteTarget({ kind: "section", key: s.key, label: s.name })
+            }
+            onDeleteRedirect={(entry) =>
+              setDeleteTarget({
+                kind: "redirect",
+                key: entry.key,
+                label: entry.from || entry.key,
+              })
             }
             onDuplicateBlog={handleDuplicateBlog}
             onDeleteBlog={(e) =>
@@ -1232,6 +1318,15 @@ function ContentBrowserReady({
                   blockKey={selection.key}
                   block={decofile[selection.key] as Record<string, unknown>}
                 />
+              ) : selection.collection === "redirects" ? (
+                <RedirectEditor
+                  key={`redirect:${selection.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  blockKey={selection.key}
+                  block={decofile[selection.key] as Record<string, unknown>}
+                />
               ) : (
                 <SectionsEditor
                   key={
@@ -1257,7 +1352,13 @@ function ContentBrowserReady({
                     selection.collection === "pages" &&
                     openPageSeoKey === selection.key
                   }
-                  onExitSeo={() => setOpenPageSeoKey(null)}
+                  onExitSeo={() => {
+                    setOpenPageSeoKey(null);
+                    if (mode === "blocks") workspace.consumeEditSeo();
+                  }}
+                  onSaved={
+                    mode === "blocks" ? workspace.notifySaved : undefined
+                  }
                 />
               )
             ) : (
@@ -1269,7 +1370,9 @@ function ContentBrowserReady({
                       ? "a page"
                       : activeCollection === "apps"
                         ? "an app"
-                        : "a section"
+                        : activeCollection === "redirects"
+                          ? "a redirect"
+                          : "a section"
                 } to edit`}
                 description={
                   activeCollection === "apps"
@@ -1329,6 +1432,9 @@ function ContentBrowserReady({
           }}
           pageKey={jsonPageKey}
           decofile={decofile}
+          onSave={(data) =>
+            saveBlock.mutateAsync({ blockKey: jsonPageKey, data })
+          }
         />
       )}
 
@@ -1380,276 +1486,11 @@ function ContentBrowserReady({
   );
 }
 
-/**
- * Right pane for the Sections collection. A saved (global) section opens the
- * full section editor; an available (raw manifest) section opens a local
- * editor that persists only when named and saved.
- */
-function SectionsRightPane({
-  selection,
-  orgSlug,
-  virtualMcpId,
-  branch,
-  previewUrl,
-  meta,
-  decofile,
-  isCreating,
-  onCreateAvailable,
-  onSaveReferencedBlock,
-}: {
-  selection:
-    | { collection: "sections"; key: string }
-    | {
-        collection: "available-section";
-        resolveType: string;
-        title: string;
-      }
-    | null;
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  previewUrl: string | null;
-  meta: LiveMeta;
-  decofile: Record<string, unknown>;
-  isCreating: boolean;
-  onCreateAvailable: (
-    resolveType: string,
-    blockId: string,
-    data: Record<string, unknown>,
-  ) => Promise<void>;
-  onSaveReferencedBlock: (
-    blockKey: string,
-    data: Record<string, unknown>,
-  ) => void;
-}) {
-  if (!selection) {
-    return (
-      <EmptyMessage
-        title="Select a section to edit"
-        description="Pick a saved section to edit it, or an available one to customize and save as global."
-      />
-    );
-  }
-
-  if (selection.collection === "available-section") {
-    return (
-      <AvailableSectionEditor
-        key={`available:${selection.resolveType}`}
-        orgSlug={orgSlug}
-        virtualMcpId={virtualMcpId}
-        branch={branch}
-        previewUrl={previewUrl}
-        meta={meta}
-        decofile={decofile}
-        resolveType={selection.resolveType}
-        title={selection.title}
-        defaultBlockId={suggestBlockId(selection.title)}
-        isCreating={isCreating}
-        onCreate={(blockId, data) =>
-          onCreateAvailable(selection.resolveType, blockId, data)
-        }
-        onSaveReferencedBlock={onSaveReferencedBlock}
-      />
-    );
-  }
-
-  return (
-    <SavedSectionEditor
-      key={`saved:${selection.key}`}
-      orgSlug={orgSlug}
-      virtualMcpId={virtualMcpId}
-      branch={branch}
-      previewUrl={previewUrl}
-      meta={meta}
-      decofile={decofile}
-      blockKey={selection.key}
-      onSaveReferencedBlock={onSaveReferencedBlock}
-    />
-  );
-}
-
-function GroupHeader({
-  icon: Icon,
-  label,
-  className,
-}: {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70",
-        className,
-      )}
-    >
-      <Icon size={13} className="shrink-0" />
-      {label}
-    </div>
-  );
-}
-
-function CollectionsSidebar({
-  active,
-  counts,
-  showBlog,
-  onSelect,
-}: {
-  active: CollectionId;
-  counts: CollectionCounts;
-  showBlog: boolean;
-  onSelect: (id: CollectionId) => void;
-}) {
-  return (
-    <div className="w-[208px] shrink-0 border-r flex flex-col">
-      <div className="px-3 h-12 flex items-center border-b shrink-0">
-        <span className="text-sm font-medium">Content</span>
-      </div>
-      <nav className="flex flex-col p-1.5 gap-0.5">
-        <CollectionRow
-          id="pages"
-          icon={LayoutAlt01}
-          label="Pages"
-          count={counts.pages}
-          active={active === "pages"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="sections"
-          icon={Globe02}
-          label="Sections"
-          count={counts.sections}
-          active={active === "sections"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="apps"
-          icon={Grid01}
-          label="Apps"
-          count={counts.apps}
-          active={active === "apps"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="loaders"
-          icon={Database01}
-          label="Loaders"
-          count={counts.loaders}
-          active={active === "loaders"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="actions"
-          icon={Zap}
-          label="Actions"
-          count={counts.actions}
-          active={active === "actions"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="site"
-          icon={Settings01}
-          label="Site"
-          active={active === "site"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="seo"
-          icon={CreditCardSearch}
-          label="SEO"
-          active={active === "seo"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="calendar"
-          icon={Calendar}
-          label="Calendar"
-          active={active === "calendar"}
-          onSelect={onSelect}
-        />
-        {showBlog && (
-          <>
-            <div className="mt-3 flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70">
-              <BookOpen01 size={13} className="shrink-0" />
-              Blog
-            </div>
-            <CollectionRow
-              id="posts"
-              icon={File02}
-              label="Posts"
-              count={counts.posts}
-              active={active === "posts"}
-              onSelect={onSelect}
-            />
-            <CollectionRow
-              id="authors"
-              icon={Users01}
-              label="Authors"
-              count={counts.authors}
-              active={active === "authors"}
-              onSelect={onSelect}
-            />
-            <CollectionRow
-              id="categories"
-              icon={Tag01}
-              label="Categories"
-              count={counts.categories}
-              active={active === "categories"}
-              onSelect={onSelect}
-            />
-          </>
-        )}
-      </nav>
-    </div>
-  );
-}
-
-function CollectionRow({
-  id,
-  icon: Icon,
-  label,
-  count,
-  active,
-  onSelect,
-}: {
-  id: CollectionId;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
-  count?: number;
-  active: boolean;
-  onSelect: (id: CollectionId) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(id)}
-      className={cn(
-        "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
-        active
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      <Icon size={16} className="shrink-0" />
-      <span className="flex-1 truncate">{label}</span>
-      {count !== undefined && (
-        <span
-          className={cn(
-            "shrink-0 text-xs tabular-nums",
-            active ? "text-accent-foreground/70" : "text-muted-foreground/70",
-          )}
-        >
-          {count}
-        </span>
-      )}
-    </button>
-  );
-}
-
 function ItemList({
+  blocksMode,
   activeCollection,
   pages,
+  redirects,
   sections,
   availableSections,
   appCatalog,
@@ -1673,6 +1514,7 @@ function ItemList({
   onBulkDeletePosts,
   selection,
   onSelect,
+  onCollectionSelect,
   onCreate,
   onDuplicatePage,
   onRenamePage,
@@ -1683,11 +1525,14 @@ function ItemList({
   onDuplicateSection,
   onRenameSection,
   onDeleteSection,
+  onDeleteRedirect,
   onDuplicateBlog,
   onDeleteBlog,
 }: {
+  blocksMode: boolean;
   activeCollection: CollectionId;
   pages: PageEntry[];
+  redirects: RedirectEntry[];
   sections: GlobalSectionEntry[];
   availableSections: AvailableSectionEntry[];
   appCatalog: AppCatalogEntry[];
@@ -1714,6 +1559,7 @@ function ItemList({
   onBulkDeletePosts: () => void;
   selection: Selection;
   onSelect: (next: Selection) => void;
+  onCollectionSelect: (collection: "pages" | "sections") => void;
   onCreate: () => void;
   onDuplicatePage: (page: PageEntry) => void;
   onRenamePage: (page: PageEntry) => void;
@@ -1724,6 +1570,7 @@ function ItemList({
   onDuplicateSection: (section: GlobalSectionEntry) => void;
   onRenameSection: (section: GlobalSectionEntry) => void;
   onDeleteSection: (section: GlobalSectionEntry) => void;
+  onDeleteRedirect: (entry: RedirectEntry) => void;
   onDuplicateBlog: (entry: BlogEntry) => void;
   onDeleteBlog: (entry: BlogEntry) => void;
 }) {
@@ -1733,6 +1580,10 @@ function ItemList({
       !q ||
       p.name.toLowerCase().includes(q) ||
       p.path.toLowerCase().includes(q),
+  );
+  const filteredRedirects = redirects.filter(
+    (r) =>
+      !q || r.from.toLowerCase().includes(q) || r.to.toLowerCase().includes(q),
   );
   const filteredSections = sections.filter(
     (s) =>
@@ -1849,13 +1700,42 @@ function ItemList({
   const placeholder = `Search ${activeCollection}…`;
   const createTooltip = isBlogKind(activeCollection)
     ? `Create new ${BLOG_SINGULAR[activeCollection]}`
-    : "Create new page";
+    : activeCollection === "redirects"
+      ? "Create new redirect"
+      : "Create new page";
   // Sections are created by saving an available section, not via the "+".
   const showCreateButton =
     activeCollection !== "apps" && activeCollection !== "sections";
 
   return (
-    <div className="w-[300px] shrink-0 border-r flex flex-col min-h-0">
+    <div
+      className={cn(
+        "shrink-0 border-r flex flex-col min-h-0",
+        blocksMode ? "w-[240px]" : "w-[300px]",
+      )}
+    >
+      {blocksMode && (
+        <div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
+          <Button
+            variant={activeCollection === "pages" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 flex-1"
+            onClick={() => onCollectionSelect("pages")}
+          >
+            <LayoutAlt01 size={14} />
+            Pages
+          </Button>
+          <Button
+            variant={activeCollection === "sections" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-7 flex-1"
+            onClick={() => onCollectionSelect("sections")}
+          >
+            <Globe02 size={14} />
+            Sections
+          </Button>
+        </div>
+      )}
       <div className="px-2 h-12 flex items-center gap-1 border-b shrink-0">
         <div className="flex flex-1 items-center gap-2 pl-1">
           <SearchLg
@@ -2073,7 +1953,7 @@ function ItemList({
                     active={isActive}
                     trailing={
                       entry.installed ? (
-                        <span className="shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                        <span className="shrink-0 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
                           Installed
                         </span>
                       ) : undefined
@@ -2090,6 +1970,34 @@ function ItemList({
                   />
                 );
               })
+            )
+          ) : activeCollection === "redirects" ? (
+            filteredRedirects.length === 0 ? (
+              <ListEmpty
+                hasItems={redirects.length > 0}
+                emptyLabel="No redirects yet."
+                emptyHint='Click "+" to create your first redirect.'
+              />
+            ) : (
+              filteredRedirects.map((entry) => (
+                <ItemRow
+                  key={entry.key}
+                  icon={CornerUpRight}
+                  title={entry.from || "(no source)"}
+                  subtitle={`→ ${entry.to || "(no target)"}`}
+                  active={
+                    selection?.collection === "redirects" &&
+                    selection.key === entry.key
+                  }
+                  trailing={<RedirectTypeBadge type={entry.type} />}
+                  onClick={() =>
+                    onSelect({ collection: "redirects", key: entry.key })
+                  }
+                  menu={
+                    <ItemActions onDelete={() => onDeleteRedirect(entry)} />
+                  }
+                />
+              ))
             )
           ) : isPostsCollection ? (
             sortedPosts.length === 0 ? (
@@ -2178,619 +2086,6 @@ function ItemList({
           )}
         </div>
       </ScrollArea>
-    </div>
-  );
-}
-
-// Sentinel for the "no filter" radio option (Radix forbids empty values).
-const ALL_FILTER = "__all__";
-
-const POST_SORT_LABELS: Record<PostSort, string> = {
-  "date-desc": "Newest first",
-  "date-asc": "Oldest first",
-  az: "Title A–Z",
-  za: "Title Z–A",
-};
-
-const POST_SORT_SHORT: Record<PostSort, string> = {
-  "date-desc": "Newest",
-  "date-asc": "Oldest",
-  az: "A–Z",
-  za: "Z–A",
-};
-
-type CategoryOption = { slug: string; name: string; count: number };
-type AuthorOption = { email: string; name: string; count: number };
-
-/**
- * Compact, icon-led filter trigger: just the icon when no filter is applied,
- * icon + highlighted value once one is. Forwards props/ref so it can be used
- * directly as a `DropdownMenuTrigger asChild` child.
- */
-const FilterChipTrigger = forwardRef<
-  HTMLButtonElement,
-  {
-    icon: React.ComponentType<{ size?: number; className?: string }>;
-    active: boolean;
-    value?: string;
-  } & React.ComponentProps<typeof Button>
->(function FilterChipTrigger(
-  { icon: Icon, active, value, className, ...props },
-  ref,
-) {
-  return (
-    <Button
-      ref={ref}
-      type="button"
-      variant="ghost"
-      size="sm"
-      className={cn(
-        "h-7 gap-1 px-1.5 text-xs",
-        active ? "text-foreground" : "text-muted-foreground",
-        className,
-      )}
-      {...props}
-    >
-      <Icon size={14} className="shrink-0" />
-      {value && <span className="min-w-0 flex-1 truncate">{value}</span>}
-      <ChevronDown size={12} className="shrink-0 opacity-60" />
-    </Button>
-  );
-});
-
-function OptionCount({ count }: { count: number }) {
-  return (
-    <span className="ml-auto pl-3 text-xs text-muted-foreground tabular-nums">
-      {count}
-    </span>
-  );
-}
-
-function PostFilterBar({
-  categories,
-  authors,
-  categoryFilter,
-  authorFilter,
-  sort,
-  onCategoryFilterChange,
-  onAuthorFilterChange,
-  onSortChange,
-}: {
-  categories: CategoryOption[];
-  authors: AuthorOption[];
-  categoryFilter: string | null;
-  authorFilter: string | null;
-  sort: PostSort;
-  onCategoryFilterChange: (slug: string | null) => void;
-  onAuthorFilterChange: (email: string | null) => void;
-  onSortChange: (sort: PostSort) => void;
-}) {
-  const activeCategory = categories.find((c) => c.slug === categoryFilter);
-  const activeAuthor = authors.find((a) => a.email === authorFilter);
-  const hasFilter = !!(categoryFilter || authorFilter);
-  const activeLabel = activeCategory?.name ?? activeAuthor?.name ?? "Filter";
-  // One filter at a time: encode both dimensions into a single radio value.
-  const activeValue = categoryFilter
-    ? `cat:${categoryFilter}`
-    : authorFilter
-      ? `author:${authorFilter}`
-      : ALL_FILTER;
-  const clearFilter = () => {
-    onCategoryFilterChange(null);
-    onAuthorFilterChange(null);
-  };
-  const handleFilterChange = (v: string) => {
-    if (v.startsWith("cat:")) {
-      onAuthorFilterChange(null);
-      onCategoryFilterChange(v.slice(4));
-    } else if (v.startsWith("author:")) {
-      onCategoryFilterChange(null);
-      onAuthorFilterChange(v.slice(7));
-    } else {
-      clearFilter();
-    }
-  };
-
-  return (
-    <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b px-2 py-1.5">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <FilterChipTrigger
-            icon={FilterFunnel01}
-            active={hasFilter}
-            value={activeLabel}
-            className="min-w-0 shrink"
-          />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="start"
-          className="max-h-96 w-60 overflow-y-auto"
-        >
-          <DropdownMenuLabel>Filter by</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={activeValue}
-            onValueChange={handleFilterChange}
-          >
-            <DropdownMenuRadioItem value={ALL_FILTER}>
-              All posts
-            </DropdownMenuRadioItem>
-            {categories.length > 0 && (
-              <DropdownMenuLabel className="text-muted-foreground/70">
-                Category
-              </DropdownMenuLabel>
-            )}
-            {categories.map((c) => (
-              <DropdownMenuRadioItem
-                key={`cat:${c.slug}`}
-                value={`cat:${c.slug}`}
-              >
-                <span className="min-w-0 flex-1 truncate">{c.name}</span>
-                <OptionCount count={c.count} />
-              </DropdownMenuRadioItem>
-            ))}
-            {authors.length > 0 && (
-              <DropdownMenuLabel className="text-muted-foreground/70">
-                Author
-              </DropdownMenuLabel>
-            )}
-            {authors.map((a) => (
-              <DropdownMenuRadioItem
-                key={`author:${a.email}`}
-                value={`author:${a.email}`}
-              >
-                <span className="min-w-0 flex-1 truncate">{a.name}</span>
-                <OptionCount count={a.count} />
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {hasFilter && (
-        <FilterClearButton label="Clear filter" onClick={clearFilter} />
-      )}
-
-      <div className="ml-auto shrink-0">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <FilterChipTrigger
-              icon={SwitchVertical01}
-              active
-              value={POST_SORT_SHORT[sort]}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              value={sort}
-              onValueChange={(v) => onSortChange(v as PostSort)}
-            >
-              {(Object.keys(POST_SORT_LABELS) as PostSort[]).map((value) => (
-                <DropdownMenuRadioItem key={value} value={value}>
-                  {POST_SORT_LABELS[value]}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  );
-}
-
-/** Small "×" that clears an active filter chip. */
-function FilterClearButton({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
-    >
-      <X size={12} />
-    </button>
-  );
-}
-
-/** Tooltip-wrapped "select all" checkbox shared by the filter bar + toolbar. */
-function SelectAllControl({
-  checked,
-  disabled,
-  onToggle,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          className="flex shrink-0 items-center px-1.5"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Checkbox
-            checked={checked}
-            disabled={disabled}
-            onCheckedChange={() => onToggle()}
-            aria-label={checked ? "Deselect all posts" : "Select all posts"}
-          />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        {checked ? "Deselect all" : "Select all"}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function PostSelectionToolbar({
-  count,
-  allSelected,
-  onToggleSelectAll,
-  onDelete,
-  onExit,
-}: {
-  count: number;
-  allSelected: boolean;
-  onToggleSelectAll: () => void;
-  onDelete: () => void;
-  onExit: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-0.5 border-b bg-accent/40 px-2 py-1.5">
-      <SelectAllControl checked={allSelected} onToggle={onToggleSelectAll} />
-      <span className="text-xs font-medium tabular-nums">{count} selected</span>
-      <div className="ml-auto flex items-center gap-0.5">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-destructive hover:text-destructive"
-              disabled={count === 0}
-              onClick={onDelete}
-              aria-label="Delete selected posts"
-            >
-              <Trash01 size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Delete selected</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={onExit}
-              aria-label="Exit selection"
-            >
-              <X size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Exit selection</TooltipContent>
-        </Tooltip>
-      </div>
-    </div>
-  );
-}
-
-export function ItemRow({
-  icon: Icon,
-  logoUrl,
-  title,
-  subtitle,
-  active,
-  accent,
-  variantCount,
-  trailing,
-  selectable,
-  selectionActive,
-  selected,
-  onToggleSelect,
-  onClick,
-  menu,
-}: {
-  icon: React.ComponentType<{
-    size?: number;
-    className?: string;
-    style?: React.CSSProperties;
-  }>;
-  logoUrl?: string;
-  title: string;
-  subtitle: string;
-  active: boolean;
-  /** "global" tints the row purple to mark a saved/global section. */
-  accent?: "global";
-  variantCount?: number;
-  trailing?: React.ReactNode;
-  selectable?: boolean;
-  /** In selection mode the checkbox is always shown (not just on hover). */
-  selectionActive?: boolean;
-  selected?: boolean;
-  onToggleSelect?: () => void;
-  onClick: () => void;
-  menu?: React.ReactNode;
-}) {
-  const isGlobal = accent === "global";
-  const rowIcon =
-    variantCount && variantCount > 1 ? (
-      <span className="flex size-8 shrink-0 items-center justify-center">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Icon
-              size={16}
-              className="shrink-0"
-              style={{ color: VARIANT_GREEN }}
-            />
-          </TooltipTrigger>
-          <TooltipContent side="right">{variantCount} variants</TooltipContent>
-        </Tooltip>
-      </span>
-    ) : logoUrl ? (
-      <img
-        src={logoUrl}
-        alt=""
-        className="size-8 shrink-0 rounded-lg object-cover bg-muted"
-      />
-    ) : (
-      <span
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-lg",
-          isGlobal ? "bg-global-section/15" : "bg-muted",
-        )}
-      >
-        <Icon
-          size={16}
-          className={cn(
-            "shrink-0",
-            !isGlobal &&
-              (active ? "text-accent-foreground" : "text-muted-foreground"),
-          )}
-          style={isGlobal ? { color: GLOBAL_SECTION_ICON_COLOR } : undefined}
-        />
-      </span>
-    );
-
-  return (
-    <div
-      className={cn(
-        "group relative flex min-w-0 items-center rounded-md transition-colors",
-        active
-          ? isGlobal
-            ? "bg-global-section/15 text-global-section-fg dark:text-global-section-fg-dark"
-            : "bg-accent text-accent-foreground"
-          : isGlobal
-            ? "hover:bg-global-section/10"
-            : "hover:bg-muted",
-      )}
-    >
-      {selectable && (
-        <span
-          className={cn(
-            "flex shrink-0 items-center pl-2.5 transition-opacity",
-            selected || selectionActive
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
-          )}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Checkbox
-            checked={selected}
-            onCheckedChange={() => onToggleSelect?.()}
-            aria-label={`Select ${title}`}
-          />
-        </span>
-      )}
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-left cursor-pointer"
-      >
-        {rowIcon}
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{title}</span>
-          <span
-            className={cn(
-              "block truncate text-xs",
-              active ? "text-accent-foreground/70" : "text-muted-foreground",
-            )}
-          >
-            {subtitle}
-          </span>
-        </span>
-        {trailing}
-      </button>
-      {menu && (
-        <div
-          className={cn(
-            "pr-1 opacity-0 transition-opacity group-hover:opacity-100",
-            active && "opacity-100",
-          )}
-        >
-          {menu}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ItemActions({
-  onDuplicate,
-  onRename,
-  onAddVariant,
-  onEditSeo,
-  onViewJson,
-  onDelete,
-}: {
-  onDuplicate: () => void;
-  onRename?: () => void;
-  onAddVariant?: () => void;
-  onEditSeo?: () => void;
-  onViewJson?: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          aria-label="More actions"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground cursor-pointer"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <DotsHorizontal size={14} />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        {onRename && (
-          <DropdownMenuItem onClick={onRename}>
-            <Edit01 size={14} />
-            Rename
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem onClick={onDuplicate}>
-          <Copy01 size={14} />
-          Duplicate
-        </DropdownMenuItem>
-        {onAddVariant && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={onAddVariant}
-              className="cursor-pointer"
-              style={{ color: VARIANT_GREEN }}
-            >
-              <Flag01 size={14} style={{ color: VARIANT_GREEN }} />
-              Add variant
-            </DropdownMenuItem>
-          </>
-        )}
-        {(onEditSeo || onViewJson) && (
-          <>
-            <DropdownMenuSeparator />
-            {onEditSeo && (
-              <DropdownMenuItem onClick={onEditSeo}>
-                <CreditCardSearch size={14} />
-                Edit SEO
-              </DropdownMenuItem>
-            )}
-            {onViewJson && (
-              <DropdownMenuItem onClick={onViewJson}>
-                <Code01 size={14} />
-                View JSON
-              </DropdownMenuItem>
-            )}
-          </>
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={onDelete}
-          className="text-destructive focus:text-destructive"
-        >
-          <Trash01 size={14} />
-          Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function ListEmpty({
-  hasItems,
-  emptyLabel,
-  emptyHint,
-}: {
-  hasItems: boolean;
-  emptyLabel: string;
-  emptyHint: string;
-}) {
-  return (
-    <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-      {hasItems ? (
-        "No results match your search."
-      ) : (
-        <>
-          <div>{emptyLabel}</div>
-          <div className="mt-1 text-muted-foreground/80">{emptyHint}</div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/**
- * Renders the SandboxStateCard variant that matches the current
- * sandbox state. Mirrors Preview's switch so Content shows the same
- * "Starting your sandbox" / "Sandbox is paused" cards. The daemon's
- * HTTP proxy serves every other "not live" case as auto-reloading
- * HTML through the iframe, so Content only needs these two overlays.
- */
-function SandboxStateRenderer({
-  state,
-  claimPhase,
-  lifecycle,
-  onStart,
-  connectionsHref,
-}: {
-  state:
-    | { kind: "starting" }
-    | { kind: "suspended" }
-    | { kind: "errored"; error: SandboxStartError };
-  claimPhase: ReturnType<typeof useSandboxEvents>["phase"];
-  lifecycle: ReturnType<typeof useSandboxEvents>["lifecycle"];
-  onStart: () => void;
-  connectionsHref?: string;
-}) {
-  switch (state.kind) {
-    case "starting":
-      return (
-        <SandboxStateCard
-          kind="starting"
-          progress={derivePhaseProgress({ claimPhase, lifecycle })}
-          claimPhase={claimPhase}
-        />
-      );
-    case "suspended":
-      return <SandboxStateCard kind="suspended" onResume={onStart} />;
-    case "errored":
-      return (
-        <SandboxStateCard
-          kind="errored"
-          error={state.error}
-          onRetry={onStart}
-          connectionsHref={connectionsHref}
-        />
-      );
-  }
-}
-
-export function EmptyMessage({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon?: React.ComponentType<{ size?: number; className?: string }>;
-  title: string;
-  description?: string;
-}) {
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
-      {Icon && <Icon size={24} className="text-muted-foreground/60" />}
-      <div>{title}</div>
-      {description && (
-        <div className="text-xs text-muted-foreground/80 max-w-sm">
-          {description}
-        </div>
-      )}
     </div>
   );
 }

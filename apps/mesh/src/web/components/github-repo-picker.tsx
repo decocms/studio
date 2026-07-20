@@ -4,7 +4,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Suspense, useDeferredValue, useState } from "react";
@@ -40,10 +39,6 @@ import {
 import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
-import {
-  STOREFRONT_GITHUB_AUTOMATIONS,
-  setupStorefrontGithubAutomations,
-} from "@/tools/virtual/storefront-github-automations";
 import { fetchGithubInstallations } from "@/web/lib/github-installations";
 import { getOrgGithubConnections } from "@/shared/github-repo-scope";
 import { provisionRepoScopedGithubConnection } from "@/web/lib/provision-repo-scoped-github-connection";
@@ -75,19 +70,17 @@ export function GitHubRepoPicker({
   open,
   onOpenChange,
   title,
-  hideAutoRespondCheckbox = false,
   onImportComplete,
   mode = "agent",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title?: string;
-  hideAutoRespondCheckbox?: boolean;
   onImportComplete?: (payload: GitHubImportPayload) => void;
   /**
    * "agent" (default): pick a repo → provision a repo-scoped connection + a new
    * agent bound to it. "connection": provision an org-shared repo connection
-   * only (available to every agent), no agent, no automations.
+   * only (available to every agent), no agent.
    */
   mode?: "agent" | "connection";
 }) {
@@ -147,9 +140,6 @@ export function GitHubRepoPicker({
               onComplete={() => onOpenChange(false)}
               selectedInstallation={selectedInstallation}
               onSelectInstallation={setSelectedInstallation}
-              hideAutoRespondCheckbox={
-                hideAutoRespondCheckbox || mode === "connection"
-              }
               onImportComplete={onImportComplete}
               mode={mode}
             />
@@ -165,7 +155,6 @@ function PickerContent({
   onComplete,
   selectedInstallation,
   onSelectInstallation,
-  hideAutoRespondCheckbox,
   onImportComplete,
   mode = "agent",
 }: {
@@ -173,7 +162,6 @@ function PickerContent({
   onComplete: () => void;
   selectedInstallation: GitHubInstallation | null;
   onSelectInstallation: (inst: GitHubInstallation | null) => void;
-  hideAutoRespondCheckbox?: boolean;
   onImportComplete?: (payload: GitHubImportPayload) => void;
   mode?: "agent" | "connection";
 }) {
@@ -182,25 +170,6 @@ function PickerContent({
   const navigateToAgent = useNavigateToAgent();
   const [selectedConnection, setSelectedConnection] =
     useState<ConnectionEntity | null>(null);
-  const [autoRespondEnabled, setAutoRespondEnabled] = useState(true);
-  const [selectedAutomationKeys, setSelectedAutomationKeys] = useState<
-    Set<string>
-  >(
-    () =>
-      new Set(
-        STOREFRONT_GITHUB_AUTOMATIONS.filter((s) => s.defaultEnabled).map(
-          (s) => s.key,
-        ),
-      ),
-  );
-  const defaultEnabledKeys = STOREFRONT_GITHUB_AUTOMATIONS.filter(
-    (s) => s.defaultEnabled,
-  ).map((s) => s.key);
-  const effectiveSelectedKeys = hideAutoRespondCheckbox
-    ? new Set(defaultEnabledKeys)
-    : autoRespondEnabled
-      ? selectedAutomationKeys
-      : new Set<string>();
 
   const allGithubConnections = useConnections({ slug: "mcp-github" });
   const orgGithubConnections = getOrgGithubConnections(allGithubConnections);
@@ -280,32 +249,6 @@ function PickerContent({
       .catch((err) => {
         console.error("GitHub instructions fetch failed:", err);
       });
-  };
-
-  const setupGithubAutomations = async ({
-    virtualMcpId,
-    repo,
-    connectionId,
-    selectedKeys,
-  }: {
-    virtualMcpId: string;
-    repo: Repo;
-    connectionId: string;
-    selectedKeys: Set<string>;
-  }) => {
-    const { total, failed } = await setupStorefrontGithubAutomations({
-      githubCallTool: (req) => githubClient.callTool(req),
-      selfCallTool: (req) => selfClient.callTool(req),
-      virtualMcpId,
-      repo,
-      connectionId,
-      selectedKeys,
-    });
-    if (failed > 0) {
-      toast.warning(
-        `Set up ${total - failed}/${total} GitHub automations. Add the rest from the automations view.`,
-      );
-    }
   };
 
   const importMutation = useMutation({
@@ -395,21 +338,6 @@ function PickerContent({
           throw new Error("Failed to create the imported agent");
         }
         createdAgentId = virtualMcpId;
-
-        // 5. Repoint automations at the per-agent child connection.
-        if (effectiveSelectedKeys.size > 0) {
-          await setupGithubAutomations({
-            virtualMcpId,
-            repo,
-            connectionId: childConnectionId,
-            selectedKeys: effectiveSelectedKeys,
-          }).catch((err) => {
-            console.error("Failed to set up GitHub automations:", err);
-            toast.warning(
-              "Imported repo, but failed to set up GitHub automations. You can add triggers manually from the automations view.",
-            );
-          });
-        }
 
         return {
           virtualMcpId,
@@ -567,11 +495,6 @@ function PickerContent({
       installation={selectedInstallation}
       onSelectRepo={(repo) => importMutation.mutate(repo)}
       isSaving={importMutation.isPending}
-      autoRespondEnabled={autoRespondEnabled}
-      onAutoRespondChange={setAutoRespondEnabled}
-      selectedAutomationKeys={selectedAutomationKeys}
-      onAutomationKeysChange={setSelectedAutomationKeys}
-      hideAutoRespondCheckbox={hideAutoRespondCheckbox}
     />
   );
 }
@@ -754,11 +677,6 @@ function RepoBrowser({
   installation,
   onSelectRepo,
   isSaving,
-  autoRespondEnabled,
-  onAutoRespondChange,
-  selectedAutomationKeys,
-  onAutomationKeysChange,
-  hideAutoRespondCheckbox,
 }: {
   connectionId: string;
   orgId: string;
@@ -766,11 +684,6 @@ function RepoBrowser({
   installation: GitHubInstallation;
   onSelectRepo: (repo: Repo) => void;
   isSaving: boolean;
-  autoRespondEnabled: boolean;
-  onAutoRespondChange: (value: boolean) => void;
-  selectedAutomationKeys: Set<string>;
-  onAutomationKeysChange: (next: Set<string>) => void;
-  hideAutoRespondCheckbox?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 300);
@@ -813,45 +726,6 @@ function RepoBrowser({
           />
         </Suspense>
       </div>
-
-      {!hideAutoRespondCheckbox && (
-        <div className="border-t border-border shrink-0">
-          <label className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none">
-            <Checkbox
-              checked={autoRespondEnabled}
-              onCheckedChange={(checked) =>
-                onAutoRespondChange(checked === true)
-              }
-            />
-            <span className="text-xs text-foreground">
-              Set up GitHub automations for this repo
-            </span>
-          </label>
-          {autoRespondEnabled && (
-            <div className="px-4 pb-3 pl-9 flex flex-col gap-1.5">
-              {STOREFRONT_GITHUB_AUTOMATIONS.map((spec) => (
-                <label
-                  key={spec.key}
-                  className="flex items-center gap-2 cursor-pointer select-none"
-                >
-                  <Checkbox
-                    checked={selectedAutomationKeys.has(spec.key)}
-                    onCheckedChange={(checked) => {
-                      const next = new Set(selectedAutomationKeys);
-                      if (checked === true) next.add(spec.key);
-                      else next.delete(spec.key);
-                      onAutomationKeysChange(next);
-                    }}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {spec.label}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

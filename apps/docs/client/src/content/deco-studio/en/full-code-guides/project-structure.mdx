@@ -34,7 +34,7 @@ import Callout from "../../../../components/ui/Callout.astro";
 ├── biome.json
 ├── vite.config.ts              # Vite + React Compiler + singlefile
 ├── components.json             # shadcn/ui config
-├── app.json                    # Deco mesh configuration
+├── app.json                    # Deco platform configuration
 └── .mcp.json                   # Local MCP server config
 ```
 
@@ -172,7 +172,7 @@ Each tool's UI lives in its own folder. The component uses `useMcpState<TInput, 
 }
 ```
 
-- **`scopeName`** + **`name`** — unique identifier for your app in the deco mesh
+- **`scopeName`** + **`name`** — unique identifier for your app in the deco platform
 - **`friendlyName`** — display name shown to users
 - **`connection.url`** — your deployed MCP endpoint
 - **`configSchema`** — JSON Schema defining configuration options shown to installers

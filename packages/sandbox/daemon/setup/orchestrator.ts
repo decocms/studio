@@ -14,6 +14,7 @@ import {
 import type { Broadcaster } from "../events/broadcast";
 import type { DaemonStatus } from "../events/types";
 import type { BranchStatusMonitor } from "../git/branch-status";
+import { ensureGitExclude } from "../git-exclude";
 import { gitSync } from "../git/git-sync";
 import { spawnCheckoutBranch } from "../git/checkout-branch";
 import { syncOriginRemote } from "../git/sync-origin-remote";
@@ -529,7 +530,7 @@ export class SetupOrchestrator {
 
   /**
    * Fill missing application fields (packageManager, runtime, port) from
-   * `.decocms/daemon.json` then from lockfile autodetect. Mesh-supplied
+   * `.decocms/daemon.json` then from lockfile autodetect. Studio-supplied
    * config always wins; this only patches gaps.
    *
    * Goes through `store.applyInternal` (not `apply`) so a fresh
@@ -636,6 +637,14 @@ export class SetupOrchestrator {
           `\r\n[orchestrator] warning: could not install protected-branch hook: ${(e as Error).message}\r\n`,
         );
       }
+      // Exclude the org-fs mount at boot, before any sync can run. The mount /
+      // its `repoDir/org` symlink is daemon-managed, never repo source —
+      // ensureRepoOrgLink also excludes it, but only lazily at dispatch once
+      // mounts are up, so a shutdown sync that races that leaves org-fs files
+      // (org/…) staged onto the user's branch. info/exclude is local-only and
+      // never affects already-tracked files, so a repo that genuinely tracks
+      // org/ is unharmed.
+      await ensureGitExclude(config.repoDir, "/org");
     }
     const branch = config.git?.repository?.branch;
     if (branch && !isSyntheticBranch(branch)) {

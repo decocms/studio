@@ -43,8 +43,19 @@ export type PathToken =
   | { type: "text"; text: string }
   | { type: "param"; name: string };
 
+/**
+ * Expand optional literal segments `{x}?` to their inner literal, treated as
+ * always present (e.g. `/{granado/}?*` → `/granado/*`, `/bf{/70-off}?` →
+ * `/bf/70-off`). Deco/TanStack route templates use this for optional path
+ * segments; the preview always renders the fuller form so the URL resolves.
+ */
+function expandOptionalSegments(path: string): string {
+  return path.replace(/\{([^{}]*)\}\?/g, "$1");
+}
+
 /** Split a path template into static text and `:param`/`*` tokens, in order. */
 export function splitPathTemplate(path: string): PathToken[] {
+  path = expandOptionalSegments(path);
   const tokens: PathToken[] = [];
   let last = 0;
   for (const match of path.matchAll(PATH_PARAM_RE)) {
@@ -65,18 +76,21 @@ export function fillPathTemplate(
   path: string,
   values: Record<string, string>,
 ): string {
-  return path.replace(PATH_PARAM_RE, (token, name?: string) => {
-    const value = values[name ?? "*"]?.trim();
-    if (!value) return token;
-    if (name !== undefined) return encodeURIComponent(value);
-    // The `*` catch-all may span multiple segments (e.g. `category/shoes`):
-    // keep `/` separators, encode each segment, drop empty ones (leading or
-    // doubled slashes in the typed value).
-    const filled = value
-      .split("/")
-      .filter(Boolean)
-      .map(encodeURIComponent)
-      .join("/");
-    return filled || token;
-  });
+  return expandOptionalSegments(path).replace(
+    PATH_PARAM_RE,
+    (token, name?: string) => {
+      const value = values[name ?? "*"]?.trim();
+      if (!value) return token;
+      if (name !== undefined) return encodeURIComponent(value);
+      // The `*` catch-all may span multiple segments (e.g. `category/shoes`):
+      // keep `/` separators, encode each segment, drop empty ones (leading or
+      // doubled slashes in the typed value).
+      const filled = value
+        .split("/")
+        .filter(Boolean)
+        .map(encodeURIComponent)
+        .join("/");
+      return filled || token;
+    },
+  );
 }

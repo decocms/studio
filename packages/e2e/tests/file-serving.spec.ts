@@ -1,13 +1,13 @@
 /**
  * End-to-end coverage for the stable file-serving route
- * (`GET /api/:org/files/*`), which proxies object bytes through mesh instead
+ * (`GET /api/:org/files/*`), which proxies object bytes through studio instead
  * of 302-redirecting to a presigned S3 URL.
  *
  * The route has two byte-delivery paths and this spec exercises both depending
  * on how the running app is configured (see e2e.yml):
- *   - **dev (no S3):** DevObjectStorage hands back a `data:` URL → mesh decodes
+ *   - **dev (no S3):** DevObjectStorage hands back a `data:` URL → studio decodes
  *     it and serves the bytes inline.
- *   - **S3 (CI MinIO):** mesh presigns a GET internally, fetches it, and streams
+ *   - **S3 (CI MinIO):** studio presigns a GET internally, fetches it, and streams
  *     the body back — the signed URL / storage origin never reach the client.
  *
  * Bytes-back, content-type, CSP and auth assertions run in BOTH backends so the
@@ -111,7 +111,7 @@ test.describe("File serving (/api/:org/files/*)", () => {
     });
     expect(res.status()).toBe(200);
     expect(res.headers()["content-type"]).toContain("text/html");
-    // Now that HTML is served from mesh's own origin (not the storage origin
+    // Now that HTML is served from studio's own origin (not the storage origin
     // after a redirect), it must run with an opaque origin so its scripts
     // can't make credentialed same-origin calls.
     expect(res.headers()["content-security-policy"]).toContain("sandbox");

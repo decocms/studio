@@ -142,6 +142,40 @@ describe("resolveCandidate", () => {
   it("returns null when nothing matches", () => {
     expect(resolveCandidate(conns, "shopify", "deco/shopify")).toBeNull();
   });
+  it("skips repo-scoped github children, preferring the org-level connection", () => {
+    const github = [
+      {
+        id: "c_repo_child",
+        app_id: "deco/mcp-github",
+        status: "active",
+        updated_at: "2026-03-01",
+        metadata: {
+          repoScope: { installationId: 1, owner: "deco", repo: "site" },
+        },
+      },
+      {
+        id: "c_org",
+        app_id: "deco/mcp-github",
+        status: "active",
+        updated_at: "2026-02-01",
+      },
+    ];
+    expect(resolveCandidate(github, "github", "deco/mcp-github")).toBe("c_org");
+  });
+  it("returns null when the only github match is repo-scoped", () => {
+    const github = [
+      {
+        id: "c_repo_child",
+        app_id: "deco/mcp-github",
+        status: "active",
+        updated_at: "2026-03-01",
+        metadata: {
+          repoScope: { installationId: 1, owner: "deco", repo: "site" },
+        },
+      },
+    ];
+    expect(resolveCandidate(github, "github", "deco/mcp-github")).toBeNull();
+  });
 });
 
 describe("unwrapToolResult", () => {
@@ -386,6 +420,13 @@ describe("matchGscSite", () => {
   });
   it("returns null when sites is empty", () => {
     expect(matchGscSite("example.com", [])).toBeNull();
+  });
+  it("matches a www sc-domain site against a non-www https site (www stripping must apply to both formats)", () => {
+    const site = matchGscSite("sc-domain:www.example.com", [
+      { siteUrl: "https://example.com/" },
+      { siteUrl: "https://other.com/" },
+    ]);
+    expect(site).toBe("https://example.com/");
   });
   it("falls back to the raw string instead of throwing on an unparseable siteUrl", () => {
     const site = matchGscSite("not a valid url", [

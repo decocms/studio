@@ -2,10 +2,9 @@
  * Org Shell Layout
  *
  * Shared parent for `/$org/` (home) and `/$org/$taskId` (chat). Owns the
- * full-width toolbar header, the sidebar row beneath it, and
- * ChatPrefsProvider.
+ * toolbar header, the sidebar row, and ChatPrefsProvider.
  *
- * Shell shape:
+ * Shell shape (default):
  *   SidebarProvider
  *   └── app-shell-root (flex-col, h-dvh)
  *       ├── Toolbar.Header           — full-width, fixed left zone
@@ -13,6 +12,11 @@
  *           ├── StudioSidebar (desktop only)
  *           ├── SidebarResizeHandle (desktop only)
  *           └── SidebarInset         — routed content
+ *
+ * On desktop the sidebar owns the full height and the toolbar header lives in
+ * the right column so it only spans above the panels — the org selector +
+ * collapse toggle live in the sidebar's own header instead of the top bar.
+ *
  *   + Sheet for mobile sidebar (rendered alongside, portal-based)
  */
 
@@ -21,16 +25,18 @@ import {
   SidebarInset,
   SidebarLayout,
   SidebarProvider,
+  useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { Outlet } from "@tanstack/react-router";
+import { Outlet, useSearch } from "@tanstack/react-router";
+import { CommerceConnectModal } from "@/web/routes/commerce-onboarding/commerce-connect-modal";
 import { SidebarResizeHandle } from "@/web/components/sidebar/sidebar-resize-handle";
 import { useSidebarResize } from "@/web/hooks/use-sidebar-resize";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
 import { ChatPrefsProvider } from "@/web/components/chat/context";
 import { ThreadManagerProvider } from "@/web/components/chat/store/hooks";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
-import { ShellBreadcrumb } from "@/web/components/header/shell-breadcrumb";
+import { AgentSwitcherCrumb } from "@/web/components/header/shell-breadcrumb";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import {
   MobileSidebarSheet,
@@ -38,8 +44,17 @@ import {
 } from "@/web/layouts/shell-controls";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
+
+function CollapsedAgentCrumb() {
+  const { state } = useSidebar();
+  const reportsOnly = useReportsOnly();
+  // No agent switcher in the collapsed top bar for commerce (reports-only) orgs.
+  if (state !== "collapsed" || reportsOnly) return null;
+  return <AgentSwitcherCrumb />;
+}
 
 function RouteFallback() {
   return <ShellRouteLoading />;
@@ -47,11 +62,90 @@ function RouteFallback() {
 
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
+  // Commerce (reports-only) orgs keep the full shell but with a curated top bar:
+  // no agent switcher crumb (see CollapsedAgentCrumb + the mobile header). The
+  // heavier curation (no Customize / Automations / Settings) lives in the home
+  // board and the tab bar, keyed off the same flag.
+  const reportsOnly = useReportsOnly();
+  // Commerce onboarding hands off here: after site setup it lands on the org
+  // home thread with `?connect=1`, which mounts the blocking connections modal
+  // over the (blurred) org home until at least one data source is connected.
+  const { connect, siteUrl: connectSiteUrl } = useSearch({ strict: false }) as {
+    connect?: string;
+    siteUrl?: string;
+  };
+  // Scoped by the `?connect=1` param, which ONLY the commerce onboarding
+  // hand-off ever sets — a regular org (e.g. the deco org) never navigates with
+  // it, so it can't be locked. We intentionally do NOT also gate on
+  // `reports_only`: that flag collapses the org UI, which would leave nothing
+  // but a blank surface behind the modal instead of the org home.
+  const showConnectModal = connect === "1";
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
     SIDEBAR_OPEN_STORAGE_KEY,
     false,
   );
   const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
+
+  // On desktop the header lives in the right column above the panels only (not
+  // spanning the sidebar).
+  const headerInRightColumn = !isMobile;
+  const desktopHeader = (
+    <Toolbar.Header>
+      <Toolbar.LeftColumn>
+        <CollapsedAgentCrumb />
+        <Toolbar.TogglesSlot />
+      </Toolbar.LeftColumn>
+      <Toolbar.CenterSlot />
+      <Toolbar.RightColumn>
+        <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
+          <Toolbar.TabsSlot />
+        </div>
+        <Toolbar.RightSlot />
+      </Toolbar.RightColumn>
+    </Toolbar.Header>
+  );
+
+  // Single flex row. Like the desktop collapsed topbar, only the *agent* shows
+  // here (it flexes and truncates) — the org switcher lives in the sidebar
+  // sheet, reached via the hamburger. The linked-desktop indicator, toggles and
+  // view select stay shrink-0. The Center / Right portal targets ride along at
+  // the end (usually empty on mobile) so nothing spills onto a second row.
+  const mobileHeader = (
+    <Toolbar.Header className="grid-cols-1 px-1">
+      <div className="flex w-full min-w-0 items-center gap-1">
+        <SidebarTriggerButton />
+        {/* No agent switcher for commerce (reports-only) orgs. */}
+        {!reportsOnly && (
+          <div className="flex min-w-0 flex-1 items-center">
+            <AgentSwitcherCrumb />
+          </div>
+        )}
+        <LinkedDesktopIndicator />
+        <Toolbar.TogglesSlot />
+        <Toolbar.TabsSlot className="shrink-0" />
+        <Toolbar.CenterSlot />
+        <Toolbar.RightSlot />
+      </div>
+    </Toolbar.Header>
+  );
+
+  const inset = (
+    <SidebarInset
+      className="flex flex-col min-h-0"
+      style={{
+        background: "transparent",
+        containerType: "inline-size",
+      }}
+    >
+      <div className="flex flex-col h-full min-h-0">
+        <div className="relative flex-1 min-h-0 flex flex-row">
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
+        </div>
+      </div>
+    </SidebarInset>
+  );
 
   return (
     <ThreadManagerProvider>
@@ -59,43 +153,21 @@ export default function OrgShellLayout() {
         <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <ChatPrefsProvider>
             <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
-              {isMobile ? (
-                <Toolbar.Header className="grid-cols-1 px-1 pr-1">
-                  <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto] items-center gap-2">
-                    <SidebarTriggerButton />
-                    <ShellBreadcrumb />
-                    <LinkedDesktopIndicator />
-                    <div aria-hidden className="min-w-0" />
-                    <Toolbar.TogglesSlot />
-                    <Toolbar.TabsSlot className="min-w-0 justify-self-end" />
-                  </div>
-                  <Toolbar.CenterSlot />
-                  <Toolbar.RightSlot />
-                </Toolbar.Header>
-              ) : (
-                <Toolbar.Header>
-                  <Toolbar.LeftColumn>
-                    <ShellBreadcrumb />
-                    {/* Chat toggle sits on the left — it controls the left
-                        chat panel; the main-panel view tabs stay on the right. */}
-                    <Toolbar.TogglesSlot />
-                  </Toolbar.LeftColumn>
-                  <Toolbar.CenterSlot />
-                  <Toolbar.RightColumn>
-                    <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
-                      <Toolbar.TabsSlot />
-                    </div>
-                    <Toolbar.RightSlot />
-                  </Toolbar.RightColumn>
-                </Toolbar.Header>
-              )}
+              {/* Header on top: mobile always, desktop unless the sidebar owns
+                  the full height. */}
+              {!headerInRightColumn &&
+                (isMobile ? mobileHeader : desktopHeader)}
               <SidebarLayout
                 ref={wrapperRef}
                 className="flex-1 bg-sidebar relative min-h-0"
                 style={
                   {
                     "--sidebar-width": `${width}px`,
-                    "--sidebar-width-icon": "3.5rem",
+                    // 3.125rem → collapsed-rail buttons are 34px (calc(3.125rem -
+                    // 1rem)), matching the expanded toolbar's 34px icon buttons so
+                    // the sidebar toggle + new-task don't jump size between
+                    // open/collapsed.
+                    "--sidebar-width-icon": "3.125rem",
                   } as Record<string, string>
                 }
               >
@@ -108,21 +180,14 @@ export default function OrgShellLayout() {
                     />
                   </>
                 )}
-                <SidebarInset
-                  className="flex flex-col"
-                  style={{
-                    background: "transparent",
-                    containerType: "inline-size",
-                  }}
-                >
-                  <div className="flex flex-col h-full min-h-0">
-                    <div className="relative flex-1 min-h-0 flex flex-row">
-                      <Suspense fallback={<RouteFallback />}>
-                        <Outlet />
-                      </Suspense>
-                    </div>
+                {headerInRightColumn ? (
+                  <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full">
+                    {desktopHeader}
+                    {inset}
                   </div>
-                </SidebarInset>
+                ) : (
+                  inset
+                )}
               </SidebarLayout>
               {isMobile && (
                 <MobileSidebarSheet
@@ -137,6 +202,9 @@ export default function OrgShellLayout() {
                     </div>
                   )}
                 />
+              )}
+              {showConnectModal && (
+                <CommerceConnectModal siteUrl={connectSiteUrl} />
               )}
             </div>
           </ChatPrefsProvider>

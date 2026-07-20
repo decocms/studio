@@ -33,12 +33,17 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   enable_tool: { readOnly: true, destructive: false },
   todo_write: { readOnly: false, destructive: false },
   update_interests: { readOnly: false, destructive: false },
+  load_repo: { readOnly: false, destructive: true },
+  search_threads: { readOnly: true, destructive: false },
+  get_thread: { readOnly: true, destructive: false },
+  list_thread_messages: { readOnly: true, destructive: false },
 };
 import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
 import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
+import { createLoadRepoTool } from "./load-repo";
 import { createSubtaskTool, SubtaskInputSchema } from "./subtask";
 import { userAskTool } from "@decocms/harness/decopilot/built-in-tools/user-ask";
 import { todoWriteTool } from "@decocms/harness/decopilot/built-in-tools/todo-write";
@@ -57,6 +62,7 @@ import {
 import { createScrapeUrlTool } from "@decocms/harness/decopilot/built-in-tools/scrape-url";
 import { createInspectPageTool } from "@decocms/harness/decopilot/built-in-tools/inspect-page";
 import { buildPortableBuiltInTools } from "@decocms/harness/decopilot/built-in-tools/portable-built-ins";
+import { createThreadTools } from "./thread-tools";
 import { BROWSERLESS_BASE_URL } from "@decocms/harness/decopilot/built-in-tools/constants";
 import type { ModelsConfig } from "@decocms/harness/types";
 import type { MeshProvider } from "@/ai-providers/types";
@@ -78,6 +84,14 @@ export type VmContext = {
    * thread isn't deducible from the sandbox identity alone.
    */
   threadId: string;
+  /**
+   * When true, the sandbox fs layer mints a virtual-MCP endpoint and fires
+   * POST /_sandbox/tools/sync after provisioning so the daemon materializes
+   * the tool catalog + endpoint file under `<repo>/.deco/tools/` — hosted
+   * harnesses never send a /dispatch envelope, so this is the cloud-path
+   * counterpart of the daemon's onDispatchMcp hook.
+   */
+  syncTools?: boolean;
 };
 
 export interface BuiltinToolParams {
@@ -202,6 +216,9 @@ async function buildAllTools(
       userId,
     });
   }
+  // Thread search built-ins — always available so the Super Agent can recall
+  // past org conversations regardless of the passthrough MCP allowlist.
+  Object.assign(tools, createThreadTools(ctx));
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses
@@ -223,6 +240,7 @@ async function buildAllTools(
       virtualMcpId: vmContext.virtualMcpId,
       branch: vmContext.branch,
       userId: vmContext.userId,
+      syncTools: vmContext.syncTools,
     });
     vmTools = createVmTools({
       fs,
@@ -235,6 +253,18 @@ async function buildAllTools(
       virtualMcpId: vmContext.virtualMcpId,
     }) as ToolSet;
     Object.assign(tools, vmTools);
+    // Repo switcher — dynamic description lists the org's imported repos; calling
+    // it binds the repo to the thread, eagerly clones its sandbox, and opens the
+    // Preview. Omitted when the org has no imported repos (nothing to switch).
+    const loadRepo = await createLoadRepoTool({
+      ctx,
+      orgId: organization.id,
+      virtualMcpId: vmContext.virtualMcpId,
+      userId: vmContext.userId,
+      threadId: vmContext.threadId,
+      writer,
+    });
+    if (loadRepo) tools.load_repo = loadRepo;
   }
   // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code).
   if (provider) {
@@ -253,6 +283,9 @@ async function buildAllTools(
           // Pass the caller's own agent id so the model can clone itself by
           // omitting agent_id (heavy discovery → fresh, isolated context).
           self: { id: agentId },
+          // The current thread id (taskId) — lets a subagent-opened PR advance
+          // the linked task board card via the thread link (In Review).
+          currentThreadId: taskId,
           needsApproval:
             toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false,
           // Roll the child run's usage into the parent's accumulator (Task 17).
@@ -516,19 +549,18 @@ export interface BuildBuiltInToolsOptions {
 export function buildBuiltInTools(
   opts: BuildBuiltInToolsOptions,
 ): Record<string, unknown> {
-  const {
-    ctx,
-    writer,
-    toolOutputMap,
-    subtaskParams,
-    planMode: _planMode,
-  } = opts;
+  const { ctx, writer, toolOutputMap, subtaskParams, planMode } = opts;
   const tools: Record<string, unknown> = {
     user_ask: userAskTool,
     todo_write: todoWriteTool,
-    propose_plan: proposePlanTool,
     read_tool_output: createReadToolOutputTool({ toolOutputMap }),
   };
+  // Mirrors getBuiltInTools' plan-mode gate: propose_plan's UX ("approve →
+  // new thread seeded with this plan") only makes sense in Plan Mode —
+  // outside it the model must not be able to trigger that flow.
+  if (planMode) {
+    tools.propose_plan = proposePlanTool;
+  }
   // subtask requires a provider — skip when provider is null.
   if (subtaskParams.provider) {
     tools.subtask = createSubtaskTool(writer, subtaskParams, ctx);

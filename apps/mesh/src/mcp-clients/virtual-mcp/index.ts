@@ -34,7 +34,7 @@ function isSelfReferencingVirtual(
  * Create a virtual MCP client from a connection entity
  *
  * @param connection - Connection entity with VIRTUAL type
- * @param ctx - Mesh context for creating proxies
+ * @param ctx - Studio context for creating proxies
  * @param superUser - Whether to use superuser mode for background processes
  * @returns Client instance with aggregated tools, resources, and prompts
  */
@@ -61,7 +61,7 @@ export async function createVirtualClient(
  * Uses inclusion mode: only connections specified in virtualMcp.connections are included
  *
  * @param virtualMcp - Virtual MCP entity from database
- * @param ctx - Mesh context for creating proxies
+ * @param ctx - Studio context for creating proxies
  * @param _strategy - Kept for backward compatibility, always uses passthrough
  * @param superUser - Whether to use superuser mode for background processes
  * @returns Client instance with aggregated tools, resources, and prompts
@@ -174,6 +174,43 @@ export async function createVirtualClientFrom(
   };
 
   return new PassthroughClient(clientOptions, ctx);
+}
+
+/**
+ * Create the tool gateway for an ephemeral subagent backed by one concrete
+ * MCP connection. No Virtual MCP row is created or required: the connection
+ * itself supplies the subagent's complete MCP scope for this run.
+ */
+export function createConnectionClient(
+  connection: ConnectionEntity,
+  ctx: StudioContext,
+  superUser = false,
+  options?: { listTimeoutMs?: number },
+): PassthroughClient {
+  if (connection.connection_type === "VIRTUAL") {
+    throw new Error(
+      `Concrete MCP connection required, received Virtual MCP: ${connection.id}`,
+    );
+  }
+
+  const description = connection.description?.trim();
+  const instructions = [
+    `You are an ephemeral specialist for the "${connection.title}" MCP connection (ID: ${connection.id}).`,
+    description || undefined,
+  ]
+    .filter((part): part is string => part !== undefined)
+    .join("\n\n");
+
+  return new PassthroughClient(
+    {
+      connections: [connection],
+      superUser,
+      mcpListCache: getMcpListCache() ?? undefined,
+      listTimeoutMs: options?.listTimeoutMs,
+      instructions,
+    },
+    ctx,
+  );
 }
 
 // Re-export types and utilities

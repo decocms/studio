@@ -1,0 +1,229 @@
+// CredentialVault requires a valid 32-byte base64 ENCRYPTION_KEY.
+// Must be set before any import triggers getSettings(), which freezes
+// the settings singleton on first access.
+process.env.ENCRYPTION_KEY ??= Buffer.from("0".repeat(32)).toString("base64");
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { sql } from "kysely";
+import { auth } from "../../auth";
+import type { StudioDatabase } from "../../database";
+import {
+  closeTestPgDatabase,
+  connectTestPgDatabase,
+  resetTestPgDatabase,
+  seedCommonTestPgFixtures,
+} from "../../database/test-db-pg";
+import { getSettings, setGlobalSettings } from "../../settings";
+import { OrganizationSettingsStorage } from "../../storage/organization-settings";
+import { createApp } from "../app";
+
+if (!getSettings().encryptionKey) {
+  setGlobalSettings({
+    ...getSettings(),
+    encryptionKey: process.env.ENCRYPTION_KEY!,
+  });
+}
+
+const IMPORT_URL = (org: string) =>
+  `http://test/api/${org}/internal/task-board/import`;
+
+const post = (org: string, token: string | null, body: unknown) =>
+  new Request(IMPORT_URL(org), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+const BODY = {
+  items: [
+    { title: "Adicionar H1 na home", priority: "high" },
+    { title: "Liberar o GPTBot no WAF", description: "403 no WAF." },
+  ],
+  source: { url: "shop.com" },
+};
+
+describe("Task Board Import Route", () => {
+  let database: StudioDatabase;
+  let app: Awaited<ReturnType<typeof createApp>>;
+  const prevServiceToken = process.env.VAULT_SERVICE_TOKEN;
+
+  beforeEach(async () => {
+    process.env.VAULT_SERVICE_TOKEN = "svc-secret";
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
+
+    vi.spyOn(auth.api, "getMcpSession").mockResolvedValue(null);
+    vi.spyOn(auth.api, "verifyApiKey").mockResolvedValue({
+      valid: false,
+      error: { message: "invalid api key" },
+      key: null,
+    } as never);
+
+    // An org whose id ≠ slug, so the tests prove the service caller can
+    // resolve by ID (the worker holds the org id, never the slug).
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES ('org_board', 'Board Org', 'board-org', ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+    await new OrganizationSettingsStorage(database.db).upsert("org_board", {
+      task_board_enabled: true,
+    });
+    // user_1 (seeded) is org_board's owner — the delegation principal.
+    await sql`
+      INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
+      VALUES ('mem_board_owner', 'user_1', 'org_board', 'owner', ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+
+    app = await createApp({ database, disableNats: true });
+  });
+
+  afterEach(async () => {
+    if (prevServiceToken === undefined) {
+      delete process.env.VAULT_SERVICE_TOKEN;
+    } else {
+      process.env.VAULT_SERVICE_TOKEN = prevServiceToken;
+    }
+    vi.restoreAllMocks();
+    if (app) {
+      await app.shutdown();
+    }
+    if (database) {
+      await closeTestPgDatabase(database);
+    }
+  });
+
+  it("rejects requests without the service token", async () => {
+    const noToken = await app.fetch(post("org_board", null, BODY));
+    expect(noToken.status).toBe(401);
+
+    const wrongToken = await app.fetch(post("org_board", "not-it", BODY));
+    expect(wrongToken.status).toBe(401);
+  });
+
+  it("auto-enables the task board for an org that never touched it", async () => {
+    // org_1 (seeded) has no settings row → board disabled by default. The
+    // report push is the org's introduction to the board, so the import flips
+    // the setting on and writes.
+    const res = await app.fetch(post("org_1", "svc-secret", BODY));
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ created: 2, delegated: 0 });
+
+    const settings = await database.db
+      .selectFrom("organization_settings")
+      .select(["task_board_enabled"])
+      .where("organizationId", "=", "org_1")
+      .executeTakeFirst();
+    expect(settings?.task_board_enabled).toBe(true);
+  });
+
+  it("rejects an invalid body", async () => {
+    const res = await app.fetch(post("org_board", "svc-secret", { items: [] }));
+    expect(res.status).toBe(400);
+  });
+
+  it("does not auto-enable the task board when the body is rejected", async () => {
+    // org_1 (seeded) has no settings row → board disabled by default. A 400
+    // must leave it untouched — flipping it on with nothing written would
+    // silently opt the org into a feature it never asked for.
+    const res = await app.fetch(post("org_1", "svc-secret", { items: [] }));
+    expect(res.status).toBe(400);
+
+    const settings = await database.db
+      .selectFrom("organization_settings")
+      .select(["task_board_enabled"])
+      .where("organizationId", "=", "org_1")
+      .executeTakeFirst();
+    expect(settings?.task_board_enabled).not.toBe(true);
+  });
+
+  it("creates triage items as the system principal, resolving the org by id", async () => {
+    const res = await app.fetch(post("org_board", "svc-secret", BODY));
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ created: 2, delegated: 0 });
+
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", "org_board")
+      .orderBy("title")
+      .execute();
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.title).sort()).toEqual([
+      "Adicionar H1 na home",
+      "Liberar o GPTBot no WAF",
+    ]);
+    for (const row of rows) {
+      expect(row.status).toBe("triage");
+      expect(row.created_by).toBe("system");
+      expect(row.updated_by).toBe("system");
+    }
+    const byTitle = new Map(rows.map((r) => [r.title, r]));
+    expect(byTitle.get("Adicionar H1 na home")?.priority).toBe("high");
+    expect(byTitle.get("Liberar o GPTBot no WAF")?.priority).toBe("medium");
+    expect(byTitle.get("Liberar o GPTBot no WAF")?.description).toBe(
+      "403 no WAF.",
+    );
+  });
+
+  it("delegates a super-agent item: To Do, owner as the run principal", async () => {
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          { title: "Adicionar sinônimos à busca", assigneeId: "super-agent" },
+          { title: "Tarefa comum" },
+        ],
+      }),
+    );
+    expect(res.status).toBe(200);
+    // The enqueue itself is best-effort (no model configured in tests) — the
+    // delegation must still land on the row.
+    await expect(res.json()).resolves.toEqual({ created: 2, delegated: 1 });
+
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", "org_board")
+      .execute();
+    const byTitle = new Map(rows.map((r) => [r.title, r]));
+    const delegated = byTitle.get("Adicionar sinônimos à busca");
+    expect(delegated?.status).toBe("todo");
+    expect(delegated?.assignee_id).toBe("super-agent");
+    expect(delegated?.assigned_by).toBe("user_1"); // the org owner
+    expect(delegated?.created_by).toBe("system");
+    const plain = byTitle.get("Tarefa comum");
+    expect(plain?.status).toBe("triage");
+    expect(plain?.assigned_by).toBeNull();
+  });
+
+  it("accepts a real-member assignee and rejects a non-member", async () => {
+    const ok = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Pra pessoa", assigneeId: "user_1" }],
+      }),
+    );
+    expect(ok.status).toBe(200);
+    const row = await database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", "org_board")
+      .where("title", "=", "Pra pessoa")
+      .executeTakeFirst();
+    expect(row?.assignee_id).toBe("user_1");
+    expect(row?.assigned_by).toBe("system");
+    expect(row?.status).toBe("triage");
+
+    const bad = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "t", assigneeId: "user_stranger" }],
+      }),
+    );
+    expect(bad.status).toBe(400);
+  });
+});

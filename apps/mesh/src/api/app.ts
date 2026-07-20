@@ -1,5 +1,5 @@
 /**
- * MCP Mesh API Server
+ * Studio API Server
  *
  * Main Hono application with:
  * - Better Auth integration
@@ -49,6 +49,12 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
+import desktopSessionBridgeRoutes from "./routes/desktop-session-bridge";
+import {
+  ADMIN_API_PREFIX,
+  createAdminRoutes,
+  fenceRawAdminSurface,
+} from "./routes/admin";
 import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
 import { createDownstreamTokenRoutes } from "./routes/downstream-token";
@@ -87,6 +93,8 @@ import openaiCompatRoutes from "./routes/openai-compat";
 import { createProxyRoutes } from "./routes/proxy";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import publicConfigRoutes from "./routes/public-config";
+import { createReportPagesRoutes } from "./routes/report-pages";
+import reportsRoutes from "./routes/reports";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
@@ -143,6 +151,8 @@ import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
+import { TaskBoardStorage } from "../storage/task-board";
+import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
@@ -168,7 +178,9 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
+import { hostedRunStats } from "../dispatch-queue/hosted-run-concurrency";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
+import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import {
@@ -248,7 +260,7 @@ let currentDecopilotCleanup: (() => void | Promise<void>) | null = null;
  * Get project_locator from the Deco Store registry connection.
  * Returns the locator string or null if not found/configured.
  *
- * @param ctx - The mesh context
+ * @param ctx - The studio context
  * @param organizationId - The organization ID to search for the registry connection
  */
 async function getDecoStoreProjectLocator(
@@ -324,10 +336,10 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
   const endpoint = pathParts[pathParts.length - 1];
 
   // Get or create context
-  let ctx = c.get("meshContext");
+  let ctx = c.get("studioContext");
   if (!ctx) {
     ctx = await ContextFactory.create(c.req.raw);
-    c.set("meshContext", ctx);
+    c.set("studioContext", ctx);
   }
 
   const orgScope = c.req.param("org") ? ctx.organization?.id : undefined;
@@ -688,15 +700,16 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
  * Clients use `COLLECTION_THREADS_LIST` for their initial state.
  */
 export const watchHandler: MiddlewareHandler<Env> = async (c) => {
-  const meshContext = c.var.meshContext;
+  const studioContext = c.var.studioContext;
 
   // Require authentication (user session or API key)
-  const userId = meshContext.auth.user?.id ?? meshContext.auth.apiKey?.userId;
+  const userId =
+    studioContext.auth.user?.id ?? studioContext.auth.apiKey?.userId;
   if (!userId) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const orgId = meshContext.organization?.id;
+  const orgId = studioContext.organization?.id;
   if (!orgId) {
     return c.json({ error: "organization id missing" }, 400);
   }
@@ -825,6 +838,8 @@ export interface CreateAppOptions {
   database?: StudioDatabase;
   /** Skip NATS wiring and use local-only no-op stubs (for testing) */
   disableNats?: boolean;
+  /** Built client directory used to serve report pages with dynamic metadata. */
+  clientDir?: string;
 }
 
 /**
@@ -1237,10 +1252,28 @@ export async function createApp(options: CreateAppOptions = {}) {
     return c.json({ queue_length: queued.length });
   });
 
+  // Hosted-run gate backlog on THIS pod, for a KEDA metrics-api trigger:
+  // `{ "pending": <n> }`. Distinct from /dbos-queue-depth (ENQUEUED count) —
+  // gate-parked runs are already DEQUEUED (PENDING) and pinned to this pod, so
+  // queue depth can't see them (see hosted-run-concurrency.ts). Per-pod, so the
+  // trigger must aggregate across worker pods.
+  app.get(SYSTEM_PATHS.HOSTED_RUN_PENDING, (c) => {
+    const { active, pending, max } = hostedRunStats();
+    return c.json({ pending, active, max });
+  });
+
   // ============================================================================
   // Public Configuration (no auth required)
   // ============================================================================
   app.route("/api/config", publicConfigRoutes);
+
+  // Report shell stays public so authentication can happen inline, while all
+  // report data and scan operations behind this proxy require a user session.
+  app.route("/api/_reports", reportsRoutes);
+
+  // Auth-gated report page + domain-derived metadata. API-only/test apps safely
+  // return 404 for the HTML shell when no built client directory is supplied.
+  app.route("/report", createReportPagesRoutes(options.clientDir));
 
   // ============================================================================
   // Better Auth Routes
@@ -1248,6 +1281,17 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom", authRoutes);
+  // POST /api/auth/desktop/session-from-oauth — mints a real Better Auth
+  // session from a valid MCP OAuth bearer, for the desktop app's
+  // system-browser (Google/GitHub/SAML) login path. Mounted BEFORE the
+  // `/api/auth/*` catchall (`auth.handler`) so it never reaches it. See
+  // `./routes/desktop-session-bridge.ts`'s module doc for why this exists.
+  app.route("/api/auth/desktop", desktopSessionBridgeRoutes);
+
+  // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
+  // external callers — see fenceRawAdminSurface's doc in routes/admin.ts for
+  // why this must exist whenever deploymentAdminUserIds does.
+  app.all("/api/auth/admin/*", fenceRawAdminSurface);
 
   // All Better Auth routes (OAuth, session management, etc.)
   app.all("/api/auth/*", async (c) => {
@@ -1395,7 +1439,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // runtime now — automations invoke its shared `runDispatchSteps` body.
   setAutomationRuntime({
     storage: automationsStorage,
-    meshContextFactory: automationContextFactory,
+    studioContextFactory: automationContextFactory,
   });
 
   // The per-thread gate now STARTS the run (hosted: fire-and-forget enqueue of
@@ -1404,7 +1448,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // so it no longer needs a `dispatchRunFn` or a status-poll cap. Wiring happens
   // before `DBOS.launch()` for the same reasons as automations.
   setThreadGateRuntime({
-    meshContextFactory: automationContextFactory,
+    studioContextFactory: automationContextFactory,
     deps: {
       runRegistry,
       cancelBroadcast,
@@ -1426,7 +1470,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // consume step, which writes terminal status for both hosted and desktop runs.
   setHostedHarnessRuntime({
     dispatchRunFn: dispatchRunAndWait,
-    meshContextFactory: automationContextFactory,
+    studioContextFactory: automationContextFactory,
     deps: {
       runRegistry,
       cancelBroadcast,
@@ -1441,6 +1485,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // database. Wired before `DBOS.launch()` for the same reason as
   // automations/thread-gate: it only sets a module-level pointer.
   const projectorThreadStorage = new SqlThreadStorage(database.db);
+  const projectorTaskBoard = new TaskBoardStorage(database.db);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
     getJetStreamManager: async () => {
@@ -1482,6 +1527,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       // without this the chip stays "running" until a refetch. `flipped` is
       // null on a no-op (already terminal) → no double-publish.
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
+      if (flipped)
+        await advanceTasksToReviewOnThreadFinish(
+          projectorTaskBoard,
+          runId,
+          orgId,
+        );
       return flipped;
     },
     markRunRequiresAction: async (runId, orgId) => {
@@ -1500,7 +1551,24 @@ export async function createApp(options: CreateAppOptions = {}) {
         kind,
       );
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
+      if (flipped)
+        await advanceTasksToReviewOnThreadFinish(
+          projectorTaskBoard,
+          runId,
+          orgId,
+        );
       return flipped;
+    },
+    clearSynthesizedError: async (runId, fenceToken) => {
+      // Replace-with-empty = delete the synthesized error message a prior
+      // interrupted attempt persisted for this fence (deterministic id).
+      await projectorThreadStorage
+        .messageParts()
+        .replaceMessageParts(
+          runId,
+          synthesizedErrorMessageId(runId, fenceToken),
+          [],
+        );
     },
     persistTitle: (runId, orgId, title) =>
       projectorThreadStorage.update(runId, orgId, { title }),
@@ -1561,11 +1629,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     },
   });
 
-  // Background-tool jobs reuse the same mesh-context factory to rebuild the
+  // Background-tool jobs reuse the same studio-context factory to rebuild the
   // org context + re-resolve models on whatever pod runs the job. Wired before
   // DBOS.launch() like the others (module-level pointer, no DBOS API calls).
   setBackgroundToolRuntime({
-    meshContextFactory: automationContextFactory,
+    studioContextFactory: automationContextFactory,
     systemDatabaseUrl: withSslmode(
       getSettings().databaseUrl,
       getSettings().databasePgSsl,
@@ -1613,7 +1681,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Orphan/crash recovery is owned by the external DBOS Conductor now: it
   // recovers a dead executor's PENDING workflows (incl. the thread-gate
-  // workflows backing decopilot runs) onto a live executor. Mesh no longer
+  // workflows backing decopilot runs) onto a live executor. Studio no longer
   // runs its own boot sweep or pod-death recovery. The reaper (RunRegistry)
   // still force-fails runs with no progress as a zombie backstop.
 
@@ -1662,9 +1730,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       },
     };
 
-    const meshCtx = await ContextFactory.create(c.req.raw, { timings });
-    meshCtx.automationRunner = automationRunner;
-    c.set("meshContext", meshCtx);
+    const studioCtx = await ContextFactory.create(c.req.raw, { timings });
+    studioCtx.automationRunner = automationRunner;
+    c.set("studioContext", studioCtx);
 
     try {
       await next();
@@ -1672,14 +1740,14 @@ export async function createApp(options: CreateAppOptions = {}) {
       // Fire-and-forget: await pending SWR revalidations with a timeout.
       // Keeps ctx (and its client pool) alive via closure while revalidations complete.
       // No pool disposal — pool was never disposed and SSE/streaming connections depend on it.
-      const revalidations = meshCtx.pendingRevalidations;
+      const revalidations = studioCtx.pendingRevalidations;
       if (revalidations.length > 0) {
         const REVALIDATION_TIMEOUT_MS = 30_000;
         void Promise.race([
           Promise.allSettled(revalidations),
           sleep(REVALIDATION_TIMEOUT_MS),
         ]).catch((err) =>
-          console.error("[mesh] revalidation cleanup error:", err),
+          console.error("[studio] revalidation cleanup error:", err),
         );
       }
     }
@@ -1709,12 +1777,16 @@ export async function createApp(options: CreateAppOptions = {}) {
       path.startsWith("/api/org-sso/") ||
       path.startsWith("/api/auth/") ||
       path.startsWith("/api/tools/management") ||
-      path.startsWith("/oauth-proxy/")
+      path.startsWith("/oauth-proxy/") ||
+      // Instance-level operator surface — not governed by any single org's SSO
+      // policy. Without this, an admin whose active org enforces SSO gets 403'd
+      // off the whole dashboard, and the UI reads that as "not an admin".
+      path.startsWith(`${ADMIN_API_PREFIX}/`)
     ) {
       return next();
     }
 
-    const ctx = c.get("meshContext") as StudioContext | undefined;
+    const ctx = c.get("studioContext") as StudioContext | undefined;
     if (!ctx?.organization?.id || !ctx?.auth?.user?.id) {
       return next();
     }
@@ -1744,7 +1816,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Legacy mount at /api/org-sso with deprecation log; the new
   // /api/:org/org-sso mount is wired in a later task.
   const legacyOrgSso = new Hono<{
-    Variables: { meshContext: StudioContext };
+    Variables: { studioContext: StudioContext };
   }>();
   legacyOrgSso.use(
     "*",
@@ -1776,9 +1848,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
 
   const mcpAuth: MiddlewareHandler<Env> = async (c, next) => {
-    const meshContext = c.var.meshContext;
+    const studioContext = c.var.studioContext;
     // Require either user or API key authentication
-    if (!meshContext.auth.user?.id && !meshContext.auth.apiKey?.id) {
+    if (!studioContext.auth.user?.id && !studioContext.auth.apiKey?.id) {
       const url = new URL(c.req.url);
       return (c.res = new Response(null, {
         status: 401,
@@ -1856,7 +1928,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // GET /api/links/me — presence-read for the current user's link claim.
   // Used by the `deco link` CLI preflight and by presence checks.
   // Dual-auth: Bearer token (CLI — OAuth MCP session or a Better Auth API key)
-  // or the session cookie (browser/e2e via meshContext).
+  // or the session cookie (browser/e2e via studioContext).
   app.get("/api/links/me", async (c) => {
     try {
       const authHeader = c.req.header("authorization") ?? "";
@@ -1871,7 +1943,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           auth.api as unknown as LinkBearerAuthApi,
         );
       } else {
-        const ctx = (c.get as (key: string) => unknown)("meshContext") as
+        const ctx = (c.get as (key: string) => unknown)("studioContext") as
           | { auth?: { user?: { id?: string } } }
           | undefined;
         userSub = ctx?.auth?.user?.id ?? null;
@@ -1889,7 +1961,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       // Presence is best-effort: a failing probe / bearer-resolver / transport
       // must read as "no link" (200 null), never a 500. The bearer path
       // already degrades to null when offline; this keeps the cookie path
-      // (whose org-scoped meshContext can surface transient failures) in lock-
+      // (whose org-scoped studioContext can surface transient failures) in lock-
       // step instead of bubbling an empty-body 500 to the UI poller.
       console.error(
         "[links/me] presence probe failed; reporting offline:",
@@ -1909,7 +1981,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Legacy mount at /api/* with deprecation log; the new /api/:org/* mount
   // is wired in a later task.
   const legacyThreadOutputsRoutes = new Hono<{
-    Variables: { meshContext: StudioContext };
+    Variables: { studioContext: StudioContext };
   }>();
   legacyThreadOutputsRoutes.use(
     "*",
@@ -1921,11 +1993,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // OpenAI-compatible LLM API routes
   app.route("/api", openaiCompatRoutes);
 
-  // Trigger callback endpoint (external MCPs → Mesh automations).
+  // Trigger callback endpoint (external MCPs → Studio automations).
   // Legacy mount at /api/trigger-callback with deprecation log; the new
   // /api/:org/trigger-callback mount is wired in a later task.
   const legacyTriggerCallback = new Hono<{
-    Variables: { meshContext: StudioContext };
+    Variables: { studioContext: StudioContext };
   }>();
   legacyTriggerCallback.use(
     "*",
@@ -1951,7 +2023,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Legacy mount at /api/* with deprecation log; the new /api/:org/* mount
   // is wired in a later task.
   const legacyDownstreamTokenRoutes = new Hono<{
-    Variables: { meshContext: StudioContext };
+    Variables: { studioContext: StudioContext };
   }>();
   legacyDownstreamTokenRoutes.use(
     "*",
@@ -1960,7 +2032,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   legacyDownstreamTokenRoutes.route("/", createDownstreamTokenRoutes());
   app.route("/api", legacyDownstreamTokenRoutes);
 
-  // Deco.cx sites list (requires meshContext / auth)
+  // Deco.cx sites list (requires studioContext / auth)
   // /profile is user-scoped (no org), stays mounted permanently — no
   // deprecation log.
   app.route("/api/deco-sites", createDecoSitesUserRoutes());
@@ -1970,7 +2042,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // at /api/deco-sites with a deprecation log; the new /api/:org/deco-sites
   // mount is wired in a later task.
   const legacyDecoSitesOrg = new Hono<{
-    Variables: { meshContext: StudioContext };
+    Variables: { studioContext: StudioContext };
   }>();
   legacyDecoSitesOrg.use(
     "*",
@@ -1986,7 +2058,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Legacy mount at /api/vm-events with deprecation log; the new
   // /api/:org/vm-events mount is wired in a later task.
   const legacyVmEvents = new Hono<{
-    Variables: { meshContext: StudioContext };
+    Variables: { studioContext: StudioContext };
   }>();
   legacyVmEvents.use(
     "*",
@@ -2026,6 +2098,16 @@ export async function createApp(options: CreateAppOptions = {}) {
   // resolve their own org and bypass `resolveOrgFromPath`).
   app.post("/api/:org/registry/publish-request", publishRequestHandler);
   app.all("/api/:org/registry/*", publicMCPHandler);
+
+  // Deployment admin dashboard. Static segment — must register before the
+  // `:org` catch-all below, same trick as the registry mounts above. That
+  // registration order is the real no-collision guarantee: ORGANIZATION_CREATE
+  // rejects slugs outside `^[a-z0-9-]+$`, but the raw better-auth
+  // organization/create endpoint enforces no charset, so an `_admin`-slugged
+  // org CAN exist — mounting first means such an org gets shadowed, never the
+  // admin surface. The `_` prefix just keeps well-behaved slugs from ever
+  // wanting the name (a bare `admin` is a legal, live slug).
+  app.route(ADMIN_API_PREFIX, createAdminRoutes());
 
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup

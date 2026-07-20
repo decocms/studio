@@ -26,7 +26,7 @@ interface NoAiProviderEmptyStateProps {
   /**
    * Called right after the user picks a local runtime (Claude Code / Codex).
    * The component has already persisted the pick; this lets the host advance
-   * the UI — the chat panel uses it to open the agent's Overview, mirroring
+   * the UI — the Chat side-panel view uses it to open the agent's Overview, mirroring
    * "new chat with this agent". Omitted by the model-selector popover, where
    * picking a runtime should not navigate.
    */
@@ -86,7 +86,7 @@ export function NoAiProviderEmptyState({
   const link = useCurrentLink();
   // Optional: this empty state also renders inside the standalone model
   // selector (settings / automations), which mounts outside ChatContextProvider.
-  // The local-runtime buttons only appear in the chat panel anyway, where the
+  // The local-runtime buttons only appear in the Chat side-panel view, where the
   // provider is present.
   const chatPrefs = useOptionalChatPrefs();
   const [pendingProvider, setPendingProvider] =
@@ -123,7 +123,7 @@ export function NoAiProviderEmptyState({
     }
   }
   // Local runtime buttons write the pending agent option into chat prefs, so
-  // they only make sense where a chat context exists (the chat panel). Outside
+  // they only make sense where a chat context exists (the Chat side-panel view). Outside
   // it (standalone model selector), fall back to the connect-a-provider grid.
   const hasLocalOptions = localOptions.length > 0 && chatPrefs !== null;
 

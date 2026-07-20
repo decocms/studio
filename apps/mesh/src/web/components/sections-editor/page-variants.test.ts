@@ -5,12 +5,56 @@ import {
   countSavedMatcherBlockReferences,
   getPageVariantCount,
   getPageVariantSectionsAt,
+  isSectionMultivariateWrapperValue,
   parsePageVariants,
   unwrapMultivariateArrayValue,
   variantHasRule,
   wrapMultivariateArrayValue,
 } from "./page-variants";
-import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
+import {
+  PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+  SECTION_MULTIVARIATE_RESOLVE_TYPE,
+} from "./section-types";
+
+describe("isSectionMultivariateWrapperValue", () => {
+  it("matches a section-level multivariate flag wrapper", () => {
+    expect(
+      isSectionMultivariateWrapperValue({
+        __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+        variants: [
+          { value: { __resolveType: "site/sections/Header.tsx" }, rule: {} },
+          { value: { __resolveType: "site/sections/Header.tsx" }, rule: {} },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects the page-level multivariate flag wrapper", () => {
+    expect(
+      isSectionMultivariateWrapperValue({
+        __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+        variants: [{ value: [], rule: {} }],
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects plain arrays, primitives, and non-wrapper objects", () => {
+    expect(isSectionMultivariateWrapperValue([])).toBe(false);
+    expect(isSectionMultivariateWrapperValue(null)).toBe(false);
+    expect(isSectionMultivariateWrapperValue("x")).toBe(false);
+    expect(
+      isSectionMultivariateWrapperValue({
+        __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+      }),
+    ).toBe(false);
+    expect(
+      isSectionMultivariateWrapperValue({
+        __resolveType: "site/sections/Header.tsx",
+        variants: [],
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("page-variants", () => {
   it("unwraps multivariate global section arrays", () => {

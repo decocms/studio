@@ -7,7 +7,7 @@ import {
   useMonitorResults,
   useMonitorRun,
 } from "@/web/hooks/registry/use-monitor";
-import { collapseLatestToolResults } from "@/web/lib/registry/monitor-utils";
+import { summarizeToolResults } from "@/web/lib/registry/monitor-utils";
 import type {
   MonitorResult,
   MonitorResultStatus,
@@ -17,15 +17,14 @@ import type {
 function statusColor(status: MonitorResultStatus) {
   switch (status) {
     case "passed":
-      return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
+      return "bg-success/10 text-success border-success/20";
     case "failed":
-      return "bg-red-500/10 text-red-600 border-red-500/20";
     case "error":
-      return "bg-orange-500/10 text-orange-600 border-orange-500/20";
+      return "bg-destructive/10 text-destructive border-destructive/20";
     case "needs_auth":
-      return "bg-amber-500/10 text-amber-600 border-amber-500/20";
+      return "bg-warning/10 text-warning border-warning/20";
     case "skipped":
-      return "bg-zinc-500/10 text-zinc-500 border-zinc-500/20";
+      return "bg-muted text-muted-foreground border-border";
     default:
       return "";
   }
@@ -60,7 +59,7 @@ function ToolResultRow({ tool }: { tool: MonitorToolResult }) {
         <span
           className={cn(
             "text-xs font-bold",
-            tool.success ? "text-emerald-600" : "text-red-600",
+            tool.success ? "text-success" : "text-destructive",
           )}
         >
           {tool.success ? "✓" : "✗"}
@@ -79,8 +78,10 @@ function ToolResultRow({ tool }: { tool: MonitorToolResult }) {
         <div className="border-t border-border px-3 py-2 space-y-1.5 bg-muted/20">
           {tool.error && (
             <div className="space-y-0.5">
-              <p className="text-[10px] font-semibold text-red-600">Error</p>
-              <pre className="text-[11px] bg-red-500/5 border border-red-500/10 rounded px-2 py-1.5 whitespace-pre-wrap break-all text-red-700">
+              <p className="text-[10px] font-semibold text-destructive">
+                Error
+              </p>
+              <pre className="text-[11px] bg-destructive/5 border border-destructive/10 rounded px-2 py-1.5 whitespace-pre-wrap break-all text-destructive">
                 {tool.error}
               </pre>
             </div>
@@ -121,16 +122,14 @@ function ToolResultRow({ tool }: { tool: MonitorToolResult }) {
 function ResultCard({ result }: { result: MonitorResult }) {
   const [expanded, setExpanded] = useState(result.status !== "passed");
 
-  const latestToolResults = collapseLatestToolResults(result.tool_results);
-  const isHealthCheck = latestToolResults.every(
-    (t) => t.outputPreview === "health_check: not called",
-  );
-  const realToolTests = latestToolResults.filter(
-    (t) => t.outputPreview !== "health_check: not called",
-  );
-  const passedTools = realToolTests.filter((t) => t.success).length;
-  const failedTools = realToolTests.filter((t) => !t.success).length;
-  const hasTestedTools = realToolTests.length > 0;
+  const {
+    latestToolResults,
+    realToolTests,
+    isHealthCheck,
+    passedTools,
+    failedTools,
+    hasToolTests: hasTestedTools,
+  } = summarizeToolResults(result.tool_results);
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
@@ -189,7 +188,7 @@ function ResultCard({ result }: { result: MonitorResult }) {
               <p
                 className={cn(
                   "text-xs font-medium",
-                  result.connection_ok ? "text-emerald-600" : "text-red-600",
+                  result.connection_ok ? "text-success" : "text-destructive",
                 )}
               >
                 {result.connection_ok ? "Connected" : "Failed"}
@@ -200,7 +199,7 @@ function ResultCard({ result }: { result: MonitorResult }) {
               <p
                 className={cn(
                   "text-xs font-medium",
-                  result.tools_listed ? "text-emerald-600" : "text-red-600",
+                  result.tools_listed ? "text-success" : "text-destructive",
                 )}
               >
                 {result.tools_listed
@@ -223,10 +222,10 @@ function ResultCard({ result }: { result: MonitorResult }) {
           {/* Error message */}
           {result.error_message && (
             <div className="space-y-1">
-              <p className="text-[10px] font-semibold text-red-600">
+              <p className="text-[10px] font-semibold text-destructive">
                 Error Message
               </p>
-              <pre className="text-xs bg-red-500/5 border border-red-500/10 rounded px-3 py-2 whitespace-pre-wrap break-all text-red-700">
+              <pre className="text-xs bg-destructive/5 border border-destructive/10 rounded px-3 py-2 whitespace-pre-wrap break-all text-destructive">
                 {result.error_message}
               </pre>
             </div>
@@ -390,14 +389,14 @@ export function MonitorRunDetail({ runId }: { runId?: string }) {
             <p className="text-lg font-bold">{run.tested_items}</p>
           </Card>
           <Card className="p-2.5 space-y-0.5">
-            <p className="text-[10px] text-emerald-600">Passed</p>
-            <p className="text-lg font-bold text-emerald-600">
-              {run.passed_items}
-            </p>
+            <p className="text-[10px] text-success">Passed</p>
+            <p className="text-lg font-bold text-success">{run.passed_items}</p>
           </Card>
           <Card className="p-2.5 space-y-0.5">
-            <p className="text-[10px] text-red-600">Failed</p>
-            <p className="text-lg font-bold text-red-600">{run.failed_items}</p>
+            <p className="text-[10px] text-destructive">Failed</p>
+            <p className="text-lg font-bold text-destructive">
+              {run.failed_items}
+            </p>
           </Card>
           <Card className="p-2.5 space-y-0.5">
             <p className="text-[10px] text-muted-foreground">Skipped</p>

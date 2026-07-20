@@ -114,7 +114,7 @@ Decision tree:
 ## Specialized suites (don't write these casually)
 
 - **Resilience tests** — `tests/resilience/scenarios/`. Docker Compose + Toxiproxy chaos. For testing behavior under infrastructure failure (DB outage, NATS disconnect, MCP latency).
-- **Multi-pod tests** — `tests/multi-pod/scenarios/`. 3-pod Mesh cluster, shared Postgres + NATS. For testing cross-pod behavior (session rehoming, API key sharing, DBOS replay).
+- **Multi-pod tests** — `tests/multi-pod/scenarios/`. 3-pod Studio cluster, shared Postgres + NATS. For testing cross-pod behavior (session rehoming, API key sharing, DBOS replay).
 
 These are not part of the default test loop. They run on dedicated CI workflows. Only add a scenario here if the behavior cannot be expressed in a single-pod Playwright spec.
 

@@ -16,6 +16,16 @@ done
 exit 0
 `;
 
+// Branches a sandbox must never push to directly. Not every repo names its
+// default branch main/master (trunk, develop, etc.) — protect the repo's actual
+// default too, or a sandbox push would sail straight through on those repos.
+// Single source of truth for both the pre-push hook and the in-code guard in
+// publish() (the hook alone is not enough: the publish path pushes with
+// --no-verify, which skips pre-push hooks entirely).
+export function protectedBranches(repoDir: string): Set<string> {
+  return new Set(["main", "master", resolveRemoteDefaultBranch(repoDir)]);
+}
+
 // Sync fs here would block the daemon's single event loop long enough to
 // miss a health probe (CONTRIBUTING.md rule #4) — use the async variants.
 export async function installProtectedBranchHook(
@@ -26,17 +36,9 @@ export async function installProtectedBranchHook(
   await writeFile(join(hooksDir, "pre-push"), HOOK, { encoding: "utf-8" });
   await chmod(join(hooksDir, "pre-push"), 0o755);
 
-  // Not every repo names its default branch main/master (trunk, develop,
-  // etc.) — protect the repo's actual default too, or a sandbox push would
-  // sail straight through on those repos.
-  const branches = new Set([
-    "main",
-    "master",
-    resolveRemoteDefaultBranch(repoDir),
-  ]);
   await writeFile(
     join(hooksDir, "protected-branches"),
-    `${[...branches].join("\n")}\n`,
+    `${[...protectedBranches(repoDir)].join("\n")}\n`,
     { encoding: "utf-8" },
   );
 }
