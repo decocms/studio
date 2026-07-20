@@ -368,7 +368,16 @@ export function TaskBoardItemDialog({
               </DropdownMenu>
 
               <div className="flex flex-col">
-                <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
+                {/* modal: without it the parent Dialog's scroll-lock
+                    (react-remove-scroll) swallows wheel events over this
+                    portalled popover, so the member list only scrolls via
+                    keyboard/click. modal wraps the content in its own
+                    RemoveScroll that whitelists the popover. */}
+                <Popover
+                  open={assigneeOpen}
+                  onOpenChange={setAssigneeOpen}
+                  modal
+                >
                   <PopoverTrigger asChild>
                     <button
                       type="button"
