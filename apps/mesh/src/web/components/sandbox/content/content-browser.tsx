@@ -2354,7 +2354,9 @@ function ItemList({
                     key={post.key}
                     icon={File02}
                     title={post.title}
-                    subtitle={post.slug}
+                    subtitle={post.slug || "no slug"}
+                    invalid={post.missing.length > 0}
+                    invalidReason={`Missing: ${post.missing.join(", ")}`}
                     active={
                       selection?.collection === "posts" &&
                       selection.key === post.key
@@ -2738,6 +2740,8 @@ export function ItemRow({
   selectable,
   selectionActive,
   selected,
+  invalid,
+  invalidReason,
   onToggleSelect,
   onClick,
   menu,
@@ -2759,6 +2763,10 @@ export function ItemRow({
   /** In selection mode the checkbox is always shown (not just on hover). */
   selectionActive?: boolean;
   selected?: boolean;
+  /** Marks the row as incomplete — tints the title red + shows a warning. */
+  invalid?: boolean;
+  /** Tooltip on the warning icon, e.g. "Missing: Slug, Excerpt". */
+  invalidReason?: string;
   onToggleSelect?: () => void;
   onClick: () => void;
   menu?: React.ReactNode;
@@ -2840,7 +2848,14 @@ export function ItemRow({
       >
         {rowIcon}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{title}</span>
+          <span
+            className={cn(
+              "block truncate text-sm font-medium",
+              invalid && !active && "text-destructive",
+            )}
+          >
+            {title}
+          </span>
           <span
             className={cn(
               "block truncate text-xs",
@@ -2850,6 +2865,23 @@ export function ItemRow({
             {subtitle}
           </span>
         </span>
+        {invalid && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className={cn(
+                  "flex shrink-0 items-center",
+                  active ? "text-accent-foreground" : "text-destructive",
+                )}
+              >
+                <AlertCircle size={14} />
+              </span>
+            </TooltipTrigger>
+            {invalidReason && (
+              <TooltipContent side="bottom">{invalidReason}</TooltipContent>
+            )}
+          </Tooltip>
+        )}
         {trailing}
       </button>
       {menu && (
