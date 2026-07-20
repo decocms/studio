@@ -30,7 +30,7 @@ export function formatMonitorDuration(
   return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
 }
 
-export function collapseLatestToolResults(
+function collapseLatestToolResults(
   toolResults: MonitorToolResult[],
 ): MonitorToolResult[] {
   const byToolName = new Map<string, MonitorToolResult>();
