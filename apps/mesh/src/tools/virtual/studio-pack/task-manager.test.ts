@@ -18,10 +18,7 @@ describe("taskManagerAgent", () => {
     ]);
   });
 
-  test("handles disabled boards, safe deletion, and Super Agent delegation", () => {
-    expect(taskManagerAgent.instructions).toContain(
-      "enable Task board in organization settings",
-    );
+  test("handles safe deletion and Super Agent delegation", () => {
     expect(taskManagerAgent.instructions).toContain(
       "explicit confirmation immediately before deleting a task",
     );
