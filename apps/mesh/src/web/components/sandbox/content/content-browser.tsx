@@ -43,6 +43,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { useChatTask } from "@/web/components/chat/context";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
+import { usePackagePath } from "@/web/components/sections-editor/use-package-path";
 import { hasEditableAppEditorSchema } from "./app-editor-schema";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { useSaveBlock } from "@/web/components/sections-editor/use-save-block";
@@ -370,6 +371,7 @@ function ContentBrowserReady({
 }) {
   const workspace = useBlocksPreviewWorkspace();
   const fetchParams = { orgSlug, virtualMcpId, branch, previewUrl };
+  const packagePath = usePackagePath(virtualMcpId);
   const { data: decofile, isLoading: decofileLoading } = useDecofile(
     fetchParams,
     { fetchEnabled: devServerReady },
@@ -525,8 +527,8 @@ function ContentBrowserReady({
 
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
-  const saveBlogBlock = useSaveBlogBlock(fetchParams);
-  const deleteBlogBlock = useDeleteBlogBlock(fetchParams);
+  const saveBlogBlock = useSaveBlogBlock({ ...fetchParams, packagePath });
+  const deleteBlogBlock = useDeleteBlogBlock({ ...fetchParams, packagePath });
 
   // Dialog state
   const [pageDialog, setPageDialog] = useState<PageDialogState>(null);

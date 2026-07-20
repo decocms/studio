@@ -6,7 +6,6 @@
  * the rest of the Content tab reads blog blocks like any other entry.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { decoRepoPath } from "@/web/components/sections-editor/deco-repo-path";
 import { blogBlockFilePath } from "./blog-data";
@@ -15,6 +14,12 @@ interface BlogMutationParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  /**
+   * Project package path (`metadata.runtime.path`) to prefix onto the daemon
+   * write path — the daemon resolves against the repo root. Resolve via
+   * `usePackagePath` at the call site (keeps this hook free of ProjectContext).
+   */
+  packagePath?: string | null;
 }
 
 function decofileQueryKey({
@@ -63,10 +68,6 @@ async function postToSandbox(
 
 export function useSaveBlogBlock(params: BlogMutationParams) {
   const queryClient = useQueryClient();
-  // Prefix with the project's package path when it isn't at the repo root — the
-  // daemon resolves file writes against the repo root.
-  const packagePath =
-    useVirtualMCP(params.virtualMcpId)?.metadata?.runtime?.path ?? null;
 
   return useMutation({
     mutationFn: ({ blockKey, data }: { blockKey: string; data: unknown }) =>
@@ -74,7 +75,7 @@ export function useSaveBlogBlock(params: BlogMutationParams) {
         params,
         "write",
         {
-          path: decoRepoPath(packagePath, blogBlockFilePath(blockKey)),
+          path: decoRepoPath(params.packagePath, blogBlockFilePath(blockKey)),
           content: JSON.stringify(data, null, 2),
         },
         "Write failed",
@@ -103,15 +104,13 @@ export function useSaveBlogBlock(params: BlogMutationParams) {
 
 export function useDeleteBlogBlock(params: BlogMutationParams) {
   const queryClient = useQueryClient();
-  const packagePath =
-    useVirtualMCP(params.virtualMcpId)?.metadata?.runtime?.path ?? null;
 
   return useMutation({
     mutationFn: ({ blockKey }: { blockKey: string }) =>
       postToSandbox(
         params,
         "unlink",
-        { path: decoRepoPath(packagePath, blogBlockFilePath(blockKey)) },
+        { path: decoRepoPath(params.packagePath, blogBlockFilePath(blockKey)) },
         "Delete failed",
       ) as Promise<{ ok: true; existed: boolean }>,
     onMutate: async ({ blockKey }) => {
