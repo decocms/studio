@@ -51,6 +51,15 @@ describe("coerceFormValues", () => {
     ).toBeNull();
   });
 
+  test("returns null on a raw (non-string) Infinity/NaN for number field", () => {
+    // seedFormValues passes numeric toolInput values through unstringified,
+    // so an untouched field can reach coerceFormValues as a real number.
+    expect(
+      coerceFormValues({ n: Infinity }, { n: { type: "number" } }),
+    ).toBeNull();
+    expect(coerceFormValues({ n: NaN }, { n: { type: "number" } })).toBeNull();
+  });
+
   test("drops empty values", () => {
     expect(coerceFormValues({ s: "" }, { s: { type: "string" } })).toEqual({});
   });
