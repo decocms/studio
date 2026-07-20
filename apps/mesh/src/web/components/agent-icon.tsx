@@ -304,6 +304,35 @@ interface AgentAvatarProps {
   className?: string;
 }
 
+/** Colored background + centered icon — shared by all icon-rendering paths. */
+function IconAvatar({
+  Icon,
+  color,
+  size,
+  className,
+}: {
+  Icon: IconComponent;
+  color: AgentIconColor;
+  size: AgentAvatarSize;
+  className?: string;
+}) {
+  const sizeConfig = SIZES[size];
+  return (
+    <div
+      className={cn(
+        sizeConfig.container,
+        sizeConfig.radius,
+        color.bg,
+        color.text,
+        "flex items-center justify-center shrink-0 outline-none ring-0 shadow-none",
+        className,
+      )}
+    >
+      <Icon size={sizeConfig.icon} />
+    </div>
+  );
+}
+
 export function AgentAvatar({
   icon,
   name,
@@ -311,32 +340,14 @@ export function AgentAvatar({
   className,
 }: AgentAvatarProps) {
   const parsed = parseIconString(icon);
-  const sizeConfig = SIZES[size];
 
   if (parsed.type === "icon") {
     const IconComp = getIconComponent(parsed.name);
     const color = getIconColor(parsed.color);
+    const Icon = IconComp ?? getDeterministicIcon(name).IconComp;
 
     return (
-      <div
-        className={cn(
-          sizeConfig.container,
-          sizeConfig.radius,
-          color.bg,
-          color.text,
-          "flex items-center justify-center shrink-0 outline-none ring-0 shadow-none",
-          className,
-        )}
-      >
-        {IconComp ? (
-          <IconComp size={sizeConfig.icon} />
-        ) : (
-          (() => {
-            const { IconComp: Fallback } = getDeterministicIcon(name);
-            return <Fallback size={sizeConfig.icon} />;
-          })()
-        )}
-      </div>
+      <IconAvatar Icon={Icon} color={color} size={size} className={className} />
     );
   }
 
@@ -353,22 +364,15 @@ export function AgentAvatar({
   }
 
   // Fallback: deterministic color + icon
-  const { IconComp: FallbackIcon, color: fallbackColor } =
-    getDeterministicIcon(name);
+  const { IconComp, color } = getDeterministicIcon(name);
 
   return (
-    <div
-      className={cn(
-        sizeConfig.container,
-        sizeConfig.radius,
-        fallbackColor.bg,
-        fallbackColor.text,
-        "flex items-center justify-center shrink-0 outline-none ring-0 shadow-none",
-        className,
-      )}
-    >
-      <FallbackIcon size={sizeConfig.icon} />
-    </div>
+    <IconAvatar
+      Icon={IconComp}
+      color={color}
+      size={size}
+      className={className}
+    />
   );
 }
 
@@ -398,22 +402,14 @@ function AgentAvatarImage({
   const bgClass = color ? (URL_COLOR_BG[color] ?? "") : "";
 
   if (errored) {
-    const { IconComp: FallbackIcon, color: fallbackColor } =
-      getDeterministicIcon(name);
-
+    const { IconComp, color } = getDeterministicIcon(name);
     return (
-      <div
-        className={cn(
-          sizeConfig.container,
-          sizeConfig.radius,
-          fallbackColor.bg,
-          fallbackColor.text,
-          "flex items-center justify-center shrink-0 outline-none ring-0 shadow-none",
-          className,
-        )}
-      >
-        <FallbackIcon size={sizeConfig.icon} />
-      </div>
+      <IconAvatar
+        Icon={IconComp}
+        color={color}
+        size={size}
+        className={className}
+      />
     );
   }
 
