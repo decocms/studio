@@ -128,6 +128,10 @@ import { SectionsRightPane } from "./sections-right-pane";
 import { PostFilterBar, PostSelectionToolbar } from "./post-toolbar";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
+import {
+  GroupHeader,
+  groupSavedSectionsByResolveType,
+} from "./section-group-header";
 import { useBlocksPreviewWorkspace } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
 import type { BlocksTarget } from "@/web/components/sandbox/blocks/blocks-preview-workspace-state";
 
@@ -232,39 +236,6 @@ export interface AvailableSectionEntry {
   resolveType: string;
   title: string;
   description?: string;
-}
-
-interface SavedSectionGroup {
-  label: string;
-  sections: GlobalSectionEntry[];
-}
-
-/** Short label for a section's underlying component resolveType. */
-function sectionTypeLabel(resolveType: string): string {
-  return (
-    resolveType
-      .split("/")
-      .pop()
-      ?.replace(/\.tsx?$/, "") ||
-    resolveType ||
-    "Section"
-  );
-}
-
-/** Group saved sections by their underlying `resolveType`, sorted by label. */
-function groupSavedSectionsByResolveType(
-  sections: GlobalSectionEntry[],
-): SavedSectionGroup[] {
-  const byLabel = new Map<string, GlobalSectionEntry[]>();
-  for (const section of sections) {
-    const label = sectionTypeLabel(section.resolveType);
-    const bucket = byLabel.get(label);
-    if (bucket) bucket.push(section);
-    else byLabel.set(label, [section]);
-  }
-  return [...byLabel.entries()]
-    .map(([label, groupSections]) => ({ label, sections: groupSections }))
-    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 type PageDialogState = {
@@ -1515,33 +1486,6 @@ function ContentBrowserReady({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  );
-}
-
-/**
- * Right pane for the Sections collection. A saved (global) section opens the
- * full section editor; an available (raw manifest) section opens a local
- * editor that persists only when named and saved.
- */
-function GroupHeader({
-  icon: Icon,
-  label,
-  className,
-}: {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70",
-        className,
-      )}
-    >
-      <Icon size={13} className="shrink-0" />
-      {label}
     </div>
   );
 }
