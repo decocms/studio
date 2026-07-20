@@ -5,7 +5,7 @@
  * (toolbar, close) and data fetching.
  *
  * Rendering strategy by extension:
- *   - image → <img> (same-origin URL, bytes proxied by mesh; no CORS needed)
+ *   - image → <img> (same-origin URL, bytes proxied by studio; no CORS needed)
  *   - pdf   → <iframe> (browser-native viewer; NOT sandboxed — a sandbox
  *             without allow-scripts would disable Chrome's PDF plugin)
  *   - html  → <iframe sandbox="allow-scripts"> (untrusted; opaque-origin sandbox)

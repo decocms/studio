@@ -1,5 +1,5 @@
 /**
- * JWT Utility for Mesh Proxy Tokens
+ * JWT Utility for Studio Proxy Tokens
  *
  * Uses HMAC SHA-256 (HS256) for signing JWTs that can be:
  * - Decoded directly by downstream services to read payload
@@ -40,7 +40,7 @@ function getSecret(): Uint8Array {
 }
 
 /**
- * Mesh proxy token payload
+ * Studio proxy token payload
  */
 export interface MeshTokenPayload {
   /** User ID who initiated the request */
@@ -56,7 +56,7 @@ export interface MeshTokenPayload {
   metadata?: {
     /** Configuration state */
     state?: Record<string, unknown>;
-    /** Mesh instance URL */
+    /** Studio instance URL */
     meshUrl: string;
     /** Connection ID this token was issued for */
     connectionId: string;
@@ -74,7 +74,7 @@ export interface MeshTokenPayload {
 export type MeshJwtPayload = JWTPayload & MeshTokenPayload;
 
 /**
- * Issue a signed JWT with mesh token payload
+ * Issue a signed JWT with studio token payload
  *
  * @param payload - The token payload
  * @param expiresIn - Expiration time (default: 5 minutes)
@@ -94,7 +94,7 @@ export async function issueMeshToken(
 }
 
 /**
- * Verify and decode a mesh token
+ * Verify and decode a studio token
  *
  * @param token - JWT string to verify
  * @returns Decoded payload if valid, undefined if invalid
@@ -112,7 +112,7 @@ export async function verifyMeshToken(
 }
 
 /**
- * Mint a gateway-compatible Mesh JWT for the given user.
+ * Mint a gateway-compatible Studio JWT for the given user.
  *
  * Uses the same MESH_JWT_SECRET and payload shape that the AI Gateway's
  * verifyMeshJwt() expects: { iss: "mesh", sub: userId }.

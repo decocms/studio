@@ -134,7 +134,7 @@ import * as migration132taskboarditemprs from "./132-task-board-item-prs.ts";
 import * as migration133dedupeduplicatemembers from "./133-dedupe-duplicate-members.ts";
 
 /**
- * Core migrations for the Mesh application.
+ * Core migrations for the Studio application.
  *
  * These are managed by Kysely's migrator and run in alphabetical order.
  */

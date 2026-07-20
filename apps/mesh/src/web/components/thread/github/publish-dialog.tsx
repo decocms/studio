@@ -234,7 +234,7 @@ function PublishDialogBody({
       try {
         await loadGitState();
       } catch (error) {
-        // Preview can stay live via the gateway while mesh's daemon proxy
+        // Preview can stay live via the gateway while studio's daemon proxy
         // still holds a stale handle. Re-provision once, then retry — same
         // self-heal path as preview.tsx's notFound → SANDBOX_START flow.
         if (isSandboxUnreachable(error) && !reprovisionAttemptedRef.current) {

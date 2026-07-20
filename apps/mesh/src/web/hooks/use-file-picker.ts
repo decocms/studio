@@ -76,10 +76,10 @@ export interface UploadResult {
 }
 
 /**
- * Upload a file to a configured bucket via the mesh proxy endpoint. We
+ * Upload a file to a configured bucket via the studio proxy endpoint. We
  * don't presign + PUT directly from the browser because that requires
  * per-bucket CORS configuration on every customer bucket (S3, GCS, R2),
- * which is too much friction for a CMS. The proxy streams through mesh
+ * which is too much friction for a CMS. The proxy streams through studio
  * once and avoids the cross-origin problem entirely.
  *
  * The file is sent as the raw POST body (NOT multipart) so the server

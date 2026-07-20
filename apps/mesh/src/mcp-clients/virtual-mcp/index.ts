@@ -34,7 +34,7 @@ function isSelfReferencingVirtual(
  * Create a virtual MCP client from a connection entity
  *
  * @param connection - Connection entity with VIRTUAL type
- * @param ctx - Mesh context for creating proxies
+ * @param ctx - Studio context for creating proxies
  * @param superUser - Whether to use superuser mode for background processes
  * @returns Client instance with aggregated tools, resources, and prompts
  */
@@ -61,7 +61,7 @@ export async function createVirtualClient(
  * Uses inclusion mode: only connections specified in virtualMcp.connections are included
  *
  * @param virtualMcp - Virtual MCP entity from database
- * @param ctx - Mesh context for creating proxies
+ * @param ctx - Studio context for creating proxies
  * @param _strategy - Kept for backward compatibility, always uses passthrough
  * @param superUser - Whether to use superuser mode for background processes
  * @returns Client instance with aggregated tools, resources, and prompts

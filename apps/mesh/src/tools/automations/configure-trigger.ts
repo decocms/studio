@@ -3,7 +3,7 @@
  *
  * Calls TRIGGER_CONFIGURE on the target connection to enable/disable
  * an event trigger. When enabling, generates a callback token and URL
- * so the external MCP can call back to Mesh when the trigger fires.
+ * so the external MCP can call back to Studio when the trigger fires.
  */
 
 import type { StudioContext } from "@/core/studio-context";

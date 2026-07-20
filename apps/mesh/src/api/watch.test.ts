@@ -4,7 +4,7 @@
  * The handler emits only a `connected` frame on connect followed by live
  * events. Clients use `COLLECTION_THREADS_LIST` for their initial state.
  * The handler logic itself lives in `app.ts`; we mount it directly on an
- * inline Hono app so the test doesn't have to bootstrap the full mesh
+ * inline Hono app so the test doesn't have to bootstrap the full studio
  * application.
  */
 

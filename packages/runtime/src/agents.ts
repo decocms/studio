@@ -6,7 +6,7 @@ import { MCPClient } from "./mcp.ts";
  *
  * An "agent" in Studio is a Virtual MCP (a curated bundle of connections +
  * tools, optionally with instructions). `createAgent` is typed sugar over the
- * mesh self-endpoint tools COLLECTION_VIRTUAL_MCP_CREATE + AUTOMATION_CREATE +
+ * studio self-endpoint tools COLLECTION_VIRTUAL_MCP_CREATE + AUTOMATION_CREATE +
  * AUTOMATION_TRIGGER_ADD via the self-client pattern.
  *
  * Exposed to MCP authors through `configuration.onInstall`, which fires once on
@@ -108,7 +108,7 @@ interface VirtualMcpItem {
 }
 
 /**
- * Hand-rolled client for the mesh self-endpoint tools used by createAgent.
+ * Hand-rolled client for the studio self-endpoint tools used by createAgent.
  *
  * TODO: Replace with a generated client once these collection/automation tools
  * are covered by a binding. Until then, a rename of a tool or field on the
@@ -203,7 +203,7 @@ function triggerArgs(automationId: string, trigger: AutomationTrigger) {
 }
 
 /**
- * Builds the `createAgent` helper bound to a mesh self-endpoint.
+ * Builds the `createAgent` helper bound to a studio self-endpoint.
  *
  * Idempotent by title: if a Virtual MCP with the same title already exists, the
  * call is a no-op that returns the existing id. This keeps a cleared-then-

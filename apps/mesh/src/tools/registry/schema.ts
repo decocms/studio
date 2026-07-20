@@ -9,7 +9,7 @@ import { z } from "zod";
 // `server_json`/`meta_json` verbatim, and those mirror a full MCP `server.json`
 // (carrying many fields this schema does not model — `$schema`, `status`,
 // package transport details, etc.). The deco store validates output with Zod
-// (which strips unknown keys and passes), but MCP clients — e.g. the mesh proxy
+// (which strips unknown keys and passes), but MCP clients — e.g. the studio proxy
 // via `client.callTool` — re-validate the structuredContent with Ajv, which
 // enforces `additionalProperties: false` and rejects the extra fields with
 // `-32602: Structured content does not match the tool's output schema`.

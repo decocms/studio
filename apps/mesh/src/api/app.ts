@@ -1,5 +1,5 @@
 /**
- * MCP Mesh API Server
+ * Studio API Server
  *
  * Main Hono application with:
  * - Better Auth integration
@@ -259,7 +259,7 @@ let currentDecopilotCleanup: (() => void | Promise<void>) | null = null;
  * Get project_locator from the Deco Store registry connection.
  * Returns the locator string or null if not found/configured.
  *
- * @param ctx - The mesh context
+ * @param ctx - The studio context
  * @param organizationId - The organization ID to search for the registry connection
  */
 async function getDecoStoreProjectLocator(
@@ -1622,7 +1622,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     },
   });
 
-  // Background-tool jobs reuse the same mesh-context factory to rebuild the
+  // Background-tool jobs reuse the same studio-context factory to rebuild the
   // org context + re-resolve models on whatever pod runs the job. Wired before
   // DBOS.launch() like the others (module-level pointer, no DBOS API calls).
   setBackgroundToolRuntime({
@@ -1674,7 +1674,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Orphan/crash recovery is owned by the external DBOS Conductor now: it
   // recovers a dead executor's PENDING workflows (incl. the thread-gate
-  // workflows backing decopilot runs) onto a live executor. Mesh no longer
+  // workflows backing decopilot runs) onto a live executor. Studio no longer
   // runs its own boot sweep or pod-death recovery. The reaper (RunRegistry)
   // still force-fails runs with no progress as a zombie backstop.
 
@@ -1740,7 +1740,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           Promise.allSettled(revalidations),
           sleep(REVALIDATION_TIMEOUT_MS),
         ]).catch((err) =>
-          console.error("[mesh] revalidation cleanup error:", err),
+          console.error("[studio] revalidation cleanup error:", err),
         );
       }
     }
@@ -1986,7 +1986,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // OpenAI-compatible LLM API routes
   app.route("/api", openaiCompatRoutes);
 
-  // Trigger callback endpoint (external MCPs → Mesh automations).
+  // Trigger callback endpoint (external MCPs → Studio automations).
   // Legacy mount at /api/trigger-callback with deprecation log; the new
   // /api/:org/trigger-callback mount is wired in a later task.
   const legacyTriggerCallback = new Hono<{

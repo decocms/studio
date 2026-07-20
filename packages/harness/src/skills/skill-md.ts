@@ -5,7 +5,7 @@
  * so everything degrades: name falls back to the dir name (caller's job),
  * description falls back to the first body paragraph.
  *
- * Pure and zero-dependency so it is shared by the mesh server (skill
+ * Pure and zero-dependency so it is shared by the studio server (skill
  * catalog) and the web Library, with no DOM/Node coupling.
  */
 

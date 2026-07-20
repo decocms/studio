@@ -37,7 +37,7 @@ export function makeProxyHandler({ broadcaster, getDevPort }: ProxyDeps) {
     // preview origin (e.g. `<handle>.localhost:5174`) rather than the loopback
     // socket. Bun's fetch honors an explicit Host header (unlike the WHATWG
     // "forbidden header" rule), so keeping it here propagates through Vite
-    // (changeOrigin:false) to the app server — which lets mesh advertise the
+    // (changeOrigin:false) to the app server — which lets studio advertise the
     // correct OAuth protected-resource URL instead of `https://[::1]:<port>`.
     outHeaders.delete("transfer-encoding");
     outHeaders.delete("content-length");

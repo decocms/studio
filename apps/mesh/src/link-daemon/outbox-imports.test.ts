@@ -1,7 +1,7 @@
 /**
  * Guard: the durable-outbox core must stay cluster-free so the link daemon
  * bundle (`bunx decocms@latest link`, distributed to users) never drags in cluster
- * code (StudioContext, storage, API routes, @decocms/sandbox). The mesh
+ * code (StudioContext, storage, API routes, @decocms/sandbox). The studio
  * cross-tree guard (src/harnesses/cross-tree-guard.test.ts) covers only the
  * @decocms/harness package tree — NOT src/link-daemon — so this is the
  * dedicated guard for the outbox slice. The outbox may import only:
