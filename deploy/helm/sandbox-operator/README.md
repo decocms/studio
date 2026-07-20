@@ -3,7 +3,7 @@
 Pure packaging of the upstream
 [`kubernetes-sigs/agent-sandbox`](https://github.com/kubernetes-sigs/agent-sandbox)
 operator + CRDs (vendored — upstream does not publish a Helm chart as of
-v0.4.2). Installs:
+v0.4.5). Installs:
 
 - `Namespace` `agent-sandbox-system` (with PodSecurity admission labels)
 - `ServiceAccount`, `Service`, `Deployment` for the controller
@@ -11,12 +11,13 @@ v0.4.2). Installs:
 - All `CustomResourceDefinition`s the operator owns
 
 This chart **deliberately exposes no tunables**. Studio-side resources
-(`SandboxTemplate`, RBAC for the mesh runner, `NetworkPolicy`,
-`SandboxWarmPool`, preview `Gateway`/`HTTPRoute`/`Certificate`) live in the
-companion [`sandbox-env`](../sandbox-env/) chart and are installed once per
-environment alongside this one.
+(`SandboxTemplate`, RBAC for the Studio runner, sentinel Secret, optional
+`SandboxWarmPool`, preview `Gateway`/`Certificate`, and idle housekeeper) live
+in the companion [`sandbox-env`](../sandbox-env/) chart and are installed once
+per environment. Per-claim `HTTPRoute` objects are created by Studio at
+runtime, not by either chart.
 
-Pinned upstream version: **v0.4.2** (see `Chart.yaml` `appVersion`).
+Pinned upstream version: **v0.4.5** (see `Chart.yaml` `appVersion`).
 
 ## Prerequisites
 
@@ -34,7 +35,7 @@ Published as an OCI artifact at
 ```bash
 helm install sandbox-operator \
   oci://ghcr.io/decocms/studio/charts/sandbox-operator \
-  --version 0.1.0 \
+  --version 0.1.3 \
   --namespace agent-sandbox-system --create-namespace
 ```
 
@@ -54,7 +55,7 @@ spec:
   source:
     repoURL: ghcr.io/decocms/studio/charts
     chart: sandbox-operator
-    targetRevision: 0.1.0
+    targetRevision: 0.1.3
   destination:
     server: https://kubernetes.default.svc
     namespace: agent-sandbox-system
@@ -98,9 +99,9 @@ Uninstall + reinstall also works but drops existing `SandboxClaim`s.
 ## Bumping upstream version
 
 ```bash
-./vendor.sh v0.4.3               # re-fetches + re-splits, requires sha256 in KNOWN_CHECKSUMS
-# edit Chart.yaml: appVersion -> "0.4.3"
-# bump version: 0.1.0 -> 0.2.0
+./vendor.sh v0.4.6               # re-fetches + re-splits, requires sha256 in KNOWN_CHECKSUMS
+# edit Chart.yaml: appVersion -> "0.4.6"
+# bump version: 0.1.3 -> 0.1.4 (or the appropriate semver increment)
 ```
 
 Push to `main` — `release-sandbox-charts.yaml` packages and pushes the new
@@ -113,7 +114,7 @@ may need corresponding edits.
 
 ## Why not an upstream Helm chart?
 
-Upstream hasn't published one as of v0.4.2. Filing a request with prior art
+Upstream hasn't published one as of v0.4.5. Filing a request with prior art
 pointing at this chart is worthwhile — if upstream ships an official chart,
 the vendored copy goes away and this chart switches to a `dependencies:`
 entry pointing at upstream's repo.
