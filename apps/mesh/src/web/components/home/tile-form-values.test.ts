@@ -57,6 +57,18 @@ describe("coerceFormValues", () => {
       coerceFormValues({ s: "hi" }, { s: { type: "string" } }, ["s"]),
     ).toEqual({ s: "hi" });
   });
+
+  test("drops whitespace-only string values", () => {
+    expect(coerceFormValues({ s: "   " }, { s: { type: "string" } })).toEqual(
+      {},
+    );
+  });
+
+  test("returns null when a required field is only whitespace", () => {
+    expect(
+      coerceFormValues({ s: "   " }, { s: { type: "string" } }, ["s"]),
+    ).toBeNull();
+  });
 });
 
 describe("seedFormValues", () => {

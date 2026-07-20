@@ -27,7 +27,10 @@ export function coerceFormValues(
       if (Number.isNaN(parsed)) return null;
       if (type === "integer" && !Number.isInteger(parsed)) return null;
       out[key] = parsed;
-    } else if (raw !== "" && raw != null) {
+    } else if (typeof raw === "string") {
+      if (!raw.trim()) continue;
+      out[key] = raw;
+    } else if (raw != null) {
       out[key] = raw;
     }
   }
