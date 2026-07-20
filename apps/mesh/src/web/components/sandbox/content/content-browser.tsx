@@ -179,8 +179,6 @@ const RedirectEditor = lazy(() =>
   import("./redirect-editor").then((m) => ({ default: m.RedirectEditor })),
 );
 
-const VARIANT_GREEN = "oklch(0.65 0.15 160)";
-
 export type CollectionId =
   | "pages"
   | "sections"
