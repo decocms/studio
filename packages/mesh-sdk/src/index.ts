@@ -132,6 +132,7 @@ export {
   type SandboxRecord,
   type RuntimeMetadata,
   type RuntimeEnvEntry,
+  type SubmoduleCredential,
   ENV_VAR_KEY_RE,
   parseSandboxRecord,
   parseBranchMap,

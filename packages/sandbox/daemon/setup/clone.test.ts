@@ -11,7 +11,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { computeBranchDivergence } from "../git/branch-divergence";
 import type { Config } from "../types";
-import { cloneCommand, spawnClone } from "./clone";
+import {
+  cloneCommand,
+  prepareSubmoduleCredentials,
+  spawnClone,
+  submoduleUpdateArgs,
+} from "./clone";
 
 const ASKPASS = "/data/askpass.sh";
 
@@ -402,4 +407,98 @@ describe("spawnClone", () => {
       cleanup();
     }
   }, 30_000);
+});
+
+describe("prepareSubmoduleCredentials", () => {
+  it("builds one store-file line per host with a percent-encoded token", () => {
+    const { lines, hosts, invalidHosts } = prepareSubmoduleCredentials([
+      { host: "github.com", token: "ghp_abc" },
+    ]);
+    expect(hosts).toEqual(["github.com"]);
+    expect(lines).toEqual(["https://x-access-token:ghp_abc@github.com"]);
+    expect(invalidHosts).toEqual([]);
+  });
+
+  it("percent-encodes tokens with URL-unsafe characters", () => {
+    const { lines } = prepareSubmoduleCredentials([
+      { host: "github.com", token: "a/b@c:d e" },
+    ]);
+    expect(lines).toEqual([
+      "https://x-access-token:a%2Fb%40c%3Ad%20e@github.com",
+    ]);
+  });
+
+  it("dedupes by host, last token wins", () => {
+    const { lines, hosts } = prepareSubmoduleCredentials([
+      { host: "github.com", token: "first" },
+      { host: "github.com", token: "second" },
+    ]);
+    expect(hosts).toEqual(["github.com"]);
+    expect(lines).toEqual(["https://x-access-token:second@github.com"]);
+  });
+
+  it("rejects hosts with a scheme, path, userinfo, or whitespace", () => {
+    const { hosts, invalidHosts } = prepareSubmoduleCredentials([
+      { host: "https://github.com", token: "t" },
+      { host: "github.com/foo", token: "t" },
+      { host: "evil@github.com", token: "t" },
+      { host: "git hub.com", token: "t" },
+      { host: "github.com:443", token: "ok" },
+    ]);
+    // Only the bare host (optionally with a port) survives.
+    expect(hosts).toEqual(["github.com:443"]);
+    expect(invalidHosts).toEqual([
+      "https://github.com",
+      "github.com/foo",
+      "evil@github.com",
+      "git hub.com",
+    ]);
+  });
+});
+
+describe("submoduleUpdateArgs", () => {
+  it("emits SSH→HTTPS insteadOf rewrites (no token) then the store helper", () => {
+    const args = submoduleUpdateArgs({
+      hosts: ["github.com"],
+      credFile: "/data/submodule-git-credentials",
+    });
+    expect(args).toEqual([
+      "-c",
+      "url.https://github.com/.insteadOf=git@github.com:",
+      "-c",
+      "url.https://github.com/.insteadOf=ssh://git@github.com/",
+      "-c",
+      "credential.helper=store --file=/data/submodule-git-credentials",
+      "submodule",
+      "update",
+      "--init",
+      "--recursive",
+      "--depth",
+      "1",
+    ]);
+    // The token must never appear in argv — only the credentials file holds it.
+    expect(args.join(" ")).not.toContain("x-access-token");
+  });
+
+  it("emits rewrites for every host before the shared helper", () => {
+    const args = submoduleUpdateArgs({
+      hosts: ["github.com", "gitlab.example.com"],
+      credFile: "/data/creds",
+    });
+    expect(args.filter((a) => a.startsWith("url.")).length).toBe(4);
+    expect(args).toContain(
+      "url.https://gitlab.example.com/.insteadOf=git@gitlab.example.com:",
+    );
+    // The store helper + subcommand always come last, after every rewrite.
+    expect(args.slice(-8)).toEqual([
+      "-c",
+      "credential.helper=store --file=/data/creds",
+      "submodule",
+      "update",
+      "--init",
+      "--recursive",
+      "--depth",
+      "1",
+    ]);
+  });
 });

@@ -1,13 +1,14 @@
 import { sleep } from "@decocms/std";
 import { existsSync, readdirSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { rm, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join } from "node:path";
 import { isSyntheticBranch } from "../constants";
 import { isValidRemoteBranchName } from "../git/ref-name";
 import {
   formatCommand,
   type StructuredCommand,
 } from "../process/structured-command";
-import type { Config } from "../types";
+import type { Config, SubmoduleCredential } from "../types";
 import { gitBaseArgv, gitStepEnv } from "./git-command";
 import { spawnSetupStep } from "./spawn-step";
 
@@ -262,6 +263,125 @@ export interface CloneResult {
   ) => Promise<void>;
 }
 
+// A submodule host flows into a `git -c url.<…>.insteadOf` argv and into a
+// git-credentials file line (`https://x-access-token:<token>@<host>`). Argv/
+// file form makes shell injection impossible, but a host with a slash, `@`,
+// whitespace, or control chars would corrupt the insteadOf prefix or the
+// credential URL — so allow only a bare hostname with an optional port.
+const VALID_SUBMODULE_HOST = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
+
+/**
+ * Exported for unit tests. Validates + dedupes submodule credentials by host
+ * (last write wins), returning the git-credential-store file lines for the
+ * valid hosts plus the rejected hosts. Deterministic: no fs/network.
+ */
+export function prepareSubmoduleCredentials(
+  credentials: readonly SubmoduleCredential[],
+): { lines: string[]; hosts: string[]; invalidHosts: string[] } {
+  const invalidHosts: string[] = [];
+  const tokenByHost = new Map<string, string>();
+  for (const c of credentials) {
+    if (!VALID_SUBMODULE_HOST.test(c.host)) {
+      invalidHosts.push(c.host);
+      continue;
+    }
+    tokenByHost.set(c.host, c.token);
+  }
+  const hosts = [...tokenByHost.keys()];
+  const lines = [...tokenByHost].map(
+    ([host, token]) =>
+      `https://x-access-token:${encodeURIComponent(token)}@${host}`,
+  );
+  return { lines, hosts, invalidHosts };
+}
+
+/**
+ * Exported for unit tests. The exact `git` extra-args for a submodule update:
+ * per-host SSH→HTTPS `insteadOf` rewrites (no token) followed by the
+ * store-helper pointer and the shallow recursive `submodule update`. Combined
+ * with `gitBaseArgv()`'s leading `-c credential.helper=` (which resets the
+ * helper list), the store helper is the only one in effect for this command
+ * and its submodule subprocesses (they inherit `-c` via GIT_CONFIG_PARAMETERS).
+ */
+export function submoduleUpdateArgs(p: {
+  hosts: readonly string[];
+  credFile: string;
+}): string[] {
+  const rewriteArgs = p.hosts.flatMap((host) => [
+    "-c",
+    `url.https://${host}/.insteadOf=git@${host}:`,
+    "-c",
+    `url.https://${host}/.insteadOf=ssh://git@${host}/`,
+  ]);
+  return [
+    ...rewriteArgs,
+    "-c",
+    `credential.helper=store --file=${p.credFile}`,
+    "submodule",
+    "update",
+    "--init",
+    "--recursive",
+    "--depth",
+    "1",
+  ];
+}
+
+/**
+ * Fetch git submodules after the working tree is materialized, authenticating
+ * private submodules with user-supplied per-host PATs. Best-effort: a failure
+ * warns and leaves the (bare) working tree intact rather than failing the whole
+ * clone, mirroring `fetchBaseBranch`.
+ *
+ * Credentials are delivered on a git-only channel — never the env bag the dev
+ * server sees. The token lives only in a short-lived credentials file (mode
+ * 0o600, next to the no-op askpass, outside the repo) read by
+ * `git-credential-store` for the submodule fetch, then deleted. `insteadOf`
+ * rewrites (which carry NO token) turn `git@<host>:` / `ssh://git@<host>/`
+ * submodule URLs into HTTPS so the store credential applies; the token is never
+ * placed in argv and never persisted into the repo's `.git/config`.
+ *
+ * No-op when no credentials are configured (feature is opt-in) or the repo
+ * declares no submodules.
+ */
+async function runSubmoduleUpdate(p: {
+  deps: CloneDeps;
+  dir: string;
+  askpassPath: string;
+  credentials: readonly SubmoduleCredential[] | undefined;
+}): Promise<void> {
+  const { deps, dir, askpassPath, credentials } = p;
+  if (!credentials || credentials.length === 0) return;
+  if (!existsSync(join(dir, ".gitmodules"))) return;
+
+  const { lines, hosts, invalidHosts } =
+    prepareSubmoduleCredentials(credentials);
+  for (const host of invalidHosts) {
+    deps.onChunk(
+      "setup",
+      `\r\n[clone] warning: skipping submodule credential with invalid host ${JSON.stringify(host)}\r\n`,
+    );
+  }
+  if (hosts.length === 0) return;
+
+  const credFile = join(dirname(askpassPath), "submodule-git-credentials");
+  await writeFile(credFile, `${lines.join("\n")}\n`, { mode: 0o600 });
+
+  try {
+    const cmd = git(submoduleUpdateArgs({ hosts, credFile }), askpassPath, {
+      cwd: dir,
+    });
+    const code = await runNetworkStep(cmd, deps);
+    if (code !== 0) {
+      deps.onChunk(
+        "setup",
+        `\r\n[clone] warning: submodule update failed (exit ${code}); continuing without submodules\r\n`,
+      );
+    }
+  } finally {
+    await rm(credFile, { force: true });
+  }
+}
+
 /**
  * Acquires the repo working tree (0 on success). Emits progress via `onChunk`.
  * The returned `fetchBase` thunk (when present) does the off-critical-path
@@ -344,6 +464,23 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
         onChunk,
       });
 
+  // Funnels every success return through the (best-effort, opt-in) submodule
+  // fetch so both acquisition paths and both branch cases get submodules.
+  const finalize = async (
+    code: number,
+    extra: Omit<CloneResult, "code"> = {},
+  ): Promise<CloneResult> => {
+    if (code === 0) {
+      await runSubmoduleUpdate({
+        deps,
+        dir,
+        askpassPath,
+        credentials: config.git?.repository?.submoduleCredentials,
+      });
+    }
+    return { code, ...extra };
+  };
+
   // When repoDir already has files (e.g. .decocms/daemon.json written before
   // the first clone) but no .git, `git clone` would fail with "already exists
   // and is not an empty directory". Use init+fetch+checkout instead — it
@@ -409,34 +546,34 @@ export async function spawnClone(deps: CloneDeps): Promise<CloneResult> {
     const checkoutCode = await runStep(checkoutCmd, deps);
     if (checkoutCode !== 0) return { code: checkoutCode };
     if (branchToForkLocally) {
-      return {
-        code: await runStep(
+      return finalize(
+        await runStep(
           git(["checkout", "-B", branchToForkLocally], askpassPath, {
             cwd: dir,
           }),
           deps,
         ),
-      };
+      );
     }
-    return {
-      code: 0,
-      ...(branchToTrack ? { fetchBase: deferBaseFetch(branchToTrack) } : {}),
-    };
+    return finalize(
+      0,
+      branchToTrack ? { fetchBase: deferBaseFetch(branchToTrack) } : {},
+    );
   }
 
   const cloneCmd = cloneCommand({ cloneUrl, dir, branchOnRemote, askpassPath });
   const cloneCode = await runNetworkStep(cloneCmd, deps);
   if (cloneCode !== 0) return { code: cloneCode };
   if (branchToForkLocally) {
-    return {
-      code: await runStep(
+    return finalize(
+      await runStep(
         git(["checkout", "-B", branchToForkLocally], askpassPath, { cwd: dir }),
         deps,
       ),
-    };
+    );
   }
-  return {
-    code: 0,
-    ...(branchOnRemote ? { fetchBase: deferBaseFetch(branchOnRemote) } : {}),
-  };
+  return finalize(
+    0,
+    branchOnRemote ? { fetchBase: deferBaseFetch(branchOnRemote) } : {},
+  );
 }

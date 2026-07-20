@@ -21,6 +21,9 @@ export function buildConfigPayload(args: {
           cloneUrl: repo.cloneUrl,
           repoName: repo.displayName ?? deriveRepoLabel(repo.cloneUrl),
           ...(repo.branch ? { branch: repo.branch } : {}),
+          ...(repo.submoduleCredentials && repo.submoduleCredentials.length > 0
+            ? { submoduleCredentials: repo.submoduleCredentials }
+            : {}),
         },
         identity: {
           userName: repo.userName,
