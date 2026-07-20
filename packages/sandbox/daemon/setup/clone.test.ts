@@ -644,4 +644,28 @@ describe("spawnClone — submodules", () => {
       cleanup();
     }
   }, 30_000);
+
+  it("swallows a credentials-file write error and still succeeds", async () => {
+    const { url, root, cleanup } = setupBareRepoWithGitmodules();
+    try {
+      const repoDir = join(root, "workspace");
+      // askpass dir doesn't exist → the credFile write throws ENOENT, which the
+      // best-effort catch must swallow rather than fail the clone.
+      let out = "";
+      const { code } = await spawnClone({
+        config: configWithSubmoduleCreds(repoDir, url, [
+          { host: "github.com", token: "ghp_dummy" },
+        ]),
+        askpassPath: join(root, "does-not-exist", "askpass.sh"),
+        onChunk: (_src, data) => {
+          out += data;
+        },
+      });
+      expect(code).toBe(0);
+      expect(existsSync(join(repoDir, "README.md"))).toBe(true);
+      expect(out).toContain("submodule update errored");
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
 });
