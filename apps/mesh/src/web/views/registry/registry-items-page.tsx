@@ -503,6 +503,7 @@ export default function RegistryItemsPage() {
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0"
+                              aria-label={`Actions for ${item.title}`}
                             >
                               <DotsVertical size={18} />
                             </Button>
