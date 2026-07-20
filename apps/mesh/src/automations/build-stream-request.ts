@@ -54,6 +54,18 @@ function parseToolAllowlist(raw: string | null): string[] | null {
   return null;
 }
 
+/**
+ * Deterministic id for the synthetic context-event message
+ * (`buildDispatchRequestStep`'s fallback when the automation's stored
+ * messages contain no non-system message to prepend event parts onto).
+ * Must stay stable across a step re-invocation for the same reason the
+ * message ids below are taskId-derived rather than random — see comment
+ * on `messages` below.
+ */
+export function contextMessageId(taskId: string): string {
+  return `${taskId}:context`;
+}
+
 export function buildStreamRequest(
   automation: Automation,
   triggerId: string | null,
@@ -62,14 +74,19 @@ export function buildStreamRequest(
   runMetadata?: Record<string, string>,
 ): DispatchRunInput {
   const rawMessages = JSON.parse(automation.messages);
-  // Generate fresh ids for each run so concurrent automation runs don't
-  // collide on the same message id (a shared id would let the message be
-  // attributed to the first thread only, making it invisible in subsequent
-  // threads).
-  const messages = rawMessages.map((m: { id?: string; role: string }) => ({
-    ...m,
-    id: crypto.randomUUID(),
-  }));
+  // Derive ids from taskId rather than crypto.randomUUID(): fresh ids per run
+  // still avoid concurrent-run collisions (a shared id would attribute the
+  // message to the first thread only), but they must also be STABLE if this
+  // function re-runs — buildDispatchRequestStep is a DBOS step that pre-persists
+  // this message via PartEmitter before its own output is durably recorded, so
+  // a crash mid-step forces a full re-invocation. A random id there would emit
+  // a second, orphaned message row instead of the intended idempotent replace.
+  const messages = rawMessages.map(
+    (m: { id?: string; role: string }, i: number) => ({
+      ...m,
+      id: `${taskId}:${i}`,
+    }),
+  );
 
   const request: DispatchRunInput = {
     messages,

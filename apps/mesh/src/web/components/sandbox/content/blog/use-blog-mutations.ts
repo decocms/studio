@@ -23,6 +23,14 @@ function decofileQueryKey({
   return KEYS.decofile(`${orgSlug}/${virtualMcpId}/${branch}`);
 }
 
+function liveMetaQueryKey({
+  orgSlug,
+  virtualMcpId,
+  branch,
+}: BlogMutationParams) {
+  return KEYS.liveMeta(orgSlug, virtualMcpId, branch);
+}
+
 function writeUrl(
   { orgSlug, virtualMcpId, branch }: BlogMutationParams,
   op: "write" | "unlink",
@@ -30,33 +38,41 @@ function writeUrl(
   return `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/${op}`;
 }
 
+async function postToSandbox(
+  params: BlogMutationParams,
+  op: "write" | "unlink",
+  body: unknown,
+  fallbackError: string,
+) {
+  const res = await fetch(writeUrl(params, op), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(
+      (errBody as { error?: string }).error ??
+        `${fallbackError} (${res.status})`,
+    );
+  }
+  return res.json();
+}
+
 export function useSaveBlogBlock(params: BlogMutationParams) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({
-      blockKey,
-      data,
-    }: {
-      blockKey: string;
-      data: unknown;
-    }) => {
-      const res = await fetch(writeUrl(params, "write"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+    mutationFn: ({ blockKey, data }: { blockKey: string; data: unknown }) =>
+      postToSandbox(
+        params,
+        "write",
+        {
           path: blogBlockFilePath(blockKey),
           content: JSON.stringify(data, null, 2),
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(
-          (body as { error?: string }).error ?? `Write failed (${res.status})`,
-        );
-      }
-      return res.json();
-    },
+        },
+        "Write failed",
+      ),
     onMutate: async ({ blockKey, data }) => {
       const queryKey = decofileQueryKey(params);
       await queryClient.cancelQueries({ queryKey });
@@ -83,20 +99,13 @@ export function useDeleteBlogBlock(params: BlogMutationParams) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ blockKey }: { blockKey: string }) => {
-      const res = await fetch(writeUrl(params, "unlink"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ path: blogBlockFilePath(blockKey) }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(
-          (body as { error?: string }).error ?? `Delete failed (${res.status})`,
-        );
-      }
-      return res.json() as Promise<{ ok: true; existed: boolean }>;
-    },
+    mutationFn: ({ blockKey }: { blockKey: string }) =>
+      postToSandbox(
+        params,
+        "unlink",
+        { path: blogBlockFilePath(blockKey) },
+        "Delete failed",
+      ) as Promise<{ ok: true; existed: boolean }>,
     onMutate: async ({ blockKey }) => {
       const queryKey = decofileQueryKey(params);
       await queryClient.cancelQueries({ queryKey });
@@ -116,6 +125,11 @@ export function useDeleteBlogBlock(params: BlogMutationParams) {
       if (context?.queryKey) {
         queryClient.setQueryData(context.queryKey, context.previous);
       }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: liveMetaQueryKey(params),
+      });
     },
   });
 }

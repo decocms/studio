@@ -78,6 +78,9 @@ interface UnifiedAuthFormProps {
 
 type FormView = "signIn" | "signUp" | "forgotPassword" | "emailOtp";
 
+const VIEW_TOGGLE_LINK_CLASS =
+  "font-medium text-[#8CAA25] hover:underline disabled:opacity-50";
+
 export interface UnifiedAuthFormCopy {
   signUpFailed: string;
   signInFailed: string;
@@ -624,7 +627,7 @@ export function UnifiedAuthForm({
 
       {/* Success message for forgot password */}
       {resetEmailSent && (
-        <div className="rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-600 dark:text-emerald-400 text-center">
+        <div className="rounded-xl bg-success/10 p-3 text-sm text-success text-center">
           {copy.resetEmailSent}
         </div>
       )}
@@ -928,7 +931,7 @@ export function UnifiedAuthForm({
             type="button"
             onClick={() => switchView("signIn")}
             disabled={isLoading}
-            className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
+            className={VIEW_TOGGLE_LINK_CLASS}
           >
             {copy.backToSignIn}
           </button>
@@ -937,7 +940,7 @@ export function UnifiedAuthForm({
             type="button"
             onClick={() => switchView("signIn")}
             disabled={isLoading}
-            className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
+            className={VIEW_TOGGLE_LINK_CLASS}
           >
             {copy.signInWithPassword}
           </button>
@@ -948,7 +951,7 @@ export function UnifiedAuthForm({
               type="button"
               onClick={() => switchView(isSignUp ? "signIn" : "signUp")}
               disabled={isLoading}
-              className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
+              className={VIEW_TOGGLE_LINK_CLASS}
             >
               {isSignUp ? copy.signIn : copy.signUp}
             </button>
@@ -959,7 +962,7 @@ export function UnifiedAuthForm({
                   type="button"
                   onClick={() => switchView("emailOtp")}
                   disabled={isLoading}
-                  className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
+                  className={VIEW_TOGGLE_LINK_CLASS}
                 >
                   {copy.signInWithEmailCode}
                 </button>

@@ -1,12 +1,12 @@
 /**
- * MCP Mesh Server Entry Point
+ * Studio Server Entry Point
  *
  * Bundled server entry point for production.
  * Start with: bun run index.js
  * Or: bun run src/index.ts
  */
 
-import { sleep } from "@decocms/std";
+import { retry, sleep } from "@decocms/std";
 // Side-effect-free queue names — safe to import before DBOS.setConfig (unlike
 // the workflow modules, which register workflows at import time).
 import {
@@ -31,14 +31,14 @@ const settings = getSettings();
 // ensures every `meter.createX()` call hits the real MeterProvider.
 initObservability();
 
-// DBOS shares mesh's Postgres database and owns the `dbos` schema. Sharing
+// DBOS shares studio's Postgres database and owns the `dbos` schema. Sharing
 // the DB (vs. a sibling one) is what lets future workflow-ified CRUD
-// commit mesh writes and DBOS step-output records in a single transaction
+// commit studio writes and DBOS step-output records in a single transaction
 // via a DBOS data source. The `dbos` schema is auto-created on launch.
 // setConfig must run before any module registers workflows; launch happens
 // after the app graph is loaded so all DBOS.registerWorkflow calls are in.
 const { DBOS, DBOSClient } = await import("@dbos-inc/dbos-sdk");
-// DBOS uses its own pg client (separate from mesh's pool), so the `sslmode`
+// DBOS uses its own pg client (separate from studio's pool), so the `sslmode`
 // must travel in the URL. RDS's pg_hba.conf rejects unencrypted connections
 // with `no pg_hba.conf entry for host ... no encryption` when this is missing.
 // Use `verify-full` explicitly: pg-connection-string v2 silently upgrades
@@ -141,7 +141,7 @@ function withSecurityHeaders(res: Response): Response {
 
 // Sandbox preview reverse-proxy (agent-sandbox only). The base domain is parsed at
 // boot from STUDIO_SANDBOX_PREVIEW_URL_PATTERN; null disables the proxy and
-// preview-host requests fall through to the normal mesh routing (which 404s
+// preview-host requests fall through to the normal studio routing (which 404s
 // because nothing matches). The Bun-level WS handler is registered
 // unconditionally — when previewBaseDomain is null, no upgrade path runs it.
 const {
@@ -183,8 +183,34 @@ await DBOS.launch({
 console.log(`[dbos] application version: ${DBOS.applicationVersion}`);
 // Post-launch DBOS setup (queue registration, schedule reconciliation).
 // Must run after launch because registerQueue / listSchedules require an
-// initialized executor.
-await app.initDbos();
+// initialized executor. Retry: registerQueue + reconcile are idempotent, so a
+// transient boot-time DB connect timeout (shared RDS under connection pressure)
+// retries instead of exiting the process — otherwise one blip crash-loops every
+// pod at once.
+const initDbosMaxAttempts = 5;
+let initDbosAttempt = 0;
+await retry(
+  async () => {
+    initDbosAttempt++;
+    try {
+      return await app.initDbos();
+    } catch (error) {
+      const outcome =
+        initDbosAttempt >= initDbosMaxAttempts ? "giving up" : "retrying";
+      console.warn(
+        `[dbos] initDbos attempt ${initDbosAttempt}/${initDbosMaxAttempts} failed, ${outcome}`,
+        error,
+      );
+      throw error;
+    }
+  },
+  {
+    maxAttempts: initDbosMaxAttempts,
+    minTimeout: 1000,
+    maxTimeout: 10_000,
+    jitter: 0.5,
+  },
+);
 
 // When running via CLI, the calling script handles its own banner/config output
 if (!settings.isCli) {
@@ -203,7 +229,7 @@ const server = Bun.serve({
   fetch: async (request, server) => {
     // Sandbox preview proxy: matched by Host header. Runs *before* assets
     // and the Hono app so a `<handle>.preview.<base>` request never hits
-    // mesh's static-file handler (which would 404 on the dev server's
+    // studio's static-file handler (which would 404 on the dev server's
     // bundle paths). WS upgrades short-circuit Bun.serve's fetch by
     // returning undefined; HTTP returns a Response.
     if (previewBaseDomain) {
@@ -340,7 +366,7 @@ let shuttingDown = false;
  * Runs AFTER `DBOS.shutdown()` on purpose: once this executor's queue poller is
  * stopped, a re-enqueued gate can only be claimed by a LIVE executor, so we
  * can't re-grab (and re-orphan) our own gates in a shutdown race. Uses a
- * standalone `DBOSClient` (its own sysdb connection) because mesh's DBOS
+ * standalone `DBOSClient` (its own sysdb connection) because studio's DBOS
  * executor is already torn down at this point.
  *
  * Best-effort: any failure is logged and swallowed so shutdown still completes.
@@ -443,7 +469,7 @@ async function gracefulShutdown(signal: string) {
     // and it's what our workflow rows are stamped with. See
     // handOffInFlightThreadGates for why this matters.
     const executorId = DBOS.executorID;
-    // Drain DBOS before app.shutdown closes mesh's pg pool — in-flight steps use it.
+    // Drain DBOS before app.shutdown closes studio's pg pool — in-flight steps use it.
     await DBOS.shutdown();
     // Re-enqueue our own in-flight thread-gate gates so a live pod adopts them
     // instead of stranding them PENDING on this dead executor (which bricks the

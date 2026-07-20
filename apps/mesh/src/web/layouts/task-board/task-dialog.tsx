@@ -36,6 +36,7 @@ import {
   ChevronRight,
   Copy01,
   DotsHorizontal,
+  Edit05,
   GitMerge,
   GitPullRequest,
   HelpCircle,
@@ -52,7 +53,6 @@ import { useMembers } from "@/web/hooks/use-members";
 import { getInitials } from "@/web/lib/get-initials";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
-  primaryThread,
   PRIORITIES,
   PRIORITY_CONFIG,
   STATUS_CONFIG,
@@ -102,21 +102,21 @@ const THREAD_STATUS: Record<
   NonNullable<TaskBoardItemThread["status"]>,
   { label: string; className: string; icon: typeof AlertSquare; spin?: boolean }
 > = {
-  failed: { label: "Error", className: "text-red-600", icon: AlertSquare },
+  failed: { label: "Error", className: "text-destructive", icon: AlertSquare },
   requires_action: {
     label: "Needs input",
-    className: "text-amber-600",
+    className: "text-warning",
     icon: HelpCircle,
   },
   in_progress: {
     label: "Running",
-    className: "text-blue-600",
+    className: "text-primary",
     icon: Loading02,
     spin: true,
   },
   completed: {
     label: "Completed",
-    className: "text-green-600",
+    className: "text-success",
     icon: CheckCircle,
   },
   expired: {
@@ -134,6 +134,7 @@ export function TaskBoardItemDialog({
   onSubmit,
   onDelete,
   onOpenThread,
+  onNewChat,
   isSaving,
 }: {
   open: boolean;
@@ -153,6 +154,8 @@ export function TaskBoardItemDialog({
   }) => void;
   onDelete?: () => void;
   onOpenThread?: (thread: TaskBoardItemThread) => void;
+  /** Edit mode only: start a fresh chat seeded with this task as context. */
+  onNewChat?: () => void;
   isSaving?: boolean;
 }) {
   const { data } = useMembers();
@@ -209,7 +212,6 @@ export function TaskBoardItemDialog({
     ? members.find((m) => m.userId === item.assignedBy)
     : undefined;
   const StatusIcon = STATUS_CONFIG[status].icon;
-  const thread = item ? primaryThread(item) : undefined;
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
@@ -234,12 +236,25 @@ export function TaskBoardItemDialog({
           {/* Editor pane — content-height on mobile so it doesn't leave a big
               gap above the properties; fills the column on desktop. */}
           <div className="flex min-w-0 flex-col gap-6 p-6 sm:flex-1 sm:overflow-y-auto sm:p-8">
-            <input
+            <textarea
+              ref={(el) => {
+                if (!el) return;
+                el.style.height = "auto";
+                el.style.height = `${el.scrollHeight}px`;
+              }}
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+              }}
               placeholder="Task title..."
               autoFocus
-              className="w-full border-0 bg-transparent text-xl font-medium text-foreground outline-none placeholder:text-foreground/30"
+              rows={1}
+              className="w-full resize-none overflow-hidden border-0 bg-transparent text-xl font-medium leading-snug text-foreground outline-none placeholder:text-foreground/30"
             />
 
             <div className="group relative flex flex-1 flex-col">
@@ -263,12 +278,17 @@ export function TaskBoardItemDialog({
               )}
             </div>
 
-            {thread && (
-              <ActivityCard
-                thread={thread}
-                startedBy={assignedBy ?? assignee}
-                onOpen={onOpenThread}
-              />
+            {item && item.threads.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {item.threads.map((t) => (
+                  <ActivityCard
+                    key={t.threadId}
+                    thread={t}
+                    startedBy={assignedBy ?? assignee}
+                    onOpen={onOpenThread}
+                  />
+                ))}
+              </div>
             )}
 
             {item?.id && <PullRequestsCard itemId={item.id} />}
@@ -355,7 +375,16 @@ export function TaskBoardItemDialog({
               </DropdownMenu>
 
               <div className="flex flex-col">
-                <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
+                {/* modal: without it the parent Dialog's scroll-lock
+                    (react-remove-scroll) swallows wheel events over this
+                    portalled popover, so the member list only scrolls via
+                    keyboard/click. modal wraps the content in its own
+                    RemoveScroll that whitelists the popover. */}
+                <Popover
+                  open={assigneeOpen}
+                  onOpenChange={setAssigneeOpen}
+                  modal
+                >
                   <PopoverTrigger asChild>
                     <button
                       type="button"
@@ -572,14 +601,22 @@ export function TaskBoardItemDialog({
             <span />
           )}
 
-          <Button
-            size="sm"
-            disabled={!title.trim() || isSaving}
-            onClick={submit}
-          >
-            <Plus size={16} />
-            {item ? "Save" : "Create task"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {item && onNewChat && (
+              <Button variant="outline" size="sm" onClick={onNewChat}>
+                <Edit05 size={16} />
+                New chat
+              </Button>
+            )}
+            <Button
+              size="sm"
+              disabled={!title.trim() || isSaving}
+              onClick={submit}
+            >
+              <Plus size={16} />
+              {item ? "Save" : "Create task"}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -600,13 +637,15 @@ function ActivityCard({
   onOpen?: (thread: TaskBoardItemThread) => void;
 }) {
   const state = thread.status ? THREAD_STATUS[thread.status] : null;
-  const message = thread.lastMessage ?? thread.title;
+  const message = thread.lastMessage;
 
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-border">
       <div className="flex items-center gap-2 px-4 py-3.5">
         <SuperAgentIcon size={16} />
-        <span className="text-sm text-foreground">Super Agent</span>
+        <span className="truncate text-sm text-foreground">
+          {thread.title || "Super Agent"}
+        </span>
         {startedBy && (
           <>
             <span className="text-sm text-muted-foreground/50">started by</span>
@@ -661,9 +700,13 @@ function prStateStyle(pr: TaskBoardItemPr): {
   icon: typeof GitPullRequest;
 } {
   if (pr.merged)
-    return { label: "Merged", className: "text-purple-600", icon: GitMerge };
+    return { label: "Merged", className: "text-special", icon: GitMerge };
   if (pr.state === "closed")
-    return { label: "Closed", className: "text-red-600", icon: GitPullRequest };
+    return {
+      label: "Closed",
+      className: "text-destructive",
+      icon: GitPullRequest,
+    };
   if (pr.draft)
     return {
       label: "Draft",
@@ -671,7 +714,7 @@ function prStateStyle(pr: TaskBoardItemPr): {
       icon: GitPullRequest,
     };
   // "open" or unknown live state — still a link the user can follow.
-  return { label: "Open", className: "text-green-600", icon: GitPullRequest };
+  return { label: "Open", className: "text-success", icon: GitPullRequest };
 }
 
 /** One PR row — state badge, title (falls back to repo#number), external link,

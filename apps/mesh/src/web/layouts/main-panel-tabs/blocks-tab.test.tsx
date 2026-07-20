@@ -7,9 +7,20 @@ import { describe, expect, test } from "bun:test";
 import { BlocksEmptyState, BlocksErrorState } from "./blocks-tab-states";
 
 describe("Blocks tab states", () => {
-  test("links the empty state to the Blocks documentation", () => {
-    const { getByRole } = render(<BlocksEmptyState />);
-    const link = getByRole("link", { name: "View Blocks docs" });
+  test("offers non-technical Blocks setup guidance", () => {
+    const { getByRole, getByText } = render(<BlocksEmptyState />);
+    const link = getByRole("link", { name: "Set up content editing" });
+
+    expect(
+      getByRole("heading", {
+        name: "Want to edit this website with easy-to-use forms?",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      getByText(
+        "Set up rich content editing so anyone can update pages without touching code.",
+      ),
+    ).toBeInTheDocument();
 
     expect(link).toHaveAttribute("href", "https://github.com/decocms/blocks");
     expect(link).toHaveAttribute("target", "_blank");

@@ -1,6 +1,6 @@
 let lastActivityAt = Date.now();
 // false until the first successful POST /_sandbox/config. Warm-pool pods
-// boot with a sentinel token and sit unclaimed until mesh delivers a workload
+// boot with a sentinel token and sit unclaimed until studio delivers a workload
 // via postConfig; the housekeeper uses this flag to skip such pods so it
 // never reaps a pod that was never given a workload.
 let claimed = false;

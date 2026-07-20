@@ -148,7 +148,7 @@ function ShareControls({
         aria-label="Copy link"
       >
         {copied ? (
-          <Check size={12} className="text-green-600" />
+          <Check size={12} className="text-success" />
         ) : (
           <Copy01 size={12} />
         )}

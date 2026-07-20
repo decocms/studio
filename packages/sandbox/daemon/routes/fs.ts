@@ -8,7 +8,7 @@ import { parseJsonBody, jsonResponse } from "./body-parser";
 
 /**
  * Wall-clock cap for fetches in write_from_url / upload_to_url.
- * Both endpoints only ever talk to mesh-minted presigned S3/R2 URLs,
+ * Both endpoints only ever talk to studio-minted presigned S3/R2 URLs,
  * so the model has no path to influence the destination — the cap is
  * just defense against a hung S3 endpoint tying up a request slot.
  */
@@ -484,8 +484,8 @@ export function makeGrepHandler(deps: FsDeps) {
 
 /**
  * GET a remote URL (typically a presigned S3 URL) and stream the bytes to
- * a path on the sandbox FS. Mesh mints the URL and asks the daemon to
- * fetch it directly so bytes never round-trip through mesh.
+ * a path on the sandbox FS. Studio mints the URL and asks the daemon to
+ * fetch it directly so bytes never round-trip through studio.
  *
  * Body: { path: string; url: string }
  */
@@ -503,7 +503,7 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
     const filePath = safePath(deps.appRoot, deps.repoDir, body.path ?? "");
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
 
-    // The URL here is mesh-minted (presigned GET to S3/R2) — the model
+    // The URL here is studio-minted (presigned GET to S3/R2) — the model
     // can't supply arbitrary URLs through copy_to_sandbox, so SSRF +
     // DNS-rebinding defenses aren't needed. Plain fetch with a wall-
     // clock deadline is enough.
@@ -589,8 +589,8 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
 
 /**
  * Read a file from the sandbox FS and PUT it to a remote URL (typically
- * a presigned S3 URL). Mesh mints the URL and asks the daemon to upload
- * directly so bytes never round-trip through mesh.
+ * a presigned S3 URL). Studio mints the URL and asks the daemon to upload
+ * directly so bytes never round-trip through studio.
  *
  * Body: { path: string; url: string; contentType?: string }
  */
@@ -651,7 +651,7 @@ export function makeUploadToUrlHandler(deps: FsDeps) {
         body: Bun.file(filePath).stream(),
         headers,
         signal: abortController.signal,
-        // No SSRF revalidation here — the URL is mesh-minted (presigned
+        // No SSRF revalidation here — the URL is studio-minted (presigned
         // PUT to S3/R2), so the model can't influence where bytes go.
         // upload PUTs don't redirect under S3/R2 semantics anyway.
       });

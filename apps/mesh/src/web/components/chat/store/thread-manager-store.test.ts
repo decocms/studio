@@ -702,6 +702,68 @@ describe("ThreadManagerStore pagination via COLLECTION_THREADS_LIST", () => {
     expect(store.threads.get().map((t) => t.id)).toEqual(["t-after-reconnect"]);
     store.dispose();
   });
+
+  it("scopes the list to created_by: 'me' by default", async () => {
+    const sse = makeFakePool();
+    const wheres: unknown[] = [];
+    const callTool = mock(
+      async (args: { name: string; arguments: { where: unknown } }) => {
+        if (args.name !== "COLLECTION_THREADS_LIST") return {};
+        wheres.push(args.arguments.where);
+        return { structuredContent: { items: [], hasMore: false } };
+      },
+    );
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+      sse,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(wheres[0]).toEqual({ hidden: false, created_by: "me" });
+    store.dispose();
+  });
+
+  it("setScope reloads page 1 with the new where and resets offset", async () => {
+    const sse = makeFakePool();
+    const wheres: Record<string, unknown>[] = [];
+    let call = 0;
+    const callTool = mock(
+      async (args: {
+        name: string;
+        arguments: { where: Record<string, unknown>; offset: number };
+      }) => {
+        if (args.name !== "COLLECTION_THREADS_LIST") return {};
+        call++;
+        wheres.push(args.arguments.where);
+        return {
+          structuredContent: {
+            items: [
+              { id: `scope-${call}`, updated_at: "2026-05-19T00:00:00Z" },
+            ],
+            hasMore: false,
+          },
+        };
+      },
+    );
+    const store = new ThreadManagerStore("acme", "loc-1", {
+      client: { callTool } as unknown as MCPClient,
+      sse,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(wheres[0]).toEqual({ hidden: false, created_by: "me" });
+
+    // Widen to Team scope (org-wide).
+    store.setScope({});
+    await new Promise((r) => setTimeout(r, 10));
+    expect(wheres[1]).toEqual({ hidden: false });
+    expect(store.threads.get().map((t) => t.id)).toEqual(["scope-2"]);
+
+    // Unchanged scope is a no-op (no extra fetch).
+    const before = call;
+    store.setScope({});
+    await new Promise((r) => setTimeout(r, 10));
+    expect(call).toBe(before);
+    store.dispose();
+  });
 });
 
 describe("ThreadManagerStore event buffer during boot", () => {

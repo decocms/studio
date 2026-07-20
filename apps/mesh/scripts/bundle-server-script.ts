@@ -82,7 +82,7 @@ const ALWAYS_INCLUDE = [
   //     won; fix: list better-auth + @better-auth/sso here so nft sees the
   //     1.4.22 chain and nests it under better-auth/)
   //
-  // Listing each better-auth-family package mesh imports here turns them
+  // Listing each better-auth-family package studio imports here turns them
   // into nft root entries (nft starts from the resolved file, skipping the
   // broken exports map walk), so each version they need ends up in the
   // trace. The version-conflict handler in pruneNodeModules then hoists one
@@ -255,7 +255,7 @@ async function copyPackage(
 async function pruneNodeModules(): Promise<Set<string>> {
   console.log(`🔍 Tracing dependencies for server and migration scripts...`);
 
-  // Resolve migration entry points from mesh app root
+  // Resolve migration entry points from studio app root
   const migrateEntryPointPaths: string[] = [];
   for (const entryPoint of ALWAYS_INCLUDE) {
     try {
@@ -400,7 +400,7 @@ async function pruneNodeModules(): Promise<Set<string>> {
     //
     // Because workspace deps (e.g. @decocms/harness) are inlined from source
     // rather than read from npm at runtime, the published `decocms` CLI only
-    // picks up a harness change when mesh itself re-releases and re-bundles.
+    // picks up a harness change when studio itself re-releases and re-bundles.
     // A harness-only version bump does NOT reach `decocms@latest` on its own.
     if (
       packageName.startsWith("@decocms/") &&

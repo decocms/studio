@@ -3,7 +3,12 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import {
+  type ConnectionEntity,
+  getCommerceDiscoveryAgentId,
+  type GithubRepo,
+  WellKnownOrgMCPId,
+} from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   Form,
@@ -16,9 +21,18 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
 import { SearchSm } from "@untitledui/icons";
-import { KEYS } from "@/web/lib/query-keys";
+import { KEYS, invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
-import { fetchGithubInstallations } from "@/web/lib/github-installations";
+import {
+  fetchGithubInstallations,
+  findGithubInstallation,
+} from "@/web/lib/github-installations";
+import { provisionRepoScopedGithubConnection } from "@/web/lib/provision-repo-scoped-github-connection";
+import {
+  parseRepoFullName,
+  planAgentConnections,
+  planRepoReuse,
+} from "./report-agent-repo-plan";
 import { unwrapToolResult } from "../companions-core.ts";
 import { SelectableList } from "./selectable-list.tsx";
 import { LoadingIndicator } from "../loading-indicator.tsx";
@@ -210,6 +224,138 @@ export function GitHubConfigForm({
           data: { configuration_state: merged },
         },
       });
+
+      // Mirror onto the Report Agent virtual MCP's `metadata.githubRepo` —
+      // `agentHasClonableSource` reads it to show the Preview/Code tabs and
+      // SANDBOX_START reads it to clone. A bare `{ owner, name, url }` clones
+      // anonymously (fails on a private store repo), so provision a repo-scoped
+      // GitHub connection (same path the repo picker uses) and store its
+      // `connectionId` so the clone is authenticated.
+      const parsed = parseRepoFullName(githubRepo);
+      if (!parsed) {
+        throw new Error(
+          `Repositório inválido: "${githubRepo}". Use o formato owner/nome.`,
+        );
+      }
+      const { owner, name } = parsed;
+      const agentId = getCommerceDiscoveryAgentId(org.id);
+
+      const agentItem = unwrapToolResult<{
+        item: {
+          metadata?: { githubRepo?: GithubRepo | null } | null;
+          connections?: Array<{ connection_id: string }> | null;
+        } | null;
+      }>(
+        await selfClient.callTool({
+          name: "COLLECTION_VIRTUAL_MCP_GET",
+          arguments: { id: agentId },
+        }),
+      ).item;
+      const existingRepo = agentItem?.metadata?.githubRepo;
+      const existingConnections = agentItem?.connections ?? [];
+
+      // Reuse the existing repo-scoped connection when the same repo is
+      // re-saved so a no-op save doesn't orphan a fresh connection each time.
+      const reuse = planRepoReuse({ existingRepo, owner, name });
+
+      let repoConnectionId = reuse?.connectionId;
+      let installationId = reuse?.installationId;
+      // The connection we mint below, if any — deleted on a later failure so a
+      // partial save leaves nothing behind (the picker flow does the same).
+      let provisionedConnectionId: string | undefined;
+
+      if (!repoConnectionId) {
+        const { installations } = await fetchGithubInstallations(
+          (req) => selfClient.callTool(req),
+          connectionId,
+        );
+        const installation = findGithubInstallation(installations, owner);
+        if (!installation) {
+          throw new Error(
+            `Nenhuma instalação do GitHub encontrada para "${owner}".`,
+          );
+        }
+        installationId = installation.installationId;
+        const sourceConnection = unwrapToolResult<{
+          item: ConnectionEntity | null;
+        }>(
+          await selfClient.callTool({
+            name: "COLLECTION_CONNECTIONS_GET",
+            arguments: { id: connectionId },
+          }),
+        ).item;
+        if (!sourceConnection) {
+          throw new Error("Conexão do GitHub não encontrada.");
+        }
+        const { childConnectionId } = await provisionRepoScopedGithubConnection(
+          {
+            orgSlug: org.slug,
+            sourceConnection,
+            installationId,
+            owner,
+            repo: name,
+            githubCallTool: (req) => companionClient.callTool(req),
+            selfCallTool: (req) => selfClient.callTool(req),
+          },
+        );
+        repoConnectionId = childConnectionId;
+        provisionedConnectionId = childConnectionId;
+      }
+
+      // Aggregate the repo-scoped connection onto the agent — `git publish`
+      // (parseGithubRepoFromMetadata) only trusts `githubRepo.connectionId` when
+      // it's one of the agent's connections. A previous save may have linked a
+      // different repo whose connection now leaks (metadata overwrite does no
+      // cascade); planAgentConnections drops it from the list so the
+      // de-aggregation lands before its delete below (child_connection_id is
+      // ON DELETE RESTRICT, migration 026).
+      const { staleConnectionId, mergedConnections } = planAgentConnections({
+        existingRepo,
+        existingConnections,
+        repoConnectionId,
+      });
+
+      try {
+        await selfClient.callTool({
+          name: "COLLECTION_VIRTUAL_MCP_UPDATE",
+          arguments: {
+            id: agentId,
+            data: {
+              connections: mergedConnections,
+              metadata: {
+                githubRepo: {
+                  owner,
+                  name,
+                  url: `https://github.com/${githubRepo}`,
+                  installationId,
+                  connectionId: repoConnectionId,
+                },
+              },
+            },
+          },
+        });
+        if (staleConnectionId) {
+          await selfClient
+            .callTool({
+              name: "COLLECTION_CONNECTIONS_DELETE",
+              arguments: { id: staleConnectionId, force: true },
+            })
+            .catch(() => {});
+        }
+      } catch (err) {
+        // The connectionId lives only on the metadata we just failed to write,
+        // so the reuse guard can never recover it — delete it now, else every
+        // retry mints another orphan.
+        if (provisionedConnectionId) {
+          await selfClient
+            .callTool({
+              name: "COLLECTION_CONNECTIONS_DELETE",
+              arguments: { id: provisionedConnectionId, force: true },
+            })
+            .catch(() => {});
+        }
+        throw err;
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -218,6 +364,7 @@ export function GitHubConfigForm({
       await queryClient.invalidateQueries({
         queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
       });
+      invalidateVirtualMcpQueries(queryClient, org.id);
       onDone();
     },
   });

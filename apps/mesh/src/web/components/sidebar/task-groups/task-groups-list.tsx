@@ -164,7 +164,7 @@ export function TaskGroupsList({
     fetchNextPage,
   } = useThreads();
   const visibleThreads = allThreads.filter((thread) => !thread.hidden);
-  const { hide } = useThreadActions();
+  const { hide, setScope } = useThreadActions();
 
   const navigate = useNavigate();
   const { setTaskId, createNewTask } = usePanelActions();
@@ -198,17 +198,27 @@ export function TaskGroupsList({
   const [searchEverOpened, setSearchEverOpened] = useState(false);
 
   // `filters` drives the per-status / per-group server pagination (status mode),
-  // where `member: "mine"` scopes the query to the current user. The flat list,
-  // by contrast, paginates the shared org-wide thread store and filters to the
-  // active scope (My/All) client-side — so in "My" mode a "Show more" can page
-  // in teammate-only rows that get filtered out.
-  // ponytail: proper per-scope flat pagination needs a store fetch that accepts
-  // a created_by filter; deferred as a follow-up.
+  // where `member: "mine"` scopes the query to the current user.
   const filters: SidebarFilters = {
     type: typeFilter,
     member: "mine",
     currentUserId: currentUserId ?? null,
   };
+
+  // Keep the shared thread feed scoped, server-side, to the current owner scope
+  // (Mine/Team), so "Show more" pages matching rows instead of the org-wide feed
+  // and then dropping them client-side. Idempotent — a no-op unless the scope
+  // actually changed. The client-side filters below stay as defense against live
+  // SSE rows arriving outside the current scope.
+  //
+  // Only `created_by` is pushed server-side, NOT the type filter: this store is
+  // shared, and org-home / breadcrumb read it via `findReusableNewChat` to reuse
+  // the user's empty manual "New chat". Narrowing by `has_trigger` would hide
+  // that manual thread whenever the Automation filter is active, so those
+  // readers would mint a duplicate. Type stays a client-side filter.
+  const scopeWhere: Record<string, unknown> = {};
+  if (!showAll) scopeWhere.created_by = "me";
+  setScope(scopeWhere);
 
   // Until the session resolves, `currentUserId` is undefined — render nothing
   // rather than leaking every member's threads into the "My threads" list.

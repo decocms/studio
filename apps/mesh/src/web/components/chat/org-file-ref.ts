@@ -7,11 +7,14 @@
  *   org/<orgSlug>/<rest…>    → home/<rest…>
  *   org/home/<rest…>         → home/<rest…>        (slug-reserved fallback)
  *   org/public/<set>/<rest…> → public/<set>/<rest…>
+ *   org/output/<rest…>       → outputs/<threadId>/<rest…>   (needs threadId)
+ *   org/upload/<rest…>       → uploads/<threadId>/<rest…>   (needs threadId)
  *
- * Thread-scoped mounts (`org/upload/…`, `org/output/…`) are intentionally NOT
- * linked: they resolve through a per-run symlink into a thread subtree, so the
- * volume path can't be derived from the text alone — and those files already
- * surface as their own chips (thread outputs / produced files).
+ * The thread-scoped mounts (`org/output/…`, `org/upload/…`) resolve through a
+ * per-run symlink into a `<threadId>/` subtree, so the text alone can't name
+ * the volume path — but the chat knows its own thread, so passing `threadId`
+ * makes the deliverable the agent prints ("saved to org/output/report.md")
+ * a click-through into the Library. Without a `threadId` they stay unlinked.
  */
 
 // Trailing `:line` / `:line:col` citation suffix (the `path:line` convention).
@@ -26,6 +29,7 @@ const HAS_EXTENSION = /\.[A-Za-z0-9]+$/;
 export function resolveOrgFileBrowsePath(
   raw: string,
   orgSlug: string | undefined,
+  threadId?: string | undefined,
 ): string | null {
   const text = raw.trim().replace(LINE_SUFFIX, "");
   // Single-token path under the org/ mount; a trailing slash marks a directory.
@@ -49,6 +53,18 @@ export function resolveOrgFileBrowsePath(
   // org/<orgSlug>/<rest…> or org/home/<rest…> → home/<rest…>
   if (top === "home" || (!!orgSlug && top === orgSlug)) {
     return `home/${segments.slice(2).join("/")}`;
+  }
+
+  // Thread-scoped mounts resolve into the current thread's subtree of the
+  // shared volume (org/output → outputs, org/upload → uploads). Only linkable
+  // with a threadId. ponytail: assumes the file is under THIS thread's folder,
+  // which holds unless a shared sandbox misrouted the per-run symlink (rare);
+  // a stale link just 404s the preview — no worse than the unlinked text.
+  if (threadId) {
+    if (top === "output")
+      return `outputs/${threadId}/${segments.slice(2).join("/")}`;
+    if (top === "upload")
+      return `uploads/${threadId}/${segments.slice(2).join("/")}`;
   }
 
   return null;

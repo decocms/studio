@@ -46,7 +46,7 @@ function stripBindingMetadata(
  * Handles configuration token issuance and OAuth token refresh
  *
  * @param connection - Connection entity from database
- * @param ctx - Mesh context
+ * @param ctx - Studio context
  * @param superUser - Whether to use superuser mode for background processes
  * @returns Headers object ready to be used in HTTP requests
  */

@@ -185,6 +185,58 @@ describe("run reactor", () => {
     expect(updates[0]!.failure_kind).toBeNull();
   });
 
+  test("RUN_RESUMED restores in_progress and clears the stale force-fail columns", async () => {
+    // Regression: a run force-failed as ghost/reaped and then recovered used to
+    // keep status:"failed" in the DB — RUN_RESUMED only stamped run_started_at,
+    // so the thread only self-corrected at the next FINISH. It must flip the row
+    // back to in_progress on resume.
+    const updates: Record<string, unknown>[] = [];
+    const deps: RunReactorDeps = {
+      storage: {
+        update: async (
+          _id: string,
+          _orgId: string,
+          data: Record<string, unknown>,
+        ) => {
+          updates.push(data);
+          return null;
+        },
+        get: async () => ({
+          id: "run_1",
+          organization_id: "org_1",
+          created_by: "user_1",
+          status: "in_progress",
+        }),
+      } as unknown as ThreadStoragePort,
+      sseHub: { emit: () => {} },
+    };
+
+    await reactAll(
+      [
+        {
+          event: {
+            type: "RUN_RESUMED",
+            taskId: "run_1",
+            orgId: "org_1",
+            userId: "user_1",
+            abortController: new AbortController(),
+            podId: "pod_1",
+          },
+          state: undefined,
+        },
+      ],
+      deps,
+    );
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.status).toBe("in_progress");
+    expect(updates[0]!.failure_reason).toBeNull();
+    expect(updates[0]!.failure_kind).toBeNull();
+    expect(updates[0]!.last_progress_at).toBeNull();
+    // Resume must NOT overwrite the prior run's config.
+    expect(updates[0]!).not.toHaveProperty("run_config");
+  });
+
   test("RUN_STARTED emits the in_progress thread-status event with data.message_id", async () => {
     const emitted: { type: string; data: Record<string, unknown> }[] = [];
     const deps: RunReactorDeps = {

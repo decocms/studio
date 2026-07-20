@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@/shared/task-board";
 import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
+import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
 import { TaskBoardItemPrioritySchema } from "@/tools/task-board/schema";
 import { bearerToken, isVaultServiceToken } from "./credential-vault";
 
@@ -150,6 +151,8 @@ export const createTaskBoardImportRoutes = () => {
         by: "system",
       });
       created++;
+      // Broadcast each imported card so open boards fill in live.
+      emitTaskBoardUpdated(organizationId, row);
       if (toSuperAgent) {
         delegated++;
         await reactToSuperAgentDelegation(ctx, row);

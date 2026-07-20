@@ -70,7 +70,8 @@ import { Avatar } from "@deco/ui/components/avatar.tsx";
 
 import { OverviewTabContent, OverviewTabSkeleton } from "./overview.tsx";
 import { AuditTabContent, MonitoringLogsTable } from "./audit.tsx";
-import { ThreadsTabContent, ThreadsFiltersPopover } from "./threads.tsx";
+import { ThreadsTabContent } from "./threads.tsx";
+import { ThreadsFiltersPopover } from "./threads-filters-popover.tsx";
 import { AutomationsTabContent } from "./automations.tsx";
 import { getOrgMembers } from "./utils.ts";
 import { track } from "@/web/lib/posthog-client";
@@ -727,7 +728,7 @@ function MonitoringDashboardContent({
                     onClick={onStreamingToggle}
                   >
                     {isStreaming && (
-                      <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="size-2 rounded-full bg-success animate-pulse" />
                     )}
                     <span>Live</span>
                     {isStreaming && (

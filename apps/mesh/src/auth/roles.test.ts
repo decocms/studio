@@ -29,4 +29,15 @@ describe("canAssignRole", () => {
     expect(canAssignRole(undefined, "user")).toBe(false);
     expect(canAssignRole(undefined, "owner")).toBe(false);
   });
+
+  // Regression for #3388: a member's caller role is the org plugin's
+  // default "member" string, not the built-in "user" role. canAssignRole
+  // must deny it just like any other non-admin/owner role — a member must
+  // not be able to self-promote to admin by calling
+  // ORGANIZATION_MEMBER_UPDATE_ROLE against their own member row.
+  it("plain member role cannot self-promote to admin or owner", () => {
+    expect(canAssignRole("member", "admin")).toBe(false);
+    expect(canAssignRole("member", "owner")).toBe(false);
+    expect(canAssignRole("member", "member")).toBe(false);
+  });
 });

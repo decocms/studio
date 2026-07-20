@@ -122,7 +122,7 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
   return (
     <>
       <ToolCallShell
-        icon={<UserCircle className="text-emerald-500" />}
+        icon={<UserCircle className="text-success" />}
         title={`Agent created: ${agent.title}`}
         state="idle"
         trailing={<LatencyLabel latency={latency} />}

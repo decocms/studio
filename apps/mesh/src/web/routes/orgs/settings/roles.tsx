@@ -6,6 +6,7 @@ import {
 import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { track } from "@/web/lib/posthog-client";
+import { getRoleDotColor } from "@/web/lib/role-color";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -49,58 +50,11 @@ import {
 } from "@/web/views/settings/org-role-detail.tsx";
 import { RequirePrivileged } from "@/web/components/require-privileged";
 
-// ============================================================================
-// Role color helpers
-// ============================================================================
-
 const BUILTIN_ROLES = [
-  { role: "owner", label: "Owner", color: "bg-red-500" },
-  { role: "admin", label: "Admin", color: "bg-blue-500" },
-  { role: "user", label: "User", color: "bg-green-500" },
+  { role: "owner", label: "Owner" },
+  { role: "admin", label: "Admin" },
+  { role: "user", label: "User" },
 ] as const;
-
-const ROLE_COLORS = [
-  "bg-red-500",
-  "bg-orange-500",
-  "bg-amber-500",
-  "bg-yellow-500",
-  "bg-lime-500",
-  "bg-green-500",
-  "bg-emerald-500",
-  "bg-teal-500",
-  "bg-cyan-500",
-  "bg-sky-500",
-  "bg-blue-500",
-  "bg-indigo-500",
-  "bg-violet-500",
-  "bg-purple-500",
-  "bg-fuchsia-500",
-  "bg-pink-500",
-  "bg-rose-500",
-] as const;
-
-function getRoleColor(roleName: string): string {
-  if (!roleName) return "bg-neutral-400";
-  let hash = 0;
-  for (let i = 0; i < roleName.length; i++) {
-    const char = roleName.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  const index = Math.abs(hash) % ROLE_COLORS.length;
-  return ROLE_COLORS[index] ?? ROLE_COLORS[0];
-}
-
-const BUILTIN_ROLE_COLORS: Record<string, string> = {
-  owner: "bg-red-500",
-  admin: "bg-blue-500",
-  user: "bg-green-500",
-};
-
-function getRoleDotColor(role: string, isBuiltin: boolean): string {
-  if (isBuiltin) return BUILTIN_ROLE_COLORS[role] ?? "bg-neutral-400";
-  return getRoleColor(role);
-}
 
 // ============================================================================
 // Roles Table (main page content)
@@ -255,7 +209,7 @@ function RolesPageContent() {
             <span className="text-sm text-muted-foreground">Basic access</span>
           );
         }
-        const r = row.role as OrganizationRole;
+        const r = row.role;
         const parts: string[] = [];
         if (r.allowsAllStaticPermissions) {
           parts.push("Full org access");
@@ -311,7 +265,7 @@ function RolesPageContent() {
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => {
-                  const r = row.role as OrganizationRole;
+                  const r = row.role;
                   if (r.id) setRoleToDelete({ id: r.id, label: r.label });
                 }}
               >
@@ -330,7 +284,7 @@ function RolesPageContent() {
     if (row.kind === "builtin") {
       setActiveRole(`builtin-${row.role.role}`);
     } else {
-      const r = row.role as OrganizationRole;
+      const r = row.role;
       setActiveRole(r.id);
     }
   };

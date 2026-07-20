@@ -1,5 +1,3 @@
-import type { ConnectionEntity } from "@/tools/connection/schema";
-import { parseVirtualUrl } from "@/tools/connection/schema";
 import { EnvVarsEditor } from "@/web/components/env-vars-editor";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { Badge } from "@deco/ui/components/badge.tsx";
@@ -25,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
+import { type ConnectionEntity, parseVirtualUrl } from "@decocms/mesh-sdk";
 import {
   CheckCircle,
   ChevronDown,

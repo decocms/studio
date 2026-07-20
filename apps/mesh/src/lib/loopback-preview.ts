@@ -5,7 +5,7 @@
  * User-desktop sandboxes serve their preview on `http://<handle>.localhost:
  * <ingressPort>`. Browsers (and curl) special-case `.localhost` subdomains to
  * loopback, but server-side fetch resolves them through getaddrinfo, which
- * returns NXDOMAIN on macOS — so the mesh's preview proxy routes
+ * returns NXDOMAIN on macOS — so the studio's preview proxy routes
  * (`preview-fetch` / `preview-invoke`) could never reach a linked sandbox.
  * Dialing 127.0.0.1 directly while preserving the original host lets the
  * ingress (`link-daemon/local-ingress.ts`) route by Host as usual.

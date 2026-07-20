@@ -100,9 +100,142 @@ function MenuItemButton({
 
 function ImpersonatingPill() {
   return (
-    <span className="shrink-0 inline-flex items-center rounded-full bg-amber-100 dark:bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+    <span className="shrink-0 inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
       Impersonating
     </span>
+  );
+}
+
+function UserInfoHeader({
+  user,
+  userImage,
+  isImpersonating,
+  isMobile,
+}: {
+  user: { id?: string; name?: string; email?: string } | undefined;
+  userImage?: string;
+  isImpersonating: boolean;
+  isMobile: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 px-4",
+        isMobile ? "py-4 border-b border-border" : "py-3 mx-1 mt-1",
+      )}
+    >
+      <Avatar
+        url={userImage}
+        fallback={user?.name ?? "U"}
+        shape="circle"
+        size="sm"
+        className="shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium truncate">{user?.name ?? "User"}</p>
+          {isImpersonating && <ImpersonatingPill />}
+        </div>
+        <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+      </div>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={() => {
+                if (!user?.id) return;
+                navigator.clipboard.writeText(user.id).then(() => {
+                  toast.success("User ID copied");
+                });
+              }}
+              className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Copy01 size={14} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p className="text-xs">Copy user ID</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+}
+
+function ThemeSoundVersionBar({
+  themeOptions,
+  preferences,
+  setPreferences,
+  isMobile,
+}: {
+  themeOptions: { value: ThemeMode; icon: React.ReactNode; label: string }[];
+  preferences: ReturnType<typeof usePreferences>[0];
+  setPreferences: ReturnType<typeof usePreferences>[1];
+  isMobile: boolean;
+}) {
+  const buttonSize = isMobile ? "size-8" : "size-7";
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between border-t border-border/50",
+        isMobile ? "px-3 py-3" : "px-2 py-1.5",
+      )}
+    >
+      <div className="flex items-center gap-0.5">
+        {themeOptions.map(({ value, icon, label }) => (
+          <button
+            key={value}
+            type="button"
+            aria-label={label}
+            onClick={() =>
+              setPreferences((prev) => ({ ...prev, theme: value }))
+            }
+            className={cn(
+              buttonSize,
+              "rounded-md flex items-center justify-center transition-colors",
+              preferences.theme === value
+                ? "bg-sidebar-accent text-foreground"
+                : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
+            )}
+          >
+            {icon}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={
+            preferences.enableSounds ? "Disable sounds" : "Enable sounds"
+          }
+          onClick={() =>
+            setPreferences((prev) => ({
+              ...prev,
+              enableSounds: !prev.enableSounds,
+            }))
+          }
+          className={cn(
+            buttonSize,
+            "rounded-md flex items-center justify-center transition-colors",
+            preferences.enableSounds
+              ? "text-foreground hover:bg-sidebar-accent/50"
+              : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
+          )}
+        >
+          {preferences.enableSounds ? (
+            <VolumeMax size={14} />
+          ) : (
+            <VolumeX size={14} />
+          )}
+        </button>
+        <span className="text-xs text-muted-foreground/60">
+          v{__MESH_VERSION__}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -136,49 +269,12 @@ function AccountPopoverContent({
     // Mobile: single-column scrollable layout
     return (
       <div className="flex flex-col h-full overflow-hidden">
-        {/* User info */}
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-border">
-          <Avatar
-            url={userImage}
-            fallback={user?.name ?? "U"}
-            shape="circle"
-            size="sm"
-            className="shrink-0"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-medium truncate">
-                {user?.name ?? "User"}
-              </p>
-              {isImpersonating && <ImpersonatingPill />}
-            </div>
-            <p className="text-xs text-muted-foreground truncate">
-              {user?.email}
-            </p>
-          </div>
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onClick={() => {
-                    if (!user?.id) return;
-                    navigator.clipboard.writeText(user.id).then(() => {
-                      toast.success("User ID copied");
-                    });
-                  }}
-                  className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <Copy01 size={14} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p className="text-xs">Copy user ID</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+        <UserInfoHeader
+          user={user}
+          userImage={userImage}
+          isImpersonating={isImpersonating}
+          isMobile
+        />
 
         {/* Scrollable content */}
         <div className="flex-1 min-h-0 overflow-y-auto">
@@ -194,58 +290,12 @@ function AccountPopoverContent({
           </nav>
         </div>
 
-        {/* Bottom bar: theme + sound + version */}
-        <div className="flex items-center justify-between px-3 py-3 border-t border-border/50">
-          <div className="flex items-center gap-0.5">
-            {themeOptions.map(({ value, icon, label }) => (
-              <button
-                key={value}
-                type="button"
-                aria-label={label}
-                onClick={() =>
-                  setPreferences((prev) => ({ ...prev, theme: value }))
-                }
-                className={cn(
-                  "size-8 rounded-md flex items-center justify-center transition-colors",
-                  preferences.theme === value
-                    ? "bg-sidebar-accent text-foreground"
-                    : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
-                )}
-              >
-                {icon}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-label={
-                preferences.enableSounds ? "Disable sounds" : "Enable sounds"
-              }
-              onClick={() =>
-                setPreferences((prev) => ({
-                  ...prev,
-                  enableSounds: !prev.enableSounds,
-                }))
-              }
-              className={cn(
-                "size-8 rounded-md flex items-center justify-center transition-colors",
-                preferences.enableSounds
-                  ? "text-foreground hover:bg-sidebar-accent/50"
-                  : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
-              )}
-            >
-              {preferences.enableSounds ? (
-                <VolumeMax size={14} />
-              ) : (
-                <VolumeX size={14} />
-              )}
-            </button>
-            <span className="text-xs text-muted-foreground/60">
-              v{__MESH_VERSION__}
-            </span>
-          </div>
-        </div>
+        <ThemeSoundVersionBar
+          themeOptions={themeOptions}
+          preferences={preferences}
+          setPreferences={setPreferences}
+          isMobile
+        />
       </div>
     );
   }
@@ -254,49 +304,12 @@ function AccountPopoverContent({
   return (
     <div className="flex w-full flex-col overflow-hidden">
       <div className="flex flex-col">
-        {/* User info */}
-        <div className="flex items-center gap-3 px-4 py-3 mx-1 mt-1">
-          <Avatar
-            url={userImage}
-            fallback={user?.name ?? "U"}
-            shape="circle"
-            size="sm"
-            className="shrink-0"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-medium truncate">
-                {user?.name ?? "User"}
-              </p>
-              {isImpersonating && <ImpersonatingPill />}
-            </div>
-            <p className="text-xs text-muted-foreground truncate">
-              {user?.email}
-            </p>
-          </div>
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onClick={() => {
-                    if (!user?.id) return;
-                    navigator.clipboard.writeText(user.id).then(() => {
-                      toast.success("User ID copied");
-                    });
-                  }}
-                  className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <Copy01 size={14} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p className="text-xs">Copy user ID</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+        <UserInfoHeader
+          user={user}
+          userImage={userImage}
+          isImpersonating={isImpersonating}
+          isMobile={false}
+        />
 
         {/* Navigation items */}
         <nav className="flex-1 flex flex-col px-2 pt-1 overflow-y-auto">
@@ -309,58 +322,12 @@ function AccountPopoverContent({
           <MenuItemButton item={signOutItem} onClose={close} />
         </nav>
 
-        {/* Bottom bar: theme toggles + sound + version */}
-        <div className="flex items-center justify-between px-2 py-1.5 border-t border-border/50">
-          <div className="flex items-center gap-0.5">
-            {themeOptions.map(({ value, icon, label }) => (
-              <button
-                key={value}
-                type="button"
-                aria-label={label}
-                onClick={() =>
-                  setPreferences((prev) => ({ ...prev, theme: value }))
-                }
-                className={cn(
-                  "size-7 rounded-md flex items-center justify-center transition-colors",
-                  preferences.theme === value
-                    ? "bg-sidebar-accent text-foreground"
-                    : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
-                )}
-              >
-                {icon}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-label={
-                preferences.enableSounds ? "Disable sounds" : "Enable sounds"
-              }
-              onClick={() =>
-                setPreferences((prev) => ({
-                  ...prev,
-                  enableSounds: !prev.enableSounds,
-                }))
-              }
-              className={cn(
-                "size-7 rounded-md flex items-center justify-center transition-colors",
-                preferences.enableSounds
-                  ? "text-foreground hover:bg-sidebar-accent/50"
-                  : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
-              )}
-            >
-              {preferences.enableSounds ? (
-                <VolumeMax size={14} />
-              ) : (
-                <VolumeX size={14} />
-              )}
-            </button>
-            <span className="text-xs text-muted-foreground/60">
-              v{__MESH_VERSION__}
-            </span>
-          </div>
-        </div>
+        <ThemeSoundVersionBar
+          themeOptions={themeOptions}
+          preferences={preferences}
+          setPreferences={setPreferences}
+          isMobile={false}
+        />
       </div>
     </div>
   );
@@ -462,7 +429,7 @@ export function AccountPopover() {
             label: "Admin Dashboard",
             icon: <ShieldTick size={16} />,
             onClick: () => navigate({ to: "/_admin" }),
-            className: "text-amber-700 dark:text-amber-400",
+            className: "text-warning",
           } satisfies MenuItem,
         ]
       : []),
@@ -498,7 +465,7 @@ export function AccountPopover() {
           }
           window.location.href = "/";
         },
-        className: "text-amber-700 dark:text-amber-400",
+        className: "text-warning",
       }
     : null;
 
@@ -535,7 +502,7 @@ export function AccountPopover() {
             onClick={() => setOpen(true)}
             className={cn(
               "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-              isImpersonating && "border-2 border-dashed border-amber-500",
+              isImpersonating && "border-2 border-dashed border-warning",
             )}
           >
             <Avatar
@@ -559,7 +526,7 @@ export function AccountPopover() {
               tooltip={user?.name ?? "Account"}
               className={cn(
                 "rounded-md",
-                isImpersonating && "border-2 border-dashed border-amber-500",
+                isImpersonating && "border-2 border-dashed border-warning",
               )}
             >
               <Avatar

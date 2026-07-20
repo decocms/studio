@@ -7,7 +7,7 @@ import { WELL_KNOWN_STARTERS } from "../constants";
  *   bun:   `Listening on http://localhost:3000`
  *   fresh: `Listening on http://0.0.0.0:8000/`
  *
- * The probe needs a port to HEAD-check. Mesh sets `application.port` and
+ * The probe needs a port to HEAD-check. Studio sets `application.port` and
  * exports it as `PORT`, but most frameworks (vite included) ignore that
  * env unless the project's config reads it explicitly. Worse, on the host
  * runner two sandboxes can race for the same default port — vite then

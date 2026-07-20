@@ -6,8 +6,16 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@deco/ui/components/select.tsx";
-import { useTaskBoardEnabled } from "@/web/hooks/use-organization-settings";
+import {
+  getCommerceDiscoveryAgentId,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
+import {
+  useReportsOnly,
+  useTaskBoardEnabled,
+} from "@/web/hooks/use-organization-settings";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
+import { shouldDeepLinkSourceTab } from "./source-system-tabs";
 import type { TabIcon } from "./resolve-tab-icon";
 import { TabIconGlyph } from "./tab-icon-glyph";
 import { track } from "@/web/lib/posthog-client";
@@ -59,6 +67,9 @@ export function MobileMainPanelTabSelect({
     taskId,
   });
   const taskBoardEnabled = useTaskBoardEnabled();
+  const { org } = useProjectContext();
+  const reportsOnly = useReportsOnly();
+  const onReportAgent = virtualMcpId === getCommerceDiscoveryAgentId(org.id);
 
   // Tasks / Library are toggled via `?main=board|files`; they need a task route
   // to act on (same gate as the desktop toggles).
@@ -96,6 +107,20 @@ export function MobileMainPanelTabSelect({
       tab_id: value,
       source: "mobile_select",
     });
+    // Reports-only: the storefront Preview/Code live on the Report Agent, so
+    // from any other shell deep-link into it instead of opening a source-less
+    // panel on the current agent (mirrors setActiveTab in useMainPanelTabs).
+    if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: value })) {
+      navigate({
+        to: "/$org/$taskId",
+        params: { org: org.slug, taskId: crypto.randomUUID() },
+        search: {
+          virtualmcpid: getCommerceDiscoveryAgentId(org.id),
+          main: value,
+        },
+      });
+      return;
+    }
     navigate({
       to: ".",
       search: (prev: Record<string, unknown>) =>

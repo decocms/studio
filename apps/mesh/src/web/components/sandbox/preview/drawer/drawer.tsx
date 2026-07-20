@@ -73,7 +73,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     if (!props.open) props.onOpenChange(true);
   };
 
-  // Mesh's sandbox proxy route requires virtualMcpId+branch in the path to
+  // Studio's sandbox proxy route requires virtualMcpId+branch in the path to
   // compute the per-user claim handle. Without them the request 400s
   // before reaching the daemon.
   const execScript = (name: string) => {
@@ -92,10 +92,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     );
   };
 
-  const handleAddScript = async (name: string) => {
-    setScriptTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
-    setActive(name);
-    props.onOpenChange(true);
+  const runExec = async (name: string, failureMessage: string) => {
     try {
       const res = await execScript(name);
       // res === null means missing virtualMcpId/branch — programming error,
@@ -103,8 +100,15 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
       if (res === null) return;
       if (!res.ok) throw new Error(`Exec failed: ${res.statusText}`);
     } catch {
-      toast.error("Failed to run " + name);
+      toast.error(failureMessage);
     }
+  };
+
+  const handleAddScript = async (name: string) => {
+    setScriptTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setActive(name);
+    props.onOpenChange(true);
+    await runExec(name, "Failed to run " + name);
   };
 
   // × on a script tab: kill the process AND drop the tab. Active tab
@@ -120,15 +124,10 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // daemon's task-manager replaces the existing task with the same logName.
   const handleRunActive = async () => {
     const wasRunning = vmEvents.activeProcesses.includes(active);
-    try {
-      const res = await execScript(active);
-      if (res === null) return;
-      if (!res.ok) throw new Error(`Exec failed: ${res.statusText}`);
-    } catch {
-      toast.error(
-        (wasRunning ? "Failed to restart " : "Failed to run ") + active,
-      );
-    }
+    await runExec(
+      active,
+      (wasRunning ? "Failed to restart " : "Failed to run ") + active,
+    );
   };
 
   // Per-script Stop on the active tab. Marks the script as killing so the

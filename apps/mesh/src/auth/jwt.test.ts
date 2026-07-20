@@ -1,7 +1,7 @@
 /**
  * JWT Authentication Integration Tests
  *
- * Tests for the mesh JWT token system:
+ * Tests for the studio JWT token system:
  * - Token issuance with custom payloads
  * - Token verification
  * - Token decoding (without verification)

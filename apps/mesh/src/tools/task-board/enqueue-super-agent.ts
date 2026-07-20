@@ -5,13 +5,13 @@ import { enqueueThreadRun } from "@/dispatch-queue";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { getDecopilotId } from "@decocms/mesh-sdk";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@/shared/task-board";
-import { emitTaskBoardUpdated } from "./run-reactions";
 
 /**
  * The shared post-write reaction for a task delegated to the Super Agent:
- * broadcast the updated item over SSE and enqueue the run. No-op for any
- * other assignee, so callers that already know the write delegated (create)
- * and callers that gate on the transition (update) share one body. Enqueue is
+ * enqueue the run. No-op for any other assignee, so callers that already know
+ * the write delegated (create) and callers that gate on the transition
+ * (update) share one body. The SSE broadcast is emitted by each write site
+ * itself (every create/update broadcasts, not just delegations). Enqueue is
  * best-effort — the task is already persisted, so a dispatch failure (e.g. no
  * model configured) must never fail the write that delegated it.
  */
@@ -20,7 +20,6 @@ export async function reactToSuperAgentDelegation(
   item: TaskBoardItem,
 ): Promise<void> {
   if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return;
-  emitTaskBoardUpdated(item.organizationId, item);
   await enqueueSuperAgentForTask(ctx, item).catch((err) => {
     console.error("[task-board] Super Agent enqueue failed", err);
   });

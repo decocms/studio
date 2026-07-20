@@ -131,9 +131,10 @@ import * as migration129taskboardassignedby from "./129-task-board-assigned-by.t
 import * as migration130taskboardthreadid from "./130-task-board-thread-id.ts";
 import * as migration131taskboardthreadlinkcascade from "./131-task-board-thread-link-cascade.ts";
 import * as migration132taskboarditemprs from "./132-task-board-item-prs.ts";
+import * as migration133dedupeduplicatemembers from "./133-dedupe-duplicate-members.ts";
 
 /**
- * Core migrations for the Mesh application.
+ * Core migrations for the Studio application.
  *
  * These are managed by Kysely's migrator and run in alphabetical order.
  */
@@ -287,6 +288,7 @@ const migrations: Record<string, Migration> = {
   "130-task-board-thread-id": migration130taskboardthreadid,
   "131-task-board-thread-link-cascade": migration131taskboardthreadlinkcascade,
   "132-task-board-item-prs": migration132taskboarditemprs,
+  "133-dedupe-duplicate-members": migration133dedupeduplicatemembers,
 };
 
 export default migrations;

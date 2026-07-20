@@ -208,37 +208,43 @@ function applyLocally(
   return null;
 }
 
+type ToolLikePart = Extract<UIMessage["parts"][number], { toolCallId: string }>;
+
+function isToolLikePart(
+  part: UIMessage["parts"][number],
+): part is ToolLikePart {
+  return part.type === "dynamic-tool" || part.type.startsWith("tool-");
+}
+
 function findTargetPartIndex(
   parts: UIMessage["parts"],
   action: Exclude<SubmitAction, { kind: "message" }>,
 ): number {
   if (action.kind === "toolOutput") {
     return parts.findIndex(
-      // biome-ignore lint/suspicious/noExplicitAny: heterogeneous AI SDK part union
-      (p) => (p as any)?.toolCallId === action.toolCallId,
+      (p) => isToolLikePart(p) && p.toolCallId === action.toolCallId,
     );
   }
-  return parts.findIndex((p) => {
-    // biome-ignore lint/suspicious/noExplicitAny: heterogeneous AI SDK part union
-    const x = p as any;
-    return (
-      x?.state === "approval-requested" && x?.approval?.id === action.approvalId
-    );
-  });
+  return parts.findIndex(
+    (p) =>
+      isToolLikePart(p) &&
+      p.state === "approval-requested" &&
+      p.approval?.id === action.approvalId,
+  );
 }
 
 function patchPart(
   part: UIMessage["parts"][number],
   action: Exclude<SubmitAction, { kind: "message" }>,
 ): UIMessage["parts"][number] | null {
+  if (!isToolLikePart(part)) return null;
   if (action.kind === "toolOutput") {
     return {
       ...part,
       state: action.state ?? "output-available",
       output: action.output,
       errorText: action.errorText,
-      // biome-ignore lint/suspicious/noExplicitAny: heterogeneous AI SDK part union
-    } as any;
+    } as ToolLikePart;
   }
   return {
     ...part,
@@ -248,8 +254,7 @@ function patchPart(
       approved: action.approved,
       ...(action.reason ? { reason: action.reason } : {}),
     },
-    // biome-ignore lint/suspicious/noExplicitAny: heterogeneous AI SDK part union
-  } as any;
+  } as ToolLikePart;
 }
 
 function describe(action: SubmitAction): string {
@@ -382,8 +387,12 @@ export class ThreadConnection {
     try {
       await this.post(last, opts, abort.signal);
     } catch (err) {
-      const e = err instanceof Error ? err : new Error(String(err));
       this.clearRunStatusStage();
+      // stop() aborts `abort.signal` and already reset status to "ready"
+      // synchronously; the POST's rejection lands here asynchronously after
+      // that. Don't clobber the deliberate cancel with an error state.
+      if (abort.signal.aborted) return;
+      const e = err instanceof Error ? err : new Error(String(err));
       this.failTo(e);
     } finally {
       if (this.inflightPost === abort) this.inflightPost = null;

@@ -96,7 +96,7 @@ export async function startDevServer(
   const { baseUrl, noTui } = options;
 
   // Sandbox preview: the daemon injects PORT and proxies the preview to it,
-  // expecting HTML at /. Mesh's dev front door is Vite (it serves the app and
+  // expecting HTML at /. Studio's dev front door is Vite (it serves the app and
   // proxies /api → the Bun server); the Bun server alone 404s at / in dev. So
   // in a sandbox we bind Vite to the injected PORT and move the Bun server to
   // an internal port (Vite's proxy target follows PORT). The daemon sets
@@ -131,9 +131,9 @@ export async function startDevServer(
   const repoRoot = join(import.meta.dir, "..", "..", "..", "..", "..");
 
   // Pre-compute the link's data dir. The dir lives in tmpdir — NOT under
-  // settings.dataDir, which is inside the mesh repo. Sandbox clones go into
+  // settings.dataDir, which is inside the studio repo. Sandbox clones go into
   // `<DATA_DIR>/sandboxes/<handle>/repo`; when that parent is itself a git
-  // repo (e.g. `~/code/mesh/...`) git's parent-walk hits the outer .git,
+  // repo (e.g. `~/code/studio/...`) git's parent-walk hits the outer .git,
   // refuses to clone, and the daemon crashes mid-bootstrap. Keying by
   // workspace slug isolates concurrent worktrees.
   const slug =
@@ -141,7 +141,7 @@ export async function startDevServer(
     process.env.CONDUCTOR_WORKSPACE_NAME ??
     "default";
   // Local mode mints an API-key session into an isolated tmpdir so sandbox
-  // clones never nest inside the mesh repo's .git. Non-local mode reuses
+  // clones never nest inside the studio repo's .git. Non-local mode reuses
   // DECOCMS_HOME so the auto-spawned link registers as the same OAuth user
   // logged into the browser (e.g. tavano@deco.cx).
   const linkDataDir = options.localMode
@@ -280,7 +280,7 @@ export async function startDevServer(
   // The link is tracked like postgres/nats: dynamic port, state file at
   // <home>/services/link/state.json, owned-process verification on
   // shutdown. `services down` (or our shutdown handler below) tears it
-  // down. The DATA_DIR lives OUTSIDE the mesh repo: the daemon clones
+  // down. The DATA_DIR lives OUTSIDE the studio repo: the daemon clones
   // user repos into `<DATA_DIR>/sandboxes/<handle>/repo`, and if that
   // path is nested under another git repo (this one) git's parent-walk
   // hits the outer .git, refuses to clone, and the daemon crashes

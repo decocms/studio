@@ -25,6 +25,17 @@ const SectionsEditor = lazy(() =>
   })),
 );
 
+function errorStatus(error: unknown): number | undefined {
+  if (
+    error instanceof Error &&
+    "status" in error &&
+    typeof error.status === "number"
+  ) {
+    return error.status;
+  }
+  return undefined;
+}
+
 export function BlocksPanel({
   virtualMcpId,
   externalSelectedIndex = null,
@@ -56,8 +67,13 @@ export function BlocksPanel({
     decofile: {
       status: decofile.status,
       hasData: decofile.data !== undefined,
+      errorStatus: errorStatus(decofile.error),
     },
-    meta: { status: meta.status, hasData: meta.data !== undefined },
+    meta: {
+      status: meta.status,
+      hasData: meta.data !== undefined,
+      errorStatus: errorStatus(meta.error),
+    },
     hasEditableContent: hasEditableDecoContent(decofile.data, meta.data),
   });
 

@@ -239,10 +239,13 @@ export function useReportsOnly(): boolean {
 }
 
 export function useTaskBoardEnabled(): boolean {
+  const reportsOnly = useReportsOnly();
   const { data } = useOrganizationSettings(
     (s) => s.task_board_enabled ?? false,
   );
-  return data ?? false;
+  // Commerce (reports-only) orgs always have the task board enabled — no need
+  // to toggle it on in settings.
+  return reportsOnly || (data ?? false);
 }
 
 export function useUpdateTaskBoardEnabled() {

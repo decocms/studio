@@ -70,7 +70,7 @@ function CopyUrlButton({ url, agentId }: ShareButtonProps) {
       className="h-auto py-3 px-4 flex flex-col items-center gap-2"
     >
       {copied ? (
-        <Check size={20} className="text-green-600" />
+        <Check size={20} className="text-success" />
       ) : (
         <Copy01 size={20} />
       )}
@@ -164,7 +164,7 @@ function InstallClaudeButton({ url, serverName, agentId }: ShareWithNameProps) {
       className="h-auto py-3 px-4 flex flex-col items-center gap-2"
     >
       {copied ? (
-        <Check size={20} className="text-green-600" />
+        <Check size={20} className="text-success" />
       ) : (
         <img
           src="/logos/Claude Code.svg"
@@ -261,7 +261,7 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
       </div>
 
       {apiKey && (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+        <p className="rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
           Store this key securely — it won't be shown again.
         </p>
       )}
@@ -282,7 +282,7 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
             onClick={handleCopy}
           >
             {copied ? (
-              <Check size={12} className="text-green-600" />
+              <Check size={12} className="text-success" />
             ) : (
               <Copy01 size={12} />
             )}
@@ -338,7 +338,7 @@ function EnvVarsBlock({
           onClick={handleCopy}
         >
           {copied ? (
-            <Check size={12} className="text-green-600" />
+            <Check size={12} className="text-success" />
           ) : (
             <Copy01 size={12} />
           )}
@@ -463,7 +463,7 @@ function ChatBridgeSectionInner({
       </div>
 
       {apiKey && (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+        <p className="rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
           Store this key securely — it won't be shown again.
         </p>
       )}
@@ -484,7 +484,7 @@ function ChatBridgeSectionInner({
             onClick={handleCopy}
           >
             {copied ? (
-              <Check size={12} className="text-green-600" />
+              <Check size={12} className="text-success" />
             ) : (
               <Copy01 size={12} />
             )}

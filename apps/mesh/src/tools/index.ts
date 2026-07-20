@@ -1,7 +1,7 @@
 /**
  * Tool Registry
  *
- * Central export for all MCP Mesh management tools.
+ * Central export for all Studio management tools.
  * Types are inferred from CORE_TOOLS — this is the source of truth.
  */
 

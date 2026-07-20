@@ -1,3 +1,4 @@
+import { Brackets, File02, FileCode01, Image01 } from "@untitledui/icons";
 import type { FlatNode, TreeNode } from "./types";
 import { decoBlockKeyFromFileStem } from "@/web/components/sections-editor/deco-block-key";
 
@@ -23,6 +24,24 @@ function normalizePath(path: string) {
 /** The daemon expects relative paths (no leading slash). */
 export function toDaemonPath(treePath: string) {
   return treePath.startsWith("/") ? treePath.slice(1) : treePath;
+}
+
+/**
+ * Guards the deep-link `openPath` (sourced from the `?main=code:<path>` URL
+ * param) before it's used to read a file from the sandbox: rejects `..`
+ * traversal, backslashes, remote-looking URLs, and paths that stay absolute
+ * even after the single-leading-slash strip in `toDaemonPath`, so a crafted
+ * link can't make the daemon resolve outside the workspace root.
+ */
+export function isSafeExplorerOpenPath(path: string): boolean {
+  const normalized = toDaemonPath(path);
+  if (!normalized || normalized.includes("..") || normalized.includes("\\")) {
+    return false;
+  }
+  return (
+    normalized.startsWith(".deco/blocks/") ||
+    (!normalized.startsWith("/") && !normalized.includes("://"))
+  );
 }
 
 /** Path as shown in the explorer tree (leading slash). */
@@ -150,6 +169,43 @@ export function getLanguageFromPath(filepath: string | null) {
   if (n.endsWith(".sh")) return "shell";
 
   return "plaintext";
+}
+
+export type FileIcon = React.ComponentType<{
+  size?: number;
+  className?: string;
+  style?: React.CSSProperties;
+}>;
+
+/** Warm folder tone — reads well on both light and dark backgrounds. */
+const DEFAULT_FILE_COLOR = "#94a3b8";
+
+/**
+ * Maps a filename to an icon + accent color by extension, so the tree reads at
+ * a glance (blue for TS, amber for JSON, purple for images, …). Colors are
+ * inline (not Tailwind scale tokens) and chosen to work in light and dark.
+ */
+export function getFileVisual(name: string): { Icon: FileIcon; color: string } {
+  const n = name.toLowerCase();
+  if (n.endsWith(".tsx") || n.endsWith(".ts"))
+    return { Icon: FileCode01, color: "#3b82f6" };
+  if (
+    n.endsWith(".jsx") ||
+    n.endsWith(".js") ||
+    n.endsWith(".mjs") ||
+    n.endsWith(".cjs")
+  )
+    return { Icon: FileCode01, color: "#d9a441" };
+  if (n.endsWith(".json")) return { Icon: Brackets, color: "#cb9b3f" };
+  if (n.endsWith(".css") || n.endsWith(".scss"))
+    return { Icon: FileCode01, color: "#06b6d4" };
+  if (n.endsWith(".html") || n.endsWith(".xml"))
+    return { Icon: FileCode01, color: "#f97316" };
+  if (/\.(png|jpe?g|gif|webp|avif|ico|svg)$/.test(n))
+    return { Icon: Image01, color: "#a855f7" };
+  if (n.endsWith(".md") || n.endsWith(".mdx"))
+    return { Icon: File02, color: "#64748b" };
+  return { Icon: File02, color: DEFAULT_FILE_COLOR };
 }
 
 export function getAncestorDirectories(filepath: string) {

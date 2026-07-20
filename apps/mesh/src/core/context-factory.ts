@@ -56,6 +56,7 @@ import {
   MonitorResultStorage,
   MonitorConnectionStorage,
 } from "../storage/registry";
+import type { PrivateRegistryDatabase } from "../storage/registry/types";
 import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
@@ -212,7 +213,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
   // admin/owner role never widens it, or a "read-only" key minted by an admin
   // would silently act with full org power. A full-access key carries an
   // explicit wildcard. Only genuine API keys (apiKeyId present) are gated this
-  // way; browser sessions, MCP OAuth, and mesh JWTs keep the role-based path.
+  // way; browser sessions, MCP OAuth, and studio JWTs keep the role-based path.
   const isApiKeyPrincipal = !!apiKeyId;
 
   // Get hasPermission from Better Auth's organization plugin (for browser sessions)
@@ -574,7 +575,7 @@ async function resolveAndCacheRole(
 /**
  * Resolve the on-behalf-of user for a self/loopback call.
  *
- * When mesh calls its own management server (the `<org>_self` connection — e.g.
+ * When studio calls its own management server (the `<org>_self` connection — e.g.
  * a Studio Pack agent invoking COLLECTION_VIRTUAL_MCP_CREATE), the outbound
  * request authenticates with that connection's API key (owned by the org
  * creator) but ALSO forwards the REAL acting user in an `x-mesh-token` JWT (see
@@ -582,7 +583,7 @@ async function resolveAndCacheRole(
  * Studio Pack agent is attributed to the org creator instead of the user who
  * actually acted (wrong `created_by`/`updated_by`).
  *
- * `x-mesh-token` is only ever set by mesh's own outbound header builder, so an
+ * `x-mesh-token` is only ever set by studio's own outbound header builder, so an
  * inbound API-key request carrying one is always a self/loopback call. We use
  * the forwarded user for IDENTITY/attribution; the API key's permissions remain
  * the authorizing capability (the caller keeps `permissions`/`apiKeyId`).
@@ -748,13 +749,13 @@ async function authenticateRequest(
     console.error("[Auth] OAuth session check failed:", err);
   }
 
-  // Try Mesh JWT or API Key authentication (Bearer token)
+  // Try Studio JWT or API Key authentication (Bearer token)
   // These use the same header but different validation
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.replace("Bearer ", "").trim();
 
-    // First, try to verify as Mesh JWT token
-    // These are issued by mesh for downstream services calling back
+    // First, try to verify as Studio JWT token
+    // These are issued by studio for downstream services calling back
     try {
       const meshJwtPayload = await timings.measure("auth_verify_mesh_jwt", () =>
         verifyMeshToken(token),
@@ -825,7 +826,7 @@ async function authenticateRequest(
         };
       }
     } catch {
-      // Not a valid mesh JWT, continue to API key check
+      // Not a valid studio JWT, continue to API key check
     }
 
     // Try API Key authentication
@@ -933,7 +934,7 @@ async function authenticateRequest(
 
   try {
     // Strip the Authorization header before calling getSession.
-    // We've already tried all Bearer-based auth (Mesh JWT, API key) above.
+    // We've already tried all Bearer-based auth (Studio JWT, API key) above.
     // If we pass the Bearer token to getSession, Better Auth's API key plugin
     // will attempt to validate it as an API key and throw INVALID_API_KEY,
     // flooding logs with false-positive errors.
@@ -1306,12 +1307,24 @@ export async function createStudioContextFactory(
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),
     orgSsoSessions: new OrgSsoSessionStorage(config.db),
     registry: {
-      items: new RegistryItemStorage(config.db as any),
-      publishRequests: new PublishRequestStorage(config.db as any),
-      publishApiKeys: new PublishApiKeyStorage(config.db as any),
-      monitorRuns: new MonitorRunStorage(config.db as any),
-      monitorResults: new MonitorResultStorage(config.db as any),
-      monitorConnections: new MonitorConnectionStorage(config.db as any),
+      items: new RegistryItemStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      publishRequests: new PublishRequestStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      publishApiKeys: new PublishApiKeyStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      monitorRuns: new MonitorRunStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      monitorResults: new MonitorResultStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      monitorConnections: new MonitorConnectionStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
     },
     brandContext: new BrandContextStorage(config.db),
     organizationDomains: new OrganizationDomainStorage(config.db),
@@ -1366,7 +1379,7 @@ export async function createStudioContextFactory(
       : { user: undefined };
 
     // Resolve caller connection ID: explicit header takes priority, then fall
-    // back to the connectionId embedded in the mesh JWT. This ensures that
+    // back to the connectionId embedded in the studio JWT. This ensures that
     // management tools on _self see the caller's connection ID even when the
     // runtime doesn't set x-caller-id.
     const connectionId =

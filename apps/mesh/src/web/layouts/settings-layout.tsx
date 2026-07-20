@@ -228,8 +228,26 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
     .filter((group) => group.items.length > 0);
 }
 
-export function SettingsSidebar() {
-  const groups = useSettingsSidebarGroups();
+/** Icon with an optional small notification dot, shared by the desktop and mobile nav item rendering. */
+function SettingsNavIcon({
+  icon,
+  badge,
+}: {
+  icon: React.ReactNode;
+  badge?: number;
+}) {
+  return (
+    <span className="relative shrink-0">
+      {icon}
+      {badge ? (
+        <span className="absolute -right-1 -top-1 size-2 rounded-full bg-destructive pointer-events-none" />
+      ) : null}
+    </span>
+  );
+}
+
+/** Resolves `$org`-templated `to` paths against the current org/pathname, shared by the desktop and mobile sidebars. */
+function useIsActiveSettingsPath() {
   const { org } = useParams({ from: "/shell/$org" });
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
@@ -239,6 +257,13 @@ export function SettingsSidebar() {
     const resolved = to.replace("$org", org);
     return pathname.startsWith(resolved);
   };
+
+  return { org, isActive };
+}
+
+export function SettingsSidebar() {
+  const groups = useSettingsSidebarGroups();
+  const { org, isActive } = useIsActiveSettingsPath();
 
   return (
     <Sidebar variant="sidebar">
@@ -275,12 +300,7 @@ export function SettingsSidebar() {
                         }
                         className="flex items-center gap-2.5 text-sm"
                       >
-                        <span className="relative shrink-0">
-                          {item.icon}
-                          {item.badge ? (
-                            <span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500 pointer-events-none" />
-                          ) : null}
-                        </span>
+                        <SettingsNavIcon icon={item.icon} badge={item.badge} />
                         <span className="truncate">{item.label}</span>
                       </Link>
                     </SidebarMenuButton>
@@ -328,15 +348,7 @@ export function SettingsSidebar() {
 
 export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
   const groups = useSettingsSidebarGroups();
-  const { org } = useParams({ from: "/shell/$org" });
-  const pathname = useRouterState({
-    select: (s) => s.location.pathname,
-  });
-
-  const isActive = (to: string) => {
-    const resolved = to.replace("$org", org);
-    return pathname.startsWith(resolved);
-  };
+  const { org, isActive } = useIsActiveSettingsPath();
 
   return (
     <div className="flex flex-col h-full bg-sidebar">
@@ -366,12 +378,7 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
                 )}
               >
-                <span className="relative shrink-0">
-                  {item.icon}
-                  {item.badge ? (
-                    <span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500 pointer-events-none" />
-                  ) : null}
-                </span>
+                <SettingsNavIcon icon={item.icon} badge={item.badge} />
                 <span className="truncate">{item.label}</span>
               </Link>
             ))}

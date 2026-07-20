@@ -32,6 +32,12 @@ export function useTaskBoardItems() {
           : [patched, ...next];
       });
     },
+    // Live deletes: drop the removed card so it clears on every open board.
+    onDelete: (id) => {
+      queryClient.setQueryData<TaskBoardItem[]>(queryKey, (prev) =>
+        prev?.filter((t) => t.id !== id),
+      );
+    },
   });
 
   // Live run status of linked threads (in_progress / requires_action / …).
@@ -105,5 +111,14 @@ export function useTaskBoardItemActions() {
     onSuccess: invalidate,
   });
 
-  return { create, update, remove };
+  // Link a chat thread to a task (folded into UPDATE via linkThreadId). Kept as
+  // its own mutation so it invalidates without the optimistic field-patch that
+  // `update` applies.
+  const link = useMutation({
+    mutationFn: (input: { id: string; linkThreadId: string }) =>
+      studio.call("TASK_BOARD_ITEM_UPDATE", input),
+    onSuccess: invalidate,
+  });
+
+  return { create, update, remove, link };
 }

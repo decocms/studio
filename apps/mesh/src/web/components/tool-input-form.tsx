@@ -17,10 +17,15 @@ import {
 } from "@deco/ui/components/select.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 
+/** One entry of an MCP tool's `inputSchema.properties`. */
+export interface ToolInputProperty {
+  type: string;
+  description?: string;
+}
+
 interface ToolInputFormProps {
   /** `inputSchema.properties` from the MCP tool definition. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  properties: Record<string, any>;
+  properties: Record<string, ToolInputProperty>;
   /** Names of required fields (`inputSchema.required`). */
   required?: string[];
   /** Current field values. */
@@ -45,7 +50,7 @@ export function ToolInputForm({
             <label className="text-xs font-medium leading-none flex items-center gap-1">
               {key}
               {requiredSet.has(key) && (
-                <span className="text-red-500 text-[10px]">*</span>
+                <span className="text-destructive text-[10px]">*</span>
               )}
             </label>
             <span className="text-[10px] text-muted-foreground font-mono">

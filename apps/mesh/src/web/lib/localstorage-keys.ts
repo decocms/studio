@@ -1,7 +1,7 @@
 import type { ProjectLocator } from "@decocms/mesh-sdk";
 
 /**
- * Known localStorage keys for the mesh app.
+ * Known localStorage keys for the studio app.
  * When adding a new use of useLocalStorage, add the key to this object.
  * This is used to avoid inline key definitions and to ensure consistency.
  */

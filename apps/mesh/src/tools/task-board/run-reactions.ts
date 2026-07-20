@@ -22,7 +22,10 @@
 import type { StudioContext } from "@/core/studio-context";
 import { extractPrFromValue } from "./pr-extract";
 import { sseHub } from "@/event-bus/sse-hub";
-import { TASK_BOARD_ITEM_UPDATED_EVENT } from "@/shared/task-board";
+import {
+  TASK_BOARD_ITEM_DELETED_EVENT,
+  TASK_BOARD_ITEM_UPDATED_EVENT,
+} from "@/shared/task-board";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem, TaskBoardItemStatus } from "@/storage/types";
 
@@ -43,6 +46,18 @@ export function emitTaskBoardUpdated(orgId: string, item: TaskBoardItem): void {
     source: "task-board",
     subject: item.id,
     data: item,
+    time: new Date().toISOString(),
+  });
+}
+
+/** Push a task board item deletion to every SSE listener on its org. */
+export function emitTaskBoardDeleted(orgId: string, itemId: string): void {
+  sseHub.emit(orgId, {
+    id: crypto.randomUUID(),
+    type: TASK_BOARD_ITEM_DELETED_EVENT,
+    source: "task-board",
+    subject: itemId,
+    data: { id: itemId },
     time: new Date().toISOString(),
   });
 }

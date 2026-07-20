@@ -3,12 +3,8 @@ import { useState, useRef } from "react";
 import Editor, { loader } from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
 import {
-  Brackets,
-  File02,
-  FileCode01,
   FilePlus01,
   FolderPlus,
-  Image01,
   Loading01,
   SearchSm,
   XClose,
@@ -21,16 +17,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
 import { toast } from "sonner";
 import { useChatStream } from "@/web/components/chat/context";
 import { usePanelActions } from "@/web/layouts/shell-layout";
@@ -45,6 +31,7 @@ import {
   FileExplorerNameDialog,
   type FileExplorerNameDialogMode,
 } from "./file-explorer-name-dialog";
+import { FileExplorerDeleteDialog } from "./file-explorer-delete-dialog";
 import { FileTreeRow } from "./file-tree-row";
 import {
   buildFileTree,
@@ -55,8 +42,10 @@ import {
   flattenTree,
   getAncestorDirectories,
   getDirectoryContextPath,
+  getFileVisual,
   getLanguageFromPath,
   getParentTreePath,
+  isSafeExplorerOpenPath,
   joinTreePath,
   mergeGlobLists,
   pathExistsInFileList,
@@ -93,55 +82,6 @@ function buildApiUrl(
   endpoint: string,
 ) {
   return `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/${endpoint}`;
-}
-
-/** Reject path traversal and absolute paths outside the workspace root. */
-function isSafeExplorerOpenPath(path: string): boolean {
-  const normalized = toDaemonPath(path);
-  if (!normalized || normalized.includes("..") || normalized.includes("\\")) {
-    return false;
-  }
-  return (
-    normalized.startsWith(".deco/blocks/") ||
-    (!normalized.startsWith("/") && !normalized.includes("://"))
-  );
-}
-
-type FileIcon = React.ComponentType<{
-  size?: number;
-  className?: string;
-  style?: React.CSSProperties;
-}>;
-
-/** Warm folder tone — reads well on both light and dark backgrounds. */
-const DEFAULT_FILE_COLOR = "#94a3b8";
-
-/**
- * Maps a filename to an icon + accent color by extension, so the tree reads at
- * a glance (blue for TS, amber for JSON, purple for images, …). Colors are
- * inline (not Tailwind scale tokens) and chosen to work in light and dark.
- */
-function getFileVisual(name: string): { Icon: FileIcon; color: string } {
-  const n = name.toLowerCase();
-  if (n.endsWith(".tsx") || n.endsWith(".ts"))
-    return { Icon: FileCode01, color: "#3b82f6" };
-  if (
-    n.endsWith(".jsx") ||
-    n.endsWith(".js") ||
-    n.endsWith(".mjs") ||
-    n.endsWith(".cjs")
-  )
-    return { Icon: FileCode01, color: "#d9a441" };
-  if (n.endsWith(".json")) return { Icon: Brackets, color: "#cb9b3f" };
-  if (n.endsWith(".css") || n.endsWith(".scss"))
-    return { Icon: FileCode01, color: "#06b6d4" };
-  if (n.endsWith(".html") || n.endsWith(".xml"))
-    return { Icon: FileCode01, color: "#f97316" };
-  if (/\.(png|jpe?g|gif|webp|avif|ico|svg)$/.test(n))
-    return { Icon: Image01, color: "#a855f7" };
-  if (n.endsWith(".md") || n.endsWith(".mdx"))
-    return { Icon: File02, color: "#64748b" };
-  return { Icon: File02, color: DEFAULT_FILE_COLOR };
 }
 
 export function FileExplorer({
@@ -253,7 +193,9 @@ export function FileExplorer({
         return rest;
       },
     );
-    void queryClient.invalidateQueries({ queryKey: KEYS.liveMeta(cacheKey) });
+    void queryClient.invalidateQueries({
+      queryKey: KEYS.liveMeta(orgSlug, virtualMcpId, branch),
+    });
   }
 
   function invalidateDecofileCachesForDeletedNode(node: TreeNode) {
@@ -618,16 +560,10 @@ export function FileExplorer({
     });
 
     try {
-      const res = await fetch(
-        buildApiUrl(orgSlug, virtualMcpId, branch, "read"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ path: toDaemonPath(path), full: true }),
-        },
-      );
-      if (!res.ok) return;
-      const data = (await res.json()) as {
+      const data = (await postSandbox("read", {
+        path: toDaemonPath(path),
+        full: true,
+      })) as {
         kind?: string;
         content?: string;
       };
@@ -648,21 +584,7 @@ export function FileExplorer({
 
   async function saveFile(path: string, content: string) {
     try {
-      const res = await fetch(
-        buildApiUrl(orgSlug, virtualMcpId, branch, "write"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ path: toDaemonPath(path), content }),
-        },
-      );
-      if (!res.ok) {
-        saveChangesDebug("file save failed", {
-          path,
-          status: res.status,
-        });
-        return;
-      }
+      await postSandbox("write", { path: toDaemonPath(path), content });
       saveChangesDebug("file saved via sandbox /write", { path });
       void queryClient.invalidateQueries({
         queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
@@ -684,8 +606,11 @@ export function FileExplorer({
         }
         return next;
       });
-    } catch {
-      // Save failed silently
+    } catch (err) {
+      saveChangesDebug("file save failed", {
+        path,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -1186,49 +1111,15 @@ export function FileExplorer({
         }}
       />
 
-      <AlertDialog
-        open={deleteTarget !== null}
+      <FileExplorerDeleteDialog
+        deleteTarget={deleteTarget}
+        deleteDirtyPaths={deleteDirtyPaths}
+        fsActionPending={fsActionPending}
         onOpenChange={(open) => {
           if (!open && !fsActionPending) setDeleteTarget(null);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {deleteTarget?.kind === "directory" ? "folder" : "file"}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete{" "}
-              <span className="font-mono">{deleteTarget?.name}</span>
-              {deleteTarget?.kind === "directory"
-                ? " and everything inside it."
-                : "."}
-              {deleteDirtyPaths.length > 0 && (
-                <>
-                  {" "}
-                  {deleteDirtyPaths.length === 1
-                    ? "One open file has unsaved changes that will be lost."
-                    : `${deleteDirtyPaths.length} open files have unsaved changes that will be lost.`}
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={fsActionPending}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={fsActionPending || !deleteTarget}
-              onClick={(e) => {
-                e.preventDefault();
-                if (deleteTarget) void handleDelete(deleteTarget);
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={(node) => void handleDelete(node)}
+      />
     </div>
   );
 }

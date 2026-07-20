@@ -1,5 +1,5 @@
 /**
- * Database Types for MCP Mesh
+ * Database Types for Studio
  *
  * These TypeScript interfaces define the database schema using Kysely's type-only approach.
  * PostgreSQL database schema types.
@@ -15,6 +15,7 @@ import type { ColumnType } from "kysely";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
 import { ThreadStatus, type ProviderId } from "@decocms/mesh-sdk";
+import type { PrivateRegistryDatabase } from "./registry/types";
 
 // ============================================================================
 // Type Utilities
@@ -1041,6 +1042,13 @@ export interface Thread {
   run_owner_pod: string | null;
   run_config: Record<string, unknown> | null;
   run_started_at: string | null;
+  /**
+   * Progress-liveness heartbeat, bumped per streamed chunk (throttled). Used to
+   * derive the virtual "expired" status while a run is streaming — the same
+   * signal the reaper trusts — so a still-streaming thread never shows expired.
+   * Null when the run has never streamed a chunk.
+   */
+  last_progress_at: string | null;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
@@ -1654,7 +1662,7 @@ export interface BrandContext {
  * NOTE: This uses *Table types with ColumnType for proper Kysely type mapping
  * NOTE: Organizations, teams, members, and roles are managed by Better Auth organization plugin
  */
-export interface Database {
+export interface Database extends PrivateRegistryDatabase {
   // Core tables (all within organization scope)
   users: UserTable; // System users
   user: BetterAuthUserTable; // Better Auth core table (singular)
@@ -1714,7 +1722,7 @@ export interface Database {
   automations: AutomationTable;
   automation_triggers: AutomationTriggerTable;
 
-  // Trigger callback tokens (for external MCP → Mesh callbacks)
+  // Trigger callback tokens (for external MCP → Studio callbacks)
   trigger_callback_tokens: TriggerCallbackTokenTable;
 
   // Organization SSO tables

@@ -171,15 +171,17 @@ export function FileUploader({
 
           if (!coordinates) return false;
 
-          // Process all dropped files sequentially at the drop position
+          // Process dropped files one at a time, re-reading the selection after
+          // each insert so multiple files land in order instead of racing to
+          // insert at the same stale position.
           const fileArray = Array.from(files);
-          const currentPos = coordinates.pos;
-
-          for (const file of fileArray) {
-            // Call the ref to use the latest selectedModel
-            void processFileRef.current?.(file, currentPos);
-            // In practice, they'll be inserted at the same position which is fine
-          }
+          void (async () => {
+            let insertPos = coordinates.pos;
+            for (const file of fileArray) {
+              await processFileRef.current?.(file, insertPos);
+              insertPos = view.state.selection.to;
+            }
+          })();
 
           return true;
         },
@@ -195,11 +197,15 @@ export function FileUploader({
 
           event.preventDefault();
 
-          const { from } = view.state.selection;
-          for (const item of fileItems) {
-            const file = item.getAsFile();
-            if (file) void processFileRef.current?.(file, from);
-          }
+          void (async () => {
+            let insertPos = view.state.selection.from;
+            for (const item of fileItems) {
+              const file = item.getAsFile();
+              if (!file) continue;
+              await processFileRef.current?.(file, insertPos);
+              insertPos = view.state.selection.to;
+            }
+          })();
 
           return true;
         },
@@ -252,7 +258,7 @@ export function UnsupportedFileDialog({
             }}
           />
           <DialogHeader className="relative gap-4">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
+            <div className="flex items-center justify-center size-9 rounded-lg bg-warning/15 text-warning">
               <AlertTriangle size={18} />
             </div>
             <div>

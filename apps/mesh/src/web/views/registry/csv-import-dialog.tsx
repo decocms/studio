@@ -334,11 +334,11 @@ export function CsvImportDialog({
 
           {/* Warnings */}
           {warnings.length > 0 && (
-            <div className="rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/30 p-3 grid gap-1">
+            <div className="rounded-lg border border-warning/20 bg-warning/10 p-3 grid gap-1">
               {warnings.map((w, i) => (
                 <p
                   key={`${w.line}-${i}`}
-                  className="text-xs text-yellow-700 dark:text-yellow-400 flex items-start gap-1.5"
+                  className="text-xs text-warning flex items-start gap-1.5"
                 >
                   <AlertCircle size={12} className="shrink-0 mt-0.5" />
                   <span>
@@ -361,7 +361,7 @@ export function CsvImportDialog({
                 <span className="text-sm font-medium">Preview</span>
                 <Badge variant="secondary">{items.length} items</Badge>
                 {parseResult?.skipped ? (
-                  <Badge variant="outline" className="text-yellow-600">
+                  <Badge variant="outline" className="text-warning">
                     {parseResult.skipped} skipped
                   </Badge>
                 ) : null}
@@ -398,7 +398,7 @@ export function CsvImportDialog({
                             {item.is_public ? (
                               <Badge
                                 variant="secondary"
-                                className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
+                                className="text-[10px] bg-success/10 text-success"
                               >
                                 Yes
                               </Badge>
@@ -426,7 +426,7 @@ export function CsvImportDialog({
           {importResult && (
             <div className="rounded-lg border p-3 grid gap-1.5">
               <div className="flex items-center gap-2 text-sm font-medium">
-                <CheckCircle size={16} className="text-emerald-600" />
+                <CheckCircle size={16} className="text-success" />
                 Imported {importResult.created} item(s) successfully
               </div>
               {importResult.errors.length > 0 && (

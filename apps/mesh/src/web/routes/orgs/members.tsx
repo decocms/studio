@@ -16,6 +16,7 @@ import {
 } from "@/web/hooks/use-invitations";
 import { useOrganizationRoles } from "@/web/hooks/use-organization-roles";
 import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
+import { getRoleColor, getRoleDotColor } from "@/web/lib/role-color";
 import { KEYS } from "@/web/lib/query-keys";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import {
@@ -71,53 +72,21 @@ import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { TagMultiSelect } from "@/web/components/tag-multi-select";
 
-const ROLE_COLORS = [
-  "bg-neutral-400",
-  "bg-red-500",
-  "bg-orange-500",
-  "bg-amber-500",
-  "bg-yellow-500",
-  "bg-lime-500",
-  "bg-green-500",
-  "bg-emerald-500",
-  "bg-teal-500",
-  "bg-cyan-500",
-  "bg-sky-500",
-  "bg-blue-500",
-  "bg-indigo-500",
-  "bg-violet-500",
-  "bg-purple-500",
-  "bg-fuchsia-500",
-  "bg-pink-500",
-  "bg-rose-500",
-  "bg-slate-500",
-] as const;
+const BUILTIN_ROLES = ["owner", "admin", "user"];
 
-const BUILTIN_ROLE_COLORS: Record<string, string> = {
-  owner: "bg-red-500",
-  admin: "bg-blue-500",
-  user: "bg-green-500",
-};
-
-// Create a Map for O(1) role color lookups
+// Create a Map for O(1) role color lookups, reusing the shared role-color palette.
 function createRoleColorMap(
   customRoles: Array<{ role: string }>,
 ): Map<string, string> {
   const colorMap = new Map<string, string>();
 
-  // Add built-in role colors
-  for (const [role, color] of Object.entries(BUILTIN_ROLE_COLORS)) {
-    colorMap.set(role, color);
+  for (const role of BUILTIN_ROLES) {
+    colorMap.set(role, getRoleDotColor(role, true));
   }
 
-  // Add custom role colors
-  for (let i = 0; i < customRoles.length; i++) {
-    const role = customRoles[i];
+  for (const role of customRoles) {
     if (role && !colorMap.has(role.role)) {
-      colorMap.set(
-        role.role,
-        ROLE_COLORS[i % ROLE_COLORS.length] ?? "bg-neutral-400",
-      );
+      colorMap.set(role.role, getRoleColor(role.role));
     }
   }
 
@@ -149,7 +118,7 @@ function RoleSelector({
   size = "xs",
   className,
 }: RoleSelectorProps) {
-  const roleColor = roleColorMap.get(role) ?? "bg-neutral-400";
+  const roleColor = roleColorMap.get(role) ?? "bg-muted-foreground";
 
   if (isOwner) {
     return (
@@ -177,7 +146,8 @@ function RoleSelector({
                 </SelectTrigger>
                 <SelectContent>
                   {selectableRoles.map((r) => {
-                    const color = roleColorMap.get(r.role) ?? "bg-neutral-400";
+                    const color =
+                      roleColorMap.get(r.role) ?? "bg-muted-foreground";
                     return (
                       <SelectItem key={r.role} value={r.role}>
                         <div className="flex items-center gap-2">
@@ -215,7 +185,7 @@ function RoleSelector({
       </SelectTrigger>
       <SelectContent>
         {selectableRoles.map((r) => {
-          const color = roleColorMap.get(r.role) ?? "bg-neutral-400";
+          const color = roleColorMap.get(r.role) ?? "bg-muted-foreground";
           return (
             <SelectItem key={r.role} value={r.role}>
               <div className="flex items-center gap-2">
@@ -920,7 +890,7 @@ function OrgMembersContent() {
                                 <div className="flex items-center gap-2">
                                   <Badge
                                     variant="outline"
-                                    className="w-fit text-amber-600 border-amber-400"
+                                    className="w-fit text-warning border-warning/40"
                                   >
                                     Pending
                                   </Badge>

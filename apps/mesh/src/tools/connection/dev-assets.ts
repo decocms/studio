@@ -32,7 +32,7 @@ const DEV_ASSETS_TOOLS: ToolDefinition[] = OBJECT_STORAGE_BINDING.map(
 );
 
 /**
- * True when this mesh instance falls back to DevObjectStorage (local
+ * True when this studio instance falls back to DevObjectStorage (local
  * filesystem) because no external S3 bucket is configured. The dev-assets
  * pseudo-connection must be visible whenever this is true so that tools
  * depending on the OBJECT_STORAGE binding still resolve.

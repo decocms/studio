@@ -8,12 +8,14 @@ is suffixed with `envName` so multiple releases coexist in the shared
 Renders:
 
 - `SandboxTemplate` `studio-sandbox-<envName>`
-- `Role` + `RoleBinding` `studio-sandbox-runner-<envName>` (for the mesh
+- `Role` + `RoleBinding` `studio-sandbox-runner-<envName>` (for the Studio
   ServiceAccount of THIS env's studio install)
-- `NetworkPolicy` `studio-sandbox-<envName>` (per-env podSelector)
+- `Secret` `studio-sandbox-sentinel-<envName>` (initial daemon token)
 - `SandboxWarmPool` `studio-sandbox-<envName>` (optional)
+- `HorizontalPodAutoscaler` for the warm pool (optional; requires explicit metrics)
 - `Gateway` + `Certificate` `agent-sandbox-preview-<envName>` (optional;
   per-claim HTTPRoutes are minted by the mesh runner, not by this chart)
+- `CronJob` + scoped RBAC for idle-claim cleanup (optional)
 
 Requires the [`sandbox-operator`](../sandbox-operator/) chart to already be
 installed (it ships the CRDs + controller).
@@ -22,6 +24,17 @@ installed (it ships the CRDs + controller).
 
 - `sandbox-operator` chart installed in `agent-sandbox-system`.
 - Kubernetes with `spec.hostUsers: true` privileged-sidecar support (org-fs FUSE mount).
+- Studio object storage configured with `S3_ENDPOINT`, `S3_BUCKET`,
+  `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY` (plus provider-appropriate
+  `S3_REGION` and `S3_FORCE_PATH_STYLE`). Org-fs is mandatory for hosted
+  sandboxes. Keep these values in the Studio Secret: the sidecar mounts org-fs
+  through Studio's authenticated API and must not receive S3 credentials.
+- A named ServiceAccount for the Studio release. Its namespace and name must
+  match `mesh.namespace` and `mesh.serviceAccountName`; this chart grants that
+  identity the runner permissions in `agent-sandbox-system`.
+- The Studio release must explicitly set
+  `STUDIO_SANDBOX_PROVIDER=agent-sandbox`. The default provider is the user's
+  linked desktop and is not a production cluster configuration.
 - The studio release for THIS environment must point its mesh runner at
   the env-suffixed SandboxTemplate by setting
   `STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<envName>` in the studio
@@ -32,9 +45,29 @@ installed (it ships the CRDs + controller).
   so mesh stamps `studio.decocms.com/env=<envName>` on every SandboxClaim,
   pod, and HTTPRoute it creates. The housekeeper's default selectors
   scope sweeps to that env label — without it the housekeeper matches
-  zero claims and reaps nothing. Single-env installs that don't enable
-  the housekeeper can leave `STUDIO_ENV` unset (the label is then
-  omitted and behavior is unchanged).
+  zero claims and reaps nothing. Set it for every new installation even when
+  the housekeeper is initially disabled so claims remain ready for later
+  cleanup and multi-environment operation.
+
+## Sandbox isolation
+
+The untrusted sandbox container runs non-root with privilege escalation
+disabled, all capabilities dropped, `RuntimeDefault` seccomp, and a read-only
+root filesystem by default. Writable `emptyDir` mounts cover `/app`, `/tmp`,
+and `/home/sandbox`.
+
+The mandatory org-fs sidecar is the only privileged container. It uses FUSE
+and bidirectional mount propagation to expose organization files under
+`/app/org`, which requires `hostUsers: true`. `disableFsSidecar=true` is a
+debug-only escape hatch, not a supported production mode.
+
+Egress is enforced by the `netinit` init container, not by a Kubernetes
+`NetworkPolicy`. With `netinit.enabled=true`, the init container temporarily
+uses `NET_ADMIN` to install iptables rules, then exits before user code starts.
+The default CIDR lists cover private, link-local, shared-address, and common
+cluster ranges; override them for clusters with different pod or Service
+CIDRs. If another CNI or firewall owns egress, disable `netinit` and provide
+equivalent controls.
 
 ## Preview gateway auth model
 
@@ -65,13 +98,11 @@ Published as an OCI artifact at
 ```bash
 helm install sandbox-env-staging \
   oci://ghcr.io/decocms/studio/charts/sandbox-env \
-  --version 0.5.0 \
+  --version 0.9.6 \
   --namespace agent-sandbox-system \
   --set envName=staging \
   --set mesh.namespace=deco-studio-staging \
-  --set mesh.serviceAccountName=deco-studio-staging \
-  --set mesh.serviceName=deco-studio-staging \
-  --set mesh.servicePort=80
+  --set mesh.serviceAccountName=deco-studio-staging
 ```
 
 Then point the studio (chart-deco-studio) release for the same env at
@@ -79,11 +110,17 @@ this runner:
 
 ```yaml
 # in your studio values.yaml (for the staging install)
+serviceAccount:
+  create: true
+  name: deco-studio-staging
+  automount: true
+
 configMap:
   meshConfig:
-    STUDIO_SANDBOX_PROVIDER: "cluster"
+    STUDIO_SANDBOX_PROVIDER: "agent-sandbox"
     STUDIO_ENV: "staging"
     STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-staging"
+    # The next three values are required only when previewGateway.enabled=true.
     STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.staging.example.com"
     # Per-claim HTTPRoute attaches to this Gateway. Both required whenever
     # previewGateway.enabled=true — without them mesh falls back to its
@@ -94,6 +131,20 @@ configMap:
     STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME: "agent-sandbox-preview-staging"
     STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE: "istio-system"
 ```
+
+### Warm-pool token wiring
+
+`warmPool.enabled` is off by default. When enabling it, generate one sentinel
+token and deliver the same value to both charts:
+
+- Set `sandbox-env`'s `sentinel.token` so the template and pool pods use it.
+- Put it in the Studio Secret as `STUDIO_SANDBOX_SENTINEL_TOKEN`.
+
+Studio uses the sentinel only for the first configuration request after a pool
+pod is bound, then rotates the daemon to a per-claim token. If
+`sentinel.token` is omitted, this chart generates and preserves its own value,
+but Studio cannot consume warm-pool pods until it receives that same value.
+Keep it in a Secret, never `configMap.meshConfig`.
 
 ### ArgoCD Application (one per env)
 
@@ -108,15 +159,13 @@ spec:
   source:
     repoURL: ghcr.io/decocms/studio/charts
     chart: sandbox-env
-    targetRevision: 0.5.0
+    targetRevision: 0.9.6
     helm:
       values: |
         envName: staging
         mesh:
           namespace: deco-studio-staging
           serviceAccountName: deco-studio-staging
-          serviceName: deco-studio-staging
-          servicePort: 80
   destination:
     server: https://kubernetes.default.svc
     namespace: agent-sandbox-system
@@ -139,7 +188,7 @@ values file:
 ```bash
 helm upgrade sandbox-env-staging \
   oci://ghcr.io/decocms/studio/charts/sandbox-env \
-  --version 0.5.0 \
+  --version 0.9.6 \
   --namespace agent-sandbox-system \
   --reset-then-reuse-values \
   --set housekeeper.enabled=true
@@ -161,10 +210,12 @@ sandbox-env/
     ├── validations.yaml                 # envName + Gateway API + cert-manager preflight
     ├── sandbox-template.yaml            # SandboxTemplate (per-env)
     ├── sandbox-warm-pool.yaml           # SandboxWarmPool (optional)
-    ├── sandbox-network-policy.yaml      # NetworkPolicy on sandbox pods (per-env)
+    ├── sandbox-warmpool-hpa.yaml         # Warm-pool HPA (optional)
+    ├── sandbox-sentinel-secret.yaml      # Initial daemon token
     ├── sandbox-rbac.yaml                # Role + cross-ns RoleBinding to mesh SA
     ├── sandbox-preview-cert.yaml        # cert-manager Certificate (optional)
-    └── sandbox-preview-gateway.yaml     # Gateway only — per-claim HTTPRoutes are minted by mesh
+    ├── sandbox-preview-gateway.yaml     # Gateway only — per-claim HTTPRoutes are minted by mesh
+    └── sandbox-housekeeper.yaml         # Idle cleanup CronJob + RBAC (optional)
 ```
 
 ## Values
@@ -180,11 +231,15 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `nodeSelector` / `tolerations` / `affinity` | `{}` | for sandbox isolation NodePool |
 | `topologySpreadConstraints` | `[]` | spread sandbox pods across AZs; see `values.yaml` for the recommended config |
 | `readOnlyRootFilesystem` | `true` | RO rootfs + emptyDirs on /app, /tmp, /home |
-| `networkPolicy.enabled` | `true` | locks down ingress/egress |
+| `netinit.enabled` | `true` | installs the iptables egress policy before user code starts |
+| `disableFsSidecar` | `false` | debug-only opt-out from the mandatory privileged org-fs sidecar |
+| `depsCache.enabled` / `depsCache.golden` | `false` / `false` | opt-in node-local dependency caches |
 | `warmPool.enabled` / `warmPool.size` | `false` / `0` | only after measuring cold-start pain |
+| `warmPool.autoscaling.enabled` | `false` | HPA; requires at least one explicit metric |
 | `previewGateway.enabled` | `false` | wildcard `*.preview.<domain>` Gateway + cert |
+| `housekeeper.enabled` | `false` | idle-claim and orphan cleanup CronJob |
 | `mesh.namespace` | `deco-studio` | studio release namespace (this env's) |
-| `mesh.serviceAccountName` | `deco-studio` | mesh ServiceAccount that gets the RoleBinding |
+| `mesh.serviceAccountName` | `deco-studio` | Studio ServiceAccount that gets the RoleBinding |
 | `mesh.serviceName` | `deco-studio` | _deprecated, unused since per-claim HTTPRoutes_ |
 | `mesh.servicePort` | `80` | _deprecated, unused since per-claim HTTPRoutes_ |
-| `mesh.podSelectorLabels` | `chart-deco-studio` / `deco-studio` | for the NetworkPolicy ingress rule |
+| `mesh.podSelectorLabels` | `chart-deco-studio` / `deco-studio` | _deprecated, unused since chart-managed NetworkPolicy removal_ |

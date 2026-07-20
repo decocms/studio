@@ -7,6 +7,7 @@ import {
   getDirectoryContextPath,
   getParentTreePath,
   getPathDepth,
+  isSafeExplorerOpenPath,
   joinTreePath,
   mergeGlobLists,
   pathExistsInFileList,
@@ -102,6 +103,25 @@ describe("file-explorer utils", () => {
       directories: ["src", "src/components"],
       truncated: false,
     });
+  });
+
+  it("isSafeExplorerOpenPath rejects traversal, double-leading-slash, backslash, and remote paths", () => {
+    expect(isSafeExplorerOpenPath("../../etc/passwd")).toBe(false);
+    expect(isSafeExplorerOpenPath("src/../../etc/passwd")).toBe(false);
+    // Double leading slash survives the single-slash strip in toDaemonPath,
+    // so it's still absolute-looking and must be rejected.
+    expect(isSafeExplorerOpenPath("//etc/passwd")).toBe(false);
+    expect(isSafeExplorerOpenPath("..\\..\\windows\\win.ini")).toBe(false);
+    expect(isSafeExplorerOpenPath("https://evil.com/steal")).toBe(false);
+    expect(isSafeExplorerOpenPath("")).toBe(false);
+  });
+
+  it("isSafeExplorerOpenPath allows workspace-relative tree paths and .deco block refs", () => {
+    // Tree paths carry a single leading slash by convention (see toTreePath);
+    // toDaemonPath strips it back to a workspace-relative daemon path.
+    expect(isSafeExplorerOpenPath("src/index.ts")).toBe(true);
+    expect(isSafeExplorerOpenPath("/src/index.ts")).toBe(true);
+    expect(isSafeExplorerOpenPath(".deco/blocks/Header.json")).toBe(true);
   });
 
   it("mergeGlobLists preserves truncated across merges", () => {

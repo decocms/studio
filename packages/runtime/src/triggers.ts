@@ -53,8 +53,8 @@ interface Triggers<TDefs extends TriggerDef[]> {
   tools(): CreatedTool[];
 
   /**
-   * Notify Mesh that an event occurred.
-   * The SDK matches it to stored callback credentials and POSTs to Mesh.
+   * Notify Studio that an event occurred.
+   * The SDK matches it to stored callback credentials and POSTs to Studio.
    * Fire-and-forget — errors are logged, not thrown.
    */
   notify<T extends TDefs[number]["type"]>(

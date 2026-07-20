@@ -617,7 +617,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                   Input
                 </span>
                 {inputJson.isTruncated && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400">
+                  <span className="text-xs text-warning">
                     ({formatBytes(inputJson.originalSize)} - truncated)
                   </span>
                 )}
@@ -684,7 +684,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                   Output
                 </span>
                 {outputJson.isTruncated && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400">
+                  <span className="text-xs text-warning">
                     ({formatBytes(outputJson.originalSize)} - truncated)
                   </span>
                 )}
