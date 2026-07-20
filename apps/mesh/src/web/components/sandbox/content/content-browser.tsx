@@ -2,13 +2,8 @@ import { Suspense, lazy, useState } from "react";
 import { type Query } from "@tanstack/react-query";
 import {
   AlertCircle,
-  Code01,
-  Copy01,
   CornerUpRight,
-  DotsHorizontal,
-  Edit01,
   File02,
-  Flag01,
   Globe02,
   Grid01,
   LayoutAlt01,
@@ -16,8 +11,6 @@ import {
   Plus,
   SearchLg,
   Tag01,
-  CreditCardSearch,
-  Trash01,
   Users01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -33,13 +26,6 @@ import {
 } from "@deco/ui/components/alert-dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Checkbox } from "@deco/ui/components/checkbox.tsx";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import {
   Tooltip,
@@ -144,6 +130,8 @@ import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
 import { EmptyMessage } from "./empty-message";
 import { PostFilterBar, PostSelectionToolbar } from "./post-toolbar";
+import { ItemActions } from "./item-actions";
+import { VARIANT_GREEN } from "./content-browser-constants";
 import { useBlocksPreviewWorkspace } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
 import type { BlocksTarget } from "@/web/components/sandbox/blocks/blocks-preview-workspace-state";
 
@@ -190,8 +178,6 @@ const VariantCalendar = lazy(() =>
 const RedirectEditor = lazy(() =>
   import("./redirect-editor").then((m) => ({ default: m.RedirectEditor })),
 );
-
-const VARIANT_GREEN = "oklch(0.65 0.15 160)";
 
 export type CollectionId =
   | "pages"
@@ -2388,89 +2374,6 @@ export function ItemRow({
         </div>
       )}
     </div>
-  );
-}
-
-function ItemActions({
-  onDuplicate,
-  onRename,
-  onAddVariant,
-  onEditSeo,
-  onViewJson,
-  onDelete,
-}: {
-  onDuplicate?: () => void;
-  onRename?: () => void;
-  onAddVariant?: () => void;
-  onEditSeo?: () => void;
-  onViewJson?: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          aria-label="More actions"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground cursor-pointer"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <DotsHorizontal size={14} />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        {onRename && (
-          <DropdownMenuItem onClick={onRename}>
-            <Edit01 size={14} />
-            Rename
-          </DropdownMenuItem>
-        )}
-        {onDuplicate && (
-          <DropdownMenuItem onClick={onDuplicate}>
-            <Copy01 size={14} />
-            Duplicate
-          </DropdownMenuItem>
-        )}
-        {onAddVariant && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={onAddVariant}
-              className="cursor-pointer"
-              style={{ color: VARIANT_GREEN }}
-            >
-              <Flag01 size={14} style={{ color: VARIANT_GREEN }} />
-              Add variant
-            </DropdownMenuItem>
-          </>
-        )}
-        {(onEditSeo || onViewJson) && (
-          <>
-            <DropdownMenuSeparator />
-            {onEditSeo && (
-              <DropdownMenuItem onClick={onEditSeo}>
-                <CreditCardSearch size={14} />
-                Edit SEO
-              </DropdownMenuItem>
-            )}
-            {onViewJson && (
-              <DropdownMenuItem onClick={onViewJson}>
-                <Code01 size={14} />
-                View JSON
-              </DropdownMenuItem>
-            )}
-          </>
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={onDelete}
-          className="text-destructive focus:text-destructive"
-        >
-          <Trash01 size={14} />
-          Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
