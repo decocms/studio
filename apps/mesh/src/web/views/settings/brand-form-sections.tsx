@@ -24,7 +24,7 @@ export type BrandFonts = {
 
 // --- Section card wrapper (visual container only — autosave handles saves) ---
 
-export function BrandCard({
+function BrandCard({
   title,
   children,
   className,
