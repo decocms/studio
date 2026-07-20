@@ -1042,6 +1042,13 @@ export interface Thread {
   run_owner_pod: string | null;
   run_config: Record<string, unknown> | null;
   run_started_at: string | null;
+  /**
+   * Progress-liveness heartbeat, bumped per streamed chunk (throttled). Used to
+   * derive the virtual "expired" status while a run is streaming — the same
+   * signal the reaper trusts — so a still-streaming thread never shows expired.
+   * Null when the run has never streamed a chunk.
+   */
+  last_progress_at: string | null;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
   /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
