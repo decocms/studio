@@ -3,12 +3,8 @@ import { useState, useRef } from "react";
 import Editor, { loader } from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
 import {
-  Brackets,
-  File02,
-  FileCode01,
   FilePlus01,
   FolderPlus,
-  Image01,
   Loading01,
   SearchSm,
   XClose,
@@ -46,6 +42,7 @@ import {
   flattenTree,
   getAncestorDirectories,
   getDirectoryContextPath,
+  getFileVisual,
   getLanguageFromPath,
   getParentTreePath,
   isSafeExplorerOpenPath,
@@ -85,43 +82,6 @@ function buildApiUrl(
   endpoint: string,
 ) {
   return `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/${endpoint}`;
-}
-
-type FileIcon = React.ComponentType<{
-  size?: number;
-  className?: string;
-  style?: React.CSSProperties;
-}>;
-
-/** Warm folder tone — reads well on both light and dark backgrounds. */
-const DEFAULT_FILE_COLOR = "#94a3b8";
-
-/**
- * Maps a filename to an icon + accent color by extension, so the tree reads at
- * a glance (blue for TS, amber for JSON, purple for images, …). Colors are
- * inline (not Tailwind scale tokens) and chosen to work in light and dark.
- */
-function getFileVisual(name: string): { Icon: FileIcon; color: string } {
-  const n = name.toLowerCase();
-  if (n.endsWith(".tsx") || n.endsWith(".ts"))
-    return { Icon: FileCode01, color: "#3b82f6" };
-  if (
-    n.endsWith(".jsx") ||
-    n.endsWith(".js") ||
-    n.endsWith(".mjs") ||
-    n.endsWith(".cjs")
-  )
-    return { Icon: FileCode01, color: "#d9a441" };
-  if (n.endsWith(".json")) return { Icon: Brackets, color: "#cb9b3f" };
-  if (n.endsWith(".css") || n.endsWith(".scss"))
-    return { Icon: FileCode01, color: "#06b6d4" };
-  if (n.endsWith(".html") || n.endsWith(".xml"))
-    return { Icon: FileCode01, color: "#f97316" };
-  if (/\.(png|jpe?g|gif|webp|avif|ico|svg)$/.test(n))
-    return { Icon: Image01, color: "#a855f7" };
-  if (n.endsWith(".md") || n.endsWith(".mdx"))
-    return { Icon: File02, color: "#64748b" };
-  return { Icon: File02, color: DEFAULT_FILE_COLOR };
 }
 
 export function FileExplorer({
