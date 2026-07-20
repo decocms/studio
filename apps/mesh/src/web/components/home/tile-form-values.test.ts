@@ -42,6 +42,15 @@ describe("coerceFormValues", () => {
     });
   });
 
+  test("returns null on Infinity string for number field", () => {
+    expect(
+      coerceFormValues({ n: "Infinity" }, { n: { type: "number" } }),
+    ).toBeNull();
+    expect(
+      coerceFormValues({ n: "-Infinity" }, { n: { type: "number" } }),
+    ).toBeNull();
+  });
+
   test("drops empty values", () => {
     expect(coerceFormValues({ s: "" }, { s: { type: "string" } })).toEqual({});
   });

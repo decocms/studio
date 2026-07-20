@@ -24,7 +24,7 @@ export function coerceFormValues(
     ) {
       if (!raw.trim()) continue;
       const parsed = Number(raw);
-      if (Number.isNaN(parsed)) return null;
+      if (!Number.isFinite(parsed)) return null;
       if (type === "integer" && !Number.isInteger(parsed)) return null;
       out[key] = parsed;
     } else if (typeof raw === "string") {
