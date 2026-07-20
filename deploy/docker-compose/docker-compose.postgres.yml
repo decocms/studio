@@ -1,76 +1,117 @@
+# Complete local stack — Studio + PostgreSQL + NATS + MinIO, all wired.
+#
+# Everything runs as containers and Studio is pointed at them (external mode),
+# so the app provisions nothing itself. This is the easiest way to self-host
+# Studio locally with all its dependencies.
+#
+#   docker compose -f deploy/docker-compose/docker-compose.postgres.yml up
+#   open http://localhost:3000        # sign up — first user becomes org owner
+#
+# All images are multi-arch (run native on Apple Silicon). Override any value
+# via a .env file next to this compose (see the ${VAR:-default} defaults below).
+# The defaults are DEV-ONLY — set real secrets for anything shared.
+
 services:
   postgres:
     image: postgres:15-alpine
     container_name: studio-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-studio_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-this-password}
-      POSTGRES_DB: ${POSTGRES_DB:-studio_db}
+      POSTGRES_USER: ${POSTGRES_USER:-studio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-studio}
+      POSTGRES_DB: ${POSTGRES_DB:-studio}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-studio_user} -d ${POSTGRES_DB:-studio_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-studio} -d ${POSTGRES_DB:-studio}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks: [studio-network]
+
+  # NATS with JetStream — Studio uses it for event-bus wake-ups and CLI links.
+  nats:
+    image: nats:2.14.2
+    container_name: studio-nats
+    restart: unless-stopped
+    command: ["-js"]
+    networks: [studio-network]
+
+  # MinIO — S3-compatible object storage for assets/buckets/org-fs.
+  minio:
+    image: minio/minio
+    container_name: studio-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    volumes:
+      - minio-data:/data
     ports:
-      - "5432:5432"
-    networks:
-      - studio-network
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"   # web console (optional)
+    networks: [studio-network]
+
+  # One-shot: wait for MinIO, then create the bucket Studio expects.
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 ${S3_ACCESS_KEY_ID:-minioadmin} ${S3_SECRET_ACCESS_KEY:-minioadmin}; do sleep 1; done;
+      mc mb -p local/${S3_BUCKET:-studio};
+      echo 'bucket ready'; exit 0;
+      "
+    networks: [studio-network]
 
   studio:
     image: ${IMAGE_REPOSITORY:-ghcr.io/decocms/studio/studio}:${IMAGE_TAG:-latest}
-    platform: linux/amd64
     container_name: decocms
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+      nats:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
     ports:
       - "${PORT:-3000}:3000"
     environment:
-      # Basic configuration
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=3000
       - HOST=0.0.0.0
-      
-      # Application URLs
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
       - BASE_URL=${BASE_URL:-http://localhost:3000}
-      
-      # Authentication secret (required)
-      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
-      
-      # Database URL - PostgreSQL
-      # Automatically mounts using the PostgreSQL variables defined above
-      # Uses the service name 'postgres' as host (works in Docker network)
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-studio_user}:${POSTGRES_PASSWORD:-change-this-password}@postgres:5432/${POSTGRES_DB:-studio_db}
-
+      # Auth signing secret. Set a strong value for anything shared.
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-local-dev-better-auth-secret-change-me}
+      # Credential-vault key — must stay stable across restarts.
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-local-dev-encryption-key-change-me}
+      # External services (Studio provisions nothing itself in this mode).
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-studio}:${POSTGRES_PASSWORD:-studio}@postgres:5432/${POSTGRES_DB:-studio}
+      - NATS_URL=nats://nats:4222
+      - S3_ENDPOINT=http://minio:9000
+      - S3_BUCKET=${S3_BUCKET:-studio}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-minioadmin}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-minioadmin}
+      - S3_FORCE_PATH_STYLE=true
       # Auth providers (optional, set to enable)
       # - AUTH_GOOGLE_CLIENT_ID=${AUTH_GOOGLE_CLIENT_ID}
       # - AUTH_GOOGLE_CLIENT_SECRET=${AUTH_GOOGLE_CLIENT_SECRET}
       # - AUTH_GITHUB_CLIENT_ID=${AUTH_GITHUB_CLIENT_ID}
       # - AUTH_GITHUB_CLIENT_SECRET=${AUTH_GITHUB_CLIENT_SECRET}
     volumes:
-      # Persistent volume for data (other files besides the database)
       - studio-data:/app/data
-    healthcheck:
-      # Health check using curl (adjust if your image doesn't have curl)
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    # Security context (equivalent to Helm Chart)
-    user: "1001:1001"
-    networks:
-      - studio-network
+    networks: [studio-network]
 
 volumes:
   studio-data:
     driver: local
   postgres-data:
+    driver: local
+  minio-data:
     driver: local
 
 networks:

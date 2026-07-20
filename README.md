@@ -223,10 +223,10 @@ bun run dev:conductor
 
 ```bash
 # Docker (embedded PostgreSQL)
-docker compose -f deploy/docker-compose.yml up
+docker compose -f deploy/docker-compose/docker-compose.yml up
 
 # Docker (PostgreSQL)
-docker compose -f deploy/docker-compose.postgres.yml up
+docker compose -f deploy/docker-compose/docker-compose.postgres.yml up
 
 # Bun
 bun run build:client && bun run build:server && bun run start

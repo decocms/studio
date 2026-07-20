@@ -14,7 +14,7 @@ Código-fonte (arquivos de compose): [decocms/studio → deploy/docker-compose](
 
 O Studio usa **PostgreSQL** como banco de dados. O repositório inclui dois arquivos de compose em `deploy/docker-compose/`:
 
-- **`docker-compose.postgres.yml`** — Studio **mais um PostgreSQL embutido**. Funciona por conta própria; é o ponto de partida recomendado.
+- **`docker-compose.postgres.yml`** — Studio **mais a stack completa embutida** (PostgreSQL + NATS + MinIO), tudo ligado para que o app não provisione nada sozinho. É o ponto de partida recomendado. (`selfhost/examples/docker-compose` encapsula isso com um `.env.example` documentado.)
 - **`docker-compose.yml`** — apenas o Studio, esperando um PostgreSQL fornecido por você (uma instância gerenciada ou uma rodando na sua máquina).
 
 Ambos usam um volume Docker para persistência e um health check automático em `/health`.

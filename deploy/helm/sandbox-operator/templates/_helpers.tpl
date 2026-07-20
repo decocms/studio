@@ -36,7 +36,12 @@ across two namespaces and breaks reconciliation in non-obvious ways — fail
 at template time instead.
 */}}
 {{- define "sandbox-operator.validateNamespace" -}}
-{{- if ne .Release.Namespace "agent-sandbox-system" -}}
-{{- fail (printf "sandbox-operator: this chart must be installed into the 'agent-sandbox-system' namespace (got %q). The vendored upstream operator manifest hardcodes that namespace; installing elsewhere splits resources across namespaces. Re-run with --namespace agent-sandbox-system --create-namespace." .Release.Namespace) -}}
+{{- /* Opt-out: an umbrella that installs this chart as a subchart under a
+different release namespace (e.g. Studio's local umbrella, release ns
+"deco-studio") DOES want the split — every operator resource here is already
+pinned to agent-sandbox-system explicitly, so they land there regardless of the
+release namespace. Set allowForeignNamespace=true in that case. */ -}}
+{{- if and (ne .Release.Namespace "agent-sandbox-system") (not .Values.allowForeignNamespace) -}}
+{{- fail (printf "sandbox-operator: this chart must be installed into the 'agent-sandbox-system' namespace (got %q). The vendored upstream operator manifest hardcodes that namespace; installing elsewhere splits resources across namespaces. Re-run with --namespace agent-sandbox-system --create-namespace, or set allowForeignNamespace=true if you are installing it as a subchart on purpose." .Release.Namespace) -}}
 {{- end -}}
 {{- end }}

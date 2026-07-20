@@ -12,6 +12,10 @@ Chart source: [decocms/studio → deploy/helm/studio](https://github.com/decocms
 
 For how the pieces fit together at runtime (web / API / worker split, Postgres, NATS, sandboxes), see [Architecture](/en/studio/architecture).
 
+<Callout type="tip">
+  **Easiest path:** for a one-command install with bundled dependencies (local or a POC cluster), use the [umbrella chart](https://github.com/decocms/studio/tree/main/selfhost/examples/k8s-local) or `selfhost/scripts/local-k8s.sh` (see [Quickstart](/en/studio/self-hosting/quickstart)). This page is the **chart reference** for installing directly and for production — the full dependency guide (managed vs in-cluster Postgres/S3/ClickHouse, secrets with/without ESO, ingress, sandbox) lives in [`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production).
+</Callout>
+
 ## What the chart deploys
 
 - **Deployment** — the application pods (security context, health checks)
@@ -96,6 +100,16 @@ database:
 ```
 
 For deployment-wide enforced SSO, pass the SSO env vars through the auth-config Secret — see [Authentication → Deployment-wide SSO](/en/studio/self-hosting/authentication).
+
+## Sandbox (code-execution & previews)
+
+The sandbox is **not part of this chart** — it's two separate charts installed into `agent-sandbox-system`: `sandbox-operator` (cluster-wide CRDs + controller) and `sandbox-env` (per-env template, RBAC, warm pool). For sandbox claims to succeed, Studio and `sandbox-env` must agree on three things — the common self-host blockers:
+
+- `serviceAccount.create: true` on Studio (it runs as the ServiceAccount the sandbox RBAC grants; running as `default` → `403 cannot create sandboxclaims`).
+- a **shared sentinel token** — the same value in `sandbox-env.sentinel.token` and Studio's `STUDIO_SANDBOX_SENTINEL_TOKEN` (else mesh cold-provisions and the template rejects `DAEMON_TOKEN`).
+- `STUDIO_SANDBOX_PROVIDER=agent-sandbox` + `STUDIO_ENV=<env>` + `STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<env>`.
+
+Because a full install spans multiple charts that share values, wrapping them in your own umbrella chart is recommended. See [`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production) for a hardened example and [`selfhost/examples/k8s-local`](https://github.com/decocms/studio/tree/main/selfhost/examples/k8s-local) for a complete working wiring.
 
 ## Configuration
 

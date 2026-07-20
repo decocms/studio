@@ -14,7 +14,7 @@ Source (compose files): [decocms/studio → deploy/docker-compose](https://githu
 
 Studio uses **PostgreSQL** as its database. The repo ships two compose files under `deploy/docker-compose/`:
 
-- **`docker-compose.postgres.yml`** — Studio **plus a bundled PostgreSQL**. Works on its own; the recommended starting point.
+- **`docker-compose.postgres.yml`** — Studio **plus a fully bundled stack** (PostgreSQL + NATS + MinIO), all wired so the app provisions nothing itself. The recommended starting point. (`selfhost/examples/docker-compose` wraps this with a documented `.env.example`.)
 - **`docker-compose.yml`** — Studio only, expecting a PostgreSQL you provide (a managed instance, or one running on your machine).
 
 Both use a Docker volume for persistence and an automatic `/health` check.

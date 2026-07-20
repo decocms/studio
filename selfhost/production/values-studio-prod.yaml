@@ -1,0 +1,147 @@
+# PRODUCTION overlay for the lean Studio chart (deploy/helm/studio), with
+# PLACEHOLDERS. Unlike the local umbrella, production installs the chart DIRECTLY
+# and points it at YOUR dependencies — each either managed (S3/RDS/ClickHouse
+# Cloud) or run in your own cluster (MinIO/Postgres operator/in-cluster
+# ClickHouse). The app chart bundles none of them except NATS (toggleable).
+#
+#   helm install studio deploy/helm/studio \
+#     -n studio --create-namespace -f selfhost/production/values-studio-prod.yaml
+#
+# Replace every <PLACEHOLDER>. Secrets come from an ExternalSecret (or an
+# existing Secret) — never inline them in a values file committed to git.
+
+# ── ServiceAccount — REQUIRED when using the sandbox ─────────────────────────
+# Studio must run under a named ServiceAccount that the sandbox-env RBAC grants
+# SandboxClaim access to (sandbox-env's mesh.serviceAccountName). Running as
+# "default" → SandboxClaim creation is 403 ("cannot create resource sandboxclaims").
+serviceAccount:
+  create: true
+  # name: studio   # defaults to the release name; must match sandbox-env's mesh.serviceAccountName
+
+# ── Database (managed Postgres; DBOS workflow engine lives here too) ──────────
+# Managed (RDS/Cloud SQL) OR your own in-cluster Postgres (e.g. a CNPG cluster) —
+# either way, point database.url (or DATABASE_URL via the ExternalSecret) at it.
+# The chart does NOT bundle a production database.
+database:
+  engine: postgresql
+  # Prefer delivering DATABASE_URL via the ExternalSecret below (key DATABASE_URL)
+  # instead of inlining it here. If you must inline, use database.url.
+  # url: "postgresql://user:pass@your-db.internal:5432/studio"
+
+# ── Secrets — pick ONE of two paths (both keep secrets out of git) ───────────
+#
+# Path A — External Secrets Operator (if you run ESO): the chart renders an
+# ExternalSecret that syncs from your store (AWS SM / Vault / GCP SM).
+externalSecret:
+  enabled: false                                  # set true to use this path
+  secretPath: "<your/secret/path/prod/studio>"    # SM secret key path
+  secretStoreName: "aws-secrets-manager"          # your ClusterSecretStore/SecretStore
+  refreshInterval: "1h"
+  provider:
+    aws:
+      region: "<your-region>"
+
+# Path B — no ESO: create a plain Secret yourself and point the chart at it.
+# The chart injects every key in it as env (envFrom). Create it once:
+#
+#   kubectl -n studio create secret generic studio-prod-secrets \
+#     --from-literal=BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
+#     --from-literal=ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+#     --from-literal=S3_ACCESS_KEY_ID="<key>" \
+#     --from-literal=S3_SECRET_ACCESS_KEY="<secret>" \
+#     --from-literal=DATABASE_URL="postgresql://user:pass@host:5432/studio" \
+#     --from-literal=STUDIO_SANDBOX_SENTINEL_TOKEN="$(openssl rand -hex 32)"   # if using sandbox
+#
+# BETTER_AUTH_SECRET + ENCRYPTION_KEY MUST stay stable across restarts. The
+# sentinel token MUST equal sandbox-env.sentinel.token.
+secret:
+  secretName: "studio-prod-secrets"               # comment out if using Path A
+  # (Leaving BOTH externalSecret.enabled=false AND secret.secretName unset makes
+  #  the chart create its own Secret from inline secret.* values — dev only.)
+
+configMap:
+  meshConfig:
+    BASE_URL: "https://<studio.your-domain.com>"
+    BETTER_AUTH_URL: "https://<studio.your-domain.com>"
+    # Object storage — REQUIRED. Without it the API self-provisions MinIO and
+    # crashes at boot ("undefined"/ECONNREFUSED). Managed S3/GCS/R2, OR your own
+    # in-cluster MinIO/Ceph. Access keys via the ExternalSecret.
+    S3_ENDPOINT: "https://s3.<region>.amazonaws.com"
+    S3_BUCKET: "<your-bucket>"
+    S3_FORCE_PATH_STYLE: "false"          # true for MinIO/Ceph-style (path-style)
+    # Monitoring dashboard (optional): ClickHouse Cloud, OR in-cluster ClickHouse
+    # (the chart's clickhouse-operator/clickhouse-cluster subcharts), OR omit
+    # (dashboard degrades). If set, provision the studio_monitoring_logs view —
+    # see apps/mesh/src/monitoring/clickhouse-setup.md.
+    # CLICKHOUSE_URL: "https://<clickhouse-host>:8443"
+    # Only set NATS_URL if you disable the bundled NATS (nats.enabled=false)
+    # and run a managed/HA NATS instead.
+    # NATS_URL: "nats://<your-nats>:4222"
+
+    # ── Sandbox wiring (when using code-execution / previews) ────────────────
+    # Must line up with the sandbox-env release. STUDIO_SANDBOX_SENTINEL_TOKEN is
+    # the SHARED bearer — deliver it via the ExternalSecret with the SAME value as
+    # sandbox-env's sentinel.token, or the daemon handshake fails and claims never
+    # go Ready ("environment variable override is not allowed ... DAEMON_TOKEN").
+    STUDIO_SANDBOX_PROVIDER: "agent-sandbox"
+    STUDIO_ENV: "<env>"                                   # e.g. prod
+    STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-<env>"  # = studio-sandbox-<STUDIO_ENV>
+    # STUDIO_SANDBOX_SENTINEL_TOKEN → via ExternalSecret (== sandbox-env.sentinel.token)
+    # Preview URLs (needs the sandbox preview Gateway; see values-sandbox-env-prod.yaml):
+    # STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.<your-domain>"
+
+# ── Compute — baseline from deco's OWN production (studio.decocms.com, us-west-2) ─
+# These are a safe MINIMUM for a real deployment. Per-pod requests/limits are
+# right-sized per pod (independent of tenant count); replica floors drive HA and
+# scale — trim minReplicas for a smaller footprint (e.g. API min 2, worker min 1).
+resources:                                  # API pods (2 Bun processes)
+  requests: { cpu: "1", memory: "1Gi" }
+  limits: { memory: "2Gi" }
+nginx:                                      # front-door (SPA + proxy)
+  resources:
+    requests: { cpu: "1", memory: "1Gi" }
+    limits: { memory: "2Gi" }
+autoscaling:
+  enabled: true
+  minReplicas: 3            # deco prod = 3 (HA); 2 is a reasonable smaller floor
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+worker:                                     # dequeues agent/automation runs
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests: { cpu: "500m", memory: "1.5Gi" }
+    limits: { memory: "2Gi" }
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 65
+
+# NATS (bundled). deco prod JetStream sizing; run your own for HA (nats.enabled=false).
+nats:
+  config:
+    jetstream:
+      memoryStore:
+        maxSize: 1Gi
+      fileStore:
+        pvc:
+          size: 20Gi
+          # storageClassName: gp3
+
+persistence:
+  storageClass: "<your-storage-class>"   # e.g. gp3
+  size: 10Gi                             # deco prod
+
+# ── Exposing Studio (ingress) — the chart renders NO Ingress; pick what fits ──
+# Studio's Service is ClusterIP:80 by default. Expose it with whatever your
+# cluster already has (best → least effort):
+#   1. Ingress controller you already run (nginx/Traefik/ALB): create an Ingress
+#      routing host → Service `<release>`:80, with your ingressClassName + TLS.
+#   2. Cloud without an ingress controller: set the Service to LoadBalancer:
+#        service: { type: LoadBalancer }
+#      then point DNS/TLS at the LB (cert via cert-manager or the cloud LB).
+#   3. Istio/Gateway API: a Gateway + HTTPRoute to the Service (same as previews).
+# Set BASE_URL / BETTER_AUTH_URL (above) to the public https URL either way.
+# service:
+#   type: LoadBalancer
