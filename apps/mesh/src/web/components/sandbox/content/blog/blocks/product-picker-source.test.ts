@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildCategoryTreeRequest,
   buildProductRequests,
+  buildProductsByIdsRequest,
   categoryOptionsFromPayload,
   categoryPathToFacets,
   filterCategoryOptions,
@@ -93,6 +94,15 @@ describe("buildProductRequests", () => {
         },
       },
     ]);
+  });
+});
+
+describe("buildProductsByIdsRequest", () => {
+  test("builds a productList request for the given ids", () => {
+    expect(buildProductsByIdsRequest(["149524", "151294"])).toEqual({
+      resolveType: VTEX_PRODUCT_LIST_RESOLVE_TYPE,
+      props: { ids: ["149524", "151294"] },
+    });
   });
 });
 

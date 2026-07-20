@@ -10,13 +10,9 @@ import {
 import { Input } from "@deco/ui/components/input.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
-import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import { KEYS } from "@/web/lib/query-keys";
-import {
-  buildPreviewInvokePath,
-  type RunBlockSandboxRef,
-} from "@/web/components/sandbox/content/use-run-block";
+import { type RunBlockSandboxRef } from "@/web/components/sandbox/content/use-run-block";
 import {
   buildCategoryTreeRequest,
   buildProductRequests,
@@ -28,33 +24,13 @@ import {
   type ProductPickerMode,
   type ProductPickerOption,
 } from "./product-picker-source";
-
-const FETCH_TIMEOUT_MS = 10_000;
+import { invokeLoader } from "./use-product-lookup";
 
 const MODES: { id: ProductPickerMode; label: string }[] = [
   { id: "search", label: "Search" },
   { id: "category", label: "Category" },
   { id: "cluster", label: "Cluster ID" },
 ];
-
-/**
- * Invoke a loader through the mesh preview-invoke proxy (same-origin,
- * authenticated) — the same route useRunBlock and the preview picker use.
- * Hitting the preview origin directly would fail CORS on `/deco/invoke`.
- */
-async function invokeLoader(
-  ref: RunBlockSandboxRef,
-  { resolveType, props }: PickerLoaderRequest,
-): Promise<unknown> {
-  const res = await fetch(buildPreviewInvokePath(ref), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ __resolveType: resolveType, ...props }),
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-  return res.json();
-}
 
 /**
  * Fetch products for the current mode+term. A term can fan out to several
@@ -145,7 +121,7 @@ function ProductRow({
         )}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm">{option.label}</span>
+        <span className="line-clamp-2 text-sm">{option.label}</span>
         <span className="block truncate text-xs text-muted-foreground">
           ID {option.id}
         </span>
@@ -250,7 +226,7 @@ function CategoryPane({
         placeholder="Filter categories…"
         className="h-9"
       />
-      <ScrollArea className="h-48 rounded-md border">
+      <div className="h-48 overflow-y-auto rounded-md border">
         {options.length === 0 ? (
           <StatusLine
             query={query}
@@ -271,7 +247,7 @@ function CategoryPane({
             ))}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }
@@ -396,35 +372,33 @@ export function ProductPickerDialog({
           )}
         </div>
 
-        <ScrollArea className="min-h-0 flex-1 border-t border-border">
-          <div className="space-y-1 p-2">
-            {products.length > 0
-              ? products.map((option) => (
-                  <ProductRow
-                    key={option.id}
-                    option={option}
-                    selected={selected.has(option.id)}
-                    onToggle={() => toggle(option.id)}
-                  />
-                ))
-              : !showEmptyPrompt && (
-                  <StatusLine
-                    query={productsQuery}
-                    loadingLabel="Loading products…"
-                    emptyLabel="No products found."
-                  />
-                )}
-            {showEmptyPrompt && (
-              <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                {mode === "category"
-                  ? "Pick a category to see its products."
-                  : mode === "cluster"
-                    ? "Enter a collection or cluster ID."
-                    : "Type to search products."}
-              </p>
-            )}
-          </div>
-        </ScrollArea>
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto border-t border-border px-3 py-2">
+          {products.length > 0
+            ? products.map((option) => (
+                <ProductRow
+                  key={option.id}
+                  option={option}
+                  selected={selected.has(option.id)}
+                  onToggle={() => toggle(option.id)}
+                />
+              ))
+            : !showEmptyPrompt && (
+                <StatusLine
+                  query={productsQuery}
+                  loadingLabel="Loading products…"
+                  emptyLabel="No products found."
+                />
+              )}
+          {showEmptyPrompt && (
+            <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+              {mode === "category"
+                ? "Pick a category to see its products."
+                : mode === "cluster"
+                  ? "Enter a collection or cluster ID."
+                  : "Type to search products."}
+            </p>
+          )}
+        </div>
 
         <div className="flex shrink-0 items-center justify-between border-t border-border px-4 py-3">
           <span className="text-xs text-muted-foreground">

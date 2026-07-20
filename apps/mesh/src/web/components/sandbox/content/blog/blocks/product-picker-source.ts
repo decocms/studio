@@ -105,6 +105,15 @@ export function buildCategoryTreeRequest(): PickerLoaderRequest {
   return { resolveType: VTEX_CATEGORY_TREE_RESOLVE_TYPE, props: {} };
 }
 
+/**
+ * Resolve a set of already-selected SKU ids back to products — used to render
+ * the shelf/card editor as rich product cards (thumbnail + name) instead of
+ * raw id inputs.
+ */
+export function buildProductsByIdsRequest(ids: string[]): PickerLoaderRequest {
+  return { resolveType: VTEX_PRODUCT_LIST_RESOLVE_TYPE, props: { ids } };
+}
+
 function idString(value: unknown): string {
   return typeof value === "string" || typeof value === "number"
     ? String(value)
