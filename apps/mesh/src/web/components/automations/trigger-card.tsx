@@ -84,6 +84,20 @@ export function TriggerCard({
     setConfirmDelete(false);
   };
 
+  // Cron triggers have no update endpoint: a new schedule is added, then the
+  // old trigger row is removed.
+  const replaceCronTrigger = async (cronExpression: string) => {
+    await addTrigger.mutateAsync({
+      automation_id: automationId,
+      type: "cron",
+      cron_expression: cronExpression,
+    });
+    await removeTrigger.mutateAsync({
+      trigger_id: trigger.id,
+      automation_id: automationId,
+    });
+  };
+
   const handleEditSave = async () => {
     const val = editValue.trim();
     if (!val || !isValidCron(val) || val === trigger.cron_expression) {
@@ -92,15 +106,7 @@ export function TriggerCard({
       return;
     }
     try {
-      await addTrigger.mutateAsync({
-        automation_id: automationId,
-        type: "cron",
-        cron_expression: val,
-      });
-      await removeTrigger.mutateAsync({
-        trigger_id: trigger.id,
-        automation_id: automationId,
-      });
+      await replaceCronTrigger(val);
       setIsEditing(false);
     } catch {
       toast.error("Failed to update starter");
@@ -132,15 +138,7 @@ export function TriggerCard({
     const newCron = buildCronFromInterval(clamped, interval.unit);
     if (newCron === trigger.cron_expression) return;
     try {
-      await addTrigger.mutateAsync({
-        automation_id: automationId,
-        type: "cron",
-        cron_expression: newCron,
-      });
-      await removeTrigger.mutateAsync({
-        trigger_id: trigger.id,
-        automation_id: automationId,
-      });
+      await replaceCronTrigger(newCron);
     } catch {
       toast.error("Failed to update starter");
       setCount(interval.count);
