@@ -32,8 +32,48 @@ import {
   Trash01,
   XClose,
 } from "@untitledui/icons";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { type ConnectionGroup } from "@/shared/utils/group-connections";
+
+// ---------------------------------------------------------------------------
+// Shared dropdown-menu toggle: hidden until selection mode or row hover,
+// used by both the grouped and single-connection card header actions.
+// ---------------------------------------------------------------------------
+
+function HeaderActionsMenu({
+  selectionMode,
+  children,
+}: {
+  selectionMode: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "overflow-hidden transition-all duration-150 ease-out",
+        selectionMode
+          ? "w-8 opacity-100"
+          : "w-0 opacity-0 group-hover:w-8 group-hover:opacity-100",
+      )}
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DotsVertical size={20} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+          {children}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Grouped card: collapsible row for connections sharing the same app_name
@@ -104,41 +144,17 @@ export function ConnectionGroupCard({
                 </span>
               </div>
             )}
-            <div
-              className={cn(
-                "overflow-hidden transition-all duration-150 ease-out",
-                selectionMode
-                  ? "w-8 opacity-100"
-                  : "w-0 opacity-0 group-hover:w-8 group-hover:opacity-100",
-              )}
-            >
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <DotsVertical size={20} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpen();
-                    }}
-                  >
-                    <Eye size={16} />
-                    Open
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+            <HeaderActionsMenu selectionMode={selectionMode}>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpen();
+                }}
+              >
+                <Eye size={16} />
+                Open
+              </DropdownMenuItem>
+            </HeaderActionsMenu>
           </div>
         }
       />
@@ -185,83 +201,62 @@ export function ConnectionCardHeaderActions({
           Connected
         </span>
       )}
-      <div
-        className={cn(
-          "overflow-hidden transition-all duration-150 ease-out",
-          selectionMode
-            ? "w-8 opacity-100"
-            : "w-0 opacity-0 group-hover:w-8 group-hover:opacity-100",
+      <HeaderActionsMenu selectionMode={selectionMode}>
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+        >
+          <Eye size={16} />
+          Open
+        </DropdownMenuItem>
+        {(canManage || canManageAgents) && (
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect();
+            }}
+          >
+            <CheckSquare size={16} />
+            Select
+          </DropdownMenuItem>
         )}
-      >
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <DotsVertical size={20} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        {canManage &&
+          (connection.status === "active" ? (
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
-                onOpen();
+                onToggleStatus("inactive");
               }}
             >
-              <Eye size={16} />
-              Open
+              <SlashCircle01 size={16} />
+              Disable
             </DropdownMenuItem>
-            {(canManage || canManageAgents) && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleSelect();
-                }}
-              >
-                <CheckSquare size={16} />
-                Select
-              </DropdownMenuItem>
-            )}
-            {canManage &&
-              (connection.status === "active" ? (
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleStatus("inactive");
-                  }}
-                >
-                  <SlashCircle01 size={16} />
-                  Disable
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleStatus("active");
-                  }}
-                >
-                  <Power01 size={16} />
-                  Enable
-                </DropdownMenuItem>
-              ))}
-            {canManage && (
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-              >
-                <Trash01 size={16} />
-                Delete
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+          ) : (
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleStatus("active");
+              }}
+            >
+              <Power01 size={16} />
+              Enable
+            </DropdownMenuItem>
+          ))}
+        {canManage && (
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash01 size={16} />
+            Delete
+          </DropdownMenuItem>
+        )}
+      </HeaderActionsMenu>
     </div>
   );
 }
