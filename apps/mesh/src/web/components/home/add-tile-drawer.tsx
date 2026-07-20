@@ -754,6 +754,17 @@ function withHomeTiles(
   };
 }
 
+/** Runs a home-tile mutation, logging and toasting on failure. Shared by the
+ * pinned-tile remove/save flows and the add-tile flow. */
+async function runHomeTileAction(action: string, fn: () => Promise<void>) {
+  try {
+    await fn();
+  } catch (err) {
+    console.error(`[home-tiles] failed to ${action} tile`, err);
+    toast.error("Couldn't update home — please try again.");
+  }
+}
+
 /** Coerces the form values against the tool's schema, toasting and returning
  * `undefined` on an invalid field. Shared by the pinned-tile save flow and the
  * add-tile flow — both build the same `toolInput` from the same form. */
@@ -797,35 +808,28 @@ function PinnedTileRow({
 
   const handleRemove = async () => {
     setSubmitting(true);
-    try {
+    await runHomeTileAction("remove", async () => {
       const baseTiles = getHomeTiles(agent.metadata?.ui);
       const nextTiles = tile.tileId
         ? baseTiles.filter((t) => t.tileId !== tile.tileId)
         : baseTiles.filter((t) => t !== tile);
       await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
       setShowForm(false);
-    } catch (err) {
-      console.error("[home-tiles] failed to remove tile", err);
-      toast.error("Couldn't update home — please try again.");
-    } finally {
-      setSubmitting(false);
-    }
+    });
+    setSubmitting(false);
   };
 
   const handleSave = async () => {
-    setSubmitting(true);
-    try {
-      const resolved = resolveToolInput(
-        formValues,
-        tool.inputSchema?.properties,
-        tool.inputSchema?.required,
-      );
-      if (!resolved) {
-        setSubmitting(false);
-        return;
-      }
-      const { toolInput } = resolved;
+    const resolved = resolveToolInput(
+      formValues,
+      tool.inputSchema?.properties,
+      tool.inputSchema?.required,
+    );
+    if (!resolved) return;
+    const { toolInput } = resolved;
 
+    setSubmitting(true);
+    await runHomeTileAction("save", async () => {
       const baseTiles = getHomeTiles(agent.metadata?.ui);
       const nextTiles = baseTiles.map((t) => {
         const isMatch = tile.tileId ? t.tileId === tile.tileId : t === tile;
@@ -837,12 +841,8 @@ function PinnedTileRow({
       });
       await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
       setShowForm(false);
-    } catch (err) {
-      console.error("[home-tiles] failed to save tile", err);
-      toast.error("Couldn't update home — please try again.");
-    } finally {
-      setSubmitting(false);
-    }
+    });
+    setSubmitting(false);
   };
 
   const summary = toolInputSummary(tile.toolInput);
@@ -958,19 +958,16 @@ function AddToolRow({
   };
 
   const saveTile = async () => {
-    setSubmitting(true);
-    try {
-      const resolved = resolveToolInput(
-        formValues,
-        tool.inputSchema?.properties,
-        tool.inputSchema?.required,
-      );
-      if (!resolved) {
-        setSubmitting(false);
-        return;
-      }
-      const { toolInput } = resolved;
+    const resolved = resolveToolInput(
+      formValues,
+      tool.inputSchema?.properties,
+      tool.inputSchema?.required,
+    );
+    if (!resolved) return;
+    const { toolInput } = resolved;
 
+    setSubmitting(true);
+    await runHomeTileAction("add", async () => {
       const baseTiles = getHomeTiles(agent.metadata?.ui);
       const nextTiles = [
         ...baseTiles,
@@ -985,12 +982,8 @@ function AddToolRow({
       await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
       setShowForm(false);
       setFormValues({});
-    } catch (err) {
-      console.error("[home-tiles] failed to add tile", err);
-      toast.error("Couldn't update home — please try again.");
-    } finally {
-      setSubmitting(false);
-    }
+    });
+    setSubmitting(false);
   };
 
   return (
