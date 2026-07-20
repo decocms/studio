@@ -39,7 +39,7 @@ import {
 import type { ShareTarget } from "./file-share-button";
 
 /** Absolute proxy link to copy when sharing a file. */
-export function publicFileUrl(path: string): string {
+function publicFileUrl(path: string): string {
   return `${window.location.origin}${path}`;
 }
 
