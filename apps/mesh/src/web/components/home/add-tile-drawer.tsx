@@ -738,6 +738,22 @@ function AgentToolList({
   );
 }
 
+/** Builds the agent metadata patch for a new set of home tiles. Shared by the
+ * pinned-tile remove/save flows and the add-tile flow. */
+function withHomeTiles(
+  agent: VirtualMCPEntity,
+  tiles: VirtualMcpHomeTile[],
+): VirtualMCPEntity["metadata"] {
+  return {
+    ...(agent.metadata ?? {}),
+    ui: {
+      ...(agent.metadata?.ui ?? {}),
+      homeTile: null,
+      homeTiles: tiles,
+    },
+  };
+}
+
 /** Coerces the form values against the tool's schema, toasting and returning
  * `undefined` on an invalid field. Shared by the pinned-tile save flow and the
  * add-tile flow — both build the same `toolInput` from the same form. */
@@ -786,15 +802,7 @@ function PinnedTileRow({
       const nextTiles = tile.tileId
         ? baseTiles.filter((t) => t.tileId !== tile.tileId)
         : baseTiles.filter((t) => t !== tile);
-      const nextMetadata = {
-        ...(agent.metadata ?? {}),
-        ui: {
-          ...(agent.metadata?.ui ?? {}),
-          homeTile: null,
-          homeTiles: nextTiles,
-        },
-      };
-      await home.saveAgentMetadata(agent, nextMetadata);
+      await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
       setShowForm(false);
     } catch (err) {
       console.error("[home-tiles] failed to remove tile", err);
@@ -827,15 +835,7 @@ function PinnedTileRow({
           toolInput,
         };
       });
-      const nextMetadata = {
-        ...(agent.metadata ?? {}),
-        ui: {
-          ...(agent.metadata?.ui ?? {}),
-          homeTile: null,
-          homeTiles: nextTiles,
-        },
-      };
-      await home.saveAgentMetadata(agent, nextMetadata);
+      await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
       setShowForm(false);
     } catch (err) {
       console.error("[home-tiles] failed to save tile", err);
@@ -982,15 +982,7 @@ function AddToolRow({
           ...(toolInput ? { toolInput } : {}),
         },
       ];
-      const nextMetadata = {
-        ...(agent.metadata ?? {}),
-        ui: {
-          ...(agent.metadata?.ui ?? {}),
-          homeTile: null,
-          homeTiles: nextTiles,
-        },
-      };
-      await home.saveAgentMetadata(agent, nextMetadata);
+      await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
       setShowForm(false);
       setFormValues({});
     } catch (err) {
