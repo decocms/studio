@@ -30,6 +30,18 @@ describe("coerceFormValues", () => {
     ).toBeNull();
   });
 
+  test("returns null on fractional string for integer field", () => {
+    expect(
+      coerceFormValues({ n: "3.5" }, { n: { type: "integer" } }),
+    ).toBeNull();
+  });
+
+  test("accepts fractional string for number field", () => {
+    expect(coerceFormValues({ n: "3.5" }, { n: { type: "number" } })).toEqual({
+      n: 3.5,
+    });
+  });
+
   test("drops empty values", () => {
     expect(coerceFormValues({ s: "" }, { s: { type: "string" } })).toEqual({});
   });
