@@ -34,7 +34,64 @@ import {
 import { ProductPickerDialog } from "./product-picker-dialog";
 import { type ProductLookup, useProductsByIds } from "./use-product-lookup";
 import type { ProductPickerOption } from "./product-picker-source";
-import { AddButton, RemoveButton, str } from "./primitives";
+import {
+  formatHeadingValue,
+  type HeadingLevel,
+  HEADING_LEVELS,
+  parseHeadingValue,
+} from "./heading-value";
+import { AddButton, RemoveButton, str, ToolbarButton } from "./primitives";
+
+const HEADING_LEVEL_LABEL: Record<HeadingLevel, string> = {
+  normal: "Normal",
+  h1: "H1",
+  h2: "H2",
+  h3: "H3",
+};
+
+/** Visual preview of the chosen level for the title input. */
+const HEADING_LEVEL_CLASS: Record<HeadingLevel, string> = {
+  normal: "text-lg font-semibold",
+  h1: "text-3xl font-bold",
+  h2: "text-2xl font-bold",
+  h3: "text-xl font-semibold",
+};
+
+/** Title editor with a Normal/H1/H2/H3 selector that wraps the stored string. */
+function ShelfTitle({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { level, text } = parseHeadingValue(value);
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-0.5">
+        {HEADING_LEVELS.map((l) => (
+          <ToolbarButton
+            key={l}
+            active={level === l}
+            label={HEADING_LEVEL_LABEL[l]}
+            onClick={() => onChange(formatHeadingValue(l, text))}
+          >
+            {HEADING_LEVEL_LABEL[l]}
+          </ToolbarButton>
+        ))}
+      </div>
+      <input
+        value={text}
+        onChange={(e) => onChange(formatHeadingValue(level, e.target.value))}
+        placeholder="Shelf title"
+        className={cn(
+          "w-full border-0 bg-transparent p-0 outline-none placeholder:text-muted-foreground/50 focus:ring-0",
+          HEADING_LEVEL_CLASS[level],
+        )}
+      />
+    </div>
+  );
+}
 
 /** "Browse products" trigger — only shown when a running sandbox is available. */
 function BrowseButton({
@@ -290,11 +347,9 @@ export function ProductShelfBlock({
 
   return (
     <div className="space-y-4 rounded-lg border bg-card p-4">
-      <input
+      <ShelfTitle
         value={str(block.title)}
-        onChange={(e) => onChange({ ...block, title: e.target.value })}
-        placeholder="Shelf title"
-        className="w-full border-0 bg-transparent p-0 text-lg font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
+        onChange={(title) => onChange({ ...block, title })}
       />
 
       {sandboxRef ? (
