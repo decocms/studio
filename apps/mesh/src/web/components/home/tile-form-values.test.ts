@@ -45,6 +45,18 @@ describe("coerceFormValues", () => {
   test("drops empty values", () => {
     expect(coerceFormValues({ s: "" }, { s: { type: "string" } })).toEqual({});
   });
+
+  test("returns null when a required field is left blank", () => {
+    expect(
+      coerceFormValues({ s: "" }, { s: { type: "string" } }, ["s"]),
+    ).toBeNull();
+  });
+
+  test("accepts a filled required field", () => {
+    expect(
+      coerceFormValues({ s: "hi" }, { s: { type: "string" } }, ["s"]),
+    ).toEqual({ s: "hi" });
+  });
 });
 
 describe("seedFormValues", () => {

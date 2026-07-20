@@ -795,6 +795,7 @@ function PinnedTileRow({
         const coerced = coerceFormValues(
           formValues,
           tool.inputSchema.properties,
+          tool.inputSchema.required,
         );
         if (!coerced) {
           toast.error("Invalid value in one of the fields — please fix it.");
@@ -951,6 +952,7 @@ function AddToolRow({
         const coerced = coerceFormValues(
           formValues,
           tool.inputSchema.properties,
+          tool.inputSchema.required,
         );
         if (!coerced) {
           toast.error("Invalid value in one of the fields — please fix it.");
