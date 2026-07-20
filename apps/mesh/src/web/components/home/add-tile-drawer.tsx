@@ -782,6 +782,62 @@ function resolveToolInput(
   return Object.keys(coerced).length > 0 ? { toolInput: coerced } : {};
 }
 
+/** Shared config-form footer for a tile's tool-input schema — used by both
+ * the pinned-tile edit flow and the add-tile flow, which only differ in the
+ * cancel behavior and the submit button's label/handler. */
+function TileConfigForm({
+  properties,
+  required,
+  values,
+  onChange,
+  onCancel,
+  onSubmit,
+  submitting,
+  submitLabel,
+}: {
+  properties: Record<string, ToolInputProperty>;
+  required?: string[];
+  values: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+  submitting: boolean;
+  submitLabel: string;
+}) {
+  return (
+    <div className="px-3 pb-2 pt-1 flex flex-col gap-2">
+      <ToolInputForm
+        properties={properties}
+        required={required}
+        values={values}
+        onChange={onChange}
+      />
+      <div className="flex items-center gap-2 justify-end">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          className="h-7 text-xs"
+          disabled={submitting}
+          onClick={onSubmit}
+        >
+          {submitting ? (
+            <Loading01 size={12} className="animate-spin" />
+          ) : (
+            submitLabel
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** Row for a pinned tile instance — shows a summary, gear to edit, minus to remove. */
 function PinnedTileRow({
   agent,
@@ -884,38 +940,18 @@ function PinnedTileRow({
         />
       </div>
       {showForm && hasProps && tool.inputSchema?.properties && (
-        <div className="px-3 pb-2 pt-1 flex flex-col gap-2">
-          <ToolInputForm
-            properties={tool.inputSchema.properties}
-            required={tool.inputSchema.required}
-            values={formValues}
-            onChange={(key, value) =>
-              setFormValues((prev) => ({ ...prev, [key]: value }))
-            }
-          />
-          <div className="flex items-center gap-2 justify-end">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setShowForm(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              className="h-7 text-xs"
-              disabled={submitting}
-              onClick={handleSave}
-            >
-              {submitting ? (
-                <Loading01 size={12} className="animate-spin" />
-              ) : (
-                "Save"
-              )}
-            </Button>
-          </div>
-        </div>
+        <TileConfigForm
+          properties={tool.inputSchema.properties}
+          required={tool.inputSchema.required}
+          values={formValues}
+          onChange={(key, value) =>
+            setFormValues((prev) => ({ ...prev, [key]: value }))
+          }
+          onCancel={() => setShowForm(false)}
+          onSubmit={handleSave}
+          submitting={submitting}
+          submitLabel="Save"
+        />
       )}
     </div>
   );
@@ -1005,41 +1041,21 @@ function AddToolRow({
         />
       </div>
       {showForm && hasProps && tool.inputSchema?.properties && (
-        <div className="px-3 pb-2 pt-1 flex flex-col gap-2">
-          <ToolInputForm
-            properties={tool.inputSchema.properties}
-            required={tool.inputSchema.required}
-            values={formValues}
-            onChange={(key, value) =>
-              setFormValues((prev) => ({ ...prev, [key]: value }))
-            }
-          />
-          <div className="flex items-center gap-2 justify-end">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => {
-                setShowForm(false);
-                setFormValues({});
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              className="h-7 text-xs"
-              disabled={submitting}
-              onClick={saveTile}
-            >
-              {submitting ? (
-                <Loading01 size={12} className="animate-spin" />
-              ) : (
-                "Pin"
-              )}
-            </Button>
-          </div>
-        </div>
+        <TileConfigForm
+          properties={tool.inputSchema.properties}
+          required={tool.inputSchema.required}
+          values={formValues}
+          onChange={(key, value) =>
+            setFormValues((prev) => ({ ...prev, [key]: value }))
+          }
+          onCancel={() => {
+            setShowForm(false);
+            setFormValues({});
+          }}
+          onSubmit={saveTile}
+          submitting={submitting}
+          submitLabel="Pin"
+        />
       )}
     </div>
   );
