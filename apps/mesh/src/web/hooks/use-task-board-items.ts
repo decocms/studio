@@ -111,5 +111,14 @@ export function useTaskBoardItemActions() {
     onSuccess: invalidate,
   });
 
-  return { create, update, remove };
+  // Link a chat thread to a task (folded into UPDATE via linkThreadId). Kept as
+  // its own mutation so it invalidates without the optimistic field-patch that
+  // `update` applies.
+  const link = useMutation({
+    mutationFn: (input: { id: string; linkThreadId: string }) =>
+      studio.call("TASK_BOARD_ITEM_UPDATE", input),
+    onSuccess: invalidate,
+  });
+
+  return { create, update, remove, link };
 }

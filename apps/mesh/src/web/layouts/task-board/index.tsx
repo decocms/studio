@@ -28,7 +28,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
-import { useConnections } from "@decocms/mesh-sdk";
+import {
+  getWellKnownDecopilotVirtualMCP,
+  useConnections,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
 import { getOrgGithubConnections } from "@/shared/github-repo-scope";
 import { useConnectApp } from "@/web/hooks/use-connect-app";
 import { useMembers } from "@/web/hooks/use-members";
@@ -59,6 +63,9 @@ import {
 } from "./task-filters";
 import { useFlipLanes } from "./use-flip-lanes";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useThreadActions } from "@/web/components/chat/store/hooks";
+import { writeStoredAutosend } from "@/web/lib/autosend";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
@@ -206,6 +213,57 @@ export function TaskBoardPage() {
     null,
   );
   const { setTaskId } = usePanelActions();
+  const { create } = useThreadActions();
+  const { org, locator } = useProjectContext();
+  const navigate = useNavigate();
+  // Deep link: `/$org/board?task=<id>` opens that task's modal (from a linked
+  // chat's "open in board" button). Derived, so it opens as soon as the item
+  // loads without an effect.
+  const { task: deepLinkTaskId } = useSearch({ strict: false }) as {
+    task?: string;
+  };
+  const deepLinkItem = deepLinkTaskId
+    ? (items.find((i) => i.id === deepLinkTaskId) ?? null)
+    : null;
+
+  const clearDeepLink = () => {
+    if (deepLinkTaskId)
+      navigate({
+        to: "/$org/board",
+        params: { org: org.slug },
+        search: {},
+        replace: true,
+      });
+  };
+
+  // Start a fresh chat on the default Decopilot agent, seeded with the task's
+  // title + description as the first user message (via the autosend buffer),
+  // and link the new thread to the task so it shows on the modal.
+  const startChatFromTask = async (task: TaskBoardItem) => {
+    const newId = crypto.randomUUID();
+    const agentId = getWellKnownDecopilotVirtualMCP(org.id).id;
+    const context = [task.title, task.description?.trim()]
+      .filter(Boolean)
+      .join("\n\n");
+    writeStoredAutosend(sessionStorage, locator, newId, {
+      tiptapDoc: {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: context }] },
+        ],
+      },
+    });
+    setDialogOpen(false);
+    try {
+      await create({ id: newId, virtual_mcp_id: agentId });
+      // Best-effort — a link failure shouldn't block navigating into the chat.
+      await actions.link.mutateAsync({ id: task.id, linkThreadId: newId });
+    } catch {
+      // Toast already fired by the manager; navigate anyway so the route
+      // loader's ensure-fallback can retry the create.
+    }
+    setTaskId(newId, agentId, { autosend: true });
+  };
 
   const visibleItems = items.filter((item) =>
     taskMatchesFilters(item, filters),
@@ -231,6 +289,18 @@ export function TaskBoardPage() {
   // Opening a card always opens the task modal. The modal's activity area is
   // what navigates into the run's chat (see onOpenThread below).
   const openTask = openEdit;
+
+  // The task the modal is editing — a locally-opened card, or the deep-linked
+  // one. The modal is open when either is set.
+  const activeItem = editingItem ?? deepLinkItem;
+  const modalOpen = dialogOpen || !!deepLinkItem;
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingItem(null);
+    setCreateStatus(null);
+    clearDeepLink();
+  };
 
   if (isLoading && items.length === 0) {
     return (
@@ -363,34 +433,37 @@ export function TaskBoardPage() {
 
       <TaskBoardItemDialog
         key={
-          dialogOpen
-            ? (editingItem?.id ?? `new-${createStatus ?? "default"}`)
+          modalOpen
+            ? (activeItem?.id ?? `new-${createStatus ?? "default"}`)
             : "closed"
         }
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        item={editingItem ?? undefined}
+        open={modalOpen}
+        onClose={closeDialog}
+        item={activeItem ?? undefined}
         defaultStatus={createStatus ?? undefined}
         isSaving={actions.create.isPending || actions.update.isPending}
         onSubmit={(input) => {
-          if (editingItem) {
-            actions.update.mutate({ id: editingItem.id, ...input });
+          if (activeItem) {
+            actions.update.mutate({ id: activeItem.id, ...input });
           } else {
             actions.create.mutate(input);
           }
-          setDialogOpen(false);
+          closeDialog();
         }}
         onDelete={
-          editingItem
+          activeItem
             ? () => {
-                actions.remove.mutate(editingItem.id);
-                setDialogOpen(false);
+                actions.remove.mutate(activeItem.id);
+                closeDialog();
               }
             : undefined
         }
+        onNewChat={
+          activeItem ? () => void startChatFromTask(activeItem) : undefined
+        }
         onOpenThread={(thread) => {
           if (!thread.virtualMcpId) return;
-          setDialogOpen(false);
+          closeDialog();
           setTaskId(thread.threadId, thread.virtualMcpId, {
             main: thread.hasPreview ? "preview" : "board",
           });

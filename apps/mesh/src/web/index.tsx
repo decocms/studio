@@ -373,10 +373,16 @@ const libraryRoute = createRoute({
 });
 
 // Task board (/$org/board) — org-owned task board, gated behind the org's
-// task_board_enabled setting.
+// task_board_enabled setting. `task` deep-links a specific card's modal open
+// (used by the "open in board" button from a linked chat).
+const boardSearchSchema = z.object({
+  task: z.string().optional(),
+});
+
 const boardRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/board",
+  validateSearch: boardSearchSchema,
   component: lazyRouteComponent(() => import("./layouts/task-board/index.tsx")),
 });
 
