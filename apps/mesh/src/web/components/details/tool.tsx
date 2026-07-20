@@ -69,6 +69,7 @@ import {
 } from "@/web/components/chat/context.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { MonacoCodeEditor } from "../monaco-editor";
+import type { ToolInputProperty } from "@/web/components/tool-input-form";
 
 export interface ToolDetailsViewProps {
   itemId: string;
@@ -281,33 +282,32 @@ function ToolDetailsAuthenticated({
           })();
 
       if (hasToolProperties && tool?.inputSchema?.properties) {
-        Object.entries(tool.inputSchema.properties).forEach(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ([key, prop]: [string, any]) => {
-            if (
-              (prop.type === "object" || prop.type === "array") &&
-              typeof args[key] === "string"
-            ) {
-              try {
-                args[key] = JSON.parse(args[key]);
-              } catch {
-                // Parsing failed, send as string (will likely fail validation but let server handle it)
-              }
-            } else if (
-              (prop.type === "number" || prop.type === "integer") &&
-              typeof args[key] === "string" &&
-              args[key] !== ""
-            ) {
-              // Text inputs yield strings; coerce numeric fields so the tool's
-              // schema (e.g. z.number()) doesn't reject "7776000". Leave
-              // non-numeric strings untouched for the server to reject.
-              const n = Number(args[key]);
-              if (!Number.isNaN(n)) {
-                args[key] = n;
-              }
+        Object.entries(
+          tool.inputSchema.properties as Record<string, ToolInputProperty>,
+        ).forEach(([key, prop]) => {
+          if (
+            (prop.type === "object" || prop.type === "array") &&
+            typeof args[key] === "string"
+          ) {
+            try {
+              args[key] = JSON.parse(args[key]);
+            } catch {
+              // Parsing failed, send as string (will likely fail validation but let server handle it)
             }
-          },
-        );
+          } else if (
+            (prop.type === "number" || prop.type === "integer") &&
+            typeof args[key] === "string" &&
+            args[key] !== ""
+          ) {
+            // Text inputs yield strings; coerce numeric fields so the tool's
+            // schema (e.g. z.number()) doesn't reject "7776000". Leave
+            // non-numeric strings untouched for the server to reject.
+            const n = Number(args[key]);
+            if (!Number.isNaN(n)) {
+              args[key] = n;
+            }
+          }
+        });
       }
 
       const result = (await client.callTool({
@@ -439,67 +439,66 @@ function ToolDetailsAuthenticated({
 
       <div className="space-y-4">
         {hasToolProperties && tool?.inputSchema?.properties ? (
-          Object.entries(tool.inputSchema.properties).map(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ([key, prop]: [string, any]) => (
-              <div key={key} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium leading-none flex items-center gap-1.5">
-                    {key}
-                    {tool.inputSchema?.required?.includes(key) && (
-                      <span className="text-destructive text-xs">*</span>
-                    )}
-                  </label>
-                  <span className="text-xs text-muted-foreground font-mono">
-                    {prop.type}
-                  </span>
-                </div>
-                {prop.description && (
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    {prop.description}
-                  </p>
-                )}
-                {prop.type === "object" || prop.type === "array" ? (
-                  <Textarea
-                    className="font-mono text-xs"
-                    value={
-                      hasEditedKey(key)
-                        ? ((editedParams[key] as string) ?? "")
-                        : ((defaultParams[key] as string) ?? "")
-                    }
-                    onChange={(e) => handleInputChange(key, e.target.value)}
-                    placeholder={`Enter ${key} as JSON...`}
-                    rows={3}
-                  />
-                ) : prop.type === "boolean" ? (
-                  <Select
-                    value={
-                      hasEditedKey(key) ? String(editedParams[key] ?? "") : ""
-                    }
-                    onValueChange={(v) => handleInputChange(key, v === "true")}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select true or false..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="true">true</SelectItem>
-                      <SelectItem value="false">false</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    value={
-                      hasEditedKey(key)
-                        ? ((editedParams[key] as string) ?? "")
-                        : ((defaultParams[key] as string) ?? "")
-                    }
-                    onChange={(e) => handleInputChange(key, e.target.value)}
-                    placeholder={`Enter ${key}...`}
-                  />
-                )}
+          Object.entries(
+            tool.inputSchema.properties as Record<string, ToolInputProperty>,
+          ).map(([key, prop]) => (
+            <div key={key} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium leading-none flex items-center gap-1.5">
+                  {key}
+                  {tool.inputSchema?.required?.includes(key) && (
+                    <span className="text-destructive text-xs">*</span>
+                  )}
+                </label>
+                <span className="text-xs text-muted-foreground font-mono">
+                  {prop.type}
+                </span>
               </div>
-            ),
-          )
+              {prop.description && (
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {prop.description}
+                </p>
+              )}
+              {prop.type === "object" || prop.type === "array" ? (
+                <Textarea
+                  className="font-mono text-xs"
+                  value={
+                    hasEditedKey(key)
+                      ? ((editedParams[key] as string) ?? "")
+                      : ((defaultParams[key] as string) ?? "")
+                  }
+                  onChange={(e) => handleInputChange(key, e.target.value)}
+                  placeholder={`Enter ${key} as JSON...`}
+                  rows={3}
+                />
+              ) : prop.type === "boolean" ? (
+                <Select
+                  value={
+                    hasEditedKey(key) ? String(editedParams[key] ?? "") : ""
+                  }
+                  onValueChange={(v) => handleInputChange(key, v === "true")}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select true or false..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">true</SelectItem>
+                    <SelectItem value="false">false</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={
+                    hasEditedKey(key)
+                      ? ((editedParams[key] as string) ?? "")
+                      : ((defaultParams[key] as string) ?? "")
+                  }
+                  onChange={(e) => handleInputChange(key, e.target.value)}
+                  placeholder={`Enter ${key}...`}
+                />
+              )}
+            </div>
+          ))
         ) : tool?.inputSchema && !hasToolProperties ? (
           <div className="space-y-2">
             <label className="text-sm font-medium">Raw JSON Input</label>
