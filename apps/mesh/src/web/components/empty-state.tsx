@@ -53,7 +53,9 @@ export function EmptyState({
       {/* Text content */}
       <div className="flex flex-col items-center gap-4">
         <div className="flex flex-col items-center gap-2">
-          <h3 className="text-lg font-medium text-foreground">{title}</h3>
+          <h3 className="text-center text-lg font-medium text-foreground">
+            {title}
+          </h3>
           <div
             className={cn(
               "text-sm text-muted-foreground text-center max-w-[300px]",
