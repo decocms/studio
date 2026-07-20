@@ -19,6 +19,7 @@ import {
   Plus,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/web/components/super-agent-icon";
+import { AgentAvatar } from "@/web/components/agent-icon";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import {
   Dialog,
@@ -50,6 +51,8 @@ import {
   type Member,
 } from "./config";
 import { TaskBoardItemDialog } from "./task-dialog";
+import { useCodeAgents } from "./use-code-agents";
+import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import {
   EMPTY_FILTERS,
   TaskFiltersBar,
@@ -132,28 +135,34 @@ function DueDatePill({ iso }: { iso: string }) {
 }
 
 /**
- * Assignee glyph for a card/row. For a Super Agent task it renders the
- * delegation as overlapping avatars — the assigner's avatar eclipsed by the
- * Super Agent capybara — so it's clear a human handed the task off. Otherwise a
- * plain member avatar.
+ * Assignee glyph for a card/row. For a task delegated to an agent (the Super
+ * Agent or a code agent) it renders the delegation as overlapping avatars — the
+ * assigner's avatar eclipsed by the agent's glyph — so it's clear a human handed
+ * the task off. Otherwise a plain member avatar.
  */
 function AssigneeDisplay({
   item,
   assignee,
   assignedBy,
+  agent,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
+  /** The code agent this task is assigned to, if any (undefined for the Super
+   * Agent — its glyph is the capybara — and for human/unassigned tasks). */
+  agent?: VirtualMCPEntity;
 }) {
-  if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
+  const isSuperAgent = item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+  if (isSuperAgent || agent) {
+    const title = agent ? agent.title : "Super Agent";
     return (
       <span
         className="inline-flex items-center"
         title={
           assignedBy?.user?.name
-            ? `Assigned to Super Agent by ${assignedBy.user.name}`
-            : "Assigned to Super Agent"
+            ? `Assigned to ${title} by ${assignedBy.user.name}`
+            : `Assigned to ${title}`
         }
       >
         {assignedBy && (
@@ -165,7 +174,16 @@ function AssigneeDisplay({
             className="-mr-1.5 ring-2 ring-background"
           />
         )}
-        <SuperAgentIcon size={16} className="ring-2 ring-background" />
+        {agent ? (
+          <AgentAvatar
+            icon={agent.icon}
+            name={agent.title}
+            size="2xs"
+            className="ring-2 ring-background"
+          />
+        ) : (
+          <SuperAgentIcon size={16} className="ring-2 ring-background" />
+        )}
       </span>
     );
   }
@@ -195,6 +213,9 @@ export function TaskBoardPage() {
   const { data: membersData } = useMembers();
   const members = (membersData?.data?.members ?? []) as Member[];
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
+  // Code agents can be assignees too (their id is the assigneeId); map by id so
+  // cards can render the agent's avatar the way members render theirs.
+  const agentById = new Map(useCodeAgents().map((a) => [a.id, a]));
 
   const [layout, setLayout] = useState<Layout>("board");
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
@@ -319,6 +340,7 @@ export function TaskBoardPage() {
         <Lanes
           items={visibleItems}
           memberByUserId={memberByUserId}
+          agentById={agentById}
           onOpen={openTask}
           onCreate={openCreateInLane}
           onMove={(id, status) => actions.update.mutate({ id, status })}
@@ -353,6 +375,9 @@ export function TaskBoardPage() {
                   item.assignedBy
                     ? memberByUserId.get(item.assignedBy)
                     : undefined
+                }
+                agent={
+                  item.assigneeId ? agentById.get(item.assigneeId) : undefined
                 }
                 onOpen={() => openTask(item)}
               />
@@ -483,6 +508,7 @@ function LayoutToggle({
 function Lanes({
   items,
   memberByUserId,
+  agentById,
   onOpen,
   onCreate,
   onMove,
@@ -490,6 +516,7 @@ function Lanes({
 }: {
   items: TaskBoardItem[];
   memberByUserId: Map<string, Member>;
+  agentById: Map<string, VirtualMCPEntity>;
   onOpen: (item: TaskBoardItem) => void;
   onCreate: (status: TaskBoardItemStatus) => void;
   onMove: (id: string, status: TaskBoardItemStatus) => void;
@@ -579,6 +606,11 @@ function Lanes({
                         ? memberByUserId.get(item.assignedBy)
                         : undefined
                     }
+                    agent={
+                      item.assigneeId
+                        ? agentById.get(item.assigneeId)
+                        : undefined
+                    }
                     onOpen={() => onOpen(item)}
                     onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
                   />
@@ -596,12 +628,14 @@ function TaskCard({
   item,
   assignee,
   assignedBy,
+  agent,
   onOpen,
   onAutoFix,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
+  agent?: VirtualMCPEntity;
   onOpen: () => void;
   onAutoFix?: () => void;
 }) {
@@ -639,6 +673,7 @@ function TaskCard({
           item={item}
           assignee={assignee}
           assignedBy={assignedBy}
+          agent={agent}
         />
       </div>
 
@@ -681,11 +716,13 @@ function ListRow({
   item,
   assignee,
   assignedBy,
+  agent,
   onOpen,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
+  agent?: VirtualMCPEntity;
   onOpen: () => void;
 }) {
   const config = STATUS_CONFIG[item.status];
@@ -715,6 +752,7 @@ function ListRow({
         item={item}
         assignee={assignee}
         assignedBy={assignedBy}
+        agent={agent}
       />
       <span className="hidden shrink-0 text-[11px] text-muted-foreground/70 sm:inline">
         {formatTimeAgo(new Date(item.createdAt))}

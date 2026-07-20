@@ -385,7 +385,7 @@ async function buildDispatchRequestStep(
   // stamp the reply at Date.now() — inverting their order in the UI (reply
   // first, then the trigger message trailed by "No response was generated").
   // Idempotent: the child's emit reuses this message id and ON CONFLICT keeps
-  // these rows. Mirrors the task-board path (enqueue-super-agent.ts).
+  // these rows. Mirrors the task-board path (enqueue-agent.ts).
   const userTurn = request.messages.find((m) => m.role !== "system");
   if (userTurn) {
     await new PartEmitter({

@@ -1,6 +1,6 @@
 /**
  * Sentinel `assigneeId` for the org's Super Agent (the well-known Decopilot
- * agent). Not a real member userId — `validate-assignee` skips membership for
+ * agent). Not a real member userId — `resolve-assignee` skips membership for
  * it, and assigning it enqueues a Super Agent run on the task. Lives in
  * `@/shared` so both the server tools and the web board can import the value.
  */

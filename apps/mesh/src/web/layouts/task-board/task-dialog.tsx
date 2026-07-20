@@ -48,7 +48,10 @@ import {
   X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/web/components/super-agent-icon";
+import { AgentAvatar } from "@/web/components/agent-icon";
 import { useMembers } from "@/web/hooks/use-members";
+import { useCodeAgents } from "./use-code-agents";
+import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { getInitials } from "@/web/lib/get-initials";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
@@ -125,6 +128,29 @@ const THREAD_STATUS: Record<
     icon: AlertCircle,
   },
 };
+
+/**
+ * Glyph for a delegated agent. `agent` undefined = the Super Agent (the
+ * sentinel has no entity, so it renders the capybara); otherwise a code agent's
+ * own avatar.
+ */
+function AgentGlyph({
+  agent,
+  className,
+}: {
+  agent?: VirtualMCPEntity;
+  className?: string;
+}) {
+  if (!agent) return <SuperAgentIcon size={16} className={className} />;
+  return (
+    <AgentAvatar
+      icon={agent.icon}
+      name={agent.title}
+      size="2xs"
+      className={className}
+    />
+  );
+}
 
 export function TaskBoardItemDialog({
   open,
@@ -203,7 +229,19 @@ export function TaskBoardItemDialog({
     });
   };
 
+  const codeAgents = useCodeAgents();
   const isSuperAgent = assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+  // The code agent the task is assigned to, if any. Super Agent has no entity
+  // (its glyph is the capybara), so `assignedAgent` stays undefined for it.
+  const assignedAgent = assigneeId
+    ? codeAgents.find((a) => a.id === assigneeId)
+    : undefined;
+  // "Delegated to an agent" covers both the Super Agent and code agents — they
+  // share the run-delegation display (glyph + assigner elbow tree).
+  const isAgent = isSuperAgent || Boolean(assignedAgent);
+  const agentTitle = isSuperAgent
+    ? "Super Agent"
+    : (assignedAgent?.title ?? "");
   const assignee = members.find((m) => m.userId === assigneeId);
   const assignedBy = item?.assignedBy
     ? members.find((m) => m.userId === item.assignedBy)
@@ -386,10 +424,10 @@ export function TaskBoardItemDialog({
                         !assigneeId && "text-muted-foreground",
                       )}
                     >
-                      {isSuperAgent && assignedBy ? (
+                      {isAgent && assignedBy ? (
                         <>
-                          {/* Desktop: the assigner; the Super Agent doing the
-                              work is the nested elbow row below. */}
+                          {/* Desktop: the assigner; the agent doing the work is
+                              the nested elbow row below. */}
                           <span className="hidden items-center gap-2 sm:flex">
                             <Avatar
                               url={assignedBy.user?.image ?? undefined}
@@ -398,12 +436,12 @@ export function TaskBoardItemDialog({
                               size="2xs"
                             />
                             <span className="truncate">
-                              {assignedBy.user?.name ?? "Super Agent"}
+                              {assignedBy.user?.name ?? agentTitle}
                             </span>
                           </span>
                           {/* Mobile: no room for the elbow tree — fold the
                               delegation into one chip, the assigner eclipsed by
-                              the Super Agent. */}
+                              the agent. */}
                           <span className="flex items-center gap-2 sm:hidden">
                             <span className="inline-flex items-center">
                               <Avatar
@@ -413,18 +451,18 @@ export function TaskBoardItemDialog({
                                 size="2xs"
                                 className="-mr-1.5 ring-2 ring-background"
                               />
-                              <SuperAgentIcon
-                                size={16}
+                              <AgentGlyph
+                                agent={assignedAgent}
                                 className="ring-2 ring-background"
                               />
                             </span>
-                            Super Agent
+                            <span className="truncate">{agentTitle}</span>
                           </span>
                         </>
-                      ) : isSuperAgent ? (
+                      ) : isAgent ? (
                         <>
-                          <SuperAgentIcon size={16} />
-                          Super Agent
+                          <AgentGlyph agent={assignedAgent} />
+                          <span className="truncate">{agentTitle}</span>
                         </>
                       ) : assignee ? (
                         <>
@@ -481,6 +519,28 @@ export function TaskBoardItemDialog({
                             <span className="truncate">Unassigned</span>
                           </CommandItem>
                         </CommandGroup>
+                        {codeAgents.length > 0 && (
+                          <CommandGroup heading="Code Agents">
+                            {codeAgents.map((a) => (
+                              <CommandItem
+                                key={a.id}
+                                value={a.title}
+                                onSelect={() => {
+                                  setAssigneeId(a.id);
+                                  setAssigneeOpen(false);
+                                }}
+                                className="gap-2"
+                              >
+                                <AgentAvatar
+                                  icon={a.icon}
+                                  name={a.title}
+                                  size="2xs"
+                                />
+                                <span className="truncate">{a.title}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
                         <CommandGroup heading="Members">
                           {members.map((m) => (
                             <CommandItem
@@ -509,10 +569,10 @@ export function TaskBoardItemDialog({
                   </PopoverContent>
                 </Popover>
 
-                {/* Delegation: the Super Agent doing the work, nested under
-                    the human who handed it off. Desktop only — on mobile the
-                    assignee chip folds this in (see above). */}
-                {isSuperAgent && assignedBy && (
+                {/* Delegation: the agent doing the work, nested under the human
+                    who handed it off. Desktop only — on mobile the assignee chip
+                    folds this in (see above). */}
+                {isAgent && assignedBy && (
                   <div className="relative mt-1.5 hidden items-center pl-5 sm:flex">
                     {/* Elbow drops from the center of the assigner's avatar
                         (px-3 padding + half of the w-4 "2xs" avatar = 20px).
@@ -522,8 +582,8 @@ export function TaskBoardItemDialog({
                     <span
                       className={cn(PROPERTY_BUTTON, "pointer-events-none")}
                     >
-                      <SuperAgentIcon size={16} />
-                      Super Agent
+                      <AgentGlyph agent={assignedAgent} />
+                      {agentTitle}
                     </span>
                   </div>
                 )}

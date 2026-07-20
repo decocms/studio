@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@/shared/task-board";
-import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
+import { reactToAgentDelegation } from "@/tools/task-board/enqueue-agent";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
 import { TaskBoardItemPrioritySchema } from "@/tools/task-board/schema";
 import { bearerToken, isVaultServiceToken } from "./credential-vault";
@@ -87,8 +87,9 @@ export const createTaskBoardImportRoutes = () => {
     const items = parsed.data.items;
 
     // Validate real-member assignees against the member table directly — the
-    // create tool's assertValidAssignee goes through boundAuth, which needs a
-    // user session this service-token route doesn't have.
+    // create tool's resolveValidAssignee goes through boundAuth, which needs a
+    // user session this service-token route doesn't have. (This import path
+    // only accepts human members and the Super Agent, not code agents.)
     for (const item of items) {
       if (!item.assigneeId || item.assigneeId === SUPER_AGENT_ASSIGNEE_ID)
         continue;
@@ -109,7 +110,7 @@ export const createTaskBoardImportRoutes = () => {
     // A Super Agent delegation needs a real-member principal for its run —
     // resolve the org's (first) owner once. A live org always has one; if it
     // somehow doesn't, assigned_by stays null and the enqueue fails inside
-    // reactToSuperAgentDelegation's best-effort catch (logged, task and batch
+    // reactToAgentDelegation's best-effort catch (logged, task and batch
     // preserved) — same degradation as an org with no model configured.
     let ownerId: string | null = null;
     if (items.some((i) => i.assigneeId === SUPER_AGENT_ASSIGNEE_ID)) {
@@ -155,7 +156,7 @@ export const createTaskBoardImportRoutes = () => {
       emitTaskBoardUpdated(organizationId, row);
       if (toSuperAgent) {
         delegated++;
-        await reactToSuperAgentDelegation(ctx, row);
+        await reactToAgentDelegation(ctx, row);
       }
     }
 

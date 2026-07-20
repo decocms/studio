@@ -2,14 +2,13 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import {
-  SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
-import { assertValidAssignee } from "./validate-assignee";
+import { resolveValidAssignee } from "./resolve-assignee";
 import { requireTaskBoardEnabled } from "./require-enabled";
-import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { reactToAgentDelegation } from "./enqueue-agent";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
@@ -46,11 +45,14 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
 
     await requireTaskBoardEnabled(ctx, organizationId);
 
-    if (input.assigneeId) {
-      await assertValidAssignee(ctx, organizationId, input.assigneeId);
-    }
+    // Resolve + validate the assignee once: a truthy result is an agent (the
+    // Super Agent or a code agent) the task is delegated to; null is a human
+    // member. Throws if the assignee is neither.
+    const delegatedAgent = input.assigneeId
+      ? await resolveValidAssignee(ctx, organizationId, input.assigneeId)
+      : null;
 
-    // Only enqueue on the transition INTO Super Agent, not on every later edit.
+    // Only enqueue on the transition INTO an agent, not on every later edit.
     const previous =
       input.assigneeId !== undefined
         ? await ctx.storage.taskBoard.getById(input.id, organizationId)
@@ -58,10 +60,9 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     const assigneeChanged =
       input.assigneeId !== undefined &&
       input.assigneeId !== (previous?.assigneeId ?? null);
-    // Delegating a task to the Super Agent queues it to run — force To Do,
-    // overriding any status the caller passed alongside the reassignment.
-    const becameSuperAgent =
-      assigneeChanged && input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+    // Delegating a task to an agent queues it to run — force To Do, overriding
+    // any status the caller passed alongside the reassignment.
+    const becameAgent = assigneeChanged && delegatedAgent !== null;
 
     const item = await ctx.storage.taskBoard.update(
       input.id,
@@ -69,7 +70,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       {
         title: input.title,
         description: input.description,
-        status: becameSuperAgent ? "todo" : input.status,
+        status: becameAgent ? "todo" : input.status,
         priority: input.priority,
         assigneeId: input.assigneeId,
         // Stamp who delegated only when the assignee actually changes.
@@ -86,9 +87,9 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     // Broadcast the delegation flip (assignee + forced To Do) so every open
     // board reflects it live. Plain edits already round-trip through the
     // mutation's optimistic patch + invalidate on the acting client.
-    if (becameSuperAgent) {
+    if (becameAgent) {
       emitTaskBoardUpdated(organizationId, item);
-      await reactToSuperAgentDelegation(ctx, item);
+      await reactToAgentDelegation(ctx, item, delegatedAgent);
     }
 
     return { item };

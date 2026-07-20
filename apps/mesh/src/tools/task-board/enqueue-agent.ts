@@ -3,50 +3,62 @@ import type { TaskBoardItem } from "@/storage/types";
 import { resolveTier } from "@/core/resolve-tier";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
-import { getDecopilotId } from "@decocms/mesh-sdk";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@/shared/task-board";
+import { resolveAssigneeAgent, type DelegatedAgent } from "./resolve-assignee";
 
 /**
- * The shared post-write reaction for a task delegated to the Super Agent:
- * enqueue the run. No-op for any other assignee, so callers that already know
- * the write delegated (create) and callers that gate on the transition
- * (update) share one body. The SSE broadcast is emitted by each write site
- * itself (every create/update broadcasts, not just delegations). Enqueue is
- * best-effort — the task is already persisted, so a dispatch failure (e.g. no
- * model configured) must never fail the write that delegated it.
+ * The shared post-write reaction for a task delegated to an agent (the Super
+ * Agent or a code agent): enqueue the run. No-op for a human/unassigned
+ * assignee, so callers that already know the write delegated (create) and
+ * callers that gate on the transition (update) share one body. The SSE
+ * broadcast is emitted by each write site itself (every create/update
+ * broadcasts, not just delegations). Enqueue is best-effort — the task is
+ * already persisted, so a dispatch failure (e.g. no model configured) must
+ * never fail the write that delegated it.
+ *
+ * Callers that already resolved the assignee (create/update, via
+ * `resolveValidAssignee`) pass `agent` to skip a redundant lookup; callers that
+ * haven't (the batch import) omit it and this self-resolves from the item.
  */
-export async function reactToSuperAgentDelegation(
+export async function reactToAgentDelegation(
   ctx: StudioContext,
   item: TaskBoardItem,
+  agent?: DelegatedAgent | null,
 ): Promise<void> {
-  if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return;
-  await enqueueSuperAgentForTask(ctx, item).catch((err) => {
-    console.error("[task-board] Super Agent enqueue failed", err);
+  const resolved =
+    agent !== undefined
+      ? agent
+      : item.assigneeId
+        ? await resolveAssigneeAgent(ctx, item.organizationId, item.assigneeId)
+        : null;
+  if (!resolved) return;
+  await enqueueAgentForTask(ctx, item, resolved).catch((err) => {
+    console.error("[task-board] agent enqueue failed", err);
   });
 }
 
 /**
- * Enqueue a Super Agent run for a task delegated to it. Creates a fresh thread
- * seeded with the task in context, then dispatches the org's Super Agent (the
- * well-known Decopilot agent) on it via the durable thread-gate queue.
+ * Enqueue an agent run for a task delegated to it. Creates a fresh thread
+ * seeded with the task in context, then dispatches the resolved agent (the
+ * org's Super Agent, or a code agent) on it via the durable thread-gate queue.
  *
  * ponytail: deliberately the simplest thing that runs the agent on the task —
  * a single text message, smart tier, no tool allowlist. Iterate on the prompt,
  * model, and metadata from here.
  */
-async function enqueueSuperAgentForTask(
+async function enqueueAgentForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
+  agent: DelegatedAgent,
 ): Promise<void> {
   const organizationId = task.organizationId;
   const userId = task.assignedBy ?? task.createdBy;
 
   const model = await resolveTier(ctx, "smart");
-  const agentId = getDecopilotId(organizationId);
+  const agentId = agent.id;
 
   const thread = await ctx.storage.threads.create({
     organization_id: organizationId,
-    title: `Super Agent: ${task.title}`,
+    title: `${agent.title}: ${task.title}`,
     status: "in_progress",
     virtual_mcp_id: agentId,
     // Consume/terminal writer skips v1 threads — pin v2 or the run never completes.

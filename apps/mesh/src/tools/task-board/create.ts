@@ -2,14 +2,13 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import {
-  SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
-import { assertValidAssignee } from "./validate-assignee";
+import { resolveValidAssignee } from "./resolve-assignee";
 import { requireTaskBoardEnabled } from "./require-enabled";
-import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
+import { reactToAgentDelegation } from "./enqueue-agent";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
@@ -44,18 +43,19 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
 
     await requireTaskBoardEnabled(ctx, organizationId);
 
-    if (input.assigneeId) {
-      await assertValidAssignee(ctx, organizationId, input.assigneeId);
-    }
-
-    const delegatedToSuperAgent = input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+    // Resolve + validate the assignee once: a truthy result is an agent (the
+    // Super Agent or a code agent) the task is delegated to; null is a human
+    // member. Throws if the assignee is neither.
+    const delegatedAgent = input.assigneeId
+      ? await resolveValidAssignee(ctx, organizationId, input.assigneeId)
+      : null;
 
     const item = await ctx.storage.taskBoard.create({
       organizationId,
       title: input.title,
       description: input.description ?? null,
-      // A task handed to the Super Agent is queued to run — land it in To Do.
-      status: delegatedToSuperAgent ? "todo" : input.status,
+      // A task handed to an agent is queued to run — land it in To Do.
+      status: delegatedAgent ? "todo" : input.status,
       priority: input.priority,
       assigneeId: input.assigneeId ?? null,
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
@@ -65,7 +65,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
 
     // Broadcast the new card so every open board adds it live, no polling.
     emitTaskBoardUpdated(organizationId, item);
-    await reactToSuperAgentDelegation(ctx, item);
+    await reactToAgentDelegation(ctx, item, delegatedAgent);
 
     return { item };
   },
