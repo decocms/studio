@@ -6,6 +6,7 @@ import type { ToolInputProperty } from "@/web/components/tool-input-form";
 export function coerceFormValues(
   values: Record<string, unknown>,
   properties: Record<string, ToolInputProperty>,
+  required?: string[],
 ): Record<string, unknown> | null {
   const out: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(values)) {
@@ -30,6 +31,7 @@ export function coerceFormValues(
       out[key] = raw;
     }
   }
+  if (required?.some((key) => !(key in out))) return null;
   return out;
 }
 
