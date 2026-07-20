@@ -55,6 +55,18 @@ export function ConnectionGroupCard({
   const allSelected = group.connections.every((c) => selectedIds.has(c.id));
   const someSelected = group.connections.some((c) => selectedIds.has(c.id));
 
+  // Selecting the group toggles every connection to match: all-off -> all-on,
+  // otherwise all-on -> all-off.
+  const toggleGroupSelection = () => {
+    for (const c of group.connections) {
+      if (allSelected) {
+        if (selectedIds.has(c.id)) onToggleSelect(c.id);
+      } else {
+        if (!selectedIds.has(c.id)) onToggleSelect(c.id);
+      }
+    }
+  };
+
   return (
     <>
       <ConnectionCard
@@ -63,19 +75,7 @@ export function ConnectionGroupCard({
           icon: group.icon,
           description: `${group.connections.length} instances`,
         }}
-        onClick={() =>
-          selectionMode
-            ? (() => {
-                for (const c of group.connections) {
-                  if (allSelected) {
-                    if (selectedIds.has(c.id)) onToggleSelect(c.id);
-                  } else {
-                    if (!selectedIds.has(c.id)) onToggleSelect(c.id);
-                  }
-                }
-              })()
-            : onOpen()
-        }
+        onClick={() => (selectionMode ? toggleGroupSelection() : onOpen())}
         className={cn(
           selectionMode && allSelected && "ring-2 ring-primary",
           selectionMode &&
@@ -92,15 +92,7 @@ export function ConnectionGroupCard({
                 checked={
                   allSelected ? true : someSelected ? "indeterminate" : false
                 }
-                onCheckedChange={() => {
-                  for (const c of group.connections) {
-                    if (allSelected) {
-                      if (selectedIds.has(c.id)) onToggleSelect(c.id);
-                    } else {
-                      if (!selectedIds.has(c.id)) onToggleSelect(c.id);
-                    }
-                  }
-                }}
+                onCheckedChange={toggleGroupSelection}
               />
             ) : (
               <div className="flex items-center gap-1">
