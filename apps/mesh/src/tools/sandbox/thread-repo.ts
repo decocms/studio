@@ -40,6 +40,25 @@ export function threadBranch(
 }
 
 /**
+ * Real, deterministic git ref for a synthetic sandbox branch. The synthetic key
+ * (`thread:<id>[/<connectionId>]`) is a sandbox isolation key, NOT a git ref —
+ * the daemon deliberately never checks it out, so the working tree stays on the
+ * repo default (main). That is how the shutdown sync used to push straight to
+ * `main`. Mapping it to a real branch instead makes the daemon's normal path
+ * take over: it forks this branch from the default on first boot, pushes it on
+ * shutdown, and restores it on reboot (clone.ts ls-remote probe) — so a
+ * per-thread sandbox's work lives in git on its own branch, never on `main`.
+ *
+ * Deterministic (same synthetic key → same ref) so a reboot restores the same
+ * branch. Only `thread:*` keys reach git: `ephemeral` sandboxes have no repo.
+ *   thread:abc/conn_1 → sandbox/thread-abc-conn_1
+ */
+export function syntheticBranchToGitRef(branch: string): string {
+  const body = branch.replace(/^thread:/, "").replace(/\//g, "-");
+  return `sandbox/thread-${body}`;
+}
+
+/**
  * Extract the thread id from a synthetic sandbox branch
  * (`thread:<id>` or `thread:<id>/<connectionId>`), or null for non-thread
  * branches. Lets provisioning recover the thread repo from the branch alone,
