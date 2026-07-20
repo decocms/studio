@@ -131,7 +131,6 @@ import { countAvailableRunnables } from "./runnable-catalog";
 import { EmptyMessage } from "./empty-message";
 import { PostFilterBar, PostSelectionToolbar } from "./post-toolbar";
 import { ItemActions } from "./item-actions";
-import { VARIANT_GREEN } from "./content-browser-constants";
 import { useBlocksPreviewWorkspace } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
 import type { BlocksTarget } from "@/web/components/sandbox/blocks/blocks-preview-workspace-state";
 
@@ -2280,11 +2279,7 @@ export function ItemRow({
       <span className="flex size-8 shrink-0 items-center justify-center">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Icon
-              size={16}
-              className="shrink-0"
-              style={{ color: VARIANT_GREEN }}
-            />
+            <Icon size={16} className="shrink-0 text-success" />
           </TooltipTrigger>
           <TooltipContent side="right">{variantCount} variants</TooltipContent>
         </Tooltip>
