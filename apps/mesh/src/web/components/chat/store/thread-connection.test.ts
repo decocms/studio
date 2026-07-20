@@ -640,6 +640,44 @@ describe("stop", () => {
     const ids = conn.messages.get().map((m) => m.id);
     expect(ids).toEqual(["m-1", "u-2", "m-2"]);
   });
+
+  test("clicking Stop while the POST is still in flight lands on ready, not error", async () => {
+    globalThis.fetch = makeFetchMock({
+      messages: (init) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }),
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-stop-mid-post", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const submitPromise = conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "u-1",
+          role: "user",
+          parts: [{ type: "text", text: "hi" }],
+        },
+      },
+      baseOpts,
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.status.get().kind).toBe("submitted");
+
+    conn.stop();
+    expect(conn.status.get().kind).toBe("ready");
+
+    await submitPromise;
+    // The aborted POST's rejection must not clobber the ready state stop()
+    // already set with an error.
+    expect(conn.status.get().kind).toBe("ready");
+  });
 });
 
 // ─── submit() — single mutator entry point ───────────────────────────────────

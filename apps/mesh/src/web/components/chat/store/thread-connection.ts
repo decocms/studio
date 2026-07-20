@@ -387,8 +387,12 @@ export class ThreadConnection {
     try {
       await this.post(last, opts, abort.signal);
     } catch (err) {
-      const e = err instanceof Error ? err : new Error(String(err));
       this.clearRunStatusStage();
+      // stop() aborts `abort.signal` and already reset status to "ready"
+      // synchronously; the POST's rejection lands here asynchronously after
+      // that. Don't clobber the deliberate cancel with an error state.
+      if (abort.signal.aborted) return;
+      const e = err instanceof Error ? err : new Error(String(err));
       this.failTo(e);
     } finally {
       if (this.inflightPost === abort) this.inflightPost = null;
