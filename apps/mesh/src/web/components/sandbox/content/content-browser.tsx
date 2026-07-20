@@ -65,10 +65,7 @@ import {
   getPageVariantSectionsAt,
 } from "@/web/components/sections-editor/page-variants";
 import { listAvailableSections } from "@/web/components/sections-editor/section-catalog";
-import { suggestBlockId } from "@/web/components/sections-editor/page-sections";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
-import { AvailableSectionEditor } from "./available-section-editor";
-import { SavedSectionEditor } from "./saved-section-editor";
 import { CollectionsSidebar } from "./collections-sidebar";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
@@ -127,6 +124,7 @@ import { PageJsonDialog } from "@/web/components/sections-editor/page-json-dialo
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
 import { EmptyMessage } from "./empty-message";
+import { SectionsRightPane } from "./sections-right-pane";
 import { PostFilterBar, PostSelectionToolbar } from "./post-toolbar";
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
@@ -1526,89 +1524,6 @@ function ContentBrowserReady({
  * full section editor; an available (raw manifest) section opens a local
  * editor that persists only when named and saved.
  */
-function SectionsRightPane({
-  selection,
-  orgSlug,
-  virtualMcpId,
-  branch,
-  previewUrl,
-  meta,
-  decofile,
-  isCreating,
-  onCreateAvailable,
-  onSaveReferencedBlock,
-}: {
-  selection:
-    | { collection: "sections"; key: string }
-    | {
-        collection: "available-section";
-        resolveType: string;
-        title: string;
-      }
-    | null;
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  previewUrl: string | null;
-  meta: LiveMeta;
-  decofile: Record<string, unknown>;
-  isCreating: boolean;
-  onCreateAvailable: (
-    resolveType: string,
-    blockId: string,
-    data: Record<string, unknown>,
-  ) => Promise<void>;
-  onSaveReferencedBlock: (
-    blockKey: string,
-    data: Record<string, unknown>,
-  ) => void;
-}) {
-  if (!selection) {
-    return (
-      <EmptyMessage
-        title="Select a section to edit"
-        description="Pick a saved section to edit it, or an available one to customize and save as global."
-      />
-    );
-  }
-
-  if (selection.collection === "available-section") {
-    return (
-      <AvailableSectionEditor
-        key={`available:${selection.resolveType}`}
-        orgSlug={orgSlug}
-        virtualMcpId={virtualMcpId}
-        branch={branch}
-        previewUrl={previewUrl}
-        meta={meta}
-        decofile={decofile}
-        resolveType={selection.resolveType}
-        title={selection.title}
-        defaultBlockId={suggestBlockId(selection.title)}
-        isCreating={isCreating}
-        onCreate={(blockId, data) =>
-          onCreateAvailable(selection.resolveType, blockId, data)
-        }
-        onSaveReferencedBlock={onSaveReferencedBlock}
-      />
-    );
-  }
-
-  return (
-    <SavedSectionEditor
-      key={`saved:${selection.key}`}
-      orgSlug={orgSlug}
-      virtualMcpId={virtualMcpId}
-      branch={branch}
-      previewUrl={previewUrl}
-      meta={meta}
-      decofile={decofile}
-      blockKey={selection.key}
-      onSaveReferencedBlock={onSaveReferencedBlock}
-    />
-  );
-}
-
 function GroupHeader({
   icon: Icon,
   label,
