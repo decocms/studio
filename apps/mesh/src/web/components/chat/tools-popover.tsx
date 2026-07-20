@@ -372,17 +372,17 @@ export function ToolsPopover({
 
           <DropdownMenuItem
             onClick={handleTogglePlanMode}
-            className={cn(isPlanMode && "text-violet-600 dark:text-violet-400")}
+            className={cn(isPlanMode && "text-special")}
           >
             <BookOpen01
               size={16}
-              className={cn(isPlanMode && "text-violet-500")}
+              className={cn(isPlanMode && "text-special")}
             />
             <span className="flex-1">Plan mode</span>
             <span
               className={cn(
                 "text-xs text-muted-foreground",
-                isPlanMode && "text-violet-500 font-medium",
+                isPlanMode && "text-special font-medium",
               )}
             >
               {PLAN_MODE_SHORTCUT}
@@ -392,49 +392,45 @@ export function ToolsPopover({
           {/* Create image */}
           <DropdownMenuItem
             onClick={handleForceImageGeneration}
-            className={cn(isImageActive && "text-pink-600 dark:text-pink-400")}
+            className={cn(isImageActive && "text-special")}
           >
             <Image01
               size={16}
-              className={cn(isImageActive && "text-pink-500")}
+              className={cn(isImageActive && "text-special")}
             />
             <span className="flex-1">Create image</span>
             {isImageActive && (
-              <span className="text-xs text-pink-500 font-medium">On</span>
+              <span className="text-xs text-special font-medium">On</span>
             )}
           </DropdownMenuItem>
 
           {/* Web search */}
           <DropdownMenuItem
             onClick={handleForceWebSearch}
-            className={cn(
-              isWebSearchActive && "text-blue-600 dark:text-blue-400",
-            )}
+            className={cn(isWebSearchActive && "text-special")}
           >
             <Globe02
               size={16}
-              className={cn(isWebSearchActive && "text-blue-500")}
+              className={cn(isWebSearchActive && "text-special")}
             />
             <span className="flex-1">Web search</span>
             {isWebSearchActive && (
-              <span className="text-xs text-blue-500 font-medium">On</span>
+              <span className="text-xs text-special font-medium">On</span>
             )}
           </DropdownMenuItem>
 
           {/* Deep research */}
           <DropdownMenuItem
             onClick={handleForceDeepResearch}
-            className={cn(
-              isDeepResearchActive && "text-blue-600 dark:text-blue-400",
-            )}
+            className={cn(isDeepResearchActive && "text-special")}
           >
             <Telescope
               size={16}
-              className={cn(isDeepResearchActive && "text-blue-500")}
+              className={cn(isDeepResearchActive && "text-special")}
             />
             <span className="flex-1">Deep research</span>
             {isDeepResearchActive && (
-              <span className="text-xs text-blue-500 font-medium">On</span>
+              <span className="text-xs text-special font-medium">On</span>
             )}
           </DropdownMenuItem>
 
