@@ -738,6 +738,23 @@ function AgentToolList({
   );
 }
 
+/** Coerces the form values against the tool's schema, toasting and returning
+ * `undefined` on an invalid field. Shared by the pinned-tile save flow and the
+ * add-tile flow — both build the same `toolInput` from the same form. */
+function resolveToolInput(
+  formValues: Record<string, unknown>,
+  properties: Record<string, ToolInputProperty> | undefined,
+  required: string[] | undefined,
+): { toolInput?: Record<string, unknown> } | undefined {
+  if (!properties || Object.keys(properties).length === 0) return {};
+  const coerced = coerceFormValues(formValues, properties, required);
+  if (!coerced) {
+    toast.error("Invalid value in one of the fields — please fix it.");
+    return undefined;
+  }
+  return Object.keys(coerced).length > 0 ? { toolInput: coerced } : {};
+}
+
 /** Row for a pinned tile instance — shows a summary, gear to edit, minus to remove. */
 function PinnedTileRow({
   agent,
@@ -790,20 +807,16 @@ function PinnedTileRow({
   const handleSave = async () => {
     setSubmitting(true);
     try {
-      let toolInput: Record<string, unknown> | undefined;
-      if (hasProps && tool.inputSchema?.properties) {
-        const coerced = coerceFormValues(
-          formValues,
-          tool.inputSchema.properties,
-          tool.inputSchema.required,
-        );
-        if (!coerced) {
-          toast.error("Invalid value in one of the fields — please fix it.");
-          setSubmitting(false);
-          return;
-        }
-        if (Object.keys(coerced).length > 0) toolInput = coerced;
+      const resolved = resolveToolInput(
+        formValues,
+        tool.inputSchema?.properties,
+        tool.inputSchema?.required,
+      );
+      if (!resolved) {
+        setSubmitting(false);
+        return;
       }
+      const { toolInput } = resolved;
 
       const baseTiles = getHomeTiles(agent.metadata?.ui);
       const nextTiles = baseTiles.map((t) => {
@@ -947,20 +960,16 @@ function AddToolRow({
   const saveTile = async () => {
     setSubmitting(true);
     try {
-      let toolInput: Record<string, unknown> | undefined;
-      if (hasProps && tool.inputSchema?.properties) {
-        const coerced = coerceFormValues(
-          formValues,
-          tool.inputSchema.properties,
-          tool.inputSchema.required,
-        );
-        if (!coerced) {
-          toast.error("Invalid value in one of the fields — please fix it.");
-          setSubmitting(false);
-          return;
-        }
-        if (Object.keys(coerced).length > 0) toolInput = coerced;
+      const resolved = resolveToolInput(
+        formValues,
+        tool.inputSchema?.properties,
+        tool.inputSchema?.required,
+      );
+      if (!resolved) {
+        setSubmitting(false);
+        return;
       }
+      const { toolInput } = resolved;
 
       const baseTiles = getHomeTiles(agent.metadata?.ui);
       const nextTiles = [
