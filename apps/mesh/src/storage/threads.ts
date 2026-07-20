@@ -1001,6 +1001,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     run_owner_pod?: string | null;
     run_config?: Record<string, unknown> | null;
     run_started_at?: Date | string | null;
+    last_progress_at?: Date | string | null;
     virtual_mcp_id?: string | null;
     branch?: string | null;
     sandbox_provider_kind?: string | null;
@@ -1043,6 +1044,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
       run_config: row.run_config ?? null,
       run_started_at: row.run_started_at
         ? toIsoString(row.run_started_at)
+        : null,
+      last_progress_at: row.last_progress_at
+        ? toIsoString(row.last_progress_at)
         : null,
       virtual_mcp_id: row.virtual_mcp_id ?? "",
       branch: row.branch ?? null,

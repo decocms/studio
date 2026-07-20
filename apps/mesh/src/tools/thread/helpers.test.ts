@@ -22,6 +22,7 @@ const BASE_THREAD: Thread = {
   run_owner_pod: null,
   run_config: null,
   run_started_at: null,
+  last_progress_at: null,
   virtual_mcp_id: "",
   branch: null,
   sandbox_provider_kind: null,
@@ -71,6 +72,39 @@ describe("normalizeThreadForResponse", () => {
     const staleUpdate = new Date(NOW - 31 * 60 * 1000).toISOString(); // 31 min ago
     const result = normalizeThreadForResponse(
       { ...BASE_THREAD, status: "in_progress", updated_at: staleUpdate },
+      NOW,
+    );
+    expect(result.status).toBe("expired");
+  });
+
+  test("stale updated_at but fresh last_progress_at stays in_progress (streaming)", () => {
+    // The bug: a long/resumed run streams chunks (bumping last_progress_at)
+    // but updated_at only moves at terminal, so keying off updated_at alone
+    // falsely flipped an actively-streaming thread to "expired".
+    const staleUpdate = new Date(NOW - 90 * 60 * 1000).toISOString(); // 90 min ago
+    const recentProgress = new Date(NOW - 5 * 1000).toISOString(); // 5s ago
+    const result = normalizeThreadForResponse(
+      {
+        ...BASE_THREAD,
+        status: "in_progress",
+        updated_at: staleUpdate,
+        last_progress_at: recentProgress,
+      },
+      NOW,
+    );
+    expect(result.status).toBe("in_progress");
+  });
+
+  test("both updated_at and last_progress_at stale becomes expired", () => {
+    const staleUpdate = new Date(NOW - 90 * 60 * 1000).toISOString();
+    const staleProgress = new Date(NOW - 31 * 60 * 1000).toISOString();
+    const result = normalizeThreadForResponse(
+      {
+        ...BASE_THREAD,
+        status: "in_progress",
+        updated_at: staleUpdate,
+        last_progress_at: staleProgress,
+      },
       NOW,
     );
     expect(result.status).toBe("expired");
