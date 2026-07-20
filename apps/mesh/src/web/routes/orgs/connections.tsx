@@ -22,7 +22,6 @@ import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { BulkDeleteDialog } from "./bulk-delete-dialog.tsx";
 import { CatalogItemCard } from "./catalog-item-card.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
 import {
   Dialog,
   DialogContent,
@@ -41,12 +40,6 @@ import {
   DrawerTitle,
 } from "@deco/ui/components/drawer.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
 import {
   Form,
   FormControl,
@@ -78,17 +71,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
-  CheckSquare,
   Container,
-  DotsVertical,
-  Eye,
   Globe02,
   Loading01,
   Plus,
-  Power01,
-  SlashCircle01,
   Terminal,
-  Trash01,
   XClose,
 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
@@ -127,6 +114,7 @@ import { groupConnections } from "@/shared/utils/group-connections";
 import {
   AddToAgentDialog,
   BulkActionBar,
+  ConnectionCardHeaderActions,
   ConnectionGroupCard,
 } from "./connection-selection-ui.tsx";
 
@@ -578,111 +566,29 @@ function ConnectionResults({
                     )}
                     headerActionsAlwaysVisible
                     headerActions={
-                      <div className="flex items-center gap-1">
-                        {selectionMode ? (
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleSelect(connection.id)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        ) : (
-                          <span className="text-xs text-muted-foreground font-normal">
-                            Connected
-                          </span>
-                        )}
-                        <div
-                          className={cn(
-                            "overflow-hidden transition-all duration-150 ease-out",
-                            selectionMode
-                              ? "w-8 opacity-100"
-                              : "w-0 opacity-0 group-hover:w-8 group-hover:opacity-100",
-                          )}
-                        >
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <DotsVertical size={20} />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              align="end"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigate({
-                                    to: "/$org/settings/connections/$appSlug",
-                                    params: {
-                                      org: org.slug,
-                                      appSlug: getConnectionSlug(connection),
-                                    },
-                                  });
-                                }}
-                              >
-                                <Eye size={16} />
-                                Open
-                              </DropdownMenuItem>
-                              {(canManage || canManageAgents) && (
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleSelect(connection.id);
-                                  }}
-                                >
-                                  <CheckSquare size={16} />
-                                  Select
-                                </DropdownMenuItem>
-                              )}
-                              {canManage &&
-                                (connection.status === "active" ? (
-                                  <DropdownMenuItem
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleToggleStatus(
-                                        connection.id,
-                                        "inactive",
-                                      );
-                                    }}
-                                  >
-                                    <SlashCircle01 size={16} />
-                                    Disable
-                                  </DropdownMenuItem>
-                                ) : (
-                                  <DropdownMenuItem
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleToggleStatus(
-                                        connection.id,
-                                        "active",
-                                      );
-                                    }}
-                                  >
-                                    <Power01 size={16} />
-                                    Enable
-                                  </DropdownMenuItem>
-                                ))}
-                              {canManage && (
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteConnection.requestDelete(connection);
-                                  }}
-                                >
-                                  <Trash01 size={16} />
-                                  Delete
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
+                      <ConnectionCardHeaderActions
+                        connection={connection}
+                        isSelected={isSelected}
+                        selectionMode={selectionMode}
+                        canManage={canManage}
+                        canManageAgents={canManageAgents}
+                        onToggleSelect={() => toggleSelect(connection.id)}
+                        onOpen={() =>
+                          navigate({
+                            to: "/$org/settings/connections/$appSlug",
+                            params: {
+                              org: org.slug,
+                              appSlug: getConnectionSlug(connection),
+                            },
+                          })
+                        }
+                        onToggleStatus={(status) =>
+                          handleToggleStatus(connection.id, status)
+                        }
+                        onDelete={() =>
+                          deleteConnection.requestDelete(connection)
+                        }
+                      />
                     }
                   />
                 );
