@@ -48,6 +48,7 @@ import {
 import {
   ENV_VAR_KEY_RE,
   StudioPackAgentId,
+  SUBMODULE_HOST_RE,
   useConnectionActions,
   useProjectContext,
   useVirtualMCP,
@@ -160,10 +161,6 @@ function editSessionReducer(
       return null;
   }
 }
-
-// Bare hostname with an optional port — mirrors the daemon's
-// VALID_SUBMODULE_HOST guard and the field editor's VALID_HOST_RE.
-const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
 
 /**
  * Drops in-progress / invalid env rows from the autosave payload. A row is

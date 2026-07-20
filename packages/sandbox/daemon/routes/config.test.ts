@@ -198,4 +198,49 @@ describe("makeConfigReadHandler", () => {
     const body = (await res.json()) as { repoDir: string | null };
     expect(body.repoDir).toBeNull();
   });
+
+  it("redacts submodule credential tokens from the response", async () => {
+    await store.apply({
+      git: {
+        repository: {
+          cloneUrl: "https://example.com/repo.git",
+          submoduleCredentials: [{ host: "github.com", token: "ghp_secret" }],
+        },
+      },
+    });
+    const h = makeConfigReadHandler({ daemonBootId: BOOT_ID, store });
+    const res = await h();
+    const text = await res.text();
+    // The PAT must never cross the (browser-reachable) /config boundary.
+    expect(text).not.toContain("ghp_secret");
+    const body = JSON.parse(text) as { config: TenantConfig };
+    expect(body.config.git?.repository?.submoduleCredentials).toBeUndefined();
+    // Non-secret repository fields still round-trip.
+    expect(body.config.git?.repository?.cloneUrl).toBe(
+      "https://example.com/repo.git",
+    );
+  });
+});
+
+describe("makeConfigUpdateHandler — token redaction", () => {
+  it("redacts submodule tokens from the PUT/POST config echo", async () => {
+    const store = new TenantConfigStore();
+    const h = makeConfigUpdateHandler({ daemonBootId: BOOT_ID, store });
+    const res = await h(
+      buildReq("POST", {
+        git: {
+          repository: {
+            cloneUrl: "https://example.com/repo.git",
+            submoduleCredentials: [{ host: "github.com", token: "ghp_echo" }],
+          },
+        },
+      }),
+    );
+    const text = await res.text();
+    expect(text).not.toContain("ghp_echo");
+    // But the daemon's in-memory store keeps the token so the clone can use it.
+    expect(store.read()?.git?.repository?.submoduleCredentials).toEqual([
+      { host: "github.com", token: "ghp_echo" },
+    ]);
+  });
 });

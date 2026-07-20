@@ -33,20 +33,20 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Plus, Trash01, User01, Users01 } from "@untitledui/icons";
+import { Plus, Trash01 } from "@untitledui/icons";
+import { SUBMODULE_HOST_RE } from "@decocms/mesh-sdk";
 import { ErrorBoundary } from "@/web/components/error-boundary";
+import {
+  SECRET_NAME_RE,
+  ScopeIcon,
+  SecretPickerValue,
+} from "@/web/components/sandbox/runtime-card/secret-picker";
 import {
   type SecretInfo,
   type SecretScopeKind,
   useCreateSecret,
   useSecrets,
 } from "@/web/hooks/use-secrets";
-
-// Bare hostname with an optional port — must match the daemon's
-// VALID_SUBMODULE_HOST guard (packages/sandbox/daemon/setup/clone.ts) so the UI
-// rejects the same shapes the backend would silently skip.
-const VALID_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
-const SECRET_NAME_RE = /^[A-Za-z0-9_.-]+$/;
 
 export interface SubmoduleCredentialsFieldProps<T extends FieldValues> {
   control: Control<T>;
@@ -193,7 +193,7 @@ function SubmoduleRow<T extends FieldValues>({
           name={hostName}
           render={({ field }) => {
             const v = ((field.value as string | undefined) ?? "").trim();
-            const invalid = v.length > 0 && !VALID_HOST_RE.test(v);
+            const invalid = v.length > 0 && !SUBMODULE_HOST_RE.test(v);
             return (
               <div className="space-y-1">
                 <Input
@@ -299,32 +299,6 @@ function SubmoduleRow<T extends FieldValues>({
       </div>
     </div>
   );
-}
-
-function SecretPickerValue({
-  field,
-  secretById,
-}: {
-  field: { value: unknown };
-  secretById: Map<string, SecretInfo>;
-}) {
-  const id = (field.value as string | undefined) || "";
-  if (!id) return null;
-  const secret = secretById.get(id);
-  if (!secret) {
-    return <span className="text-destructive">Missing secret ({id})</span>;
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 truncate">
-      <ScopeIcon scope={secret.scope} />
-      <span className="truncate font-mono">{secret.name}</span>
-    </span>
-  );
-}
-
-function ScopeIcon({ scope }: { scope: SecretScopeKind }) {
-  const Icon = scope === "user" ? User01 : Users01;
-  return <Icon className="size-3 text-muted-foreground" />;
 }
 
 interface CreateSecretDialogProps {

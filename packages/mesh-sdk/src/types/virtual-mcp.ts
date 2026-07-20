@@ -251,10 +251,20 @@ export type RuntimeEnvEntry = z.infer<typeof RuntimeEnvEntrySchema>;
  * bare hostname (e.g. "github.com"); the daemon rewrites `git@<host>:` SSH
  * submodule URLs to HTTPS so the token applies.
  */
+/**
+ * A bare submodule hostname with an optional port (e.g. "github.com",
+ * "gitlab.example.com:8443"). Single source of truth for the shape: the schema
+ * below enforces it, and the sandbox UI imports it. The daemon keeps its own
+ * copy (it can't depend on mesh-sdk) — see `VALID_SUBMODULE_HOST` in
+ * packages/sandbox/daemon/setup/clone.ts; keep the two in sync.
+ */
+export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
+
 const SubmoduleCredentialSchema = z.object({
   host: z
     .string()
     .min(1)
+    .regex(SUBMODULE_HOST_RE)
     .describe("Submodule host, e.g. 'github.com' (bare hostname, no scheme)."),
   secretId: z
     .string()

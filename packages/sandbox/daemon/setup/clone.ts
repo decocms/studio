@@ -268,6 +268,8 @@ export interface CloneResult {
 // file form makes shell injection impossible, but a host with a slash, `@`,
 // whitespace, or control chars would corrupt the insteadOf prefix or the
 // credential URL — so allow only a bare hostname with an optional port.
+// Duplicated (not imported) because the daemon can't depend on mesh-sdk — keep
+// in sync with `SUBMODULE_HOST_RE` in packages/mesh-sdk/src/types/virtual-mcp.ts.
 const VALID_SUBMODULE_HOST = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
 
 /**
@@ -363,10 +365,15 @@ async function runSubmoduleUpdate(p: {
   }
   if (hosts.length === 0) return;
 
+  // Best-effort, end to end: the credentials-file write (EACCES/ENOSPC) or the
+  // spawn can throw, and this runs inside `finalize` on the clone's critical
+  // path — an uncaught throw would reject spawnClone and fail the whole clone
+  // for an opt-in, non-essential step. Swallow to a warning; the working tree
+  // (sans submodules) stays intact. `rm` always runs so the token file never
+  // lingers, even if the write half-completed.
   const credFile = join(dirname(askpassPath), "submodule-git-credentials");
-  await writeFile(credFile, `${lines.join("\n")}\n`, { mode: 0o600 });
-
   try {
+    await writeFile(credFile, `${lines.join("\n")}\n`, { mode: 0o600 });
     const cmd = git(submoduleUpdateArgs({ hosts, credFile }), askpassPath, {
       cwd: dir,
     });
@@ -377,8 +384,13 @@ async function runSubmoduleUpdate(p: {
         `\r\n[clone] warning: submodule update failed (exit ${code}); continuing without submodules\r\n`,
       );
     }
+  } catch (err) {
+    deps.onChunk(
+      "setup",
+      `\r\n[clone] warning: submodule update errored (${(err as Error).message}); continuing without submodules\r\n`,
+    );
   } finally {
-    await rm(credFile, { force: true });
+    await rm(credFile, { force: true }).catch(() => {});
   }
 }
 
