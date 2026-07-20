@@ -7,7 +7,7 @@ import {
   useMonitorResults,
   useMonitorRun,
 } from "@/web/hooks/registry/use-monitor";
-import { collapseLatestToolResults } from "@/web/lib/registry/monitor-utils";
+import { summarizeToolResults } from "@/web/lib/registry/monitor-utils";
 import type {
   MonitorResult,
   MonitorResultStatus,
@@ -122,16 +122,14 @@ function ToolResultRow({ tool }: { tool: MonitorToolResult }) {
 function ResultCard({ result }: { result: MonitorResult }) {
   const [expanded, setExpanded] = useState(result.status !== "passed");
 
-  const latestToolResults = collapseLatestToolResults(result.tool_results);
-  const isHealthCheck = latestToolResults.every(
-    (t) => t.outputPreview === "health_check: not called",
-  );
-  const realToolTests = latestToolResults.filter(
-    (t) => t.outputPreview !== "health_check: not called",
-  );
-  const passedTools = realToolTests.filter((t) => t.success).length;
-  const failedTools = realToolTests.filter((t) => !t.success).length;
-  const hasTestedTools = realToolTests.length > 0;
+  const {
+    latestToolResults,
+    realToolTests,
+    isHealthCheck,
+    passedTools,
+    failedTools,
+    hasToolTests: hasTestedTools,
+  } = summarizeToolResults(result.tool_results);
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
