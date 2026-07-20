@@ -14,7 +14,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
-import { VARIANT_GREEN } from "./content-browser-constants";
 
 export function ItemActions({
   onDuplicate,
@@ -61,10 +60,9 @@ export function ItemActions({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={onAddVariant}
-              className="cursor-pointer"
-              style={{ color: VARIANT_GREEN }}
+              className="cursor-pointer text-success focus:text-success"
             >
-              <Flag01 size={14} style={{ color: VARIANT_GREEN }} />
+              <Flag01 size={14} />
               Add variant
             </DropdownMenuItem>
           </>
