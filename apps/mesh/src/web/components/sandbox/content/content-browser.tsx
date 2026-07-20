@@ -97,10 +97,9 @@ import {
   buildRedirectBlock,
   extractRedirects,
   generateRedirectBlockKey,
-  REDIRECT_STATUS,
   type RedirectEntry,
-  type RedirectType,
 } from "./redirect-data";
+import { RedirectTypeBadge } from "./redirect-type-badge";
 import {
   type BlogEntry,
   type BlogKind,
@@ -2233,22 +2232,6 @@ function ItemList({
         </div>
       </ScrollArea>
     </div>
-  );
-}
-
-/** Compact status-code badge for a redirect row (301 permanent / 307 temporary). */
-function RedirectTypeBadge({ type }: { type: RedirectType }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
-          {REDIRECT_STATUS[type]}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="left">
-        {type === "permanent" ? "Permanent" : "Temporary"}
-      </TooltipContent>
-    </Tooltip>
   );
 }
 
