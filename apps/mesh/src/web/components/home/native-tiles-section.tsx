@@ -8,9 +8,9 @@ import {
   ShoppingCart01,
 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
-import { SectionHeader } from "./add-tile-drawer";
 import { useHomeEdit } from "./home-edit-context";
 import { NATIVE_TILES, nativeCandidateId } from "./native-tiles";
+import { SectionHeader } from "./section-header";
 
 const NATIVE_TILE_ICON: Record<string, typeof MessageChatCircle> = {
   tasks: CheckCircle,
