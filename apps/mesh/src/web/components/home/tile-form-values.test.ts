@@ -24,6 +24,12 @@ describe("coerceFormValues", () => {
     });
   });
 
+  test("returns null on non-numeric string for number/integer field", () => {
+    expect(
+      coerceFormValues({ n: "abc" }, { n: { type: "integer" } }),
+    ).toBeNull();
+  });
+
   test("drops empty values", () => {
     expect(coerceFormValues({ s: "" }, { s: { type: "string" } })).toEqual({});
   });

@@ -797,7 +797,7 @@ function PinnedTileRow({
           tool.inputSchema.properties,
         );
         if (!coerced) {
-          toast.error("Invalid JSON in one of the fields — please fix it.");
+          toast.error("Invalid value in one of the fields — please fix it.");
           setSubmitting(false);
           return;
         }
@@ -953,7 +953,7 @@ function AddToolRow({
           tool.inputSchema.properties,
         );
         if (!coerced) {
-          toast.error("Invalid JSON in one of the fields — please fix it.");
+          toast.error("Invalid value in one of the fields — please fix it.");
           setSubmitting(false);
           return;
         }
