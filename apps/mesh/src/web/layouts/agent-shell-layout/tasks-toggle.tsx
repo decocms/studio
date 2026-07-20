@@ -1,6 +1,5 @@
 import { Columns03 } from "@untitledui/icons";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
-import { useTaskBoardEnabled } from "@/web/hooks/use-organization-settings";
 import { track } from "@/web/lib/posthog-client";
 import { useMainOverlayToggle } from "./use-main-overlay-toggle";
 
@@ -8,13 +7,12 @@ import { useMainOverlayToggle } from "./use-main-overlay-toggle";
  * Tasks toggle — the org task board, opened next to the chat like the Library
  * (via `?main=board`) rather than as a separate route. Sits in the LEFT toolbar
  * group after Chat and Library. Agent-independent, so it's a left-group toggle,
- * not a per-agent view tab. Gated on the org's `task_board_enabled` setting.
+ * not a per-agent view tab.
  */
 export function TasksToggle() {
-  const taskBoardEnabled = useTaskBoardEnabled();
   const { active, enabled, toggle } = useMainOverlayToggle("board");
 
-  if (!taskBoardEnabled || !enabled) return null;
+  if (!enabled) return null;
 
   return (
     <HeaderTabButton

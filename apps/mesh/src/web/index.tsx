@@ -372,8 +372,7 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./layouts/library/index.tsx")),
 });
 
-// Task board (/$org/board) — org-owned task board, gated behind the org's
-// task_board_enabled setting.
+// Task board (/$org/board) — org-owned task board.
 const boardRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/board",

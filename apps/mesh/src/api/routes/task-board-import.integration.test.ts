@@ -14,7 +14,6 @@ import {
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
 import { getSettings, setGlobalSettings } from "../../settings";
-import { OrganizationSettingsStorage } from "../../storage/organization-settings";
 import { createApp } from "../app";
 
 if (!getSettings().encryptionKey) {
@@ -71,9 +70,6 @@ describe("Task Board Import Route", () => {
       VALUES ('org_board', 'Board Org', 'board-org', ${now})
       ON CONFLICT (id) DO NOTHING
     `.execute(database.db);
-    await new OrganizationSettingsStorage(database.db).upsert("org_board", {
-      task_board_enabled: true,
-    });
     // user_1 (seeded) is org_board's owner — the delegation principal.
     await sql`
       INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
@@ -107,40 +103,15 @@ describe("Task Board Import Route", () => {
     expect(wrongToken.status).toBe(401);
   });
 
-  it("auto-enables the task board for an org that never touched it", async () => {
-    // org_1 (seeded) has no settings row → board disabled by default. The
-    // report push is the org's introduction to the board, so the import flips
-    // the setting on and writes.
+  it("creates items for an org that never touched the board before", async () => {
     const res = await app.fetch(post("org_1", "svc-secret", BODY));
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ created: 2, delegated: 0 });
-
-    const settings = await database.db
-      .selectFrom("organization_settings")
-      .select(["task_board_enabled"])
-      .where("organizationId", "=", "org_1")
-      .executeTakeFirst();
-    expect(settings?.task_board_enabled).toBe(true);
   });
 
   it("rejects an invalid body", async () => {
     const res = await app.fetch(post("org_board", "svc-secret", { items: [] }));
     expect(res.status).toBe(400);
-  });
-
-  it("does not auto-enable the task board when the body is rejected", async () => {
-    // org_1 (seeded) has no settings row → board disabled by default. A 400
-    // must leave it untouched — flipping it on with nothing written would
-    // silently opt the org into a feature it never asked for.
-    const res = await app.fetch(post("org_1", "svc-secret", { items: [] }));
-    expect(res.status).toBe(400);
-
-    const settings = await database.db
-      .selectFrom("organization_settings")
-      .select(["task_board_enabled"])
-      .where("organizationId", "=", "org_1")
-      .executeTakeFirst();
-    expect(settings?.task_board_enabled).not.toBe(true);
   });
 
   it("creates triage items as the system principal, resolving the org by id", async () => {

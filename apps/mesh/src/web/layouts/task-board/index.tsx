@@ -1,7 +1,6 @@
 /**
  * Task board (/$org/board) — the org's own board of tasks (title,
  * description, status, priority, assignee), independent of chat threads.
- * Gated behind the org's task_board_enabled setting (see org settings).
  */
 
 import { useRef, useState } from "react";

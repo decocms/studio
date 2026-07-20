@@ -8,7 +8,6 @@ import {
   TaskBoardItemStatusSchema,
 } from "./schema";
 import { assertValidAssignee } from "./validate-assignee";
-import { requireTaskBoardEnabled } from "./require-enabled";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
@@ -43,8 +42,6 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
-
-    await requireTaskBoardEnabled(ctx, organizationId);
 
     if (input.assigneeId) {
       await assertValidAssignee(ctx, organizationId, input.assigneeId);
