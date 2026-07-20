@@ -67,7 +67,8 @@ up the whole stack, wired, including the sandbox:
 ```bash
 helm dependency build selfhost/examples/k8s-local
 helm install deco-studio selfhost/examples/k8s-local -n deco-studio --create-namespace
-kubectl -n deco-studio get svc deco-studio   # LoadBalancer:80 → open http://studio.localhost
+kubectl -n deco-studio port-forward svc/deco-studio 8080:80   # → http://localhost:8080 (reliable on any cluster)
+# studio.localhost also works IF the LoadBalancer claimed :80 — on stock Rancher Desktop k3s Traefik owns :80, so use the port-forward
 ```
 
 Use the release name `deco-studio`. `./selfhost/scripts/local-k8s.sh` wraps this

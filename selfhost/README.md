@@ -74,15 +74,18 @@ namespace guard is opted out for this case via `sandbox-operator.allowForeignNam
   buckets / org-fs). Locally = MinIO; in prod = managed S3.
 - **Optional:** ClickHouse + OTel collector (monitoring dashboard), sandbox
   (code-execution + previews), OAuth/email providers. The local script installs
-  the sandbox and observability by default (tiny); opt out with `WARMPOOL=0` /
-  `OBSERVABILITY=0`.
+  the **sandbox** by default (opt out `WARMPOOL=0`); **observability is opt-in**
+  (`OBSERVABILITY=1`).
 
-## Observability (monitoring dashboard)
+## Observability (monitoring dashboard) — opt-in
 
-`./selfhost/scripts/local-k8s.sh` brings up an in-cluster ClickHouse + an OTel
-collector by default (sized tiny). Studio ships telemetry to the collector,
-which writes `otel_logs`; the dashboard reads a `studio_monitoring_logs` view the
-script provisions once ClickHouse is ready (idempotent). Two notes:
+`OBSERVABILITY=1 ./selfhost/scripts/local-k8s.sh` adds an in-cluster ClickHouse +
+an OTel collector (sized tiny). It's **off by default** because the clickhouse.com
+operator's version-probe races Job-pod GC on older k8s (e.g. Rancher Desktop's
+1.25), which leaves the collector crashlooping with no ClickHouse — so it stays
+out of the default first-run path. When enabled: Studio ships telemetry to the
+collector (writes `otel_logs`); the dashboard reads a `studio_monitoring_logs`
+view the script provisions once ClickHouse is ready (idempotent). Two notes:
 
 - The clickhouse-operator ships its CRDs as templates (not `crds/`), so the
   script does a one-time two-phase (CR off → wait for CRD → CR on) ONLY on the
@@ -152,11 +155,14 @@ shows it with placeholders (nothing environment-specific baked in):
 
 ## Access & teardown
 
-- The local-k8s chart Service is `type: LoadBalancer` on **port 80** — no
-  ingress needed. On k3s/Rancher the built-in servicelb maps it to
-  `http://localhost`; check `kubectl -n deco-studio get svc deco-studio`. If a
-  cluster has no LoadBalancer provider it stays `<pending>` — use
-  `kubectl -n deco-studio port-forward svc/deco-studio 8080:80`.
+- **Port-forward is the reliable path on any cluster:**
+  `kubectl -n deco-studio port-forward svc/deco-studio 8080:80` → `http://localhost:8080`.
+- The Service is `type: LoadBalancer:80`, so `http://studio.localhost` **also**
+  works *when the LB actually claims host :80*. On **stock Rancher Desktop** k3s
+  ships **Traefik**, whose servicelb already owns :80 — so Studio's LB stays
+  `<pending>` and `studio.localhost` hits Traefik (404). To use the URL: disable
+  Traefik (`rdctl set --kubernetes.options.traefik=false`) or front Studio with an
+  ingress. The install script detects this and prints the right path.
 - `./selfhost/scripts/local-k8s.sh uninstall` removes **everything** (Studio,
   dev deps, sandbox operator/env, namespaces).
 

@@ -154,12 +154,12 @@ The umbrella `selfhost/examples/k8s-local` declares the lean Studio chart, the
 sandbox operator, and `sandbox-env` as Helm `dependencies` and adds throwaway
 Postgres + MinIO as its own templates.
 
-**Recommended path — the script** (installs EVERYTHING: core + sandbox + warm
-pool + in-cluster ClickHouse + OTel collector + the monitoring view):
+**Recommended path — the script** (installs core + sandbox + warm pool by
+default; observability is opt-in):
 
 ```bash
-./selfhost/scripts/local-k8s.sh                  # install / upgrade EVERYTHING
-OBSERVABILITY=0 ./selfhost/scripts/local-k8s.sh  # skip ClickHouse + collector (lightest)
+./selfhost/scripts/local-k8s.sh                  # install / upgrade (core + sandbox + warm pool)
+OBSERVABILITY=1 ./selfhost/scripts/local-k8s.sh  # + in-cluster ClickHouse + OTel collector + monitoring view
 WARMPOOL=0 ./selfhost/scripts/local-k8s.sh       # skip the warm pool
 ./selfhost/scripts/local-k8s.sh uninstall        # remove everything
 ```
@@ -178,16 +178,22 @@ helm install deco-studio selfhost/examples/k8s-local -n deco-studio --create-nam
 
 Use release name **`deco-studio`** (the Studio subchart derives Service/SA/NATS/
 instance-label names from it; sandbox RBAC is granted to the `deco-studio` SA).
-Service is `LoadBalancer:80` → open `http://studio.localhost`.
 
-**Observability** (ClickHouse monitoring dashboard + OTel collector) is ON by
-default in the script. The clickhouse-operator ships its CRDs as templates (not
-`crds/`), so a ClickHouseCluster CR can't co-install with its CRD on the first
-pass — the script does a one-time two-phase (CR off → wait for CRD → CR on) ONLY
-when the CRD is absent, and single-pass on every re-run (so it never tears down a
-running ClickHouse). The monitoring dashboard reads a `studio_monitoring_logs`
-view over the collector's `otel_logs`; the script creates it once ClickHouse +
-`otel_logs` are ready (idempotent `CREATE OR REPLACE`). Sized tiny for a laptop.
+**Access — port-forward is the reliable path**, any cluster:
+`kubectl -n deco-studio port-forward svc/deco-studio 8080:80` → `http://localhost:8080`.
+The Service is `LoadBalancer:80`, so `http://studio.localhost` ALSO works **iff**
+the LB claimed host :80 — but on stock Rancher Desktop k3s Traefik's servicelb
+already owns :80, so Studio's LB stays `<pending>` and `studio.localhost` hits
+Traefik (404). The script detects this and prints the right path; don't promise
+the URL blindly. To use the URL: disable Traefik or front Studio with an ingress.
+
+**Observability** (ClickHouse monitoring dashboard + OTel collector) is **opt-in**
+(`OBSERVABILITY=1`) — OFF by default. The clickhouse.com operator's version-probe
+races Job-pod GC on older k8s (e.g. RD's 1.25), leaving the collector crashlooping
+and no ClickHouse, so it's not in the default path. When enabled: the operator
+ships CRDs as templates (not `crds/`), so the script does a one-time two-phase
+(CR off → wait for CRD → CR on) only when the CRD is absent, and provisions the
+`studio_monitoring_logs` view over `otel_logs` once ClickHouse is ready.
 
 ### 1c. Production Kubernetes — configure the chart
 

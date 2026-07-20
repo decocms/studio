@@ -20,7 +20,7 @@
 #   ./selfhost/scripts/local-k8s.sh                  # install/upgrade EVERYTHING (warm pool on)
 #   WARMPOOL=0 ./selfhost/scripts/local-k8s.sh       # everything except the warm pool
 #   WARMPOOL_SIZE=3 ./selfhost/scripts/local-k8s.sh  # resize the warm pool
-#   OBSERVABILITY=0 ./selfhost/scripts/local-k8s.sh  # skip ClickHouse + OTel collector (lightest)
+#   OBSERVABILITY=1 ./selfhost/scripts/local-k8s.sh  # + in-cluster ClickHouse + OTel collector (opt-in)
 #   ./selfhost/scripts/local-k8s.sh uninstall        # remove EVERYTHING
 #
 set -euo pipefail
@@ -33,11 +33,12 @@ ENVNAME="${ENVNAME:-local}"         # sandbox-env envName (umbrella default: loc
 # Leave WARMPOOL unset to keep it on; set WARMPOOL=0 to disable, or WARMPOOL_SIZE=N.
 WARMPOOL="${WARMPOOL:-}"
 WARMPOOL_SIZE="${WARMPOOL_SIZE:-}"
-# In-cluster ClickHouse (monitoring dashboard) + OTel collector. ON by default
-# (resources trimmed tiny in observability.yaml). Set OBSERVABILITY=0 to skip it
-# for the lightest possible footprint. Installed two-phase because the
-# clickhouse-operator ships its CRDs as templates, not in crds/.
-OBSERVABILITY="${OBSERVABILITY:-1}"
+# In-cluster ClickHouse (monitoring dashboard) + OTel collector. OFF by default:
+# the clickhouse.com operator's version-probe races Job-pod GC on older k8s
+# (e.g. Rancher Desktop's k8s 1.25), leaving the collector crashlooping and no
+# ClickHouse — so it's opt-in. Set OBSERVABILITY=1 to install it (two-phase,
+# because the operator ships its CRDs as templates, not in crds/).
+OBSERVABILITY="${OBSERVABILITY:-0}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -174,12 +175,22 @@ fi
 echo ""
 kubectl -n "${NAMESPACE}" get pods
 echo ""
+# Access — port-forward ALWAYS works. The LoadBalancer URL works only if the LB
+# actually claimed the host :80; on stock Rancher Desktop, k3s Traefik's servicelb
+# already owns :80, so Studio's LB stays <pending> and studio.localhost hits
+# Traefik (404). Detect and print the honest primary path.
+LB_ADDR="$(kubectl -n "${NAMESPACE}" get svc "${RELEASE}" \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
 echo "Access:"
-echo "  # LoadBalancer on port 80 (no ingress; k3s/Rancher servicelb). Open:"
-echo "  #   http://studio.localhost      (browsers resolve *.localhost → 127.0.0.1)"
-echo "  kubectl -n ${NAMESPACE} get svc ${RELEASE}"
-echo "  # Fallback if no LoadBalancer provider (service stays <pending>):"
+echo "  # Always works, any cluster:"
 echo "  kubectl -n ${NAMESPACE} port-forward svc/${RELEASE} 8080:80   # → http://localhost:8080"
-echo "  # then sign up — first user becomes org owner"
+if [ -n "${LB_ADDR}" ]; then
+  echo "  # LoadBalancer is up (${LB_ADDR}) — also reachable at http://studio.localhost"
+else
+  echo "  # LoadBalancer is <pending> (k3s Traefik likely owns :80). Use the port-forward"
+  echo "  # above, OR disable Traefik (rdctl set --kubernetes.options.traefik=false) / front"
+  echo "  # it with an ingress to serve http://studio.localhost directly."
+fi
+echo "  # then open the URL and sign up — first user becomes org owner"
 echo ""
 echo "Tear down everything:  ${BASH_SOURCE[0]} uninstall"
