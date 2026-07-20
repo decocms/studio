@@ -13,12 +13,7 @@ import {
 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.js";
 import type { TreeNode } from "./types";
-
-type FileIcon = React.ComponentType<{
-  size?: number;
-  className?: string;
-  style?: React.CSSProperties;
-}>;
+import type { FileIcon } from "./utils";
 
 const FOLDER_COLOR = "#d9a441";
 
