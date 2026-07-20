@@ -19,7 +19,7 @@ import type { LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/section-types";
 import { useSaveBlock } from "@/web/components/sections-editor/use-save-block";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
-import { ItemRow } from "./content-browser";
+import { ItemRow } from "./item-row";
 import { EmptyMessage } from "./empty-message";
 import {
   RunnableBlockEditor,
