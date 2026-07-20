@@ -22,7 +22,9 @@ export function coerceFormValues(
       typeof raw === "string"
     ) {
       if (!raw.trim()) continue;
-      out[key] = Number(raw);
+      const parsed = Number(raw);
+      if (Number.isNaN(parsed)) return null;
+      out[key] = parsed;
     } else if (raw !== "" && raw != null) {
       out[key] = raw;
     }
