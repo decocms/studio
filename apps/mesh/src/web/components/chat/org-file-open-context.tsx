@@ -19,6 +19,9 @@ import { formatLibraryFileTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 export interface OrgFileOpenValue {
   /** Current org slug, for resolving `org/<slug>/…` references. */
   orgSlug: string | undefined;
+  /** Current thread id (URL taskId), for resolving `org/output|upload/…`
+   *  references into their `<threadId>/` subtree of the shared volume. */
+  threadId: string | undefined;
   /** Open a Library browse path ("<volume>/<path…>"). */
   open: (browsePath: string) => void;
 }
@@ -28,7 +31,10 @@ export const OrgFileOpenContext = createContext<OrgFileOpenValue | null>(null);
 export function OrgFileOpenProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { org } = useParams({ strict: false }) as { org?: string };
+  const { org, taskId } = useParams({ strict: false }) as {
+    org?: string;
+    taskId?: string;
+  };
 
   // Mirror the Library's panel/dialog split: desktop opens the file as a
   // main-panel side tab (`?main=library-file:<path>`); mobile opens the dialog
@@ -46,7 +52,9 @@ export function OrgFileOpenProvider({ children }: { children: ReactNode }) {
     });
 
   return (
-    <OrgFileOpenContext.Provider value={{ orgSlug: org, open }}>
+    <OrgFileOpenContext.Provider
+      value={{ orgSlug: org, threadId: taskId, open }}
+    >
       {children}
     </OrgFileOpenContext.Provider>
   );
