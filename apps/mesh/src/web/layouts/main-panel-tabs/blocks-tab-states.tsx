@@ -7,13 +7,14 @@ const BLOCKS_DOCS_URL = "https://github.com/decocms/blocks";
 export function BlocksEmptyState() {
   return (
     <EmptyState
+      className="h-full w-full"
       image={<Box size={48} className="text-muted-foreground" />}
-      title="No editable Blocks found"
-      description="This project does not expose editable Blocks content yet. Learn how to add Blocks to your project."
+      title="Want to edit this website with easy-to-use forms?"
+      description="Set up rich content editing so anyone can update pages without touching code."
       actions={
-        <Button variant="outline" size="sm" asChild>
+        <Button size="sm" asChild>
           <a href={BLOCKS_DOCS_URL} target="_blank" rel="noreferrer">
-            View Blocks docs
+            Set up content editing
             <LinkExternal01 size={14} />
           </a>
         </Button>
