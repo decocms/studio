@@ -59,11 +59,12 @@ export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
       );
     }
 
-    // Validate the caller is allowed to assign the target role.
+    // Validate the caller is allowed to assign every target role.
     // Admins cannot assign "owner" — only owners can.
-    const targetRole = Array.isArray(input.role) ? input.role[0] : input.role;
-    if (targetRole && !canAssignRole(ctx.auth.user?.role, targetRole)) {
-      throw new Error(`Insufficient privileges to assign role "${targetRole}"`);
+    if (!canAssignRole(ctx.auth.user?.role, input.role)) {
+      throw new Error(
+        `Insufficient privileges to assign role "${input.role.join(",")}"`,
+      );
     }
 
     // Update member role via bound auth client

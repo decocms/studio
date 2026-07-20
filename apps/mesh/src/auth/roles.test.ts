@@ -40,4 +40,20 @@ describe("canAssignRole", () => {
     expect(canAssignRole("member", "owner")).toBe(false);
     expect(canAssignRole("member", "member")).toBe(false);
   });
+
+  // Better Auth's organization plugin supports multi-role members, and
+  // callers forward the whole role array to it. An admin must not be able
+  // to smuggle "owner" in alongside an allowed role by relying on a caller
+  // that only validates the first array entry.
+  it("admin cannot assign owner by hiding it in a multi-role array", () => {
+    expect(canAssignRole("admin", ["user", "owner"])).toBe(false);
+    expect(canAssignRole("admin", ["owner", "user"])).toBe(false);
+    expect(canAssignRole("admin", ["user", "admin"])).toBe(true);
+  });
+
+  it("owner can assign a multi-role array, empty array is denied", () => {
+    expect(canAssignRole("owner", ["admin", "owner"])).toBe(true);
+    expect(canAssignRole("admin", [])).toBe(false);
+    expect(canAssignRole("owner", [])).toBe(false);
+  });
 });
