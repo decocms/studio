@@ -17,12 +17,18 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { type VirtualMCPEntity } from "@decocms/mesh-sdk";
 import {
+  type ConnectionEntity,
+  type VirtualMCPEntity,
+} from "@decocms/mesh-sdk";
+import {
+  CheckSquare,
   Container,
   DotsVertical,
   Eye,
   Plus,
+  Power01,
+  SlashCircle01,
   Trash01,
   XClose,
 } from "@untitledui/icons";
@@ -145,6 +151,126 @@ export function ConnectionGroupCard({
         }
       />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Header actions dropdown for a single connected card (Open / Select /
+// Enable-Disable / Delete)
+// ---------------------------------------------------------------------------
+
+export function ConnectionCardHeaderActions({
+  connection,
+  isSelected,
+  selectionMode,
+  canManage,
+  canManageAgents,
+  onToggleSelect,
+  onOpen,
+  onToggleStatus,
+  onDelete,
+}: {
+  connection: ConnectionEntity;
+  isSelected: boolean;
+  selectionMode: boolean;
+  canManage: boolean;
+  canManageAgents: boolean;
+  onToggleSelect: () => void;
+  onOpen: () => void;
+  onToggleStatus: (status: "active" | "inactive") => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      {selectionMode ? (
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={onToggleSelect}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <span className="text-xs text-muted-foreground font-normal">
+          Connected
+        </span>
+      )}
+      <div
+        className={cn(
+          "overflow-hidden transition-all duration-150 ease-out",
+          selectionMode
+            ? "w-8 opacity-100"
+            : "w-0 opacity-0 group-hover:w-8 group-hover:opacity-100",
+        )}
+      >
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <DotsVertical size={20} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen();
+              }}
+            >
+              <Eye size={16} />
+              Open
+            </DropdownMenuItem>
+            {(canManage || canManageAgents) && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSelect();
+                }}
+              >
+                <CheckSquare size={16} />
+                Select
+              </DropdownMenuItem>
+            )}
+            {canManage &&
+              (connection.status === "active" ? (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleStatus("inactive");
+                  }}
+                >
+                  <SlashCircle01 size={16} />
+                  Disable
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleStatus("active");
+                  }}
+                >
+                  <Power01 size={16} />
+                  Enable
+                </DropdownMenuItem>
+              ))}
+            {canManage && (
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+              >
+                <Trash01 size={16} />
+                Delete
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   );
 }
 
