@@ -45,6 +45,7 @@ import {
 } from "@/web/hooks/use-organization-settings";
 import { AgentPromptList } from "./agent-prompt-list";
 import { NativeTilesSection } from "./native-tiles-section";
+import { SectionHeader } from "./section-header";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
@@ -253,23 +254,6 @@ function DrawerBody({ search }: { search: string }) {
       {!lower && <NativeTilesSection />}
       <AvailableSection home={home} agents={available} hasSearch={!!lower} />
     </>
-  );
-}
-
-export function SectionHeader({
-  title,
-  hint,
-}: {
-  title: string;
-  hint?: string;
-}) {
-  return (
-    <div className="flex items-center justify-between px-1">
-      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {title}
-      </span>
-      {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-    </div>
   );
 }
 
