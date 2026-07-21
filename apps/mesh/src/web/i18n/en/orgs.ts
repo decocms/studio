@@ -15,8 +15,8 @@ export const orgs = {
   "orgs.automations.emptyDescription":
     "Create an automation to see its runs and usage here.",
   "orgs.automations.emptyTitle": "No automations",
-  "orgs.automations.loading": "Loading\u2026",
-  "orgs.automations.selectPlaceholder": "Select an automation\u2026",
+  "orgs.automations.loading": "Loading…",
+  "orgs.automations.selectPlaceholder": "Select an automation…",
   "orgs.bulkDeleteDialog.cancelButton": "Cancel",
   "orgs.bulkDeleteDialog.deleteButton": "Delete {count} connection{plural}",
   "orgs.bulkDeleteDialog.deleteDescription":
@@ -204,7 +204,7 @@ export const orgs = {
   "orgs.monitoring.pastePropertyFiltersPlaceholder":
     "Paste property filters here:\nthread_id=abc123\nuser~test\ndebug?",
   "orgs.monitoring.propertyFilters": "Property Filters",
-  "orgs.monitoring.searchByTitlePlaceholder": "Search by title\u2026",
+  "orgs.monitoring.searchByTitlePlaceholder": "Search by title…",
   "orgs.monitoring.searchByToolPlaceholder":
     "Search by tool name, connection, or error...",
   "orgs.monitoring.status": "Status",
@@ -249,9 +249,9 @@ export const orgs = {
   "orgs.threads.cost": "Cost",
   "orgs.threads.date": "Date",
   "orgs.threads.failedToLoadMessages": "Failed to load messages",
-  "orgs.threads.loading": "Loading\u2026",
-  "orgs.threads.loadingConversation": "Loading conversation\u2026",
-  "orgs.threads.loadingMore": "Loading more\u2026",
+  "orgs.threads.loading": "Loading…",
+  "orgs.threads.loadingConversation": "Loading conversation…",
+  "orgs.threads.loadingMore": "Loading more…",
   "orgs.threads.nextChat": "Next chat",
   "orgs.threads.noChatsInTimeRange": "No chats in this time range",
   "orgs.threads.noMatchingChats": "No matching chats",

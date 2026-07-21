@@ -1,7 +1,7 @@
 export const deck = {
   "deck.deckToolbar.agentRewriteWarning":
     "The agent rewrote this deck while you were editing. Reloading discards unsaved differences.",
-  "deck.deckToolbar.agentUpdatedReload": "Agent updated \u2014 reload",
+  "deck.deckToolbar.agentUpdatedReload": "Agent updated — reload",
   "deck.deckToolbar.doneEditing": "Done editing",
   "deck.deckToolbar.download": "Download",
   "deck.deckToolbar.downloadHtml": "Download HTML",
@@ -10,6 +10,6 @@ export const deck = {
   "deck.deckToolbar.exportAsPdf": "Export as PDF",
   "deck.deckToolbar.hideSlideList": "Hide slide list",
   "deck.deckToolbar.openInNewTab": "Open in new tab",
-  "deck.deckToolbar.saving": "Saving\u2026",
+  "deck.deckToolbar.saving": "Saving…",
   "deck.deckToolbar.showSlideList": "Show slide list",
 } as const;

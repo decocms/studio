@@ -16,7 +16,7 @@ export const filePicker = {
   "filePicker.filePickerDialog.imagesOnlyTypes":
     "Images only (PNG, JPEG, WebP, GIF, SVG, AVIF).",
   "filePicker.filePickerDialog.loadMore": "Load more",
-  "filePicker.filePickerDialog.loading": "Loading\u2026",
+  "filePicker.filePickerDialog.loading": "Loading…",
   "filePicker.filePickerDialog.noBucketConfigured": "No bucket configured",
   "filePicker.filePickerDialog.noBucketDescription":
     "Add an S3-compatible bucket in Settings before you can upload files.",
@@ -28,13 +28,13 @@ export const filePicker = {
   "filePicker.filePickerDialog.openInNewTab": "Open in new tab",
   "filePicker.filePickerDialog.pickAFile": "Pick a file",
   "filePicker.filePickerDialog.pickAnImage": "Pick an image",
-  "filePicker.filePickerDialog.searchFilesPlaceholder": "Search files\u2026",
-  "filePicker.filePickerDialog.searchImagesPlaceholder": "Search images\u2026",
+  "filePicker.filePickerDialog.searchFilesPlaceholder": "Search files…",
+  "filePicker.filePickerDialog.searchImagesPlaceholder": "Search images…",
   "filePicker.filePickerDialog.tryDifferentSearchOrLoadMore":
     "Try a different search, or load more files below.",
   "filePicker.filePickerDialog.uploadFailedAll": "Upload failed: {errors}",
   "filePicker.filePickerDialog.uploadFailedSome": "Some files failed: {errors}",
   "filePicker.filePickerDialog.uploadSizeLimit": "Up to 100 MB.",
-  "filePicker.filePickerDialog.uploading": "Uploading\u2026",
+  "filePicker.filePickerDialog.uploading": "Uploading…",
   "filePicker.filePickerDialog.useThis": "Use this",
 } as const;

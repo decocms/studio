@@ -4,9 +4,8 @@ export const devAgent = {
   "devAgent.devAgentSetup.linkDescription":
     "Link a GitHub-backed dev agent. Its sandbox dev server powers a Develop/Live toggle so you can develop and test this agent's MCP app.",
   "devAgent.devAgentSetup.linkedDescription":
-    "Linked dev agent \u2014 its sandbox dev server powers the Develop/Live toggle in the header.",
-  "devAgent.devAgentSetup.selectPlaceholder":
-    "Or link an existing dev agent\u2026",
+    "Linked dev agent — its sandbox dev server powers the Develop/Live toggle in the header.",
+  "devAgent.devAgentSetup.selectPlaceholder": "Or link an existing dev agent…",
   "devAgent.devAgentSetup.title": "Development agent",
   "devAgent.devAgentSetup.unlinkButton": "Unlink",
 } as const;

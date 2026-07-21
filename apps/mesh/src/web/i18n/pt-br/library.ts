@@ -19,16 +19,16 @@ export const library = {
   "library.brandComponentsPreview.warningBadge": "Aviso",
   "library.brandPreview.addLogo": "Adicionar logo",
   "library.brandPreview.brandNotAvailable":
-    "Esta marca n\u00e3o est\u00e1 mais dispon\u00edvel.",
+    "Esta marca não está mais disponível.",
   "library.brandPreview.brandSaved": "Marca salva",
   "library.brandPreview.cancel": "Cancelar",
   "library.brandPreview.colors": "Cores",
   "library.brandPreview.components": "Componentes",
-  "library.brandPreview.deck": "Apresenta\u00e7\u00e3o",
+  "library.brandPreview.deck": "Apresentação",
   "library.brandPreview.defaultFont": "fonte",
   "library.brandPreview.edit": "Editar",
   "library.brandPreview.failedSaveBrand": "Falha ao salvar a marca",
-  "library.brandPreview.hidePreview": "Ocultar visualiza\u00e7\u00e3o",
+  "library.brandPreview.hidePreview": "Ocultar visualização",
   "library.brandPreview.logo": "Logo",
   "library.brandPreview.logoUpdated": "Logo atualizado",
   "library.brandPreview.logoUploadFailed": "Falha ao enviar a logo",
@@ -37,24 +37,24 @@ export const library = {
   "library.brandPreview.radius": "Arredondamento",
   "library.brandPreview.replaceLogo": "Substituir logo",
   "library.brandPreview.save": "Salvar",
-  "library.brandPreview.saving": "Salvando\u2026",
+  "library.brandPreview.saving": "Salvando…",
   "library.brandPreview.shadows": "Sombras",
-  "library.brandPreview.showPreview": "Mostrar visualiza\u00e7\u00e3o",
-  "library.brandPreview.spacing": "Espa\u00e7amento",
+  "library.brandPreview.showPreview": "Mostrar visualização",
+  "library.brandPreview.spacing": "Espaçamento",
   "library.brandPreview.tokens": "Tokens",
   "library.brandPreview.typography": "Tipografia",
   "library.brandPreview.voiceGuidelines": "Voz & diretrizes",
   "library.brandPreview.voicePlaceholder":
-    "Descreva a voz, tom da marca, deve e n\u00e3o deve fazer\u2026",
-  "library.cards.actionsFor": "A\u00e7\u00f5es para {filename}",
+    "Descreva a voz, tom da marca, deve e não deve fazer…",
+  "library.cards.actionsFor": "Ações para {filename}",
   "library.cards.brand": "Marca",
   "library.cards.browseFiles": "Procurar arquivos",
   "library.cards.delete": "Excluir",
   "library.cards.download": "Baixar",
   "library.cards.passwordProtected":
-    "Protegido por senha \u2014 link + senha para visualizar",
+    "Protegido por senha — link + senha para visualizar",
   "library.cards.publicBadge":
-    "P\u00fablico \u2014 qualquer pessoa com o link pode visualizar",
+    "Público — qualquer pessoa com o link pode visualizar",
   "library.cards.share": "Compartilhar",
   "library.cards.sharedViaParent": "Compartilhado via pasta pai",
   "library.cards.skill": "Habilidade",
@@ -66,16 +66,16 @@ export const library = {
   "library.fileShareButton.inheritedDescription":
     "Qualquer pessoa com o link pode visualizar {target}. Gerencie o compartilhamento na pasta pai.",
   "library.fileShareButton.linkCopied":
-    "Link copiado para a \u00e1rea de transfer\u00eancia",
-  "library.fileShareButton.modeOrgOnly": "Somente organiza\u00e7\u00e3o",
+    "Link copiado para a área de transferência",
+  "library.fileShareButton.modeOrgOnly": "Somente organização",
   "library.fileShareButton.modePassword": "Senha",
-  "library.fileShareButton.modePublic": "P\u00fablico",
+  "library.fileShareButton.modePublic": "Público",
   "library.fileShareButton.newPasswordPlaceholder": "Nova senha",
   "library.fileShareButton.passwordDescription":
     "Qualquer pessoa com o link E a senha pode visualizar {target}.",
   "library.fileShareButton.passwordPlaceholder": "Senha",
   "library.fileShareButton.privateDescription":
-    "Apenas membros de sua organiza\u00e7\u00e3o podem abrir {target}.",
+    "Apenas membros de sua organização podem abrir {target}.",
   "library.fileShareButton.publicFileDescription":
     "Qualquer pessoa na internet com o link pode visualizar este arquivo.",
   "library.fileShareButton.publicFolderDescription":
@@ -84,9 +84,9 @@ export const library = {
   "library.fileShareButton.shareDialogTitle": "Compartilhar {type}",
   "library.fileShareButton.sharedViaParent": "Compartilhado via pasta pai",
   "library.fileShareButton.toastOrgOnly":
-    "Este {subject} agora \u00e9 somente da organiza\u00e7\u00e3o",
+    "Este {subject} agora é somente da organização",
   "library.fileShareButton.toastPassword":
-    "Este {subject} agora est\u00e1 protegido por senha",
+    "Este {subject} agora está protegido por senha",
   "library.fileShareButton.toastPublic":
     "Qualquer pessoa com o link agora pode visualizar este {subject}",
   "library.library.cancel": "Cancelar",
@@ -94,10 +94,10 @@ export const library = {
   "library.library.create": "Criar",
   "library.library.delete": "Deletar",
   "library.library.deleteDirectoryDescription":
-    "A pasta e tudo dentro dela ser\u00e1 deletado para toda a organiza\u00e7\u00e3o. Sandboxes veem essa mudan\u00e7a em segundos.",
+    "A pasta e tudo dentro dela será deletado para toda a organização. Sandboxes veem essa mudança em segundos.",
   "library.library.deleteFailed": "Falha ao deletar",
   "library.library.deleteFileDescription":
-    "O arquivo ser\u00e1 deletado para toda a organiza\u00e7\u00e3o. Sandboxes veem essa mudan\u00e7a em segundos.",
+    "O arquivo será deletado para toda a organização. Sandboxes veem essa mudança em segundos.",
   "library.library.deleteTitle": "Deletar {name}?",
   "library.library.deleted": "Deletado {name}",
   "library.library.dropToUpload": "Solte para enviar para {location}",
@@ -109,21 +109,21 @@ export const library = {
   "library.library.newFolderTitle": "Nova pasta",
   "library.library.readOnly": "Apenas leitura",
   "library.library.refresh": "Atualizar",
-  "library.library.searchPlaceholder": "Pesquisar todos os arquivos\u2026",
+  "library.library.searchPlaceholder": "Pesquisar todos os arquivos…",
   "library.library.theLibrary": "a biblioteca",
   "library.library.title": "Biblioteca",
   "library.library.uploadFailed": "Falha ao enviar",
   "library.library.uploadFile": "Enviar arquivo",
   "library.library.uploadedMultiple": "Enviados {count} arquivos",
   "library.library.uploadedSingle": "Enviado {filename}",
-  "library.library.uploading": "Enviando\u2026",
+  "library.library.uploading": "Enviando…",
   "library.libraryViews.brands": "Marcas",
   "library.libraryViews.curatedSkillSetsReadOnly":
-    "Conjuntos de skills curados \u2014 somente leitura",
+    "Conjuntos de skills curados — somente leitura",
   "library.libraryViews.emptyFolder":
-    "Pasta vazia \u2014 envie um arquivo ou crie uma pasta para come\u00e7ar.",
+    "Pasta vazia — envie um arquivo ou crie uma pasta para começar.",
   "library.libraryViews.emptyReadOnlySet":
-    "Vazio \u2014 este conjunto somente leitura sincroniza de sua fonte no GitHub.",
+    "Vazio — este conjunto somente leitura sincroniza de sua fonte no GitHub.",
   "library.libraryViews.failedToLoad": "Falha ao carregar",
   "library.libraryViews.files": "Arquivos",
   "library.libraryViews.filesCount": "{count} arquivo(s)",
@@ -132,23 +132,23 @@ export const library = {
   "library.libraryViews.noFilesMatch":
     'Nenhum arquivo corresponde a "{query}".',
   "library.libraryViews.noFilesYet":
-    "Nenhum arquivo ainda \u2014 envie um ou pe\u00e7a a um agente para produzir algo.",
+    "Nenhum arquivo ainda — envie um ou peça a um agente para produzir algo.",
   "library.libraryViews.noPublicSkillSetsConfigured":
-    "Nenhum conjunto de skills p\u00fablico configurado.",
+    "Nenhum conjunto de skills público configurado.",
   "library.libraryViews.readOnly": "Somente leitura",
   "library.libraryViews.recentlyAdded": "Adicionado recentemente",
   "library.libraryViews.searchResults": "{count} resultado(s)",
   "library.libraryViews.skillSetsCount": "{count} conjunto(s)",
   "library.libraryViews.skills": "Skills",
   "library.libraryViews.volumeHomeDescription":
-    "Pasta inicial da sua organiza\u00e7\u00e3o",
+    "Pasta inicial da sua organização",
   "library.libraryViews.volumeOutputsDescription":
-    "Sa\u00eddas de execu\u00e7\u00e3o de agentes",
+    "Saídas de execução de agentes",
   "library.libraryViews.volumeUploadsDescription":
     "Arquivos que seu time envia",
   "library.previewContent.close": "Fechar",
   "library.previewContent.download": "Baixar",
   "library.previewContent.fileNotAvailable":
-    "Este arquivo n\u00e3o est\u00e1 mais dispon\u00edvel.",
+    "Este arquivo não está mais disponível.",
   "library.previewContent.openInNewTab": "Abrir em nova aba",
 } satisfies Record<keyof typeof libraryEn, string>;

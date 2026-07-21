@@ -17,7 +17,7 @@ export const details = {
   "details.connection.oauthRemoved":
     "OAuth removed. You can now re-authenticate with a different account.",
   "details.connection.saveButton": "Save changes",
-  "details.connection.savingButton": "Saving\u2026",
+  "details.connection.savingButton": "Saving…",
   "details.connection.settingsDescription":
     "Update URL, authentication, and other settings",
   "details.connection.undoButton": "Undo",
@@ -97,9 +97,9 @@ export const details = {
     "Failed to connect MCP: {message}",
   "details.mcpConfigurationForm.noConnectionsFound": "No connections found",
   "details.mcpConfigurationForm.selectPlaceholder": "Select {title}...",
-  "details.prompt.bodyPlaceholder": "Write the prompt message\u2026",
+  "details.prompt.bodyPlaceholder": "Write the prompt message…",
   "details.prompt.description": "Description",
-  "details.prompt.descriptionPlaceholder": "Add a description\u2026",
+  "details.prompt.descriptionPlaceholder": "Add a description…",
   "details.prompt.details": "Details",
   "details.prompt.message": "Message",
   "details.prompt.messageDescription":

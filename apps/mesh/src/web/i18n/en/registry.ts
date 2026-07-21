@@ -6,7 +6,7 @@ export const registry = {
   "registry.brokenMcpList.fullError": "Full Error",
   "registry.brokenMcpList.no": "No",
   "registry.brokenMcpList.noBrokenMcps":
-    "No broken MCPs in this run. All healthy! \u2713",
+    "No broken MCPs in this run. All healthy! ✓",
   "registry.brokenMcpList.passingTools": "Passing Tools",
   "registry.brokenMcpList.statusFailed": "Failed",
   "registry.brokenMcpList.statusOk": "OK",
@@ -210,7 +210,7 @@ export const registry = {
   "registry.monitorDashboard.modeDescriptionAgentic":
     "Uses an LLM model to execute chained tool calls and validate outputs.",
   "registry.monitorDashboard.modeDescriptionHealthCheck":
-    "Checks connectivity and tool listing only \u2014 no tool calls are made.",
+    "Checks connectivity and tool listing only — no tool calls are made.",
   "registry.monitorDashboard.modeDescriptionToolCall":
     "Calls each tool with empty inputs to verify it responds without errors.",
   "registry.monitorDashboard.modeHealthCheck": "Health check",
@@ -291,7 +291,7 @@ export const registry = {
     "Tool Results ({passed} passed, {failed} failed)",
   "registry.monitorRunDetail.tools": "tools",
   "registry.monitorRunDetail.toolsDiscovered":
-    "Tools discovered ({count}) \u2014 not individually tested (health-check mode)",
+    "Tools discovered ({count}) — not individually tested (health-check mode)",
   "registry.monitorRunDetail.toolsFound": "tools found",
   "registry.monitorRunDetail.toolsListed": "tools listed",
   "registry.monitorRunDetail.toolsListedLabel": "Tools Listed",
@@ -547,7 +547,7 @@ export const registry = {
   "registry.registryRequestsPage.visibilityPrivate": "Private",
   "registry.registryRequestsPage.visibilityPublic": "Public",
   "registry.registrySettingsPage.apiKeyGenerated":
-    "API key generated. Copy it now \u2014 it won't be shown again!",
+    "API key generated. Copy it now — it won't be shown again!",
   "registry.registrySettingsPage.apiKeyRevoked": "API key revoked",
   "registry.registrySettingsPage.apiKeys": "API Keys",
   "registry.registrySettingsPage.cancel": "Cancel",

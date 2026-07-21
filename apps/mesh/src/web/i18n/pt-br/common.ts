@@ -2,105 +2,100 @@ import type { common as commonEn } from "../en/common.ts";
 
 export const common = {
   "common.accountPopover.account": "Conta",
-  "common.accountPopover.addToHomeScreen": "Adicionar \u00e0 tela inicial",
-  "common.accountPopover.adminDashboard": "Painel de administra\u00e7\u00e3o",
+  "common.accountPopover.addToHomeScreen": "Adicionar à tela inicial",
+  "common.accountPopover.adminDashboard": "Painel de administração",
   "common.accountPopover.community": "Comunidade",
-  "common.accountPopover.copyUserId": "Copiar ID do usu\u00e1rio",
+  "common.accountPopover.copyUserId": "Copiar ID do usuário",
   "common.accountPopover.darkTheme": "Tema escuro",
   "common.accountPopover.defaultAccountLabel": "Conta",
-  "common.accountPopover.defaultUserName": "Usu\u00e1rio",
+  "common.accountPopover.defaultUserName": "Usuário",
   "common.accountPopover.disableSounds": "Desativar sons",
   "common.accountPopover.enableSounds": "Ativar sons",
   "common.accountPopover.failedToStopImpersonation":
     "Falha ao parar de representar",
   "common.accountPopover.githubRepo": "decocms/studio",
-  "common.accountPopover.homepage": "P\u00e1gina inicial",
+  "common.accountPopover.homepage": "Página inicial",
   "common.accountPopover.impersonating": "Representando",
   "common.accountPopover.lightTheme": "Tema claro",
-  "common.accountPopover.preferences": "Prefer\u00eancias",
-  "common.accountPopover.privacyPolicy": "Pol\u00edtica de privacidade",
+  "common.accountPopover.preferences": "Preferências",
+  "common.accountPopover.privacyPolicy": "Política de privacidade",
   "common.accountPopover.signOut": "Sair",
   "common.accountPopover.stopImpersonation": "Parar de representar",
   "common.accountPopover.systemTheme": "Tema do sistema",
   "common.accountPopover.termsOfUse": "Termos de uso",
-  "common.accountPopover.userIdCopied": "ID do usu\u00e1rio copiado",
+  "common.accountPopover.userIdCopied": "ID do usuário copiado",
   "common.archivedOrgScreen.deletedGeneric":
-    "Esta organiza\u00e7\u00e3o foi deletada ou n\u00e3o est\u00e1 mais dispon\u00edvel.",
+    "Esta organização foi deletada ou não está mais disponível.",
   "common.archivedOrgScreen.deletedWithName":
-    "{orgName} foi deletada ou n\u00e3o est\u00e1 mais dispon\u00edvel.",
+    "{orgName} foi deletada ou não está mais disponível.",
   "common.archivedOrgScreen.goHome": "Ir para home",
-  "common.archivedOrgScreen.orgUnavailable":
-    "Organiza\u00e7\u00e3o indispon\u00edvel",
+  "common.archivedOrgScreen.orgUnavailable": "Organização indisponível",
   "common.authEntry.autoLoginFailed": "Falha no auto-login",
   "common.authEntry.autoLoginFailedWithError": "Falha no auto-login: {error}",
-  "common.authEntry.noLoginOptions":
-    "Nenhuma op\u00e7\u00e3o de login dispon\u00edvel",
+  "common.authEntry.noLoginOptions": "Nenhuma opção de login disponível",
   "common.authEntry.tryRestartingServer": "Tente reiniciar o servidor.",
   "common.autoDomainJoinScreen.enterOrg": "Entrar em {orgName}",
   "common.autoDomainJoinScreen.goHome": "Ir para home",
   "common.autoDomainJoinScreen.joinDescription":
-    "Qualquer pessoa com um e-mail @{domain} pode entrar nesta organiza\u00e7\u00e3o.",
-  "common.autoDomainJoinScreen.joinError":
-    "Falha ao entrar na organiza\u00e7\u00e3o",
+    "Qualquer pessoa com um e-mail @{domain} pode entrar nesta organização.",
+  "common.autoDomainJoinScreen.joinError": "Falha ao entrar na organização",
   "common.autoDomainJoinScreen.joinPrompt": "Entrar em {orgName}?",
-  "common.autoDomainJoinScreen.joining": "Entrando\u2026",
+  "common.autoDomainJoinScreen.joining": "Entrando…",
   "common.capabilityLoadError.description":
-    "Algo deu errado ao verificar seu acesso. Isso geralmente \u00e9 tempor\u00e1rio.",
+    "Algo deu errado ao verificar seu acesso. Isso geralmente é temporário.",
   "common.capabilityLoadError.title":
-    "N\u00e3o foi poss\u00edvel carregar suas permiss\u00f5es",
+    "Não foi possível carregar suas permissões",
   "common.capabilityLoadError.tryAgain": "Tentar novamente",
   "common.createOrganizationDialog.cancel": "Cancelar",
-  "common.createOrganizationDialog.createButton": "Criar Organiza\u00e7\u00e3o",
+  "common.createOrganizationDialog.createButton": "Criar Organização",
   "common.createOrganizationDialog.creating": "Criando...",
   "common.createOrganizationDialog.description":
-    "Configure uma nova organiza\u00e7\u00e3o para colaborar com outras pessoas.",
+    "Configure uma nova organização para colaborar com outras pessoas.",
   "common.createOrganizationDialog.failedToCreate":
-    "Falha ao criar organiza\u00e7\u00e3o",
+    "Falha ao criar organização",
   "common.createOrganizationDialog.failedToCreateGeneric":
-    "Falha ao criar organiza\u00e7\u00e3o.",
+    "Falha ao criar organização.",
   "common.createOrganizationDialog.invalidSlug":
-    "O slug da organiza\u00e7\u00e3o \u00e9 inv\u00e1lido",
+    "O slug da organização é inválido",
   "common.createOrganizationDialog.nameDescription":
-    "O nome da sua empresa ou organiza\u00e7\u00e3o",
-  "common.createOrganizationDialog.nameLabel": "Nome da Organiza\u00e7\u00e3o",
+    "O nome da sua empresa ou organização",
+  "common.createOrganizationDialog.nameLabel": "Nome da Organização",
   "common.createOrganizationDialog.namePlaceholder": "Acme Inc.",
-  "common.createOrganizationDialog.title":
-    "Criar uma nova organiza\u00e7\u00e3o",
-  "common.createOrganizationDialog.urlLabel": "URL da Organiza\u00e7\u00e3o:",
+  "common.createOrganizationDialog.title": "Criar uma nova organização",
+  "common.createOrganizationDialog.urlLabel": "URL da Organização:",
   "common.deleteConnectionDialogs.cancel": "Cancelar",
   "common.deleteConnectionDialogs.delete": "Excluir",
   "common.deleteConnectionDialogs.deleteAnyway": "Excluir Mesmo Assim",
   "common.deleteConnectionDialogs.description":
-    "Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita. Isso excluir\u00e1 permanentemente",
-  "common.deleteConnectionDialogs.forceDeleteDescription": "A conex\u00e3o",
+    "Esta ação não pode ser desfeita. Isso excluirá permanentemente",
+  "common.deleteConnectionDialogs.forceDeleteDescription": "A conexão",
   "common.deleteConnectionDialogs.forceDeleteTitle":
-    "Conex\u00e3o Usada por Agentes",
+    "Conexão Usada por Agentes",
   "common.deleteConnectionDialogs.forceDeleteWarning":
-    "Excluir esta conex\u00e3o a remover\u00e1 desses agentes, o que pode impactar fluxos de trabalho existentes que dependem deles.",
+    "Excluir esta conexão a removerá desses agentes, o que pode impactar fluxos de trabalho existentes que dependem deles.",
   "common.deleteConnectionDialogs.isUsedByAgents":
-    "est\u00e1 sendo usada pelos seguintes agente(s):",
-  "common.deleteConnectionDialogs.title": "Excluir Conex\u00e3o?",
-  "common.errorBoundary.newVersionAvailable":
-    "Nova vers\u00e3o dispon\u00edvel",
+    "está sendo usada pelos seguintes agente(s):",
+  "common.deleteConnectionDialogs.title": "Excluir Conexão?",
+  "common.errorBoundary.newVersionAvailable": "Nova versão disponível",
   "common.errorBoundary.newVersionDeployed":
-    "Uma nova vers\u00e3o foi implantada. Atualize para continuar.",
+    "Uma nova versão foi implantada. Atualize para continuar.",
   "common.errorBoundary.refresh": "Atualizar",
   "common.errorBoundary.somethingWentWrong": "Algo deu errado",
   "common.errorBoundary.tryAgain": "Tentar novamente",
   "common.errorBoundary.unexpectedError": "Um erro inesperado ocorreu",
-  "common.githubRepoPicker.accountNotListed": "Conta n\u00e3o listada?",
-  "common.githubRepoPicker.addRepo": "Adicionar reposit\u00f3rio",
+  "common.githubRepoPicker.accountNotListed": "Conta não listada?",
+  "common.githubRepoPicker.addRepo": "Adicionar repositório",
   "common.githubRepoPicker.addedRepo": "Adicionado {name}",
   "common.githubRepoPicker.authenticatingGitHub": "Autenticando com GitHub",
-  "common.githubRepoPicker.backToAccounts": "Voltar \u00e0s contas",
-  "common.githubRepoPicker.changeConnection": "Alterar conex\u00e3o",
+  "common.githubRepoPicker.backToAccounts": "Voltar às contas",
+  "common.githubRepoPicker.changeConnection": "Alterar conexão",
   "common.githubRepoPicker.completeOAuthFlow":
     "Complete o fluxo OAuth no seu navegador",
   "common.githubRepoPicker.connectionExpiredMessage":
-    "Sua conex\u00e3o com o GitHub pode ter expirado. Reconecte para restaurar o acesso.",
-  "common.githubRepoPicker.connectionFailed": "Conex\u00e3o falhou",
+    "Sua conexão com o GitHub pode ter expirado. Reconecte para restaurar o acesso.",
+  "common.githubRepoPicker.connectionFailed": "Conexão falhou",
   "common.githubRepoPicker.failedImport":
-    "Falha ao importar reposit\u00f3rio: {error}",
+    "Falha ao importar repositório: {error}",
   "common.githubRepoPicker.failedLoadAccounts":
     "Falha ao carregar contas do GitHub",
   "common.githubRepoPicker.failedReconnect":
@@ -109,17 +104,16 @@ export const common = {
   "common.githubRepoPicker.importedRepo": "Importado {name} do GitHub",
   "common.githubRepoPicker.installGitHubApp": "Instalar o aplicativo GitHub",
   "common.githubRepoPicker.installingGitHubConnection":
-    "Instalando a conex\u00e3o com GitHub...",
+    "Instalando a conexão com GitHub...",
   "common.githubRepoPicker.noRepositoriesFound":
-    "Nenhum reposit\u00f3rio encontrado",
+    "Nenhum repositório encontrado",
   "common.githubRepoPicker.personalAccount": "Conta pessoal",
   "common.githubRepoPicker.private": "Privado",
-  "common.githubRepoPicker.public": "P\u00fablico",
+  "common.githubRepoPicker.public": "Público",
   "common.githubRepoPicker.reconnectGitHub": "Reconectar GitHub",
-  "common.githubRepoPicker.searchRepositories":
-    "Pesquisar reposit\u00f3rios...",
+  "common.githubRepoPicker.searchRepositories": "Pesquisar repositórios...",
   "common.githubRepoPicker.select": "Selecionar",
-  "common.githubRepoPicker.selectConnection": "Selecione uma conex\u00e3o",
+  "common.githubRepoPicker.selectConnection": "Selecione uma conexão",
   "common.githubRepoPicker.settingUpGitHub": "Configurando GitHub",
   "common.githubRepoPicker.somethingWentWrong":
     "Algo deu errado ao conectar ao GitHub.",
@@ -131,14 +125,13 @@ export const common = {
   "common.iconPicker.changeColor": "Alterar cor",
   "common.iconPicker.failedToReadImage": "Falha ao ler arquivo de imagem",
   "common.iconPicker.filterPlaceholder": "Filtrar...",
-  "common.iconPicker.iconsTab": "\u00cdcones",
+  "common.iconPicker.iconsTab": "Ícones",
   "common.iconPicker.imageTooLarge": "A imagem deve ser menor que 2MB",
-  "common.iconPicker.noIconsFound": "Nenhum \u00edcone encontrado",
+  "common.iconPicker.noIconsFound": "Nenhum ícone encontrado",
   "common.iconPicker.or": "ou",
   "common.iconPicker.pasteUrlPlaceholder": "Cole a URL da imagem...",
-  "common.iconPicker.randomIcon": "\u00cdcone aleat\u00f3rio",
-  "common.iconPicker.uploadHint":
-    "Clique para enviar uma imagem (m\u00e1x 2MB)",
+  "common.iconPicker.randomIcon": "Ícone aleatório",
+  "common.iconPicker.uploadHint": "Clique para enviar uma imagem (máx 2MB)",
   "common.iconPicker.uploadTab": "Upload",
   "common.importFromDecoDialog.cancel": "Cancelar",
   "common.importFromDecoDialog.failedToConnectGithub":
@@ -146,20 +139,19 @@ export const common = {
   "common.importFromDecoDialog.failedToCreateAgent":
     "Falha ao criar o agente importado",
   "common.importFromDecoDialog.failedToCreateConnection":
-    "Falha ao criar conex\u00e3o",
+    "Falha ao criar conexão",
   "common.importFromDecoDialog.githubNotConnected":
-    "GitHub n\u00e3o est\u00e1 conectado. Conclua a configura\u00e7\u00e3o do GitHub e tente novamente.",
+    "GitHub não está conectado. Conclua a configuração do GitHub e tente novamente.",
   "common.importFromDecoDialog.goBack": "Voltar",
   "common.importFromDecoDialog.import": "Importar",
-  "common.importFromDecoDialog.importFailed":
-    "Falha na importa\u00e7\u00e3o: {error}",
+  "common.importFromDecoDialog.importFailed": "Falha na importação: {error}",
   "common.importFromDecoDialog.importSuccess": "Importado {slug} de deco.cx",
   "common.importFromDecoDialog.importing": "Importando...",
   "common.importFromDecoDialog.installGithubApp":
-    'Instale o aplicativo GitHub na organiza\u00e7\u00e3o "{owner}" para importar este site. {installUrl}',
+    'Instale o aplicativo GitHub na organização "{owner}" para importar este site. {installUrl}',
   "common.importFromDecoDialog.loadingSites": "Carregando sites...",
   "common.importFromDecoDialog.noConnectionId":
-    "O servidor n\u00e3o retornou um ID de conex\u00e3o",
+    "O servidor não retornou um ID de conexão",
   "common.importFromDecoDialog.noSitesFound":
     "Nenhum site encontrado para esta conta.",
   "common.importFromDecoDialog.noSitesMatch":
@@ -168,118 +160,109 @@ export const common = {
     "Tentar configurar GitHub novamente",
   "common.importFromDecoDialog.searchPlaceholder": "Procurar sites...",
   "common.importFromDecoDialog.selectGithubConnection":
-    "Selecione uma conex\u00e3o GitHub",
+    "Selecione uma conexão GitHub",
   "common.importFromDecoDialog.settingUpGithub":
-    "Configurando conex\u00e3o com GitHub...",
+    "Configurando conexão com GitHub...",
   "common.importFromDecoDialog.siteNoLongerAvailable":
-    "O site selecionado n\u00e3o est\u00e1 mais dispon\u00edvel",
+    "O site selecionado não está mais disponível",
   "common.importFromDecoDialog.title": "Importar de deco.cx",
   "common.importFromDecoDialog.unknownError": "Erro desconhecido",
   "common.index.goBack": "Voltar",
-  "common.index.pageNotFound": "P\u00e1gina n\u00e3o encontrada",
+  "common.index.pageNotFound": "Página não encontrada",
   "common.index.pageNotFoundDescription":
-    "A p\u00e1gina que voc\u00ea est\u00e1 procurando n\u00e3o existe ou foi movida.",
+    "A página que você está procurando não existe ou foi movida.",
   "common.inviteMemberDialog.cancelButton": "Cancelar",
-  "common.inviteMemberDialog.emailLabel": "Endere\u00e7os de e-mail",
+  "common.inviteMemberDialog.emailLabel": "Endereços de e-mail",
   "common.inviteMemberDialog.emailPlaceholder":
-    "Digite os endere\u00e7os de e-mail separados por v\u00edrgulas ou quebras de linha\ne.g. usuario1@example.com, usuario2@example.com\nou um por linha",
+    "Digite os endereços de e-mail separados por vírgulas ou quebras de linha\ne.g. usuario1@example.com, usuario2@example.com\nou um por linha",
   "common.inviteMemberDialog.errorFailedInvite":
     "Falha ao convidar {count} membro(s)",
   "common.inviteMemberDialog.errorGeneric": "Falha ao convidar membros",
   "common.inviteMemberDialog.errorNoValidEmail":
-    "Digite pelo menos um endere\u00e7o de e-mail v\u00e1lido",
-  "common.inviteMemberDialog.errorSelectRole": "Selecione uma fun\u00e7\u00e3o",
+    "Digite pelo menos um endereço de e-mail válido",
+  "common.inviteMemberDialog.errorSelectRole": "Selecione uma função",
   "common.inviteMemberDialog.inviteButton": "Convidar {count} membro(s)",
   "common.inviteMemberDialog.invitingButton": "Convidando...",
-  "common.inviteMemberDialog.permAllConnections": "Todas as conex\u00f5es",
+  "common.inviteMemberDialog.permAllConnections": "Todas as conexões",
   "common.inviteMemberDialog.permAllTools": "todas as ferramentas",
-  "common.inviteMemberDialog.permConnections": "{count} conex\u00e3o(\u00f5es)",
-  "common.inviteMemberDialog.permFullOrgAccess":
-    "Acesso total \u00e0 organiza\u00e7\u00e3o",
-  "common.inviteMemberDialog.permOrgPerms": "{count} permiss\u00e3o(ns) de org",
+  "common.inviteMemberDialog.permConnections": "{count} conexão(ões)",
+  "common.inviteMemberDialog.permFullOrgAccess": "Acesso total à organização",
+  "common.inviteMemberDialog.permOrgPerms": "{count} permissão(ns) de org",
   "common.inviteMemberDialog.permTools": "{count} ferramenta(s)",
-  "common.inviteMemberDialog.roleSelectPlaceholder":
-    "Selecione uma fun\u00e7\u00e3o",
+  "common.inviteMemberDialog.roleSelectPlaceholder": "Selecione uma função",
   "common.inviteMemberDialog.successMultiple":
     "{count} membros convidados com sucesso!",
   "common.inviteMemberDialog.successSingle": "Membro convidado com sucesso!",
   "common.inviteMemberDialog.title": "Convidar membros",
   "common.keyboardShortcutsDialog.title": "Atalhos de teclado",
   "common.noAccessScreen.askAdminToInvite":
-    "Pe\u00e7a a um administrador que o convide.",
+    "Peça a um administrador que o convide.",
   "common.noAccessScreen.couldNotFind":
-    "N\u00e3o conseguimos encontrar uma organiza\u00e7\u00e3o chamada",
+    "Não conseguimos encontrar uma organização chamada",
   "common.noAccessScreen.goToHome": "Ir para home",
   "common.noAccessScreen.noAccess": "Sem acesso",
-  "common.noAccessScreen.noAccessTo": "Voc\u00ea n\u00e3o tem acesso a",
-  "common.noAccessScreen.organizationNotFound":
-    "Organiza\u00e7\u00e3o n\u00e3o encontrada",
+  "common.noAccessScreen.noAccessTo": "Você não tem acesso a",
+  "common.noAccessScreen.organizationNotFound": "Organização não encontrada",
   "common.pendingInviteScreen.acceptButton": "Aceitar convite",
   "common.pendingInviteScreen.acceptDescription":
-    "Aceite o convite para se juntar a esta organiza\u00e7\u00e3o.",
-  "common.pendingInviteScreen.acceptingButton": "Aceitando\u2026",
+    "Aceite o convite para se juntar a esta organização.",
+  "common.pendingInviteScreen.acceptingButton": "Aceitando…",
   "common.pendingInviteScreen.declineButton": "Recusar",
-  "common.pendingInviteScreen.decliningButton": "Recusando\u2026",
+  "common.pendingInviteScreen.decliningButton": "Recusando…",
   "common.pendingInviteScreen.failedToAccept": "Falha ao aceitar o convite",
   "common.pendingInviteScreen.failedToDecline": "Falha ao recusar o convite",
   "common.pendingInviteScreen.invitationDeclined": "Convite recusado",
-  "common.pendingInviteScreen.invitedTo":
-    "Voc\u00ea foi convidado para {orgName}",
+  "common.pendingInviteScreen.invitedTo": "Você foi convidado para {orgName}",
   "common.requestPendingScreen.description":
-    "Sua solicita\u00e7\u00e3o para ingressar em {orgName} est\u00e1 aguardando aprova\u00e7\u00e3o de um administrador. Voc\u00ea ter\u00e1 acesso ap\u00f3s a aprova\u00e7\u00e3o.",
-  "common.requestPendingScreen.goHome": "Ir para in\u00edcio",
-  "common.requestPendingScreen.title": "Solicita\u00e7\u00e3o pendente",
+    "Sua solicitação para ingressar em {orgName} está aguardando aprovação de um administrador. Você terá acesso após a aprovação.",
+  "common.requestPendingScreen.goHome": "Ir para início",
+  "common.requestPendingScreen.title": "Solicitação pendente",
   "common.requestToJoinScreen.description":
-    "Um administrador deve aprovar solicita\u00e7\u00f5es de e-mails @{domain} antes que voc\u00ea possa entrar.",
+    "Um administrador deve aprovar solicitações de e-mails @{domain} antes que você possa entrar.",
   "common.requestToJoinScreen.failedToRequest": "Falha ao solicitar acesso",
-  "common.requestToJoinScreen.goToHome": "Ir para in\u00edcio",
+  "common.requestToJoinScreen.goToHome": "Ir para início",
   "common.requestToJoinScreen.requestButton": "Solicitar acesso",
-  "common.requestToJoinScreen.requesting": "Solicitando\u2026",
+  "common.requestToJoinScreen.requesting": "Solicitando…",
   "common.requestToJoinScreen.title": "Solicitar acesso a {orgName}?",
-  "common.simpleIconPicker.filterPlaceholder": "Filtrar\u2026",
-  "common.simpleIconPicker.noIconsFound": "Nenhum \u00edcone encontrado",
+  "common.simpleIconPicker.filterPlaceholder": "Filtrar…",
+  "common.simpleIconPicker.noIconsFound": "Nenhum ícone encontrado",
   "common.ssoRequiredScreen.goBack": "Voltar",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
-    "Esta organiza\u00e7\u00e3o requer autentica\u00e7\u00e3o SSO para acessar.",
-  "common.ssoRequiredScreen.requiresSsoAuth":
-    "requer autentica\u00e7\u00e3o SSO",
+    "Esta organização requer autenticação SSO para acessar.",
+  "common.ssoRequiredScreen.requiresSsoAuth": "requer autenticação SSO",
   "common.ssoRequiredScreen.signInWithSso": "Entrar com SSO",
-  "common.ssoRequiredScreen.title":
-    "Autentica\u00e7\u00e3o SSO Necess\u00e1ria",
+  "common.ssoRequiredScreen.title": "Autenticação SSO Necessária",
   "common.ssoRequiredScreen.via": "via {domain}",
   "common.tagMultiSelect.addTags": "Adicionar tags...",
-  "common.tagMultiSelect.available": "Dispon\u00edvel",
+  "common.tagMultiSelect.available": "Disponível",
   "common.tagMultiSelect.createTag": 'Criar "{tagName}"',
   "common.tagMultiSelect.noTagsFound": "Nenhuma tag encontrada.",
   "common.tagMultiSelect.searchOrCreate": "Pesquisar ou criar...",
   "common.tagMultiSelect.selected": "Selecionado",
-  "common.toolInputForm.enterPlaceholder": "Digite {fieldKey}\u2026",
+  "common.toolInputForm.enterPlaceholder": "Digite {fieldKey}…",
   "common.toolInputForm.false": "falso",
-  "common.toolInputForm.jsonPlaceholder": "Digite {fieldKey} como JSON\u2026",
-  "common.toolInputForm.selectPlaceholder": "Selecione\u2026",
+  "common.toolInputForm.jsonPlaceholder": "Digite {fieldKey} como JSON…",
+  "common.toolInputForm.selectPlaceholder": "Selecione…",
   "common.toolInputForm.true": "verdadeiro",
   "common.toolSetSelector.filterAll": "Todos",
   "common.toolSetSelector.filterSelected": "Selecionados",
-  "common.toolSetSelector.filterUnselected": "N\u00e3o selecionados",
-  "common.toolSetSelector.noConnectionsAvailable":
-    "Nenhuma conex\u00e3o dispon\u00edvel",
-  "common.toolSetSelector.noConnectionsFound":
-    "Nenhuma conex\u00e3o encontrada",
+  "common.toolSetSelector.filterUnselected": "Não selecionados",
+  "common.toolSetSelector.noConnectionsAvailable": "Nenhuma conexão disponível",
+  "common.toolSetSelector.noConnectionsFound": "Nenhuma conexão encontrada",
   "common.toolSetSelector.noServersSelected": "Nenhum servidor selecionado",
   "common.toolSetSelector.noToolsAvailable":
-    "Esta conex\u00e3o n\u00e3o tem ferramentas dispon\u00edveis",
+    "Esta conexão não tem ferramentas disponíveis",
   "common.toolSetSelector.noUnselectedServers":
-    "Nenhum servidor n\u00e3o selecionado",
+    "Nenhum servidor não selecionado",
   "common.toolSetSelector.searchPlaceholder": "Pesquisar servidores MCP...",
   "common.toolSetSelector.selectConnection":
-    "Selecione uma conex\u00e3o para visualizar suas ferramentas",
+    "Selecione uma conexão para visualizar suas ferramentas",
   "common.useStartThreadFromPrompt.failedToStartChat":
     "Falha ao iniciar o chat. Tente novamente.",
   "common.useStartThreadFromPrompt.mcpClientNotAvailable":
-    "Cliente MCP n\u00e3o dispon\u00edvel",
-  "common.versionCheckDialog.available":
-    "Uma nova vers\u00e3o est\u00e1 dispon\u00edvel",
+    "Cliente MCP não disponível",
+  "common.versionCheckDialog.available": "Uma nova versão está disponível",
   "common.versionCheckDialog.outdatedVersion":
-    "Voc\u00ea est\u00e1 visualizando uma vers\u00e3o desatualizada desta p\u00e1gina. Atualize para obter as \u00faltimas atualiza\u00e7\u00f5es.",
+    "Você está visualizando uma versão desatualizada desta página. Atualize para obter as últimas atualizações.",
   "common.versionCheckDialog.refresh": "Atualizar",
 } satisfies Record<keyof typeof commonEn, string>;

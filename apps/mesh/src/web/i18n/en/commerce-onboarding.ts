@@ -31,7 +31,7 @@ export const commerceOnboarding = {
   "commerceOnboarding.githubConfigForm.save": "Save",
   "commerceOnboarding.githubConfigForm.saving": "Saving...",
   "commerceOnboarding.githubConfigForm.searchFailedPartial":
-    "Part of the search failed \u2014 some repositories may not have appeared. Try again or type owner/name.",
+    "Part of the search failed — some repositories may not have appeared. Try again or type owner/name.",
   "commerceOnboarding.githubConfigForm.searchFailedTotal":
     "Failed to fetch repositories (error or timeout). Try again or type the repository in the format owner/name.",
   "commerceOnboarding.githubConfigForm.searchRepositoryLabel":
@@ -40,8 +40,7 @@ export const commerceOnboarding = {
     "Search repository",
   "commerceOnboarding.githubConfigForm.selectRepository": "Select a repository",
   "commerceOnboarding.saBindingForm.bind": "Vincular",
-  "commerceOnboarding.saBindingForm.bindError":
-    "N\u00e3o foi poss\u00edvel vincular.",
+  "commerceOnboarding.saBindingForm.bindError": "Não foi possível vincular.",
   "commerceOnboarding.saBindingForm.cancel": "Cancelar",
   "commerceOnboarding.saBindingForm.connectedSuccess": "{label} conectado",
   "commerceOnboarding.saBindingForm.copyEmailLabel":
@@ -52,7 +51,7 @@ export const commerceOnboarding = {
   "commerceOnboarding.saBindingForm.resourceIdRequired":
     "Informe o {resourceLabel}",
   "commerceOnboarding.saBindingForm.storeUrlUnavailable":
-    "URL da loja indispon\u00edvel \u2014 recarregue a p\u00e1gina.",
+    "URL da loja indisponível — recarregue a página.",
   "commerceOnboarding.saBindingForm.verifying": "Verificando...",
   "commerceOnboarding.vtexConfigForm.accountNameLabel": "Account name",
   "commerceOnboarding.vtexConfigForm.accountNamePlaceholder":

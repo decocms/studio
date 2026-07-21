@@ -3,35 +3,35 @@ export const thread = {
   "thread.branchPicker.couldntLoadBranches":
     "Couldn't load branches from GitHub. You can still pick from your branches.",
   "thread.branchPicker.loadMoreBranches": "Load more branches",
-  "thread.branchPicker.loadingMore": "Loading more\u2026",
+  "thread.branchPicker.loadingMore": "Loading more…",
   "thread.branchPicker.lookingThroughMoreBranches":
     "Looking through more branches...",
   "thread.branchPicker.new": "New",
   "thread.branchPicker.noBranchesFound": "No branches found.",
   "thread.branchPicker.otherBranchesInRepo": "Other branches in repo",
-  "thread.branchPicker.searchLoadedBranches": "Search loaded branches\u2026",
-  "thread.branchPicker.selectBranch": "Select branch\u2026",
+  "thread.branchPicker.searchLoadedBranches": "Search loaded branches…",
+  "thread.branchPicker.selectBranch": "Select branch…",
   "thread.branchPicker.yourBranches": "Your branches",
   "thread.changesTab.couldntLoadPrChanges": "Couldn't load PR changes.",
-  "thread.changesTab.loadingChanges": "Loading changes\u2026",
+  "thread.changesTab.loadingChanges": "Loading changes…",
   "thread.changesTab.noCommittedChanges":
     "No committed changes in this pull request",
   "thread.checksTab.couldntLoadCheckRuns": "Couldn't load check runs.",
   "thread.checksTab.failure": "Failure",
   "thread.checksTab.inProgress": "In progress",
-  "thread.checksTab.loadingChecks": "Loading checks\u2026",
+  "thread.checksTab.loadingChecks": "Loading checks…",
   "thread.checksTab.noCheckRunsOnPrHeadCommit":
     "No check runs on the PR head commit.",
   "thread.checksTab.rerun": "Re-run",
   "thread.checksTab.success": "Success",
   "thread.checksTab.viewRun": "View run",
   "thread.gitTab.by": "by @{author}",
-  "thread.gitTab.closed": "\u2717 Closed",
+  "thread.gitTab.closed": "✗ Closed",
   "thread.gitTab.couldNotLoadPrState":
     "Couldn't load PR state. The GitHub connection may be broken.",
   "thread.gitTab.into": "into {base}",
-  "thread.gitTab.loadingPrState": "Loading PR state\u2026",
-  "thread.gitTab.merged": "\u2713 Merged",
+  "thread.gitTab.loadingPrState": "Loading PR state…",
+  "thread.gitTab.merged": "✓ Merged",
   "thread.gitTab.noBranchSelected": "No branch selected.",
   "thread.gitTab.noPrYet":
     'This branch doesn\'t have an open pull request. Click "Submit for review" in the header to open one; the agent will draft the title and summary from the current state of the branch.',
@@ -46,7 +46,7 @@ export const thread = {
   "thread.headerActions.failedToMergePullRequest":
     "Failed to merge pull request",
   "thread.headerActions.githubConnectionRemoved":
-    "GitHub connection was removed \u2014 relink the repository in Settings to save changes",
+    "GitHub connection was removed — relink the repository in Settings to save changes",
   "thread.headerActions.publish": "Publish",
   "thread.headerActions.publishDirectlySkipReview":
     "Publish directly, skipping review",
@@ -63,10 +63,10 @@ export const thread = {
   "thread.publishDialog.changes": "changes",
   "thread.publishDialog.changesFrom": "Changes from {branch}",
   "thread.publishDialog.commitMessage": "Commit message",
-  "thread.publishDialog.commitTitlePlaceholder": "Commit title\u2026",
+  "thread.publishDialog.commitTitlePlaceholder": "Commit title…",
   "thread.publishDialog.description": "Description",
   "thread.publishDialog.descriptionLabel": "Description",
-  "thread.publishDialog.descriptionPlaceholder": "Description (optional)\u2026",
+  "thread.publishDialog.descriptionPlaceholder": "Description (optional)…",
   "thread.publishDialog.discardAll": "Discard all",
   "thread.publishDialog.discardConfirmMessage":
     "Discard all changes? This cannot be undone.",
@@ -81,9 +81,9 @@ export const thread = {
   "thread.publishDialog.failedPushChanges": "Failed to push changes",
   "thread.publishDialog.failedRebase": "Failed to rebase onto base",
   "thread.publishDialog.failedSubmitForReview": "Failed to submit for review",
-  "thread.publishDialog.generating": "Generating\u2026",
+  "thread.publishDialog.generating": "Generating…",
   "thread.publishDialog.inThisPr": "in this PR",
-  "thread.publishDialog.loadingChanges": "Loading changes\u2026",
+  "thread.publishDialog.loadingChanges": "Loading changes…",
   "thread.publishDialog.mergeFailed":
     "Changes were pushed and PR #{prNumber} is open, but merge failed: {message}",
   "thread.publishDialog.opensPullRequestInto":

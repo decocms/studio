@@ -2,12 +2,12 @@ export const sandbox = {
   "sandbox.appEditor.createdSection": 'Created section "{name}"',
   "sandbox.appEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.appEditor.failedAddSection": "Could not add section",
-  "sandbox.appEditor.loadingSchema": "Loading app schema\u2026",
+  "sandbox.appEditor.loadingSchema": "Loading app schema…",
   "sandbox.appEditor.noEditableSchema":
     "No editable schema found for this app.",
   "sandbox.availableSectionEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.availableSectionEditor.localEditsHint":
-    "{typeLabel} \u2014 edits stay local until you save this as a global section.",
+    "{typeLabel} — edits stay local until you save this as a global section.",
   "sandbox.availableSectionEditor.noEditableFields":
     "No editable fields for this section.",
   "sandbox.availableSectionEditor.saveAsGlobalSection":
@@ -16,10 +16,10 @@ export const sandbox = {
   "sandbox.blockPicker.customBlocksLabel": "Custom blocks",
   "sandbox.blockPicker.insertBlockButton": "Insert block",
   "sandbox.blockPicker.noBlocksFound": "No blocks found.",
-  "sandbox.blockPicker.searchPlaceholder": "Search blocks\u2026",
+  "sandbox.blockPicker.searchPlaceholder": "Search blocks…",
   "sandbox.blockRegistry.unknownBlockType":
     'Unknown block type{type ? ` (${type})` : ""}.',
-  "sandbox.blockRegistry.writeSomethingPlaceholder": "Write something\u2026",
+  "sandbox.blockRegistry.writeSomethingPlaceholder": "Write something…",
   "sandbox.blockRow.deleteBlock": "Delete block",
   "sandbox.blockRow.dragToReorder": "Drag to reorder",
   "sandbox.blockRow.duplicateBlock": "Duplicate block",
@@ -38,14 +38,14 @@ export const sandbox = {
     "Remove all current categories and set only this one.",
   "sandbox.bulkCategoryPanel.modeReplaceTitle": "Replace category",
   "sandbox.bulkCategoryPanel.noCategoriesMessage":
-    "No categories yet \u2014 create one in the Categories collection.",
+    "No categories yet — create one in the Categories collection.",
   "sandbox.bulkCategoryPanel.noPostsSelectedMessage":
-    "No posts selected yet \u2014 pick them from the list on the left.",
+    "No posts selected yet — pick them from the list on the left.",
   "sandbox.bulkCategoryPanel.selectCategoryPlaceholder": "Select a category",
   "sandbox.bulkCategoryPanel.selectedCount": "{count} post(s) selected",
   "sandbox.bulkCategoryPanel.selectedPostsLabel": "{count} selected post(s)",
   "sandbox.bulkCategoryPanel.title": "Update category",
-  "sandbox.bulkCategoryPanel.updatingButton": "Updating\u2026",
+  "sandbox.bulkCategoryPanel.updatingButton": "Updating…",
   "sandbox.categoryEditor.addPostsButton": "Add posts",
   "sandbox.categoryEditor.cancelButton": "Cancel",
   "sandbox.categoryEditor.categoryNamePlaceholder": "Category name",
@@ -54,7 +54,7 @@ export const sandbox = {
   "sandbox.categoryEditor.descriptionPlaceholder":
     "Short description for this category",
   "sandbox.categoryEditor.noContentEmpty":
-    "This category has no content yet. Use \u2295 to add your first block.",
+    "This category has no content yet. Use ⊕ to add your first block.",
   "sandbox.categoryEditor.pickPostsTooltip":
     "Pick posts to add to this category",
   "sandbox.categoryEditor.postsInCategory": "{count} post(s) in this category",
@@ -68,7 +68,7 @@ export const sandbox = {
   "sandbox.categoryEditor.renameSuccessNoPosts": "Renamed slug",
   "sandbox.categoryEditor.renameSuccessWithPosts":
     "Renamed slug and updated {count} post(s)",
-  "sandbox.categoryEditor.renamingLabel": "Renaming\u2026",
+  "sandbox.categoryEditor.renamingLabel": "Renaming…",
   "sandbox.categoryEditor.seeCategoryPreview": "See category preview",
   "sandbox.categoryEditor.setSlugTooltip":
     "Set a slug to add posts to this category",
@@ -132,8 +132,8 @@ export const sandbox = {
   "sandbox.envVarsField.pasteDotenv": "Paste .env",
   "sandbox.envVarsField.pasteDotenvAriaLabel": "Paste .env",
   "sandbox.envVarsField.pasteDotenvTooltip":
-    "Read a .env blob from the clipboard. Each pair is staged as a literal \u2014 save individual rows as secrets after.",
-  "sandbox.envVarsField.pickSecretPlaceholder": "Pick a secret\u2026",
+    "Read a .env blob from the clipboard. Each pair is staged as a literal — save individual rows as secrets after.",
+  "sandbox.envVarsField.pickSecretPlaceholder": "Pick a secret…",
   "sandbox.envVarsField.remove": "Remove",
   "sandbox.envVarsField.removeEnvVarAriaLabel": "Remove env var",
   "sandbox.envVarsField.restartDev": "Restart dev",
@@ -142,20 +142,20 @@ export const sandbox = {
   "sandbox.envVarsField.restartedMultiple":
     "Restarted {count} branches with new env",
   "sandbox.envVarsField.restartedSingle": "Restarted dev with new env",
-  "sandbox.envVarsField.restarting": "Restarting\u2026",
+  "sandbox.envVarsField.restarting": "Restarting…",
   "sandbox.envVarsField.sandboxRunningNotice":
     "Your sandbox is running. Restart the dev script to apply the new env.",
   "sandbox.envVarsField.saveAsSecret": "Save value as secret",
   "sandbox.envVarsField.saveAsSecretAriaLabel": "Save value as secret",
   "sandbox.envVarsField.saveSecret": "Save secret",
   "sandbox.envVarsField.saveValueAsSecretDescription":
-    "Move this value into the encrypted vault. The env var will then reference the secret by id \u2014 its value never leaves the server.",
+    "Move this value into the encrypted vault. The env var will then reference the secret by id — its value never leaves the server.",
   "sandbox.envVarsField.saveValueAsSecretTitle": "Save value as secret",
-  "sandbox.envVarsField.saving": "Saving\u2026",
+  "sandbox.envVarsField.saving": "Saving…",
   "sandbox.envVarsField.scopeLabel": "Scope",
   "sandbox.envVarsField.scopeOrganization":
-    "Organization \u2014 visible to all members",
-  "sandbox.envVarsField.scopePrivate": "Private \u2014 only visible to me",
+    "Organization — visible to all members",
+  "sandbox.envVarsField.scopePrivate": "Private — only visible to me",
   "sandbox.envVarsField.secret": "Secret",
   "sandbox.envVarsField.secretSaved": 'Saved secret "{name}"',
   "sandbox.envVarsField.secretValuePlaceholder": "secret value",
@@ -172,11 +172,11 @@ export const sandbox = {
   "sandbox.fileExplorer.fileCreated": 'Created "{name}"',
   "sandbox.fileExplorer.fileDeleted": 'Deleted "{name}"',
   "sandbox.fileExplorer.fileListTruncated":
-    "File list truncated \u2014 some files may be hidden",
+    "File list truncated — some files may be hidden",
   "sandbox.fileExplorer.files": "Files",
   "sandbox.fileExplorer.folderCreated": 'Created folder "{name}"',
   "sandbox.fileExplorer.folderListingTruncated":
-    "Folder listing truncated \u2014 expand again to load more",
+    "Folder listing truncated — expand again to load more",
   "sandbox.fileExplorer.inFiles": "In files",
   "sandbox.fileExplorer.modified": "Modified",
   "sandbox.fileExplorer.newFile": "New file",
@@ -212,7 +212,7 @@ export const sandbox = {
   "sandbox.fileExplorerNameDialog.renamePlaceholder": "new-name",
   "sandbox.fileExplorerNameDialog.renameSubmit": "Rename",
   "sandbox.fileExplorerNameDialog.renameTitle": "Rename",
-  "sandbox.fileExplorerNameDialog.saving": "Saving\u2026",
+  "sandbox.fileExplorerNameDialog.saving": "Saving…",
   "sandbox.fileTreeRow.copyPath": "Copy Path",
   "sandbox.fileTreeRow.copyRelativePath": "Copy Relative Path",
   "sandbox.fileTreeRow.delete": "Delete",
@@ -247,10 +247,10 @@ export const sandbox = {
   "sandbox.listBlocks.stepDescription": "Step description",
   "sandbox.listBlocks.stepTitle": "Step title",
   "sandbox.listBlocks.stepsTitle": "Steps title (optional)",
-  "sandbox.mediaBlocks.addCaption": "Add a caption\u2026",
+  "sandbox.mediaBlocks.addCaption": "Add a caption…",
   "sandbox.mediaBlocks.altText": "Alt text (accessibility)",
   "sandbox.mediaBlocks.buttonLabel": "Button label",
-  "sandbox.mediaBlocks.calloutText": "Callout text\u2026",
+  "sandbox.mediaBlocks.calloutText": "Callout text…",
   "sandbox.mediaBlocks.calloutTitle": "Callout title",
   "sandbox.mediaBlocks.destinationUrlPlaceholder":
     "https://destination-url.com",
@@ -264,15 +264,14 @@ export const sandbox = {
     "Paste a YouTube or Vimeo URL to preview",
   "sandbox.mediaBlocks.statValuePlaceholder": "42%",
   "sandbox.mediaBlocks.video": "Video",
-  "sandbox.mediaBlocks.videoUrlPlaceholder":
-    "https://youtube.com/watch?v=\u2026",
+  "sandbox.mediaBlocks.videoUrlPlaceholder": "https://youtube.com/watch?v=…",
   "sandbox.pageFormDialog.buttonCancel": "Cancel",
   "sandbox.pageFormDialog.labelName": "Name",
   "sandbox.pageFormDialog.labelPath": "Path",
   "sandbox.pageFormDialog.labelTemplate": "Template",
-  "sandbox.pageFormDialog.pendingCreate": "Creating\u2026",
-  "sandbox.pageFormDialog.pendingDuplicate": "Duplicating\u2026",
-  "sandbox.pageFormDialog.pendingSave": "Saving\u2026",
+  "sandbox.pageFormDialog.pendingCreate": "Creating…",
+  "sandbox.pageFormDialog.pendingDuplicate": "Duplicating…",
+  "sandbox.pageFormDialog.pendingSave": "Saving…",
   "sandbox.pageFormDialog.placeholderName": "My page",
   "sandbox.pageFormDialog.placeholderPath": "/example",
   "sandbox.pageFormDialog.submitCreate": "Create",
@@ -282,15 +281,15 @@ export const sandbox = {
   "sandbox.pageFormDialog.titleDuplicate": "Duplicate page",
   "sandbox.pageFormDialog.titleRename": "Rename page",
   "sandbox.pathParamPickerChip.buttonTitle":
-    "Value for {paramLabel} \u2014 click to pick",
+    "Value for {paramLabel} — click to pick",
   "sandbox.pathParamPickerChip.couldNotLoad":
-    "Couldn't load \u2014 is the dev server running?",
-  "sandbox.pathParamPickerChip.loading": "Loading {noun}\u2026",
+    "Couldn't load — is the dev server running?",
+  "sandbox.pathParamPickerChip.loading": "Loading {noun}…",
   "sandbox.pathParamPickerChip.noResults": "No results.",
   "sandbox.pathParamPickerChip.pickValueHeading": "Pick a value for",
   "sandbox.pathParamPickerChip.pickValueTitle": "Pick a value for {paramLabel}",
   "sandbox.pathParamPickerChip.searchPlaceholder":
-    "Search {options} or enter a value\u2026",
+    "Search {options} or enter a value…",
   "sandbox.pathParamPickerChip.useRawValue": 'Use "{rawTerm}" as {paramLabel}',
   "sandbox.plainBlocks.bulletedLabel": "Bulleted",
   "sandbox.plainBlocks.codePlaceholder": "Code",
@@ -313,11 +312,11 @@ export const sandbox = {
   "sandbox.postEditor.missingFieldPlural": "Missing required fields: {fields}",
   "sandbox.postEditor.missingFieldSingular": "Missing required field: {fields}",
   "sandbox.postEditor.noAuthorsYet":
-    "No authors yet \u2014 create some in the authors collection.",
+    "No authors yet — create some in the authors collection.",
   "sandbox.postEditor.noCategoriesYet":
-    "No categories yet \u2014 create some in the categories collection.",
+    "No categories yet — create some in the categories collection.",
   "sandbox.postEditor.noContentYet":
-    "This post has no content yet. Use \u2295 to add your first block.",
+    "This post has no content yet. Use ⊕ to add your first block.",
   "sandbox.postEditor.postTitlePlaceholder": "Post title",
   "sandbox.postEditor.previewRequiresSlugAndCategory":
     "Set the post slug (and its category) plus the blog app's pageSlug to preview",
@@ -345,15 +344,15 @@ export const sandbox = {
   "sandbox.postToolbar.itemsSelected": "{count} selected",
   "sandbox.postToolbar.selectAll": "Select all",
   "sandbox.postToolbar.selectAllPosts": "Select all posts",
-  "sandbox.postToolbar.sortAZ": "A\u2013Z",
+  "sandbox.postToolbar.sortAZ": "A–Z",
   "sandbox.postToolbar.sortBy": "Sort by",
   "sandbox.postToolbar.sortNewest": "Newest",
   "sandbox.postToolbar.sortNewestFirst": "Newest first",
   "sandbox.postToolbar.sortOldest": "Oldest",
   "sandbox.postToolbar.sortOldestFirst": "Oldest first",
-  "sandbox.postToolbar.sortTitleAZ": "Title A\u2013Z",
-  "sandbox.postToolbar.sortTitleZA": "Title Z\u2013A",
-  "sandbox.postToolbar.sortZA": "Z\u2013A",
+  "sandbox.postToolbar.sortTitleAZ": "Title A–Z",
+  "sandbox.postToolbar.sortTitleZA": "Title Z–A",
+  "sandbox.postToolbar.sortZA": "Z–A",
   "sandbox.preview.blocks": "Blocks",
   "sandbox.preview.blocksEditor": "Blocks editor",
   "sandbox.preview.choosePage": "Choose page",
@@ -403,7 +402,7 @@ export const sandbox = {
   "sandbox.productBlocks.headingH3": "H3",
   "sandbox.productBlocks.headingNormal": "Normal",
   "sandbox.productBlocks.idLabel": "ID {id}",
-  "sandbox.productBlocks.loadingEllipsis": "Loading\u2026",
+  "sandbox.productBlocks.loadingEllipsis": "Loading…",
   "sandbox.productBlocks.productCardLabel": "Product card",
   "sandbox.productBlocks.productField": "Product",
   "sandbox.productBlocks.productPlural": "products",
@@ -423,19 +422,19 @@ export const sandbox = {
   "sandbox.productBlocks.vtexProductIds": "VTEX product IDs",
   "sandbox.productPickerDialog.addProducts": "Add products",
   "sandbox.productPickerDialog.categoryLabel": "Category: ",
-  "sandbox.productPickerDialog.change": " \u2014 change",
+  "sandbox.productPickerDialog.change": " — change",
   "sandbox.productPickerDialog.chooseProduct": "Choose a product",
   "sandbox.productPickerDialog.clusterIdPlaceholder":
     "Collection / cluster ID (e.g. 2140)",
   "sandbox.productPickerDialog.couldNotLoad":
-    "Couldn't load \u2014 is the dev server running?",
+    "Couldn't load — is the dev server running?",
   "sandbox.productPickerDialog.done": "Done",
   "sandbox.productPickerDialog.enterClusterPrompt":
     "Enter a collection or cluster ID.",
   "sandbox.productPickerDialog.filterCategoriesPlaceholder":
-    "Filter categories\u2026",
-  "sandbox.productPickerDialog.loadingCategories": "Loading categories\u2026",
-  "sandbox.productPickerDialog.loadingProducts": "Loading products\u2026",
+    "Filter categories…",
+  "sandbox.productPickerDialog.loadingCategories": "Loading categories…",
+  "sandbox.productPickerDialog.loadingProducts": "Loading products…",
   "sandbox.productPickerDialog.modeCategory": "Category",
   "sandbox.productPickerDialog.modeClusterId": "Cluster ID",
   "sandbox.productPickerDialog.modeSearch": "Search",
@@ -445,7 +444,7 @@ export const sandbox = {
   "sandbox.productPickerDialog.pickCategoryPrompt":
     "Pick a category to see its products.",
   "sandbox.productPickerDialog.searchProductsPlaceholder":
-    "Search products by name or ID\u2026",
+    "Search products by name or ID…",
   "sandbox.productPickerDialog.selectedCount": "{count} selected",
   "sandbox.productPickerDialog.typeToSearchPrompt": "Type to search products.",
   "sandbox.recordEditor.fieldAvatar": "Avatar",
@@ -465,7 +464,7 @@ export const sandbox = {
   "sandbox.redirectEditor.fromPlaceholder": "/old-path",
   "sandbox.redirectEditor.title": "Redirect",
   "sandbox.redirectEditor.toDescription":
-    "The destination \u2014 a relative path or an absolute URL.",
+    "The destination — a relative path or an absolute URL.",
   "sandbox.redirectEditor.toLabel": "To",
   "sandbox.redirectEditor.toPlaceholder": "/new-path",
   "sandbox.redirectEditor.typeLabel": "Type",
@@ -477,7 +476,7 @@ export const sandbox = {
   "sandbox.repoRow.tooltipContent":
     "The connected GitHub repository for this agent. Manage in Connections.",
   "sandbox.runnableBlockEditor.availableModeDescription":
-    "{typeLabel} \u2014 edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
+    "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
   "sandbox.runnableBlockEditor.backToList": "Back to list",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Close JSON editor",
   "sandbox.runnableBlockEditor.closeResult": "Close result",
@@ -491,9 +490,9 @@ export const sandbox = {
   "sandbox.runnableBlockEditor.freeformPropsEmptyState":
     "This {singular} doesn't publish a props schema. Edit its props as JSON, then run it.",
   "sandbox.runnableBlockEditor.inferredSchemaNotice":
-    "This {singular} doesn't publish a props schema \u2014 fields below are inferred from its saved values. Use the JSON editor to add props not shown here.",
+    "This {singular} doesn't publish a props schema — fields below are inferred from its saved values. Use the JSON editor to add props not shown here.",
   "sandbox.runnableBlockEditor.invalidJsonError":
-    "Invalid JSON \u2014 changes aren't saved until it parses.",
+    "Invalid JSON — changes aren't saved until it parses.",
   "sandbox.runnableBlockEditor.noInputEmptyState":
     "This {singular} takes no configurable input. Run it to see its output.",
   "sandbox.runnableBlockEditor.openInNewTabTooltip":
@@ -505,12 +504,12 @@ export const sandbox = {
   "sandbox.runnableBlockEditor.resultPanelTitle": "Result",
   "sandbox.runnableBlockEditor.run": "Run",
   "sandbox.runnableBlockEditor.runAriaLabel": "Run {singular}",
-  "sandbox.runnableBlockEditor.running": "Running {singular}\u2026",
+  "sandbox.runnableBlockEditor.running": "Running {singular}…",
   "sandbox.runnableBlockEditor.saveAsGlobal": "Save as global {singular}",
   "sandbox.runnableBlockEditor.saveAsGlobalAriaLabel":
     "Save as global {singular}",
   "sandbox.runnableBlockEditor.savedModeDescription":
-    "Global {singular} \u2014 changes save automatically. Run to invoke it against the live preview.",
+    "Global {singular} — changes save automatically. Run to invoke it against the live preview.",
   "sandbox.runnableBlocksBrowser.emptyFolder": "This folder is empty.",
   "sandbox.runnableBlocksBrowser.emptyFolderNoManifest":
     "Start the preview dev server so its manifest loads.",
@@ -519,12 +518,12 @@ export const sandbox = {
   "sandbox.runnableBlocksBrowser.hideSaved": "Hide saved",
   "sandbox.runnableBlocksBrowser.noSearchResults": 'No {kind} match "{query}"',
   "sandbox.runnableBlocksBrowser.noSearchResultsDescription":
-    "Search covers every folder \u2014 try a different term.",
+    "Search covers every folder — try a different term.",
   "sandbox.runnableBlocksBrowser.savedBlockToast":
     'Saved {singular} "{blockId}"',
   "sandbox.runnableBlocksBrowser.savedCountLabel": "{count} saved",
   "sandbox.runnableBlocksBrowser.searchAriaLabel": "Search all {kind}",
-  "sandbox.runnableBlocksBrowser.searchPlaceholder": "Search all {kind}\u2026",
+  "sandbox.runnableBlocksBrowser.searchPlaceholder": "Search all {kind}…",
   "sandbox.runnableBlocksBrowser.seeSaved": "See saved",
   "sandbox.runtimeFields.auto": "Auto",
   "sandbox.runtimeFields.autoDetect": "Auto-detect",
@@ -538,9 +537,9 @@ export const sandbox = {
   "sandbox.savedSectionEditor.closeJsonEditor": "Close JSON editor",
   "sandbox.savedSectionEditor.editAsJson": "Edit as JSON",
   "sandbox.savedSectionEditor.globalSectionDescription":
-    "Global section \u2014 changes save automatically and apply everywhere it's used.",
+    "Global section — changes save automatically and apply everywhere it's used.",
   "sandbox.savedSectionEditor.invalidJsonError":
-    "Invalid JSON \u2014 changes aren't saved until it parses.",
+    "Invalid JSON — changes aren't saved until it parses.",
   "sandbox.savedSectionEditor.noEditableFields":
     "No editable fields for this section.",
   "sandbox.sectionRenameDialog.cancel": "Cancel",
@@ -549,7 +548,7 @@ export const sandbox = {
   "sandbox.sectionRenameDialog.keyLabel": "Key",
   "sandbox.sectionRenameDialog.nameLabel": "Name",
   "sandbox.sectionRenameDialog.save": "Save",
-  "sandbox.sectionRenameDialog.saving": "Saving\u2026",
+  "sandbox.sectionRenameDialog.saving": "Saving…",
   "sandbox.sectionRenameDialog.title": "Rename section",
   "sandbox.sectionsRightPane.selectSectionDescription":
     "Pick a saved section to edit it, or an available one to customize and save as global.",
@@ -574,13 +573,13 @@ export const sandbox = {
   "sandbox.toolbar.stop": "Stop",
   "sandbox.toolbar.stopProcess": "Stop process",
   "sandbox.toolbar.stopSandboxTooltip": "Stop sandbox",
-  "sandbox.toolbar.stopping": "Stopping\u2026",
+  "sandbox.toolbar.stopping": "Stopping…",
   "sandbox.variantCalendar.always": "Always",
   "sandbox.variantCalendar.calendarMode": "Calendar",
   "sandbox.variantCalendar.dateMatcherInfo":
     "Variants gated by a date matcher appear here.",
   "sandbox.variantCalendar.hiddenOngoingVariants":
-    '{count} ongoing variant(s) hidden \u2014 enable "Show ongoing" to view.',
+    '{count} ongoing variant(s) hidden — enable "Show ongoing" to view.',
   "sandbox.variantCalendar.next": "Next",
   "sandbox.variantCalendar.noDatedVariants": "No dated variants in view.",
   "sandbox.variantCalendar.noScheduledVariants": "No scheduled variants.",

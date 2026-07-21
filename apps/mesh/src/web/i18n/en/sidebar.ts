@@ -10,7 +10,7 @@ export const sidebar = {
   "sidebar.agentsSection.selectAnExistingAgent": "Select an existing agent",
   "sidebar.navigationMobile.closeSidebar": "Close sidebar",
   "sidebar.showMoreButton.ariaLabel": "Show more tasks",
-  "sidebar.showMoreButton.loading": "Loading\u2026",
+  "sidebar.showMoreButton.loading": "Loading…",
   "sidebar.showMoreButton.showMore": "Show more",
   "sidebar.sidebarFooter.addConnection": "Add connection",
   "sidebar.sidebarFooter.inviteMembers": "Invite members",

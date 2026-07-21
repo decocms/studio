@@ -4,7 +4,7 @@ export const agentShellLayout = {
     'The agent "{virtualMcpId}" does not exist in this organization.',
   "agentShellLayout.agentShellLayout.chatLoadingError":
     "Something went wrong loading the chat. Try refreshing.",
-  "agentShellLayout.agentShellLayout.creatingTask": "Creating task\u2026",
+  "agentShellLayout.agentShellLayout.creatingTask": "Creating task…",
   "agentShellLayout.agentShellLayout.goToOrgHome": "Go to organization home",
   "agentShellLayout.agentShellLayout.somethingWentWrong":
     "Something went wrong. Try refreshing.",

@@ -1,6 +1,5 @@
 export const home = {
-  "home.addTileDrawer.addError":
-    "Couldn't add to home \u2014 please try again.",
+  "home.addTileDrawer.addError": "Couldn't add to home — please try again.",
   "home.addTileDrawer.addTileLabel": "Add tile",
   "home.addTileDrawer.addToHomeTitle": "Add to home",
   "home.addTileDrawer.allAgentsOnHome": "Every agent is on the home.",
@@ -10,9 +9,9 @@ export const home = {
     "Add agents to the home board and pin their interactive UIs or prompts.",
   "home.addTileDrawer.dragToReorder": "Drag to reorder {name}",
   "home.addTileDrawer.homeFullMessage":
-    "Home is full ({limit}) \u2014 remove an agent first",
+    "Home is full ({limit}) — remove an agent first",
   "home.addTileDrawer.invalidFieldError":
-    "Invalid value in one of the fields \u2014 please fix it.",
+    "Invalid value in one of the fields — please fix it.",
   "home.addTileDrawer.loadMore": "Load more ({count})",
   "home.addTileDrawer.noAgentsMatch": "No agents match.",
   "home.addTileDrawer.noAgentsOnHome": "No agents on the home yet.",
@@ -23,28 +22,26 @@ export const home = {
   "home.addTileDrawer.promptsOffLabel": "prompts off",
   "home.addTileDrawer.quickAccess": "Quick access",
   "home.addTileDrawer.removeError":
-    "Couldn't remove from home \u2014 please try again.",
+    "Couldn't remove from home — please try again.",
   "home.addTileDrawer.removeFromHome": "Remove from home",
   "home.addTileDrawer.removeFromHomeTitle": "Remove from home",
   "home.addTileDrawer.reorderError":
-    "Couldn't reorder home \u2014 please try again.",
+    "Couldn't reorder home — please try again.",
   "home.addTileDrawer.save": "Save",
-  "home.addTileDrawer.searchPlaceholder": "Search agents\u2026",
+  "home.addTileDrawer.searchPlaceholder": "Search agents…",
   "home.addTileDrawer.tileCountLabel": "{count} tile(s)",
   "home.addTileDrawer.title": "Manage home",
-  "home.addTileDrawer.updateError":
-    "Couldn't update home \u2014 please try again.",
+  "home.addTileDrawer.updateError": "Couldn't update home — please try again.",
   "home.agentPromptList.addToHome": "Add to home",
   "home.agentPromptList.couldntUpdateHome":
-    "Couldn't update home \u2014 please try again.",
+    "Couldn't update home — please try again.",
   "home.agentPromptList.homeIsFull":
-    "Home is full ({limit}) \u2014 remove an agent first",
+    "Home is full ({limit}) — remove an agent first",
   "home.agentPromptList.removeFromHome": "Remove from home",
   "home.homeGrid.couldntRemoveFromHome":
-    "Couldn't remove from home \u2014 please try again.",
-  "home.homeGrid.couldntRemoveTile":
-    "Couldn't remove tile \u2014 please try again.",
-  "home.homeGrid.loadingTile": "Loading tile\u2026",
+    "Couldn't remove from home — please try again.",
+  "home.homeGrid.couldntRemoveTile": "Couldn't remove tile — please try again.",
+  "home.homeGrid.loadingTile": "Loading tile…",
   "home.homeGrid.openChat": "Open chat",
   "home.homeTasks.allCaughtUp":
     "You're all caught up. Nothing needs your attention right now.",

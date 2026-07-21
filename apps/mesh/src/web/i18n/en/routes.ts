@@ -190,10 +190,10 @@ export const routes = {
   "routes.orgInstall.fallbackInstructions":
     "To install, open your browser's menu and choose Install {name} (or \"Add to Home Screen\"). If you don't see it yet, interact with the app for a moment and try again.",
   "routes.orgInstall.installDescription":
-    'Install {name} as its own app \u2014 a standalone window that opens straight into this organization. To install the full deco Studio app instead, use your browser\'s "Add to Home Screen" from any other page.',
+    'Install {name} as its own app — a standalone window that opens straight into this organization. To install the full deco Studio app instead, use your browser\'s "Add to Home Screen" from any other page.',
   "routes.orgInstall.installDismissed": "Install dismissed.",
   "routes.orgInstall.installOnIos": "Install on iOS",
-  "routes.orgInstall.installing": "Installing {name}\u2026",
+  "routes.orgInstall.installing": "Installing {name}…",
   "routes.orgInstall.iosInstructions":
     "Tap the Share button, then choose Add to Home Screen.",
   "routes.reports.failedToLoadReportAriaLabel": "Failed to load report",

@@ -8,30 +8,30 @@ export const connections = {
   "connections.createConnectionDialog.commandLabel": "Comando *",
   "connections.createConnectionDialog.commandPlaceholder":
     "node, bun, python...",
-  "connections.createConnectionDialog.createButton": "Criar Conex\u00e3o",
+  "connections.createConnectionDialog.createButton": "Criar Conexão",
   "connections.createConnectionDialog.customCommandType":
     "Comando Personalizado",
   "connections.createConnectionDialog.description":
-    "Crie uma conex\u00e3o personalizada em sua organiza\u00e7\u00e3o. Preencha os detalhes abaixo.",
-  "connections.createConnectionDialog.descriptionLabel": "Descri\u00e7\u00e3o",
+    "Crie uma conexão personalizada em sua organização. Preencha os detalhes abaixo.",
+  "connections.createConnectionDialog.descriptionLabel": "Descrição",
   "connections.createConnectionDialog.descriptionPlaceholder":
-    "Uma breve descri\u00e7\u00e3o desta conex\u00e3o",
+    "Uma breve descrição desta conexão",
   "connections.createConnectionDialog.environmentVariablesLabel":
-    "Vari\u00e1veis de Ambiente",
+    "Variáveis de Ambiente",
   "connections.createConnectionDialog.failedToCreateConnection":
-    "Falha ao criar conex\u00e3o",
+    "Falha ao criar conexão",
   "connections.createConnectionDialog.httpType": "HTTP",
   "connections.createConnectionDialog.nameLabel": "Nome *",
-  "connections.createConnectionDialog.namePlaceholder": "Minha Conex\u00e3o",
+  "connections.createConnectionDialog.namePlaceholder": "Minha Conexão",
   "connections.createConnectionDialog.npmPackageLabel": "Pacote NPM *",
   "connections.createConnectionDialog.npmPackagePlaceholder":
     "@perplexity-ai/mcp-server",
   "connections.createConnectionDialog.npxPackageType": "Pacote NPX",
   "connections.createConnectionDialog.openGitHubPatSettings":
-    "Abrir configura\u00e7\u00f5es de PAT do GitHub",
+    "Abrir configurações de PAT do GitHub",
   "connections.createConnectionDialog.saving": "Salvando...",
   "connections.createConnectionDialog.sseType": "SSE",
-  "connections.createConnectionDialog.title": "Criar Conex\u00e3o",
+  "connections.createConnectionDialog.title": "Criar Conexão",
   "connections.createConnectionDialog.tokenLabelDefault": "Token (opcional)",
   "connections.createConnectionDialog.tokenPlaceholderDefault":
     "Token de Bearer ou chave de API",
@@ -41,9 +41,9 @@ export const connections = {
     "https://example.com/mcp",
   "connections.createConnectionDialog.websocketType": "Websocket",
   "connections.createConnectionDialog.workingDirectoryDescription":
-    "Diret\u00f3rio onde o comando ser\u00e1 executado",
+    "Diretório onde o comando será executado",
   "connections.createConnectionDialog.workingDirectoryLabel":
-    "Diret\u00f3rio de Trabalho",
+    "Diretório de Trabalho",
   "connections.createConnectionDialog.workingDirectoryPlaceholder":
     "/path/to/project (opcional)",
 } satisfies Record<keyof typeof connectionsEn, string>;

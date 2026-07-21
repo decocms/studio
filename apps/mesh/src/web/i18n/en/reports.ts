@@ -42,7 +42,7 @@ export const reports = {
   "reports.competitorTemplate.editMyCompetitors": "Edit my competitors",
   "reports.coverTemplate.decoScore": "Deco Score",
   "reports.coverTemplate.decoScoreExplanation":
-    "A composite score from 0\u2013100 measuring your store's commerce performance across page speed, SEO signals, conversion experience, and technical health. Higher is better.",
+    "A composite score from 0–100 measuring your store's commerce performance across page speed, SEO signals, conversion experience, and technical health. Higher is better.",
   "reports.coverTemplate.report": "Report",
   "reports.coverTemplate.whatIsDecoScore": "What is the Deco Score?",
   "reports.ctaTemplate.area.accessibility": "Accessibility",
@@ -86,8 +86,8 @@ export const reports = {
   "reports.ctaTemplate.subheading.part2":
     "clear next action. Deco fixes it for you.",
   "reports.keywordsTemplate.keyword": "Keyword",
-  "reports.keywordsTemplate.position": "Posi\u00e7\u00e3o",
-  "reports.keywordsTemplate.searchesPerMonth": "Buscas/m\u00eas",
+  "reports.keywordsTemplate.position": "Posição",
+  "reports.keywordsTemplate.searchesPerMonth": "Buscas/mês",
   "reports.scanGate.errorBlocked": "This report is not publicly available.",
   "reports.scanGate.errorEmpty":
     "We scanned your store, but the report is still being built. Check back soon.",
@@ -110,9 +110,9 @@ export const reports = {
   "reports.signalDeck.copyLink": "Copy link",
   "reports.signalDeck.coverageTooltip":
     "Coverage: {probed} of {total} checks measured in this free report",
-  "reports.signalDeck.decoHome": "deco \u2014 home page",
+  "reports.signalDeck.decoHome": "deco — home page",
   "reports.signalDeck.feedbackPlaceholder":
-    "E.g.: the price shown is outdated, the metric doesn't match the segment\u2026",
+    "E.g.: the price shown is outdated, the metric doesn't match the segment…",
   "reports.signalDeck.feedbackQuestion":
     "What did the analysis get wrong on this slide?",
   "reports.signalDeck.feedbackThanks": "Thank you! We'll review this slide.",
@@ -124,7 +124,7 @@ export const reports = {
   "reports.signalDeck.nextSlide": "Next slide",
   "reports.signalDeck.previousSlide": "Previous slide",
   "reports.signalDeck.reportError": "Did AI get it wrong?",
-  "reports.signalDeck.sending": "Sending\u2026",
+  "reports.signalDeck.sending": "Sending…",
   "reports.signalDeck.share": "Share",
   "reports.signalDeck.shareButton": "Share",
   "reports.signalDeck.shareOnLinkedIn": "Share on LinkedIn",

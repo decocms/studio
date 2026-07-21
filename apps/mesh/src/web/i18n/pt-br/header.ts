@@ -2,7 +2,7 @@ import type { header as headerEn } from "../en/header.ts";
 
 export const header = {
   "header.linkedDesktopIndicator.availableCapabilities":
-    "Dispon\u00edvel: {capabilities}",
+    "Disponível: {capabilities}",
   "header.linkedDesktopIndicator.connectDesktop": "Conectar desktop",
   "header.linkedDesktopIndicator.connectYourDesktop": "Conecte seu desktop",
   "header.linkedDesktopIndicator.desktopDisconnected": "Desktop desconectado",
@@ -16,11 +16,9 @@ export const header = {
   "header.orgSwitcher.invitedToJoin": "Convidado para entrar",
   "header.orgSwitcher.joined": "Entrou em {name}",
   "header.orgSwitcher.noOrganizationsAvailable":
-    "Nenhuma organiza\u00e7\u00e3o dispon\u00edvel",
+    "Nenhuma organização disponível",
   "header.orgSwitcher.noOrganizationsMatch":
-    'Nenhuma organiza\u00e7\u00e3o coincide com "{query}"',
-  "header.orgSwitcher.searchOrganizations":
-    "Pesquisar organiza\u00e7\u00f5es...",
-  "header.orgSwitcher.unknownOrganization":
-    "Organiza\u00e7\u00e3o desconhecida",
+    'Nenhuma organização coincide com "{query}"',
+  "header.orgSwitcher.searchOrganizations": "Pesquisar organizações...",
+  "header.orgSwitcher.unknownOrganization": "Organização desconhecida",
 } satisfies Record<keyof typeof headerEn, string>;

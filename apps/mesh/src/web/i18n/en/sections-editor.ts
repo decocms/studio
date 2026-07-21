@@ -22,10 +22,10 @@ export const sectionsEditor = {
   "sectionsEditor.arrayField.showItem": "Show item",
   "sectionsEditor.arrayField.startPreviewServer":
     "Start the preview dev server to add sections.",
-  "sectionsEditor.brazilMap.ariaLabel": "Map of Brazil \u2014 select a state",
+  "sectionsEditor.brazilMap.ariaLabel": "Map of Brazil — select a state",
   "sectionsEditor.createPageModal.cancelButton": "Cancel",
   "sectionsEditor.createPageModal.createButton": "Create",
-  "sectionsEditor.createPageModal.creatingButton": "Creating\u2026",
+  "sectionsEditor.createPageModal.creatingButton": "Creating…",
   "sectionsEditor.createPageModal.defaultPageName": "My New Page",
   "sectionsEditor.createPageModal.defaultPagePath": "/example-path",
   "sectionsEditor.createPageModal.nameLabel": "Name",
@@ -51,9 +51,9 @@ export const sectionsEditor = {
   "sectionsEditor.fileField.replaceVideoLabel": "Replace video",
   "sectionsEditor.fileField.sizeLimit": "Up to 100 MB",
   "sectionsEditor.fileField.uploadFailed": "Upload failed",
-  "sectionsEditor.fileField.uploading": "Uploading\u2026",
+  "sectionsEditor.fileField.uploading": "Uploading…",
   "sectionsEditor.fileField.videoFileError":
-    "Please drop a video file (mp4, webm, \u2026).",
+    "Please drop a video file (mp4, webm, …).",
   "sectionsEditor.imageField.browse": "Browse",
   "sectionsEditor.imageField.dropImageOrClickToBrowse":
     "Drop an image or click to browse",
@@ -64,11 +64,11 @@ export const sectionsEditor = {
   "sectionsEditor.imageField.removeImage": "Remove image",
   "sectionsEditor.imageField.replaceImage": "Replace image",
   "sectionsEditor.imageField.supportedFormatsAndSize":
-    "PNG, JPEG, WebP, GIF, SVG, AVIF \u2014 up to 100 MB",
+    "PNG, JPEG, WebP, GIF, SVG, AVIF — up to 100 MB",
   "sectionsEditor.imageField.uploadFailed": "Upload failed",
   "sectionsEditor.imageField.uploadedWithExtraFilesIgnored":
     "Uploaded {fileName}; extra files were ignored (single-select field).",
-  "sectionsEditor.imageField.uploading": "Uploading\u2026",
+  "sectionsEditor.imageField.uploading": "Uploading…",
   "sectionsEditor.imageField.urlPlaceholder": "https://...",
   "sectionsEditor.inlineUnionField.selectPlaceholder": "Select...",
   "sectionsEditor.locationField.cityDefault": "City",
@@ -85,16 +85,15 @@ export const sectionsEditor = {
     "ISO 3166-2 subdivision code from cf-region-code.",
   "sectionsEditor.locationField.regionCodePlaceholder": "e.g. SP",
   "sectionsEditor.locationField.regionDefault": "Region",
-  "sectionsEditor.locationField.selectCountryPlaceholder":
-    "Select a country\u2026",
-  "sectionsEditor.locationField.selectStatePlaceholder": "Select a state\u2026",
+  "sectionsEditor.locationField.selectCountryPlaceholder": "Select a country…",
+  "sectionsEditor.locationField.selectStatePlaceholder": "Select a state…",
   "sectionsEditor.makeReusableModal.blockNameLabel": "Block name",
   "sectionsEditor.makeReusableModal.blockNamePlaceholder": "MyNewBlock",
   "sectionsEditor.makeReusableModal.cancel": "Cancel",
   "sectionsEditor.makeReusableModal.description":
     "Save this section as a global block so it can be reused on other pages.",
   "sectionsEditor.makeReusableModal.save": "Save",
-  "sectionsEditor.makeReusableModal.saving": "Saving\u2026",
+  "sectionsEditor.makeReusableModal.saving": "Saving…",
   "sectionsEditor.makeReusableModal.title": "Save as global",
   "sectionsEditor.matcherPicker.alwaysLabel": "Always",
   "sectionsEditor.matcherPicker.chooseRuleDescription":
@@ -112,17 +111,17 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.copied": "Copied",
   "sectionsEditor.pageJsonDialog.copy": "Copy",
   "sectionsEditor.pageJsonDialog.invalidJsonError":
-    "Invalid JSON \u2014 fix the syntax before saving.",
+    "Invalid JSON — fix the syntax before saving.",
   "sectionsEditor.pageJsonDialog.pageNotFound": "Page not found.",
   "sectionsEditor.pageJsonDialog.save": "Save",
   "sectionsEditor.pageJsonDialog.saveError": "Save failed: {error}",
   "sectionsEditor.pageJsonDialog.saveSuccess": "Page JSON saved.",
-  "sectionsEditor.pageJsonDialog.saving": "Saving\u2026",
+  "sectionsEditor.pageJsonDialog.saving": "Saving…",
   "sectionsEditor.pageJsonDialog.title": "Page JSON",
   "sectionsEditor.pageTemplateSelect.blankPageDefaultLabel": "Blank page",
   "sectionsEditor.pageTemplateSelect.blankPageLabel": "Blank page",
   "sectionsEditor.pageTemplateSelect.noPagesFoundMessage": "No pages found.",
-  "sectionsEditor.pageTemplateSelect.searchPlaceholder": "Search pages\u2026",
+  "sectionsEditor.pageTemplateSelect.searchPlaceholder": "Search pages…",
   "sectionsEditor.pageVariantTabs.actionsAriaLabel": "Actions for {label}",
   "sectionsEditor.pageVariantTabs.addVariantAriaLabel": "Add variant",
   "sectionsEditor.pageVariantTabs.addVariantTooltip": "Add variant",
@@ -137,7 +136,7 @@ export const sectionsEditor = {
   "sectionsEditor.richTextLinkControl.sameTabLabel": "Same tab",
   "sectionsEditor.richTextLinkControl.urlInputAriaLabel": "Link URL",
   "sectionsEditor.richTextLinkControl.urlInputPlaceholder":
-    "Paste or type a link\u2026",
+    "Paste or type a link…",
   "sectionsEditor.secretField.leaveBlankPlaceholder":
     "Leave blank to keep current value",
   "sectionsEditor.secretField.secretNamePlaceholder": "Secret name",
@@ -254,6 +253,6 @@ export const sectionsEditor = {
     "Save this matcher as a global block with a custom label. Leave empty to inline the matcher again and fall back to {fallback}.",
   "sectionsEditor.variantRenameDialog.nameLabel": "Name",
   "sectionsEditor.variantRenameDialog.save": "Save",
-  "sectionsEditor.variantRenameDialog.saving": "Saving\u2026",
+  "sectionsEditor.variantRenameDialog.saving": "Saving…",
   "sectionsEditor.variantRenameDialog.title": "Rename variant",
 } as const;

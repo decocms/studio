@@ -122,7 +122,7 @@ export const virtualMcp = {
   "virtualMcp.subAgentsSection.canOnlyDelegateToItself":
     "Can only delegate to a fresh copy of itself, no other agents.",
   "virtualMcp.subAgentsSection.emptyStateMessage":
-    "No sub-agents selected yet. Add one \u2014 until then this agent can only delegate to itself.",
+    "No sub-agents selected yet. Add one — until then this agent can only delegate to itself.",
   "virtualMcp.subAgentsSection.noAgentsFound": "No agents found.",
   "virtualMcp.subAgentsSection.onlyItself": "Only itself",
   "virtualMcp.subAgentsSection.searchPlaceholder": "Search agents...",
@@ -185,7 +185,7 @@ export const virtualMcp = {
   "virtualMcp.virtualMcpShareModal.copied": "Copied!",
   "virtualMcp.virtualMcpShareModal.copyUrl": "Copy URL",
   "virtualMcp.virtualMcpShareModal.createApiKey": "Create API key",
-  "virtualMcp.virtualMcpShareModal.creating": "Creating\u2026",
+  "virtualMcp.virtualMcpShareModal.creating": "Creating…",
   "virtualMcp.virtualMcpShareModal.failedCreateApiKey":
     "Failed to create API key",
   "virtualMcp.virtualMcpShareModal.failedGenerateApiKey":
@@ -196,12 +196,12 @@ export const virtualMcp = {
     "Generate typed client",
   "virtualMcp.virtualMcpShareModal.generateTypedClientDescription":
     "Introspects this agent and writes a typed client.ts you can import directly.",
-  "virtualMcp.virtualMcpShareModal.generating": "Generating\u2026",
+  "virtualMcp.virtualMcpShareModal.generating": "Generating…",
   "virtualMcp.virtualMcpShareModal.installOnClaudeCode":
     "Install on Claude Code",
   "virtualMcp.virtualMcpShareModal.installOnCursor": "Install on Cursor",
   "virtualMcp.virtualMcpShareModal.openingCursor": "Opening Cursor...",
   "virtualMcp.virtualMcpShareModal.runtimeVariables": "Runtime variables",
   "virtualMcp.virtualMcpShareModal.storeKeySecurely":
-    "Store this key securely \u2014 it won't be shown again.",
+    "Store this key securely — it won't be shown again.",
 } as const;

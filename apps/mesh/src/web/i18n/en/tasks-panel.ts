@@ -3,7 +3,7 @@ export const tasksPanel = {
     "Search across your organization's resources.",
   "tasksPanel.globalSearchDialog.noResults": "No results.",
   "tasksPanel.globalSearchDialog.placeholder": "Search...",
-  "tasksPanel.globalSearchDialog.searching": "Searching\u2026",
+  "tasksPanel.globalSearchDialog.searching": "Searching…",
   "tasksPanel.globalSearchDialog.startTyping": "Start typing to search.",
   "tasksPanel.globalSearchDialog.title": "Search",
   "tasksPanel.globalSearchDialog.untitledChat": "Untitled chat",

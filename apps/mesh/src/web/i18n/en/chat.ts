@@ -37,14 +37,13 @@ export const chat = {
   "chat.approval.preparingRequest": "Preparing approval request...",
   "chat.assistant.messagePlural": "{count} message(s)",
   "chat.assistant.noResponseGenerated": "No response was generated",
-  "chat.assistant.resumedBackgroundTask":
-    "Resumed \u2014 background task completed",
+  "chat.assistant.resumedBackgroundTask": "Resumed — background task completed",
   "chat.assistant.resumingTask": "Resuming task...",
   "chat.assistant.toolCallPlural": "{count} tool call(s)",
   "chat.brandContext.brand": "Brand",
   "chat.brandContext.brandContextSet": "Brand context set",
   "chat.brandContext.brandSet": "Brand set: {name}",
-  "chat.brandContext.brandWithName": "Brand \u00b7 {name}",
+  "chat.brandContext.brandWithName": "Brand · {name}",
   "chat.brandContext.colorAccent": "Accent",
   "chat.brandContext.colorBackground": "Background",
   "chat.brandContext.colorForeground": "Foreground",
@@ -68,7 +67,7 @@ export const chat = {
   "chat.brandContext.unknownError": "Unknown error",
   "chat.brandContext.untitled": "Untitled",
   "chat.chat.jumpToLatest": "Jump to latest",
-  "chat.chat.loadingOlderMessages": "Loading older messages\u2026",
+  "chat.chat.loadingOlderMessages": "Loading older messages…",
   "chat.chatContext.activeTaskProviderMissingContext":
     "ActiveTaskProvider must be used within ChatContextProvider",
   "chat.chatContext.cancelFailedStatus": "Cancel failed: {status}",
@@ -78,7 +77,7 @@ export const chat = {
   "chat.chatContext.failedToQueueMessage": "Failed to queue message",
   "chat.chatContext.failedToSendEditedMessage": "Failed to send edited message",
   "chat.chatContext.stillSendingPreviousMessage":
-    "Still sending your previous message \u2014 try again in a moment",
+    "Still sending your previous message — try again in a moment",
   "chat.chatContext.useChatPrefsMissingContext":
     "useChatPrefs must be used within ChatContextProvider",
   "chat.chatContext.useChatStreamMissingContext":
@@ -102,7 +101,7 @@ export const chat = {
   "chat.connectDesktopDialog.notDetected": "Not detected",
   "chat.connectDesktopDialog.runCommandDescription":
     "Run this command in your desktop terminal. The dialog will close once your desktop is online.",
-  "chat.connectDesktopDialog.waitingForDesktop": "Waiting for desktop\u2026",
+  "chat.connectDesktopDialog.waitingForDesktop": "Waiting for desktop…",
   "chat.connectDesktopDialog.yourDesktop": "Your desktop",
   "chat.connectionList.connectionNoun": "connections",
   "chat.connectionList.emptySummary":
@@ -200,7 +199,7 @@ export const chat = {
   "chat.generateImage.generatingImage": "Generating image",
   "chat.generateImage.imageGeneration": "Image generation",
   "chat.generateImage.imageQueuedGeneratingInBackground":
-    "Image queued \u2014 generating in the background",
+    "Image queued — generating in the background",
   "chat.generateImage.noImagesGenerated": "No images generated",
   "chat.generateImage.reference": "reference",
   "chat.generateImage.references": "references:",
@@ -253,16 +252,16 @@ export const chat = {
   "chat.input.deepResearch": "Deep research",
   "chat.input.dropFilesHere": "Drop {fileTypes} here",
   "chat.input.microphoneAccessDenied":
-    "Microphone access denied \u2014 click to try again",
+    "Microphone access denied — click to try again",
   "chat.input.modelCannotReadAttachments":
-    "This model can't read attachments \u2014 switch to one with vision or file support",
+    "This model can't read attachments — switch to one with vision or file support",
   "chat.input.planMode": "Plan mode",
   "chat.input.readOnlyOthersChat":
     "Read only - you're viewing someone else's chat",
   "chat.input.sendMessage": "Send message",
   "chat.input.sendMessageEnter": "Send message (Enter)",
   "chat.input.stillSendingPreviousMessage":
-    "Still sending your previous message \u2014 try again in a moment",
+    "Still sending your previous message — try again in a moment",
   "chat.input.stopGenerating": "Stop generating",
   "chat.input.useTranscription": "Use transcription",
   "chat.input.voiceInput": "Voice input",
@@ -296,11 +295,11 @@ export const chat = {
   "chat.noAiProviderEmptyState.orConnectProvider":
     "or connect a cloud provider",
   "chat.noAiProviderEmptyState.subtitleDefault":
-    "Connect a provider \u2014 or run `bunx decocms@latest link` on your desktop to use Claude Code, Codex, or your local files.",
+    "Connect a provider — or run `bunx decocms@latest link` on your desktop to use Claude Code, Codex, or your local files.",
   "chat.noAiProviderEmptyState.subtitleLocalMode":
     "Connect a provider, or run `bunx decocms@latest link` on your desktop for Claude Code, Codex, and local files.",
   "chat.noAiProviderEmptyState.subtitleWithDesktop":
-    "Your desktop is linked \u2014 start now with a local coding agent, or connect a cloud provider for hosted models.",
+    "Your desktop is linked — start now with a local coding agent, or connect a cloud provider for hosted models.",
   "chat.noAiProviderEmptyState.useLabel": "Use {label}",
   "chat.outputFileRow.download": "Download",
   "chat.outputFileRow.downloadFile": "Download {filename}",
@@ -371,8 +370,8 @@ export const chat = {
   "chat.subtask.errorLabel": "Error",
   "chat.subtask.failedWithError": "Subtask failed: {error}",
   "chat.subtask.resultLabel": "Result",
-  "chat.subtask.running": "Running\u2026",
-  "chat.subtask.runningInBackground": "Running in the background\u2026",
+  "chat.subtask.running": "Running…",
+  "chat.subtask.runningInBackground": "Running in the background…",
   "chat.subtask.taskLabel": "Task",
   "chat.takeScreenshot.failed": "Failed",
   "chat.takeScreenshot.screenshot": "Screenshot",
@@ -405,7 +404,7 @@ export const chat = {
   "chat.toolsPopover.deepResearch": "Deep research",
   "chat.toolsPopover.failedLoadPrompt":
     "Failed to load prompt. Please try again.",
-  "chat.toolsPopover.loadingPrompts": "Loading prompts\u2026",
+  "chat.toolsPopover.loadingPrompts": "Loading prompts…",
   "chat.toolsPopover.modelNoFileSupport":
     "The selected model does not support reading files or images.",
   "chat.toolsPopover.noPromptsAvailable": "No prompts available",

@@ -2,7 +2,6 @@ import type { releaseChannel as releaseChannelEn } from "../en/release-channel.t
 
 export const releaseChannel = {
   "releaseChannel.floatingReleaseCard.dismissReleaseAnnouncement":
-    "Descartar an\u00fancio de vers\u00e3o",
-  "releaseChannel.floatingReleaseCard.releaseAnnouncement":
-    "An\u00fancio de vers\u00e3o",
+    "Descartar anúncio de versão",
+  "releaseChannel.floatingReleaseCard.releaseAnnouncement": "Anúncio de versão",
 } satisfies Record<keyof typeof releaseChannelEn, string>;
