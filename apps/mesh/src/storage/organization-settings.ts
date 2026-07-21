@@ -46,7 +46,6 @@ export class OrganizationSettingsStorage
           : record.default_home_agents
         : null,
       reports_only: record.reports_only ?? null,
-      task_board_enabled: record.task_board_enabled,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -63,7 +62,6 @@ export class OrganizationSettingsStorage
         | "simple_mode"
         | "default_home_agents"
         | "reports_only"
-        | "task_board_enabled"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -93,7 +91,6 @@ export class OrganizationSettingsStorage
         simple_mode: simpleModeJson,
         default_home_agents: defaultHomeAgentsJson,
         reports_only: data?.reports_only ?? null,
-        task_board_enabled: data?.task_board_enabled,
         createdAt: now,
         updatedAt: now,
       })
@@ -107,9 +104,8 @@ export class OrganizationSettingsStorage
             ? defaultHomeAgentsJson
             : undefined,
           // Boolean flag: explicit `false` must persist; `undefined` (field
-          // absent) skips the column in doUpdateSet, same as task_board_enabled.
+          // absent) skips the column in doUpdateSet.
           reports_only: data?.reports_only,
-          task_board_enabled: data?.task_board_enabled,
           updatedAt: now,
         }),
       )
@@ -126,7 +122,6 @@ export class OrganizationSettingsStorage
         simple_mode: data?.simple_mode ?? null,
         default_home_agents: data?.default_home_agents ?? null,
         reports_only: data?.reports_only ?? null,
-        task_board_enabled: data?.task_board_enabled ?? false,
         createdAt: now,
         updatedAt: now,
       };

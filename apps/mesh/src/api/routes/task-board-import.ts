@@ -20,12 +20,8 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * caller holds the org *id*, so resolve-org-from-path also matches this route
  * in its resolve-by-id allowlist.
  *
- * The import AUTO-ENABLES the org's task board once the batch validates: the
- * report push is typically the org's first contact with the board, and the
- * disabled default would otherwise silently drop every task (nobody flips a
- * setting they've never seen). A malformed/rejected request never flips it on
- * with nothing to show for it. Items land as status "triage" with
- * `created_by = "system"` (the established sentinel for non-user principals).
+ * Items land as status "triage" with `created_by = "system"` (the established
+ * sentinel for non-user principals).
  * `source` is accepted for observability / future dedup and not persisted yet.
  *
  * An item may carry `assigneeId` — a real org member, or the Super Agent
@@ -122,15 +118,6 @@ export const createTaskBoardImportRoutes = () => {
         .executeTakeFirst();
       ownerId = owner?.userId ?? null;
     }
-
-    // Auto-enable: the tasks ARE the org's introduction to the board. Done
-    // only once the batch is known-valid, so a malformed/rejected request
-    // never flips the setting on with nothing to show for it. The upsert only
-    // touches task_board_enabled (absent fields are skipped on conflict), so
-    // existing org settings are never clobbered.
-    await ctx.storage.organizationSettings.upsert(organizationId, {
-      task_board_enabled: true,
-    });
 
     let created = 0;
     let delegated = 0;

@@ -162,7 +162,6 @@ export interface OrganizationSettingsTable {
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
   reports_only: boolean | null;
-  task_board_enabled: ColumnType<boolean, boolean | undefined, boolean>;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -175,7 +174,6 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   reports_only: boolean | null;
-  task_board_enabled: boolean;
   createdAt: Date | string;
   updatedAt: Date | string;
 }

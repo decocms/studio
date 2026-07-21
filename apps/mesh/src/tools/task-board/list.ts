@@ -2,7 +2,6 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import { TaskBoardItemSchema } from "./schema";
-import { requireTaskBoardEnabled } from "./require-enabled";
 
 export const TASK_BOARD_ITEM_LIST = defineTool({
   name: "TASK_BOARD_ITEM_LIST",
@@ -26,8 +25,6 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
-
-    await requireTaskBoardEnabled(ctx, organizationId);
 
     const items = await ctx.storage.taskBoard.list(organizationId);
     return { items };

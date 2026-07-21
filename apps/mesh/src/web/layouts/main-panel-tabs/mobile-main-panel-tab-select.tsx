@@ -10,10 +10,7 @@ import {
   getCommerceDiscoveryAgentId,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import {
-  useReportsOnly,
-  useTaskBoardEnabled,
-} from "@/web/hooks/use-organization-settings";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { shouldDeepLinkSourceTab } from "./source-system-tabs";
 import type { TabIcon } from "./resolve-tab-icon";
@@ -66,7 +63,6 @@ export function MobileMainPanelTabSelect({
     virtualMcpId,
     taskId,
   });
-  const taskBoardEnabled = useTaskBoardEnabled();
   const { org } = useProjectContext();
   const reportsOnly = useReportsOnly();
   const onReportAgent = virtualMcpId === getCommerceDiscoveryAgentId(org.id);
@@ -82,7 +78,7 @@ export function MobileMainPanelTabSelect({
       title: tab.title,
       icon: tab.icon,
     })),
-    ...(taskBoardEnabled && overlayEnabled
+    ...(overlayEnabled
       ? [{ value: "board", title: "Tasks", icon: TASKS_ICON }]
       : []),
     ...(overlayEnabled

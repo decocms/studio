@@ -42,7 +42,6 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   reports_only: boolean | null;
-  task_board_enabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -55,7 +54,6 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   simple_mode: null,
   default_home_agents: null,
   reports_only: null,
-  task_board_enabled: false,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -139,7 +137,6 @@ type OrgSettingsUpdateInput = Partial<
     | "simple_mode"
     | "default_home_agents"
     | "reports_only"
-    | "task_board_enabled"
   >
 >;
 
@@ -236,27 +233,6 @@ export function useUpdateSimpleMode() {
 export function useReportsOnly(): boolean {
   const { data } = useOrganizationSettings((s) => s.reports_only ?? false);
   return data ?? false;
-}
-
-export function useTaskBoardEnabled(): boolean {
-  const reportsOnly = useReportsOnly();
-  const { data } = useOrganizationSettings(
-    (s) => s.task_board_enabled ?? false,
-  );
-  // Commerce (reports-only) orgs always have the task board enabled — no need
-  // to toggle it on in settings.
-  return reportsOnly || (data ?? false);
-}
-
-export function useUpdateTaskBoardEnabled() {
-  const mutation = useUpdateOrganizationSettings();
-  return {
-    ...mutation,
-    mutate: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
-      mutation.mutate({ task_board_enabled: enabled }, options),
-    mutateAsync: (enabled: boolean, options?: OrgSettingsMutateOptions) =>
-      mutation.mutateAsync({ task_board_enabled: enabled }, options),
-  };
 }
 
 export function useRegistryConfig(): RegistryConfig | null {
