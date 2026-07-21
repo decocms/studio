@@ -155,7 +155,7 @@ export function HomeTasks({ afterSummary }: { afterSummary?: ReactNode }) {
   const [tab, setTab] = useState<TaskTab>("all");
   const [createOpen, setCreateOpen] = useState(false);
 
-  // Task board can be off for an org (list errors) — treat as no tasks.
+  // Keep the home surface usable if the task query fails.
   const tasks = error ? [] : items;
   const sorted = [...tasks].sort((a, b) =>
     (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""),

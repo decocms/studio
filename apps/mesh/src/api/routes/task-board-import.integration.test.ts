@@ -103,7 +103,9 @@ describe("Task Board Import Route", () => {
     expect(wrongToken.status).toBe(401);
   });
 
-  it("creates items for an org that never touched the board before", async () => {
+  it("imports tasks without creating organization settings", async () => {
+    // org_1 (seeded) has no settings row. The task board is always available,
+    // so importing tasks must not create unrelated configuration state.
     const res = await app.fetch(post("org_1", "svc-secret", BODY));
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({
@@ -111,6 +113,13 @@ describe("Task Board Import Route", () => {
       updated: 0,
       delegated: 0,
     });
+
+    const settings = await database.db
+      .selectFrom("organization_settings")
+      .select(["organizationId"])
+      .where("organizationId", "=", "org_1")
+      .executeTakeFirst();
+    expect(settings).toBeUndefined();
   });
 
   it("rejects an invalid body", async () => {
