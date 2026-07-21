@@ -31,11 +31,7 @@ export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
     id: z.string(),
     organizationId: z.string(),
     userId: z.string(),
-    role: z.union([
-      z.literal("admin"),
-      z.literal("member"),
-      z.literal("owner"),
-    ]),
+    role: z.union([z.string(), z.array(z.string())]), // Better Auth can return string or array
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     user: z.object({
       email: z.string(),
