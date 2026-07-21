@@ -12,6 +12,7 @@ import {
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ConnectionUiTabProps {
   tools: Tool[] | undefined;
@@ -24,6 +25,7 @@ export function ConnectionUiTab({
   connectionId,
   org,
 }: ConnectionUiTabProps) {
+  const t = useT();
   const navigate = useNavigate();
   const { org: projectOrg } = useProjectContext();
   const client = useMCPClient({
@@ -66,7 +68,7 @@ export function ConnectionUiTab({
       <CollectionSearch
         value={search}
         onChange={setSearch}
-        placeholder="Search apps..."
+        placeholder={t("details.connectionUiTab.searchAppsPlaceholder")}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             setSearch("");
@@ -79,11 +81,15 @@ export function ConnectionUiTab({
         {filteredTools.length === 0 ? (
           <EmptyState
             image={null}
-            title={search ? "No apps found" : "No apps available"}
+            title={
+              search
+                ? t("details.connectionUiTab.noAppsFound")
+                : t("details.connectionUiTab.noAppsAvailable")
+            }
             description={
               search
-                ? "Try adjusting your search terms"
-                : "This connection doesn't have any tools with interactive UIs yet."
+                ? t("details.connectionUiTab.adjustSearchTerms")
+                : t("details.connectionUiTab.noInteractiveUis")
             }
           />
         ) : (

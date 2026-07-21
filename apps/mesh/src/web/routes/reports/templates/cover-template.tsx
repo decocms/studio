@@ -4,14 +4,15 @@ import type { CoverProps } from "@/reports/deck-types";
 import Icon from "../icon";
 import DeviceCluster from "./device-cluster";
 import { DECK, TONE_COLOR } from "./tokens";
+import { useT } from "@/web/i18n/use-t.ts";
 
 // Health bands: red ≤40, yellow 41–60, green ≥61.
 function scoreTone(n: number) {
   return n >= 61 ? TONE_COLOR.good : n >= 41 ? DECK.warn : TONE_COLOR.bad;
 }
 
-const DECO_SCORE_EXPLANATION =
-  "A composite score from 0–100 measuring your store's commerce performance across page speed, SEO signals, conversion experience, and technical health. Higher is better.";
+// ponytail: this is a module-scope constant used in a component; resolution moved inside the component
+const DECO_SCORE_EXPLANATION_KEY = "reports.coverTemplate.decoScoreExplanation";
 
 /** The Deco Score — ring + oversized count-up number + label. The count-up is
  *  driven by a rAF loop started from a callback ref (re-attached when
@@ -25,6 +26,7 @@ function ScoreBlock({
   active: boolean;
   compact?: boolean;
 }) {
+  const t = useT();
   const [animated, setAnimated] = useState(0);
   const tone = scoreTone(score.value);
   const ringSize = compact ? 66 : 104;
@@ -119,11 +121,11 @@ function ScoreBlock({
             className="text-[11px] font-medium uppercase tracking-[0.04em] lg:text-[12px]"
             style={{ color: DECK.soft }}
           >
-            Deco Score
+            {t("reports.coverTemplate.decoScore")}
           </span>
           <button
             type="button"
-            aria-label="What is the Deco Score?"
+            aria-label={t("reports.coverTemplate.whatIsDecoScore")}
             className="flex items-center justify-center rounded-full transition-opacity"
             style={{ opacity: tipOpen ? 0.8 : 0.45 }}
             onMouseEnter={() => setTipOpen(true)}
@@ -144,7 +146,7 @@ function ScoreBlock({
                   "0 4px 6px rgba(40,37,36,0.06), 0 12px 32px rgba(40,37,36,0.12)",
               }}
             >
-              {DECO_SCORE_EXPLANATION}
+              {t(DECO_SCORE_EXPLANATION_KEY)}
             </div>
           )}
         </div>
@@ -215,6 +217,7 @@ export default function CoverTemplate({
   findings,
   onFindingClick,
 }: CoverProps) {
+  const t = useT();
   // Replay the deal-in entrance every time the slide re-enters (keyed remount).
   // Render-phase "state from props" adjustment — no effect needed.
   const [prevActive, setPrevActive] = useState(active);
@@ -344,7 +347,7 @@ export default function CoverTemplate({
         className="shrink-0 text-[10px] font-medium uppercase tracking-[0.04em] lg:text-[11px]"
         style={{ color: DECK.soft }}
       >
-        Relatório
+        {t("reports.coverTemplate.report")}
       </span>
     </div>
   );

@@ -12,6 +12,7 @@ import {
   visibleCapabilities,
 } from "@/web/components/chat/connect-desktop-dialog";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /**
  * `icon` (default) renders the compact toolbar button used in the header and
@@ -23,24 +24,33 @@ export function LinkedDesktopIndicator({
 }: {
   variant?: "icon" | "full";
 } = {}) {
+  const t = useT();
   const link = useCurrentLink();
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const labels = visibleCapabilities(link.capabilities);
-  const label = link.online ? "Desktop linked" : "Connect desktop";
+  const labels = visibleCapabilities(link.capabilities, t);
+  const label = link.online
+    ? t("header.linkedDesktopIndicator.desktopLinked")
+    : t("header.linkedDesktopIndicator.connectDesktop");
   const tooltipContent = link.online ? (
     <div className="flex flex-col gap-0.5 text-xs">
       <span className="font-medium">
-        {link.hostname ?? link.machineId ?? "Desktop linked"}
+        {link.hostname ??
+          link.machineId ??
+          t("header.linkedDesktopIndicator.desktopLinked")}
       </span>
       <span className="text-muted-foreground">
         {labels.length > 0
-          ? `Available: ${labels.join(", ")}`
-          : "No CLI agents detected"}
+          ? t("header.linkedDesktopIndicator.availableCapabilities", {
+              capabilities: labels.join(", "),
+            })
+          : t("header.linkedDesktopIndicator.noCliAgents")}
       </span>
     </div>
   ) : (
-    <span className="text-xs">Desktop disconnected</span>
+    <span className="text-xs">
+      {t("header.linkedDesktopIndicator.desktopDisconnected")}
+    </span>
   );
 
   if (variant === "full") {
@@ -72,7 +82,11 @@ export function LinkedDesktopIndicator({
         <TooltipTrigger asChild>
           <ToolbarIconButton
             onClick={() => setDialogOpen(true)}
-            aria-label={link.online ? "Desktop linked" : "Connect your desktop"}
+            aria-label={
+              link.online
+                ? t("header.linkedDesktopIndicator.desktopLinked")
+                : t("header.linkedDesktopIndicator.connectYourDesktop")
+            }
           >
             <Monitor01 size={16} />
             {link.online && (

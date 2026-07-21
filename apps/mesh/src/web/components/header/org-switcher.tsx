@@ -17,6 +17,7 @@ import {
 import { Button } from "@deco/ui/components/button.tsx";
 import { Check, Plus, SearchMd, XClose } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   authClient,
   invalidateOrganizationListCache,
@@ -87,8 +88,10 @@ function InvitationRow({
    *  clear. Accept hard-navigates, so it doesn't need this. */
   onChanged: () => void;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
-  const name = invitation.organizationName ?? "Unknown organization";
+  const name =
+    invitation.organizationName ?? t("header.orgSwitcher.unknownOrganization");
 
   const accept = async () => {
     setBusy(true);
@@ -102,11 +105,11 @@ function InvitationRow({
         return;
       }
     } catch {
-      toast.error("Failed to accept invitation");
+      toast.error(t("header.orgSwitcher.failedToAcceptInvitation"));
       setBusy(false);
       return;
     }
-    toast.success(`Joined ${name}`);
+    toast.success(t("header.orgSwitcher.joined", { name }));
     // Membership changed — drop the cached org list, then navigate into the
     // newly joined org (hard nav so the org-scoped loaders re-run cleanly).
     invalidateOrganizationListCache();
@@ -133,13 +136,13 @@ function InvitationRow({
         setBusy(false);
         return;
       }
-      toast.success("Invitation declined");
+      toast.success(t("header.orgSwitcher.invitationDeclined"));
       // Re-enable in case the refetch keeps the row briefly, and refresh the
       // invitation list so the declined row (and the breadcrumb dot) clear.
       setBusy(false);
       onChanged();
     } catch {
-      toast.error("Failed to decline invitation");
+      toast.error(t("header.orgSwitcher.failedToDeclineInvitation"));
       setBusy(false);
     }
   };
@@ -150,7 +153,7 @@ function InvitationRow({
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{name}</p>
         <p className="truncate text-xs text-muted-foreground">
-          Invited to join
+          {t("header.orgSwitcher.invitedToJoin")}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1">
@@ -161,7 +164,7 @@ function InvitationRow({
           onClick={accept}
           disabled={busy}
         >
-          Accept
+          {t("header.orgSwitcher.accept")}
         </Button>
         <Button
           size="icon"
@@ -169,7 +172,7 @@ function InvitationRow({
           className="size-7 text-muted-foreground"
           onClick={decline}
           disabled={busy}
-          aria-label={`Decline invitation to ${name}`}
+          aria-label={t("header.orgSwitcher.declineInvitationTo", { name })}
         >
           <XClose size={14} />
         </Button>
@@ -191,6 +194,7 @@ function OrganizationsPanel({
   // popover/drawer, so the (potentially large) organization.list call is
   // deferred until the switcher is actually opened — it no longer fires on
   // every page load.
+  const t = useT();
   const { data: organizations } = useActiveOrganizations();
   const { invitations: pendingInvitations, refetch: refetchInvitations } =
     usePendingInvitations();
@@ -225,7 +229,7 @@ function OrganizationsPanel({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Escape" && query && setQuery("")}
-          placeholder="Search organizations..."
+          placeholder={t("header.orgSwitcher.searchOrganizations")}
           className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
         />
         <button type="button" onClick={onCreateOrg} className={iconBtnClass}>
@@ -246,8 +250,8 @@ function OrganizationsPanel({
         {filtered.length === 0 && (
           <p className="px-3 py-4 text-sm text-muted-foreground/60 text-center">
             {query
-              ? `No organizations match "${query}"`
-              : "No organizations available"}
+              ? t("header.orgSwitcher.noOrganizationsMatch", { query })
+              : t("header.orgSwitcher.noOrganizationsAvailable")}
           </p>
         )}
         {filtered.map((org) => (

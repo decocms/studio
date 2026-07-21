@@ -9,6 +9,7 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { useChatTask } from "@/web/components/chat/chat-context";
 import { useTaskForThread } from "@/web/hooks/use-task-for-thread";
+import { useT } from "@/web/i18n/use-t.ts";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 
 /**
@@ -17,6 +18,7 @@ import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
  * no linked task (or the board is disabled — the lookup returns null then).
  */
 export function OpenInBoardButton() {
+  const t = useT();
   const { org } = useProjectContext();
   const { taskId } = useChatTask();
   const navigate = useNavigate();
@@ -29,7 +31,7 @@ export function OpenInBoardButton() {
       <Tooltip>
         <TooltipTrigger asChild>
           <ToolbarIconButton
-            aria-label="Open task in board"
+            aria-label={t("thread.openInBoardButton.openTaskAriaLabel")}
             onClick={() =>
               navigate({
                 to: "/$org/board",
@@ -41,7 +43,9 @@ export function OpenInBoardButton() {
             <LayoutAlt01 size={16} />
           </ToolbarIconButton>
         </TooltipTrigger>
-        <TooltipContent>Open task in board</TooltipContent>
+        <TooltipContent>
+          {t("thread.openInBoardButton.openTaskInBoard")}
+        </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

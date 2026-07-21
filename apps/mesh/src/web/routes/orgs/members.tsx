@@ -9,6 +9,7 @@ import { JoinRequestsSection } from "@/web/components/settings/join-requests-sec
 import { track } from "@/web/lib/posthog-client";
 import { formatDate } from "@/web/lib/format-time";
 import { getInitials } from "@/web/lib/get-initials";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useMembers } from "@/web/hooks/use-members";
 import {
   useInvitations,
@@ -118,6 +119,7 @@ function RoleSelector({
   size = "xs",
   className,
 }: RoleSelectorProps) {
+  const t = useT();
   const roleColor = roleColorMap.get(role) ?? "bg-muted-foreground";
 
   if (isOwner) {
@@ -162,7 +164,7 @@ function RoleSelector({
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            <p>The owner role cannot be changed</p>
+            <p>{t("orgs.members.ownerRoleCannotBeChanged")}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -228,6 +230,7 @@ function MemberActionsDropdown({
   onRemove,
   isUpdating = false,
 }: MemberActionsDropdownProps) {
+  const t = useT();
   const isOwner = member.role === "owner";
 
   // Filter out the current role and owner role from options
@@ -252,7 +255,7 @@ function MemberActionsDropdown({
         <DropdownMenuSub>
           <DropdownMenuSubTrigger disabled={isUpdating}>
             <SwitchHorizontal01 size={16} />
-            Change Role
+            {t("orgs.members.changeRole")}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
             {availableRoles.map((role) => {
@@ -262,32 +265,41 @@ function MemberActionsDropdown({
               if (!role.isBuiltin) {
                 // Static permissions
                 if (role.allowsAllStaticPermissions) {
-                  parts.push("Full org access");
+                  parts.push(t("orgs.members.fullOrgAccess"));
                 } else if (
                   role.staticPermissionCount &&
                   role.staticPermissionCount > 0
                 ) {
                   parts.push(
-                    `${role.staticPermissionCount} org perm${role.staticPermissionCount !== 1 ? "s" : ""}`,
+                    t("orgs.members.orgPermsCount", {
+                      count: role.staticPermissionCount,
+                      plural: role.staticPermissionCount !== 1 ? "s" : "",
+                    }),
                   );
                 }
 
                 // Connection permissions
                 if (role.allowsAllConnections) {
-                  parts.push("All connections");
+                  parts.push(t("orgs.members.allConnections"));
                 } else if (role.connectionCount && role.connectionCount > 0) {
                   parts.push(
-                    `${role.connectionCount} connection${role.connectionCount !== 1 ? "s" : ""}`,
+                    t("orgs.members.connectionCount", {
+                      count: role.connectionCount,
+                      plural: role.connectionCount !== 1 ? "s" : "",
+                    }),
                   );
                 }
 
                 // Tool permissions
                 if (role.connectionCount !== 0 || role.allowsAllConnections) {
                   if (role.allowsAllTools) {
-                    parts.push("all tools");
+                    parts.push(t("orgs.members.allTools"));
                   } else if (role.toolCount && role.toolCount > 0) {
                     parts.push(
-                      `${role.toolCount} tool${role.toolCount !== 1 ? "s" : ""}`,
+                      t("orgs.members.toolCount", {
+                        count: role.toolCount,
+                        plural: role.toolCount !== 1 ? "s" : "",
+                      }),
                     );
                   }
                 }
@@ -329,7 +341,7 @@ function MemberActionsDropdown({
           }}
         >
           <Trash01 size={16} />
-          Remove Member
+          {t("orgs.members.removeMember")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -348,6 +360,7 @@ function InvitationActionsDropdown({
   onCancel,
   isCancelling = false,
 }: InvitationActionsDropdownProps) {
+  const t = useT();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -370,7 +383,7 @@ function InvitationActionsDropdown({
           disabled={isCancelling}
         >
           <XClose size={16} />
-          Cancel Invitation
+          {t("orgs.members.cancelInvitation")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -378,6 +391,7 @@ function InvitationActionsDropdown({
 }
 
 function OrgMembersContent() {
+  const t = useT();
   const { data } = useMembers();
   const { data: invitations } = useInvitations();
   const invitationActions = useInvitationActions();
@@ -478,7 +492,7 @@ function OrgMembersContent() {
     onSuccess: () => {
       track("member_removed");
       queryClient.invalidateQueries({ queryKey: KEYS.members(locator) });
-      toast.success("Member has been removed from the organization");
+      toast.success(t("orgs.members.memberRemovedSuccess"));
       setMemberToRemove(null);
     },
     onError: (error) => {
@@ -486,7 +500,9 @@ function OrgMembersContent() {
         error: error instanceof Error ? error.message : String(error),
       });
       toast.error(
-        error instanceof Error ? error.message : "Failed to remove member",
+        error instanceof Error
+          ? error.message
+          : t("orgs.members.failedRemoveMember"),
       );
     },
   });
@@ -510,7 +526,7 @@ function OrgMembersContent() {
     onSuccess: (_res, vars) => {
       track("member_role_updated", { new_role: vars.role });
       queryClient.invalidateQueries({ queryKey: KEYS.members(locator) });
-      toast.success("Member's role has been updated");
+      toast.success(t("orgs.members.roleUpdatedSuccess"));
     },
     onError: (error, vars) => {
       track("member_role_update_failed", {
@@ -518,7 +534,9 @@ function OrgMembersContent() {
         error: error instanceof Error ? error.message : String(error),
       });
       toast.error(
-        error instanceof Error ? error.message : "Failed to update role",
+        error instanceof Error
+          ? error.message
+          : t("orgs.members.failedUpdateRole"),
       );
     },
   });
@@ -553,7 +571,7 @@ function OrgMembersContent() {
     onSuccess: (_res, vars) => {
       track("invitation_role_updated", { new_role: vars.role });
       queryClient.invalidateQueries({ queryKey: KEYS.invitations(locator) });
-      toast.success("Invitation role has been updated");
+      toast.success(t("orgs.members.invitationRoleUpdatedSuccess"));
     },
     onError: (error, vars) => {
       track("invitation_role_update_failed", {
@@ -563,7 +581,7 @@ function OrgMembersContent() {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to update invitation role",
+          : t("orgs.members.failedUpdateInvitationRole"),
       );
     },
   });
@@ -589,7 +607,7 @@ function OrgMembersContent() {
   const columns: TableColumn<MemberRow>[] = [
     {
       id: "member",
-      header: "Member",
+      header: t("orgs.members.columnMember"),
       render: (row) => {
         if (row.type === "member") {
           return (
@@ -602,7 +620,7 @@ function OrgMembersContent() {
               />
               <div className="min-w-0">
                 <div className="text-sm font-medium text-foreground truncate">
-                  {row.data.user?.name || "Unknown"}
+                  {row.data.user?.name || t("orgs.members.unknown")}
                 </div>
                 <div className="text-sm text-muted-foreground truncate">
                   {row.data.user?.email}
@@ -624,7 +642,7 @@ function OrgMembersContent() {
                 {row.data.email}
               </div>
               <div className="text-sm text-muted-foreground truncate">
-                Invitation sent
+                {t("orgs.members.invitationSent")}
               </div>
             </div>
           </div>
@@ -635,7 +653,7 @@ function OrgMembersContent() {
     },
     {
       id: "role",
-      header: "Role",
+      header: t("orgs.members.columnRole"),
       render: (row) => {
         if (row.type === "member") {
           return (
@@ -676,7 +694,7 @@ function OrgMembersContent() {
     },
     {
       id: "tags",
-      header: "Tags",
+      header: t("orgs.members.columnTags"),
       render: (row) => {
         if (row.type === "member") {
           return <TagMultiSelect memberId={row.data.id} maxDisplay={2} />;
@@ -688,17 +706,19 @@ function OrgMembersContent() {
     },
     {
       id: "joined",
-      header: "Joined",
+      header: t("orgs.members.columnJoined"),
       render: (row) => {
         if (row.type === "member") {
           return (
             <span className="text-sm text-foreground">
-              {row.data.createdAt ? formatDate(row.data.createdAt) : "N/A"}
+              {row.data.createdAt
+                ? formatDate(row.data.createdAt)
+                : t("orgs.members.na")}
             </span>
           );
         }
         // Invitation - show pending badge
-        return <Badge variant="outline">Pending</Badge>;
+        return <Badge variant="outline">{t("orgs.members.pending")}</Badge>;
       },
       cellClassName: "w-48 shrink-0",
       sortable: true,
@@ -735,7 +755,9 @@ function OrgMembersContent() {
 
   const ctaButton = (
     <div className="flex items-center gap-2">
-      <InviteMemberDialog trigger={<Button>Invite Member</Button>} />
+      <InviteMemberDialog
+        trigger={<Button>{t("orgs.members.inviteMember")}</Button>}
+      />
     </div>
   );
 
@@ -761,14 +783,17 @@ function OrgMembersContent() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancel Invitation</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("orgs.members.cancelInvitationTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to cancel this invitation? The invitee will
-              no longer be able to join the organization with this invitation.
+              {t("orgs.members.cancelInvitationDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep Invitation</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("orgs.members.keepInvitation")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (invitationToCancel) {
@@ -779,7 +804,7 @@ function OrgMembersContent() {
               disabled={invitationActions.cancel.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Cancel Invitation
+              {t("orgs.members.cancelInvitation")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -791,14 +816,15 @@ function OrgMembersContent() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Member</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("orgs.members.removeMemberTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove this member from the organization?
-              This action cannot be undone.
+              {t("orgs.members.removeMemberDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("orgs.members.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() =>
                 memberToRemove && removeMemberMutation.mutate(memberToRemove)
@@ -806,7 +832,7 @@ function OrgMembersContent() {
               disabled={removeMemberMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Remove
+              {t("orgs.members.remove")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -816,13 +842,13 @@ function OrgMembersContent() {
         <Page.Body>
           <div className="flex flex-col gap-6">
             <JoinRequestsSection />
-            <Page.Title>Members</Page.Title>
+            <Page.Title>{t("orgs.members.title")}</Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <SearchInput
                   value={search}
                   onChange={setSearch}
-                  placeholder="Search members..."
+                  placeholder={t("orgs.members.searchPlaceholder")}
                   className="w-full md:w-[375px]"
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
@@ -838,9 +864,9 @@ function OrgMembersContent() {
                   sortDirection={sortDirection}
                   onSort={handleSort}
                   sortOptions={[
-                    { id: "member", label: "Name" },
-                    { id: "role", label: "Role" },
-                    { id: "joined", label: "Joined" },
+                    { id: "member", label: t("orgs.members.sortName") },
+                    { id: "role", label: t("orgs.members.sortRole") },
+                    { id: "joined", label: t("orgs.members.sortJoined") },
                   ]}
                 />
               </div>
@@ -850,11 +876,11 @@ function OrgMembersContent() {
               <div>
                 {allRows.length === 0 ? (
                   <EmptyState
-                    title={search ? "No members found" : "No members found"}
+                    title={t("orgs.members.noMembersFound")}
                     description={
                       search
-                        ? `No members match "${search}"`
-                        : "Invite members to get started."
+                        ? t("orgs.members.noMembersMatch", { search })
+                        : t("orgs.members.inviteMembersGetStarted")
                     }
                   />
                 ) : (
@@ -892,7 +918,7 @@ function OrgMembersContent() {
                                     variant="outline"
                                     className="w-fit text-warning border-warning/40"
                                   >
-                                    Pending
+                                    {t("orgs.members.pending")}
                                   </Badge>
                                 </div>
                                 <RoleSelector
@@ -982,13 +1008,13 @@ function OrgMembersContent() {
                 emptyState={
                   search ? (
                     <EmptyState
-                      title="No members found"
-                      description={`No members match "${search}"`}
+                      title={t("orgs.members.noMembersFound")}
+                      description={t("orgs.members.noMembersMatch", { search })}
                     />
                   ) : (
                     <EmptyState
-                      title="No members found"
-                      description="Invite members to get started."
+                      title={t("orgs.members.noMembersFound")}
+                      description={t("orgs.members.inviteMembersGetStarted")}
                     />
                   )
                 }
@@ -1002,13 +1028,14 @@ function OrgMembersContent() {
 }
 
 export default function OrgMembers() {
+  const t = useT();
   return (
     <ErrorBoundary
       fallback={
         <Page>
           <div className="flex items-center justify-center h-full">
             <div className="text-sm text-muted-foreground">
-              Failed to load members
+              {t("orgs.members.failedLoadMembers")}
             </div>
           </div>
         </Page>

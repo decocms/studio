@@ -36,6 +36,7 @@ import {
   X,
 } from "@untitledui/icons";
 import { MemoizedMarkdown } from "@/web/components/chat/markdown.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   useOrgFsFileUrl,
   useOrgFsList,
@@ -228,6 +229,7 @@ function BrandPreviewContent({
   /** "dialog" uses Radix DialogTitle/DialogClose; "panel" plain elements. */
   variant: "panel" | "dialog";
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const location = parseLibraryPath(brandPath);
   const volume = location.volume ?? "";
@@ -336,9 +338,13 @@ function BrandPreviewContent({
       setEdits({});
       setMdDraft(null);
       setEditing(false);
-      toast.success("Brand saved");
+      toast.success(t("library.brandPreview.brandSaved"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save brand");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("library.brandPreview.failedSaveBrand"),
+      );
     } finally {
       setSaving(false);
     }
@@ -358,9 +364,13 @@ function BrandPreviewContent({
       if (logoPath && basename(logoPath) !== targetName) {
         await remove.mutateAsync(logoPath);
       }
-      toast.success("Logo updated");
+      toast.success(t("library.brandPreview.logoUpdated"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Logo upload failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("library.brandPreview.logoUploadFailed"),
+      );
     } finally {
       if (logoInputRef.current) logoInputRef.current.value = "";
     }
@@ -393,14 +403,16 @@ function BrandPreviewContent({
                 onClick={cancelEdit}
                 disabled={saving}
               >
-                Cancel
+                {t("library.brandPreview.cancel")}
               </Button>
               <Button
                 size="sm"
                 disabled={!dirty || saving}
                 onClick={() => void handleSave()}
               >
-                {saving ? "Saving…" : "Save"}
+                {saving
+                  ? t("library.brandPreview.saving")
+                  : t("library.brandPreview.save")}
               </Button>
             </>
           ) : (
@@ -410,7 +422,7 @@ function BrandPreviewContent({
               onClick={() => setEditing(true)}
             >
               <Pencil01 size={14} />
-              Edit
+              {t("library.brandPreview.edit")}
             </Button>
           ))}
         {variant === "dialog" ? (
@@ -441,7 +453,7 @@ function BrandPreviewContent({
           </div>
         ) : empty ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            This brand is no longer available.
+            {t("library.brandPreview.brandNotAvailable")}
           </div>
         ) : (
           <>
@@ -455,7 +467,11 @@ function BrandPreviewContent({
                 <div
                   role="button"
                   tabIndex={0}
-                  aria-label={deckCollapsed ? "Show preview" : "Hide preview"}
+                  aria-label={
+                    deckCollapsed
+                      ? t("library.brandPreview.showPreview")
+                      : t("library.brandPreview.hidePreview")
+                  }
                   onClick={() => setDeckCollapsed((c) => !c)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
@@ -483,7 +499,7 @@ function BrandPreviewContent({
                             : "text-muted-foreground hover:text-foreground",
                         )}
                       >
-                        Deck
+                        {t("library.brandPreview.deck")}
                       </button>
                     )}
                     <button
@@ -499,7 +515,7 @@ function BrandPreviewContent({
                           : "bg-background text-foreground shadow-sm",
                       )}
                     >
-                      Components
+                      {t("library.brandPreview.components")}
                     </button>
                   </div>
                   {deckCollapsed ? (
@@ -541,7 +557,7 @@ function BrandPreviewContent({
             <div className="flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto p-6">
               {/* Logo */}
               <div className="flex flex-col gap-3">
-                <SectionLabel>Logo</SectionLabel>
+                <SectionLabel>{t("library.brandPreview.logo")}</SectionLabel>
                 <div className="flex items-center gap-4">
                   <div className="flex size-24 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted/30">
                     {logoPath ? (
@@ -563,7 +579,9 @@ function BrandPreviewContent({
                         onClick={() => logoInputRef.current?.click()}
                       >
                         <Upload01 size={14} />
-                        {logoPath ? "Replace logo" : "Add logo"}
+                        {logoPath
+                          ? t("library.brandPreview.replaceLogo")
+                          : t("library.brandPreview.addLogo")}
                       </Button>
                       <input
                         ref={logoInputRef}
@@ -581,7 +599,9 @@ function BrandPreviewContent({
                   name+value; click a hex swatch in edit mode to pick). */}
               {colorFamilies.length > 0 && (
                 <div className="flex flex-col gap-3">
-                  <SectionLabel>Colors</SectionLabel>
+                  <SectionLabel>
+                    {t("library.brandPreview.colors")}
+                  </SectionLabel>
                   {colorFamilies.map((fam) => (
                     <ColorBand
                       key={fam.family}
@@ -598,33 +618,36 @@ function BrandPreviewContent({
               {/* Typography — font families + the type scale */}
               {(fonts.length > 0 || typeTokens.length > 0) && (
                 <div className="flex flex-col gap-3">
-                  <SectionLabel>Typography</SectionLabel>
-                  {fonts.map((t) => (
-                    <div key={t.name} className="flex flex-col gap-1">
+                  <SectionLabel>
+                    {t("library.brandPreview.typography")}
+                  </SectionLabel>
+                  {fonts.map((font) => (
+                    <div key={font.name} className="flex flex-col gap-1">
                       <span className="text-xs text-muted-foreground">
-                        {t.name.replace(/^--brand-font-?/, "") || "font"}
+                        {font.name.replace(/^--brand-font-?/, "") ||
+                          t("library.brandPreview.defaultFont")}
                       </span>
                       {editing ? (
                         <Input
-                          value={valueOf(t)}
-                          onChange={(e) => onEdit(t.name, e.target.value)}
+                          value={valueOf(font)}
+                          onChange={(e) => onEdit(font.name, e.target.value)}
                           className="h-9"
                         />
                       ) : (
                         <span
                           className="truncate text-lg text-foreground"
-                          style={{ fontFamily: valueOf(t) }}
+                          style={{ fontFamily: valueOf(font) }}
                         >
-                          {valueOf(t)}
+                          {valueOf(font)}
                         </span>
                       )}
                     </div>
                   ))}
-                  {typeTokens.map((t) => (
+                  {typeTokens.map((token) => (
                     <TokenRow
-                      key={t.name}
-                      token={t}
-                      value={valueOf(t)}
+                      key={token.name}
+                      token={token}
+                      value={valueOf(token)}
                       editing={editing}
                       onEdit={onEdit}
                     />
@@ -633,35 +656,35 @@ function BrandPreviewContent({
               )}
 
               <TokenSection
-                label="Spacing"
+                label={t("library.brandPreview.spacing")}
                 tokens={spaceTokens}
                 editing={editing}
                 valueOf={valueOf}
                 onEdit={onEdit}
               />
               <TokenSection
-                label="Radius"
+                label={t("library.brandPreview.radius")}
                 tokens={radiusTokens}
                 editing={editing}
                 valueOf={valueOf}
                 onEdit={onEdit}
               />
               <TokenSection
-                label="Shadows"
+                label={t("library.brandPreview.shadows")}
                 tokens={shadowTokens}
                 editing={editing}
                 valueOf={valueOf}
                 onEdit={onEdit}
               />
               <TokenSection
-                label="Motion"
+                label={t("library.brandPreview.motion")}
                 tokens={motionTokens}
                 editing={editing}
                 valueOf={valueOf}
                 onEdit={onEdit}
               />
               <TokenSection
-                label="Tokens"
+                label={t("library.brandPreview.tokens")}
                 tokens={otherTokens}
                 editing={editing}
                 valueOf={valueOf}
@@ -670,12 +693,14 @@ function BrandPreviewContent({
 
               {/* Voice — brand.md */}
               <div className="flex flex-col gap-3">
-                <SectionLabel>Voice &amp; guidelines</SectionLabel>
+                <SectionLabel>
+                  {t("library.brandPreview.voiceGuidelines")}
+                </SectionLabel>
                 {editing ? (
                   <Textarea
                     value={mdText}
                     onChange={(e) => setMdDraft(e.target.value)}
-                    placeholder="Describe the brand voice, tone, do's and don'ts…"
+                    placeholder={t("library.brandPreview.voicePlaceholder")}
                     className="min-h-48 font-mono text-sm"
                   />
                 ) : brandMd.isPending && mdExists ? (
@@ -692,7 +717,7 @@ function BrandPreviewContent({
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    No brand voice written yet.
+                    {t("library.brandPreview.noVoiceYet")}
                   </p>
                 )}
               </div>

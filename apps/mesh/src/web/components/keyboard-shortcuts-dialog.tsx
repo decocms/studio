@@ -5,6 +5,7 @@ import {
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
 import { SHORTCUT_GROUPS } from "@/web/lib/keyboard-shortcuts";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export function KeyboardShortcutsDialog({
   open,
@@ -13,11 +14,12 @@ export function KeyboardShortcutsDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Keyboard Shortcuts</DialogTitle>
+          <DialogTitle>{t("common.keyboardShortcutsDialog.title")}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           {SHORTCUT_GROUPS.map((group) => (

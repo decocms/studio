@@ -25,11 +25,12 @@ import {
   type ProductPickerOption,
 } from "./product-picker-source";
 import { invokeLoader } from "./use-product-lookup";
+import { useT } from "@/web/i18n/use-t.ts";
 
-const MODES: { id: ProductPickerMode; label: string }[] = [
-  { id: "search", label: "Search" },
-  { id: "category", label: "Category" },
-  { id: "cluster", label: "Cluster ID" },
+const MODES: { id: ProductPickerMode; labelKey: string }[] = [
+  { id: "search", labelKey: "sandbox.productPickerDialog.modeSearch" },
+  { id: "category", labelKey: "sandbox.productPickerDialog.modeCategory" },
+  { id: "cluster", labelKey: "sandbox.productPickerDialog.modeClusterId" },
 ];
 
 /**
@@ -150,6 +151,7 @@ function StatusLine({
   emptyLabel: string;
   loadingLabel: string;
 }) {
+  const t = useT();
   if (query.isLoading) {
     return (
       <div className="flex items-center gap-2 px-2 py-6 text-sm text-muted-foreground">
@@ -161,7 +163,7 @@ function StatusLine({
   if (query.isError) {
     return (
       <p className="px-2 py-6 text-sm text-muted-foreground">
-        Couldn&rsquo;t load — is the dev server running?
+        {t("sandbox.productPickerDialog.couldNotLoad")}
       </p>
     );
   }
@@ -188,6 +190,7 @@ function CategoryPane({
   selected: CategoryOption | null;
   onSelect: (category: CategoryOption | null) => void;
 }) {
+  const t = useT();
   const [filter, setFilter] = useState("");
   const query = useQuery({
     queryKey: KEYS.sandboxInvoke(sandboxKey(sandboxRef), "blog-category-tree"),
@@ -209,8 +212,9 @@ function CategoryPane({
       >
         <ChevronLeft size={14} />
         <span className="truncate">
-          Category: <span className="text-foreground">{selected.label}</span> —
-          change
+          {t("sandbox.productPickerDialog.categoryLabel")}
+          <span className="text-foreground">{selected.label}</span> —
+          {t("sandbox.productPickerDialog.change")}
         </span>
       </button>
     );
@@ -223,15 +227,17 @@ function CategoryPane({
       <Input
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
-        placeholder="Filter categories…"
+        placeholder={t(
+          "sandbox.productPickerDialog.filterCategoriesPlaceholder",
+        )}
         className="h-9"
       />
       <div className="h-48 overflow-y-auto rounded-md border">
         {options.length === 0 ? (
           <StatusLine
             query={query}
-            loadingLabel="Loading categories…"
-            emptyLabel="No categories."
+            loadingLabel={t("sandbox.productPickerDialog.loadingCategories")}
+            emptyLabel={t("sandbox.productPickerDialog.noCategories")}
           />
         ) : (
           <div className="p-1">
@@ -275,6 +281,7 @@ export function ProductPickerDialog({
   /** Product card selects a single product; shelf selects many. */
   multiple?: boolean;
 }) {
+  const t = useT();
   const [mode, setMode] = useState<ProductPickerMode>("search");
   const search = useDebouncedField(300);
   const cluster = useDebouncedField(300);
@@ -321,7 +328,9 @@ export function ProductPickerDialog({
       <DialogContent className="flex h-[85svh] flex-col gap-0 overflow-hidden p-0 sm:h-[560px] sm:max-w-[560px]">
         <DialogHeader className="border-b border-border px-4 py-3">
           <DialogTitle className="text-sm font-medium">
-            {multiple ? "Add products" : "Choose a product"}
+            {multiple
+              ? t("sandbox.productPickerDialog.addProducts")
+              : t("sandbox.productPickerDialog.chooseProduct")}
           </DialogTitle>
         </DialogHeader>
 
@@ -338,7 +347,7 @@ export function ProductPickerDialog({
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {m.label}
+              {t(m.labelKey)}
             </button>
           ))}
         </div>
@@ -349,7 +358,9 @@ export function ProductPickerDialog({
               autoFocus
               value={search.value}
               onChange={(e) => search.onChange(e.target.value)}
-              placeholder="Search products by name or ID…"
+              placeholder={t(
+                "sandbox.productPickerDialog.searchProductsPlaceholder",
+              )}
               className="h-9"
             />
           )}
@@ -358,7 +369,9 @@ export function ProductPickerDialog({
               autoFocus
               value={cluster.value}
               onChange={(e) => cluster.onChange(e.target.value)}
-              placeholder="Collection / cluster ID (e.g. 2140)"
+              placeholder={t(
+                "sandbox.productPickerDialog.clusterIdPlaceholder",
+              )}
               className="h-9"
             />
           )}
@@ -385,17 +398,19 @@ export function ProductPickerDialog({
             : !showEmptyPrompt && (
                 <StatusLine
                   query={productsQuery}
-                  loadingLabel="Loading products…"
-                  emptyLabel="No products found."
+                  loadingLabel={t(
+                    "sandbox.productPickerDialog.loadingProducts",
+                  )}
+                  emptyLabel={t("sandbox.productPickerDialog.noProductsFound")}
                 />
               )}
           {showEmptyPrompt && (
             <p className="px-2 py-6 text-center text-sm text-muted-foreground">
               {mode === "category"
-                ? "Pick a category to see its products."
+                ? t("sandbox.productPickerDialog.pickCategoryPrompt")
                 : mode === "cluster"
-                  ? "Enter a collection or cluster ID."
-                  : "Type to search products."}
+                  ? t("sandbox.productPickerDialog.enterClusterPrompt")
+                  : t("sandbox.productPickerDialog.typeToSearchPrompt")}
             </p>
           )}
         </div>
@@ -403,11 +418,13 @@ export function ProductPickerDialog({
         <div className="flex shrink-0 items-center justify-between border-t border-border px-4 py-3">
           <span className="text-xs text-muted-foreground">
             {selected.size === 0
-              ? "None selected"
-              : `${selected.size} selected`}
+              ? t("sandbox.productPickerDialog.noneSelected")
+              : t("sandbox.productPickerDialog.selectedCount", {
+                  count: String(selected.size),
+                })}
           </span>
           <Button size="sm" onClick={() => onOpenChange(false)}>
-            Done
+            {t("sandbox.productPickerDialog.done")}
           </Button>
         </div>
       </DialogContent>

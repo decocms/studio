@@ -2,6 +2,8 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import type { ChatTier } from "@/tools/organization/schema";
 import type { AgentModelSet } from "./agent-models";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 
 interface DesktopCliModelSelectorProps {
   modelSet: AgentModelSet;
@@ -9,10 +11,11 @@ interface DesktopCliModelSelectorProps {
   onSelect: (model: AiProviderModel) => void;
 }
 
-const TIER_ROWS: Array<{ tier: ChatTier; description: string }> = [
-  { tier: "fast", description: "Quicker responses" },
-  { tier: "smart", description: "Balanced quality" },
-  { tier: "thinking", description: "Deeper reasoning" },
+// ponytail: TIER_ROWS descriptions are translated per-render below
+const TIER_ROWS: Array<{ tier: ChatTier; labelKey: TranslationKey }> = [
+  { tier: "fast", labelKey: "chat.desktopCli.tierFastDescription" },
+  { tier: "smart", labelKey: "chat.desktopCli.tierSmartDescription" },
+  { tier: "thinking", labelKey: "chat.desktopCli.tierThinkingDescription" },
 ];
 
 export function DesktopCliModelSelectorBody({
@@ -20,11 +23,12 @@ export function DesktopCliModelSelectorBody({
   selectedModelId,
   onSelect,
 }: DesktopCliModelSelectorProps) {
+  const t = useT();
   const lookup = Object.fromEntries(modelSet.models.map((m) => [m.modelId, m]));
 
   return (
     <div className="flex flex-col p-2 w-[320px]">
-      {TIER_ROWS.map(({ tier, description }) => {
+      {TIER_ROWS.map(({ tier, labelKey }) => {
         const entry = modelSet.tiers[tier];
         if (!entry.modelId) return null;
         const model = lookup[entry.modelId];
@@ -50,7 +54,7 @@ export function DesktopCliModelSelectorBody({
                 {entry.label}
               </span>
               <span className="text-xs text-muted-foreground leading-tight">
-                {description}
+                {t(labelKey)}
               </span>
             </div>
           </button>

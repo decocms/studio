@@ -1,6 +1,7 @@
 import { Columns03 } from "@untitledui/icons";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t";
 import { useMainOverlayToggle } from "./use-main-overlay-toggle";
 
 /**
@@ -10,13 +11,14 @@ import { useMainOverlayToggle } from "./use-main-overlay-toggle";
  * not a per-agent view tab.
  */
 export function TasksToggle() {
+  const t = useT();
   const { active, enabled, toggle } = useMainOverlayToggle("board");
 
   if (!enabled) return null;
 
   return (
     <HeaderTabButton
-      title="Tasks"
+      title={t("agentShellLayout.tasksToggle.tasks")}
       icon={{ kind: "component", Component: Columns03 }}
       active={active}
       className="wco-no-drag h-10 md:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"

@@ -7,8 +7,10 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { EmptyState } from "@/web/components/empty-state";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { GitHubRepoPicker } from "@/web/components/github-repo-picker";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
+  const t = useT();
   const entity = useVirtualMCP(virtualMcpId);
   const { activeTask } = useChatTask();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -28,12 +30,12 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
               <GitHubIcon className="size-7 text-foreground" />
             </div>
           }
-          title="No source to preview"
-          description="Connect a GitHub repository to build and preview your site here."
+          title={t("mainPanelTabs.previewTab.noSourceToPreview")}
+          description={t("mainPanelTabs.previewTab.connectGithubDescription")}
           actions={
             <Button onClick={() => setPickerOpen(true)}>
               <GitHubIcon className="size-4" />
-              Connect GitHub
+              {t("mainPanelTabs.previewTab.connectGithub")}
             </Button>
           }
         />

@@ -36,6 +36,7 @@ import {
   useRegistryConfig,
   useRegistryItems,
 } from "@/web/hooks/registry/use-registry";
+import { useT } from "@/web/i18n/use-t.ts";
 import { ImageUpload } from "./image-upload";
 
 /**
@@ -54,6 +55,7 @@ export default function RegistrySettingsPage({
   revealedKey,
   onRevealedKeyChange,
 }: RegistrySettingsPageProps) {
+  const t = useT();
   const { org } = useProjectContext();
   const { uploadImage, isUploading: isUploadingIcon } = useImageUpload();
   const {
@@ -156,7 +158,7 @@ export default function RegistrySettingsPage({
       setIconDraft(url);
       updateConfig({ registryIcon: url });
     } else {
-      toast.error("Failed to upload icon. Please try again.");
+      toast.error(t("registry.registrySettingsPage.failedUploadIcon"));
     }
   };
 
@@ -169,13 +171,13 @@ export default function RegistrySettingsPage({
         onRevealedKeyChange(result.key);
         setShowRevealedKey(false);
         setNewKeyName("");
-        toast.success(
-          "API key generated. Copy it now — it won't be shown again!",
-        );
+        toast.success(t("registry.registrySettingsPage.apiKeyGenerated"));
       }
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to generate API key",
+        error instanceof Error
+          ? error.message
+          : t("registry.registrySettingsPage.failedGenerateApiKey"),
       );
     }
   };
@@ -185,10 +187,12 @@ export default function RegistrySettingsPage({
       await revokeMutation.mutateAsync(keyId);
       onRevealedKeyChange(null);
       setKeyToDelete(null);
-      toast.success("API key revoked");
+      toast.success(t("registry.registrySettingsPage.apiKeyRevoked"));
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to revoke API key",
+        error instanceof Error
+          ? error.message
+          : t("registry.registrySettingsPage.failedRevokeApiKey"),
       );
     }
   };
@@ -199,21 +203,25 @@ export default function RegistrySettingsPage({
         <div className="grid gap-4 min-w-0 content-start">
           <Card className="min-w-0 p-4 grid gap-4 content-start">
             <div>
-              <h3 className="text-base font-semibold">Registry Identity</h3>
+              <h3 className="text-base font-semibold">
+                {t("registry.registrySettingsPage.registryIdentity")}
+              </h3>
               <p className="text-sm text-muted-foreground">
-                Configure the name and icon shown in the store selector.
+                {t("registry.registrySettingsPage.configureNameIcon")}
               </p>
             </div>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="identity-name">Name</Label>
+              <Label htmlFor="identity-name">
+                {t("registry.registrySettingsPage.name")}
+              </Label>
               <Input
                 id="identity-name"
                 value={nameDraft}
                 onChange={(event) => setNameDraft(event.target.value)}
                 onBlur={handleNameBlur}
                 disabled={disabled}
-                placeholder="Private Registry"
+                placeholder={t("registry.registrySettingsPage.namePlaceholder")}
               />
             </div>
 
@@ -235,14 +243,18 @@ export default function RegistrySettingsPage({
           <Card className="min-w-0 p-4 grid gap-3 content-start">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <h3 className="text-base font-semibold">Public Registry</h3>
+                <h3 className="text-base font-semibold">
+                  {t("registry.registrySettingsPage.publicRegistry")}
+                </h3>
                 <p className="text-sm text-muted-foreground">
-                  Public URL to consume this registry as an MCP.
+                  {t("registry.registrySettingsPage.publicRegistryDescription")}
                 </p>
               </div>
               <Badge variant="secondary">
                 {publicCount}{" "}
-                {publicCount === 1 ? "public item" : "public items"}
+                {publicCount === 1
+                  ? t("registry.registrySettingsPage.publicItem")
+                  : t("registry.registrySettingsPage.publicItems")}
               </Badge>
             </div>
             <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center gap-2 min-w-0">
@@ -263,9 +275,13 @@ export default function RegistrySettingsPage({
           <Card className="min-w-0 p-4 grid gap-3 content-start">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <h3 className="text-base font-semibold">Store Visibility</h3>
+                <h3 className="text-base font-semibold">
+                  {t("registry.registrySettingsPage.storeVisibility")}
+                </h3>
                 <p className="text-sm text-muted-foreground">
-                  Choose what appears when users browse this registry in Store.
+                  {t(
+                    "registry.registrySettingsPage.storeVisibilityDescription",
+                  )}
                 </p>
               </div>
               <Switch
@@ -278,17 +294,20 @@ export default function RegistrySettingsPage({
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Enabled: show only private apps. Disabled: show public and private
-              apps together.
+              {t("registry.registrySettingsPage.storeVisibilityHelp")}
             </p>
           </Card>
 
           <Card className="min-w-0 p-4 grid gap-3 content-start">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <h3 className="text-base font-semibold">Publish Requests</h3>
+                <h3 className="text-base font-semibold">
+                  {t("registry.registrySettingsPage.publishRequests")}
+                </h3>
                 <p className="text-sm text-muted-foreground">
-                  Allow external users to submit MCP servers for review.
+                  {t(
+                    "registry.registrySettingsPage.publishRequestsDescription",
+                  )}
                 </p>
               </div>
               <Switch
@@ -317,9 +336,11 @@ export default function RegistrySettingsPage({
             {/* ── Require API Token ── */}
             <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
               <div>
-                <Label className="text-sm font-medium">Require API Token</Label>
+                <Label className="text-sm font-medium">
+                  {t("registry.registrySettingsPage.requireApiToken")}
+                </Label>
                 <p className="text-xs text-muted-foreground">
-                  Requests without a valid token will be rejected.
+                  {t("registry.registrySettingsPage.requireApiTokenHelp")}
                 </p>
               </div>
               <Switch
@@ -334,9 +355,11 @@ export default function RegistrySettingsPage({
 
             <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
               <div>
-                <Label className="text-sm font-medium">Rate Limit</Label>
+                <Label className="text-sm font-medium">
+                  {t("registry.registrySettingsPage.rateLimit")}
+                </Label>
                 <p className="text-xs text-muted-foreground">
-                  Limit publish requests per organization by time window.
+                  {t("registry.registrySettingsPage.rateLimitHelp")}
                 </p>
               </div>
               <Switch
@@ -355,7 +378,7 @@ export default function RegistrySettingsPage({
                     htmlFor="rate-limit-max"
                     className="text-sm font-medium"
                   >
-                    Max requests
+                    {t("registry.registrySettingsPage.maxRequests")}
                   </Label>
                   <Input
                     id="rate-limit-max"
@@ -368,7 +391,9 @@ export default function RegistrySettingsPage({
                     }
                     onBlur={handleRateLimitMaxBlur}
                     disabled={disabled}
-                    placeholder="100"
+                    placeholder={t(
+                      "registry.registrySettingsPage.maxRequestsPlaceholder",
+                    )}
                   />
                 </div>
                 <div className="space-y-1">
@@ -376,7 +401,7 @@ export default function RegistrySettingsPage({
                     htmlFor="rate-limit-window"
                     className="text-sm font-medium"
                   >
-                    Window
+                    {t("registry.registrySettingsPage.window")}
                   </Label>
                   <select
                     id="rate-limit-window"
@@ -391,8 +416,12 @@ export default function RegistrySettingsPage({
                     }
                     disabled={disabled}
                   >
-                    <option value="minute">Per minute</option>
-                    <option value="hour">Per hour</option>
+                    <option value="minute">
+                      {t("registry.registrySettingsPage.perMinute")}
+                    </option>
+                    <option value="hour">
+                      {t("registry.registrySettingsPage.perHour")}
+                    </option>
                   </select>
                 </div>
               </div>
@@ -403,14 +432,16 @@ export default function RegistrySettingsPage({
               <>
                 <div className="flex items-center gap-2 pt-2 border-t border-border">
                   <Key01 size={14} className="text-muted-foreground" />
-                  <span className="text-sm font-medium">API Keys</span>
+                  <span className="text-sm font-medium">
+                    {t("registry.registrySettingsPage.apiKeys")}
+                  </span>
                 </div>
 
                 {/* ── Revealed key fallback (while list refreshes) ── */}
                 {revealedKey && !hasRevealedKeyInList && (
                   <div className="rounded-md border border-border bg-muted/20 px-3 py-2 grid gap-1.5">
                     <span className="text-xs text-muted-foreground">
-                      New key (refreshing list...)
+                      {t("registry.registrySettingsPage.newKeyRefreshing")}
                     </span>
                     <Input
                       readOnly
@@ -424,13 +455,15 @@ export default function RegistrySettingsPage({
                 <div className="flex items-end gap-2">
                   <div className="grid gap-1.5 flex-1">
                     <Label htmlFor="api-key-name" className="text-xs">
-                      Key name
+                      {t("registry.registrySettingsPage.keyName")}
                     </Label>
                     <Input
                       id="api-key-name"
                       value={newKeyName}
                       onChange={(e) => setNewKeyName(e.target.value)}
-                      placeholder="e.g. CI/CD Pipeline"
+                      placeholder={t(
+                        "registry.registrySettingsPage.keyNamePlaceholder",
+                      )}
                       className="h-8 text-sm"
                     />
                   </div>
@@ -446,7 +479,7 @@ export default function RegistrySettingsPage({
                     ) : (
                       <Plus size={14} />
                     )}
-                    Generate
+                    {t("registry.registrySettingsPage.generate")}
                   </Button>
                 </div>
 
@@ -549,23 +582,27 @@ export default function RegistrySettingsPage({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Revoke API key?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("registry.registrySettingsPage.revokeApiKeyTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. The key
-              {keyToDelete ? ` "${keyToDelete.name}"` : ""} will stop working
-              immediately.
+              {t("registry.registrySettingsPage.revokeApiKeyDescription", {
+                keyName: keyToDelete?.name ?? "",
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={revokeMutation.isPending}>
-              Cancel
+              {t("registry.registrySettingsPage.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={!keyToDelete || revokeMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => keyToDelete && handleRevokeKey(keyToDelete.id)}
             >
-              {revokeMutation.isPending ? "Revoking..." : "Revoke key"}
+              {revokeMutation.isPending
+                ? t("registry.registrySettingsPage.revoking")
+                : t("registry.registrySettingsPage.revokeKey")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -29,6 +29,7 @@ import {
 import { useProjectContext, useVirtualMCPs } from "@decocms/mesh-sdk";
 import { Plus, XClose } from "@untitledui/icons";
 import { useState } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { VirtualMcpFormReturn } from "./types";
 
 type Mode = "all" | "selected" | "self";
@@ -45,6 +46,7 @@ export function SubAgentsSection({
   form: VirtualMcpFormReturn;
   currentAgentId: string;
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const allAgents = useVirtualMCPs();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -90,15 +92,17 @@ export function SubAgentsSection({
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-medium text-foreground">Sub-agents</h2>
+          <h2 className="text-sm font-medium text-foreground">
+            {t("virtualMcp.subAgentsSection.title")}
+          </h2>
           {mode === "all" && (
             <p className="text-sm text-muted-foreground">
-              Can delegate to any agent in the organization.
+              {t("virtualMcp.subAgentsSection.canDelegateToAnyAgent")}
             </p>
           )}
           {mode === "self" && (
             <p className="text-sm text-muted-foreground">
-              Can only delegate to a fresh copy of itself, no other agents.
+              {t("virtualMcp.subAgentsSection.canOnlyDelegateToItself")}
             </p>
           )}
         </div>
@@ -110,7 +114,7 @@ export function SubAgentsSection({
               onClick={() => setPickerOpen(true)}
             >
               <Plus size={14} />
-              Add sub-agent
+              {t("virtualMcp.subAgentsSection.addSubAgent")}
             </Button>
           )}
           <Select
@@ -121,9 +125,15 @@ export function SubAgentsSection({
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
-              <SelectItem value="all">Any agent</SelectItem>
-              <SelectItem value="selected">Specific agents</SelectItem>
-              <SelectItem value="self">Only itself</SelectItem>
+              <SelectItem value="all">
+                {t("virtualMcp.subAgentsSection.anyAgent")}
+              </SelectItem>
+              <SelectItem value="selected">
+                {t("virtualMcp.subAgentsSection.specificAgents")}
+              </SelectItem>
+              <SelectItem value="self">
+                {t("virtualMcp.subAgentsSection.onlyItself")}
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -170,8 +180,7 @@ export function SubAgentsSection({
                 <Plus size={16} />
               </div>
               <span className="text-sm text-muted-foreground">
-                No sub-agents selected yet. Add one — until then this agent can
-                only delegate to itself.
+                {t("virtualMcp.subAgentsSection.emptyStateMessage")}
               </span>
             </button>
           ))}
@@ -201,6 +210,7 @@ function SubAgentsPickerDialog({
   selectedIds: string[];
   onToggle: (id: string) => void;
 }) {
+  const t = useT();
   const [search, setSearch] = useState("");
   const lower = search.toLowerCase();
   const filtered = candidates.filter(
@@ -213,18 +223,18 @@ function SubAgentsPickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Sub-agents</DialogTitle>
+          <DialogTitle>{t("virtualMcp.subAgentsSection.title")}</DialogTitle>
         </DialogHeader>
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Search agents..."
+          placeholder={t("virtualMcp.subAgentsSection.searchPlaceholder")}
           className="w-full"
         />
         <div className="flex flex-col gap-1 max-h-80 overflow-y-auto">
           {filtered.length === 0 ? (
             <p className="text-sm text-muted-foreground px-1 py-4 text-center">
-              No agents found.
+              {t("virtualMcp.subAgentsSection.noAgentsFound")}
             </p>
           ) : (
             filtered.map((agent) => (

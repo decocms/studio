@@ -24,6 +24,7 @@ import {
 import { ChevronDown, GitBranch01 } from "@untitledui/icons";
 import { generateBranchName } from "@/shared/branch-name";
 import { useBranches } from "./use-branches";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface Props {
   orgId: string;
@@ -68,6 +69,7 @@ export function BranchPicker({
   disabled = false,
   placement = "chat",
 }: Props) {
+  const t = useT();
   const isHeader = placement === "header";
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -99,7 +101,7 @@ export function BranchPicker({
     setOpen(false);
   };
 
-  const label = value ?? "Select branch…";
+  const label = value ?? t("thread.branchPicker.selectBranch");
   const handleSearchChange = (nextSearch: string) => {
     setSearch(nextSearch);
     searchRequestId.current += 1;
@@ -190,7 +192,7 @@ export function BranchPicker({
         <Command>
           <div className="*:data-[slot=command-input-wrapper]:flex-1 *:data-[slot=command-input-wrapper]:border-b-0 flex items-center border-b pr-2">
             <CommandInput
-              placeholder="Search loaded branches…"
+              placeholder={t("thread.branchPicker.searchLoadedBranches")}
               value={search}
               onValueChange={handleSearchChange}
             />
@@ -200,25 +202,24 @@ export function BranchPicker({
               className="h-7 shrink-0"
               onClick={() => pick(generateBranchName(userLabel))}
             >
-              New
+              {t("thread.branchPicker.new")}
             </Button>
           </div>
           <CommandList onScroll={onListScroll}>
             {isError && (
               <div className="p-3 text-xs text-muted-foreground">
-                Couldn't load branches from GitHub. You can still pick from your
-                branches.
+                {t("thread.branchPicker.couldntLoadBranches")}
               </div>
             )}
             {!isError && !isLoading && (
               <CommandEmpty>
                 {hasMore
-                  ? "Looking through more branches..."
-                  : "No branches found."}
+                  ? t("thread.branchPicker.lookingThroughMoreBranches")
+                  : t("thread.branchPicker.noBranchesFound")}
               </CommandEmpty>
             )}
             {yours.length > 0 && (
-              <CommandGroup heading="Your branches">
+              <CommandGroup heading={t("thread.branchPicker.yourBranches")}>
                 {yours.map((b) => (
                   <CommandItem
                     key={b.name}
@@ -234,7 +235,9 @@ export function BranchPicker({
             {others.length > 0 && (
               <>
                 <CommandSeparator />
-                <CommandGroup heading="Other branches in repo">
+                <CommandGroup
+                  heading={t("thread.branchPicker.otherBranchesInRepo")}
+                >
                   {others.map((b) => (
                     <CommandItem
                       key={b.name}
@@ -263,14 +266,14 @@ export function BranchPicker({
                   onClick={fetchMore}
                 >
                   {isFetchingMore || isSearchingRemote
-                    ? "Loading more…"
-                    : "Load more branches"}
+                    ? t("thread.branchPicker.loadingMore")
+                    : t("thread.branchPicker.loadMoreBranches")}
                 </Button>
               </div>
             )}
             {!hasMore && others.length > 0 && (
               <div className="border-t p-2 text-center text-xs text-muted-foreground">
-                All loaded
+                {t("thread.branchPicker.allLoaded")}
               </div>
             )}
           </CommandList>

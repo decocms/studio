@@ -35,6 +35,7 @@ import {
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { Suspense, useReducer, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import { ErrorBoundary } from "../error-boundary";
 import { useChatStream, useChatPrefs } from "./context";
 import {
@@ -148,6 +149,7 @@ function AllPromptsModal({
   onSelect: (prompt: Prompt) => void;
   loadingPrompt: Prompt | null | undefined;
 }) {
+  const t = useT();
   const [search, setSearch] = useState("");
   const isAnyLoading = !!loadingPrompt;
 
@@ -169,7 +171,7 @@ function AllPromptsModal({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-5">
         {filtered.length === 0 && (
           <p className="col-span-4 text-sm text-muted-foreground text-center py-8">
-            No prompts match &ldquo;{search}&rdquo;
+            {t("chat.iceBreakers.noPromptsMatch", { search })}
           </p>
         )}
         {filtered.map((item) => (
@@ -195,7 +197,7 @@ function AllPromptsModal({
     <CollectionSearch
       value={search}
       onChange={setSearch}
-      placeholder="Search prompts..."
+      placeholder={t("chat.iceBreakers.searchPromptsPlaceholder")}
       onKeyDown={(e) => {
         if (e.key === "Escape") setSearch("");
       }}
@@ -208,11 +210,11 @@ function AllPromptsModal({
         <Drawer open={open} onOpenChange={onOpenChange}>
           <DrawerContent className="h-[85vh] flex flex-col p-0 gap-0">
             <DrawerHeader className="sr-only">
-              <DrawerTitle>All prompts</DrawerTitle>
+              <DrawerTitle>{t("chat.iceBreakers.allPromptsTitle")}</DrawerTitle>
             </DrawerHeader>
             <div className="flex items-center h-12 border-b border-border px-4 shrink-0">
               <span className="text-sm font-medium text-foreground">
-                Prompts
+                {t("chat.iceBreakers.promptsLabel")}
               </span>
             </div>
             {searchBar}
@@ -228,10 +230,12 @@ function AllPromptsModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-[1100px] h-[680px] p-0 gap-0 overflow-hidden flex flex-col">
           <DialogHeader className="sr-only">
-            <DialogTitle>All prompts</DialogTitle>
+            <DialogTitle>{t("chat.iceBreakers.allPromptsTitle")}</DialogTitle>
           </DialogHeader>
           <div className="flex items-center h-12 border-b border-border px-4 shrink-0">
-            <span className="text-sm font-medium text-foreground">Prompts</span>
+            <span className="text-sm font-medium text-foreground">
+              {t("chat.iceBreakers.promptsLabel")}
+            </span>
           </div>
           {searchBar}
           {gridContent}
@@ -248,6 +252,7 @@ function IceBreakersUI({
   loadingPrompt,
   className,
 }: IceBreakersUIProps) {
+  const t = useT();
   const [modalOpen, setModalOpen] = useState(false);
 
   if (items.length === 0) return null;
@@ -283,7 +288,7 @@ function IceBreakersUI({
               isAnyLoading && "opacity-50 cursor-not-allowed",
             )}
           >
-            +{hidden.length} more
+            {t("chat.iceBreakers.moreButton", { count: hidden.length })}
           </button>
         )}
       </div>
@@ -354,6 +359,7 @@ function iceBreakerReducer(
 // ---------- Data fetching ----------
 
 function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
+  const t = useT();
   const { sendMessage } = useChatStream();
   const { org } = useProjectContext();
 
@@ -373,7 +379,7 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
 
   const loadPrompt = async (prompt: Prompt, args?: PromptArgumentValues) => {
     if (!client) {
-      toast.error("MCP client not available");
+      toast.error(t("chat.iceBreakers.mcpClientNotAvailable"));
       dispatch({ type: "RESET" });
       return;
     }
@@ -416,7 +422,7 @@ function IceBreakersContent({ connectionId }: { connectionId: string | null }) {
       await sendMessage(newTiptapDoc);
     } catch (error) {
       console.error("[ice-breakers] Failed to fetch prompt:", error);
-      toast.error("Failed to load prompt. Please try again.");
+      toast.error(t("chat.iceBreakers.failedToLoadPrompt"));
       dispatch({ type: "RESET" });
     }
   };

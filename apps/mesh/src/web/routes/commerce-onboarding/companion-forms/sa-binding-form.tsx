@@ -19,6 +19,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+import { useT } from "@/web/i18n/use-t.ts";
 import { unwrapToolResult } from "../companions-core.ts";
 import {
   type BindProvider,
@@ -66,6 +67,7 @@ export function SaBindingForm({
   onIsPendingChange?: (isPending: boolean) => void;
   onOAuthInstead?: () => void;
 }) {
+  const t = useT();
   const copy = BIND_PROVIDER_COPY[provider];
   const queryClient = useQueryClient();
   const [remediation, setRemediation] = useState<
@@ -76,7 +78,12 @@ export function SaBindingForm({
     resourceId: z
       .string()
       .trim()
-      .min(1, `Informe o ${copy.resourceLabel.toLowerCase()}`),
+      .min(
+        1,
+        t("commerceOnboarding.saBindingForm.resourceIdRequired", {
+          resourceLabel: copy.resourceLabel.toLowerCase(),
+        }),
+      ),
   });
 
   const form = useForm<SaFormValues>({
@@ -87,7 +94,9 @@ export function SaBindingForm({
   const mutation = useMutation({
     mutationFn: async (values: SaFormValues): Promise<SaBindResult> => {
       if (!siteUrl) {
-        throw new Error("URL da loja indisponível — recarregue a página.");
+        throw new Error(
+          t("commerceOnboarding.saBindingForm.storeUrlUnavailable"),
+        );
       }
       const result = await selfClient.callTool({
         name: "COMMERCE_DISCOVERY_BIND",
@@ -101,7 +110,11 @@ export function SaBindingForm({
     onSuccess: async (res) => {
       if (res.ok) {
         setRemediation(null);
-        toast.success(`${copy.label} conectado`);
+        toast.success(
+          t("commerceOnboarding.saBindingForm.connectedSuccess", {
+            label: copy.label,
+          }),
+        );
         if (siteUrl) {
           await queryClient.invalidateQueries({
             queryKey: KEYS.commerceDiscoveryConnectionStatus(org.id, siteUrl),
@@ -122,7 +135,7 @@ export function SaBindingForm({
 
   const copyEmail = () => {
     navigator.clipboard?.writeText(SA_EMAIL);
-    toast.success("E-mail copiado");
+    toast.success(t("commerceOnboarding.saBindingForm.emailCopied"));
   };
 
   return (
@@ -147,7 +160,7 @@ export function SaBindingForm({
           variant="ghost"
           size="icon-sm"
           onClick={copyEmail}
-          aria-label="Copiar e-mail do service account"
+          aria-label={t("commerceOnboarding.saBindingForm.copyEmailLabel")}
         >
           <Copy01 size={16} />
         </Button>
@@ -198,7 +211,7 @@ export function SaBindingForm({
         <p role="alert" className="text-sm text-destructive">
           {mutation.error instanceof Error
             ? mutation.error.message
-            : "Não foi possível vincular."}
+            : t("commerceOnboarding.saBindingForm.bindError")}
         </p>
       )}
 
@@ -210,7 +223,7 @@ export function SaBindingForm({
             disabled={isPending}
             className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
           >
-            autorizar via login do Google
+            {t("commerceOnboarding.saBindingForm.googleLoginAlternative")}
           </button>
         ) : (
           <span />
@@ -222,10 +235,12 @@ export function SaBindingForm({
             onClick={onDone}
             disabled={isPending}
           >
-            Cancelar
+            {t("commerceOnboarding.saBindingForm.cancel")}
           </Button>
           <Button type="submit" disabled={isPending}>
-            {isPending ? "Verificando..." : "Vincular"}
+            {isPending
+              ? t("commerceOnboarding.saBindingForm.verifying")
+              : t("commerceOnboarding.saBindingForm.bind")}
           </Button>
         </div>
       </DialogFooter>

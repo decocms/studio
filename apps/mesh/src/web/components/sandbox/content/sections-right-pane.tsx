@@ -3,6 +3,7 @@ import { suggestBlockId } from "@/web/components/sections-editor/page-sections";
 import { AvailableSectionEditor } from "./available-section-editor";
 import { SavedSectionEditor } from "./saved-section-editor";
 import { EmptyMessage } from "./empty-message";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export function SectionsRightPane({
   selection,
@@ -41,11 +42,13 @@ export function SectionsRightPane({
     data: Record<string, unknown>,
   ) => void;
 }) {
+  const t = useT();
+
   if (!selection) {
     return (
       <EmptyMessage
-        title="Select a section to edit"
-        description="Pick a saved section to edit it, or an available one to customize and save as global."
+        title={t("sandbox.sectionsRightPane.selectSectionTitle")}
+        description={t("sandbox.sectionsRightPane.selectSectionDescription")}
       />
     );
   }

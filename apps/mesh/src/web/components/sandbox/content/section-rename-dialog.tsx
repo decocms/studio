@@ -10,6 +10,7 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /**
  * Renames the display name of a saved global section. We do NOT rename
@@ -32,6 +33,7 @@ export function SectionRenameDialog({
   onSubmit: (name: string) => void | Promise<void>;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(initialName);
   const [prevOpen, setPrevOpen] = useState(open);
 
@@ -56,10 +58,9 @@ export function SectionRenameDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Rename section</DialogTitle>
+            <DialogTitle>{t("sandbox.sectionRenameDialog.title")}</DialogTitle>
             <DialogDescription>
-              Updates the display name. The internal key stays the same so pages
-              referencing this section keep working.
+              {t("sandbox.sectionRenameDialog.description")}
             </DialogDescription>
           </DialogHeader>
 
@@ -69,7 +70,7 @@ export function SectionRenameDialog({
                 htmlFor="section-rename-name"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Name
+                {t("sandbox.sectionRenameDialog.nameLabel")}
               </label>
               <Input
                 id="section-rename-name"
@@ -81,7 +82,7 @@ export function SectionRenameDialog({
             </div>
             <div className="space-y-1.5">
               <span className="text-xs font-medium text-muted-foreground">
-                Key
+                {t("sandbox.sectionRenameDialog.keyLabel")}
               </span>
               <Input value={blockKey} readOnly disabled className="font-mono" />
             </div>
@@ -94,16 +95,16 @@ export function SectionRenameDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {t("sandbox.sectionRenameDialog.cancel")}
             </Button>
             <Button type="submit" disabled={!name.trim() || isPending}>
               {isPending ? (
                 <>
                   <Loading01 size={14} className="animate-spin" />
-                  Saving…
+                  {t("sandbox.sectionRenameDialog.saving")}
                 </>
               ) : (
-                "Save"
+                t("sandbox.sectionRenameDialog.save")
               )}
             </Button>
           </DialogFooter>

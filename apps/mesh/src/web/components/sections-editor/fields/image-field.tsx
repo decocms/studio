@@ -5,6 +5,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   FilePickerDialog,
   LAST_CONFIG_KEY,
@@ -35,6 +36,7 @@ export function ImageField({
   label,
   sandbox,
 }: FieldProps) {
+  const t = useT();
   const strValue = extractUrl(value);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -89,7 +91,7 @@ export function ImageField({
       ACCEPTED_IMAGE_TYPES.has(f.type || ""),
     );
     if (list.length === 0) {
-      toast.error("Only image files are accepted here.");
+      toast.error(t("sectionsEditor.imageField.onlyImageFilesAccepted"));
       return;
     }
 
@@ -110,11 +112,17 @@ export function ImageField({
       setValue(result.publicUrl);
       if (list.length > 1) {
         toast.info(
-          `Uploaded ${list[0]!.name}; extra files were ignored (single-select field).`,
+          t("sectionsEditor.imageField.uploadedWithExtraFilesIgnored", {
+            fileName: list[0]!.name,
+          }),
         );
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.imageField.uploadFailed"),
+      );
     }
   }
 
@@ -166,7 +174,7 @@ export function ImageField({
             <button
               type="button"
               onClick={() => setPickerOpen(true)}
-              aria-label="Replace image"
+              aria-label={t("sectionsEditor.imageField.replaceImage")}
               className="relative block h-40 w-full cursor-pointer bg-[image:linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%),linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%)] bg-[position:0_0,8px_8px] [background-size:16px_16px]"
             >
               {!imageErrored && (
@@ -188,7 +196,9 @@ export function ImageField({
               {imageErrored && (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-muted-foreground">
                   <Image01 size={20} />
-                  <p className="text-xs">Preview unavailable</p>
+                  <p className="text-xs">
+                    {t("sectionsEditor.imageField.previewUnavailable")}
+                  </p>
                 </div>
               )}
               {!imageLoaded && !imageErrored && (
@@ -216,11 +226,11 @@ export function ImageField({
             <Image01 size={20} />
             <span className="text-sm font-medium">
               {upload.isPending
-                ? "Uploading…"
-                : "Drop an image or click to browse"}
+                ? t("sectionsEditor.imageField.uploading")
+                : t("sectionsEditor.imageField.dropImageOrClickToBrowse")}
             </span>
             <span className="text-xs text-muted-foreground">
-              PNG, JPEG, WebP, GIF, SVG, AVIF — up to 100 MB
+              {t("sectionsEditor.imageField.supportedFormatsAndSize")}
             </span>
           </button>
         )}
@@ -228,7 +238,7 @@ export function ImageField({
         {isDragging && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-primary/10 backdrop-blur-[1px]">
             <span className="rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow">
-              Drop to upload
+              {t("sectionsEditor.imageField.dropToUpload")}
             </span>
           </div>
         )}
@@ -240,7 +250,7 @@ export function ImageField({
           type="url"
           value={strValue}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="https://..."
+          placeholder={t("sectionsEditor.imageField.urlPlaceholder")}
           className="h-9 min-w-0 flex-1"
         />
         {!strValue && (
@@ -252,7 +262,7 @@ export function ImageField({
             className="h-9 shrink-0"
           >
             <Upload01 size={14} />
-            Browse
+            {t("sectionsEditor.imageField.browse")}
           </Button>
         )}
         {strValue && (
@@ -264,7 +274,7 @@ export function ImageField({
               size="sm"
               onClick={() => setValue("")}
               className="h-9 shrink-0"
-              aria-label="Remove image"
+              aria-label={t("sectionsEditor.imageField.removeImage")}
             >
               <Trash01 size={14} />
             </Button>

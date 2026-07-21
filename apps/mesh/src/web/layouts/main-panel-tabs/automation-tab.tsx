@@ -16,13 +16,26 @@ import { ArrowLeft } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { Suspense, useState } from "react";
 import { MainPanelLoading } from "./main-panel-loading";
+import { useT } from "@/web/i18n/use-t.ts";
 
 // Stat-card window options for the Runs tab. Anchored once at selection time so
 // the derived ISO range is stable across renders (avoids refetch loops).
 const WINDOW_OPTIONS = [
-  { key: "24h", label: "Last 24 hours", ms: 24 * 60 * 60 * 1000 },
-  { key: "7d", label: "Last 7 days", ms: 7 * 24 * 60 * 60 * 1000 },
-  { key: "30d", label: "Last 30 days", ms: 30 * 24 * 60 * 60 * 1000 },
+  {
+    key: "24h",
+    labelKey: "mainPanelTabs.automationTab.last24hours",
+    ms: 24 * 60 * 60 * 1000,
+  },
+  {
+    key: "7d",
+    labelKey: "mainPanelTabs.automationTab.last7days",
+    ms: 7 * 24 * 60 * 60 * 1000,
+  },
+  {
+    key: "30d",
+    labelKey: "mainPanelTabs.automationTab.last30days",
+    ms: 30 * 24 * 60 * 60 * 1000,
+  },
 ] as const;
 
 type WindowKey = (typeof WINDOW_OPTIONS)[number]["key"];
@@ -43,6 +56,7 @@ function RunsTab({
   automationId: string;
   triggerIds: string[];
 }) {
+  const t = useT();
   const [windowKey, setWindowKey] = useState<WindowKey>("30d");
   const [range, setRange] = useState(() => computeRange("30d"));
 
@@ -63,7 +77,7 @@ function RunsTab({
           <SelectContent>
             {WINDOW_OPTIONS.map((o) => (
               <SelectItem key={o.key} value={o.key}>
-                {o.label}
+                {t(o.labelKey)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -90,6 +104,7 @@ export function AutomationTab({ tabId }: { tabId: string }) {
 }
 
 function AutomationTabInner({ id }: { id: string }) {
+  const t = useT();
   const navigate = useNavigate();
   const { data: automation, isLoading } = useAutomation(id);
   const [tab, setTab] = useState<"settings" | "runs">("settings");
@@ -112,7 +127,7 @@ function AutomationTabInner({ id }: { id: string }) {
   if (!automation) {
     return (
       <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
-        Automation not found
+        {t("mainPanelTabs.automationTab.automationNotFound")}
       </div>
     );
   }
@@ -126,12 +141,15 @@ function AutomationTabInner({ id }: { id: string }) {
           <div className="flex items-center justify-between pb-4 shrink-0">
             <Button variant="ghost" size="sm" onClick={onBack}>
               <ArrowLeft size={14} />
-              Back to list
+              {t("mainPanelTabs.automationTab.backToList")}
             </Button>
             <CollectionTabs
               tabs={[
-                { id: "settings", label: "Settings" },
-                { id: "runs", label: "Runs" },
+                {
+                  id: "settings",
+                  label: t("mainPanelTabs.automationTab.settings"),
+                },
+                { id: "runs", label: t("mainPanelTabs.automationTab.runs") },
               ]}
               activeTab={tab}
               onTabChange={(t) => setTab(t as "settings" | "runs")}

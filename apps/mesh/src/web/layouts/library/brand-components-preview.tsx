@@ -12,12 +12,62 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
 import { KEYS } from "@/web/lib/query-keys";
 
 async function fetchText(url: string): Promise<string> {
   const res = await fetch(url, { credentials: "include" });
   if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
   return res.text();
+}
+
+function createComponentBody(t: TFunction): string {
+  const brandApplied = t("library.brandComponentsPreview.title");
+  const buttonsCardsInputs = t("library.brandComponentsPreview.subtitle");
+  const monthlySavings = t(
+    "library.brandComponentsPreview.monthlySavingsLabel",
+  );
+  const primaryBtn = t("library.brandComponentsPreview.primaryButton");
+  const secondaryBtn = t("library.brandComponentsPreview.secondaryButton");
+  const ghostBtn = t("library.brandComponentsPreview.ghostButton");
+  const successBadge = t("library.brandComponentsPreview.successBadge");
+  const warningBadge = t("library.brandComponentsPreview.warningBadge");
+  const errorBadge = t("library.brandComponentsPreview.errorBadge");
+  const infoBadge = t("library.brandComponentsPreview.infoBadge");
+  const allChip = t("library.brandComponentsPreview.allChip");
+  const incomeChip = t("library.brandComponentsPreview.incomeChip");
+  const spendingChip = t("library.brandComponentsPreview.spendingChip");
+  const emailPlaceholder = t("library.brandComponentsPreview.emailPlaceholder");
+
+  return `
+  <div class="stack">
+    <div>
+      <h1>${brandApplied}</h1>
+      <p class="muted" style="margin:6px 0 0">${buttonsCardsInputs}</p>
+    </div>
+    <div class="row">
+      <button class="btn btn-primary">${primaryBtn}</button>
+      <button class="btn btn-secondary">${secondaryBtn}</button>
+      <button class="btn btn-ghost">${ghostBtn}</button>
+    </div>
+    <div class="card">
+      <p class="muted" style="margin:0 0 6px">${monthlySavings}</p>
+      <div class="kpi">$240</div>
+    </div>
+    <input class="input" placeholder="${emailPlaceholder}" />
+    <div class="row">
+      <span class="badge badge-success">${successBadge}</span>
+      <span class="badge badge-warning">${warningBadge}</span>
+      <span class="badge badge-error">${errorBadge}</span>
+      <span class="badge badge-info">${infoBadge}</span>
+    </div>
+    <div class="row">
+      <span class="chip chip-active">${allChip}</span>
+      <span class="chip">${incomeChip}</span>
+      <span class="chip">${spendingChip}</span>
+    </div>
+  </div>
+`;
 }
 
 // Maps generic primitives onto --brand-* tokens; fallbacks keep a minimal
@@ -45,41 +95,15 @@ const COMPONENT_STYLES = `
   .chip-active{background:var(--brand-primary,#0a84ff);border-color:transparent;color:#fff}
 `;
 
-const COMPONENT_BODY = `
-  <div class="stack">
-    <div>
-      <h1>Your brand, applied</h1>
-      <p class="muted" style="margin:6px 0 0">Buttons, cards, inputs and badges in your tokens.</p>
-    </div>
-    <div class="row">
-      <button class="btn btn-primary">Primary</button>
-      <button class="btn btn-secondary">Secondary</button>
-      <button class="btn btn-ghost">Ghost</button>
-    </div>
-    <div class="card">
-      <p class="muted" style="margin:0 0 6px">Monthly savings</p>
-      <div class="kpi">$240</div>
-    </div>
-    <input class="input" placeholder="you@example.com" />
-    <div class="row">
-      <span class="badge badge-success">Success</span>
-      <span class="badge badge-warning">Warning</span>
-      <span class="badge badge-error">Error</span>
-      <span class="badge badge-info">Info</span>
-    </div>
-    <div class="row">
-      <span class="chip chip-active">All</span>
-      <span class="chip">Income</span>
-      <span class="chip">Spending</span>
-    </div>
-  </div>
-`;
-
-function composeComponentsPreview(tokensCss: string | null): string {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><style>${tokensCss ?? ""}</style><style>${COMPONENT_STYLES}</style></head><body>${COMPONENT_BODY}</body></html>`;
+function composeComponentsPreview(
+  tokensCss: string | null,
+  componentBody: string,
+): string {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><style>${tokensCss ?? ""}</style><style>${COMPONENT_STYLES}</style></head><body>${componentBody}</body></html>`;
 }
 
 export function BrandComponentsPreview({ tokensUrl }: { tokensUrl?: string }) {
+  const t = useT();
   const tokens = useQuery({
     queryKey: KEYS.fileText(tokensUrl ?? ""),
     enabled: !!tokensUrl,
@@ -96,10 +120,13 @@ export function BrandComponentsPreview({ tokensUrl }: { tokensUrl?: string }) {
     );
   }
 
+  const iframeTitle = t("library.brandComponentsPreview.iframeTitle");
+  const componentBody = createComponentBody(t);
+
   return (
     <iframe
-      title="Brand components"
-      srcDoc={composeComponentsPreview(tokens.data ?? null)}
+      title={iframeTitle}
+      srcDoc={composeComponentsPreview(tokens.data ?? null, componentBody)}
       sandbox=""
       className="block h-full w-full border-0 bg-white"
     />

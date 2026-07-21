@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Copy01,
@@ -188,6 +189,7 @@ function SortableSectionItem({
   onAddVariant: () => void;
   onDetach: () => void;
 }) {
+  const t = useT();
   const isAsyncRender = raw
     ? isLazyResolveType(raw.__resolveType ?? "")
     : false;
@@ -238,7 +240,9 @@ function SortableSectionItem({
               variant="ghost"
               size="icon"
               aria-label={
-                isAsyncRender ? "Disable async render" : "Enable async render"
+                isAsyncRender
+                  ? t("sectionsEditor.sectionList.disableAsyncRender")
+                  : t("sectionsEditor.sectionList.enableAsyncRender")
               }
               className={cn(
                 "h-7 w-7 shrink-0",
@@ -259,7 +263,9 @@ function SortableSectionItem({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {isAsyncRender ? "Disable async render" : "Enable async render"}
+            {isAsyncRender
+              ? t("sectionsEditor.sectionList.disableAsyncRender")
+              : t("sectionsEditor.sectionList.enableAsyncRender")}
           </TooltipContent>
         </Tooltip>
       )}
@@ -271,7 +277,11 @@ function SortableSectionItem({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label={section.isHidden ? "Show section" : "Hide section"}
+              aria-label={
+                section.isHidden
+                  ? t("sectionsEditor.sectionList.showSection")
+                  : t("sectionsEditor.sectionList.hideSection")
+              }
               className={cn(
                 "h-7 w-7 shrink-0",
                 section.isHidden
@@ -292,7 +302,9 @@ function SortableSectionItem({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {section.isHidden ? "Show section" : "Hide section"}
+            {section.isHidden
+              ? t("sectionsEditor.sectionList.showSection")
+              : t("sectionsEditor.sectionList.hideSection")}
           </TooltipContent>
         </Tooltip>
       )}
@@ -303,7 +315,7 @@ function SortableSectionItem({
             type="button"
             variant="ghost"
             size="icon"
-            aria-label="Section actions"
+            aria-label={t("sectionsEditor.sectionList.sectionActionsMenu")}
             className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
@@ -319,7 +331,7 @@ function SortableSectionItem({
             }}
           >
             <Copy01 className="h-4 w-4" />
-            Duplicate
+            {t("sectionsEditor.sectionList.duplicateMenuItem")}
           </DropdownMenuItem>
           {enableAddVariant && (
             <DropdownMenuItem
@@ -330,7 +342,7 @@ function SortableSectionItem({
               }}
             >
               <Flag01 className="h-4 w-4" />
-              Add variant
+              {t("sectionsEditor.sectionList.addVariantMenuItem")}
             </DropdownMenuItem>
           )}
           {enableMakeReusable && (
@@ -342,7 +354,7 @@ function SortableSectionItem({
               }}
             >
               <LayoutAlt01 className="h-4 w-4" />
-              Make reusable
+              {t("sectionsEditor.sectionList.makeReusableMenuItem")}
             </DropdownMenuItem>
           )}
           {section.isSavedBlock === true && !section.isMultivariate && (
@@ -353,7 +365,7 @@ function SortableSectionItem({
               }}
             >
               <LayoutAlt01 className="h-4 w-4" />
-              Detach
+              {t("sectionsEditor.sectionList.detachMenuItem")}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
@@ -364,7 +376,7 @@ function SortableSectionItem({
             }}
           >
             <Trash01 className="h-4 w-4" />
-            Delete
+            {t("sectionsEditor.sectionList.deleteMenuItem")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -409,6 +421,7 @@ export function SectionList({
   onAddSection: () => void;
   canAddSection?: boolean;
 }) {
+  const t = useT();
   const [entries, setEntries] = useState<SectionEntry[]>(() =>
     createEntries(sections.length),
   );
@@ -480,7 +493,7 @@ export function SectionList({
     return (
       <div className="space-y-2">
         <p className="px-2 py-3 text-xs text-muted-foreground">
-          No sections in this page.
+          {t("sectionsEditor.sectionList.noSections")}
         </p>
         <Button
           type="button"
@@ -491,7 +504,7 @@ export function SectionList({
           onClick={onAddSection}
         >
           <Plus size={14} />
-          Add section
+          {t("sectionsEditor.sectionList.addSectionButton")}
         </Button>
       </div>
     );
@@ -563,7 +576,7 @@ export function SectionList({
         onClick={onAddSection}
       >
         <Plus size={14} />
-        Add section
+        {t("sectionsEditor.sectionList.addSectionButton")}
       </Button>
     </div>
   );

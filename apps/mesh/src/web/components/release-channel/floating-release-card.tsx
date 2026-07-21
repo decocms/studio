@@ -2,6 +2,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { XClose } from "@untitledui/icons";
 import { ReleaseCard } from "@/web/components/release-channel/release-card";
 import { useReleaseSeenState } from "@/web/hooks/use-release-seen-state";
+import { useT } from "@/web/i18n/use-t.ts";
 import { authClient } from "@/web/lib/auth-client";
 import { RELEASES } from "@/web/lib/release-feed";
 
@@ -42,6 +43,7 @@ function isUserOldEnoughForReleaseNotice(createdAt: unknown, now: number) {
 }
 
 export function FloatingReleaseCard() {
+  const t = useT();
   const { data: session } = authClient.useSession();
   const { isSeen, markSeen } = useReleaseSeenState();
   const now = Date.now();
@@ -56,13 +58,15 @@ export function FloatingReleaseCard() {
   return (
     <div
       role="dialog"
-      aria-label="Release announcement"
+      aria-label={t("releaseChannel.floatingReleaseCard.releaseAnnouncement")}
       className="fixed bottom-6 right-6 z-50 w-[min(360px,calc(100vw-3rem))] rounded-lg border border-border bg-background p-4 shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <Button
         size="icon"
         variant="ghost"
-        aria-label="Dismiss release announcement"
+        aria-label={t(
+          "releaseChannel.floatingReleaseCard.dismissReleaseAnnouncement",
+        )}
         className="absolute right-2 top-2 size-7 text-muted-foreground"
         onClick={() => markSeen(candidate.id)}
       >

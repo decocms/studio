@@ -12,8 +12,10 @@ import {
 } from "@/web/hooks/use-automations";
 import { AutomationListRow } from "./automation-list-row";
 import { track } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
+  const t = useT();
   const navigate = useNavigate();
   const { data: automations = [] } = useAutomations(virtualMcpId);
   const { create } = useAutomationActions();
@@ -49,7 +51,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   const newButton = (
     <Button size="sm" onClick={handleNew} disabled={create.isPending}>
       <Plus size={14} />
-      New automation
+      {t("automations.automationsList.newAutomation")}
     </Button>
   );
 
@@ -58,13 +60,15 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
       <Page.Content>
         <Page.Body>
           <div className="flex flex-col gap-6">
-            <Page.Title>Automations</Page.Title>
+            <Page.Title>{t("automations.automationsList.title")}</Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
               {automations.length > 0 && (
                 <SearchInput
                   value={search}
                   onChange={setSearch}
-                  placeholder="Search automations..."
+                  placeholder={t(
+                    "automations.automationsList.searchPlaceholder",
+                  )}
                   className="w-full md:w-[375px]"
                 />
               )}
@@ -76,8 +80,8 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
             <div className="flex items-center justify-center py-20">
               <EmptyState
                 image={<Zap size={48} className="text-muted-foreground" />}
-                title="No automations yet"
-                description="Create your first automation to run this agent on a schedule or in response to events."
+                title={t("automations.automationsList.emptyTitle")}
+                description={t("automations.automationsList.emptyDescription")}
                 actions={newButton}
               />
             </div>
@@ -85,8 +89,11 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
             <div className="flex items-center justify-center py-20">
               <EmptyState
                 image={<Zap size={48} className="text-muted-foreground" />}
-                title="No automations found"
-                description={`No automations match "${search}"`}
+                title={t("automations.automationsList.noResultsTitle")}
+                description={t(
+                  "automations.automationsList.noResultsDescription",
+                  { search },
+                )}
               />
             </div>
           ) : (

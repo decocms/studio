@@ -3,6 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useActiveOrganizations } from "@/web/lib/auth-client";
 import { usePwaManifest } from "@/web/hooks/use-pwa-manifest";
 import { usePwaInstall } from "@/web/lib/pwa-install";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /**
  * Per-org install page (/:org/install).
@@ -22,6 +23,7 @@ function OrgInstallPage() {
   const { org: slug } = useParams({ strict: false });
   const { data: organizations } = useActiveOrganizations();
   const org = organizations?.find((o: { slug: string }) => o.slug === slug);
+  const t = useT();
 
   // Swap to the org-branded manifest while this page is mounted. Null until the
   // org list resolves; usePwaManifest leaves the Studio defaults in place then.
@@ -38,13 +40,15 @@ function OrgInstallPage() {
   const { canPrompt, installed, ios, promptInstall } = usePwaInstall();
   const [outcome, setOutcome] = useState<string | null>(null);
 
-  const name = org?.name ?? "this organization";
+  const name = org?.name ?? t("routes.orgInstall.defaultOrgName");
   const logo = (org as { logo?: string | null } | undefined)?.logo;
 
   const handleInstall = async () => {
     const result = await promptInstall();
-    if (result === "accepted") setOutcome(`Installing ${name}…`);
-    else if (result === "dismissed") setOutcome("Install dismissed.");
+    if (result === "accepted")
+      setOutcome(t("routes.orgInstall.installing", { name }));
+    else if (result === "dismissed")
+      setOutcome(t("routes.orgInstall.installDismissed"));
     else setOutcome(null);
   };
 
@@ -58,26 +62,22 @@ function OrgInstallPage() {
         />
         <div className="flex flex-col gap-2">
           <h1 className="text-xl font-semibold text-foreground">
-            Add {name} to your Home Screen
+            {t("routes.orgInstall.addToHomeScreen", { name })}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Install {name} as its own app — a standalone window that opens
-            straight into this organization. To install the full deco Studio app
-            instead, use your browser's “Add to Home Screen” from any other
-            page.
+            {t("routes.orgInstall.installDescription", { name })}
           </p>
         </div>
 
         {installed ? (
           <p className="rounded-lg bg-muted px-4 py-3 text-sm text-foreground">
-            {name} is already installed on this device.
+            {t("routes.orgInstall.alreadyInstalled", { name })}
           </p>
         ) : ios ? (
           <div className="flex flex-col gap-2 rounded-lg bg-muted px-4 py-3 text-sm text-foreground">
-            <p className="font-medium">Install on iOS</p>
+            <p className="font-medium">{t("routes.orgInstall.installOnIos")}</p>
             <p className="text-muted-foreground">
-              Tap the <span className="font-medium">Share</span> button, then
-              choose <span className="font-medium">Add to Home Screen</span>.
+              {t("routes.orgInstall.iosInstructions")}
             </p>
           </div>
         ) : canPrompt ? (
@@ -87,7 +87,7 @@ function OrgInstallPage() {
               onClick={handleInstall}
               className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
-              Add {name} to Home Screen
+              {t("routes.orgInstall.addToHomeScreenButton", { name })}
             </button>
             {outcome && (
               <p className="text-sm text-muted-foreground">{outcome}</p>
@@ -95,10 +95,7 @@ function OrgInstallPage() {
           </div>
         ) : (
           <p className="rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
-            To install, open your browser's menu and choose{" "}
-            <span className="font-medium text-foreground">Install {name}</span>{" "}
-            (or “Add to Home Screen”). If you don't see it yet, interact with
-            the app for a moment and try again.
+            {t("routes.orgInstall.fallbackInstructions", { name })}
           </p>
         )}
 
@@ -109,7 +106,7 @@ function OrgInstallPage() {
           // Replace so the install page doesn't linger in history.
           replace
         >
-          Back to {name}
+          {t("routes.orgInstall.backLink", { name })}
         </Link>
       </div>
     </div>

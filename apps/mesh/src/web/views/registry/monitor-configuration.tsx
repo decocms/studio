@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { MessageQuestionCircle } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useRegistryMonitorConfig } from "@/web/hooks/registry/use-monitor";
 import type {
   MonitorFailureAction,
@@ -35,6 +36,7 @@ function hasChanges(
 }
 
 export function MonitorConfiguration() {
+  const t = useT();
   const { settings, saveMutation } = useRegistryMonitorConfig();
   const prevSettingsRef = useRef(settings);
   const [draft, setDraft] = useState<RegistryMonitorConfig>(settings);
@@ -71,20 +73,22 @@ export function MonitorConfiguration() {
     <Card className="p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold">QA Configuration</h3>
+          <h3 className="text-sm font-semibold">
+            {t("registry.monitorConfiguration.qaConfiguration")}
+          </h3>
           <p className="text-xs text-muted-foreground">
-            Configure how the MCP QA agent validates registry entries.
+            {t("registry.monitorConfiguration.description")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {isDirty && (
             <Badge className="bg-warning/10 text-warning border-warning/20 text-[10px]">
-              Unsaved changes
+              {t("registry.monitorConfiguration.unsavedChanges")}
             </Badge>
           )}
           {justSaved && (
             <Badge className="bg-success/10 text-success border-success/20 text-[10px]">
-              ✓ Saved
+              ✓ {t("registry.monitorConfiguration.saved")}
             </Badge>
           )}
           <Button
@@ -92,7 +96,9 @@ export function MonitorConfiguration() {
             onClick={save}
             disabled={saveMutation.isPending || !isDirty}
           >
-            {saveMutation.isPending ? "Saving..." : "Save settings"}
+            {saveMutation.isPending
+              ? t("registry.monitorConfiguration.saving")
+              : t("registry.monitorConfiguration.saveSettings")}
           </Button>
         </div>
       </div>
@@ -100,8 +106,8 @@ export function MonitorConfiguration() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1">
           <FieldLabel
-            label="On failure"
-            hint="Automatic action to apply when an MCP fails tests in a run."
+            label={t("registry.monitorConfiguration.onFailureLabel")}
+            hint={t("registry.monitorConfiguration.onFailureHint")}
           />
           <select
             className="h-9 rounded-md border border-input bg-background px-3 text-sm"
@@ -110,22 +116,28 @@ export function MonitorConfiguration() {
               setPartial({ onFailure: e.target.value as MonitorFailureAction })
             }
           >
-            <option value="none">Do nothing</option>
-            <option value="unlisted">
-              Unlist from store (keep in registry)
+            <option value="none">
+              {t("registry.monitorConfiguration.onFailureNone")}
             </option>
-            <option value="remove_public">Remove from public store</option>
-            <option value="remove_private">Remove from private registry</option>
+            <option value="unlisted">
+              {t("registry.monitorConfiguration.onFailureUnlisted")}
+            </option>
+            <option value="remove_public">
+              {t("registry.monitorConfiguration.onFailureRemovePublic")}
+            </option>
+            <option value="remove_private">
+              {t("registry.monitorConfiguration.onFailureRemovePrivate")}
+            </option>
             <option value="remove_all">
-              Remove from all (public + private)
+              {t("registry.monitorConfiguration.onFailureRemoveAll")}
             </option>
           </select>
         </div>
 
         <div className="space-y-1">
           <FieldLabel
-            label="Test scope"
-            hint="Choose whether tests should run for public items, private items, or both."
+            label={t("registry.monitorConfiguration.testScopeLabel")}
+            hint={t("registry.monitorConfiguration.testScopeHint")}
           />
           <div className="flex items-center gap-4 rounded-md border border-input px-3 py-2">
             <label className="inline-flex items-center gap-2 text-sm">
@@ -141,7 +153,7 @@ export function MonitorConfiguration() {
                   })
                 }
               />
-              Public only
+              {t("registry.monitorConfiguration.publicOnly")}
             </label>
             <label className="inline-flex items-center gap-2 text-sm">
               <input
@@ -156,15 +168,15 @@ export function MonitorConfiguration() {
                   })
                 }
               />
-              Private only
+              {t("registry.monitorConfiguration.privateOnly")}
             </label>
           </div>
         </div>
 
         <div className="space-y-1">
           <FieldLabel
-            label="Publish requests"
-            hint="Include pending publish requests in QA runs to validate them before publishing to the store."
+            label={t("registry.monitorConfiguration.publishRequestsLabel")}
+            hint={t("registry.monitorConfiguration.publishRequestsHint")}
           />
           <div className="flex items-center gap-4 rounded-md border border-input px-3 py-2">
             <label className="inline-flex items-center gap-2 text-sm">
@@ -175,7 +187,7 @@ export function MonitorConfiguration() {
                   setPartial({ includePendingRequests: event.target.checked })
                 }
               />
-              Include pending requests in tests
+              {t("registry.monitorConfiguration.includePendingRequests")}
             </label>
           </div>
         </div>
@@ -183,8 +195,12 @@ export function MonitorConfiguration() {
         <div className="space-y-1 md:col-span-2">
           <div className="flex items-center justify-between gap-2">
             <FieldLabel
-              label="Additional test context (prompt)"
-              hint="Extra runtime context passed to the agent, such as valid emails, tenant IDs, or known test entities."
+              label={t(
+                "registry.monitorConfiguration.additionalTestContextLabel",
+              )}
+              hint={t(
+                "registry.monitorConfiguration.additionalTestContextHint",
+              )}
             />
             <Button
               size="sm"
@@ -192,18 +208,22 @@ export function MonitorConfiguration() {
               className="h-7"
               onClick={() => setShowDefaultPrompt((prev) => !prev)}
             >
-              {showDefaultPrompt ? "Hide" : "View"} default system prompt
+              {showDefaultPrompt
+                ? t("registry.monitorConfiguration.hideDefaultPrompt")
+                : t("registry.monitorConfiguration.viewDefaultPrompt")}{" "}
+              {t("registry.monitorConfiguration.defaultSystemPrompt")}
             </Button>
           </div>
           <Textarea
             value={draft.agentContext ?? ""}
             onChange={(e) => setPartial({ agentContext: e.target.value })}
-            placeholder='Example: Use "my-user@company.com" as a valid email for Google Drive share/create_permission tests.'
+            placeholder={t(
+              "registry.monitorConfiguration.agentContextPlaceholder",
+            )}
             rows={3}
           />
           <p className="text-[11px] text-muted-foreground">
-            Use this field for real data required by some tools (valid email,
-            fixed IDs, test environment details, etc).
+            {t("registry.monitorConfiguration.agentContextHelper")}
           </p>
           {showDefaultPrompt && (
             <pre className="text-[11px] bg-muted/50 border border-border rounded px-3 py-2 whitespace-pre-wrap max-h-64 overflow-auto">
@@ -214,8 +234,8 @@ export function MonitorConfiguration() {
 
         <div className="space-y-1">
           <FieldLabel
-            label="Per MCP timeout (ms)"
-            hint="Max total time allowed to validate one MCP."
+            label={t("registry.monitorConfiguration.perMcpTimeoutLabel")}
+            hint={t("registry.monitorConfiguration.perMcpTimeoutHint")}
           />
           <Input
             type="number"
@@ -228,8 +248,8 @@ export function MonitorConfiguration() {
 
         <div className="space-y-1">
           <FieldLabel
-            label="Per tool timeout (ms)"
-            hint="Max time allowed for each individual tool call."
+            label={t("registry.monitorConfiguration.perToolTimeoutLabel")}
+            hint={t("registry.monitorConfiguration.perToolTimeoutHint")}
           />
           <Input
             type="number"
@@ -242,8 +262,8 @@ export function MonitorConfiguration() {
 
         <div className="space-y-1">
           <FieldLabel
-            label="Max agent steps"
-            hint="Maximum number of reasoning/tool steps in Agentic mode."
+            label={t("registry.monitorConfiguration.maxAgentStepsLabel")}
+            hint={t("registry.monitorConfiguration.maxAgentStepsHint")}
           />
           <Input
             type="number"
@@ -261,6 +281,7 @@ export function MonitorConfiguration() {
 }
 
 function FieldLabel({ label, hint }: { label: string; hint: string }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-1.5">
       <Label>{label}</Label>
@@ -269,7 +290,9 @@ function FieldLabel({ label, hint }: { label: string; hint: string }) {
           <button
             type="button"
             className="text-muted-foreground hover:text-foreground transition-colors"
-            aria-label={`About ${label}`}
+            aria-label={t("registry.monitorConfiguration.aboutLabel", {
+              label,
+            })}
           >
             <MessageQuestionCircle size={14} />
           </button>

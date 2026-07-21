@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Loading01 } from "@untitledui/icons";
 import { handleOAuthCallback } from "@/web/lib/mcp-oauth";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export default function OAuthCallback() {
+  const t = useT();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
 
@@ -15,7 +17,9 @@ export default function OAuthCallback() {
         const result = await handleOAuthCallback();
 
         if (!result.success) {
-          setError(result.error || "MCP authentication failed");
+          setError(
+            result.error || t("routes.oauthCallback.authenticationFailed"),
+          );
           setTimeout(() => {
             window.close();
           }, 3000);
@@ -75,29 +79,31 @@ export default function OAuthCallback() {
         <div className="flex flex-col items-center gap-2 text-center">
           <h2 className="text-lg font-medium text-foreground">
             {error
-              ? "Authentication Failed"
+              ? t("routes.oauthCallback.authenticationFailedTitle")
               : success
-                ? "Authentication Successful"
-                : "Authentication in progress..."}
+                ? t("routes.oauthCallback.authenticationSuccessfulTitle")
+                : t("routes.oauthCallback.authenticationInProgressTitle")}
           </h2>
           <div className="text-sm text-muted-foreground">
             {error ? (
               <>
-                <p className="mb-2">An error occurred during authentication:</p>
+                <p className="mb-2">
+                  {t("routes.oauthCallback.errorOccurred")}
+                </p>
                 <p className="text-destructive">{error}</p>
                 <p className="mt-2">
                   <br />
-                  This window will close automatically.
+                  {t("routes.oauthCallback.windowClosingAutomatically")}
                 </p>
               </>
             ) : success ? (
               <p>
-                Authentication complete.
+                {t("routes.oauthCallback.authenticationComplete")}
                 <br />
-                This window will close automatically.
+                {t("routes.oauthCallback.windowClosingAutomatically")}
               </p>
             ) : (
-              <p>Processing authentication...</p>
+              <p>{t("routes.oauthCallback.processingAuthentication")}</p>
             )}
           </div>
         </div>

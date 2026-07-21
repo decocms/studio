@@ -8,6 +8,7 @@ import { getEffectiveState } from "./utils.tsx";
 import { ImageLightbox } from "../../../image-lightbox.tsx";
 import { formatDuration } from "@/web/lib/format-time.ts";
 import { parseStudioStorageKey } from "@/api/routes/decopilot/studio-storage-uri";
+import { useT } from "@/web/i18n/use-t.ts";
 
 function resolveImageSrc(uri: string, orgSlug: string): string {
   const key = parseStudioStorageKey(uri);
@@ -35,6 +36,7 @@ interface TakeScreenshotPartProps {
 }
 
 export function TakeScreenshotPart({ part, latency }: TakeScreenshotPartProps) {
+  const t = useT();
   const org = useOrg();
   const state = getEffectiveState(part.state);
   const input = part.input as TakeScreenshotInput | undefined;
@@ -52,7 +54,7 @@ export function TakeScreenshotPart({ part, latency }: TakeScreenshotPartProps) {
     return (
       <ToolCallShell
         icon={<Monitor01 size={14} />}
-        title="Taking screenshot"
+        title={t("chat.takeScreenshot.taking")}
         summary={pageUrl}
         state="loading"
       />
@@ -63,8 +65,8 @@ export function TakeScreenshotPart({ part, latency }: TakeScreenshotPartProps) {
     return (
       <ToolCallShell
         icon={<Monitor01 size={14} />}
-        title="Take screenshot"
-        summary={result?.error ?? "Failed"}
+        title={t("chat.takeScreenshot.title")}
+        summary={result?.error ?? t("chat.takeScreenshot.failed")}
         state="error"
         trailing={latencyLabel}
       />
@@ -77,16 +79,19 @@ export function TakeScreenshotPart({ part, latency }: TakeScreenshotPartProps) {
     <div className="flex flex-col gap-2">
       <ToolCallShell
         icon={<Monitor01 size={14} className="text-blue-500" />}
-        title="Screenshot"
+        title={t("chat.takeScreenshot.screenshot")}
         summary={pageUrl}
         state="idle"
         trailing={latencyLabel}
       />
       <div className="flex flex-wrap gap-2">
-        <ImageLightbox src={src} alt={pageUrl ?? "Screenshot"}>
+        <ImageLightbox
+          src={src}
+          alt={pageUrl ?? t("chat.takeScreenshot.screenshotAlt")}
+        >
           <img
             src={src}
-            alt={pageUrl ?? "Screenshot"}
+            alt={pageUrl ?? t("chat.takeScreenshot.screenshotAlt")}
             className="max-w-sm max-h-80 object-contain rounded-lg border border-border hover:border-foreground/20 transition-colors"
           />
         </ImageLightbox>

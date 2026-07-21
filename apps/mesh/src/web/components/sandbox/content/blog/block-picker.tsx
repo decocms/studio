@@ -16,13 +16,19 @@ import {
 } from "@deco/ui/components/popover.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import { getIconComponent } from "@/web/components/agent-icon";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { BlogBlockSource, BlogBlockType } from "./blog-data";
 
 type IconComponent = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
 
-const GROUP_LABEL: Record<BlogBlockSource, string> = {
-  app: "Blocks",
-  site: "Custom blocks",
+type GroupLabelKey = Record<
+  BlogBlockSource,
+  "sandbox.blockPicker.blocksLabel" | "sandbox.blockPicker.customBlocksLabel"
+>;
+
+const GROUP_LABEL_KEYS: GroupLabelKey = {
+  app: "sandbox.blockPicker.blocksLabel",
+  site: "sandbox.blockPicker.customBlocksLabel",
 };
 
 function BlockIcon({
@@ -96,6 +102,7 @@ export function InsertBlockDivider({
   onInsert: (resolveType: string) => void;
   alwaysShow?: boolean;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   const appBlocks: BlogBlockType[] = [];
@@ -125,7 +132,7 @@ export function InsertBlockDivider({
         <PopoverTrigger asChild>
           <button
             type="button"
-            aria-label="Insert block"
+            aria-label={t("sandbox.blockPicker.insertBlockButton")}
             className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-background text-muted-foreground transition-all hover:border-primary hover:text-primary cursor-pointer"
           >
             <Plus size={14} />
@@ -133,12 +140,16 @@ export function InsertBlockDivider({
         </PopoverTrigger>
         <PopoverContent className="w-80 p-0" align="center">
           <Command>
-            <CommandInput placeholder="Search blocks…" />
+            <CommandInput
+              placeholder={t("sandbox.blockPicker.searchPlaceholder")}
+            />
             <CommandList className="max-h-80">
-              <CommandEmpty>No blocks found.</CommandEmpty>
+              <CommandEmpty>
+                {t("sandbox.blockPicker.noBlocksFound")}
+              </CommandEmpty>
               {siteBlocks.length > 0 && (
                 <CommandGroup
-                  heading={showHeadings ? GROUP_LABEL.site : undefined}
+                  heading={showHeadings ? t(GROUP_LABEL_KEYS.site) : undefined}
                 >
                   {siteBlocks.map((type) => (
                     <BlockItem
@@ -151,7 +162,7 @@ export function InsertBlockDivider({
               )}
               {appBlocks.length > 0 && (
                 <CommandGroup
-                  heading={showHeadings ? GROUP_LABEL.app : undefined}
+                  heading={showHeadings ? t(GROUP_LABEL_KEYS.app) : undefined}
                 >
                   {appBlocks.map((type) => (
                     <BlockItem

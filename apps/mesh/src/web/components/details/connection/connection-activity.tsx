@@ -11,6 +11,7 @@ import {
 import { computeTopErrors } from "./connection-health.ts";
 import { KEYS } from "@/web/lib/query-keys.ts";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { useT } from "@/web/i18n/use-t.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -49,6 +50,7 @@ interface ActivityChartProps {
 }
 
 function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
+  const t = useT();
   const studio = useStudioTools();
   const dateRange = getDateRange(timeframe);
 
@@ -83,14 +85,18 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
           <p className="text-2xl font-semibold text-foreground tabular-nums">
             {stats.totalCalls.toLocaleString()}
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">Tool calls</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {t("details.connectionActivity.toolCalls")}
+          </p>
         </div>
         {stats.totalErrors > 0 && (
           <div>
             <p className="text-2xl font-semibold text-destructive tabular-nums">
               {stats.totalErrors.toLocaleString()}
             </p>
-            <p className="text-xs text-muted-foreground mt-0.5">Errors</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {t("details.connectionActivity.errors")}
+            </p>
           </div>
         )}
         {stats.avgDurationMs > 0 && (
@@ -98,7 +104,9 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
             <p className="text-2xl font-semibold text-foreground tabular-nums">
               {Math.round(stats.avgDurationMs)}ms
             </p>
-            <p className="text-xs text-muted-foreground mt-0.5">Avg latency</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {t("details.connectionActivity.avgLatency")}
+            </p>
           </div>
         )}
       </div>
@@ -158,7 +166,7 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
       ) : (
         <div className="h-20 flex items-center justify-center">
           <p className="text-sm text-muted-foreground/60">
-            No activity in this period
+            {t("details.connectionActivity.noActivityInThisPeriod")}
           </p>
         </div>
       )}
@@ -166,7 +174,12 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
       {topErrors.length > 0 && (
         <div className="px-5 py-4 border-t border-border">
           <p className="text-xs font-medium text-muted-foreground mb-2">
-            Top errors{errorRate > 0 ? ` · ${errorRate}% of calls failed` : ""}
+            {t("details.connectionActivity.topErrors")}
+            {errorRate > 0
+              ? ` · ${t("details.connectionActivity.errorRatePercentage", {
+                  errorRate: errorRate.toString(),
+                })}`
+              : ""}
           </p>
           <ul className="space-y-1.5">
             {topErrors.map((e) => (
@@ -208,6 +221,7 @@ interface ConnectionActivityProps {
 }
 
 export function ConnectionActivity({ connectionId }: ConnectionActivityProps) {
+  const t = useT();
   const [timeframe, setTimeframe] = useState<Timeframe>("14d");
   const { org } = useProjectContext();
 
@@ -215,7 +229,9 @@ export function ConnectionActivity({ connectionId }: ConnectionActivityProps) {
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="px-5 py-4 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Activity</h3>
+          <h3 className="text-sm font-semibold text-foreground">
+            {t("details.connectionActivity.activity")}
+          </h3>
         </div>
         <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
           {TIMEFRAMES.map((tf) => (

@@ -4,6 +4,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Building02 } from "@untitledui/icons";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface RequestToJoinScreenProps {
   orgName: string;
@@ -18,6 +19,7 @@ export function RequestToJoinScreen({
   orgLogo,
   domain,
 }: RequestToJoinScreenProps) {
+  const t = useT();
   const requestMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/auth/custom/domain-request-join", {
@@ -47,7 +49,9 @@ export function RequestToJoinScreen({
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Failed to request access",
+        error instanceof Error
+          ? error.message
+          : t("common.requestToJoinScreen.failedToRequest"),
       );
     },
   });
@@ -68,10 +72,11 @@ export function RequestToJoinScreen({
         </div>
       )}
       <div className="space-y-2">
-        <h3 className="text-lg font-medium">Request to join {orgName}?</h3>
+        <h3 className="text-lg font-medium">
+          {t("common.requestToJoinScreen.title", { orgName })}
+        </h3>
         <p className="text-sm text-muted-foreground">
-          An admin must approve requests from <strong>@{domain}</strong> emails
-          before you can join.
+          {t("common.requestToJoinScreen.description", { domain })}
         </p>
       </div>
       <div className="flex flex-col gap-2 w-full">
@@ -79,7 +84,9 @@ export function RequestToJoinScreen({
           onClick={() => requestMutation.mutate()}
           disabled={requestMutation.isPending}
         >
-          {requestMutation.isPending ? "Requesting…" : "Request to join"}
+          {requestMutation.isPending
+            ? t("common.requestToJoinScreen.requesting")
+            : t("common.requestToJoinScreen.requestButton")}
         </Button>
         <Button
           variant="ghost"
@@ -88,7 +95,7 @@ export function RequestToJoinScreen({
           }}
           disabled={requestMutation.isPending}
         >
-          Go to home
+          {t("common.requestToJoinScreen.goToHome")}
         </Button>
       </div>
     </AccessScreenLayout>

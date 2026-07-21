@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Link01, Trash01 } from "@untitledui/icons";
 import type { Editor } from "@tiptap/core";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
 import { isSafeLinkUrl, normalizeLinkUrl } from "./rich-text-link-validation";
 
 /** rel applied to new-tab links (security best practice for target=_blank). */
@@ -83,6 +84,7 @@ export function RichTextLinkControl({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState("");
   const [newTab, setNewTab] = useState(true);
   const [invalid, setInvalid] = useState(false);
@@ -134,7 +136,7 @@ export function RichTextLinkControl({
     <div className="relative">
       <ToolbarButton
         active={active}
-        label="Link"
+        label={t("sectionsEditor.richTextLinkControl.linkButtonLabel")}
         onClick={open ? close : openEditor}
       >
         <Link01 size={14} />
@@ -155,9 +157,13 @@ export function RichTextLinkControl({
               // oxlint-disable-next-line no-autofocus -- the popover only opens on explicit user action; focus must move to the URL input
               autoFocus
               type="text"
-              aria-label="Link URL"
+              aria-label={t(
+                "sectionsEditor.richTextLinkControl.urlInputAriaLabel",
+              )}
               aria-invalid={invalid}
-              placeholder="Paste or type a link…"
+              placeholder={t(
+                "sectionsEditor.richTextLinkControl.urlInputPlaceholder",
+              )}
               value={draft}
               onChange={(e) => {
                 setDraft(e.target.value);
@@ -177,13 +183,17 @@ export function RichTextLinkControl({
                 invalid && "text-destructive",
               )}
             />
-            <ToolbarButton active={false} label="Apply link" onClick={apply}>
+            <ToolbarButton
+              active={false}
+              label={t("sectionsEditor.richTextLinkControl.applyLinkLabel")}
+              onClick={apply}
+            >
               <Check size={14} />
             </ToolbarButton>
             {active && (
               <ToolbarButton
                 active={false}
-                label="Remove link"
+                label={t("sectionsEditor.richTextLinkControl.removeLinkLabel")}
                 onClick={removeLink}
               >
                 <Trash01 size={14} />
@@ -193,12 +203,12 @@ export function RichTextLinkControl({
           <div className="flex items-center gap-0.5 rounded bg-muted/40 p-0.5">
             <TabChoice
               active={!newTab}
-              label="Same tab"
+              label={t("sectionsEditor.richTextLinkControl.sameTabLabel")}
               onSelect={() => setNewTab(false)}
             />
             <TabChoice
               active={newTab}
-              label="New tab"
+              label={t("sectionsEditor.richTextLinkControl.newTabLabel")}
               onSelect={() => setNewTab(true)}
             />
           </div>

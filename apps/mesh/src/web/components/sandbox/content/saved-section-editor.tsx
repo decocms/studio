@@ -23,6 +23,7 @@ import { globalSectionLabel } from "@/web/components/sections-editor/page-list";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/section-types";
 import { useDebouncedSaveBlock } from "@/web/components/sections-editor/use-save-block";
 import { MonacoCodeEditor } from "@/web/components/monaco-editor";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /**
  * Seed the editable form value + component resolveType for a saved (global)
@@ -66,6 +67,7 @@ export function SavedSectionEditor({
     data: Record<string, unknown>,
   ) => void;
 }) {
+  const t = useT();
   const inset = useInsetContext();
   const agentSiteSlug =
     inset?.entity?.id === virtualMcpId
@@ -197,20 +199,25 @@ export function SavedSectionEditor({
                   size="icon"
                   className="size-8 shrink-0"
                   onClick={toggleJson}
-                  aria-label={jsonOpen ? "Close JSON editor" : "Edit as JSON"}
+                  aria-label={
+                    jsonOpen
+                      ? t("sandbox.savedSectionEditor.closeJsonEditor")
+                      : t("sandbox.savedSectionEditor.editAsJson")
+                  }
                   aria-pressed={jsonOpen}
                 >
                   {jsonOpen ? <X size={14} /> : <Code01 size={14} />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {jsonOpen ? "Close JSON editor" : "Edit as JSON"}
+                {jsonOpen
+                  ? t("sandbox.savedSectionEditor.closeJsonEditor")
+                  : t("sandbox.savedSectionEditor.editAsJson")}
               </TooltipContent>
             </Tooltip>
           </div>
           <p className="mt-1.5 py-1 pl-1 text-sm leading-snug text-muted-foreground">
-            Global section — changes save automatically and apply everywhere
-            it's used.
+            {t("sandbox.savedSectionEditor.globalSectionDescription")}
           </p>
         </div>
 
@@ -234,7 +241,7 @@ export function SavedSectionEditor({
                   />
                 ) : (
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                    No editable fields for this section.
+                    {t("sandbox.savedSectionEditor.noEditableFields")}
                   </div>
                 )}
               </div>
@@ -247,7 +254,7 @@ export function SavedSectionEditor({
             <div className="absolute inset-0 flex flex-col bg-background">
               {jsonError && (
                 <div className="shrink-0 border-b bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
-                  Invalid JSON — changes aren't saved until it parses.
+                  {t("sandbox.savedSectionEditor.invalidJsonError")}
                 </div>
               )}
               <div className="min-h-0 flex-1">

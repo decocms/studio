@@ -5,6 +5,7 @@
  * assistant message, so the two surfaces stay visually identical.
  */
 
+import { useT } from "@/web/i18n/use-t.ts";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Download01 } from "@untitledui/icons";
@@ -13,6 +14,7 @@ import { formatFileTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import type { ThreadOutput } from "./use-thread-outputs.ts";
 
 export function OutputFileRow({ file }: { file: ThreadOutput }) {
+  const t = useT();
   const navigate = useNavigate();
   const open = () =>
     navigate({
@@ -39,8 +41,10 @@ export function OutputFileRow({ file }: { file: ThreadOutput }) {
         href={file.downloadUrl}
         download={file.filename}
         className="hidden shrink-0 text-muted-foreground hover:text-foreground group-hover:block"
-        title="Download"
-        aria-label={`Download ${file.filename}`}
+        title={t("chat.outputFileRow.download")}
+        aria-label={t("chat.outputFileRow.downloadFile", {
+          filename: file.filename,
+        })}
       >
         <Download01 className="size-3.5" />
       </a>
@@ -50,7 +54,7 @@ export function OutputFileRow({ file }: { file: ThreadOutput }) {
         className="h-7 shrink-0 px-2.5 text-xs"
         onClick={open}
       >
-        Open
+        {t("chat.outputFileRow.open")}
       </Button>
     </div>
   );

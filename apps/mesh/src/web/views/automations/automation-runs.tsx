@@ -39,6 +39,7 @@ import { KEYS } from "@/web/lib/query-keys";
 import { STATUS_CONFIG } from "@/web/lib/task-status";
 import { useAutomationRunStats } from "@/web/hooks/use-automations";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   ThreadSheetBody,
   type ThreadEntity,
@@ -80,6 +81,7 @@ function RunStatCards({
   automationId: string;
   range: { startDate?: string; endDate?: string };
 }) {
+  const t = useT();
   const { data, isLoading } = useAutomationRunStats(automationId, range);
 
   const runs = data?.runs;
@@ -90,31 +92,34 @@ function RunStatCards({
       : "—";
   const usageSubtitle = usage
     ? usage.truncated
-      ? `last ${usage.sampledRuns} runs`
+      ? t("automations.automationRuns.lastRunsSubtitle", {
+          count: usage.sampledRuns,
+        })
       : undefined
     : undefined;
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <StatCard
-        title="Runs"
+        title={t("automations.automationRuns.runsTitle")}
         value={isLoading ? "…" : (runs?.total.toLocaleString() ?? "0")}
         subtitle={
           runs
-            ? `${runs.completed} ok · ${runs.failed} failed${
-                runs.inProgress > 0 ? ` · ${runs.inProgress} running` : ""
-              }`
+            ? `${runs.completed} ${t("automations.automationRuns.ok")} · ${runs.failed} ${t("automations.automationRuns.failed")}${runs.inProgress > 0 ? ` · ${runs.inProgress} ${t("automations.automationRuns.running")}` : ""}`
             : undefined
         }
       />
-      <StatCard title="Success rate" value={isLoading ? "…" : successRate} />
       <StatCard
-        title="Tokens"
+        title={t("automations.automationRuns.successRateTitle")}
+        value={isLoading ? "…" : successRate}
+      />
+      <StatCard
+        title={t("automations.automationRuns.tokensTitle")}
         value={isLoading ? "…" : formatCompactNumber(usage?.totalTokens ?? 0)}
         subtitle={usageSubtitle}
       />
       <StatCard
-        title="Cost"
+        title={t("automations.automationRuns.costTitle")}
         value={
           isLoading
             ? "…"
@@ -199,6 +204,7 @@ export function AutomationRunsView({
   /** Window for the stat cards + table usage decoration. */
   range: { startDate?: string; endDate?: string };
 }) {
+  const t = useT();
   const { org, locator } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -298,19 +304,19 @@ export function AutomationRunsView({
       {!hasTriggers ? (
         <div className="py-16">
           <EmptyState
-            title="No starters yet"
-            description="Add a starter (cron, event, or webhook) to start collecting runs."
+            title={t("automations.automationRuns.noStartersTitle")}
+            description={t("automations.automationRuns.noStartersDescription")}
           />
         </div>
       ) : isLoading ? (
         <div className="py-16 text-center text-sm text-muted-foreground">
-          Loading runs…
+          {t("automations.automationRuns.loadingRuns")}
         </div>
       ) : runs.length === 0 ? (
         <div className="py-16">
           <EmptyState
-            title="No runs yet"
-            description="This automation hasn't run yet. Trigger it or wait for a starter to fire."
+            title={t("automations.automationRuns.noRunsTitle")}
+            description={t("automations.automationRuns.noRunsDescription")}
           />
         </div>
       ) : (
@@ -318,19 +324,19 @@ export function AutomationRunsView({
           <TableHeader className="border-b-0">
             <TableRow className="h-9 hover:bg-transparent border-b border-border">
               <TableHead className="pl-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                Run
+                {t("automations.automationRuns.runHeader")}
               </TableHead>
               <TableHead className="w-28 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                Status
+                {t("automations.automationRuns.statusHeader")}
               </TableHead>
               <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
-                Tokens
+                {t("automations.automationRuns.tokensHeader")}
               </TableHead>
               <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
-                Cost
+                {t("automations.automationRuns.costHeader")}
               </TableHead>
               <TableHead className="w-32 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                Started
+                {t("automations.automationRuns.startedHeader")}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -354,7 +360,7 @@ export function AutomationRunsView({
 
       {isFetchingNextPage && (
         <div className="py-4 text-center text-sm text-muted-foreground">
-          Loading more…
+          {t("automations.automationRuns.loadingMore")}
         </div>
       )}
 

@@ -12,31 +12,33 @@ import { Check, Copy01 } from "@untitledui/icons";
 import { useState, type ReactNode } from "react";
 import type { Capability } from "@/links/protocol";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 
 const INSTALL_SNIPPET = "bunx decocms@latest link";
 
 interface LocalAgent {
   capability: Capability;
-  label: string;
-  description: string;
+  labelKey: TranslationKey;
+  descriptionKey: TranslationKey;
   icon: ReactNode;
 }
 
 const LOCAL_AGENTS: LocalAgent[] = [
   {
     capability: "claude-code",
-    label: "Claude Code",
-    description: "Runs through the Claude Code CLI",
+    labelKey: "chat.connectDesktopDialog.agentClaudeCodeLabel",
+    descriptionKey: "chat.connectDesktopDialog.agentClaudeCodeDescription",
     icon: <ClaudeCodeIcon size={18} />,
   },
   {
     capability: "codex",
-    label: "Codex",
-    description: "Runs through the Codex CLI",
+    labelKey: "chat.connectDesktopDialog.agentCodexLabel",
+    descriptionKey: "chat.connectDesktopDialog.agentCodexDescription",
     icon: <CodexIcon size={18} />,
   },
-];
+] as const;
 
 /**
  * Format the link's capability list for UI display. Drops
@@ -44,9 +46,12 @@ const LOCAL_AGENTS: LocalAgent[] = [
  * and maps the rest to friendly labels. Returns the empty array when
  * nothing user-facing is available.
  */
-export function visibleCapabilities(caps: readonly Capability[]): string[] {
+export function visibleCapabilities(
+  caps: readonly Capability[],
+  t: TFunction,
+): string[] {
   return LOCAL_AGENTS.filter((agent) => caps.includes(agent.capability)).map(
-    (agent) => agent.label,
+    (agent) => t(agent.labelKey),
   );
 }
 
@@ -59,9 +64,13 @@ export function ConnectDesktopDialog({
   open,
   onOpenChange,
 }: ConnectDesktopDialogProps) {
+  const t = useT();
   const link = useCurrentLink({ fast: open });
   const [copied, setCopied] = useState(false);
-  const desktopName = link.hostname ?? link.machineId ?? "Your desktop";
+  const desktopName =
+    link.hostname ??
+    link.machineId ??
+    t("chat.connectDesktopDialog.yourDesktop");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -69,13 +78,13 @@ export function ConnectDesktopDialog({
         <DialogHeader>
           <DialogTitle>
             {link.online
-              ? `Connected to ${desktopName}`
-              : "Connect your desktop"}
+              ? t("chat.connectDesktopDialog.connectedTo", { desktopName })
+              : t("chat.connectDesktopDialog.connectYourDesktop")}
           </DialogTitle>
           <DialogDescription>
             {link.online
-              ? "This machine provides the following local agents."
-              : "Run this command in your desktop terminal. The dialog will close once your desktop is online."}
+              ? t("chat.connectDesktopDialog.machineAgentsDescription")
+              : t("chat.connectDesktopDialog.runCommandDescription")}
           </DialogDescription>
         </DialogHeader>
 
@@ -100,7 +109,7 @@ export function ConnectDesktopDialog({
         {!link.online ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Spinner size="sm" />
-            Waiting for desktop…
+            {t("chat.connectDesktopDialog.waitingForDesktop")}
           </div>
         ) : (
           <div className="flex flex-col gap-3 text-sm">
@@ -126,9 +135,11 @@ export function ConnectDesktopDialog({
                       {agent.icon}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium">{agent.label}</p>
+                      <p className="font-medium">{t(agent.labelKey)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {available ? agent.description : "Not detected"}
+                        {available
+                          ? t(agent.descriptionKey)
+                          : t("chat.connectDesktopDialog.notDetected")}
                       </p>
                     </div>
                     <span

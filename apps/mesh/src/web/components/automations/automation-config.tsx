@@ -66,24 +66,30 @@ import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { type SimpleModeTier } from "@/web/components/chat/simple-mode-tier-dropdown";
 import { ModelSelector } from "@/web/components/chat/select-model";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 
 const TIER_META: Record<
   SimpleModeTier,
-  { label: string; subtitle: string; icon: typeof Lightning01 }
+  {
+    labelKey: TranslationKey;
+    subtitleKey: TranslationKey;
+    icon: typeof Lightning01;
+  }
 > = {
   fast: {
-    label: "Fast",
-    subtitle: "Quick responses for simple tasks",
+    labelKey: "automations.automationConfig.tierFast",
+    subtitleKey: "automations.automationConfig.tierFastSubtitle",
     icon: Lightning01,
   },
   smart: {
-    label: "Smart",
-    subtitle: "Balanced quality and speed",
+    labelKey: "automations.automationConfig.tierSmart",
+    subtitleKey: "automations.automationConfig.tierSmartSubtitle",
     icon: Stars01,
   },
   thinking: {
-    label: "Thinking",
-    subtitle: "Deeper reasoning for hard tasks",
+    labelKey: "automations.automationConfig.tierThinking",
+    subtitleKey: "automations.automationConfig.tierThinkingSubtitle",
     icon: Atom01,
   },
 };
@@ -100,6 +106,7 @@ function TierDropdown({
   tier: SimpleModeTier;
   onSelect: (t: SimpleModeTier) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const Active = TIER_META[tier].icon;
   return (
@@ -107,21 +114,21 @@ function TierDropdown({
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="w-fit gap-1.5">
           <Active size={14} className="text-muted-foreground" />
-          {TIER_META[tier].label}
+          {t(TIER_META[tier].labelKey)}
           <ChevronDown size={14} className="text-muted-foreground" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="p-1 w-64">
         <div className="flex flex-col">
-          {TIER_ORDER.map((t) => {
-            const meta = TIER_META[t];
+          {TIER_ORDER.map((tierOption) => {
+            const meta = TIER_META[tierOption];
             const Icon = meta.icon;
             return (
               <button
-                key={t}
+                key={tierOption}
                 type="button"
                 onClick={() => {
-                  onSelect(t);
+                  onSelect(tierOption);
                   setOpen(false);
                 }}
                 className={cn(
@@ -133,12 +140,12 @@ function TierDropdown({
                   className="shrink-0 text-muted-foreground mt-0.5"
                 />
                 <div className="flex-1">
-                  <div className="text-sm">{meta.label}</div>
+                  <div className="text-sm">{t(meta.labelKey)}</div>
                   <div className="text-xs text-muted-foreground">
-                    {meta.subtitle}
+                    {t(meta.subtitleKey)}
                   </div>
                 </div>
-                {t === tier && (
+                {tierOption === tier && (
                   <Check size={14} className="text-foreground mt-0.5" />
                 )}
               </button>
@@ -171,6 +178,7 @@ export function AutomationModelControl({
   override: AutomationModelOverride | null;
   onOverrideChange: (o: AutomationModelOverride | null) => void;
 }) {
+  const t = useT();
   // Local toggle so "switch on, nothing picked yet" reveals the picker without
   // committing a half-formed override (the fire path falls back to the tier
   // when modelId/credentialId aren't both set, so this stays safe regardless).
@@ -179,14 +187,14 @@ export function AutomationModelControl({
   return (
     <div className="flex flex-col gap-2">
       <span className="text-xs font-semibold text-muted-foreground/60">
-        Model
+        {t("automations.automationConfig.modelLabel")}
       </span>
       <div className="flex items-center gap-3 flex-wrap">
         {useSpecific ? (
           <Suspense
             fallback={
               <Button variant="outline" size="sm" disabled className="w-fit">
-                Loading models…
+                {t("automations.automationConfig.loadingModels")}
               </Button>
             }
           >
@@ -208,7 +216,7 @@ export function AutomationModelControl({
             }}
             className="cursor-pointer"
           />
-          Specific model
+          {t("automations.automationConfig.specificModel")}
         </label>
       </div>
     </div>
@@ -227,6 +235,7 @@ function SpecificModelPicker({
   override: AutomationModelOverride | null;
   onOverrideChange: (o: AutomationModelOverride | null) => void;
 }) {
+  const t = useT();
   const keys = useAiProviderKeys();
   const defaultKeyId = keys[0]?.id ?? null;
   const [credentialId, setCredentialId] = useState<string | null>(
@@ -250,7 +259,7 @@ function SpecificModelPicker({
   if (keys.length === 0) {
     return (
       <span className="text-xs text-muted-foreground italic">
-        Connect an AI provider in settings to pick a specific model.
+        {t("automations.automationConfig.connectAiProviderHint")}
       </span>
     );
   }
@@ -259,7 +268,7 @@ function SpecificModelPicker({
     <div className="w-fit max-w-full [&_button]:rounded-md">
       <ModelSelector
         variant="bordered"
-        placeholder="Pick a model"
+        placeholder={t("automations.automationConfig.pickModelPlaceholder")}
         model={resolvedModel}
         credentialId={credentialId}
         onCredentialChange={setCredentialId}
@@ -283,14 +292,14 @@ function SpecificModelPicker({
 
 interface BuiltinDef {
   name: string;
-  title: string;
-  description: string;
+  titleKey: TranslationKey;
+  descriptionKey: TranslationKey;
   icon: typeof Tool01;
 }
 
 interface BuiltinGroup {
   key: string;
-  heading: string;
+  headingKey: TranslationKey;
   icon: typeof Tool01;
   tools: BuiltinDef[];
 }
@@ -308,124 +317,124 @@ interface BuiltinGroup {
 const BUILTIN_GROUPS: BuiltinGroup[] = [
   {
     key: "capabilities",
-    heading: "Built-in capabilities",
+    headingKey: "automations.automationConfig.builtinCapabilities",
     icon: Tool01,
     tools: [
       {
         name: "web_search",
-        title: "Web search",
-        description: "Look up current information on the web",
+        titleKey: "automations.automationConfig.toolWebSearch",
+        descriptionKey: "automations.automationConfig.toolWebSearchDesc",
         icon: Globe01,
       },
       {
         name: "generate_image",
-        title: "Generate image",
-        description: "Create images from a text prompt",
+        titleKey: "automations.automationConfig.toolGenerateImage",
+        descriptionKey: "automations.automationConfig.toolGenerateImageDesc",
         icon: Image01,
       },
       {
         name: "subtask",
-        title: "Subtask",
-        description: "Spawn a focused sub-agent to handle part of the work",
+        titleKey: "automations.automationConfig.toolSubtask",
+        descriptionKey: "automations.automationConfig.toolSubtaskDesc",
         icon: GitBranch01,
       },
       {
         name: "user_ask",
-        title: "Ask the user",
-        description: "Pause to ask the user a clarifying question",
+        titleKey: "automations.automationConfig.toolAskUser",
+        descriptionKey: "automations.automationConfig.toolAskUserDesc",
         icon: HelpCircle,
       },
     ],
   },
   {
     key: "files",
-    heading: "Files & code",
+    headingKey: "automations.automationConfig.filesCode",
     icon: Folder,
     tools: [
       {
         name: "read",
-        title: "Read File",
-        description: "Read a file from the workspace",
+        titleKey: "automations.automationConfig.toolReadFile",
+        descriptionKey: "automations.automationConfig.toolReadFileDesc",
         icon: File06,
       },
       {
         name: "write",
-        title: "Write File",
-        description: "Create or overwrite a file",
+        titleKey: "automations.automationConfig.toolWriteFile",
+        descriptionKey: "automations.automationConfig.toolWriteFileDesc",
         icon: Edit01,
       },
       {
         name: "edit",
-        title: "Edit File",
-        description: "Make targeted edits to an existing file",
+        titleKey: "automations.automationConfig.toolEditFile",
+        descriptionKey: "automations.automationConfig.toolEditFileDesc",
         icon: Edit02,
       },
       {
         name: "grep",
-        title: "Search Content",
-        description: "Search file contents by pattern",
+        titleKey: "automations.automationConfig.toolSearchContent",
+        descriptionKey: "automations.automationConfig.toolSearchContentDesc",
         icon: SearchMd,
       },
       {
         name: "glob",
-        title: "Find Files",
-        description: "Find files by name pattern",
+        titleKey: "automations.automationConfig.toolFindFiles",
+        descriptionKey: "automations.automationConfig.toolFindFilesDesc",
         icon: Folder,
       },
       {
         name: "bash",
-        title: "Run Command",
-        description: "Run shell commands in the sandbox",
+        titleKey: "automations.automationConfig.toolRunCommand",
+        descriptionKey: "automations.automationConfig.toolRunCommandDesc",
         icon: TerminalSquare,
       },
     ],
   },
   {
     key: "context",
-    heading: "Context",
+    headingKey: "automations.automationConfig.context",
     icon: Database01,
     tools: [
       {
         name: "read_resource",
-        title: "Read Resource",
-        description: "Read an MCP resource by URI",
+        titleKey: "automations.automationConfig.toolReadResource",
+        descriptionKey: "automations.automationConfig.toolReadResourceDesc",
         icon: Database01,
       },
       {
         name: "read_prompt",
-        title: "Read Prompt",
-        description: "Read an MCP prompt definition",
+        titleKey: "automations.automationConfig.toolReadPrompt",
+        descriptionKey: "automations.automationConfig.toolReadPromptDesc",
         icon: BookOpen01,
       },
       {
         name: "skill",
-        title: "Load Skill",
-        description: "Load a skill's full instructions (SKILL.md) by id",
+        titleKey: "automations.automationConfig.toolLoadSkill",
+        descriptionKey: "automations.automationConfig.toolLoadSkillDesc",
         icon: BookOpen01,
       },
     ],
   },
   {
     key: "browser",
-    heading: "Browser",
+    headingKey: "automations.automationConfig.browser",
     icon: Globe02,
     tools: [
       {
         name: "take_screenshot",
-        title: "Take Screenshot",
-        description: "Capture a screenshot of a web page",
+        titleKey: "automations.automationConfig.toolTakeScreenshot",
+        descriptionKey: "automations.automationConfig.toolTakeScreenshotDesc",
         icon: Monitor01,
       },
       {
         name: "scrape_url",
-        title: "Scrape URL",
-        description: "Fetch and extract content from a URL",
+        titleKey: "automations.automationConfig.toolScrapeUrl",
+        descriptionKey: "automations.automationConfig.toolScrapeUrlDesc",
         icon: Globe02,
       },
       {
         name: "inspect_page",
-        title: "Inspect Page",
-        description: "Inspect a web page's structure",
+        titleKey: "automations.automationConfig.toolInspectPage",
+        descriptionKey: "automations.automationConfig.toolInspectPageDesc",
         icon: Code01,
       },
     ],
@@ -465,17 +474,18 @@ export function AutomationToolsControl({
   value: string[] | null;
   onChange: (v: string[] | null) => void;
 }) {
+  const t = useT();
   return (
     <div className="flex flex-col gap-2">
       <span className="text-xs font-semibold text-muted-foreground/60">
-        Tools
+        {t("automations.automationConfig.toolsLabel")}
       </span>
       {agentId ? (
         <Suspense
           fallback={
             <Button variant="outline" size="sm" disabled className="w-fit">
               <Tool01 size={14} />
-              Loading tools…
+              {t("automations.automationConfig.loadingTools")}
             </Button>
           }
         >
@@ -483,7 +493,7 @@ export function AutomationToolsControl({
         </Suspense>
       ) : (
         <span className="text-xs text-muted-foreground italic">
-          Pick an agent first
+          {t("automations.automationConfig.pickAgentFirst")}
         </span>
       )}
     </div>
@@ -544,6 +554,7 @@ function GroupHeading({
   total: number;
   onToggle: () => void;
 }) {
+  const t = useT();
   const allOn = on === total;
   return (
     <div className="flex items-center gap-2">
@@ -554,7 +565,9 @@ function GroupHeading({
       ) : (
         <Cube01 size={14} className="text-muted-foreground" />
       )}
-      <span className="truncate">{conn?.title ?? label ?? "Other tools"}</span>
+      <span className="truncate">
+        {conn?.title ?? label ?? t("automations.automationConfig.otherTools")}
+      </span>
       <span className="ml-auto flex items-center gap-2">
         <span className="text-[11px] font-normal tabular-nums text-muted-foreground/70">
           {on}/{total}
@@ -567,7 +580,9 @@ function GroupHeading({
           }}
           className="text-[11px] font-medium text-primary hover:underline"
         >
-          {allOn ? "None" : "All"}
+          {allOn
+            ? t("automations.automationConfig.none")
+            : t("automations.automationConfig.all")}
         </button>
       </span>
     </div>
@@ -583,6 +598,7 @@ function ToolsPicker({
   value: string[] | null;
   onChange: (v: string[] | null) => void;
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const [open, setOpen] = useState(false);
   const client = useMCPClient({
@@ -597,15 +613,17 @@ function ToolsPicker({
   // Group the agent's aggregated tools by their source connection so the raw
   // `conn-<id>_<TOOL>` names become a friendly, scannable list.
   const groups = new Map<string, ToolGroup>();
-  for (const t of data?.tools ?? []) {
-    const clientId = getGatewayClientId(t._meta) ?? "__other__";
+  for (const tool of data?.tools ?? []) {
+    const clientId = getGatewayClientId(tool._meta) ?? "__other__";
     const stripped = stripToolNamespace(
-      t.name,
+      tool.name,
       clientId === "__other__" ? undefined : clientId,
     );
-    const rawTitle = (t as { title?: string }).title;
+    const rawTitle = (tool as { title?: string }).title;
     const display =
-      rawTitle && rawTitle !== t.name ? rawTitle : humanizeToolName(stripped);
+      rawTitle && rawTitle !== tool.name
+        ? rawTitle
+        : humanizeToolName(stripped);
     if (!groups.has(clientId)) {
       groups.set(clientId, {
         clientId,
@@ -614,16 +632,16 @@ function ToolsPicker({
       });
     }
     groups.get(clientId)!.tools.push({
-      name: t.name,
+      name: tool.name,
       display,
-      description: (t as { description?: string }).description,
+      description: (tool as { description?: string }).description,
     });
   }
   const groupList = [...groups.values()].sort((a, b) =>
     (a.conn?.title ?? a.clientId).localeCompare(b.conn?.title ?? b.clientId),
   );
 
-  const mcpNames = (data?.tools ?? []).map((t) => t.name);
+  const mcpNames = (data?.tools ?? []).map((tool) => tool.name);
   const allNames = [...BUILTIN_NAMES, ...mcpNames];
   // null = all tools. Materialize to a Set for toggling.
   const selected = value === null ? new Set(allNames) : new Set(value);
@@ -653,7 +671,9 @@ function ToolsPicker({
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="w-fit gap-1.5">
           <Tool01 size={14} className="text-muted-foreground" />
-          {allSelected ? "All tools" : "Tools"}
+          {allSelected
+            ? t("automations.automationConfig.allTools")
+            : t("automations.automationConfig.tools")}
           {!allSelected && (
             <Badge
               variant="secondary"
@@ -667,12 +687,21 @@ function ToolsPicker({
       </PopoverTrigger>
       <PopoverContent className="p-0 w-80" align="start">
         <Command>
-          <CommandInput placeholder="Search tools..." />
+          <CommandInput
+            placeholder={t(
+              "automations.automationConfig.searchToolsPlaceholder",
+            )}
+          />
           <div className="flex items-center justify-between border-b px-3 py-2">
             <span className="text-xs text-muted-foreground">
               {allSelected
-                ? `All ${allNames.length} tools enabled`
-                : `${selected.size} of ${allNames.length} enabled`}
+                ? t("automations.automationConfig.allToolsEnabled", {
+                    count: allNames.length,
+                  })
+                : t("automations.automationConfig.toolsEnabledCount", {
+                    enabled: selected.size,
+                    total: allNames.length,
+                  })}
             </span>
             <div className="flex items-center gap-2">
               <button
@@ -681,7 +710,7 @@ function ToolsPicker({
                 disabled={allSelected}
                 className="text-xs font-medium text-primary hover:underline disabled:cursor-default disabled:opacity-40 disabled:no-underline"
               >
-                Select all
+                {t("automations.automationConfig.selectAll")}
               </button>
               <span className="text-muted-foreground/30">·</span>
               <button
@@ -690,27 +719,29 @@ function ToolsPicker({
                 disabled={selected.size === 0}
                 className="text-xs font-medium text-muted-foreground hover:underline disabled:cursor-default disabled:opacity-40 disabled:no-underline"
               >
-                Clear
+                {t("automations.automationConfig.clear")}
               </button>
             </div>
           </div>
           <CommandList className="max-h-80">
             {isLoading ? (
               <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                Loading tools…
+                {t("automations.automationConfig.loadingTools")}
               </div>
             ) : (
               <>
-                <CommandEmpty>No tools found</CommandEmpty>
+                <CommandEmpty>
+                  {t("automations.automationConfig.noToolsFound")}
+                </CommandEmpty>
                 {BUILTIN_GROUPS.map((g) => {
-                  const names = g.tools.map((t) => t.name);
+                  const names = g.tools.map((tool) => tool.name);
                   const on = names.filter((n) => selected.has(n)).length;
                   return (
                     <CommandGroup
                       key={g.key}
                       heading={
                         <GroupHeading
-                          label={g.heading}
+                          label={t(g.headingKey)}
                           icon={g.icon}
                           on={on}
                           total={names.length}
@@ -720,16 +751,16 @@ function ToolsPicker({
                         />
                       }
                     >
-                      {g.tools.map((t) => (
+                      {g.tools.map((tool) => (
                         <ToolRow
-                          key={t.name}
-                          value={`${t.title} ${t.name}`}
-                          checked={selected.has(t.name)}
-                          onToggle={() => toggle(t.name)}
-                          title={t.title}
-                          description={t.description}
+                          key={tool.name}
+                          value={`${t(tool.titleKey)} ${tool.name}`}
+                          checked={selected.has(tool.name)}
+                          onToggle={() => toggle(tool.name)}
+                          title={t(tool.titleKey)}
+                          description={t(tool.descriptionKey)}
                           leading={
-                            <t.icon
+                            <tool.icon
                               size={16}
                               className="text-muted-foreground"
                             />
@@ -740,7 +771,7 @@ function ToolsPicker({
                   );
                 })}
                 {groupList.map((g) => {
-                  const names = g.tools.map((t) => t.name);
+                  const names = g.tools.map((tool) => tool.name);
                   const on = names.filter((n) => selected.has(n)).length;
                   return (
                     <CommandGroup
@@ -756,14 +787,14 @@ function ToolsPicker({
                         />
                       }
                     >
-                      {g.tools.map((t) => (
+                      {g.tools.map((tool) => (
                         <ToolRow
-                          key={t.name}
-                          value={`${t.display} ${t.name} ${g.conn?.title ?? ""}`}
-                          checked={selected.has(t.name)}
-                          onToggle={() => toggle(t.name)}
-                          title={t.display}
-                          description={t.description}
+                          key={tool.name}
+                          value={`${tool.display} ${tool.name} ${g.conn?.title ?? ""}`}
+                          checked={selected.has(tool.name)}
+                          onToggle={() => toggle(tool.name)}
+                          title={tool.display}
+                          description={tool.description}
                         />
                       ))}
                     </CommandGroup>

@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Sheet,
@@ -35,6 +36,7 @@ import { getEffectiveState } from "./utils.tsx";
  * historical tool calls predating the structured output.
  */
 export function extractSubtaskResponse(output: unknown): string | null {
+  // ponytail: i18n keys not available at module scope; wrapped in component
   if (output && typeof output === "object" && !Array.isArray(output)) {
     const o = output as {
       text?: unknown;
@@ -47,6 +49,7 @@ export function extractSubtaskResponse(output: unknown): string | null {
       typeof o.finishReason === "string";
     if (hasNewShape) {
       if (typeof o.error === "string" && o.error.length > 0) {
+        // t("chat.subtask.failedWithError", { error: o.error })
         return `Subtask failed: ${o.error}`;
       }
       const text = typeof o.text === "string" ? o.text.trim() : "";
@@ -89,6 +92,7 @@ interface SubtaskPartProps {
 /** Derives the row's display config from a SubtaskToolPart (no agent data).
  *  Pure — NOT a hook (named without the `use` prefix on purpose). */
 function buildSubtaskRowConfig({ part, subtaskMeta }: SubtaskPartProps) {
+  // ponytail: i18n keys not available at module scope; wrapped in component
   const isInputStreaming =
     part.state === "input-streaming" || part.state === "input-available";
   const isOutputStreaming =
@@ -226,6 +230,7 @@ function SubtaskCard({
 
 /** Panel body for a completed/streaming inline subtask: the task + its result. */
 function SubtaskResultBody({ part }: { part: SubtaskToolPart }) {
+  const t = useT();
   const isError = part.state === "output-error";
   const prompt = part.input?.prompt ?? "No prompt provided";
   const response = isError
@@ -236,7 +241,7 @@ function SubtaskResultBody({ part }: { part: SubtaskToolPart }) {
     <div className="flex flex-col gap-4">
       <section>
         <h3 className="text-xs font-medium text-muted-foreground/70 mb-1.5">
-          Task
+          {t("chat.subtask.taskLabel")}
         </h3>
         <p className="text-[13px] text-foreground/90 whitespace-pre-wrap wrap-break-word">
           {prompt}
@@ -244,13 +249,15 @@ function SubtaskResultBody({ part }: { part: SubtaskToolPart }) {
       </section>
       <section>
         <h3 className="text-xs font-medium text-muted-foreground/70 mb-1.5">
-          {isError ? "Error" : "Result"}
+          {isError
+            ? t("chat.subtask.errorLabel")
+            : t("chat.subtask.resultLabel")}
         </h3>
         {response.trim() ? (
           <MemoizedMarkdown id={`${part.toolCallId}-result`} text={response} />
         ) : (
           <p className="text-[13px] text-muted-foreground/60 italic">
-            Running…
+            {t("chat.subtask.running")}
           </p>
         )}
       </section>
@@ -305,11 +312,12 @@ function BackgroundSubtaskBody({
   items: unknown[];
   streaming: boolean;
 }) {
+  const t = useT();
   return (
     <div className="flex flex-col gap-4">
       <section>
         <h3 className="text-xs font-medium text-muted-foreground/70 mb-1.5">
-          Task
+          {t("chat.subtask.taskLabel")}
         </h3>
         <p className="text-[13px] text-foreground/90 whitespace-pre-wrap wrap-break-word">
           {prompt}
@@ -318,7 +326,7 @@ function BackgroundSubtaskBody({
       <section className="flex flex-col gap-3 sm:gap-2">
         {items.length === 0 ? (
           <p className="text-[13px] text-muted-foreground/60 italic py-1">
-            Running in the background…
+            {t("chat.subtask.runningInBackground")}
           </p>
         ) : (
           items.map((raw, i) => {

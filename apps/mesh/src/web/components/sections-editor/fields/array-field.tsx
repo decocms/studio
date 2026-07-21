@@ -28,6 +28,7 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   DropdownMenu,
@@ -162,6 +163,7 @@ function SortableArrayRow({
   onDuplicate: () => void;
   onRemove: () => void;
 }) {
+  const t = useT();
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({
       id: sortableId,
@@ -220,7 +222,11 @@ function SortableArrayRow({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label={hidden ? "Show item" : "Hide item"}
+              aria-label={t(
+                hidden
+                  ? "sectionsEditor.arrayField.showItem"
+                  : "sectionsEditor.arrayField.hideItem",
+              )}
               className={cn(
                 "size-6 shrink-0",
                 hidden
@@ -237,7 +243,11 @@ function SortableArrayRow({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {hidden ? "Show item" : "Hide item"}
+            {t(
+              hidden
+                ? "sectionsEditor.arrayField.showItem"
+                : "sectionsEditor.arrayField.hideItem",
+            )}
           </TooltipContent>
         </Tooltip>
       )}
@@ -258,14 +268,14 @@ function SortableArrayRow({
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={onDuplicate}>
             <Copy01 size={14} />
-            Duplicate
+            {t("sectionsEditor.arrayField.duplicate")}
           </DropdownMenuItem>
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={onRemove}
           >
             <Trash01 size={14} />
-            Delete
+            {t("sectionsEditor.arrayField.delete")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -291,6 +301,7 @@ export function ArrayField({
   onRequestAddSection,
   sandbox,
 }: FieldProps) {
+  const t = useT();
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
   const arrayFieldKey = arrayFieldKeyFromPath(path);
@@ -428,14 +439,14 @@ export function ArrayField({
   const handleAddClick = () => {
     if (usesSectionPicker) {
       if (!previewBaseUrl) {
-        toast.error("Start the preview dev server to add sections.");
+        toast.error(t("sectionsEditor.arrayField.startPreviewServer"));
         return;
       }
       if (onRequestAddSection) {
         onRequestAddSection({ append: appendItem });
         return;
       }
-      toast.error("Section picker is not available in this editor.");
+      toast.error(t("sectionsEditor.arrayField.sectionPickerNotAvailable"));
       return;
     }
     addItem();
@@ -697,7 +708,9 @@ export function ArrayField({
         className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30"
       >
         <Plus size={14} />
-        {usesSectionPicker ? "Add section" : "Add item"}
+        {usesSectionPicker
+          ? t("sectionsEditor.arrayField.addSection")
+          : t("sectionsEditor.arrayField.addItem")}
       </button>
     </div>
   );

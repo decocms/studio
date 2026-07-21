@@ -7,6 +7,7 @@ import {
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
 import { ChevronDown } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import { publishToBaseLabel } from "./publish-label.ts";
 
 interface Props {
@@ -29,6 +30,7 @@ export function MergeSplitButton({
   onPublish,
   onReview,
 }: Props) {
+  const t = useT();
   const publishLabel = publishToBaseLabel(baseBranch);
   return (
     <div className="inline-flex items-stretch rounded-md">
@@ -49,14 +51,16 @@ export function MergeSplitButton({
             variant="success"
             className="rounded-l-none px-2"
             disabled={disabled}
-            aria-label="More actions"
+            aria-label={t("thread.mergeSplitButton.moreActionsAriaLabel")}
           >
             <ChevronDown className="h-3.5 w-3.5" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {onReview ? (
-            <DropdownMenuItem onClick={onReview}>Review</DropdownMenuItem>
+            <DropdownMenuItem onClick={onReview}>
+              {t("thread.mergeSplitButton.review")}
+            </DropdownMenuItem>
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>

@@ -8,9 +8,11 @@ import {
 import { Settings02 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
+import { useT } from "@/web/i18n/use-t.ts";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 
 export function SidebarAccountFooterMobile() {
+  const t = useT();
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const { setOpenMobile } = useSidebar();
@@ -26,7 +28,7 @@ export function SidebarAccountFooterMobile() {
           </SidebarMenu>
         </div>
         <ToolbarIconButton
-          aria-label="Settings"
+          aria-label={t("sidebar.sidebarFooterMobile.settings")}
           onClick={() => {
             navigate({
               to: "/$org/settings",

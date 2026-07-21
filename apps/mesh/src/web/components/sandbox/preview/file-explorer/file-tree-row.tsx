@@ -12,6 +12,7 @@ import {
   Loading01,
 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { TreeNode } from "./types";
 import type { FileIcon } from "./utils";
 
@@ -48,6 +49,7 @@ export function FileTreeRow({
   onRename: () => void;
   onDelete: () => void;
 }) {
+  const t = useT();
   const isDir = node.kind === "directory";
   const { Icon: FileVisualIcon, color: fileColor } = fileVisual;
 
@@ -104,17 +106,25 @@ export function FileTreeRow({
         </button>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52">
-        <ContextMenuItem onSelect={onNewFile}>New File</ContextMenuItem>
-        <ContextMenuItem onSelect={onNewFolder}>New Folder</ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={onCopyPath}>Copy Path</ContextMenuItem>
-        <ContextMenuItem onSelect={onCopyRelativePath}>
-          Copy Relative Path
+        <ContextMenuItem onSelect={onNewFile}>
+          {t("sandbox.fileTreeRow.newFile")}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={onNewFolder}>
+          {t("sandbox.fileTreeRow.newFolder")}
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={onRename}>Rename</ContextMenuItem>
+        <ContextMenuItem onSelect={onCopyPath}>
+          {t("sandbox.fileTreeRow.copyPath")}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={onCopyRelativePath}>
+          {t("sandbox.fileTreeRow.copyRelativePath")}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={onRename}>
+          {t("sandbox.fileTreeRow.rename")}
+        </ContextMenuItem>
         <ContextMenuItem variant="destructive" onSelect={onDelete}>
-          Delete
+          {t("sandbox.fileTreeRow.delete")}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

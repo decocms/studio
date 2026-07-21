@@ -27,6 +27,7 @@
 import { useState, type ReactNode } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ChevronDown, X } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 
 // ease-in-out-cubic — on-screen morph per animation guide
 const EASE = "cubic-bezier(0.645, 0.045, 0.355, 1)";
@@ -108,6 +109,7 @@ export function CollapsibleHighlight({
   variant = "default",
   onClose,
 }: CollapsibleHighlightProps) {
+  const t = useT();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [closed, setClosed] = useState(false);
 
@@ -173,8 +175,8 @@ export function CollapsibleHighlight({
           role="button"
           tabIndex={0}
           data-testid="collapsible-highlight-close"
-          aria-label="Close"
-          title="Close"
+          aria-label={t("chat.collapsibleHighlight.closeLabel")}
+          title={t("chat.collapsibleHighlight.closeTitle")}
           onClick={(e) => {
             e.stopPropagation();
             handleClose();

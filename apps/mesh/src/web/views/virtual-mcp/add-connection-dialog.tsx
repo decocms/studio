@@ -5,6 +5,7 @@ import { authenticateAndPersistOAuth } from "@/web/lib/authenticate-and-persist-
 import { KEYS } from "@/web/lib/query-keys";
 import { authClient } from "@/web/lib/auth-client";
 import { extractConnectionData } from "@/web/utils/extract-connection-data";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   Dialog,
   DialogContent,
@@ -64,6 +65,7 @@ export function AddConnectionDialog({
   initialSearch = "",
   ...rest
 }: ConnectionDialogProps) {
+  const t = useT();
   const mode: ConnectionDialogMode = rest.mode ?? "add";
   const agentId = "agentId" in rest ? rest.agentId : undefined;
   const addedConnectionIds =
@@ -174,7 +176,9 @@ export function AddConnectionDialog({
           error: auth.error ?? "no_token",
         });
         toast.error(
-          `Authentication failed: ${auth.error ?? "no token received"}`,
+          t("virtualMcp.addConnectionDialog.authenticationFailedError", {
+            error: auth.error ?? "no token received",
+          }),
         );
         // Clean up the orphaned connection
         await connectionActions.delete.mutateAsync(id);
@@ -189,7 +193,7 @@ export function AddConnectionDialog({
       onAdd(id);
     } catch (err) {
       console.error("Failed to add connection:", err);
-      toast.error("Failed to add connection");
+      toast.error(t("virtualMcp.addConnectionDialog.failedToAddConnection"));
     } finally {
       setConnectingItemId(null);
     }
@@ -218,7 +222,7 @@ export function AddConnectionDialog({
 
       if (!hasUrl && !hasStdioConfig) {
         toast.error(
-          "This MCP Server cannot be connected: no connection method available",
+          t("virtualMcp.addConnectionDialog.mcpServerConnectionError"),
         );
         setConnectingItemId(null);
         return;
@@ -243,8 +247,13 @@ export function AddConnectionDialog({
           flow: "connect_new",
           error: auth.error ?? "no_token",
         });
-        toast.warning("Couldn't sign in to this connection", {
-          description: `It was added to your agent, but its sign-in setup looks off. You can try authenticating again later from the connection's settings. (${auth.error ?? "no token received"})`,
+        toast.warning(t("virtualMcp.addConnectionDialog.signInFailedTitle"), {
+          description: t(
+            "virtualMcp.addConnectionDialog.signInFailedDescription",
+            {
+              error: auth.error ?? "no token received",
+            },
+          ),
         });
         trackAttach(id, connectionData.app_name ?? null, "new");
         onAdd(id);
@@ -253,16 +262,18 @@ export function AddConnectionDialog({
 
       if (auth.ran) {
         await invalidateAfterOAuthSuccess(id, "connect_new");
-        toast.success("Connected and authenticated");
+        toast.success(
+          t("virtualMcp.addConnectionDialog.connectedAuthenticated"),
+        );
       } else {
-        toast.success("Connected");
+        toast.success(t("virtualMcp.addConnectionDialog.connected"));
       }
 
       trackAttach(id, connectionData.app_name ?? null, "new");
       onAdd(id);
     } catch (err) {
       console.error("Failed to connect:", err);
-      toast.error("Failed to connect");
+      toast.error(t("virtualMcp.addConnectionDialog.failedToConnect"));
     } finally {
       setConnectingItemId(null);
     }
@@ -273,7 +284,9 @@ export function AddConnectionDialog({
       <DialogContent className="sm:max-w-5xl h-[85vh] max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden w-[95vw]">
         <DialogHeader className="px-6 pt-5 pb-0 shrink-0">
           <DialogTitle className="text-base font-semibold">
-            {mode === "browse" ? "Connections" : "Add Connection"}
+            {mode === "browse"
+              ? t("virtualMcp.addConnectionDialog.connectionsTitle")
+              : t("virtualMcp.addConnectionDialog.addConnectionTitle")}
           </DialogTitle>
         </DialogHeader>
 
@@ -281,7 +294,9 @@ export function AddConnectionDialog({
           <CollectionSearch
             value={search}
             onChange={setSearch}
-            placeholder="Search connections..."
+            placeholder={t(
+              "virtualMcp.addConnectionDialog.searchConnectionsPlaceholder",
+            )}
           />
         </div>
 
@@ -334,9 +349,17 @@ export function AddConnectionDialog({
               flow: "custom_create",
               error: auth.error ?? "no_token",
             });
-            toast.warning("Couldn't sign in to this connection", {
-              description: `It was added to your agent, but its sign-in setup looks off. You can try authenticating again later from the connection's settings. (${auth.error ?? "no token received"})`,
-            });
+            toast.warning(
+              t("virtualMcp.addConnectionDialog.signInFailedTitle"),
+              {
+                description: t(
+                  "virtualMcp.addConnectionDialog.signInFailedDescription",
+                  {
+                    error: auth.error ?? "no token received",
+                  },
+                ),
+              },
+            );
             trackAttach(id, null, "custom");
             onAdd(id);
             onOpenChange(false);

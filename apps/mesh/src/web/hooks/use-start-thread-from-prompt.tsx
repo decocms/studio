@@ -29,6 +29,7 @@ import { useThreadActions } from "@/web/components/chat/store/hooks";
 import { createMentionDoc } from "@/web/components/chat/tiptap/mention/node";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { writeStoredAutosend } from "@/web/lib/autosend";
+import { useT } from "@/web/i18n/use-t";
 
 export interface UseStartThreadFromPromptResult {
   /** Trigger from a card click. Opens args dialog if needed. */
@@ -55,6 +56,7 @@ export function useStartThreadFromPrompt({
 }: {
   agentId: string;
 }): UseStartThreadFromPromptResult {
+  const t = useT();
   const { org, locator } = useProjectContext();
   const client = useMCPClient({
     connectionId: agentId,
@@ -72,7 +74,7 @@ export function useStartThreadFromPrompt({
 
   const loadAndStart = async (prompt: Prompt, args?: PromptArgumentValues) => {
     if (!client) {
-      toast.error("MCP client not available");
+      toast.error(t("common.useStartThreadFromPrompt.mcpClientNotAvailable"));
       return;
     }
     if (inFlightRef.current) return;
@@ -116,7 +118,7 @@ export function useStartThreadFromPrompt({
       setTaskId(newId, agentId, { autosend: true });
     } catch (error) {
       console.error("[start-thread-from-prompt] failed", error);
-      toast.error("Failed to start chat. Please try again.");
+      toast.error(t("common.useStartThreadFromPrompt.failedToStartChat"));
     } finally {
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- release in-flight guard
       inFlightRef.current = false;
@@ -151,7 +153,7 @@ export function useStartThreadFromPrompt({
       setTaskId(newId, agentId, opts?.main ? { main: opts.main } : undefined);
     } catch (error) {
       console.error("[start-thread-from-prompt] startBlank failed", error);
-      toast.error("Failed to start chat. Please try again.");
+      toast.error(t("common.useStartThreadFromPrompt.failedToStartChat"));
     } finally {
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- release in-flight guard
       inFlightRef.current = false;

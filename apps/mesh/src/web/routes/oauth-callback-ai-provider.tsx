@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
 import { Loading01 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export default function AiProviderOAuthCallback() {
+  const t = useT();
   const [status, setStatus] = useState<"loading" | "success" | "error">(
     "loading",
   );
@@ -74,24 +76,26 @@ export default function AiProviderOAuthCallback() {
         <div className="flex flex-col items-center gap-2 text-center">
           <h2 className="text-lg font-medium text-foreground">
             {status === "error"
-              ? "Authentication Failed"
+              ? t("routes.oauthCallbackAiProvider.authFailed")
               : status === "success"
-                ? "Authentication Successful"
-                : "Authentication in progress..."}
+                ? t("routes.oauthCallbackAiProvider.authSuccess")
+                : t("routes.oauthCallbackAiProvider.authInProgress")}
           </h2>
           <div className="text-sm text-muted-foreground">
             {status === "error" ? (
               <>
-                <p className="mb-2">An error occurred during authentication:</p>
+                <p className="mb-2">
+                  {t("routes.oauthCallbackAiProvider.errorOccurred")}
+                </p>
                 <p className="text-destructive">{errorMessage}</p>
-                <p className="mt-2">This window will close automatically.</p>
+                <p className="mt-2">
+                  {t("routes.oauthCallbackAiProvider.windowCloseAuto")}
+                </p>
               </>
             ) : status === "success" ? (
-              <p>
-                Authentication complete. This window will close automatically.
-              </p>
+              <p>{t("routes.oauthCallbackAiProvider.authCompleteCloseAuto")}</p>
             ) : (
-              <p>Processing authentication...</p>
+              <p>{t("routes.oauthCallbackAiProvider.processingAuth")}</p>
             )}
           </div>
         </div>

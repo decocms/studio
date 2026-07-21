@@ -9,6 +9,7 @@ import type {
 } from "@/web/components/unified-auth-form";
 import { authClient } from "@/web/lib/auth-client";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface AuthEntryProps {
   callbackUrl: string;
@@ -53,6 +54,7 @@ function AutoLogin({
   redirectTo: string;
   onAuthEvent?: (event: AuthFlowEvent) => void;
 }) {
+  const t = useT();
   const [error, setError] = useState<string | null>(null);
   const emitAuthEvent = useEffectEvent((event: AuthFlowEvent) => {
     try {
@@ -102,7 +104,7 @@ function AutoLogin({
         }
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(data?.error || "Auto-login failed");
+          throw new Error(data?.error || t("common.authEntry.autoLoginFailed"));
         }
         if (!cancelled) {
           emitAuthEvent({ type: "succeeded", method: "local" });
@@ -116,7 +118,11 @@ function AutoLogin({
             stage: "authenticate",
             error: err instanceof Error ? err.message : String(err),
           });
-          setError(err instanceof Error ? err.message : "Auto-login failed");
+          setError(
+            err instanceof Error
+              ? err.message
+              : t("common.authEntry.autoLoginFailed"),
+          );
         }
       }
     })();
@@ -130,9 +136,11 @@ function AutoLogin({
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <p className="text-destructive mb-2">Auto-login failed: {error}</p>
+          <p className="text-destructive mb-2">
+            {t("common.authEntry.autoLoginFailedWithError", { error })}
+          </p>
           <p className="text-muted-foreground text-sm">
-            Try restarting the server.
+            {t("common.authEntry.tryRestartingServer")}
           </p>
         </div>
       </div>
@@ -203,6 +211,7 @@ export function AuthEntry({
   allowPassword,
   onAuthEvent,
 }: AuthEntryProps) {
+  const t = useT();
   const {
     sso,
     emailAndPassword,
@@ -251,5 +260,5 @@ export function AuthEntry({
     );
   }
 
-  return <div>No login options available</div>;
+  return <div>{t("common.authEntry.noLoginOptions")}</div>;
 }

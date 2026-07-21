@@ -3,12 +3,14 @@ import { Badge } from "@deco/ui/components/badge.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
 import type { MonitorResult } from "@/web/lib/registry/types";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export function BrokenMCPList({ results }: { results: MonitorResult[] }) {
+  const t = useT();
   if (results.length === 0) {
     return (
       <Card className="p-4 text-sm text-muted-foreground text-center">
-        No broken MCPs in this run. All healthy! ✓
+        {t("registry.brokenMcpList.noBrokenMcps")}
       </Card>
     );
   }
@@ -49,13 +51,20 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
 
           {/* Quick summary line */}
           <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
-            <span>conn: {result.connection_ok ? "✓" : "✗"}</span>
-            <span>tools listed: {result.tools_listed ? "✓" : "✗"}</span>
+            <span>
+              {t("registry.brokenMcpList.connStatus")}:{" "}
+              {result.connection_ok ? "✓" : "✗"}
+            </span>
+            <span>
+              {t("registry.brokenMcpList.toolsListed")}:{" "}
+              {result.tools_listed ? "✓" : "✗"}
+            </span>
             <span>{result.duration_ms}ms</span>
             {failedTools.length > 0 && (
               <span className="text-destructive">
-                {failedTools.length} tool{failedTools.length > 1 ? "s" : ""}{" "}
-                failed
+                {t("registry.brokenMcpList.toolsFailed", {
+                  count: failedTools.length,
+                })}
               </span>
             )}
             {result.action_taken !== "none" && (
@@ -83,7 +92,7 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
           {result.error_message && (
             <div className="space-y-0.5">
               <p className="text-[10px] font-semibold text-destructive">
-                Full Error
+                {t("registry.brokenMcpList.fullError")}
               </p>
               <pre className="text-[11px] bg-destructive/5 border border-destructive/10 rounded px-2.5 py-1.5 whitespace-pre-wrap break-all text-destructive">
                 {result.error_message}
@@ -94,29 +103,39 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
           {/* Connection / tools status */}
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded border border-border px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">Connection</p>
+              <p className="text-[10px] text-muted-foreground">
+                {t("registry.brokenMcpList.connectionLabel")}
+              </p>
               <p
                 className={cn(
                   "text-xs font-medium",
                   result.connection_ok ? "text-success" : "text-destructive",
                 )}
               >
-                {result.connection_ok ? "OK" : "Failed"}
+                {result.connection_ok
+                  ? t("registry.brokenMcpList.statusOk")
+                  : t("registry.brokenMcpList.statusFailed")}
               </p>
             </div>
             <div className="rounded border border-border px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">Tools Listed</p>
+              <p className="text-[10px] text-muted-foreground">
+                {t("registry.brokenMcpList.toolsListedLabel")}
+              </p>
               <p
                 className={cn(
                   "text-xs font-medium",
                   result.tools_listed ? "text-success" : "text-destructive",
                 )}
               >
-                {result.tools_listed ? "Yes" : "No"}
+                {result.tools_listed
+                  ? t("registry.brokenMcpList.yes")
+                  : t("registry.brokenMcpList.no")}
               </p>
             </div>
             <div className="rounded border border-border px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">Duration</p>
+              <p className="text-[10px] text-muted-foreground">
+                {t("registry.brokenMcpList.durationLabel")}
+              </p>
               <p className="text-xs font-medium">{result.duration_ms}ms</p>
             </div>
           </div>
@@ -125,7 +144,9 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
           {failedTools.length > 0 && (
             <div className="space-y-1">
               <p className="text-[10px] font-semibold text-destructive">
-                Failed Tools ({failedTools.length})
+                {t("registry.brokenMcpList.failedToolsHeader", {
+                  count: failedTools.length,
+                })}
               </p>
               {failedTools.map((tool) => (
                 <div
@@ -155,7 +176,7 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
             result.tool_results.some((t) => t.success) && (
               <div className="space-y-0.5">
                 <p className="text-[10px] font-semibold text-muted-foreground">
-                  Passing Tools
+                  {t("registry.brokenMcpList.passingTools")}
                 </p>
                 <div className="flex flex-wrap gap-1">
                   {result.tool_results

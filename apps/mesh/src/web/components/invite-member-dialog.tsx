@@ -34,11 +34,14 @@ import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { useOrganizationRoles } from "@/web/hooks/use-organization-roles";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface InviteMemberDialogProps {
   trigger: React.ReactNode;
 }
 
+// NOTE: email schema error message is not displayed to users (never rendered)
+// — form validation uses FormMessage which pulls from form errors, not schema messages
 const emailSchema = z.string().email("Invalid email address");
 
 type InviteMemberFormData = {
@@ -97,6 +100,8 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
     return isValidFormat && isNotSelf;
   });
 
+  const t = useT();
+
   const inviteMutation = useMutation({
     mutationFn: async ({
       emails,
@@ -106,7 +111,7 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
       role: string;
     }) => {
       if (!role) {
-        throw new Error("Please select a role");
+        throw new Error(t("common.inviteMemberDialog.errorSelectRole"));
       }
 
       // Invite each valid email with the selected role
@@ -129,7 +134,9 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
       const failures = results.filter((r) => r.status === "rejected");
       if (failures.length > 0) {
         throw new Error(
-          `Failed to invite ${failures.length} member${failures.length > 1 ? "s" : ""}`,
+          t("common.inviteMemberDialog.errorFailedInvite", {
+            count: failures.length,
+          }),
         );
       }
 
@@ -144,8 +151,10 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
       queryClient.invalidateQueries({ queryKey: KEYS.invitations(locator) });
       toast.success(
         emails.length === 1
-          ? "Member invited successfully!"
-          : `${emails.length} members invited successfully!`,
+          ? t("common.inviteMemberDialog.successSingle")
+          : t("common.inviteMemberDialog.successMultiple", {
+              count: emails.length,
+            }),
       );
       form.reset({
         emailsText: "",
@@ -160,18 +169,20 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
         error: error instanceof Error ? error.message : String(error),
       });
       toast.error(
-        error instanceof Error ? error.message : "Failed to invite members",
+        error instanceof Error
+          ? error.message
+          : t("common.inviteMemberDialog.errorGeneric"),
       );
     },
   });
 
   const handleSubmit = (data: InviteMemberFormData) => {
     if (validEmails.length === 0) {
-      toast.error("Please enter at least one valid email address");
+      toast.error(t("common.inviteMemberDialog.errorNoValidEmail"));
       return;
     }
     if (!data.role) {
-      toast.error("Please select a role");
+      toast.error(t("common.inviteMemberDialog.errorSelectRole"));
       return;
     }
     inviteMutation.mutate({ emails: validEmails, role: data.role });
@@ -184,7 +195,7 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Invite members</DialogTitle>
+          <DialogTitle>{t("common.inviteMemberDialog.title")}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -197,14 +208,16 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
               name="emailsText"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email addresses</FormLabel>
+                  <FormLabel>
+                    {t("common.inviteMemberDialog.emailLabel")}
+                  </FormLabel>
                   <FormControl>
                     <Textarea
                       {...field}
                       disabled={inviteMutation.isPending}
-                      placeholder={`Enter email addresses separated by commas or new lines
-e.g. user1@example.com, user2@example.com
-or one per line`}
+                      placeholder={t(
+                        "common.inviteMemberDialog.emailPlaceholder",
+                      )}
                       className="min-h-[120px] resize-none"
                     />
                   </FormControl>
@@ -225,7 +238,11 @@ or one per line`}
                       disabled={inviteMutation.isPending || isLoadingRoles}
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a role" />
+                        <SelectValue
+                          placeholder={t(
+                            "common.inviteMemberDialog.roleSelectPlaceholder",
+                          )}
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         {inviteableRoles.map((role) => {
@@ -235,25 +252,37 @@ or one per line`}
                           if (!role.isBuiltin) {
                             // Static permissions
                             if (role.allowsAllStaticPermissions) {
-                              parts.push("Full org access");
+                              parts.push(
+                                t(
+                                  "common.inviteMemberDialog.permFullOrgAccess",
+                                ),
+                              );
                             } else if (
                               role.staticPermissionCount &&
                               role.staticPermissionCount > 0
                             ) {
                               parts.push(
-                                `${role.staticPermissionCount} org perm${role.staticPermissionCount !== 1 ? "s" : ""}`,
+                                t("common.inviteMemberDialog.permOrgPerms", {
+                                  count: role.staticPermissionCount,
+                                }),
                               );
                             }
 
                             // Connection permissions
                             if (role.allowsAllConnections) {
-                              parts.push("All connections");
+                              parts.push(
+                                t(
+                                  "common.inviteMemberDialog.permAllConnections",
+                                ),
+                              );
                             } else if (
                               role.connectionCount &&
                               role.connectionCount > 0
                             ) {
                               parts.push(
-                                `${role.connectionCount} connection${role.connectionCount !== 1 ? "s" : ""}`,
+                                t("common.inviteMemberDialog.permConnections", {
+                                  count: role.connectionCount,
+                                }),
                               );
                             }
 
@@ -263,10 +292,14 @@ or one per line`}
                               role.allowsAllConnections
                             ) {
                               if (role.allowsAllTools) {
-                                parts.push("all tools");
+                                parts.push(
+                                  t("common.inviteMemberDialog.permAllTools"),
+                                );
                               } else if (role.toolCount && role.toolCount > 0) {
                                 parts.push(
-                                  `${role.toolCount} tool${role.toolCount !== 1 ? "s" : ""}`,
+                                  t("common.inviteMemberDialog.permTools", {
+                                    count: role.toolCount,
+                                  }),
                                 );
                               }
                             }
@@ -306,17 +339,17 @@ or one per line`}
                 type="button"
                 disabled={inviteMutation.isPending}
               >
-                Cancel
+                {t("common.inviteMemberDialog.cancelButton")}
               </Button>
               <Button
                 type="submit"
                 disabled={inviteMutation.isPending || !isFormValid}
               >
                 {inviteMutation.isPending
-                  ? "Inviting..."
-                  : `Invite ${validEmails.length || 0} Member${
-                      validEmails.length !== 1 ? "s" : ""
-                    }`}
+                  ? t("common.inviteMemberDialog.invitingButton")
+                  : t("common.inviteMemberDialog.inviteButton", {
+                      count: validEmails.length || 0,
+                    })}
               </Button>
             </DialogFooter>
           </form>

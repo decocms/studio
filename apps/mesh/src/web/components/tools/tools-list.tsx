@@ -7,6 +7,7 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import type { ToolDefinition } from "@decocms/mesh-sdk";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   AlertTriangle,
   Eye,
@@ -23,22 +24,27 @@ export interface Tool {
 }
 
 const ANNOTATION_HINTS = [
-  { key: "readOnlyHint", label: "Read-only", Icon: Eye, variant: "secondary" },
+  {
+    key: "readOnlyHint",
+    labelKey: "tools.toolsList.readOnly" as const,
+    Icon: Eye,
+    variant: "secondary",
+  },
   {
     key: "destructiveHint",
-    label: "Destructive",
+    labelKey: "tools.toolsList.destructive" as const,
     Icon: AlertTriangle,
     variant: "destructive",
   },
   {
     key: "idempotentHint",
-    label: "Idempotent",
+    labelKey: "tools.toolsList.idempotent" as const,
     Icon: RefreshCw01,
     variant: "secondary",
   },
   {
     key: "openWorldHint",
-    label: "Open-world",
+    labelKey: "tools.toolsList.openWorld" as const,
     Icon: Globe02,
     variant: "outline",
   },
@@ -51,6 +57,7 @@ export function ToolAnnotationBadges({
   annotations?: ToolDefinition["annotations"];
   _meta?: Record<string, unknown>;
 }) {
+  const t = useT();
   const hasUI = !!getUIResourceUri(_meta);
   const active = annotations
     ? ANNOTATION_HINTS.filter((h) => annotations[h.key] === true)
@@ -66,17 +73,17 @@ export function ToolAnnotationBadges({
                 <LayersTwo01 />
               </Badge>
             </TooltipTrigger>
-            <TooltipContent>Interactive</TooltipContent>
+            <TooltipContent>{t("tools.toolsList.interactive")}</TooltipContent>
           </Tooltip>
         )}
-        {active.map(({ label, Icon, variant }) => (
-          <Tooltip key={label}>
+        {active.map(({ labelKey, Icon, variant }) => (
+          <Tooltip key={labelKey}>
             <TooltipTrigger asChild>
               <Badge asChild variant={variant} className="size-6 p-1">
                 <Icon />
               </Badge>
             </TooltipTrigger>
-            <TooltipContent>{label}</TooltipContent>
+            <TooltipContent>{t(labelKey)}</TooltipContent>
           </Tooltip>
         ))}
       </div>

@@ -20,6 +20,7 @@ import {
   Monitor01,
   Stars01,
 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { ChatTier } from "@/tools/organization/schema";
 import {
   resolveTierSubtitle,
@@ -37,11 +38,6 @@ import {
 import { ClaudeCodeIcon, CodexIcon, localHarnessBrand } from "./agent-icons";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
-const TIER_LABELS: Record<ChatTier, string> = {
-  fast: "Fast",
-  smart: "Smart",
-  thinking: "Thinking",
-};
 
 /** One selectable row in the popover — a concrete (runtime, tier) choice. */
 interface TierRow {
@@ -88,15 +84,23 @@ interface PureProps {
 export function TierTriggerPure({
   tier,
   pillIcon,
-  pillLabel = TIER_LABELS[tier],
+  pillLabel,
   groups,
   header,
 }: PureProps) {
+  const t = useT();
+  const getTierLabels = (): Record<ChatTier, string> => ({
+    fast: t("chat.tierTrigger.tierFast"),
+    smart: t("chat.tierTrigger.tierSmart"),
+    thinking: t("chat.tierTrigger.tierThinking"),
+  });
+  const tierLabels = getTierLabels();
   const [open, setOpen] = useState(false);
   const handleSelect = (row: TierRow) => {
     row.onSelect();
     setOpen(false);
   };
+  const resolvedPillLabel = pillLabel ?? tierLabels[tier];
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -108,7 +112,7 @@ export function TierTriggerPure({
                 type="button"
                 variant="ghost"
                 size="default"
-                aria-label={pillLabel}
+                aria-label={resolvedPillLabel}
                 className={cn(
                   "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
                   "gap-0 @[320px]/chat-bottom:gap-1.5",
@@ -121,7 +125,7 @@ export function TierTriggerPure({
                     "@[320px]/chat-bottom:max-w-24 @[320px]/chat-bottom:opacity-100",
                   )}
                 >
-                  {TIER_LABELS[tier]}
+                  {tierLabels[tier]}
                 </span>
                 <ChevronDown
                   size={12}
@@ -131,7 +135,7 @@ export function TierTriggerPure({
             </PopoverTrigger>
           </span>
         </TooltipTrigger>
-        <TooltipContent>{pillLabel}</TooltipContent>
+        <TooltipContent>{resolvedPillLabel}</TooltipContent>
       </Tooltip>
       <PopoverContent align="end" className="p-1 w-64">
         {header && (
@@ -173,7 +177,9 @@ export function TierTriggerPure({
                     )}
                   </div>
                   {row.active && (
-                    <Check size={14} className="text-foreground mt-0.5" />
+                    <span title={t("chat.tierTrigger.selected")}>
+                      <Check size={14} className="text-foreground mt-0.5" />
+                    </span>
                   )}
                 </button>
               ))}
@@ -212,6 +218,7 @@ function Segmented({
     onSelect: () => void;
   }>;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-1 p-1 rounded-lg bg-muted">
       {options.map((o) => (
@@ -220,6 +227,7 @@ function Segmented({
           type="button"
           onClick={o.onSelect}
           className={cn(SEG_BTN, o.active ? SEG_ACTIVE : SEG_INACTIVE)}
+          title={o.active ? t("chat.tierTrigger.selected") : undefined}
         >
           {o.icon}
           <span className="truncate">{o.label}</span>
@@ -237,6 +245,7 @@ function Segmented({
  * listed directly below as their own group. Hidden on a locked thread.
  */
 function RuntimeToggle() {
+  const t = useT();
   const { pendingHarnessId, setPendingAgentOption } = useChatPrefs();
   const availability = useAgentOptionAvailability();
   const isLocal =
@@ -253,14 +262,14 @@ function RuntimeToggle() {
           {
             key: "cloud",
             icon: <Cloud01 size={14} />,
-            label: "Cloud",
+            label: t("chat.tierTrigger.runtimeCloud"),
             active: !isLocal,
             onSelect: () => setPendingAgentOption("decopilot"),
           },
           {
             key: "local",
             icon: <Monitor01 size={14} />,
-            label: "This device",
+            label: t("chat.tierTrigger.runtimeThisDevice"),
             active: isLocal,
             onSelect: () => setPendingAgentOption(firstLocal),
           },
@@ -282,6 +291,7 @@ function localGroup(params: {
   currentTier: ChatTier;
   setOption: (option: AgentOption) => void;
   setTier: (tier: ChatTier) => void;
+  tierLabels: Record<ChatTier, string>;
 }): TierGroup {
   return {
     key: params.key,
@@ -289,7 +299,7 @@ function localGroup(params: {
     rows: TIER_ORDER.map((t) => ({
       key: `${params.key}-${t}`,
       icon: params.icon,
-      title: TIER_LABELS[t],
+      title: params.tierLabels[t],
       subtitle: resolveTierSubtitle(params.mode, t),
       active: params.isActiveRuntime && params.currentTier === t,
       onSelect: () => {
@@ -308,6 +318,7 @@ function localGroup(params: {
  * single click picks both the runtime and the tier.
  */
 export function TierTrigger() {
+  const t = useT();
   const tier = useChatTier();
   const setTier = useSetChatTier();
   const mode = useAgentMode();
@@ -317,6 +328,13 @@ export function TierTrigger() {
   const locked = taskCtx?.isThreadLocked ?? false;
   const hasLocal = availability.claudeCode || availability.codex;
   const isLocal = mode !== "cloud-decopilot";
+
+  const getTierLabels = (): Record<ChatTier, string> => ({
+    fast: t("chat.tierTrigger.tierFast"),
+    smart: t("chat.tierTrigger.tierSmart"),
+    thinking: t("chat.tierTrigger.tierThinking"),
+  });
+  const tierLabels = getTierLabels();
 
   let groups: TierGroup[];
   if (isLocal) {
@@ -337,7 +355,9 @@ export function TierTrigger() {
       built.push(
         localGroup({
           key: "claude-code",
-          label: bothShown ? "Claude Code" : undefined,
+          label: bothShown
+            ? t("chat.tierTrigger.runtimeClaudeCode")
+            : undefined,
           icon: <ClaudeCodeIcon size={16} />,
           mode: "local-claude-code",
           option: "claude-code-desktop",
@@ -345,6 +365,7 @@ export function TierTrigger() {
           currentTier: tier,
           setOption: setPendingAgentOption,
           setTier,
+          tierLabels,
         }),
       );
     }
@@ -352,7 +373,7 @@ export function TierTrigger() {
       built.push(
         localGroup({
           key: "codex",
-          label: bothShown ? "Codex" : undefined,
+          label: bothShown ? t("chat.tierTrigger.runtimeCodex") : undefined,
           icon: <CodexIcon size={16} />,
           mode: "local-codex",
           option: "codex-desktop",
@@ -360,6 +381,7 @@ export function TierTrigger() {
           currentTier: tier,
           setOption: setPendingAgentOption,
           setTier,
+          tierLabels,
         }),
       );
     }
@@ -371,7 +393,7 @@ export function TierTrigger() {
         rows: TIER_ORDER.map((t) => ({
           key: `cloud-${t}`,
           icon: tierIconFor(t),
-          title: TIER_LABELS[t],
+          title: tierLabels[t],
           subtitle: resolveTierSubtitle("cloud-decopilot", t),
           active: tier === t,
           onSelect: () => setTier(t),
@@ -391,8 +413,8 @@ export function TierTrigger() {
       }
       pillLabel={
         localBrand
-          ? `${localBrand.label} ${TIER_LABELS[tier]}`
-          : TIER_LABELS[tier]
+          ? `${t(localBrand.labelKey)} ${tierLabels[tier]}`
+          : tierLabels[tier]
       }
       groups={groups}
       header={hasLocal && !locked ? <RuntimeToggle /> : undefined}

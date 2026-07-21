@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { MonacoCodeEditor } from "@/web/components/monaco-editor";
 import { SchemaForm } from "@/web/components/sections-editor/schema-form";
@@ -85,6 +86,7 @@ export function RunnableBlockEditor({
   /** Navigates back to the folder browser. */
   onBack?: () => void;
 }) {
+  const t = useT();
   const inset = useInsetContext();
   const agentSiteSlug =
     inset?.entity?.id === virtualMcpId
@@ -235,13 +237,13 @@ export function RunnableBlockEditor({
               size="icon"
               className="size-8 shrink-0"
               onClick={onBack}
-              aria-label="Back to list"
+              aria-label={t("sandbox.runnableBlockEditor.backToList")}
             >
               <ArrowLeft size={14} />
             </Button>
           )}
           <nav
-            aria-label="Editing breadcrumb"
+            aria-label={t("sandbox.runnableBlockEditor.editingBreadcrumb")}
             className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
           >
             {headerCrumbs.map((crumb, index) => {
@@ -280,14 +282,16 @@ export function RunnableBlockEditor({
             className="h-8 shrink-0 gap-1.5"
             onClick={handleRun}
             disabled={run.isPending}
-            aria-label={`Run ${singular}`}
+            aria-label={t("sandbox.runnableBlockEditor.runAriaLabel", {
+              singular,
+            })}
           >
             {run.isPending ? (
               <Loading01 size={14} className="animate-spin" />
             ) : (
               <Play size={14} />
             )}
-            Run
+            {t("sandbox.runnableBlockEditor.run")}
           </Button>
           {target.mode === "available" && (
             <Tooltip>
@@ -297,13 +301,20 @@ export function RunnableBlockEditor({
                   className="size-8 shrink-0"
                   disabled={isCreating}
                   onClick={() => setSaveOpen(true)}
-                  aria-label={`Save as global ${singular}`}
+                  aria-label={t(
+                    "sandbox.runnableBlockEditor.saveAsGlobalAriaLabel",
+                    {
+                      singular,
+                    },
+                  )}
                 >
                   <Save01 size={14} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                Save as global {singular}
+                {t("sandbox.runnableBlockEditor.saveAsGlobal", {
+                  singular,
+                })}
               </TooltipContent>
             </Tooltip>
           )}
@@ -314,21 +325,32 @@ export function RunnableBlockEditor({
                 size="icon"
                 className="size-8 shrink-0"
                 onClick={toggleJson}
-                aria-label={jsonOpen ? "Close JSON editor" : "Edit as JSON"}
+                aria-label={
+                  jsonOpen
+                    ? t("sandbox.runnableBlockEditor.closeJsonEditor")
+                    : t("sandbox.runnableBlockEditor.editAsJson")
+                }
                 aria-pressed={jsonOpen}
               >
                 {jsonOpen ? <X size={14} /> : <Code01 size={14} />}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {jsonOpen ? "Close JSON editor" : "Edit as JSON"}
+              {jsonOpen
+                ? t("sandbox.runnableBlockEditor.closeJsonEditor")
+                : t("sandbox.runnableBlockEditor.editAsJson")}
             </TooltipContent>
           </Tooltip>
         </div>
         <p className="mt-1.5 py-1 pl-1 text-sm leading-snug text-muted-foreground">
           {target.mode === "saved"
-            ? `Global ${singular} — changes save automatically. Run to invoke it against the live preview.`
-            : `${typeLabel} — edits stay local until you save this as a global ${singular}. Run to invoke it against the live preview.`}
+            ? t("sandbox.runnableBlockEditor.savedModeDescription", {
+                singular,
+              })
+            : t("sandbox.runnableBlockEditor.availableModeDescription", {
+                typeLabel,
+                singular,
+              })}
         </p>
       </div>
 
@@ -345,9 +367,9 @@ export function RunnableBlockEditor({
               <div className="mx-auto max-w-2xl">
                 {inferredSchema && schema === inferredSchema && (
                   <p className="mb-3 rounded-md bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
-                    This {singular} doesn't publish a props schema — fields
-                    below are inferred from its saved values. Use the JSON
-                    editor to add props not shown here.
+                    {t("sandbox.runnableBlockEditor.inferredSchemaNotice", {
+                      singular,
+                    })}
                   </p>
                 )}
                 {schema ? (
@@ -367,8 +389,15 @@ export function RunnableBlockEditor({
                 ) : (
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">
                     {freeformProps
-                      ? `This ${singular} doesn't publish a props schema. Edit its props as JSON, then run it.`
-                      : `This ${singular} takes no configurable input. Run it to see its output.`}
+                      ? t(
+                          "sandbox.runnableBlockEditor.freeformPropsEmptyState",
+                          {
+                            singular,
+                          },
+                        )
+                      : t("sandbox.runnableBlockEditor.noInputEmptyState", {
+                          singular,
+                        })}
                   </div>
                 )}
               </div>
@@ -379,7 +408,7 @@ export function RunnableBlockEditor({
             <div className="absolute inset-0 flex flex-col bg-background">
               {jsonError && (
                 <div className="shrink-0 border-b bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
-                  Invalid JSON — changes aren't saved until it parses.
+                  {t("sandbox.runnableBlockEditor.invalidJsonError")}
                 </div>
               )}
               <div className="min-h-0 flex-1">
@@ -451,6 +480,7 @@ function RunResultPanel({
   onOpenInNewTab?: () => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const resultText =
     typeof result.data === "string"
       ? result.data
@@ -465,7 +495,7 @@ function RunResultPanel({
     >
       <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
         <span className="text-xs font-medium text-muted-foreground">
-          Result
+          {t("sandbox.runnableBlockEditor.resultPanelTitle")}
         </span>
         <div className="flex items-center gap-0.5">
           {onOpenInNewTab && (
@@ -476,13 +506,17 @@ function RunResultPanel({
                   size="icon"
                   className="size-7"
                   onClick={onOpenInNewTab}
-                  aria-label="Open result in new tab"
+                  aria-label={t(
+                    "sandbox.runnableBlockEditor.openResultInNewTabAriaLabel",
+                  )}
                 >
                   <LinkExternal01 size={14} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                Open in new tab (re-runs the {singular})
+                {t("sandbox.runnableBlockEditor.openInNewTabTooltip", {
+                  singular,
+                })}
               </TooltipContent>
             </Tooltip>
           )}
@@ -493,14 +527,20 @@ function RunResultPanel({
                 size="icon"
                 className="size-7"
                 onClick={onToggleExpand}
-                aria-label={expanded ? "Collapse result" : "Expand result"}
+                aria-label={
+                  expanded
+                    ? t("sandbox.runnableBlockEditor.collapseResult")
+                    : t("sandbox.runnableBlockEditor.expandResult")
+                }
                 aria-pressed={expanded}
               >
                 {expanded ? <Minimize01 size={14} /> : <Maximize01 size={14} />}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {expanded ? "Collapse" : "Expand"}
+              {expanded
+                ? t("sandbox.runnableBlockEditor.collapse")
+                : t("sandbox.runnableBlockEditor.expand")}
             </TooltipContent>
           </Tooltip>
           <Button
@@ -508,7 +548,7 @@ function RunResultPanel({
             size="icon"
             className="size-7"
             onClick={onClose}
-            aria-label="Close result"
+            aria-label={t("sandbox.runnableBlockEditor.closeResult")}
           >
             <X size={14} />
           </Button>
@@ -518,12 +558,12 @@ function RunResultPanel({
         {result.isPending ? (
           <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
             <Loading01 size={16} className="animate-spin" />
-            Running {singular}…
+            {t("sandbox.runnableBlockEditor.running", { singular })}
           </div>
         ) : result.error ? (
           <div className="h-full overflow-auto px-4 py-3">
             <p className="text-xs font-medium text-destructive">
-              Failed to run {singular}
+              {t("sandbox.runnableBlockEditor.failedToRun", { singular })}
             </p>
             <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-destructive/90">
               {result.error.message}
@@ -538,7 +578,7 @@ function RunResultPanel({
           />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-            Press Run to invoke this {singular}.
+            {t("sandbox.runnableBlockEditor.pressRunToInvoke", { singular })}
           </div>
         )}
       </div>

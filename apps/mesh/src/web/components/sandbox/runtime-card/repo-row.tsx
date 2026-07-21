@@ -6,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface RepoRowProps {
   repo: { owner: string; name: string; url: string } | null;
@@ -13,9 +14,10 @@ export interface RepoRowProps {
 }
 
 export function RepoRow({ repo, className }: RepoRowProps) {
+  const t = useT();
   return (
     <div className={cn("space-y-2", className)}>
-      <Label>Repository</Label>
+      <Label>{t("sandbox.repoRow.label")}</Label>
       <Tooltip>
         <TooltipTrigger asChild>
           <div
@@ -35,15 +37,13 @@ export function RepoRow({ repo, className }: RepoRowProps) {
                 </>
               ) : (
                 <div className="text-sm text-muted-foreground">
-                  No repository connected
+                  {t("sandbox.repoRow.noRepositoryConnected")}
                 </div>
               )}
             </div>
           </div>
         </TooltipTrigger>
-        <TooltipContent>
-          The connected GitHub repository for this agent. Manage in Connections.
-        </TooltipContent>
+        <TooltipContent>{t("sandbox.repoRow.tooltipContent")}</TooltipContent>
       </Tooltip>
     </div>
   );

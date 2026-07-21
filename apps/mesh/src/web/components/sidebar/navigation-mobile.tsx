@@ -10,6 +10,7 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import { LayoutLeft } from "@untitledui/icons";
 import type { ReactNode } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 import { SidebarCollapsibleGroup } from "./sidebar-group";
 import {
   AgentSwitcherCrumb,
@@ -121,7 +122,10 @@ export function MobileNavigationSidebar({
         <OrgSwitcherCrumb />
         <AgentSwitcherCrumb onNavigate={onClose} />
         <div className="flex-1" />
-        <ToolbarIconButton onClick={onClose} aria-label="Close sidebar">
+        <ToolbarIconButton
+          onClick={onClose}
+          aria-label={useT()("sidebar.navigationMobile.closeSidebar")}
+        >
           <LayoutLeft size={16} />
         </ToolbarIconButton>
       </div>

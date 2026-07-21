@@ -47,6 +47,7 @@ import {
   User01,
   Users01,
 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import { authClient } from "@/web/lib/auth-client";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { parseDotenv } from "@/web/components/sandbox/preview/drawer/parse-dotenv";
@@ -82,16 +83,16 @@ export function EnvVarsField<T extends FieldValues>({
   virtualMcpId,
   orgSlug,
 }: EnvVarsFieldProps<T>) {
+  const t = useT();
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between gap-2">
         <Label className="font-normal text-foreground">
-          Environment variables
+          {t("sandbox.envVarsField.title")}
         </Label>
       </div>
       <p className="text-xs text-muted-foreground">
-        Injected into the sandbox on every start. Reference an org/user secret
-        to keep values out of metadata; literals are stored inline.
+        {t("sandbox.envVarsField.description")}
       </p>
       <RunningSandboxNotice
         control={control}
@@ -102,7 +103,7 @@ export function EnvVarsField<T extends FieldValues>({
       <ErrorBoundary
         fallback={({ error }) => (
           <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-            {error?.message ?? "Failed to load secrets"}
+            {error?.message ?? t("sandbox.envVarsField.failedToLoadSecrets")}
           </div>
         )}
       >
@@ -143,6 +144,7 @@ function RunningSandboxNotice<T extends FieldValues>({
   virtualMcpId,
   orgSlug,
 }: RunningSandboxNoticeProps<T>) {
+  const t = useT();
   const session = authClient.useSession();
   const userId = session.data?.user?.id;
 
@@ -184,12 +186,17 @@ function RunningSandboxNotice<T extends FieldValues>({
       setBaseline(currentStr);
       toast.success(
         userBranches.length === 1
-          ? "Restarted dev with new env"
-          : `Restarted ${userBranches.length} branches with new env`,
+          ? t("sandbox.envVarsField.restartedSingle")
+          : t("sandbox.envVarsField.restartedMultiple", {
+              count: userBranches.length,
+            }),
       );
     } else {
       toast.error(
-        `Failed to restart ${failed} of ${userBranches.length} branch(es)`,
+        t("sandbox.envVarsField.restartFailed", {
+          failed,
+          total: userBranches.length,
+        }),
       );
     }
   };
@@ -199,7 +206,7 @@ function RunningSandboxNotice<T extends FieldValues>({
       <div className="flex min-w-0 items-center gap-2 text-warning">
         <AlertTriangle className="size-3.5 shrink-0" />
         <span className="truncate">
-          Your sandbox is running. Restart the dev script to apply the new env.
+          {t("sandbox.envVarsField.sandboxRunningNotice")}
         </span>
       </div>
       <Button
@@ -215,7 +222,9 @@ function RunningSandboxNotice<T extends FieldValues>({
         ) : (
           <RefreshCw01 className="size-3.5" />
         )}
-        {isRestarting ? "Restarting…" : "Restart dev"}
+        {isRestarting
+          ? t("sandbox.envVarsField.restarting")
+          : t("sandbox.envVarsField.restartDev")}
       </Button>
     </div>
   );
@@ -243,6 +252,7 @@ function EnvVarsEditor<T extends FieldValues>({
   control,
   form,
 }: EnvVarsEditorProps<T>) {
+  const t = useT();
   const fieldPath = "metadata.runtime.env" as FieldPath<T>;
   // useFieldArray rejects string literals on the generic form path; the
   // runtime contract for `metadata.runtime.env` is asserted via the same
@@ -283,11 +293,11 @@ function EnvVarsEditor<T extends FieldValues>({
     try {
       text = await navigator.clipboard.readText();
     } catch {
-      toast.error("Couldn't read clipboard");
+      toast.error(t("sandbox.envVarsField.clipboardReadFailed"));
       return;
     }
     if (!text.trim()) {
-      toast.error("Clipboard is empty");
+      toast.error(t("sandbox.envVarsField.clipboardEmpty"));
       return;
     }
     let parsed: Record<string, string>;
@@ -299,7 +309,7 @@ function EnvVarsEditor<T extends FieldValues>({
     }
     const entries = Object.entries(parsed);
     if (entries.length === 0) {
-      toast.error("Nothing to add");
+      toast.error(t("sandbox.envVarsField.nothingToAdd"));
       return;
     }
     const existing = (form.getValues(fieldPath) ?? []) as Array<{
@@ -322,14 +332,12 @@ function EnvVarsEditor<T extends FieldValues>({
       added++;
     }
     if (added === 0 && skipped > 0) {
-      toast.message(
-        `All ${skipped} key${skipped === 1 ? "" : "s"} already exist`,
-      );
+      toast.message(t("sandbox.envVarsField.allKeysExist", { count: skipped }));
     } else {
       toast.success(
         skipped > 0
-          ? `Added ${added} var${added === 1 ? "" : "s"} (${skipped} already existed)`
-          : `Added ${added} var${added === 1 ? "" : "s"}`,
+          ? t("sandbox.envVarsField.addedWithSkipped", { added, skipped })
+          : t("sandbox.envVarsField.added", { added }),
       );
     }
   };
@@ -376,7 +384,7 @@ function EnvVarsEditor<T extends FieldValues>({
           className="flex-1"
         >
           <Plus className="size-3.5" />
-          Add env var
+          {t("sandbox.envVarsField.addEnvVar")}
         </Button>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -385,15 +393,14 @@ function EnvVarsEditor<T extends FieldValues>({
               variant="outline"
               size="sm"
               onClick={handlePasteDotenv}
-              aria-label="Paste .env"
+              aria-label={t("sandbox.envVarsField.pasteDotenvAriaLabel")}
             >
               <ClipboardCheck className="size-3.5" />
-              Paste .env
+              {t("sandbox.envVarsField.pasteDotenv")}
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            Read a .env blob from the clipboard. Each pair is staged as a
-            literal — save individual rows as secrets after.
+            {t("sandbox.envVarsField.pasteDotenvTooltip")}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -447,6 +454,7 @@ function EnvRow<T extends FieldValues>({
   onCreateNewSecret,
   onRemove,
 }: EnvRowProps<T>) {
+  const t = useT();
   const keyName = `${fieldPath}.${index}.key` as FieldPath<T>;
   const valueName = `${fieldPath}.${index}.value` as FieldPath<T>;
   const secretIdName = `${fieldPath}.${index}.secretId` as FieldPath<T>;
@@ -495,7 +503,7 @@ function EnvRow<T extends FieldValues>({
                 <Input
                   {...field}
                   value={(field.value as string | undefined) ?? ""}
-                  placeholder="KEY"
+                  placeholder={t("sandbox.envVarsField.keyPlaceholder")}
                   spellCheck={false}
                   autoComplete="off"
                   autoCapitalize="off"
@@ -506,7 +514,9 @@ function EnvRow<T extends FieldValues>({
                       "border-destructive focus-visible:ring-destructive",
                   )}
                   aria-invalid={invalid}
-                  aria-label={`Env var ${index + 1} key`}
+                  aria-label={t("sandbox.envVarsField.envVarKeyLabel", {
+                    index: index + 1,
+                  })}
                   onBlur={(e) => {
                     const next = e.target.value.trim();
                     field.onChange(next);
@@ -515,8 +525,7 @@ function EnvRow<T extends FieldValues>({
                 />
                 {invalid ? (
                   <p className="text-[11px] text-destructive">
-                    Letters, digits, underscores. Must start with a letter or
-                    underscore.
+                    {t("sandbox.envVarsField.invalidKeyMessage")}
                   </p>
                 ) : null}
               </div>
@@ -537,13 +546,13 @@ function EnvRow<T extends FieldValues>({
             <SelectItem value="literal">
               <span className="inline-flex items-center gap-1.5">
                 <Key01 className="size-3.5" />
-                Literal
+                {t("sandbox.envVarsField.literal")}
               </span>
             </SelectItem>
             <SelectItem value="secret">
               <span className="inline-flex items-center gap-1.5">
                 <Lock01 className="size-3.5" />
-                Secret
+                {t("sandbox.envVarsField.secret")}
               </span>
             </SelectItem>
           </SelectContent>
@@ -560,11 +569,13 @@ function EnvRow<T extends FieldValues>({
                 {...field}
                 value={(field.value as string | undefined) ?? ""}
                 type="password"
-                placeholder="value"
+                placeholder={t("sandbox.envVarsField.valuePlaceholder")}
                 spellCheck={false}
                 autoComplete="off"
                 className="font-mono"
-                aria-label={`Env var ${index + 1} value`}
+                aria-label={t("sandbox.envVarsField.envVarValueLabel", {
+                  index: index + 1,
+                })}
                 onBlur={(e) => {
                   field.onChange(e.target.value);
                   field.onBlur();
@@ -588,7 +599,11 @@ function EnvRow<T extends FieldValues>({
                       !field.value && "text-muted-foreground",
                     )}
                   >
-                    <SelectValue placeholder="Pick a secret…">
+                    <SelectValue
+                      placeholder={t(
+                        "sandbox.envVarsField.pickSecretPlaceholder",
+                      )}
+                    >
                       <SecretPickerValue
                         field={field}
                         secretById={secretById}
@@ -598,7 +613,7 @@ function EnvRow<T extends FieldValues>({
                   <SelectContent>
                     {secrets.length === 0 ? (
                       <div className="px-2 py-2 text-xs text-muted-foreground">
-                        No secrets yet. Use the “+” to create one.
+                        {t("sandbox.envVarsField.noSecretsYet")}
                       </div>
                     ) : (
                       secrets.map((s) => (
@@ -620,7 +635,9 @@ function EnvRow<T extends FieldValues>({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Create new secret"
+                  aria-label={t(
+                    "sandbox.envVarsField.createNewSecretAriaLabel",
+                  )}
                   onClick={() => {
                     const presetKey =
                       (
@@ -632,7 +649,9 @@ function EnvRow<T extends FieldValues>({
                   <Plus className="size-3.5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Create new secret</TooltipContent>
+              <TooltipContent>
+                {t("sandbox.envVarsField.createNewSecret")}
+              </TooltipContent>
             </Tooltip>
           </>
         )}
@@ -646,7 +665,7 @@ function EnvRow<T extends FieldValues>({
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Save value as secret"
+                aria-label={t("sandbox.envVarsField.saveAsSecretAriaLabel")}
                 onClick={() => {
                   const presetKey =
                     (
@@ -662,7 +681,9 @@ function EnvRow<T extends FieldValues>({
                 <Save01 className="size-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Save value as secret</TooltipContent>
+            <TooltipContent>
+              {t("sandbox.envVarsField.saveAsSecret")}
+            </TooltipContent>
           </Tooltip>
         ) : null}
         <Tooltip>
@@ -671,13 +692,13 @@ function EnvRow<T extends FieldValues>({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Remove env var"
+              aria-label={t("sandbox.envVarsField.removeEnvVarAriaLabel")}
               onClick={onRemove}
             >
               <Trash01 className="size-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Remove</TooltipContent>
+          <TooltipContent>{t("sandbox.envVarsField.remove")}</TooltipContent>
         </Tooltip>
       </div>
     </div>
@@ -691,11 +712,16 @@ function SecretPickerValue({
   field: { value: unknown };
   secretById: Map<string, SecretInfo>;
 }) {
+  const t = useT();
   const id = (field.value as string | undefined) || "";
   if (!id) return null;
   const secret = secretById.get(id);
   if (!secret) {
-    return <span className="text-destructive">Missing secret ({id})</span>;
+    return (
+      <span className="text-destructive">
+        {t("sandbox.envVarsField.missingSecret", { id })}
+      </span>
+    );
   }
   return (
     <span className="inline-flex items-center gap-1.5 truncate">
@@ -721,6 +747,7 @@ function SaveAsSecretDialog({
   onClose,
   onSaved,
 }: SaveAsSecretDialogProps) {
+  const t = useT();
   const presetValue = mode.kind === "save-literal" ? mode.presetValue : "";
   const presetKey = mode.presetKey;
   const [name, setName] = useState(() => sanitizeSecretName(presetKey));
@@ -745,19 +772,27 @@ function SaveAsSecretDialog({
         value,
         description: description.trim() || undefined,
       });
-      toast.success(`Saved secret "${result.name}"`);
+      toast.success(
+        t("sandbox.envVarsField.secretSaved", { name: result.name }),
+      );
       onSaved(result.id);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.envVarsField.failedToSaveSecret"),
+      );
     }
   };
 
   const title =
-    mode.kind === "save-literal" ? "Save value as secret" : "Create new secret";
+    mode.kind === "save-literal"
+      ? t("sandbox.envVarsField.saveValueAsSecretTitle")
+      : t("sandbox.envVarsField.createNewSecretTitle");
   const description_ =
     mode.kind === "save-literal"
-      ? "Move this value into the encrypted vault. The env var will then reference the secret by id — its value never leaves the server."
-      : "Stored encrypted in the credential vault. The env var will reference the new secret by id.";
+      ? t("sandbox.envVarsField.saveValueAsSecretDescription")
+      : t("sandbox.envVarsField.createNewSecretDescription");
 
   return (
     <Dialog
@@ -773,7 +808,9 @@ function SaveAsSecretDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="save-secret-scope">Scope</Label>
+            <Label htmlFor="save-secret-scope">
+              {t("sandbox.envVarsField.scopeLabel")}
+            </Label>
             <Select
               value={scope}
               onValueChange={(v) => setScope(v as SecretScopeKind)}
@@ -783,51 +820,54 @@ function SaveAsSecretDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="organization">
-                  Organization — visible to all members
+                  {t("sandbox.envVarsField.scopeOrganization")}
                 </SelectItem>
                 <SelectItem value="user">
-                  Private — only visible to me
+                  {t("sandbox.envVarsField.scopePrivate")}
                 </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="save-secret-name">Name</Label>
+            <Label htmlFor="save-secret-name">
+              {t("sandbox.envVarsField.nameLabel")}
+            </Label>
             <Input
               id="save-secret-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="STRIPE_API_KEY"
+              placeholder={t("sandbox.envVarsField.namePlaceholder")}
               autoComplete="off"
               required
             />
             <p className="text-xs text-muted-foreground">
-              Letters, digits, underscore, dot, hyphen. Independent of the env
-              var key.
+              {t("sandbox.envVarsField.nameHelperText")}
             </p>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="save-secret-value">Value</Label>
+            <Label htmlFor="save-secret-value">
+              {t("sandbox.envVarsField.valueLabel")}
+            </Label>
             <Input
               id="save-secret-value"
               type="password"
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              placeholder="secret value"
+              placeholder={t("sandbox.envVarsField.secretValuePlaceholder")}
               autoComplete="new-password"
               required
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="save-secret-description">
-              Description (optional)
+              {t("sandbox.envVarsField.descriptionLabel")}
             </Label>
             <Textarea
               id="save-secret-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              placeholder="What is this secret used for?"
+              placeholder={t("sandbox.envVarsField.descriptionPlaceholder")}
             />
           </div>
           <DialogFooter>
@@ -837,13 +877,15 @@ function SaveAsSecretDialog({
               onClick={onClose}
               disabled={createSecret.isPending}
             >
-              Cancel
+              {t("sandbox.envVarsField.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={!canSubmit || createSecret.isPending}
             >
-              {createSecret.isPending ? "Saving…" : "Save secret"}
+              {createSecret.isPending
+                ? t("sandbox.envVarsField.saving")
+                : t("sandbox.envVarsField.saveSecret")}
             </Button>
           </DialogFooter>
         </form>

@@ -19,6 +19,7 @@ import { Check, Copy01 } from "@untitledui/icons";
 import { ImageLightbox } from "./image-lightbox.tsx";
 import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
 import { OrgFileOpenContext } from "./org-file-open-context.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 // @ts-ignore - correct
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism/index.js";
 
@@ -83,6 +84,7 @@ function useCopy() {
 }
 
 function Table(props: React.HTMLAttributes<HTMLTableElement>) {
+  const t = useT();
   const tableRef = useRef<HTMLTableElement>(null);
   const { handleCopy, copied } = useCopy();
 
@@ -116,11 +118,11 @@ function Table(props: React.HTMLAttributes<HTMLTableElement>) {
         <Button
           variant="ghost"
           onClick={handleCopyCsv}
-          aria-label="Copy as CSV"
+          aria-label={t("chat.markdown.copyAsCSV")}
           className="text-muted-foreground hover:text-foreground h-6 text-[10px]"
           type="button"
         >
-          Copy as CSV
+          {t("chat.markdown.copyAsCSV")}
           {copied ? <Check size={12} /> : <Copy01 size={12} />}
         </Button>
       </div>
@@ -153,8 +155,9 @@ const markdownComponents = {
   img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => {
     const { src, alt, ...rest } = props;
     if (!src) return <img {...props} />;
+    const t = useT();
     return (
-      <ImageLightbox src={src} alt={alt ?? "Image"}>
+      <ImageLightbox src={src} alt={alt ?? t("chat.markdown.image")}>
         <img
           {...rest}
           src={src}
@@ -214,6 +217,7 @@ const INLINE_CODE_CLASS =
 // clickable ONLY under an OrgFileOpenProvider (the chat shell) — elsewhere the
 // nav can't resolve, so it stays plain rather than a dead click.
 function MarkdownCode({ node: _n, className, children, ...p }: MdProps) {
+  const t = useT();
   const ctx = useContext(OrgFileOpenContext);
   const isBlock =
     typeof className === "string" && className.includes("language-");
@@ -237,7 +241,7 @@ function MarkdownCode({ node: _n, className, children, ...p }: MdProps) {
         INLINE_CODE_CLASS,
         "text-primary-dark hover:underline cursor-pointer",
       )}
-      title="Open file"
+      title={t("chat.markdown.openFile")}
     >
       {children}
     </button>
@@ -355,6 +359,7 @@ function CodeBlock({
   language: string;
   content: string;
 }) {
+  const t = useT();
   const { handleCopy, copied } = useCopy();
 
   return (
@@ -367,7 +372,7 @@ function CodeBlock({
           size="icon"
           variant="ghost"
           onClick={() => handleCopy(content)}
-          aria-label="Copy code"
+          aria-label={t("chat.markdown.copyCode")}
           className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
         >
           {copied ? <Check size={14} /> : <Copy01 size={14} />}

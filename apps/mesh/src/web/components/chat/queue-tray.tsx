@@ -34,12 +34,14 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { ArrowUp, XClose } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useChatStream } from "./context";
 import { dropPendingBody } from "./message-queue-store";
 import { selectQueuedItems } from "./queue-items";
 import { useMessageQueue, useMessageQueueActions } from "./use-message-queue";
 
 export function QueueTray({ taskId }: { taskId: string }) {
+  const t = useT();
   const items = useMessageQueue(taskId);
   const queued = selectQueuedItems(items);
   const actions = useMessageQueueActions();
@@ -51,7 +53,7 @@ export function QueueTray({ taskId }: { taskId: string }) {
     <div className="mb-1 overflow-hidden rounded-2xl border border-border bg-card dark:bg-muted">
       <div className="flex items-center justify-between gap-2 border-b border-border py-1.5 pr-2 pl-3 text-xs text-muted-foreground">
         <span>
-          {queued.length} queued message{queued.length > 1 ? "s" : ""}
+          {t("chat.queueTray.queuedMessages", { count: queued.length })}
         </span>
         <Tooltip delayDuration={400}>
           <TooltipTrigger asChild>
@@ -65,7 +67,7 @@ export function QueueTray({ taskId }: { taskId: string }) {
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
-            <p className="text-xs">Send now</p>
+            <p className="text-xs">{t("chat.queueTray.sendNow")}</p>
           </TooltipContent>
         </Tooltip>
       </div>
@@ -88,7 +90,7 @@ export function QueueTray({ taskId }: { taskId: string }) {
               type="button"
               variant="ghost"
               size="icon-sm"
-              title="Remove from queue"
+              title={t("chat.queueTray.removeFromQueue")}
               onClick={() =>
                 void actions.cancel(taskId, item.messageId).then((ok) => {
                   if (ok) {

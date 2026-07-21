@@ -22,6 +22,7 @@ import { Copy01 } from "@untitledui/icons";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { MonacoCodeEditor } from "../monaco-editor";
+import { useT } from "@/web/i18n/use-t.ts";
 
 type ExampleKind = "curl" | "fetch";
 type AuthPlacement = "header" | "url";
@@ -41,6 +42,7 @@ export function WebhookSecretDialog({
   title?: string;
   description?: string;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState<"url" | "token" | "example" | null>(
     null,
   );
@@ -52,10 +54,10 @@ export function WebhookSecretDialog({
     try {
       await navigator.clipboard.writeText(value);
       setCopied(kind);
-      toast.success("Copied");
+      toast.success(t("automations.webhookSecretDialog.copied"));
       setTimeout(() => setCopied(null), 1500);
     } catch {
-      toast.error("Failed to copy");
+      toast.error(t("automations.webhookSecretDialog.failedCopy"));
     }
   };
 
@@ -95,7 +97,7 @@ export function WebhookSecretDialog({
           <div className="flex flex-col gap-3 min-w-0">
             <div className="flex flex-col gap-1">
               <span className="text-xs font-semibold text-muted-foreground">
-                URL
+                {t("automations.webhookSecretDialog.url")}
               </span>
               <div className="flex items-center gap-2">
                 <code className="flex-1 min-w-0 text-xs font-mono bg-muted rounded-md px-2 py-1.5 truncate">
@@ -107,14 +109,16 @@ export function WebhookSecretDialog({
                   onClick={() => copy(effectiveUrl, "url")}
                 >
                   <Copy01 size={13} />
-                  {copied === "url" ? "Copied" : "Copy"}
+                  {copied === "url"
+                    ? t("automations.webhookSecretDialog.copied")
+                    : t("automations.webhookSecretDialog.copy")}
                 </Button>
               </div>
             </div>
 
             <div className="flex flex-col gap-1">
               <span className="text-xs font-semibold text-muted-foreground">
-                Token (shown once)
+                {t("automations.webhookSecretDialog.tokenLabel")}
               </span>
               <div className="flex items-center gap-2">
                 <code className="flex-1 min-w-0 text-xs font-mono bg-muted rounded-md px-2 py-1.5 truncate">
@@ -126,14 +130,16 @@ export function WebhookSecretDialog({
                   onClick={() => copy(token, "token")}
                 >
                   <Copy01 size={13} />
-                  {copied === "token" ? "Copied" : "Copy"}
+                  {copied === "token"
+                    ? t("automations.webhookSecretDialog.copied")
+                    : t("automations.webhookSecretDialog.copy")}
                 </Button>
               </div>
             </div>
 
             <div className="flex flex-col gap-2">
               <span className="text-xs font-semibold text-muted-foreground">
-                Snippet
+                {t("automations.webhookSecretDialog.snippet")}
               </span>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -161,7 +167,7 @@ export function WebhookSecretDialog({
                         setAuthPlacement(checked ? "url" : "header")
                       }
                     />
-                    Token in URL
+                    {t("automations.webhookSecretDialog.tokenInUrl")}
                   </label>
                 </div>
                 <Button
@@ -170,7 +176,9 @@ export function WebhookSecretDialog({
                   onClick={() => copy(exampleSnippet, "example")}
                 >
                   <Copy01 size={13} />
-                  {copied === "example" ? "Copied" : "Copy"}
+                  {copied === "example"
+                    ? t("automations.webhookSecretDialog.copied")
+                    : t("automations.webhookSecretDialog.copy")}
                 </Button>
               </div>
               <div className="rounded-md border overflow-hidden min-w-0">
@@ -187,7 +195,9 @@ export function WebhookSecretDialog({
         ) : null}
 
         <DialogFooter>
-          <Button onClick={() => onOpenChange(false)}>Done</Button>
+          <Button onClick={() => onOpenChange(false)}>
+            {t("automations.webhookSecretDialog.done")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

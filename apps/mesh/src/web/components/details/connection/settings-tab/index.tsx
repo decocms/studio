@@ -10,6 +10,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Key01, File06, Loading01 } from "@untitledui/icons";
 import { Suspense } from "react";
 import { useWatch, type useForm } from "react-hook-form";
+import { useT } from "@/web/i18n/use-t.ts";
 import { McpConfigurationForm } from "./mcp-configuration-form";
 import type { ConnectionFormData } from "./schema";
 
@@ -65,13 +66,16 @@ export function OAuthAuthenticationState({
   onAuthenticate,
   buttonText = "Authenticate",
 }: OAuthAuthenticationStateProps) {
+  const t = useT();
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="flex flex-col items-center gap-4 max-w-md text-center">
         <div className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold">Authentication Required</h3>
+          <h3 className="text-sm font-semibold">
+            {t("details.settingsTab.authenticationRequired")}
+          </h3>
           <p className="text-xs text-muted-foreground max-w-md text-center">
-            This connection requires OAuth authentication to access resources.
+            {t("details.settingsTab.oauthAuthenticationDescription")}
           </p>
         </div>
         <Button onClick={onAuthenticate} size="default">
@@ -91,24 +95,23 @@ export function ManualAuthRequiredState({
   hasReadme,
   onViewReadme,
 }: ManualAuthRequiredStateProps) {
+  const t = useT();
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="flex flex-col items-center gap-4 max-w-md text-center">
         <Key01 size={36} className="text-muted-foreground" />
         <div className="flex flex-col gap-2">
           <h3 className="text-sm font-semibold">
-            Manual Authentication Required
+            {t("details.settingsTab.manualAuthenticationRequired")}
           </h3>
           <p className="text-xs text-muted-foreground max-w-md text-center">
-            This server requires an API key or token that must be configured
-            manually. Check the server's documentation for instructions on
-            obtaining credentials.
+            {t("details.settingsTab.manualAuthenticationDescription")}
           </p>
         </div>
         {hasReadme && onViewReadme && (
           <Button onClick={onViewReadme} variant="outline" size="lg">
             <File06 size={18} className="mr-2" />
-            View README
+            {t("details.settingsTab.viewReadme")}
           </Button>
         )}
       </div>
@@ -117,6 +120,7 @@ export function ManualAuthRequiredState({
 }
 
 function ServerErrorState() {
+  const t = useT();
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="flex flex-col items-center gap-4 max-w-md text-center">
@@ -128,10 +132,11 @@ function ServerErrorState() {
           aria-hidden="true"
         />
         <div className="flex flex-col gap-2">
-          <h3 className="text-lg font-semibold">Server Error</h3>
+          <h3 className="text-lg font-semibold">
+            {t("details.settingsTab.serverError")}
+          </h3>
           <p className="text-sm text-muted-foreground max-w-md text-center">
-            The MCP server is currently experiencing issues. Please try again
-            later or check the server's status.
+            {t("details.settingsTab.serverErrorDescription")}
           </p>
         </div>
       </div>
@@ -146,6 +151,7 @@ function McpConfigurationContent({
   connection: ConnectionEntity;
   form: ReturnType<typeof useForm<ConnectionFormData>>;
 }) {
+  const t = useT();
   const { stateSchema } = useMcpConfiguration(connection.id);
 
   // useWatch is more reliable for triggering re-renders than form.watch()
@@ -177,8 +183,8 @@ function McpConfigurationContent({
               aria-hidden="true"
             />
           }
-          title="This server is all set!"
-          description="No additional configuration is needed. Everything is ready to go."
+          title={t("details.settingsTab.serverAllSet")}
+          description={t("details.settingsTab.noAdditionalConfigurationNeeded")}
         />
       </div>
     );
@@ -197,6 +203,7 @@ function McpConfigurationContent({
 }
 
 function SettingsTabContent(props: SettingsTabProps) {
+  const t = useT();
   const {
     connection,
     form,
@@ -244,8 +251,8 @@ function SettingsTabContent(props: SettingsTabProps) {
               aria-hidden="true"
             />
           }
-          title="This server is all set!"
-          description="No additional configuration is needed. Everything is ready to go."
+          title={t("details.settingsTab.serverAllSet")}
+          description={t("details.settingsTab.noAdditionalConfigurationNeeded")}
         />
       </div>
     );

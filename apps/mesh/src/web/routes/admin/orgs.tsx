@@ -29,6 +29,7 @@ import { BUILTIN_ROLES } from "@/auth/roles";
 import { adminFetch } from "@/web/lib/admin-fetch";
 import { formatDate } from "@/web/lib/format-time";
 import { KEYS } from "@/web/lib/query-keys";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface DeploymentAdminOrg {
   id: string;
@@ -39,6 +40,7 @@ interface DeploymentAdminOrg {
 }
 
 function AddMemberDialog({ org }: { org: DeploymentAdminOrg }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<string>("user");
@@ -52,7 +54,9 @@ function AddMemberDialog({ org }: { org: DeploymentAdminOrg }) {
         body: JSON.stringify({ email: email.trim(), role }),
       }),
     onSuccess: () => {
-      toast.success(`Added ${email.trim()} to ${org.name}`);
+      toast.success(
+        t("admin.orgs.memberAdded", { email: email.trim(), org: org.name }),
+      );
       queryClient.invalidateQueries({
         queryKey: KEYS.deploymentAdminOrgsList(),
       });
@@ -62,7 +66,9 @@ function AddMemberDialog({ org }: { org: DeploymentAdminOrg }) {
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Failed to add member",
+        error instanceof Error
+          ? error.message
+          : t("admin.orgs.failedAddMember"),
       );
     },
   });
@@ -71,22 +77,26 @@ function AddMemberDialog({ org }: { org: DeploymentAdminOrg }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
-          Add member
+          {t("admin.orgs.addMember")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add member to {org.name}</DialogTitle>
+          <DialogTitle>
+            {t("admin.orgs.addMemberTo", { org: org.name })}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="admin-add-member-email">Email</Label>
+            <Label htmlFor="admin-add-member-email">
+              {t("admin.orgs.email")}
+            </Label>
             <Input
               id="admin-add-member-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="user@example.com"
+              placeholder={t("admin.orgs.emailPlaceholder")}
               disabled={mutation.isPending}
             />
           </div>
@@ -113,13 +123,15 @@ function AddMemberDialog({ org }: { org: DeploymentAdminOrg }) {
             onClick={() => setOpen(false)}
             disabled={mutation.isPending}
           >
-            Cancel
+            {t("admin.orgs.cancel")}
           </Button>
           <Button
             onClick={() => mutation.mutate()}
             disabled={!email.trim() || mutation.isPending}
           >
-            {mutation.isPending ? "Adding..." : "Add member"}
+            {mutation.isPending
+              ? t("admin.orgs.adding")
+              : t("admin.orgs.addMember")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -128,6 +140,7 @@ function AddMemberDialog({ org }: { org: DeploymentAdminOrg }) {
 }
 
 export default function AdminOrgsPage() {
+  const t = useT();
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search.trim(), 300);
 
@@ -147,7 +160,7 @@ export default function AdminOrgsPage() {
   const columns: TableColumn<DeploymentAdminOrg>[] = [
     {
       id: "name",
-      header: "Organization",
+      header: t("admin.orgs.organization"),
       render: (org) => (
         <div className="min-w-0">
           <div className="text-sm font-medium text-foreground truncate">
@@ -162,7 +175,7 @@ export default function AdminOrgsPage() {
     },
     {
       id: "members",
-      header: "Members",
+      header: t("admin.orgs.members"),
       render: (org) => (
         <span className="text-sm text-foreground">{org.memberCount}</span>
       ),
@@ -170,7 +183,7 @@ export default function AdminOrgsPage() {
     },
     {
       id: "created",
-      header: "Created",
+      header: t("admin.orgs.created"),
       render: (org) => (
         <span className="text-sm text-foreground">
           {formatDate(org.createdAt)}
@@ -194,7 +207,7 @@ export default function AdminOrgsPage() {
             <SearchInput
               value={search}
               onChange={setSearch}
-              placeholder="Search organizations by name or slug..."
+              placeholder={t("admin.orgs.searchPlaceholder")}
               className="w-full md:w-[375px]"
             />
             <CollectionTableWrapper
@@ -204,16 +217,18 @@ export default function AdminOrgsPage() {
               emptyState={
                 isError ? (
                   <EmptyState
-                    title="Failed to load organizations"
-                    description="Something went wrong. Refresh to try again."
+                    title={t("admin.orgs.failedLoadOrgs")}
+                    description={t("admin.orgs.failedLoadOrgsDescription")}
                   />
                 ) : (
                   <EmptyState
-                    title="No organizations found"
+                    title={t("admin.orgs.noOrgsFound")}
                     description={
                       debouncedSearch
-                        ? `No organizations match "${debouncedSearch}"`
-                        : "No organizations exist yet."
+                        ? t("admin.orgs.noOrgsMatchSearch", {
+                            search: debouncedSearch,
+                          })
+                        : t("admin.orgs.noOrgsYet")
                     }
                   />
                 )

@@ -15,6 +15,7 @@ import {
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
 import { FilterLines } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ThreadsFiltersPopoverProps {
   filterAgentIds: string[];
@@ -40,13 +41,16 @@ export function ThreadsFiltersPopover({
   onUpdateFilters,
 }: ThreadsFiltersPopoverProps) {
   const [open, setOpen] = useState(false);
+  const t = useT();
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="outline" className="relative">
           <FilterLines size={16} />
-          <span className="hidden sm:inline">Filters</span>
+          <span className="hidden sm:inline">
+            {t("orgs.threadsFiltersPopover.filters")}
+          </span>
           {activeFiltersCount > 0 && (
             <>
               <Badge
@@ -67,12 +71,14 @@ export function ThreadsFiltersPopover({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[280px]">
         <div className="space-y-4">
-          <h4 className="font-medium text-sm">Filter Chats</h4>
+          <h4 className="font-medium text-sm">
+            {t("orgs.threadsFiltersPopover.filterChats")}
+          </h4>
 
           <div className="space-y-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Agent
+                {t("orgs.threadsFiltersPopover.agent")}
               </label>
               <MultiSelect
                 options={virtualMcpOptions}
@@ -80,7 +86,7 @@ export function ThreadsFiltersPopover({
                 onValueChange={(values) =>
                   onUpdateFilters({ filterAgentIds: values.slice(0, 1) })
                 }
-                placeholder="All agents"
+                placeholder={t("orgs.threadsFiltersPopover.allAgents")}
                 variant="secondary"
                 className="w-full"
                 maxCount={1}
@@ -89,7 +95,7 @@ export function ThreadsFiltersPopover({
 
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                User
+                {t("orgs.threadsFiltersPopover.user")}
               </label>
               <MultiSelect
                 options={memberOptions}
@@ -97,7 +103,7 @@ export function ThreadsFiltersPopover({
                 onValueChange={(values) =>
                   onUpdateFilters({ filterUserIds: values.slice(0, 1) })
                 }
-                placeholder="All users"
+                placeholder={t("orgs.threadsFiltersPopover.allUsers")}
                 variant="secondary"
                 className="w-full"
                 maxCount={1}
@@ -106,7 +112,7 @@ export function ThreadsFiltersPopover({
 
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Status
+                {t("orgs.threadsFiltersPopover.status")}
               </label>
               <Select
                 value={filterStatus}
@@ -118,10 +124,18 @@ export function ThreadsFiltersPopover({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="all">
+                    {t("orgs.threadsFiltersPopover.allStatuses")}
+                  </SelectItem>
+                  <SelectItem value="completed">
+                    {t("orgs.threadsFiltersPopover.completed")}
+                  </SelectItem>
+                  <SelectItem value="active">
+                    {t("orgs.threadsFiltersPopover.active")}
+                  </SelectItem>
+                  <SelectItem value="failed">
+                    {t("orgs.threadsFiltersPopover.failed")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -141,7 +155,7 @@ export function ThreadsFiltersPopover({
                 setOpen(false);
               }}
             >
-              Clear all filters
+              {t("orgs.threadsFiltersPopover.clearAllFilters")}
             </Button>
           )}
         </div>

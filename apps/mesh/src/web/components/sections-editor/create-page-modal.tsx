@@ -9,6 +9,7 @@ import {
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Loading01 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import { validatePagePath } from "./page-path-utils";
 import { BLANK_TEMPLATE, PageTemplateSelect } from "./page-template-select";
 import type { PageEntry } from "./page-list";
@@ -36,8 +37,13 @@ export function CreatePageModal({
     templateKey: string | null;
   }) => void | Promise<void>;
 }) {
-  const [name, setName] = useState("My New Page");
-  const [path, setPath] = useState("/example-path");
+  const t = useT();
+  const [name, setName] = useState(
+    t("sectionsEditor.createPageModal.defaultPageName"),
+  );
+  const [path, setPath] = useState(
+    t("sectionsEditor.createPageModal.defaultPagePath"),
+  );
   const [templateKey, setTemplateKey] = useState(BLANK_TEMPLATE);
   const [localError, setLocalError] = useState<string | null>(null);
   const [prevOpen, setPrevOpen] = useState(open);
@@ -45,8 +51,8 @@ export function CreatePageModal({
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) {
-      setName("My New Page");
-      setPath("/example-path");
+      setName(t("sectionsEditor.createPageModal.defaultPageName"));
+      setPath(t("sectionsEditor.createPageModal.defaultPagePath"));
       setTemplateKey(BLANK_TEMPLATE);
       setLocalError(null);
     }
@@ -87,7 +93,9 @@ export function CreatePageModal({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Create new page</DialogTitle>
+            <DialogTitle>
+              {t("sectionsEditor.createPageModal.title")}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -96,13 +104,15 @@ export function CreatePageModal({
                 htmlFor="new-page-name"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Name
+                {t("sectionsEditor.createPageModal.nameLabel")}
               </label>
               <Input
                 id="new-page-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="My New Page"
+                placeholder={t(
+                  "sectionsEditor.createPageModal.namePlaceholder",
+                )}
                 autoFocus
                 disabled={isPending}
               />
@@ -112,13 +122,15 @@ export function CreatePageModal({
                 htmlFor="new-page-path"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Path
+                {t("sectionsEditor.createPageModal.pathLabel")}
               </label>
               <Input
                 id="new-page-path"
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                placeholder="/example-path"
+                placeholder={t(
+                  "sectionsEditor.createPageModal.pathPlaceholder",
+                )}
                 disabled={isPending}
               />
             </div>
@@ -128,7 +140,7 @@ export function CreatePageModal({
                   htmlFor="new-page-template"
                   className="text-xs font-medium text-muted-foreground"
                 >
-                  Template
+                  {t("sectionsEditor.createPageModal.templateLabel")}
                 </label>
                 <PageTemplateSelect
                   id="new-page-template"
@@ -151,7 +163,7 @@ export function CreatePageModal({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {t("sectionsEditor.createPageModal.cancelButton")}
             </Button>
             <Button
               type="submit"
@@ -160,10 +172,10 @@ export function CreatePageModal({
               {isPending ? (
                 <>
                   <Loading01 size={14} className="animate-spin" />
-                  Creating…
+                  {t("sectionsEditor.createPageModal.creatingButton")}
                 </>
               ) : (
-                "Create"
+                t("sectionsEditor.createPageModal.createButton")
               )}
             </Button>
           </DialogFooter>

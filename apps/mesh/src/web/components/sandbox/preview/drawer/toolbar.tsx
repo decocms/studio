@@ -27,6 +27,7 @@ import {
   Terminal,
   X,
 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { DrawerStatus } from "./status-pill";
 
 /** The always-present tab. Catch-all for clone + install logs. */
@@ -62,6 +63,7 @@ export interface DrawerToolbarProps {
 }
 
 export function DrawerToolbar(props: DrawerToolbarProps) {
+  const t = useT();
   const addableScripts = props.scripts.filter(
     (s) => !props.scriptTabs.includes(s),
   );
@@ -80,18 +82,20 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
           active={props.active === DEFAULT_TAB}
           open={props.open}
           onClick={handleSetupClick}
+          t={t}
         />
-        {props.scriptTabs.map((t) => (
+        {props.scriptTabs.map((tabName) => (
           <TabButton
-            key={t}
-            active={props.active === t}
+            key={tabName}
+            active={props.active === tabName}
             onClick={() => {
-              if (props.active === t) props.onToggle();
-              else props.onSelectTab(t);
+              if (props.active === tabName) props.onToggle();
+              else props.onSelectTab(tabName);
             }}
-            onClose={() => props.onCloseScript(t)}
+            onClose={() => props.onCloseScript(tabName)}
+            t={t}
           >
-            {t}
+            {tabName}
           </TabButton>
         ))}
         <AddScriptButton scripts={addableScripts} onRun={props.onAddScript} />
@@ -102,6 +106,7 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
           isKilling={props.scriptIsKilling}
           onRun={props.onRunActiveScript}
           onStop={props.onStopActiveScript}
+          t={t}
         />
       ) : (
         <SandboxActionControls
@@ -111,6 +116,7 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
           onRestart={props.onRestart}
           onResume={props.onResume}
           onRetry={props.onRetry}
+          t={t}
         />
       )}
     </div>
@@ -126,10 +132,12 @@ function SetupTab({
   active,
   open,
   onClick,
+  t,
 }: {
   active: boolean;
   open: boolean;
   onClick: () => void;
+  t: import("@/web/i18n/use-t.ts").TFunction;
 }) {
   return (
     <button
@@ -145,7 +153,7 @@ function SetupTab({
       )}
     >
       <Terminal className="size-3.5" />
-      sandbox
+      {t("sandbox.toolbar.setupTab")}
     </button>
   );
 }
@@ -168,6 +176,7 @@ function SandboxActionControls({
   onRestart,
   onResume,
   onRetry,
+  t,
 }: {
   status: DrawerStatus;
   onStart?: () => void;
@@ -175,25 +184,26 @@ function SandboxActionControls({
   onRestart?: () => void;
   onResume?: () => void;
   onRetry?: () => void;
+  t: import("@/web/i18n/use-t.ts").TFunction;
 }) {
   if (status === "idle" && onStart) {
     return (
       <Button variant="outline" size="sm" onClick={onStart}>
-        <Play className="size-3.5" /> Start
+        <Play className="size-3.5" /> {t("sandbox.toolbar.start")}
       </Button>
     );
   }
   if (status === "suspended" && onResume) {
     return (
       <Button variant="outline" size="sm" onClick={onResume}>
-        <Play className="size-3.5" /> Resume
+        <Play className="size-3.5" /> {t("sandbox.toolbar.resume")}
       </Button>
     );
   }
   if (status === "errored" && onRetry) {
     return (
       <Button variant="outline" size="sm" onClick={onRetry}>
-        <RefreshCw01 className="size-3.5" /> Retry
+        <RefreshCw01 className="size-3.5" /> {t("sandbox.toolbar.retry")}
       </Button>
     );
   }
@@ -211,10 +221,12 @@ function SandboxActionControls({
                 showRestart ? "rounded-r-none border-r-0" : undefined,
               )}
             >
-              <StopCircle className="size-3.5" /> Stop
+              <StopCircle className="size-3.5" /> {t("sandbox.toolbar.stop")}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Stop sandbox</TooltipContent>
+          <TooltipContent>
+            {t("sandbox.toolbar.stopSandboxTooltip")}
+          </TooltipContent>
         </Tooltip>
         {showRestart && (
           <DropdownMenu>
@@ -229,7 +241,8 @@ function SandboxActionControls({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onRestart}>
-                <RefreshCw01 className="size-3.5" /> Restart
+                <RefreshCw01 className="size-3.5" />{" "}
+                {t("sandbox.toolbar.restart")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -245,11 +258,13 @@ function TabButton({
   onClick,
   onClose,
   children,
+  t,
 }: {
   active: boolean;
   onClick: () => void;
   onClose?: () => void;
   children: React.ReactNode;
+  t: import("@/web/i18n/use-t.ts").TFunction;
 }) {
   return (
     <div
@@ -276,7 +291,7 @@ function TabButton({
       {onClose && (
         <button
           type="button"
-          aria-label={`Close ${children}`}
+          aria-label={t("sandbox.toolbar.closeTab", { tab: String(children) })}
           onClick={onClose}
           className="pr-1.5 text-muted-foreground hover:text-foreground"
         >
@@ -294,26 +309,31 @@ function AddScriptButton({
   scripts: string[];
   onRun: (n: string) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" aria-label="Run script">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t("sandbox.toolbar.runScript")}
+            >
               <Plus className="size-3.5" />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>Run script</TooltipContent>
+        <TooltipContent>{t("sandbox.toolbar.runScript")}</TooltipContent>
       </Tooltip>
       <PopoverContent align="start" className="p-1 w-56">
         <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-          run a script
+          {t("sandbox.toolbar.runAScript")}
         </div>
         {scripts.length === 0 ? (
           <div className="px-2 py-2 text-xs text-muted-foreground">
-            No scripts found
+            {t("sandbox.toolbar.noScriptsFound")}
           </div>
         ) : (
           scripts.map((s) => (
@@ -340,16 +360,19 @@ function ScriptControls({
   isKilling,
   onRun,
   onStop,
+  t,
 }: {
   isRunning: boolean;
   isKilling: boolean;
   onRun: () => void;
   onStop: () => void;
+  t: import("@/web/i18n/use-t.ts").TFunction;
 }) {
   if (isKilling) {
     return (
       <Button variant="outline" size="sm" disabled>
-        <Loading01 className="size-3.5 animate-spin" /> Stopping…
+        <Loading01 className="size-3.5 animate-spin" />{" "}
+        {t("sandbox.toolbar.stopping")}
       </Button>
     );
   }
@@ -358,10 +381,10 @@ function ScriptControls({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button variant="outline" size="sm" onClick={onRun}>
-            <Play className="size-3.5" /> Run
+            <Play className="size-3.5" /> {t("sandbox.toolbar.run")}
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Start process</TooltipContent>
+        <TooltipContent>{t("sandbox.toolbar.startProcess")}</TooltipContent>
       </Tooltip>
     );
   }
@@ -369,10 +392,10 @@ function ScriptControls({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button variant="outline" size="sm" onClick={onStop}>
-          <StopCircle className="size-3.5" /> Stop
+          <StopCircle className="size-3.5" /> {t("sandbox.toolbar.stop")}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>Stop process</TooltipContent>
+      <TooltipContent>{t("sandbox.toolbar.stopProcess")}</TooltipContent>
     </Tooltip>
   );
 }

@@ -25,6 +25,7 @@ import {
 import { createPortal } from "react-dom";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 
 type ToolbarCtx = {
@@ -118,6 +119,7 @@ function ToolbarRightColumn({ children }: { children?: ReactNode }) {
 }
 
 function ToolbarLogoInner() {
+  const t = useT();
   const config = usePublicConfig();
   const logo = config.logo ?? DEFAULT_LOGO;
   const lightSrc = typeof logo === "string" ? logo : logo.light;
@@ -126,12 +128,12 @@ function ToolbarLogoInner() {
     <span className="wco-hide flex items-center shrink-0 px-2">
       <img
         src={lightSrc}
-        alt="Logo"
+        alt={t("agentShellLayout.toolbar.logo")}
         className="size-6 object-contain dark:hidden"
       />
       <img
         src={darkSrc}
-        alt="Logo"
+        alt={t("agentShellLayout.toolbar.logo")}
         className="size-6 object-contain hidden dark:block"
       />
     </span>
@@ -151,13 +153,14 @@ function ToolbarLogo() {
  * "home" affordance in the shell headers.
  */
 function ToolbarLogoLink() {
+  const t = useT();
   const { org } = useParams({ from: "/shell/$org" });
   return (
     <Link
       to="/$org"
       params={{ org }}
-      aria-label="Back to home"
-      title="Back to home"
+      aria-label={t("agentShellLayout.toolbar.backToHome")}
+      title={t("agentShellLayout.toolbar.backToHome")}
       className="wco-no-drag flex items-center shrink-0 cursor-pointer pl-1"
     >
       <ToolbarLogo />

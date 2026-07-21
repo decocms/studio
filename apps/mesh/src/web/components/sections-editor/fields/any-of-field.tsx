@@ -45,6 +45,7 @@ import type { SchemaProperty } from "../resolve-schema";
 import type { FieldProps } from "./field-props";
 
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import { MakeReusableModal } from "../make-reusable-modal";
 import { SchemaForm } from "../schema-form";
 import { unwrapBlockReference } from "../unwrap-section";
@@ -70,17 +71,17 @@ function defaultsForSchema(schema?: SchemaProperty): Record<string, unknown> {
 }
 
 function GlobalLoaderBadge({ blockKey }: { blockKey: string }) {
+  const t = useT();
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
           <Globe01 size={11} />
-          Global
+          {t("sectionsEditor.anyOfField.global")}
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-[260px]">
-        Edits the saved block &ldquo;{blockKey}&rdquo;. Changes apply everywhere
-        this loader is referenced on your site.
+        {t("sectionsEditor.anyOfField.globalLoaderTooltip", { blockKey })}
       </TooltipContent>
     </Tooltip>
   );
@@ -107,6 +108,7 @@ function CollapsibleLoaderConfig({
   onDetach?: () => void;
   onMakeGlobal?: () => void;
 }) {
+  const t = useT();
   const contentId = `${path}-loader-config`;
 
   return (
@@ -141,7 +143,7 @@ function CollapsibleLoaderConfig({
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Loader actions"
+                aria-label={t("sectionsEditor.anyOfField.loaderActions")}
                 className="h-7 w-7 shrink-0 text-muted-foreground"
               >
                 <DotsHorizontal size={16} />
@@ -151,13 +153,13 @@ function CollapsibleLoaderConfig({
               {globalBlockKey && onDetach && (
                 <DropdownMenuItem onClick={onDetach}>
                   <LayoutAlt01 className="h-4 w-4" />
-                  Detach
+                  {t("sectionsEditor.anyOfField.detach")}
                 </DropdownMenuItem>
               )}
               {!globalBlockKey && onMakeGlobal && (
                 <DropdownMenuItem onClick={onMakeGlobal}>
                   <Globe01 className="h-4 w-4" />
-                  Make global
+                  {t("sectionsEditor.anyOfField.makeGlobal")}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -189,6 +191,7 @@ export function AnyOfField({
   onSaveReferencedBlock,
   sandbox,
 }: FieldProps) {
+  const t = useT();
   const baseRefs = (schema.anyOfRefs ?? []).filter((r) => r.resolveType !== "");
   const savedRef =
     decofile && value ? unwrapBlockReference(value, decofile) : null;
@@ -405,7 +408,9 @@ export function AnyOfField({
       });
       onChange({ __resolveType: trimmed });
       setMakeGlobalOpen(false);
-      toast.success(`Saved global block "${trimmed}"`);
+      toast.success(
+        t("sectionsEditor.anyOfField.globalBlockSaved", { name: trimmed }),
+      );
     };
 
     return (
@@ -414,7 +419,9 @@ export function AnyOfField({
           <Label htmlFor={path}>{label}</Label>
           <Select value={activeRt || undefined} onValueChange={handleRefChange}>
             <SelectTrigger>
-              <SelectValue placeholder="Select..." />
+              <SelectValue
+                placeholder={t("sectionsEditor.anyOfField.selectPlaceholder")}
+              />
             </SelectTrigger>
             <SelectContent>
               {refs.map((ref) => {
@@ -446,7 +453,9 @@ export function AnyOfField({
               open={loaderConfigOpen}
               onOpenChange={setLoaderConfigOpen}
               title={
-                isNestedBlockRef ? "Configuration" : "Loader configuration"
+                isNestedBlockRef
+                  ? t("sectionsEditor.anyOfField.configuration")
+                  : t("sectionsEditor.anyOfField.loaderConfiguration")
               }
               nested={nestedProps}
               nestedBlockRef={isNestedBlockRef}

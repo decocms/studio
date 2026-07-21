@@ -7,6 +7,7 @@ import {
 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
 import { type ReactNode, Suspense, useState } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 import { ToolCallShell } from "./parts/tool-call-part/common.tsx";
 import type { ChatMessage } from "../types.ts";
 import { MessageStatsBar } from "../usage-stats.tsx";
@@ -112,13 +113,14 @@ function CollapsedSectionTitle({
   toolCalls: number;
   messages: number;
 }) {
+  const t = useT();
   return (
     <span className="flex items-center gap-1.5 text-muted-foreground">
       {toolCalls > 0 && (
         <>
           <Tool02 className="size-3.5 shrink-0" />
           <span>
-            {toolCalls} tool call{toolCalls === 1 ? "" : "s"}
+            {t("chat.assistant.toolCallPlural", { count: toolCalls })}
             {messages > 0 ? "," : ""}
           </span>
         </>
@@ -126,9 +128,7 @@ function CollapsedSectionTitle({
       {messages > 0 && (
         <>
           <MessageTextSquare01 className="size-3.5 shrink-0" />
-          <span>
-            {messages} message{messages === 1 ? "" : "s"}
-          </span>
+          <span>{t("chat.assistant.messagePlural", { count: messages })}</span>
         </>
       )}
     </span>
@@ -461,6 +461,7 @@ function EmptyAssistantState({
 }: {
   isRunInProgress: boolean;
 }) {
+  const t = useT();
   if (isRunInProgress) {
     return (
       <div className="flex items-center gap-1.5 py-2 opacity-60">
@@ -470,7 +471,7 @@ function EmptyAssistantState({
             size={14}
           />
           <span className="text-[14px] text-muted-foreground shimmer">
-            Resuming task...
+            {t("chat.assistant.resumingTask")}
           </span>
         </span>
       </div>
@@ -479,7 +480,7 @@ function EmptyAssistantState({
 
   return (
     <div className="text-[14px] text-muted-foreground/60 py-2">
-      No response was generated
+      {t("chat.assistant.noResponseGenerated")}
     </div>
   );
 }
@@ -514,6 +515,7 @@ export function MessageAssistant({
   className,
   isLast = false,
 }: MessageAssistantProps) {
+  const t = useT();
   const { isRunInProgress = false } = useOptionalChatStream() ?? {};
   const taskId = useOptionalChatTask()?.taskId ?? null;
   const isStreaming = status === "streaming";
@@ -619,7 +621,7 @@ export function MessageAssistant({
           {message!.metadata?.resumedFromBackground && (
             <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/60 select-none">
               <RefreshCw01 className="size-3 shrink-0" />
-              <span>Resumed — background task completed</span>
+              <span>{t("chat.assistant.resumedBackgroundTask")}</span>
             </div>
           )}
           {collapsed.length > 0 && (

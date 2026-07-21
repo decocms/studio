@@ -120,6 +120,7 @@ import { TriggerCard } from "@/web/components/automations/trigger-card.tsx";
 import { WebhookSecretDialog } from "@/web/components/automations/webhook-secret-dialog.tsx";
 import { EventTriggerForm } from "@/web/components/automations/event-trigger-form.tsx";
 import { track } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 
 // ============================================================================
 // Settings Tab
@@ -136,6 +137,7 @@ export function SettingsTab({
   onBack?: () => void;
   onDelete?: () => void;
 }) {
+  const t = useT();
   const agentId = automation.virtual_mcp_id;
   const { org } = useProjectContext();
   const {
@@ -362,7 +364,7 @@ export function SettingsTab({
     if (!saved) return;
 
     if (!tiptapDoc) {
-      toast.error("No instructions configured for this automation");
+      toast.error(t("automations.automationDetail.noInstructionsConfigured"));
       return;
     }
 
@@ -386,7 +388,7 @@ export function SettingsTab({
         <div className="flex items-center pb-4 shrink-0">
           <Button variant="ghost" size="sm" onClick={onBack}>
             <ArrowLeft size={14} />
-            Back to list
+            {t("automations.automationDetail.backToList")}
           </Button>
         </div>
       )}
@@ -401,7 +403,9 @@ export function SettingsTab({
               render={({ field }) => (
                 <Input
                   {...field}
-                  placeholder="Automation name"
+                  placeholder={t(
+                    "automations.automationDetail.automationNamePlaceholder",
+                  )}
                   className="border border-transparent shadow-none px-0 text-lg font-medium h-auto focus-visible:ring-0 focus-visible:border-border bg-transparent flex-1"
                   style={{ boxShadow: "none" }}
                 />
@@ -434,7 +438,9 @@ export function SettingsTab({
               )}
             />
             <span className="text-sm text-muted-foreground">
-              {watchActive ? "Active" : "Inactive"}
+              {watchActive
+                ? t("automations.automationDetail.active")
+                : t("automations.automationDetail.inactive")}
             </span>
             <span className="text-muted-foreground/50 text-sm">·</span>
             <User
@@ -449,7 +455,7 @@ export function SettingsTab({
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground/60">
-              Starter
+              {t("automations.automationDetail.starter")}
             </span>
             <AddStarterPopover
               automationId={automationId}
@@ -477,15 +483,15 @@ export function SettingsTab({
           {automation.triggers.length === 0 && !showCustomCron ? (
             <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center">
               <p className="text-sm text-muted-foreground">
-                When should this automation run?{" "}
+                {t("automations.automationDetail.whenShouldRun")}{" "}
                 <button
                   type="button"
                   className="text-foreground underline underline-offset-2 cursor-pointer hover:text-foreground/80 transition-colors"
                   onClick={() => setStarterOpen(true)}
                 >
-                  Add a starter
+                  {t("automations.automationDetail.addStarter")}
                 </button>{" "}
-                to get going.
+                {t("automations.automationDetail.toGetGoing")}
               </p>
             </div>
           ) : (
@@ -525,11 +531,15 @@ export function SettingsTab({
                       automation_id: automationId,
                       trigger_type: "cron",
                     });
-                    toast.success("Starter added");
+                    toast.success(
+                      t("automations.automationDetail.starterAdded"),
+                    );
                     setShowCustomCron(false);
                     setCronInput("");
                   } catch {
-                    toast.error("Failed to add starter");
+                    toast.error(
+                      t("automations.automationDetail.failedToAddStarter"),
+                    );
                   }
                 }}
                 onKeyDown={async (e) => {
@@ -548,7 +558,7 @@ export function SettingsTab({
               />
               {cronInput && !isValidCron(cronInput) && (
                 <span className="text-xs text-muted-foreground/60 shrink-0">
-                  invalid
+                  {t("automations.automationDetail.invalid")}
                 </span>
               )}
               {addTrigger.isPending && (
@@ -579,7 +589,7 @@ export function SettingsTab({
                     className="animate-spin text-muted-foreground"
                   />
                   <span className="text-sm text-muted-foreground">
-                    Loading connections...
+                    {t("automations.automationDetail.loadingConnections")}
                   </span>
                 </div>
               }
@@ -605,7 +615,7 @@ export function SettingsTab({
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground/60">
-              Instructions
+              {t("automations.automationDetail.instructions")}
             </span>
             <Button
               variant="outline"
@@ -615,13 +625,15 @@ export function SettingsTab({
               onClick={handleImprovePrompt}
             >
               <Stars01 size={13} />
-              Improve
+              {t("automations.automationDetail.improve")}
             </Button>
           </div>
           <TiptapProvider
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
-            placeholder="What should this automation do?"
+            placeholder={t(
+              "automations.automationDetail.instructionsPlaceholder",
+            )}
           >
             <div className="rounded-xl border border-border min-h-[120px] flex flex-col">
               <TiptapInput
@@ -640,10 +652,12 @@ export function SettingsTab({
                       disabled={!agentId}
                     >
                       <ArrowUp size={16} />
-                      Test
+                      {t("automations.automationDetail.test")}
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Test Automation</TooltipContent>
+                  <TooltipContent>
+                    {t("automations.automationDetail.testAutomation")}
+                  </TooltipContent>
                 </Tooltip>
               </div>
             </div>
@@ -658,7 +672,7 @@ export function SettingsTab({
         >
           <CollapsibleTrigger className="group flex w-fit cursor-pointer items-center gap-1.5">
             <span className="text-xs font-semibold text-muted-foreground/60">
-              Advanced
+              {t("automations.automationDetail.advanced")}
             </span>
             <ChevronDown
               size={14}
@@ -683,14 +697,17 @@ export function SettingsTab({
             />
             <div className="flex flex-col gap-2">
               <span className="text-xs font-semibold text-muted-foreground/60">
-                Max steps
+                {t("automations.automationDetail.maxSteps")}
               </span>
               <Input
                 type="number"
                 min={1}
                 max={100}
                 className="w-40"
-                placeholder={`${DEFAULT_MAX_AGENT_STEPS} (default)`}
+                placeholder={t(
+                  "automations.automationDetail.maxStepsPlaceholder",
+                  { default: DEFAULT_MAX_AGENT_STEPS },
+                )}
                 value={form.watch("maxAgentSteps") ?? ""}
                 onChange={(e) => {
                   const raw = e.target.value.trim();

@@ -1,6 +1,7 @@
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
 import { SearchInput } from "@deco/ui/components/search-input.tsx";
+import { useT } from "@/web/i18n/use-t";
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
 import { ConnectionCard } from "@/web/components/connections/connection-card.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
@@ -158,6 +159,7 @@ function ConnectionResults({
   registryFilter,
   enabledRegistries,
 }: ConnectionResultsProps) {
+  const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -282,9 +284,7 @@ function ConnectionResults({
         "command" in connectionData.connection_headers;
 
       if (!hasUrl && !hasStdioConfig) {
-        toast.error(
-          "This MCP Server cannot be connected: no connection method available",
-        );
+        toast.error(t("orgs.connections.cannotConnectNoMethod"));
         setConnectingItemId(null);
         return;
       }
@@ -309,7 +309,9 @@ function ConnectionResults({
           error: auth.error ?? "no_token",
         });
         toast.error(
-          `Authentication failed: ${auth.error ?? "no token received"}`,
+          t("orgs.connections.authenticationFailed", {
+            error: auth.error ?? "no token received",
+          }),
         );
         return;
       }
@@ -327,13 +329,15 @@ function ConnectionResults({
           queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
         });
         invalidateConnections();
-        toast.success("Authentication successful");
+        toast.success(t("orgs.connections.authenticationSuccessful"));
       }
 
-      toast.success("Connected successfully");
+      toast.success(t("orgs.connections.connectedSuccessfully"));
     } catch (error) {
       toast.error(
-        `Failed to connect: ${error instanceof Error ? error.message : String(error)}`,
+        t("orgs.connections.failedToConnect", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
     } finally {
       setConnectingItemId(null);
@@ -372,7 +376,7 @@ function ConnectionResults({
     }
 
     invalidateConnections();
-    toast.success(`Deleted ${deleted} connection${deleted !== 1 ? "s" : ""}`);
+    toast.success(t("orgs.connections.deletedConnections", { count: deleted }));
     exitSelectionMode();
   };
 
@@ -384,10 +388,12 @@ function ConnectionResults({
       await actions.update.mutateAsync({ id, data: { status } });
       invalidateConnections();
       toast.success(
-        status === "active" ? "Connection enabled" : "Connection disabled",
+        status === "active"
+          ? t("orgs.connections.connectionEnabled")
+          : t("orgs.connections.connectionDisabled"),
       );
     } catch {
-      toast.error("Failed to update connection");
+      toast.error(t("orgs.connections.failedToUpdateConnection"));
     }
   };
 
@@ -410,7 +416,9 @@ function ConnectionResults({
 
     invalidateConnections();
     toast.success(
-      `${status === "active" ? "Enabled" : "Disabled"} ${updated} connection${updated !== 1 ? "s" : ""}`,
+      status === "active"
+        ? t("orgs.connections.enabledConnections", { count: updated })
+        : t("orgs.connections.disabledConnections", { count: updated }),
     );
     exitSelectionMode();
   };
@@ -436,7 +444,7 @@ function ConnectionResults({
       }));
 
     if (newConns.length === 0) {
-      toast.info("All selected connections are already in that agent");
+      toast.info(t("orgs.connections.allConnectionsAlreadyInAgent"));
       return;
     }
 
@@ -460,11 +468,14 @@ function ConnectionResults({
       });
 
       toast.success(
-        `Added ${newConns.length} connection${newConns.length !== 1 ? "s" : ""} to "${agent.title}"`,
+        t("orgs.connections.addedConnectionsToAgent", {
+          count: newConns.length,
+          agentTitle: agent.title,
+        }),
       );
       exitSelectionMode();
     } catch {
-      toast.error("Failed to add connections to agent");
+      toast.error(t("orgs.connections.failedToAddConnectionsToAgent"));
     }
   };
 
@@ -510,13 +521,15 @@ function ConnectionResults({
                   aria-hidden="true"
                 />
               }
-              title="No Connections found"
+              title={t("orgs.connections.noConnectionsFound")}
               description={
                 listState.search
-                  ? `No Connections match "${listState.search}"`
+                  ? t("orgs.connections.noConnectionsMatchSearch", {
+                      search: listState.search,
+                    })
                   : canManage
-                    ? "Create a connection to get started."
-                    : "Ask an organization admin to add one."
+                    ? t("orgs.connections.createConnectionToGetStarted")
+                    : t("orgs.connections.askAdminToAddConnection")
               }
             />
           ) : (
@@ -654,6 +667,7 @@ function ConnectionResults({
 }
 
 function OrgMcpsContent() {
+  const t = useT();
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as {
@@ -937,7 +951,9 @@ function OrgMcpsContent() {
     <div className="flex items-center gap-2">
       <Button variant="outline" onClick={openCreateDialog}>
         <Plus size={14} className="sm:hidden" />
-        <span className="hidden sm:inline">Custom Connection</span>
+        <span className="hidden sm:inline">
+          {t("orgs.connections.customConnection")}
+        </span>
       </Button>
     </div>
   ) : null;
@@ -946,12 +962,13 @@ function OrgMcpsContent() {
     <>
       <Page>
         {(() => {
-          const dialogTitle = "Create Connection";
-          const dialogDescription =
-            "Create a custom connection in your organization. Fill in the details below.";
+          const dialogTitle = t("orgs.connections.createConnection");
+          const dialogDescription = t(
+            "orgs.connections.createConnectionDescription",
+          );
           const submitLabel = form.formState.isSubmitting
-            ? "Saving..."
-            : "Create Connection";
+            ? t("orgs.connections.saving")
+            : t("orgs.connections.createConnection");
 
           const formFields = (
             <div className="grid gap-4">
@@ -960,7 +977,7 @@ function OrgMcpsContent() {
                 name="ui_type"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Type *</FormLabel>
+                    <FormLabel>{t("orgs.connections.type")}</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger>
@@ -991,13 +1008,13 @@ function OrgMcpsContent() {
                             <SelectItem value="NPX">
                               <span className="flex items-center gap-2">
                                 <Container className="w-4 h-4" />
-                                NPX Package
+                                {t("orgs.connections.npxPackage")}
                               </span>
                             </SelectItem>
                             <SelectItem value="STDIO">
                               <span className="flex items-center gap-2">
                                 <Terminal className="w-4 h-4" />
-                                Custom Command
+                                {t("orgs.connections.customCommand")}
                               </span>
                             </SelectItem>
                           </>
@@ -1016,10 +1033,12 @@ function OrgMcpsContent() {
                   name="npx_package"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>NPM Package *</FormLabel>
+                      <FormLabel>{t("orgs.connections.npmPackage")}</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="@perplexity-ai/mcp-server"
+                          placeholder={t(
+                            "orgs.connections.npmPackagePlaceholder",
+                          )}
                           {...field}
                           value={field.value ?? ""}
                           onPaste={(e) => {
@@ -1052,10 +1071,12 @@ function OrgMcpsContent() {
                       name="stdio_command"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Command *</FormLabel>
+                          <FormLabel>{t("orgs.connections.command")}</FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="node, bun, python..."
+                              placeholder={t(
+                                "orgs.connections.commandPlaceholder",
+                              )}
                               {...field}
                               value={field.value ?? ""}
                             />
@@ -1070,10 +1091,14 @@ function OrgMcpsContent() {
                       name="stdio_args"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Arguments</FormLabel>
+                          <FormLabel>
+                            {t("orgs.connections.arguments")}
+                          </FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="arg1 arg2 --flag value"
+                              placeholder={t(
+                                "orgs.connections.argumentsPlaceholder",
+                              )}
                               {...field}
                               value={field.value ?? ""}
                             />
@@ -1089,16 +1114,20 @@ function OrgMcpsContent() {
                     name="stdio_cwd"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Working Directory</FormLabel>
+                        <FormLabel>
+                          {t("orgs.connections.workingDirectory")}
+                        </FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="/path/to/project (optional)"
+                            placeholder={t(
+                              "orgs.connections.workingDirectoryPlaceholder",
+                            )}
                             {...field}
                             value={field.value ?? ""}
                           />
                         </FormControl>
                         <p className="text-xs text-muted-foreground">
-                          Directory where the command will be executed
+                          {t("orgs.connections.directoryExecutionNote")}
                         </p>
                         <FormMessage />
                       </FormItem>
@@ -1114,7 +1143,9 @@ function OrgMcpsContent() {
                   name="env_vars"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Environment Variables</FormLabel>
+                      <FormLabel>
+                        {t("orgs.connections.environmentVariables")}
+                      </FormLabel>
                       <FormControl>
                         <EnvVarsEditor
                           value={field.value ?? []}
@@ -1135,10 +1166,10 @@ function OrgMcpsContent() {
                     name="connection_url"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>URL *</FormLabel>
+                        <FormLabel>{t("orgs.connections.url")}</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="https://example.com/mcp"
+                            placeholder={t("orgs.connections.urlPlaceholder")}
                             {...field}
                             value={field.value ?? ""}
                             onPaste={(e) => {
@@ -1167,14 +1198,15 @@ function OrgMcpsContent() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          {providerHint?.token?.label ?? "Token (optional)"}
+                          {providerHint?.token?.label ??
+                            t("orgs.connections.tokenOptional")}
                         </FormLabel>
                         <FormControl>
                           <Input
                             type="password"
                             placeholder={
                               providerHint?.token?.placeholder ??
-                              "Bearer token or API key"
+                              t("orgs.connections.tokenPlaceholder")
                             }
                             {...field}
                             value={field.value ?? ""}
@@ -1193,7 +1225,7 @@ function OrgMcpsContent() {
                                   target="_blank"
                                   rel="noreferrer"
                                 >
-                                  Open GitHub PAT settings
+                                  {t("orgs.connections.openGitHubPatSettings")}
                                 </a>
                               </>
                             )}
@@ -1212,9 +1244,12 @@ function OrgMcpsContent() {
                 name="title"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Name *</FormLabel>
+                    <FormLabel>{t("orgs.connections.name")}</FormLabel>
                     <FormControl>
-                      <Input placeholder="My Connection" {...field} />
+                      <Input
+                        placeholder={t("orgs.connections.namePlaceholder")}
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1226,10 +1261,12 @@ function OrgMcpsContent() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Description</FormLabel>
+                    <FormLabel>{t("orgs.connections.description")}</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="A brief description of this connection"
+                        placeholder={t(
+                          "orgs.connections.descriptionPlaceholder",
+                        )}
                         rows={3}
                         {...field}
                         value={field.value ?? ""}
@@ -1261,6 +1298,7 @@ function OrgMcpsContent() {
                           variant="ghost"
                           size="icon"
                           className="shrink-0 -mt-1"
+                          aria-label={t("orgs.connections.close")}
                         >
                           <XClose size={16} />
                         </Button>
@@ -1304,7 +1342,7 @@ function OrgMcpsContent() {
                         variant="outline"
                         onClick={() => handleDialogClose(false)}
                       >
-                        Cancel
+                        {t("orgs.connections.cancel")}
                       </Button>
                       <Button
                         type="submit"
@@ -1325,13 +1363,13 @@ function OrgMcpsContent() {
           {/* Title + Toolbar */}
           <Page.Body>
             <div className="flex flex-col gap-6">
-              <Page.Title>Connections</Page.Title>
+              <Page.Title>{t("orgs.connections.pageTitle")}</Page.Title>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <SearchInput
                     value={listState.search}
                     onChange={listState.setSearch}
-                    placeholder="Search for a connection"
+                    placeholder={t("orgs.connections.searchPlaceholder")}
                     className="w-full md:w-[375px]"
                     onKeyDown={(event) => {
                       if (event.key === "Escape") {
@@ -1345,20 +1383,32 @@ function OrgMcpsContent() {
                     sortDirection={listState.sortDirection}
                     onSort={listState.handleSort}
                     sortOptions={[
-                      { id: "title", label: "Name" },
-                      { id: "description", label: "Description" },
-                      { id: "connection_type", label: "Type" },
-                      { id: "updated_by", label: "Updated by" },
-                      { id: "updated_at", label: "Updated" },
+                      { id: "title", label: t("orgs.connections.sortName") },
+                      {
+                        id: "description",
+                        label: t("orgs.connections.sortDescription"),
+                      },
+                      {
+                        id: "connection_type",
+                        label: t("orgs.connections.sortType"),
+                      },
+                      {
+                        id: "updated_by",
+                        label: t("orgs.connections.sortUpdatedBy"),
+                      },
+                      {
+                        id: "updated_at",
+                        label: t("orgs.connections.sortUpdated"),
+                      },
                     ]}
                     filters={[
                       {
-                        label: "Type",
+                        label: t("orgs.connections.filterType"),
                         value: typeFilter,
                         onChange: (v) =>
                           setTypeFilter((v as ConnectionTypeFilter) || "ALL"),
                         options: [
-                          { id: "ALL", label: "All" },
+                          { id: "ALL", label: t("orgs.connections.filterAll") },
                           { id: "HTTP", label: "HTTP" },
                           { id: "SSE", label: "SSE" },
                           { id: "Websocket", label: "WebSocket" },
@@ -1366,32 +1416,46 @@ function OrgMcpsContent() {
                         ],
                       },
                       {
-                        label: "Status",
+                        label: t("orgs.connections.filterStatus"),
                         value: statusFilter,
                         onChange: (v) =>
                           setStatusFilter(
                             (v as ConnectionStatusFilter) || "ALL",
                           ),
                         options: [
-                          { id: "ALL", label: "All" },
-                          { id: "active", label: "Active" },
-                          { id: "inactive", label: "Inactive" },
-                          { id: "error", label: "Error" },
+                          { id: "ALL", label: t("orgs.connections.filterAll") },
+                          {
+                            id: "active",
+                            label: t("orgs.connections.filterActive"),
+                          },
+                          {
+                            id: "inactive",
+                            label: t("orgs.connections.filterInactive"),
+                          },
+                          {
+                            id: "error",
+                            label: t("orgs.connections.filterError"),
+                          },
                         ],
                       },
                       ...(enabledRegistries.length > 1
                         ? [
                             {
-                              label: "Registry",
+                              label: t("orgs.connections.filterRegistry"),
                               value: registryFilter,
                               onChange: (v: string) =>
                                 setRegistryFilter(v || "ALL"),
                               options: [
-                                { id: "ALL", label: "All registries" },
+                                {
+                                  id: "ALL",
+                                  label: t(
+                                    "orgs.connections.filterAllRegistries",
+                                  ),
+                                },
                                 ...enabledRegistries.map((r) => ({
                                   id: r.id,
                                   label: r.id.includes("community-registry")
-                                    ? "Community MCP Registry"
+                                    ? t("orgs.connections.communityMcpRegistry")
                                     : r.title,
                                 })),
                               ],
@@ -1405,8 +1469,11 @@ function OrgMcpsContent() {
               </div>
               <CollectionTabs
                 tabs={[
-                  { id: "all", label: "All" },
-                  { id: "connected", label: "Connected" },
+                  { id: "all", label: t("orgs.connections.tabAll") },
+                  {
+                    id: "connected",
+                    label: t("orgs.connections.tabConnected"),
+                  },
                 ]}
                 activeTab={activeTab}
                 onTabChange={(id) => {

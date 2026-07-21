@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
 import { MonacoCodeEditor } from "@/web/components/monaco-editor";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface PageJsonDialogProps {
   open: boolean;
@@ -26,6 +27,7 @@ export function PageJsonDialog({
   decofile,
   onSave,
 }: PageJsonDialogProps) {
+  const t = useT();
   const pageData = decofile[pageKey];
   const missing = pageData === undefined;
   // A missing key would otherwise stringify to the literal "undefined".
@@ -50,17 +52,19 @@ export function PageJsonDialog({
     try {
       parsed = JSON.parse(next);
     } catch {
-      toast.error("Invalid JSON — fix the syntax before saving.");
+      toast.error(t("sectionsEditor.pageJsonDialog.invalidJsonError"));
       return;
     }
     setSaving(true);
     try {
       await onSave(parsed);
-      toast.success("Page JSON saved.");
+      toast.success(t("sectionsEditor.pageJsonDialog.saveSuccess"));
       onOpenChange(false);
     } catch (err) {
       toast.error(
-        `Save failed: ${err instanceof Error ? err.message : String(err)}`,
+        t("sectionsEditor.pageJsonDialog.saveError", {
+          error: err instanceof Error ? err.message : String(err),
+        }),
       );
     } finally {
       setSaving(false);
@@ -71,7 +75,9 @@ export function PageJsonDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl p-0 gap-0">
         <DialogHeader className="px-4 py-3 border-b flex-row items-center justify-between space-y-0">
-          <DialogTitle className="text-sm font-semibold">Page JSON</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">
+            {t("sectionsEditor.pageJsonDialog.title")}
+          </DialogTitle>
           <div className="flex items-center gap-2 mr-8">
             <Button
               variant="ghost"
@@ -80,7 +86,9 @@ export function PageJsonDialog({
               className="h-7 gap-1.5 text-xs"
             >
               {copied ? <CheckCircle size={12} /> : <Copy01 size={12} />}
-              {copied ? "Copied" : "Copy"}
+              {copied
+                ? t("sectionsEditor.pageJsonDialog.copied")
+                : t("sectionsEditor.pageJsonDialog.copy")}
             </Button>
             {!readOnly && (
               <Button
@@ -89,14 +97,16 @@ export function PageJsonDialog({
                 disabled={!dirty || saving}
                 className="h-7 text-xs"
               >
-                {saving ? "Saving…" : "Save"}
+                {saving
+                  ? t("sectionsEditor.pageJsonDialog.saving")
+                  : t("sectionsEditor.pageJsonDialog.save")}
               </Button>
             )}
           </div>
         </DialogHeader>
         {missing ? (
           <div className="p-4 text-xs font-mono text-foreground/60">
-            // Page not found.
+            // {t("sectionsEditor.pageJsonDialog.pageNotFound")}
           </div>
         ) : (
           <div className="h-[70vh]">

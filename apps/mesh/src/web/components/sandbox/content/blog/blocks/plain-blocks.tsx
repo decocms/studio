@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
 import { FloatingToolbar, InlineText, ToolbarButton } from "./primitives";
 
 const HEADING_LEVELS = ["1", "2", "3"] as const;
@@ -23,6 +24,7 @@ export function HeadingBlock({
   onChange: (next: { text: string; level: string }) => void;
 }) {
   const [focused, setFocused] = useState(false);
+  const t = useT();
   const lvl = level || "2";
 
   return (
@@ -33,7 +35,7 @@ export function HeadingBlock({
             <ToolbarButton
               key={l}
               active={lvl === l}
-              label={`Heading ${l}`}
+              label={t(`sandbox.plainBlocks.headingLevel${l}` as any)}
               onClick={() => onChange({ text, level: l })}
             >
               H{l}
@@ -46,7 +48,7 @@ export function HeadingBlock({
         onChange={(v) => onChange({ text: v, level: lvl })}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        placeholder="Heading"
+        placeholder={t("sandbox.plainBlocks.headingPlaceholder")}
         className={cn(
           "text-foreground",
           HEADING_CLASS[lvl] ?? HEADING_CLASS["2"],
@@ -63,12 +65,13 @@ export function QuoteBlock({
   quote: string;
   onChange: (quote: string) => void;
 }) {
+  const t = useT();
   return (
     <div className="border-l-2 border-foreground/30 pl-4">
       <InlineText
         value={quote}
         onChange={onChange}
-        placeholder="Quote"
+        placeholder={t("sandbox.plainBlocks.quotePlaceholder")}
         className="text-lg italic text-foreground/90"
       />
     </div>
@@ -84,18 +87,19 @@ export function CodeBlock({
   language: string;
   onChange: (next: { code: string; language: string }) => void;
 }) {
+  const t = useT();
   return (
     <div className="overflow-hidden rounded-md border bg-muted/50">
       <input
         value={language}
         onChange={(e) => onChange({ code, language: e.target.value })}
-        placeholder="language"
+        placeholder={t("sandbox.plainBlocks.languagePlaceholder")}
         className="w-full border-b bg-transparent px-3 py-1.5 font-mono text-xs text-muted-foreground outline-none placeholder:text-muted-foreground/50"
       />
       <InlineText
         value={code}
         onChange={(v) => onChange({ code: v, language })}
-        placeholder="Code"
+        placeholder={t("sandbox.plainBlocks.codePlaceholder")}
         spellCheck={false}
         className="px-3 py-2.5 font-mono text-sm text-foreground"
       />
@@ -121,6 +125,7 @@ export function ListBlock({
   const ordered = style === "ordered";
   const rows = items.length ? items.split("\n") : [""];
   const [focused, setFocused] = useState(false);
+  const t = useT();
   const refs = useRef<(HTMLTextAreaElement | null)[]>([]);
 
   const commit = (nextRows: string[]) =>
@@ -149,14 +154,14 @@ export function ListBlock({
         <FloatingToolbar>
           <ToolbarButton
             active={!ordered}
-            label="Bulleted"
+            label={t("sandbox.plainBlocks.bulletedLabel")}
             onClick={() => onChange({ items, style: "unordered" })}
           >
             •
           </ToolbarButton>
           <ToolbarButton
             active={ordered}
-            label="Numbered"
+            label={t("sandbox.plainBlocks.numberedLabel")}
             onClick={() => onChange({ items, style: "ordered" })}
           >
             1.
@@ -211,7 +216,7 @@ export function ListBlock({
                   focusRow(i + 1, "end");
                 }
               }}
-              placeholder="List item"
+              placeholder={t("sandbox.plainBlocks.listItemPlaceholder")}
               className="text-[15px] leading-relaxed text-foreground"
             />
           </li>

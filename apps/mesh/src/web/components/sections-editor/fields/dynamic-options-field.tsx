@@ -19,6 +19,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { KEYS } from "@/web/lib/query-keys";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
 
 export interface DynamicOption {
@@ -97,6 +98,7 @@ export function DynamicOptionsField({
   label,
   sandbox,
 }: FieldProps) {
+  const t = useT();
   const loaderPath = schema.options;
   const previewUrl = sandbox?.previewUrl;
   const [open, setOpen] = useState(false);
@@ -183,7 +185,9 @@ export function DynamicOptionsField({
             ) : currentValue ? (
               <span className="truncate">{currentValue}</span>
             ) : (
-              <span className="text-muted-foreground">Select...</span>
+              <span className="text-muted-foreground">
+                {t("sectionsEditor.dynamicOptionsField.selectPlaceholder")}
+              </span>
             )}
             <ChevronSelectorVertical className="size-4 shrink-0 opacity-50" />
           </Button>
@@ -194,14 +198,18 @@ export function DynamicOptionsField({
         >
           <Command shouldFilter={false}>
             <CommandInput
-              placeholder="Search..."
+              placeholder={t(
+                "sectionsEditor.dynamicOptionsField.searchPlaceholder",
+              )}
               className="h-9"
               value={search}
               onValueChange={handleSearchChange}
             />
             <CommandList>
               <CommandEmpty>
-                {query.isLoading ? "Loading..." : "No results found."}
+                {query.isLoading
+                  ? t("sectionsEditor.dynamicOptionsField.loading")
+                  : t("sectionsEditor.dynamicOptionsField.noResults")}
               </CommandEmpty>
               <CommandGroup>
                 {options.map((opt) => (

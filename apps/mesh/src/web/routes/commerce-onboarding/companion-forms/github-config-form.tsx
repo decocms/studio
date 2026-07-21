@@ -37,9 +37,12 @@ import { unwrapToolResult } from "../companions-core.ts";
 import { SelectableList } from "./selectable-list.tsx";
 import { LoadingIndicator } from "../loading-indicator.tsx";
 import type { CompanionFormProps } from "./types.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const schema = z.object({
-  githubRepo: z.string().min(1, "Selecione um repositório"),
+  githubRepo: z
+    .string()
+    .min(1, "commerceOnboarding.githubConfigForm.selectRepository"),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -148,6 +151,7 @@ export function GitHubConfigForm({
   onDone,
   onIsPendingChange,
 }: CompanionFormProps) {
+  const t = useT();
   const queryClient = useQueryClient();
   // The repo is stored on the Commerce Discovery connection's state
   // (github_repo, owner/name) — the field the repo-audit skill reads at run
@@ -234,7 +238,9 @@ export function GitHubConfigForm({
       const parsed = parseRepoFullName(githubRepo);
       if (!parsed) {
         throw new Error(
-          `Repositório inválido: "${githubRepo}". Use o formato owner/nome.`,
+          t("commerceOnboarding.githubConfigForm.invalidRepository", {
+            repo: githubRepo,
+          }),
         );
       }
       const { owner, name } = parsed;
@@ -272,7 +278,9 @@ export function GitHubConfigForm({
         const installation = findGithubInstallation(installations, owner);
         if (!installation) {
           throw new Error(
-            `Nenhuma instalação do GitHub encontrada para "${owner}".`,
+            t("commerceOnboarding.githubConfigForm.noGithubInstallation", {
+              owner,
+            }),
           );
         }
         installationId = installation.installationId;
@@ -285,7 +293,9 @@ export function GitHubConfigForm({
           }),
         ).item;
         if (!sourceConnection) {
-          throw new Error("Conexão do GitHub não encontrada.");
+          throw new Error(
+            t("commerceOnboarding.githubConfigForm.githubConnectionNotFound"),
+          );
         }
         const { childConnectionId } = await provisionRepoScopedGithubConnection(
           {
@@ -410,9 +420,9 @@ export function GitHubConfigForm({
     totalAccounts > 0 && failedAccounts === totalAccounts;
   const searchWarning =
     reposQuery.isError || allAccountsFailed
-      ? "Não foi possível buscar os repositórios (erro ou tempo esgotado). Tente novamente ou digite o repositório no formato owner/nome."
+      ? t("commerceOnboarding.githubConfigForm.searchFailedTotal")
       : failedAccounts > 0
-        ? "Parte da busca falhou — alguns repositórios podem não ter aparecido. Tente novamente ou digite owner/nome."
+        ? t("commerceOnboarding.githubConfigForm.searchFailedPartial")
         : null;
 
   return (
@@ -427,15 +437,21 @@ export function GitHubConfigForm({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           disabled={isPending}
-          placeholder="Buscar repositório"
-          aria-label="Buscar repositório"
+          placeholder={t(
+            "commerceOnboarding.githubConfigForm.searchRepositoryPlaceholder",
+          )}
+          aria-label={t(
+            "commerceOnboarding.githubConfigForm.searchRepositoryLabel",
+          )}
           className="h-8 pl-8"
         />
       </div>
 
       {reposQuery.isLoading ? (
         <div className="flex min-h-[160px] items-center justify-center">
-          <LoadingIndicator label="Carregando repositórios..." />
+          <LoadingIndicator
+            label={t("commerceOnboarding.githubConfigForm.loadingRepositories")}
+          />
         </div>
       ) : (
         <>
@@ -447,8 +463,7 @@ export function GitHubConfigForm({
           {options.length === 0 ? (
             !searchWarning && (
               <p className="text-sm text-muted-foreground">
-                Nenhum repositório encontrado. Digite o nome do repositório
-                (owner/nome) para buscar.
+                {t("commerceOnboarding.githubConfigForm.noRepositoriesFound")}
               </p>
             )
           ) : (
@@ -484,7 +499,7 @@ export function GitHubConfigForm({
         <p role="alert" className="text-sm text-destructive">
           {saveMutation.error instanceof Error
             ? saveMutation.error.message
-            : "Não foi possível salvar a configuração"}
+            : t("commerceOnboarding.githubConfigForm.failedToSave")}
         </p>
       )}
 
@@ -495,10 +510,12 @@ export function GitHubConfigForm({
           onClick={onDone}
           disabled={isPending}
         >
-          Cancelar
+          {t("commerceOnboarding.githubConfigForm.cancel")}
         </Button>
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Salvando..." : "Salvar"}
+          {isPending
+            ? t("commerceOnboarding.githubConfigForm.saving")
+            : t("commerceOnboarding.githubConfigForm.save")}
         </Button>
       </DialogFooter>
     </form>

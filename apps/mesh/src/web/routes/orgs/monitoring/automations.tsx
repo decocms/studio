@@ -12,11 +12,13 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useAutomation, useAutomations } from "@/web/hooks/use-automations";
 import { AutomationRunsView } from "@/web/views/automations/automation-runs";
 import type { DateRange } from "./utils.ts";
 
 export function AutomationsTabContent({ dateRange }: { dateRange: DateRange }) {
+  const t = useT();
   const { data: automations = [], isLoading } = useAutomations(undefined);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -33,13 +35,13 @@ export function AutomationsTabContent({ dateRange }: { dateRange: DateRange }) {
       <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0 gap-5 pt-1">
         {isLoading ? (
           <div className="py-16 text-center text-sm text-muted-foreground">
-            Loading…
+            {t("orgs.automations.loading")}
           </div>
         ) : automations.length === 0 ? (
           <div className="py-16">
             <EmptyState
-              title="No automations"
-              description="Create an automation to see its runs and usage here."
+              title={t("orgs.automations.emptyTitle")}
+              description={t("orgs.automations.emptyDescription")}
             />
           </div>
         ) : (
@@ -50,7 +52,9 @@ export function AutomationsTabContent({ dateRange }: { dateRange: DateRange }) {
                 onValueChange={(v) => setSelectedId(v)}
               >
                 <SelectTrigger className="w-72">
-                  <SelectValue placeholder="Select an automation…" />
+                  <SelectValue
+                    placeholder={t("orgs.automations.selectPlaceholder")}
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {automations.map((a) => (
@@ -70,7 +74,7 @@ export function AutomationsTabContent({ dateRange }: { dateRange: DateRange }) {
               />
             ) : (
               <div className="py-16 text-center text-sm text-muted-foreground">
-                Loading…
+                {t("orgs.automations.loading")}
               </div>
             )}
           </>

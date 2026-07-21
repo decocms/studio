@@ -1,3 +1,4 @@
+import { useT } from "@/web/i18n/use-t.ts";
 import { useState } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ChevronDown, Lightning01 } from "@untitledui/icons";
@@ -14,6 +15,7 @@ export interface TriggerEventData {
  * model sees. Collapsed by default; expands to a pretty-printed payload.
  */
 export function TriggerEventPart({ event }: { event: TriggerEventData }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const payload = JSON.stringify(event.data, null, 2);
 
@@ -25,7 +27,9 @@ export function TriggerEventPart({ event }: { event: TriggerEventData }) {
         className="flex w-full items-center gap-2 px-3 py-2 text-sm cursor-pointer"
       >
         <Lightning01 className="size-4 shrink-0 text-muted-foreground" />
-        <span className="font-medium">Triggered by event</span>
+        <span className="font-medium">
+          {t("chat.triggerEventPart.triggeredByEvent")}
+        </span>
         <span className="min-w-0 truncate text-muted-foreground">
           {event.type}
         </span>

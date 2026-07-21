@@ -15,6 +15,7 @@ import {
 } from "@/web/lib/auth-client";
 import { isPostHogInitialized, track } from "@/web/lib/posthog-client";
 import { KEYS } from "@/web/lib/query-keys";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import {
@@ -103,64 +104,94 @@ function CommerceOnboardingLayout({
   );
 }
 
-const COMMERCE_AUTH_COPY = {
-  signUpFailed: "Falha ao criar conta",
-  signInFailed: "Falha ao entrar",
-  authenticationFailed: "Falha na autenticação",
-  resetEmailFailed: "Não foi possível enviar o e-mail de redefinição",
-  otpSendFailed: "Não foi possível enviar o código",
-  invalidCode: "Código inválido",
-  invalidEmail: "E-mail inválido",
-  invalidEmailOrPassword: "E-mail ou senha inválidos. Tente novamente.",
-  accountExists:
-    "Já existe uma conta com este e-mail. Tente entrar em vez de criar uma nova conta.",
-  networkError: "Erro de rede. Verifique sua conexão e tente novamente.",
-  tooManyAttempts: "Muitas tentativas. Aguarde um momento e tente novamente.",
-  invalidOrExpiredCode: "Código inválido ou expirado. Tente novamente.",
-  genericError: "Algo deu errado. Tente novamente.",
-  resetPasswordTitle: "Redefinir sua senha",
-  verificationCodeTitle: "Informe o código de verificação",
-  welcomeTitle: "Bem-vindo à deco",
-  resetPasswordSubtitle: "Enviaremos um link de redefinição",
-  codeSentTo: (email: string) => `Código enviado para ${email}`,
-  defaultSubtitle: "Entre ou crie uma nova conta",
-  resetEmailSent: "Verifique seu e-mail para redefinir a senha.",
-  continueWith: (provider: string) => `Continuar com ${provider}`,
-  divider: "ou",
-  emailLabel: "E-mail",
-  emailPlaceholder: "Endereço de e-mail",
-  sending: "Enviando...",
-  sendCode: "Enviar código",
-  verificationCodeLabel: "Código de verificação",
-  enterCodePlaceholder: "Informe o código",
-  verifying: "Verificando...",
-  verify: "Verificar",
-  useDifferentEmail: "Usar outro e-mail",
-  sendResetLink: "Enviar link de redefinição",
-  nameLabel: "Nome",
-  namePlaceholder: "Seu nome",
-  passwordLabel: "Senha",
-  forgotPassword: "Esqueceu a senha?",
-  creatingAccount: "Criando conta...",
-  signingIn: "Entrando...",
-  continue: "Continuar",
-  backToSignIn: "Voltar para entrar",
-  signInWithPassword: "Entrar com senha",
-  alreadyHaveAccount: "Já tem uma conta? ",
-  dontHaveAccount: "Não tem uma conta? ",
-  signIn: "Entrar",
-  signUp: "Criar conta",
-  signInWithEmailCode: "Entrar com código por e-mail",
-};
+function getCommerceAuthCopy(t: ReturnType<typeof useT>) {
+  return {
+    signUpFailed: t("routes.commerceOnboarding.authCopy.signUpFailed"),
+    signInFailed: t("routes.commerceOnboarding.authCopy.signInFailed"),
+    authenticationFailed: t(
+      "routes.commerceOnboarding.authCopy.authenticationFailed",
+    ),
+    resetEmailFailed: t("routes.commerceOnboarding.authCopy.resetEmailFailed"),
+    otpSendFailed: t("routes.commerceOnboarding.authCopy.otpSendFailed"),
+    invalidCode: t("routes.commerceOnboarding.authCopy.invalidCode"),
+    invalidEmail: t("routes.commerceOnboarding.authCopy.invalidEmail"),
+    invalidEmailOrPassword: t(
+      "routes.commerceOnboarding.authCopy.invalidEmailOrPassword",
+    ),
+    accountExists: t("routes.commerceOnboarding.authCopy.accountExists"),
+    networkError: t("routes.commerceOnboarding.authCopy.networkError"),
+    tooManyAttempts: t("routes.commerceOnboarding.authCopy.tooManyAttempts"),
+    invalidOrExpiredCode: t(
+      "routes.commerceOnboarding.authCopy.invalidOrExpiredCode",
+    ),
+    genericError: t("routes.commerceOnboarding.authCopy.genericError"),
+    resetPasswordTitle: t(
+      "routes.commerceOnboarding.authCopy.resetPasswordTitle",
+    ),
+    verificationCodeTitle: t(
+      "routes.commerceOnboarding.authCopy.verificationCodeTitle",
+    ),
+    welcomeTitle: t("routes.commerceOnboarding.authCopy.welcomeTitle"),
+    resetPasswordSubtitle: t(
+      "routes.commerceOnboarding.authCopy.resetPasswordSubtitle",
+    ),
+    codeSentTo: (email: string) =>
+      t("routes.commerceOnboarding.authCopy.codeSentTo", { email }),
+    defaultSubtitle: t("routes.commerceOnboarding.authCopy.defaultSubtitle"),
+    resetEmailSent: t("routes.commerceOnboarding.authCopy.resetEmailSent"),
+    continueWith: (provider: string) =>
+      t("routes.commerceOnboarding.authCopy.continueWith", { provider }),
+    divider: t("routes.commerceOnboarding.authCopy.divider"),
+    emailLabel: t("routes.commerceOnboarding.authCopy.emailLabel"),
+    emailPlaceholder: t("routes.commerceOnboarding.authCopy.emailPlaceholder"),
+    sending: t("routes.commerceOnboarding.authCopy.sending"),
+    sendCode: t("routes.commerceOnboarding.authCopy.sendCode"),
+    verificationCodeLabel: t(
+      "routes.commerceOnboarding.authCopy.verificationCodeLabel",
+    ),
+    enterCodePlaceholder: t(
+      "routes.commerceOnboarding.authCopy.enterCodePlaceholder",
+    ),
+    verifying: t("routes.commerceOnboarding.authCopy.verifying"),
+    verify: t("routes.commerceOnboarding.authCopy.verify"),
+    useDifferentEmail: t(
+      "routes.commerceOnboarding.authCopy.useDifferentEmail",
+    ),
+    sendResetLink: t("routes.commerceOnboarding.authCopy.sendResetLink"),
+    nameLabel: t("routes.commerceOnboarding.authCopy.nameLabel"),
+    namePlaceholder: t("routes.commerceOnboarding.authCopy.namePlaceholder"),
+    passwordLabel: t("routes.commerceOnboarding.authCopy.passwordLabel"),
+    forgotPassword: t("routes.commerceOnboarding.authCopy.forgotPassword"),
+    creatingAccount: t("routes.commerceOnboarding.authCopy.creatingAccount"),
+    signingIn: t("routes.commerceOnboarding.authCopy.signingIn"),
+    continue: t("routes.commerceOnboarding.authCopy.continue"),
+    backToSignIn: t("routes.commerceOnboarding.authCopy.backToSignIn"),
+    signInWithPassword: t(
+      "routes.commerceOnboarding.authCopy.signInWithPassword",
+    ),
+    alreadyHaveAccount: t(
+      "routes.commerceOnboarding.authCopy.alreadyHaveAccount",
+    ),
+    dontHaveAccount: t("routes.commerceOnboarding.authCopy.dontHaveAccount"),
+    signIn: t("routes.commerceOnboarding.authCopy.signIn"),
+    signUp: t("routes.commerceOnboarding.authCopy.signUp"),
+    signInWithEmailCode: t(
+      "routes.commerceOnboarding.authCopy.signInWithEmailCode",
+    ),
+  };
+}
 
-function commerceSiteUrlErrorPtBr(error: string): string {
+function commerceSiteUrlErrorPtBr(
+  t: ReturnType<typeof useT>,
+  error: string,
+): string {
   switch (error) {
     case "Enter a website URL.":
-      return "Informe a URL de um site.";
+      return t("routes.commerceOnboarding.siteUrl.enterUrl");
     case "Use an HTTP or HTTPS website URL.":
-      return "Use uma URL de site HTTP ou HTTPS.";
+      return t("routes.commerceOnboarding.siteUrl.useHttpOrHttps");
     case "Enter a valid website URL.":
-      return "Informe uma URL de site válida.";
+      return t("routes.commerceOnboarding.siteUrl.enterValidUrl");
     default:
       return error;
   }
@@ -204,6 +235,7 @@ function CommerceOnboardingScreens({
   requestedOrgSlug?: string;
   siteUrl?: string;
 }) {
+  const t = useT();
   const { data: session, isPending: sessionLoading } = authClient.useSession();
   const siteHost = useCommerceSiteHost();
 
@@ -226,10 +258,10 @@ function CommerceOnboardingScreens({
         <AuthEntry
           callbackUrl={callbackUrl}
           allowAutoLogin={false}
-          title="Desbloqueie seu diagnóstico completo"
+          title={t("routes.commerceOnboarding.unlockDiagnostic")}
           subtitle={null}
           brand={siteHost ? <SiteBadge host={siteHost} /> : undefined}
-          copy={COMMERCE_AUTH_COPY}
+          copy={getCommerceAuthCopy(t)}
         />
       </CommerceOnboardingLayout>
     );
@@ -300,11 +332,12 @@ function CommerceOnboardingContent({
   }
 
   if (organizationsQuery.error) {
+    const t = useT();
     return (
       <CommerceErrorState
-        title="Não foi possível carregar suas organizações"
-        description="Tente novamente para continuar a configuração de commerce nesta página."
-        actionLabel="Tentar novamente"
+        title={t("routes.commerceOnboarding.couldNotLoadOrgs")}
+        description={t("routes.commerceOnboarding.retryToConfigureCommerce")}
+        actionLabel={t("routes.commerceOnboarding.retryAgain")}
         onRetry={() => organizationsQuery.refetch()}
       />
     );
@@ -319,11 +352,12 @@ function CommerceOnboardingContent({
   }
 
   if (requestedOrgSlug) {
+    const t = useT();
     return (
       <CommerceErrorState
-        title="Organização não encontrada"
-        description="Não conseguimos encontrar essa organização na sua conta."
-        actionLabel="Tentar novamente"
+        title={t("routes.commerceOnboarding.orgNotFound")}
+        description={t("routes.commerceOnboarding.couldNotFindOrg")}
+        actionLabel={t("routes.commerceOnboarding.retryAgain")}
         onRetry={() => organizationsQuery.refetch()}
       />
     );
@@ -340,17 +374,20 @@ function CommerceOnboardingContent({
   }
 
   if (activeOrganizations.length > 1) {
+    const t = useT();
     return (
       <CommerceOnboardingLayout>
         <div className="grid gap-10">
           <CommerceHeader
-            title="Escolha uma organização"
-            description="Selecione onde o diagnóstico de commerce deve continuar."
+            title={t("routes.commerceOnboarding.chooseOrg")}
+            description={t(
+              "routes.commerceOnboarding.selectWhereCommerceContinues",
+            )}
           />
           <ScrollReveal className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
             <OrganizationChoice
               organizations={activeOrganizations}
-              selectLabel="Continuar"
+              selectLabel={t("routes.commerceOnboarding.authCopy.continue")}
               onSelected={(organization) =>
                 // Persisted in the URL (not local state) so a refresh doesn't
                 // lose the pick and force reselecting among active orgs.
@@ -397,12 +434,13 @@ function CommerceOnboardingContent({
     ensureResult.organizations &&
     ensureResult.organizations.length > 0
   ) {
+    const t = useT();
     return (
       <CommerceOnboardingLayout>
         <div className="grid gap-10">
           <CommerceHeader
-            title="Escolha uma organização"
-            description="Seu e-mail pode acessar mais de uma organização. Escolha onde a configuração de commerce deve continuar."
+            title={t("routes.commerceOnboarding.chooseOrg")}
+            description={t("routes.commerceOnboarding.emailAccessMultipleOrgs")}
           />
           <ScrollReveal className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
             <OrganizationChoice
@@ -423,14 +461,15 @@ function CommerceOnboardingContent({
     );
   }
 
+  const t = useT();
   return (
     <CommerceErrorState
-      title="O onboarding de commerce precisa de suporte"
+      title={t("routes.commerceOnboarding.onboardingNeedsSupport")}
       description={
         ensureResult?.error ??
-        "Não conseguimos determinar uma organização de commerce para esta conta."
+        t("routes.commerceOnboarding.couldNotDetermineOrg")
       }
-      actionLabel="Tentar novamente"
+      actionLabel={t("routes.commerceOnboarding.retryAgain")}
       onRetry={() => {
         setSettledEnsureResult(null);
         ensureOrganizationMutation.reset();
@@ -457,11 +496,12 @@ function EnsureOrganizationRecovery({
   };
 
   if (mutation.error) {
+    const t = useT();
     return (
       <CommerceErrorState
-        title="Onboarding de commerce indisponível"
-        description="Não foi possível preparar uma organização para a configuração de commerce. Tente novamente por esta página ou fale com o suporte."
-        actionLabel="Tentar novamente"
+        title={t("routes.commerceOnboarding.onboardingUnavailable")}
+        description={t("routes.commerceOnboarding.couldNotPrepareOrg")}
+        actionLabel={t("routes.commerceOnboarding.retryAgain")}
         onRetry={onRetry}
       />
     );
@@ -561,12 +601,15 @@ function CommerceSetup({
         <ErrorBoundary
           fallback={({ error, resetError }) => (
             <CommerceOnboardingLayout visual={meetingVisual}>
+              {/* TODO(i18n): error message passed to CommerceSetupErrorState may be either dynamic or translated */}
               <CommerceSetupErrorState
                 orgName={org.name}
                 message={
                   error instanceof Error
                     ? error.message
-                    : "Não foi possível verificar a configuração do Commerce Discovery."
+                    : useT()(
+                        "routes.commerceOnboarding.couldNotVerifyCommerceSetting",
+                      )
                 }
                 onRetry={() => {
                   reset();
@@ -612,15 +655,19 @@ function CommerceSetupErrorState({
   message: string;
   onRetry: () => void;
 }) {
+  const t = useT();
   return (
     <div className="grid gap-10">
       <CommerceHeader
-        title="Diagnóstico de commerce"
-        description={`A configuração de commerce continuará em ${orgName}.`}
+        title={t("routes.commerceOnboarding.commerceDiagnostic")}
+        description={t(
+          "routes.commerceOnboarding.configurationWillContinueIn",
+          { orgName },
+        )}
       />
       <InlineError message={message} />
       <Button type="button" size="xl" className="w-full" onClick={onRetry}>
-        Tentar novamente
+        {t("routes.commerceOnboarding.retryAgain")}
       </Button>
     </div>
   );
@@ -695,10 +742,12 @@ function CommerceSetupContent({
         organization_id: org.id,
         error: error instanceof Error ? error.message : String(error),
       });
+      // ponytail: error.message is dynamic; only fallback is translated
+      const t = useT();
       setInlineError(
         error instanceof Error
           ? error.message
-          : "A configuração do Commerce Discovery falhou.",
+          : t("routes.commerceOnboarding.configurationFailed"),
       );
     },
   });
@@ -740,10 +789,12 @@ function CommerceSetupContent({
     <ScheduleMeetingVisual href={currentMeetingUrl} orgId={org.id} />
   );
 
+  const t = useT();
+
   const runSetup = (rawSiteUrl: string) => {
     const normalized = normalizeReportsSiteUrl(rawSiteUrl);
     if (!normalized.ok) {
-      setInlineError(commerceSiteUrlErrorPtBr(normalized.error));
+      setInlineError(commerceSiteUrlErrorPtBr(t, normalized.error));
       return;
     }
     setInlineError(null);
@@ -804,10 +855,15 @@ function CommerceSetupContent({
         <CommerceOnboardingLayout visual={currentMeetingVisual}>
           <div className="grid gap-10">
             <CommerceHeader
-              title="Diagnóstico de commerce"
-              description={`A configuração de commerce continuará em ${org.name}.`}
+              title={t("routes.commerceOnboarding.commerceDiagnostic")}
+              description={t(
+                "routes.commerceOnboarding.configurationWillContinueIn",
+                { orgName: org.name },
+              )}
             />
-            <InlineError message={commerceSiteUrlErrorPtBr(normalized.error)} />
+            <InlineError
+              message={commerceSiteUrlErrorPtBr(t, normalized.error)}
+            />
             <SiteUrlForm
               siteUrl={siteUrlInput}
               error={inlineError}
@@ -824,8 +880,11 @@ function CommerceSetupContent({
       <CommerceOnboardingLayout visual={currentMeetingVisual}>
         <div ref={triggerInitialSetup} className="grid gap-10">
           <CommerceHeader
-            title="Diagnóstico de commerce"
-            description={`O Commerce Discovery está sendo preparado para ${normalized.value}.`}
+            title={t("routes.commerceOnboarding.commerceDiagnostic")}
+            description={t(
+              "routes.commerceOnboarding.commerceDiscoveryBeingPrepared",
+              { url: normalized.value },
+            )}
           />
           {inlineError ? (
             <>
@@ -850,8 +909,11 @@ function CommerceSetupContent({
     <CommerceOnboardingLayout visual={currentMeetingVisual}>
       <div className="grid gap-10">
         <CommerceHeader
-          title="Diagnóstico de commerce"
-          description={`A configuração de commerce continuará em ${org.name}.`}
+          title={t("routes.commerceOnboarding.commerceDiagnostic")}
+          description={t(
+            "routes.commerceOnboarding.configurationWillContinueIn",
+            { orgName: org.name },
+          )}
         />
         <SiteUrlForm
           siteUrl={siteUrlInput}
@@ -878,11 +940,12 @@ function SiteUrlForm({
   onSiteUrlChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const t = useT();
   return (
     <form className="grid gap-4" onSubmit={onSubmit}>
       <div className="grid gap-2">
         <label className="text-sm font-medium" htmlFor="commerce-site-url">
-          URL do site
+          {t("routes.commerceOnboarding.siteUrlLabel")}
         </label>
         <Input
           id="commerce-site-url"
@@ -890,7 +953,7 @@ function SiteUrlForm({
           inputMode="url"
           value={siteUrl}
           onChange={(event) => onSiteUrlChange(event.target.value)}
-          placeholder="https://example.com"
+          placeholder={t("routes.commerceOnboarding.siteUrlPlaceholder")}
           aria-invalid={!!error}
           disabled={isSubmitting}
         />
@@ -902,7 +965,7 @@ function SiteUrlForm({
         className="w-full"
         disabled={isSubmitting}
       >
-        Continuar
+        {t("routes.commerceOnboarding.authCopy.continue")}
         <ArrowRight size={16} />
       </Button>
     </form>

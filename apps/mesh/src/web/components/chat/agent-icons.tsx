@@ -55,14 +55,25 @@ export function CodexIcon({ size = 16 }: { size?: number }) {
  * absent — it's the cloud runtime, described by where it runs rather than by a
  * CLI name, so callers fall back to their runtime glyph for it.
  */
+const LOCAL_HARNESS_BRAND_LABELS = {
+  "claude-code": "chat.agentIcons.claudeCode",
+  codex: "chat.agentIcons.codex",
+} as const;
+
+type HarnessLabelKey =
+  (typeof LOCAL_HARNESS_BRAND_LABELS)[keyof typeof LOCAL_HARNESS_BRAND_LABELS];
+
 const LOCAL_HARNESS_BRAND: Partial<
   Record<
     HarnessId,
-    { label: string; Icon: (props: { size?: number }) => ReactNode }
+    { labelKey: HarnessLabelKey; Icon: (props: { size?: number }) => ReactNode }
   >
 > = {
-  "claude-code": { label: "Claude Code", Icon: ClaudeCodeIcon },
-  codex: { label: "Codex", Icon: CodexIcon },
+  "claude-code": {
+    labelKey: "chat.agentIcons.claudeCode",
+    Icon: ClaudeCodeIcon,
+  },
+  codex: { labelKey: "chat.agentIcons.codex", Icon: CodexIcon },
 };
 
 /** Brand for a harness, or null when it has none (cloud / unknown / legacy). */

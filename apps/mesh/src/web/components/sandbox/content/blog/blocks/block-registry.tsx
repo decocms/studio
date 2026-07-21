@@ -1,3 +1,4 @@
+import { useT } from "@/web/i18n/use-t.ts";
 import { SchemaForm } from "@/web/components/sections-editor/schema-form";
 import {
   resolveSchema,
@@ -46,6 +47,7 @@ export function BlockEditor({
   /** Running sandbox coords — enables the VTEX product picker when present. */
   sandboxRef?: RunBlockSandboxRef | null;
 }) {
+  const t = useT();
   const resolveType = block.__resolveType ?? "";
   const componentName = blockComponentName(resolveType);
   const bespoke = isBlogPostBlockResolveType(resolveType);
@@ -56,7 +58,7 @@ export function BlockEditor({
         return (
           <RichTextBlock
             html={str(block.html)}
-            placeholder="Write something…"
+            placeholder={t("sandbox.blockRegistry.writeSomethingPlaceholder")}
             onChange={(html) => onChange({ ...block, html })}
           />
         );
@@ -213,7 +215,9 @@ export function BlockEditor({
     if (!schema) {
       return (
         <p className="text-xs text-muted-foreground">
-          Unknown block type{resolveType ? ` (${resolveType})` : ""}.
+          {t("sandbox.blockRegistry.unknownBlockType", {
+            type: resolveType ?? "",
+          })}
         </p>
       );
     }

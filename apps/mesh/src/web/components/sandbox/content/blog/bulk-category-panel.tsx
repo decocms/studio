@@ -18,6 +18,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { type CategoryRef, type PostMeta } from "./blog-data";
 
 /**
@@ -43,6 +44,7 @@ export function BulkCategoryPanel({
   onApply: (mode: "add" | "replace", category: CategoryRef) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const [slug, setSlug] = useState<string>(
     initialSlug && categories.some((c) => c.slug === initialSlug)
       ? initialSlug
@@ -56,7 +58,9 @@ export function BulkCategoryPanel({
     <div className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
         <span className="truncate text-sm font-medium">
-          {count} {count === 1 ? "post" : "posts"} selected
+          {t("sandbox.bulkCategoryPanel.selectedCount", {
+            count: String(count),
+          })}
         </span>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -66,39 +70,45 @@ export function BulkCategoryPanel({
               size="icon"
               disabled={isPending}
               onClick={onClose}
-              aria-label="Exit selection"
+              aria-label={t("sandbox.bulkCategoryPanel.exitSelection")}
             >
               <X size={14} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Exit selection</TooltipContent>
+          <TooltipContent side="bottom">
+            {t("sandbox.bulkCategoryPanel.exitSelection")}
+          </TooltipContent>
         </Tooltip>
       </div>
 
       <div className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-8 py-8">
           <h2 className="text-2xl font-bold text-foreground">
-            Update category
+            {t("sandbox.bulkCategoryPanel.title")}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {count === 0
-              ? "Select posts from the list to choose what this update applies to."
-              : `Choose a category to apply to ${count} ${
-                  count === 1 ? "post" : "posts"
-                }.`}
+              ? t("sandbox.bulkCategoryPanel.descriptionEmpty")
+              : t("sandbox.bulkCategoryPanel.descriptionWithCount", {
+                  count: String(count),
+                })}
           </p>
 
           <div className="mt-6 space-y-4">
             <div className="space-y-2">
-              <Label>Category</Label>
+              <Label>{t("sandbox.bulkCategoryPanel.categoryLabel")}</Label>
               {categories.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No categories yet — create one in the Categories collection.
+                  {t("sandbox.bulkCategoryPanel.noCategoriesMessage")}
                 </p>
               ) : (
                 <Select value={slug} onValueChange={setSlug}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a category" />
+                    <SelectValue
+                      placeholder={t(
+                        "sandbox.bulkCategoryPanel.selectCategoryPlaceholder",
+                      )}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map((c) => (
@@ -127,10 +137,10 @@ export function BulkCategoryPanel({
                 />
                 <span className="space-y-0.5">
                   <span className="block text-sm font-medium">
-                    Add category
+                    {t("sandbox.bulkCategoryPanel.modeAddTitle")}
                   </span>
                   <span className="block text-xs text-muted-foreground">
-                    Keep existing categories and add this one.
+                    {t("sandbox.bulkCategoryPanel.modeAddDescription")}
                   </span>
                 </span>
               </Label>
@@ -145,10 +155,10 @@ export function BulkCategoryPanel({
                 />
                 <span className="space-y-0.5">
                   <span className="block text-sm font-medium">
-                    Replace category
+                    {t("sandbox.bulkCategoryPanel.modeReplaceTitle")}
                   </span>
                   <span className="block text-xs text-muted-foreground">
-                    Remove all current categories and set only this one.
+                    {t("sandbox.bulkCategoryPanel.modeReplaceDescription")}
                   </span>
                 </span>
               </Label>
@@ -161,7 +171,7 @@ export function BulkCategoryPanel({
                 onClick={onClose}
                 disabled={isPending}
               >
-                Cancel
+                {t("sandbox.bulkCategoryPanel.cancelButton")}
               </Button>
               <Button
                 type="button"
@@ -174,10 +184,10 @@ export function BulkCategoryPanel({
                 {isPending ? (
                   <>
                     <Loading01 size={14} className="animate-spin" />
-                    Updating…
+                    {t("sandbox.bulkCategoryPanel.updatingButton")}
                   </>
                 ) : (
-                  "Apply"
+                  t("sandbox.bulkCategoryPanel.applyButton")
                 )}
               </Button>
             </div>
@@ -188,12 +198,14 @@ export function BulkCategoryPanel({
             <div className="flex items-center gap-2 px-4 py-3">
               <File02 size={16} className="shrink-0 text-muted-foreground" />
               <span className="text-sm">
-                {count} selected {count === 1 ? "post" : "posts"}
+                {t("sandbox.bulkCategoryPanel.selectedPostsLabel", {
+                  count: String(count),
+                })}
               </span>
             </div>
             {count === 0 ? (
               <p className="border-t bg-background px-4 py-3 text-sm text-muted-foreground">
-                No posts selected yet — pick them from the list on the left.
+                {t("sandbox.bulkCategoryPanel.noPostsSelectedMessage")}
               </p>
             ) : (
               <ul className="divide-y border-t bg-background">

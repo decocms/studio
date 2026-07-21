@@ -24,6 +24,7 @@ import {
   useVirtualMCPs,
 } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import { useT } from "@/web/i18n/use-t.ts";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { GitHubRepoPicker } from "@/web/components/github-repo-picker.tsx";
 import {
@@ -36,6 +37,7 @@ export function DevAgentSetup({
 }: {
   virtualMcp: VirtualMCPEntity;
 }) {
+  const t = useT();
   const allAgents = useVirtualMCPs();
   const actions = useVirtualMCPActions();
   const [githubOpen, setGithubOpen] = useState(false);
@@ -99,7 +101,9 @@ export function DevAgentSetup({
 
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium text-foreground">Development agent</h2>
+      <h2 className="text-sm font-medium text-foreground">
+        {t("devAgent.devAgentSetup.title")}
+      </h2>
       <Card className="p-6 gap-4">
         <CardContent className="p-0 space-y-4">
           {linkedId ? (
@@ -109,8 +113,7 @@ export function DevAgentSetup({
                   {linked ? linked.title : linkedId}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  Linked dev agent — its sandbox dev server powers the
-                  Develop/Live toggle in the header.
+                  {t("devAgent.devAgentSetup.linkedDescription")}
                 </span>
               </div>
               <Button
@@ -119,15 +122,13 @@ export function DevAgentSetup({
                 className="shrink-0"
                 onClick={unlinkDevAgent}
               >
-                Unlink
+                {t("devAgent.devAgentSetup.unlinkButton")}
               </Button>
             </div>
           ) : (
             <>
               <span className="text-xs text-muted-foreground">
-                Link a GitHub-backed dev agent. Its sandbox dev server powers a
-                Develop/Live toggle so you can develop and test this agent's MCP
-                app.
+                {t("devAgent.devAgentSetup.linkDescription")}
               </span>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -137,12 +138,16 @@ export function DevAgentSetup({
                   onClick={() => setGithubOpen(true)}
                 >
                   <GitHubIcon className="size-4" />
-                  Import from GitHub
+                  {t("devAgent.devAgentSetup.importButton")}
                 </Button>
                 {linkableAgents.length > 0 ? (
                   <Select onValueChange={linkDevAgent}>
                     <SelectTrigger size="sm" className="w-56">
-                      <SelectValue placeholder="Or link an existing dev agent…" />
+                      <SelectValue
+                        placeholder={t(
+                          "devAgent.devAgentSetup.selectPlaceholder",
+                        )}
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {linkableAgents.map((a) => (
@@ -161,7 +166,7 @@ export function DevAgentSetup({
       <GitHubRepoPicker
         open={githubOpen}
         onOpenChange={setGithubOpen}
-        title="Import a dev agent from GitHub"
+        title={t("devAgent.devAgentSetup.importDialogTitle")}
         onImportComplete={({ virtualMcpId }) => {
           setGithubOpen(false);
           linkDevAgent(virtualMcpId);

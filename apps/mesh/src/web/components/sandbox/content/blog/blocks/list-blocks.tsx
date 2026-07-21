@@ -1,5 +1,6 @@
 import { Check } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   AddButton,
   InlineText,
@@ -19,6 +20,7 @@ export function CardGroupBlock({
   cards: string;
   onChange: (cards: string) => void;
 }) {
+  const t = useT();
   const items = parseJsonArray<Card>(cards);
   const commit = (next: Card[]) => onChange(JSON.stringify(next));
   const set = (i: number, patch: Partial<Card>) =>
@@ -34,7 +36,7 @@ export function CardGroupBlock({
           >
             <div className="absolute right-1 top-1">
               <RemoveButton
-                label="Remove card"
+                label={t("sandbox.listBlocks.removeCard")}
                 onClick={() => commit(items.filter((_, idx) => idx !== i))}
               />
             </div>
@@ -47,13 +49,13 @@ export function CardGroupBlock({
             <input
               value={str(card.title)}
               onChange={(e) => set(i, { title: e.target.value })}
-              placeholder="Card title"
+              placeholder={t("sandbox.listBlocks.cardTitle")}
               className="border-0 bg-transparent p-0 text-[15px] font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
             />
             <InlineText
               value={str(card.body)}
               onChange={(v) => set(i, { body: v })}
-              placeholder="Card body"
+              placeholder={t("sandbox.listBlocks.cardBody")}
               className="text-sm text-muted-foreground"
             />
           </div>
@@ -61,7 +63,7 @@ export function CardGroupBlock({
       </div>
       {items.length < 3 && (
         <AddButton
-          label="Add card"
+          label={t("sandbox.listBlocks.addCard")}
           onClick={() => commit([...items, { title: "", body: "" }])}
         />
       )}
@@ -80,6 +82,7 @@ export function ChecklistBlock({
   items: string;
   onChange: (next: { title: string; items: string }) => void;
 }) {
+  const t = useT();
   const list = parseJsonArray<string>(items);
   const commit = (next: string[]) =>
     onChange({ title, items: JSON.stringify(next) });
@@ -89,7 +92,7 @@ export function ChecklistBlock({
       <input
         value={title}
         onChange={(e) => onChange({ title: e.target.value, items })}
-        placeholder="Checklist title (optional)"
+        placeholder={t("sandbox.listBlocks.checklistTitle")}
         className="w-full border-0 bg-transparent p-0 text-lg font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
       />
       <ul>
@@ -106,17 +109,20 @@ export function ChecklistBlock({
               onChange={(v) =>
                 commit(list.map((x, idx) => (idx === i ? v : x)))
               }
-              placeholder="Checklist item"
+              placeholder={t("sandbox.listBlocks.checklistItem")}
               className="text-[15px] text-foreground"
             />
             <RemoveButton
-              label="Remove item"
+              label={t("sandbox.listBlocks.removeItem")}
               onClick={() => commit(list.filter((_, idx) => idx !== i))}
             />
           </li>
         ))}
       </ul>
-      <AddButton label="Add item" onClick={() => commit([...list, ""])} />
+      <AddButton
+        label={t("sandbox.listBlocks.addItem")}
+        onClick={() => commit([...list, ""])}
+      />
     </div>
   );
 }
@@ -132,6 +138,7 @@ export function StatGroupBlock({
   stats: string;
   onChange: (stats: string) => void;
 }) {
+  const t = useT();
   const items = parseJsonArray<StatItem>(stats);
   const commit = (next: StatItem[]) => onChange(JSON.stringify(next));
   const set = (i: number, patch: Partial<StatItem>) =>
@@ -147,20 +154,20 @@ export function StatGroupBlock({
           >
             <div className="absolute right-1 top-1">
               <RemoveButton
-                label="Remove stat"
+                label={t("sandbox.listBlocks.removeStat")}
                 onClick={() => commit(items.filter((_, idx) => idx !== i))}
               />
             </div>
             <input
               value={str(stat.value)}
               onChange={(e) => set(i, { value: e.target.value })}
-              placeholder="99%"
+              placeholder={t("sandbox.listBlocks.statValuePlaceholder")}
               className="w-full border-0 bg-transparent p-0 text-center text-3xl font-bold tabular-nums text-foreground outline-none placeholder:text-muted-foreground/40 focus:ring-0"
             />
             <input
               value={str(stat.label)}
               onChange={(e) => set(i, { label: e.target.value })}
-              placeholder="Label"
+              placeholder={t("sandbox.listBlocks.label")}
               className="mt-1 w-full border-0 bg-transparent p-0 text-center text-sm text-muted-foreground outline-none placeholder:text-muted-foreground/40 focus:ring-0"
             />
           </div>
@@ -168,7 +175,7 @@ export function StatGroupBlock({
       </div>
       {items.length < 3 && (
         <AddButton
-          label="Add stat"
+          label={t("sandbox.listBlocks.addStat")}
           onClick={() => commit([...items, { value: "", label: "" }])}
         />
       )}
@@ -189,6 +196,7 @@ export function StepsBlock({
   steps: string;
   onChange: (next: { title: string; steps: string }) => void;
 }) {
+  const t = useT();
   const list = parseJsonArray<Step>(steps);
   const commit = (next: Step[]) =>
     onChange({ title, steps: JSON.stringify(next) });
@@ -200,7 +208,7 @@ export function StepsBlock({
       <input
         value={title}
         onChange={(e) => onChange({ title: e.target.value, steps })}
-        placeholder="Steps title (optional)"
+        placeholder={t("sandbox.listBlocks.stepsTitle")}
         className="w-full border-0 bg-transparent p-0 text-lg font-semibold uppercase tracking-wide outline-none placeholder:text-muted-foreground/50 focus:ring-0"
       />
       <ol className="space-y-3">
@@ -213,25 +221,25 @@ export function StepsBlock({
               <input
                 value={str(step.title)}
                 onChange={(e) => set(i, { title: e.target.value })}
-                placeholder="Step title"
+                placeholder={t("sandbox.listBlocks.stepTitle")}
                 className="w-full border-0 bg-transparent p-0 text-[15px] font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
               />
               <InlineText
                 value={str(step.description)}
                 onChange={(v) => set(i, { description: v })}
-                placeholder="Step description"
+                placeholder={t("sandbox.listBlocks.stepDescription")}
                 className="text-sm text-muted-foreground"
               />
             </div>
             <RemoveButton
-              label="Remove step"
+              label={t("sandbox.listBlocks.removeStep")}
               onClick={() => commit(list.filter((_, idx) => idx !== i))}
             />
           </li>
         ))}
       </ol>
       <AddButton
-        label="Add step"
+        label={t("sandbox.listBlocks.addStep")}
         onClick={() => commit([...list, { title: "", description: "" }])}
       />
     </div>
@@ -263,9 +271,10 @@ export function ComparisonBlock({
   right: string;
   onChange: (next: { left: string; right: string }) => void;
 }) {
+  const t = useT();
   const cols = {
-    left: parseCol(left, "Option A"),
-    right: parseCol(right, "Option B"),
+    left: parseCol(left, t("sandbox.listBlocks.optionA")),
+    right: parseCol(right, t("sandbox.listBlocks.optionB")),
   };
 
   const commit = (side: "left" | "right", col: Col) =>
@@ -275,13 +284,14 @@ export function ComparisonBlock({
     });
 
   const renderCol = (side: "left" | "right", col: Col, accent: string) => {
+    const t = useT();
     const itemsList = col.items ?? [];
     return (
       <div className="space-y-2 rounded-lg border p-4">
         <input
           value={str(col.title)}
           onChange={(e) => commit(side, { ...col, title: e.target.value })}
-          placeholder="Column title"
+          placeholder={t("sandbox.listBlocks.columnTitle")}
           className="w-full border-0 bg-transparent p-0 text-xs font-semibold uppercase tracking-wide outline-none placeholder:text-muted-foreground/50 focus:ring-0"
         />
         <ul className="space-y-1.5">
@@ -302,11 +312,11 @@ export function ComparisonBlock({
                     items: itemsList.map((x, idx) => (idx === i ? v : x)),
                   })
                 }
-                placeholder="Item"
+                placeholder={t("sandbox.listBlocks.item")}
                 className="text-sm text-foreground"
               />
               <RemoveButton
-                label="Remove item"
+                label={t("sandbox.listBlocks.removeItem")}
                 onClick={() =>
                   commit(side, {
                     ...col,
@@ -318,7 +328,7 @@ export function ComparisonBlock({
           ))}
         </ul>
         <AddButton
-          label="Add item"
+          label={t("sandbox.listBlocks.addItem")}
           onClick={() => commit(side, { ...col, items: [...itemsList, ""] })}
         />
       </div>

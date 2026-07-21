@@ -3,6 +3,7 @@ import posthog from "posthog-js";
 import { useEffectEvent, useRef, useState } from "react";
 import type { DeckSlide, TemplateDeck } from "@/reports/deck-types";
 import { isPostHogInitialized } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 import { resolveEmailLinkToken } from "./api";
 import Icon from "./icon";
 import { onboardingUrl, trackConnectCta } from "./onboarding";
@@ -19,6 +20,7 @@ const sharerPersonId = () =>
 // Pure deck renderer — the deck is built server-side (format_for_view) and
 // supplied by the route; see `@/reports/to-deck` + ScanGate for the data flow.
 export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
+  const t = useT();
   const total = deck.slides.length;
   const [index, setIndex] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
@@ -396,7 +398,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
     const shareUrl = buildShareUrl(s, shareId);
     try {
       await navigator.clipboard?.writeText(shareUrl);
-      setToast("Link copiado");
+      setToast(t("reports.signalDeck.linkCopied"));
       captureReport("report_slide_shared", {
         domain: deck.meta.domain,
         slide_key: s.key,
@@ -407,7 +409,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
         sharer_person_id: sharerPersonId(),
       });
     } catch {
-      setToast("Erro ao copiar");
+      setToast(t("reports.signalDeck.copyError"));
     }
     setShareOpen(false);
     setTimeout(() => setToast(null), 1800);
@@ -452,7 +454,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
         >
           <a
             href="https://decocms.com"
-            aria-label="deco — página inicial"
+            aria-label={t("reports.signalDeck.decoHome")}
             className="flex shrink-0 items-center opacity-95 transition-opacity hover:opacity-70"
           >
             <img
@@ -471,7 +473,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
               className="inline-flex h-9 items-center rounded-full px-5 text-sm font-medium transition-transform hover:scale-[1.03]"
               style={{ background: DECK.primary, color: DECK.primaryFg }}
             >
-              Share
+              {t("reports.signalDeck.share")}
             </button>
           </div>
         </div>
@@ -527,7 +529,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
             <button
               key={s.key}
               type="button"
-              aria-label={`Go to ${s.title}`}
+              aria-label={t("reports.signalDeck.goToSlide", { title: s.title })}
               onClick={() => go(i)}
               className="group relative flex h-5 items-center justify-end"
             >
@@ -580,7 +582,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
             <button
               type="button"
               onClick={(e) => handleShareClick(e, slide)}
-              aria-label="Compartilhar"
+              aria-label={t("reports.signalDeck.shareButton")}
               className="grid h-12 w-12 shrink-0 place-items-center rounded-full border lg:hidden"
               style={{
                 borderColor: "rgba(255,255,255,0.2)",
@@ -604,7 +606,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
               className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full px-6 text-base font-medium transition-transform duration-300 ease-out hover:scale-105 lg:hidden"
               style={{ background: DECK.lime, color: DECK.forest }}
             >
-              <span>Ver diagnóstico completo</span>
+              <span>{t("reports.signalDeck.viewFullDiagnostic")}</span>
               <Icon name="arrow_forward" size="large" />
             </a>
             {/* desktop: Share on the right (CTA is in-slide) */}
@@ -619,7 +621,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
               }}
             >
               <Icon name="share" size="medium" />
-              <span>Compartilhar</span>
+              <span>{t("reports.signalDeck.shareButton")}</span>
             </button>
           </>
         ) : (
@@ -665,7 +667,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                 <span className="group relative">
                   <button
                     type="button"
-                    aria-label="Como medimos"
+                    aria-label={t("reports.signalDeck.methodology")}
                     aria-expanded={methoOpen}
                     onClick={() => {
                       setFeedbackOpen(false);
@@ -676,7 +678,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                   >
                     <Icon name="info" size="medium" />
                     <span className="hidden whitespace-nowrap underline decoration-1 underline-offset-2 opacity-90 sm:inline">
-                      Como medimos
+                      {t("reports.signalDeck.methodology")}
                     </span>
                   </button>
                   <span
@@ -701,7 +703,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
               <span className="group relative">
                 <button
                   type="button"
-                  aria-label="A IA errou?"
+                  aria-label={t("reports.signalDeck.reportError")}
                   aria-expanded={feedbackOpen}
                   onClick={() => {
                     setMethoOpen(false);
@@ -722,7 +724,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                 >
                   <Icon name="flag" size="medium" />
                   <span className="whitespace-nowrap underline decoration-1 underline-offset-2 opacity-90">
-                    A IA errou?
+                    {t("reports.signalDeck.reportError")}
                   </span>
                 </button>
                 <div
@@ -740,11 +742,11 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                 >
                   {feedbackSent ? (
                     <p style={{ color: DECK.ink }}>
-                      Obrigado! Iremos revisar esse slide.
+                      {t("reports.signalDeck.feedbackThanks")}
                     </p>
                   ) : (
                     <>
-                      <p>O que a análise leu errado neste slide?</p>
+                      <p>{t("reports.signalDeck.feedbackQuestion")}</p>
                       <textarea
                         rows={3}
                         value={feedbackText}
@@ -763,7 +765,9 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                             });
                           }
                         }}
-                        placeholder="Ex: o preço mostrado está desatualizado, a métrica não condiz com o segmento…"
+                        placeholder={t(
+                          "reports.signalDeck.feedbackPlaceholder",
+                        )}
                         className="w-full resize-none rounded-xl border px-3 py-2 text-sm leading-relaxed outline-none focus:ring-1 focus:ring-[#282524]"
                         style={{
                           borderColor: DECK.border,
@@ -795,7 +799,9 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                       >
                         <Icon name="flag" size="small" />
                         <span>
-                          {feedbackSubmitting ? "Enviando…" : "Reportar erro"}
+                          {feedbackSubmitting
+                            ? t("reports.signalDeck.sending")
+                            : t("reports.signalDeck.reportError")}
                         </span>
                       </button>
                     </>
@@ -821,15 +827,20 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                     border: `1px solid ${DECK.border}`,
                     color: DECK.muted,
                   }}
-                  title={`Cobertura: ${deck.meta.scores.coverage.checks_probed} de ${deck.meta.scores.coverage.checks_total} verificações medidas neste relatório gratuito`}
+                  title={t("reports.signalDeck.coverageTooltip", {
+                    probed: deck.meta.scores.coverage.checks_probed,
+                    total: deck.meta.scores.coverage.checks_total,
+                  })}
                 >
                   <span style={{ color: DECK.ink }}>
                     {deck.meta.scores.cover}/100
                   </span>
                   <span aria-hidden>·</span>
                   <span>
-                    {deck.meta.scores.coverage.checks_probed}/
-                    {deck.meta.scores.coverage.checks_total} medidos
+                    {t("reports.signalDeck.measured", {
+                      probed: deck.meta.scores.coverage.checks_probed,
+                      total: deck.meta.scores.coverage.checks_total,
+                    })}
                   </span>
                 </span>
               ) : null}
@@ -844,7 +855,9 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                 }}
               >
                 <Icon name="share" size="large" />
-                <span className="hidden sm:inline">Compartilhar</span>
+                <span className="hidden sm:inline">
+                  {t("reports.signalDeck.shareButton")}
+                </span>
               </button>
               {/* mobile: up/down icon buttons */}
               <div className="flex items-center gap-1 sm:hidden">
@@ -852,7 +865,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                   type="button"
                   onClick={() => go(index - 1)}
                   disabled={index === 0}
-                  aria-label="Slide anterior"
+                  aria-label={t("reports.signalDeck.previousSlide")}
                   className="grid h-12 w-12 place-items-center rounded-full border disabled:opacity-30"
                   style={{
                     borderColor: DECK.inputBorder,
@@ -865,7 +878,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                 <button
                   type="button"
                   onClick={() => go(index + 1)}
-                  aria-label="Próximo slide"
+                  aria-label={t("reports.signalDeck.nextSlide")}
                   className="grid h-12 w-12 place-items-center rounded-full"
                   style={{ background: DECK.primary, color: DECK.primaryFg }}
                 >
@@ -879,7 +892,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
                 className="hidden h-12 items-center gap-2 rounded-full px-6 text-sm font-medium sm:inline-flex"
                 style={{ background: DECK.primary, color: DECK.primaryFg }}
               >
-                <span>Próximo</span>
+                <span>{t("reports.signalDeck.next")}</span>
                 <Icon name="arrow_forward" size="medium" />
               </button>
             </div>
@@ -910,7 +923,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
             style={{ color: DECK.ink }}
           >
             <Icon name="link" size="medium" />
-            Copiar link
+            {t("reports.signalDeck.copyLink")}
           </button>
           <a
             role="menuitem"
@@ -941,7 +954,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
             >
               <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.748l7.73-8.835L1.254 2.25H8.08l4.261 5.635zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
             </svg>
-            Compartilhar no X
+            {t("reports.signalDeck.shareOnX")}
           </a>
           <a
             role="menuitem"
@@ -972,7 +985,7 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
             >
               <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
             </svg>
-            Compartilhar no LinkedIn
+            {t("reports.signalDeck.shareOnLinkedIn")}
           </a>
         </div>
       )}

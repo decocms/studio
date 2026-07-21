@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { SchemaForm } from "@/web/components/sections-editor/schema-form";
 import {
@@ -53,6 +54,7 @@ export function AvailableSectionEditor({
     data: Record<string, unknown>,
   ) => void;
 }) {
+  const t = useT();
   const inset = useInsetContext();
   const agentSiteSlug =
     inset?.entity?.id === virtualMcpId
@@ -102,7 +104,7 @@ export function AvailableSectionEditor({
         <div className="shrink-0 border-b px-3 py-2.5">
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
             <nav
-              aria-label="Editing breadcrumb"
+              aria-label={t("sandbox.availableSectionEditor.editingBreadcrumb")}
               className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
             >
               {headerCrumbs.map((crumb, index) => {
@@ -139,19 +141,20 @@ export function AvailableSectionEditor({
                   className="size-8 shrink-0"
                   disabled={isCreating}
                   onClick={() => setSaveOpen(true)}
-                  aria-label="Save as global section"
+                  aria-label={t(
+                    "sandbox.availableSectionEditor.saveAsGlobalSection",
+                  )}
                 >
                   <Save01 size={14} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                Save as global section
+                {t("sandbox.availableSectionEditor.saveAsGlobalSection")}
               </TooltipContent>
             </Tooltip>
           </div>
           <p className="mt-1.5 py-1 pl-1 text-sm leading-snug text-muted-foreground">
-            {typeLabel} — edits stay local until you save this as a global
-            section.
+            {t("sandbox.availableSectionEditor.localEditsHint", { typeLabel })}
           </p>
         </div>
 
@@ -174,7 +177,7 @@ export function AvailableSectionEditor({
                 />
               ) : (
                 <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                  No editable fields for this section.
+                  {t("sandbox.availableSectionEditor.noEditableFields")}
                 </div>
               )}
             </div>

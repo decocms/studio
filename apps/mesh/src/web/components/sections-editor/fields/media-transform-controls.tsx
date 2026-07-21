@@ -1,5 +1,6 @@
 import { useId } from "react";
 import { DotsVertical } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import {
@@ -36,6 +37,7 @@ export function MediaTransformControls({
   onChange: (next: string) => void;
   showMuted?: boolean;
 }) {
+  const t = useT();
   const mutedId = useId();
   const quality = getQualityFromUrl(value);
   const muted = getMutedFromUrl(value);
@@ -48,7 +50,9 @@ export function MediaTransformControls({
           variant="outline"
           size="sm"
           className="h-9 shrink-0"
-          aria-label="Media options"
+          aria-label={t(
+            "sectionsEditor.mediaTransformControls.mediaOptionsLabel",
+          )}
         >
           <DotsVertical size={14} />
         </Button>
@@ -56,7 +60,9 @@ export function MediaTransformControls({
       <PopoverContent align="end" className="w-auto min-w-52 p-3">
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Quality</Label>
+            <Label className="text-xs text-muted-foreground">
+              {t("sectionsEditor.mediaTransformControls.qualityLabel")}
+            </Label>
             <ToggleGroup
               type="single"
               variant="outline"
@@ -86,7 +92,7 @@ export function MediaTransformControls({
                 htmlFor={mutedId}
                 className="text-xs text-muted-foreground"
               >
-                Muted
+                {t("sectionsEditor.mediaTransformControls.mutedLabel")}
               </Label>
               <Switch
                 id={mutedId}

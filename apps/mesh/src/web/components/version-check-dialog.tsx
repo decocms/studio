@@ -3,6 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { PublicConfig } from "@/api/routes/public-config";
 import { KEYS } from "@/web/lib/query-keys";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const TOAST_ID = "version-check";
@@ -39,6 +40,7 @@ export function nextDrift(
  * bundle's build-time __MESH_VERSION__.
  */
 export function VersionCheckDialog() {
+  const t = useT();
   const { data: serverVersion, dataUpdatedAt } = useQuery({
     queryKey: KEYS.appVersionCheck(),
     queryFn: async () => {
@@ -72,13 +74,12 @@ export function VersionCheckDialog() {
   const [notified, setNotified] = useState(false);
   if (isStale && !notified) {
     setNotified(true);
-    toast("A new version is available", {
+    toast(t("common.versionCheckDialog.available"), {
       id: TOAST_ID,
-      description:
-        "You're viewing an outdated version of this page. Refresh to get the latest updates.",
+      description: t("common.versionCheckDialog.outdatedVersion"),
       duration: Infinity,
       action: {
-        label: "Refresh",
+        label: t("common.versionCheckDialog.refresh"),
         onClick: () => window.location.reload(),
       },
     });

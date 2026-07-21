@@ -33,6 +33,7 @@ import {
   useMonitoringLlmStats,
 } from "@/web/components/monitoring/hooks.ts";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   buildFilledStatsData,
   formatCompactNumber,
@@ -288,6 +289,7 @@ export function OverviewTabContent({
   streamingRefetchInterval,
   llmUserIds,
 }: OverviewTabProps) {
+  const t = useT();
   const interval = getIntervalFromRange(displayDateRange);
   const refetchInterval = isStreaming ? streamingRefetchInterval : false;
 
@@ -371,10 +373,9 @@ export function OverviewTabContent({
         <Alert variant="destructive">
           <AlertTriangle />
           <div className="flex flex-col gap-1">
-            <AlertTitle>Failed to load monitoring data</AlertTitle>
+            <AlertTitle>{t("orgs.overview.failedToLoadTitle")}</AlertTitle>
             <AlertDescription>
-              We couldn't fetch your monitoring stats right now. Please try
-              again later.
+              {t("orgs.overview.failedToLoadDescription")}
             </AlertDescription>
           </div>
         </Alert>
@@ -382,7 +383,7 @@ export function OverviewTabContent({
 
       {/* Row 1: Tool Calls — full width */}
       <MonitoringMetricCard
-        title="Tool Calls"
+        title={t("orgs.overview.toolCalls")}
         value={stats.totalCalls.toLocaleString()}
       >
         <KPIChart
@@ -391,7 +392,7 @@ export function OverviewTabContent({
           colorNum={1}
           chartHeight="h-[120px] md:h-[180px]"
           variant="area"
-          ariaLabel="Tool calls over time"
+          ariaLabel={t("orgs.overview.toolCallsAriaLabel")}
         />
         <ConnectionLeaderboardTable
           metrics={connectionBreakdown}
@@ -404,7 +405,7 @@ export function OverviewTabContent({
       {/* Row 2: Latency + Errors — half width each */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MonitoringMetricCard
-          title="Latency"
+          title={t("orgs.overview.latency")}
           value={formatDuration(
             latencyMetric === "avg" ? stats.avgDurationMs : stats.p95DurationMs,
           )}
@@ -417,8 +418,12 @@ export function OverviewTabContent({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="avg">Avg</SelectItem>
-                <SelectItem value="p95">P95</SelectItem>
+                <SelectItem value="avg">
+                  {t("orgs.overview.latencyAvg")}
+                </SelectItem>
+                <SelectItem value="p95">
+                  {t("orgs.overview.latencyP95")}
+                </SelectItem>
               </SelectContent>
             </Select>
           }
@@ -428,7 +433,10 @@ export function OverviewTabContent({
             dataKey={latencyMetric}
             colorNum={4}
             chartHeight="h-[120px] md:h-[180px]"
-            ariaLabel={`${latencyMetric === "avg" ? "Average" : "P95"} latency over time`}
+            ariaLabel={t("orgs.overview.latencyAriaLabel", {
+              type:
+                latencyMetric === "avg" ? t("orgs.overview.average") : "P95",
+            })}
           />
           <ConnectionLeaderboardTable
             metrics={connectionBreakdown}
@@ -439,7 +447,7 @@ export function OverviewTabContent({
         </MonitoringMetricCard>
 
         <MonitoringMetricCard
-          title="Errors"
+          title={t("orgs.overview.errors")}
           value={stats.totalErrors.toLocaleString()}
         >
           <KPIChart
@@ -447,11 +455,11 @@ export function OverviewTabContent({
             dataKey="errors"
             colorNum={3}
             chartHeight="h-[120px] md:h-[180px]"
-            ariaLabel="Errors over time"
+            ariaLabel={t("orgs.overview.errorsAriaLabel")}
           />
           {stats.totalErrors === 0 ? (
             <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
-              No errors in this period
+              {t("orgs.overview.noErrors")}
             </div>
           ) : (
             <ConnectionLeaderboardTable
@@ -468,7 +476,7 @@ export function OverviewTabContent({
       <div className="flex items-center gap-3 pt-4">
         <div className="h-px flex-1 bg-border" />
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          AI Usage
+          {t("orgs.overview.aiUsage")}
         </span>
         <div className="h-px flex-1 bg-border" />
       </div>
@@ -476,7 +484,7 @@ export function OverviewTabContent({
       {/* AI Usage — Calls, Tokens, Cost */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <MonitoringMetricCard
-          title="AI Calls"
+          title={t("orgs.overview.aiCalls")}
           value={llmStatsData.totalCalls.toLocaleString()}
         >
           <KPIChart
@@ -484,18 +492,20 @@ export function OverviewTabContent({
             dataKey="calls"
             colorNum={1}
             chartHeight="h-[80px] md:h-[120px]"
-            ariaLabel="AI calls over time"
+            ariaLabel={t("orgs.overview.aiCallsAriaLabel")}
           />
           <ModelLeaderboardTable models={llmModels} mode="calls" />
         </MonitoringMetricCard>
 
         <MonitoringMetricCard
-          title="Tokens"
+          title={t("orgs.overview.tokens")}
           value={formatCompactNumber(totalTokens)}
           action={
             <span className="text-xs text-muted-foreground tabular-nums">
-              {formatCompactNumber(totalInputTokens)} in ·{" "}
-              {formatCompactNumber(totalOutputTokens)} out
+              {formatCompactNumber(totalInputTokens)}{" "}
+              {t("orgs.overview.tokensIn")} ·{" "}
+              {formatCompactNumber(totalOutputTokens)}{" "}
+              {t("orgs.overview.tokensOut")}
             </span>
           }
         >
@@ -504,18 +514,18 @@ export function OverviewTabContent({
             dataKey="totalTokens"
             colorNum={2}
             chartHeight="h-[80px] md:h-[120px]"
-            ariaLabel="Total tokens over time"
+            ariaLabel={t("orgs.overview.tokensAriaLabel")}
           />
           <ModelLeaderboardTable models={llmModels} mode="tokens" />
         </MonitoringMetricCard>
 
         <MonitoringMetricCard
-          title="Cost"
+          title={t("orgs.overview.cost")}
           value={totalCostUsd > 0 ? formatUsd(totalCostUsd) : "—"}
           action={
             totalCostUsd === 0 ? (
               <span className="text-xs text-muted-foreground">
-                No provider cost data
+                {t("orgs.overview.noCostData")}
               </span>
             ) : undefined
           }
@@ -525,14 +535,13 @@ export function OverviewTabContent({
             dataKey="costUsd"
             colorNum={5}
             chartHeight="h-[80px] md:h-[120px]"
-            ariaLabel="Cost over time"
+            ariaLabel={t("orgs.overview.costAriaLabel")}
           />
           {totalCostUsd > 0 ? (
             <ModelLeaderboardTable models={llmModels} mode="cost" />
           ) : (
             <div className="flex items-center justify-center h-20 text-center text-xs text-muted-foreground px-4">
-              Cost is reported only for the deco AI Gateway and OpenRouter
-              providers.
+              {t("orgs.overview.costProvidersNotice")}
             </div>
           )}
         </MonitoringMetricCard>
@@ -541,11 +550,12 @@ export function OverviewTabContent({
       {/* AI Usage — Latency + Errors */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MonitoringMetricCard
-          title="AI Latency"
+          title={t("orgs.overview.aiLatency")}
           value={formatDuration(llmStatsData.avgDurationMs)}
           action={
             <span className="text-xs text-muted-foreground">
-              p95: {formatDuration(llmStatsData.p95DurationMs)}
+              {t("orgs.overview.p95Prefix")}
+              {formatDuration(llmStatsData.p95DurationMs)}
             </span>
           }
         >
@@ -554,13 +564,13 @@ export function OverviewTabContent({
             dataKey="avg"
             colorNum={4}
             chartHeight="h-[80px] md:h-[120px]"
-            ariaLabel="AI latency over time"
+            ariaLabel={t("orgs.overview.aiLatencyAriaLabel")}
           />
           <ModelLeaderboardTable models={llmModels} mode="calls" />
         </MonitoringMetricCard>
 
         <MonitoringMetricCard
-          title="AI Errors"
+          title={t("orgs.overview.aiErrors")}
           value={llmStatsData.totalErrors.toLocaleString()}
         >
           <KPIChart
@@ -568,11 +578,11 @@ export function OverviewTabContent({
             dataKey="errors"
             colorNum={3}
             chartHeight="h-[80px] md:h-[120px]"
-            ariaLabel="AI errors over time"
+            ariaLabel={t("orgs.overview.aiErrorsAriaLabel")}
           />
           {llmStatsData.totalErrors === 0 ? (
             <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
-              No AI errors in this period
+              {t("orgs.overview.noAiErrors")}
             </div>
           ) : (
             <ModelLeaderboardTable models={llmModels} mode="calls" />

@@ -1,6 +1,7 @@
 import { Folder } from "@untitledui/icons";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { useMainOverlayToggle } from "./use-main-overlay-toggle";
 
@@ -15,6 +16,7 @@ import { useMainOverlayToggle } from "./use-main-overlay-toggle";
  * tab (see useMainOverlayToggle) rather than closing the panel outright.
  */
 export function LibraryToggle() {
+  const t = useT();
   const reportsOnly = useReportsOnly();
   const { active, enabled, toggle } = useMainOverlayToggle("files");
 
@@ -24,7 +26,7 @@ export function LibraryToggle() {
 
   return (
     <HeaderTabButton
-      title="Library"
+      title={t("agentShellLayout.libraryToggle.library")}
       icon={{ kind: "component", Component: Folder }}
       active={active}
       className="wco-no-drag h-10 md:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"

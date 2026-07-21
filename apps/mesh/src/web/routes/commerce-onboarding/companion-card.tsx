@@ -1,5 +1,6 @@
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { KEYS } from "@/web/lib/query-keys";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
@@ -83,6 +84,7 @@ export function CompanionCard({
   autoOpenConfigFieldKey: string | null;
   onAutoOpenConfigHandled: () => void;
 }) {
+  const t = useT();
   const linkedConnectionId = card.linkedConnectionId;
   // GA4/GSC use the shared-SA lane by default; only fall back to the OAuth gear
   // when the card was actually satisfied via OAuth (has a companion connection).
@@ -106,7 +108,8 @@ export function CompanionCard({
     ) : card.satisfied && linkedConnectionId ? (
       <div className="flex items-center justify-end gap-1 sm:justify-start">
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <CheckCircle size={16} className="text-success" /> Conectado
+          <CheckCircle size={16} className="text-success" />{" "}
+          {t("commerceOnboarding.companionCard.connected")}
         </span>
         {/* Own Suspense boundary: CompanionConfiguration opens the companion's
             own MCP client (useMCPClient → useSuspenseQuery). Isolating it keeps
@@ -136,7 +139,10 @@ export function CompanionCard({
               className="shrink-0 text-muted-foreground hover:text-destructive"
               disabled={disabled || disconnecting}
               onClick={onDisconnect}
-              aria-label={`Desconectar ${card.title}`}
+              aria-label={t(
+                "commerceOnboarding.companionCard.disconnectAriaLabel",
+                { title: card.title },
+              )}
             >
               {disconnecting ? (
                 <Loading01 size={16} className="animate-spin" />
@@ -145,7 +151,9 @@ export function CompanionCard({
               )}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Desconectar</TooltipContent>
+          <TooltipContent>
+            {t("commerceOnboarding.companionCard.disconnect")}
+          </TooltipContent>
         </Tooltip>
       </div>
     ) : (
@@ -156,12 +164,14 @@ export function CompanionCard({
         className="sm:w-full"
         disabled={disabled || connecting}
         onClick={onConnect}
-        aria-label={`Conectar ${card.title}`}
+        aria-label={t("commerceOnboarding.companionCard.connectAriaLabel", {
+          title: card.title,
+        })}
       >
         {connecting ? (
           <Loading01 size={16} className="animate-spin" />
         ) : (
-          "Conectar"
+          t("commerceOnboarding.companionCard.connect")
         )}
       </Button>
     );
@@ -227,6 +237,7 @@ function SaConnectAction({
   disabled: boolean;
   connecting: boolean;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [savePending, setSavePending] = useState(false);
 
@@ -240,7 +251,8 @@ function SaConnectAction({
       {card.satisfied ? (
         <div className="flex items-center justify-end gap-1 sm:justify-start">
           <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <CheckCircle size={16} className="text-success" /> Conectado
+            <CheckCircle size={16} className="text-success" />{" "}
+            {t("commerceOnboarding.companionCard.connected")}
           </span>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -250,12 +262,17 @@ function SaConnectAction({
                 size="icon-sm"
                 className="shrink-0"
                 onClick={() => setOpen(true)}
-                aria-label={`Configurar ${card.title}`}
+                aria-label={t(
+                  "commerceOnboarding.companionCard.configureAriaLabel",
+                  { title: card.title },
+                )}
               >
                 <Settings01 size={16} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Editar configuração</TooltipContent>
+            <TooltipContent>
+              {t("commerceOnboarding.companionCard.editConfiguration")}
+            </TooltipContent>
           </Tooltip>
         </div>
       ) : (
@@ -266,12 +283,14 @@ function SaConnectAction({
           className="sm:w-full"
           disabled={disabled || connecting}
           onClick={() => setOpen(true)}
-          aria-label={`Conectar ${card.title}`}
+          aria-label={t("commerceOnboarding.companionCard.connectAriaLabel", {
+            title: card.title,
+          })}
         >
           {connecting ? (
             <Loading01 size={16} className="animate-spin" />
           ) : (
-            "Conectar"
+            t("commerceOnboarding.companionCard.connect")
           )}
         </Button>
       )}
@@ -289,7 +308,7 @@ function SaConnectAction({
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <DialogTitle>{card.title}</DialogTitle>
               <DialogDescription>
-                Conceda acesso ao nosso leitor e informe o identificador
+                {t("commerceOnboarding.companionCard.grantAccessDescription")}
               </DialogDescription>
             </div>
           </DialogHeader>
@@ -343,6 +362,7 @@ function CompanionConfiguration({
   autoOpen,
   onAutoOpenHandled,
 }: CompanionConfigurationProps) {
+  const t = useT();
   const companionClient = useMCPClient({
     connectionId,
     orgId: org.id,
@@ -386,11 +406,15 @@ function CompanionConfiguration({
       await queryClient.invalidateQueries({
         queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
       });
-      toast.success(`${card.title} desconectado`);
+      toast.success(
+        t("commerceOnboarding.companionCard.disconnectedSuccess", {
+          title: card.title,
+        }),
+      );
       closeDialog();
     },
     onError: () => {
-      toast.error("Não foi possível desconectar. Tente novamente.");
+      toast.error(t("commerceOnboarding.companionCard.disconnectError"));
     },
   });
 
@@ -409,13 +433,18 @@ function CompanionConfiguration({
             size="icon-sm"
             className="shrink-0"
             onClick={() => setDialogOpen(true)}
-            aria-label={`Configurar ${card.title}`}
+            aria-label={t(
+              "commerceOnboarding.companionCard.configureAriaLabel",
+              { title: card.title },
+            )}
           >
             <Settings01 size={16} />
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {savedConfigEntries.length > 0 ? "Editar configuração" : "Configurar"}
+          {savedConfigEntries.length > 0
+            ? t("commerceOnboarding.companionCard.editConfiguration")
+            : t("commerceOnboarding.companionCard.configure")}
         </TooltipContent>
       </Tooltip>
 
@@ -432,7 +461,9 @@ function CompanionConfiguration({
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <DialogTitle>{card.title}</DialogTitle>
               <DialogDescription>
-                Configure o {card.title} para enriquecer os dados
+                {t("commerceOnboarding.companionCard.configureDescription", {
+                  title: card.title,
+                })}
               </DialogDescription>
             </div>
           </DialogHeader>

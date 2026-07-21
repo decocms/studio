@@ -9,6 +9,7 @@ import {
   CommandItem,
   CommandEmpty,
 } from "@deco/ui/components/command.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { resolveBlockSchemaMetadata, type LiveMeta } from "./resolve-schema";
 import { MatcherIcon, resolveMatcherIconName } from "./matcher-icons";
 import { labelFromResolveType } from "./section-types";
@@ -127,6 +128,7 @@ export function MatcherPicker({
   onSelectGlobal?: (blockKey: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
   // A saved-block reference wins the trigger icon; otherwise fall back to the
   // built-in matcher module's icon.
   const currentGlobal = currentGlobalKey
@@ -163,13 +165,17 @@ export function MatcherPicker({
       <CommandDialog
         open={open}
         onOpenChange={setOpen}
-        title="Choose a rule"
-        description="Pick how to target users for this variant"
+        title={t("sectionsEditor.matcherPicker.chooseRuleTitle")}
+        description={t("sectionsEditor.matcherPicker.chooseRuleDescription")}
         className="sm:max-w-lg"
       >
-        <CommandInput placeholder="Search rules..." />
+        <CommandInput
+          placeholder={t("sectionsEditor.matcherPicker.searchRulesPlaceholder")}
+        />
         <CommandList>
-          <CommandEmpty>No rules found.</CommandEmpty>
+          <CommandEmpty>
+            {t("sectionsEditor.matcherPicker.noRulesFound")}
+          </CommandEmpty>
           <CommandGroup>
             <CommandItem
               value="always Target all users"
@@ -181,9 +187,11 @@ export function MatcherPicker({
             >
               <MatcherIcon iconName={ALWAYS_MATCHER_ICON} size="sm" />
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="text-sm">Always</span>
+                <span className="text-sm">
+                  {t("sectionsEditor.matcherPicker.alwaysLabel")}
+                </span>
                 <span className="text-xs text-muted-foreground">
-                  Target all users
+                  {t("sectionsEditor.matcherPicker.targetAllUsers")}
                 </span>
               </div>
             </CommandItem>
@@ -212,7 +220,9 @@ export function MatcherPicker({
             ))}
           </CommandGroup>
           {globals.length > 0 && (
-            <CommandGroup heading="Saved rules">
+            <CommandGroup
+              heading={t("sectionsEditor.matcherPicker.savedRulesHeading")}
+            >
               {globals.map((global) => (
                 <CommandItem
                   key={global.blockKey}

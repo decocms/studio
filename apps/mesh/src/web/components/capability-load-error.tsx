@@ -2,6 +2,7 @@ import { AlertTriangle } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useQueryClient } from "@tanstack/react-query";
+import { useT } from "@/web/i18n/use-t.ts";
 import { KEYS } from "@/web/lib/query-keys";
 
 /**
@@ -10,6 +11,7 @@ import { KEYS } from "@/web/lib/query-keys";
  * as a no-access denial. "Try again" invalidates the query, which refetches it.
  */
 export function CapabilityLoadError() {
+  const t = useT();
   const queryClient = useQueryClient();
   const { locator } = useProjectContext();
 
@@ -19,9 +21,11 @@ export function CapabilityLoadError() {
         <AlertTriangle size={28} />
       </div>
       <div className="space-y-1">
-        <h3 className="text-lg font-medium">Couldn't load your permissions</h3>
+        <h3 className="text-lg font-medium">
+          {t("common.capabilityLoadError.title")}
+        </h3>
         <p className="mx-auto max-w-sm text-sm text-muted-foreground">
-          Something went wrong checking your access. This is usually temporary.
+          {t("common.capabilityLoadError.description")}
         </p>
       </div>
       <Button
@@ -33,7 +37,7 @@ export function CapabilityLoadError() {
           })
         }
       >
-        Try again
+        {t("common.capabilityLoadError.tryAgain")}
       </Button>
     </div>
   );

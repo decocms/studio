@@ -22,6 +22,7 @@ import {
   humanizeIconName,
   parseIconString,
 } from "./agent-icon";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface SimpleIconPickerProps {
   value: string | null | undefined;
@@ -47,6 +48,7 @@ export function SimpleIconPicker({
   className,
   disabled,
 }: SimpleIconPickerProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -96,7 +98,7 @@ export function SimpleIconPicker({
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Filter..."
+                placeholder={t("common.simpleIconPicker.filterPlaceholder")}
                 className="h-7 text-xs pl-7"
               />
             </div>
@@ -129,7 +131,7 @@ export function SimpleIconPicker({
             </div>
             {filteredNames.length === 0 && (
               <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
-                No icons found
+                {t("common.simpleIconPicker.noIconsFound")}
               </div>
             )}
           </ScrollArea>

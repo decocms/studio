@@ -37,6 +37,7 @@ import {
 } from "@deco/ui/components/tabs.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ErrorBoundary } from "@/web/components/error-boundary";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useDebouncedValue } from "@/web/hooks/use-debounced-value";
 import {
   type FileConfigInfo,
@@ -61,21 +62,28 @@ interface FilePickerDialogProps {
 export const LAST_CONFIG_KEY = "file-picker:last-config-id";
 
 export function FilePickerDialog(props: FilePickerDialogProps) {
+  const t = useT();
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>
-            {props.mode === "image" ? "Pick an image" : "Pick a file"}
+            {props.mode === "image"
+              ? t("filePicker.filePickerDialog.pickAnImage")
+              : t("filePicker.filePickerDialog.pickAFile")}
           </DialogTitle>
           <DialogDescription>
-            Upload a new file or pick one previously uploaded to a configured
-            bucket.
+            {t("filePicker.filePickerDialog.description")}
           </DialogDescription>
         </DialogHeader>
         <ErrorBoundary
           fallback={({ error }) => (
-            <PickerError error={error ?? new Error("Failed to load buckets")} />
+            <PickerError
+              error={
+                error ??
+                new Error(t("filePicker.filePickerDialog.failedToLoadBuckets"))
+              }
+            />
           )}
         >
           <Suspense fallback={<Skeleton className="h-64 w-full" />}>
@@ -169,20 +177,23 @@ function PickerBody({
 
 function NoConfigsEmpty() {
   const { org } = useProjectContext();
+  const t = useT();
   return (
     <div className="rounded-xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
       <div className="size-12 rounded-full bg-muted flex items-center justify-center">
         <Upload01 size={20} className="text-muted-foreground" />
       </div>
       <div>
-        <p className="font-medium text-sm">No bucket configured</p>
+        <p className="font-medium text-sm">
+          {t("filePicker.filePickerDialog.noBucketConfigured")}
+        </p>
         <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-          Add an S3-compatible bucket in Settings before you can upload files.
+          {t("filePicker.filePickerDialog.noBucketDescription")}
         </p>
       </div>
       <Button asChild size="sm" className="mt-2">
         <Link to="/$org/settings/files" params={{ org: org.slug }}>
-          Configure a bucket
+          {t("filePicker.filePickerDialog.configureABucket")}
         </Link>
       </Button>
     </div>
@@ -198,6 +209,7 @@ function BucketPanel({
   mode: FilePickerMode;
   onSelect: (url: string) => void;
 }) {
+  const t = useT();
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
   const objectsQuery = useFilePickerObjects({
@@ -239,8 +251,12 @@ function BucketPanel({
     if (failures.length > 0) {
       toast.error(
         failures.length === list.length
-          ? `Upload failed: ${failures.join("; ")}`
-          : `Some files failed: ${failures.join("; ")}`,
+          ? t("filePicker.filePickerDialog.uploadFailedAll", {
+              errors: failures.join("; "),
+            })
+          : t("filePicker.filePickerDialog.uploadFailedSome", {
+              errors: failures.join("; "),
+            }),
       );
     }
     if (firstUrl) {
@@ -291,14 +307,14 @@ function BucketPanel({
         <Upload01 size={18} className="text-muted-foreground" />
         <p className="text-sm font-medium">
           {upload.isPending
-            ? "Uploading…"
-            : "Drop files here or click to upload"}
+            ? t("filePicker.filePickerDialog.uploading")
+            : t("filePicker.filePickerDialog.dropFilesOrClick")}
         </p>
         <p className="text-xs text-muted-foreground">
-          Up to 100 MB.{" "}
+          {t("filePicker.filePickerDialog.uploadSizeLimit")}{" "}
           {mode === "image"
-            ? "Images only (PNG, JPEG, WebP, GIF, SVG, AVIF)."
-            : "Common image, video, audio, and document types."}
+            ? t("filePicker.filePickerDialog.imagesOnlyTypes")
+            : t("filePicker.filePickerDialog.commonMediaTypes")}
         </p>
         <input
           ref={fileInputRef}
@@ -323,7 +339,11 @@ function BucketPanel({
           value={search}
           onChange={setSearch}
           isSearching={isSearching}
-          placeholder={mode === "image" ? "Search images…" : "Search files…"}
+          placeholder={
+            mode === "image"
+              ? t("filePicker.filePickerDialog.searchImagesPlaceholder")
+              : t("filePicker.filePickerDialog.searchFilesPlaceholder")
+          }
           className="shrink-0"
         />
       ) : null}
@@ -355,10 +375,10 @@ function BucketPanel({
               {objectsQuery.isFetchingNextPage ? (
                 <>
                   <Loading01 size={14} className="animate-spin" />
-                  Loading…
+                  {t("filePicker.filePickerDialog.loading")}
                 </>
               ) : (
-                "Load more"
+                t("filePicker.filePickerDialog.loadMore")
               )}
             </Button>
           </div>
@@ -369,42 +389,51 @@ function BucketPanel({
 }
 
 function EmptyGalleryState() {
+  const t = useT();
   return (
     <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 py-8 text-center">
       <div className="flex size-10 items-center justify-center rounded-full bg-muted">
         <Image01 size={18} className="text-muted-foreground" />
       </div>
-      <p className="text-sm font-medium">No files in this bucket yet</p>
+      <p className="text-sm font-medium">
+        {t("filePicker.filePickerDialog.noFilesYet")}
+      </p>
       <p className="text-xs text-muted-foreground">
-        Drop a file above to get started.
+        {t("filePicker.filePickerDialog.dropFileToGetStarted")}
       </p>
     </div>
   );
 }
 
 function NonImagesNotice() {
+  const t = useT();
   return (
     <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 py-8 text-center">
       <div className="flex size-10 items-center justify-center rounded-full bg-muted">
         <Image01 size={18} className="text-muted-foreground" />
       </div>
-      <p className="text-sm font-medium">No images in this bucket yet</p>
+      <p className="text-sm font-medium">
+        {t("filePicker.filePickerDialog.noImagesYet")}
+      </p>
       <p className="text-xs text-muted-foreground">
-        The bucket has other files, but none match common image formats.
+        {t("filePicker.filePickerDialog.noImagesFormatDesc")}
       </p>
     </div>
   );
 }
 
 function NoSearchResults({ query }: { query: string }) {
+  const t = useT();
   return (
     <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 py-8 text-center">
       <div className="flex size-10 items-center justify-center rounded-full bg-muted">
         <Image01 size={18} className="text-muted-foreground" />
       </div>
-      <p className="text-sm font-medium">No matches for "{query}"</p>
+      <p className="text-sm font-medium">
+        {t("filePicker.filePickerDialog.noMatches", { query })}
+      </p>
       <p className="text-xs text-muted-foreground">
-        Try a different search, or load more files below.
+        {t("filePicker.filePickerDialog.tryDifferentSearchOrLoadMore")}
       </p>
     </div>
   );
@@ -540,6 +569,7 @@ function AssetCardMenu({
   item: PickerObject;
   onSelect: (url: string) => void;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
 
   async function copyUrl(e: React.MouseEvent | Event) {
@@ -550,7 +580,7 @@ function AssetCardMenu({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast.error("Failed to copy URL");
+      toast.error(t("filePicker.filePickerDialog.failedToCopyUrl"));
     }
   }
 
@@ -563,7 +593,7 @@ function AssetCardMenu({
           size="icon"
           className="size-7 rounded-md bg-background/80 backdrop-blur-sm"
           onClick={(e) => e.stopPropagation()}
-          aria-label="Asset actions"
+          aria-label={t("filePicker.filePickerDialog.assetActions")}
         >
           <DotsVertical size={14} />
         </Button>
@@ -571,11 +601,13 @@ function AssetCardMenu({
       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
         <DropdownMenuItem onClick={() => onSelect(item.publicUrl)}>
           <Check size={14} />
-          Use this
+          {t("filePicker.filePickerDialog.useThis")}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={copyUrl}>
           {copied ? <Check size={14} /> : <Copy01 size={14} />}
-          {copied ? "Copied" : "Copy URL"}
+          {copied
+            ? t("filePicker.filePickerDialog.copied")
+            : t("filePicker.filePickerDialog.copyUrl")}
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <a
@@ -585,7 +617,7 @@ function AssetCardMenu({
             onClick={(e) => e.stopPropagation()}
           >
             <LinkExternal01 size={14} />
-            Open in new tab
+            {t("filePicker.filePickerDialog.openInNewTab")}
           </a>
         </DropdownMenuItem>
       </DropdownMenuContent>

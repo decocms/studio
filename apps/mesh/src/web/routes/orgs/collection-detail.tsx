@@ -21,6 +21,7 @@ import { Loading01, Container } from "@untitledui/icons";
 import { Link, useParams, useRouter } from "@tanstack/react-router";
 import { Suspense, type ComponentType } from "react";
 import { ViewLayout } from "@/web/components/details/layout";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface CollectionDetailsProps {
   itemId: string;
@@ -169,15 +170,16 @@ function CollectionDetailsContent() {
     );
   }
 
+  const t = useT();
   return (
     <ViewLayout breadcrumb={breadcrumb}>
       <EmptyState
         icon={<Container size={36} className="text-muted-foreground" />}
-        title="No component defined"
-        description="No component for this collection was defined"
+        title={t("orgs.collectionDetail.noComponentDefinedTitle")}
+        description={t("orgs.collectionDetail.noComponentDefinedDescription")}
         buttonProps={{
           onClick: handleBack,
-          children: "Go back",
+          children: t("orgs.collectionDetail.goBackButton"),
         }}
       />
     </ViewLayout>
@@ -209,6 +211,7 @@ export default function CollectionDetails() {
             <Loading01
               size={32}
               className="animate-spin text-muted-foreground"
+              aria-label={useT()("orgs.collectionDetail.loadingAriaLabel")}
             />
           </div>
         }

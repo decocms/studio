@@ -40,6 +40,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const VARIANT_ICON_COLOR = "oklch(0.65 0.15 160)";
 const VARIANT_ROW_CLASS =
@@ -95,6 +96,8 @@ function VariantRowContent({
   onDuplicate?: () => void;
   onDelete?: () => void;
 }) {
+  const t = useT();
+
   return (
     <>
       <DotsGrid
@@ -118,7 +121,10 @@ function VariantRowContent({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label={`Open actions for ${label}`}
+              aria-label={t(
+                "sectionsEditor.sectionVariantList.openActionsFor",
+                { label },
+              )}
               className="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
@@ -135,7 +141,7 @@ function VariantRowContent({
                 }}
               >
                 <Edit03 size={14} />
-                Rename
+                {t("sectionsEditor.sectionVariantList.rename")}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
@@ -145,7 +151,7 @@ function VariantRowContent({
               }}
             >
               <Copy01 size={14} />
-              Duplicate
+              {t("sectionsEditor.sectionVariantList.duplicate")}
             </DropdownMenuItem>
             <DropdownMenuItem
               variant="destructive"
@@ -156,7 +162,7 @@ function VariantRowContent({
               }}
             >
               <Trash01 size={14} />
-              Delete
+              {t("sectionsEditor.sectionVariantList.delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -246,6 +252,7 @@ export function SectionVariantList({
   onReorder: (fromIndex: number, toIndex: number) => void;
   onAdd: () => void;
 }) {
+  const t = useT();
   const canDelete = variants.length > 1;
 
   const [entries, setEntries] = useState<SortableVariantEntry[]>(() =>
@@ -333,7 +340,7 @@ export function SectionVariantList({
     <div className="space-y-1 border-b p-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">
-          Variants
+          {t("sectionsEditor.sectionVariantList.title")}
         </span>
         <div className="flex items-center gap-0.5">
           <Tooltip>
@@ -342,14 +349,18 @@ export function SectionVariantList({
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Add variant"
+                aria-label={t(
+                  "sectionsEditor.sectionVariantList.addVariantAriaLabel",
+                )}
                 className="size-6"
                 onClick={onAdd}
               >
                 <Plus size={14} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Add variant</TooltipContent>
+            <TooltipContent>
+              {t("sectionsEditor.sectionVariantList.addVariant")}
+            </TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -357,14 +368,18 @@ export function SectionVariantList({
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Remove all variants"
+                aria-label={t(
+                  "sectionsEditor.sectionVariantList.removeAllVariantsAriaLabel",
+                )}
                 className="size-6 text-muted-foreground hover:text-destructive"
                 onClick={onRemoveAll}
               >
                 <Trash01 size={14} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Remove all variants</TooltipContent>
+            <TooltipContent>
+              {t("sectionsEditor.sectionVariantList.removeAllVariants")}
+            </TooltipContent>
           </Tooltip>
         </div>
       </div>

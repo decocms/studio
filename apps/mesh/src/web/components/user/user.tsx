@@ -8,6 +8,7 @@
 import { Avatar, type AvatarProps } from "@deco/ui/components/avatar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useUserById } from "../../hooks/use-user-by-id";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface UserProps {
   /**
@@ -44,6 +45,7 @@ export function User({
   avatarOnly = false,
   className,
 }: UserProps) {
+  const t = useT();
   const { data: user, isLoading, isError } = useUserById(id);
 
   // Loading state
@@ -70,7 +72,9 @@ export function User({
         <Avatar shape="circle" size={size} fallback="?" muted />
         {!avatarOnly && (
           <div className="flex flex-col">
-            <div className="text-sm text-muted-foreground">Unknown User</div>
+            <div className="text-sm text-muted-foreground">
+              {t("user.user.unknownUser")}
+            </div>
           </div>
         )}
       </div>

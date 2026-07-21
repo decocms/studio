@@ -13,6 +13,7 @@ import {
   usePublishRequestCount,
   useRegistryConfig,
 } from "@/web/hooks/registry/use-registry";
+import { useT } from "@/web/i18n/use-t.ts";
 import RegistryItemsPage from "./registry-items-page";
 import RegistryRequestsPage from "./registry-requests-page";
 import RegistrySettingsPage from "./registry-settings-page";
@@ -67,6 +68,7 @@ function HeaderTabs({
 }
 
 export default function RegistryLayout({ onBack }: { onBack?: () => void }) {
+  const t = useT();
   const [activeTab, setActiveTab] = useState<NavItem["tab"]>("items");
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const { registryName, registryIcon, acceptPublishRequests } =
@@ -83,7 +85,7 @@ export default function RegistryLayout({ onBack }: { onBack?: () => void }) {
   const navItems: NavItem[] = [
     {
       id: "items",
-      label: "Items",
+      label: t("registry.registryLayout.itemsTab"),
       icon: Container,
       tab: "items",
       count:
@@ -93,15 +95,25 @@ export default function RegistryLayout({ onBack }: { onBack?: () => void }) {
       ? [
           {
             id: "requests",
-            label: "Requests",
+            label: t("registry.registryLayout.requestsTab"),
             icon: CheckCircle,
             tab: "requests" as const,
             count: pendingCount,
           },
         ]
       : []),
-    { id: "qa", label: "QA", icon: Tool02, tab: "qa" },
-    { id: "settings", label: "Settings", icon: Settings02, tab: "settings" },
+    {
+      id: "qa",
+      label: t("registry.registryLayout.qaTab"),
+      icon: Tool02,
+      tab: "qa",
+    },
+    {
+      id: "settings",
+      label: t("registry.registryLayout.settingsTab"),
+      icon: Settings02,
+      tab: "settings",
+    },
   ];
 
   return (

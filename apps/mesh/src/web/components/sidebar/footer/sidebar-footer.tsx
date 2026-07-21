@@ -15,13 +15,15 @@ import { useNavigate } from "@tanstack/react-router";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { SidebarTopActions } from "@/web/components/sidebar/top-actions";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
+import { useT } from "@/web/i18n/use-t";
 
 function SettingsFullButton() {
+  const t = useT();
   const navigate = useNavigate();
   const { org } = useProjectContext();
   return (
     <SidebarMenuButton
-      tooltip="Settings"
+      tooltip={t("sidebar.sidebarFooter.settings")}
       onClick={() =>
         navigate({
           to: "/$org/settings",
@@ -30,18 +32,19 @@ function SettingsFullButton() {
       }
     >
       <Settings02 />
-      <span>Settings</span>
+      <span>{t("sidebar.sidebarFooter.settings")}</span>
     </SidebarMenuButton>
   );
 }
 
 function SettingsIconButton() {
+  const t = useT();
   const navigate = useNavigate();
   const { org } = useProjectContext();
   return (
     <button
       type="button"
-      aria-label="Settings"
+      aria-label={t("sidebar.sidebarFooter.settings")}
       onClick={() =>
         navigate({ to: "/$org/settings", params: { org: org.slug } })
       }
@@ -53,6 +56,7 @@ function SettingsIconButton() {
 }
 
 function SidebarExtraActions() {
+  const t = useT();
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   return (
     <>
@@ -60,20 +64,22 @@ function SidebarExtraActions() {
         <SidebarMenuItem>
           <InviteMemberDialog
             trigger={
-              <SidebarMenuButton tooltip="Invite members">
+              <SidebarMenuButton
+                tooltip={t("sidebar.sidebarFooter.inviteMembers")}
+              >
                 <UserPlus01 />
-                <span>Invite members</span>
+                <span>{t("sidebar.sidebarFooter.inviteMembers")}</span>
               </SidebarMenuButton>
             }
           />
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
-            tooltip="Add connection"
+            tooltip={t("sidebar.sidebarFooter.addConnection")}
             onClick={() => setConnectionsOpen(true)}
           >
             <ZapSquare />
-            <span>Add connection</span>
+            <span>{t("sidebar.sidebarFooter.addConnection")}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
@@ -87,14 +93,17 @@ function SidebarExtraActions() {
 }
 
 function SidebarExtraActionsCommerce() {
+  const t = useT();
   return (
     <SidebarMenu className="gap-0.5">
       <SidebarMenuItem>
         <InviteMemberDialog
           trigger={
-            <SidebarMenuButton tooltip="Invite members">
+            <SidebarMenuButton
+              tooltip={t("sidebar.sidebarFooter.inviteMembers")}
+            >
               <UserPlus01 />
-              <span>Invite members</span>
+              <span>{t("sidebar.sidebarFooter.inviteMembers")}</span>
             </SidebarMenuButton>
           }
         />
