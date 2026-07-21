@@ -237,7 +237,10 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       // built-in `user` role is enforced like any member: it gets basic-usage
       // (granted out-of-band in AccessControl) plus its explicit Better Auth /
       // connection grants, and nothing else. See ADMIN_ROLES in auth/roles.ts.
-      if (role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])) {
+      // `role` may be Better Auth's comma-joined multi-role string, so a
+      // plain exact-match here would deny a legitimate multi-role
+      // owner/admin the bypass — see `hasAdminRole`.
+      if (hasAdminRole(role)) {
         return true;
       }
 
@@ -446,7 +449,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
 import { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import { ConnectionEntity } from "@/tools/connection/schema";
-import { ADMIN_ROLES, BUILTIN_ROLES } from "../auth/roles";
+import { BUILTIN_ROLES, hasAdminRole } from "../auth/roles";
 import { checkApiKeyPermission } from "../auth/api-key-permissions";
 import {
   getCachedBuiltinRoleStatements,

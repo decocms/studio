@@ -22,6 +22,19 @@ export type BuiltinRole = (typeof BUILTIN_ROLES)[number];
 export const ADMIN_ROLES: BuiltinRole[] = ["owner", "admin"];
 
 /**
+ * True if `role` — a single role OR Better Auth's comma-joined multi-role
+ * string (see `parseRoles`) — includes an admin/owner grant. A plain
+ * `ADMIN_ROLES.includes(role)` exact-match silently denies a legitimate
+ * multi-role owner/admin (e.g. `"admin,billing-manager"`) the runtime bypass,
+ * same failure mode already fixed for `canAssignRole`'s caller check.
+ */
+export function hasAdminRole(role: string | undefined): boolean {
+  if (!role) return false;
+  const roles = role.split(",");
+  return roles.some((r) => (ADMIN_ROLES as readonly string[]).includes(r));
+}
+
+/**
  * Validate that the caller's role is allowed to assign the target role(s).
  * Owners can assign any role. Admins can assign "user" or "admin" but NOT
  * "owner" — preventing vertical privilege escalation.
