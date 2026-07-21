@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@/shared/task-board";
+import { TaskBoardStorage } from "@/storage/task-board";
+import type { TaskBoardItem } from "@/storage/types";
 import { reactToSuperAgentDelegation } from "@/tools/task-board/enqueue-super-agent";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
 import { TaskBoardItemPrioritySchema } from "@/tools/task-board/schema";
@@ -22,7 +24,20 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *
  * Items land as status "triage" with `created_by = "system"` (the established
  * sentinel for non-user principals).
- * `source` is accepted for observability / future dedup and not persisted yet.
+ *
+ * TWO IDEMPOTENCY KEYS, different jobs:
+ * - `source.run_id` protects the REQUEST: the whole import runs in one
+ *   transaction that first claims (org, run_id) in `task_board_import_runs`;
+ *   a replay (the reports worker's payment success page and Stripe webhook
+ *   both push, seconds apart) loses the claim and no-ops with
+ *   `{deduped: true}`. A FAILED import aborts the claim with it, so the
+ *   run_id isn't burned. Absent run_id ⇒ no claim (backward compatible).
+ * - `item.externalKey` identifies the FINDING: a key matching an OPEN item
+ *   refreshes that item (description/priority — never title/status/assignee,
+ *   a human may have touched those) instead of creating a duplicate, so
+ *   recurring diagnostic runs converge on the same card. A done item is NOT
+ *   matched — a regression creates a fresh card. Refreshes never re-trigger
+ *   the Super Agent delegation.
  *
  * An item may carry `assigneeId` — a real org member, or the Super Agent
  * sentinel to queue the task for an agent run (status forced to To Do, same as
@@ -44,6 +59,9 @@ export const importBodySchema = z.object({
         description: z.string().max(4000).nullable().optional(),
         priority: TaskBoardItemPrioritySchema.optional(),
         assigneeId: z.string().nullable().optional(),
+        /** Sender-minted finding identity (e.g. `diag:{domain}:{check_id}`) —
+         *  dedups against open items on re-import. */
+        externalKey: z.string().min(1).max(200).optional(),
       }),
     )
     .min(1)
@@ -119,34 +137,112 @@ export const createTaskBoardImportRoutes = () => {
       ownerId = owner?.userId ?? null;
     }
 
-    let created = 0;
-    let delegated = 0;
-    for (const item of items) {
-      const toSuperAgent = item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
-      const row = await ctx.storage.taskBoard.create({
-        organizationId,
-        title: item.title,
-        description: item.description ?? null,
-        // A task handed to the Super Agent is queued to run — land it in To Do.
-        status: toSuperAgent ? "todo" : undefined,
-        priority: item.priority,
-        assigneeId: item.assigneeId ?? null,
-        // The delegation principal: the run executes as this user, so the
-        // Super Agent case pins the org owner; a plain member assignment keeps
-        // the honest non-user sentinel.
-        assignedBy: toSuperAgent ? ownerId : item.assigneeId ? "system" : null,
-        by: "system",
-      });
-      created++;
-      // Broadcast each imported card so open boards fill in live.
-      emitTaskBoardUpdated(organizationId, row);
-      if (toSuperAgent) {
-        delegated++;
-        await reactToSuperAgentDelegation(ctx, row);
-      }
-    }
+    const runId = parsed.data.source?.run_id;
 
-    return c.json({ created, delegated });
+    // One transaction: claim the run_id, then reconcile the batch. Losing the
+    // claim means this exact import already ran (double-fire) — no-op. An
+    // abort rolls the claim back with the items, so a failed import can be
+    // retried under the same run_id.
+    const outcome = await ctx.db.transaction().execute(async (trx) => {
+      if (runId) {
+        const claim = await trx
+          .insertInto("task_board_import_runs")
+          .values({ organization_id: organizationId, run_id: runId })
+          .onConflict((oc) =>
+            oc.columns(["organization_id", "run_id"]).doNothing(),
+          )
+          .executeTakeFirst();
+        if ((claim.numInsertedOrUpdatedRows ?? 0n) === 0n) return null;
+      }
+
+      // Open items matching the batch's external keys — these get refreshed
+      // instead of duplicated. Done items don't match: a regression is a new
+      // card.
+      const keys = items.flatMap((i) => i.externalKey ?? []);
+      const openByKey = new Map<string, string>();
+      if (keys.length > 0) {
+        const open = await trx
+          .selectFrom("task_board_items")
+          .select(["id", "external_key"])
+          .where("organization_id", "=", organizationId)
+          .where("external_key", "in", keys)
+          .where("status", "!=", "done")
+          .execute();
+        for (const row of open)
+          if (row.external_key) openByKey.set(row.external_key, row.id);
+      }
+
+      const storage = new TaskBoardStorage(trx);
+      const touched: TaskBoardItem[] = [];
+      const delegations: TaskBoardItem[] = [];
+      let created = 0;
+      let updated = 0;
+      for (const item of items) {
+        const existingId = item.externalKey
+          ? openByKey.get(item.externalKey)
+          : undefined;
+        if (existingId) {
+          // Refresh the finding's card: new evidence + severity. Title,
+          // status and assignee stay — a human may have touched them, and a
+          // refresh must never re-queue a delegation.
+          touched.push(
+            await storage.update(
+              existingId,
+              organizationId,
+              {
+                description: item.description ?? null,
+                priority: item.priority,
+              },
+              "system",
+            ),
+          );
+          updated++;
+          continue;
+        }
+        const toSuperAgent = item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+        const row = await storage.create({
+          organizationId,
+          title: item.title,
+          description: item.description ?? null,
+          // A task handed to the Super Agent is queued to run — land it in To Do.
+          status: toSuperAgent ? "todo" : undefined,
+          priority: item.priority,
+          assigneeId: item.assigneeId ?? null,
+          // The delegation principal: the run executes as this user, so the
+          // Super Agent case pins the org owner; a plain member assignment keeps
+          // the honest non-user sentinel.
+          assignedBy: toSuperAgent
+            ? ownerId
+            : item.assigneeId
+              ? "system"
+              : null,
+          externalKey: item.externalKey ?? null,
+          by: "system",
+        });
+        // A within-batch duplicate key folds into the row just created.
+        if (item.externalKey) openByKey.set(item.externalKey, row.id);
+        touched.push(row);
+        created++;
+        if (toSuperAgent) delegations.push(row);
+      }
+      return { touched, delegations, created, updated };
+    });
+
+    if (!outcome)
+      return c.json({ created: 0, updated: 0, delegated: 0, deduped: true });
+
+    // Side effects only after commit — a rolled-back import must not
+    // broadcast cards or enqueue agent runs.
+    for (const row of outcome.touched)
+      emitTaskBoardUpdated(organizationId, row);
+    for (const row of outcome.delegations)
+      await reactToSuperAgentDelegation(ctx, row);
+
+    return c.json({
+      created: outcome.created,
+      updated: outcome.updated,
+      delegated: outcome.delegations.length,
+    });
   });
 
   return app;
