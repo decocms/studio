@@ -51,7 +51,7 @@ const OFFER = { price: "R$ 99", anchor: "R$ 499" };
 
 /** Pure presentational banner — no hooks, so it renders anywhere (incl. the
  *  dev preview). The container below wires the data + navigation. */
-export function BacklogPaywallCard({ onOpen }: { onOpen: () => void }) {
+function BacklogPaywallCard({ onOpen }: { onOpen: () => void }) {
   return (
     <div className="flex flex-col gap-3 rounded-xl bg-card p-4 card-shadow sm:flex-row sm:items-center sm:gap-4">
       <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
@@ -82,7 +82,7 @@ export function BacklogPaywallCard({ onOpen }: { onOpen: () => void }) {
 
 /** The unlock modal. Presentational + the checkout call; `onDismiss` closes it
  *  ("Agora não"), leaving the board and banner usable. */
-export function BacklogPaywallModal({
+function BacklogPaywallModal({
   open,
   onOpenChange,
   cdClient,
