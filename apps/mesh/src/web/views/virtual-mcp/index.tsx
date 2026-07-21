@@ -1,4 +1,4 @@
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, ptBR as ptBRLocale } from "date-fns";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { useChatStream } from "@/web/components/chat/context";
@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/web/components/error-boundary";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { User } from "@/web/components/user/user";
 import { useT } from "@/web/i18n/use-t.ts";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 
 import {
   authenticateMcp,
@@ -263,6 +264,8 @@ function VirtualMcpDetailViewWithData({
   hideOwnTitle?: boolean;
 }) {
   const t = useT();
+  const [preferences] = usePreferences();
+  const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
   const { org } = useProjectContext();
   const actions = useVirtualMCPActions();
   const { data: lastUsedMap } = useVirtualMCPsLastUsed([virtualMcp.id]);
@@ -865,6 +868,7 @@ Define step-by-step how the agent should handle requests.
                   ? t("virtualMcp.virtualMcp.lastUsed", {
                       time: formatDistanceToNow(new Date(lastUsedAt), {
                         addSuffix: true,
+                        locale,
                       }),
                     })
                   : t("virtualMcp.virtualMcp.neverUsed")}

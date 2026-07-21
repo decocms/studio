@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, ptBR as ptBRLocale } from "date-fns";
 import { toast } from "sonner";
 import { Edit01, Trash01 } from "@untitledui/icons";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
@@ -22,6 +22,7 @@ import {
   type AiProviderKey,
 } from "@decocms/mesh-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { KEYS } from "@/web/lib/query-keys";
 import {
   getPreset,
@@ -42,6 +43,8 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const t = useT();
+  const [preferences] = usePreferences();
+  const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
 
   const isOpenAICompatible = provider.id === "openai-compatible";
 
@@ -61,7 +64,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
     if (isOpenAICompatible) {
       return providerKey.label;
     }
-    return `${providerKey.label} · added ${formatDistanceToNow(new Date(providerKey.createdAt))} ago`;
+    return `${providerKey.label} · added ${formatDistanceToNow(new Date(providerKey.createdAt), { locale })} ago`;
   })();
 
   const { mutate: deleteKey, isPending: isDeleting } = useMutation({

@@ -1,8 +1,9 @@
 import { DotsVertical, Settings02, Trash01 } from "@untitledui/icons";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, ptBR as ptBRLocale } from "date-fns";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
 import {
@@ -26,6 +27,8 @@ export function ProjectCard({
 }: ProjectCardProps) {
   const navigateToAgent = useNavigateToAgent();
   const t = useT();
+  const [preferences] = usePreferences();
+  const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
 
   return (
     <Card className="relative transition-colors group overflow-hidden flex flex-col h-full hover:bg-muted/50">
@@ -102,11 +105,13 @@ export function ProjectCard({
                 ? t("home.projectCard.lastUsed", {
                     time: formatDistanceToNow(new Date(lastUsedAt), {
                       addSuffix: true,
+                      locale,
                     }),
                   })
                 : t("home.projectCard.updated", {
                     time: formatDistanceToNow(new Date(project.updated_at), {
                       addSuffix: true,
+                      locale,
                     }),
                   })}
             </p>
