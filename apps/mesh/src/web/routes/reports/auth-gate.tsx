@@ -462,10 +462,7 @@ export function ReportAuthGate({
               }
               copy={REPORT_AUTH_COPY}
             />
-            <p
-              className="mt-4 text-xs leading-5"
-              style={{ color: DECK.faint }}
-            >
+            <p className="mt-4 text-xs leading-5" style={{ color: DECK.faint }}>
               Acesso gratuito. Leva menos de um minuto.
             </p>
             <ReportSocialProof compact />
