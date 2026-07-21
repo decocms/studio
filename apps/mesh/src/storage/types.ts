@@ -1526,10 +1526,28 @@ export interface TaskBoardItemTable {
     Date | string | null | undefined,
     Date | string | null
   >;
+  /** Sender-minted finding identity (e.g. `diag:{domain}:{check_id}`) — the
+   *  import refreshes an OPEN item with the same key instead of duplicating
+   *  it. Null for human-created cards. */
+  external_key: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One processed task-board import request: PK (organization_id, run_id).
+ *  Claimed inside the import's transaction — a replay of the same run (the
+ *  reports worker's payment success page and Stripe webhook both push) loses
+ *  the claim and no-ops instead of duplicating the board. */
+export interface TaskBoardImportRunTable {
+  organization_id: string;
+  run_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 /** Join row: a task board item ↔ an agent thread (many-to-many). */
@@ -1744,6 +1762,7 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_items: TaskBoardItemTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_item_prs: TaskBoardItemPrTable;
+  task_board_import_runs: TaskBoardImportRunTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

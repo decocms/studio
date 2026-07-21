@@ -9,18 +9,27 @@ describe("importBodySchema", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("accepts description, priority and source", () => {
+  it("accepts description, priority, externalKey and source", () => {
     const parsed = importBodySchema.safeParse({
       items: [
         {
           title: "Liberar o GPTBot no WAF",
           description: "Crawlers de IA recebem 403.",
           priority: "high",
+          externalKey: "diag:shop.com:GEO-001",
         },
       ],
       source: { url: "shop.com", run_id: "run_1" },
     });
     expect(parsed.success).toBe(true);
+  });
+
+  it("rejects an empty externalKey", () => {
+    expect(
+      importBodySchema.safeParse({
+        items: [{ title: "t", externalKey: "" }],
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects an empty batch, an empty title and an unknown priority", () => {
