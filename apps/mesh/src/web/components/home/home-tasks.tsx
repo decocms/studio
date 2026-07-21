@@ -118,7 +118,7 @@ function buildSummary(
 ): string {
   const active = tasks.filter((t) => t.status !== "done");
   if (active.length === 0) {
-    return t("home.homeTasks.allCaughtUp");
+    return "";
   }
   const inProgress = active.filter((t) => t.status === "in_progress").length;
   const inReview = active.filter((t) => t.status === "in_review").length;

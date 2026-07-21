@@ -43,8 +43,6 @@ export const home = {
   "home.homeGrid.couldntRemoveTile": "Couldn't remove tile — please try again.",
   "home.homeGrid.loadingTile": "Loading tile…",
   "home.homeGrid.openChat": "Open chat",
-  "home.homeTasks.allCaughtUp":
-    "You're all caught up. Nothing needs your attention right now.",
   "home.homeTasks.breakdownInProgress": "{count} in progress",
   "home.homeTasks.breakdownNeedsReview": "{count} need(s) review",
   "home.homeTasks.createNewTask": "Create new task",
