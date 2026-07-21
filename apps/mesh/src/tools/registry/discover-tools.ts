@@ -48,6 +48,15 @@ function isPrivateEmbeddedIPv4(ipv6: string): boolean {
     if (isPrivateIPv4Octets(a, b)) return true;
   }
 
+  // IPv4-compatible IPv6 (deprecated, RFC 4291): dotted ::a.b.c.d input is
+  // always normalized by `new URL()` into compressed hex (e.g. ::127.0.0.1
+  // becomes ::7f00:1) before we ever see the hostname, so it collapses to
+  // exactly "::" + 2 hex words — same shape as the 6to4 case above.
+  if (ipv6.startsWith("::") && groups.length === 2) {
+    const [a, b] = hexWordToIPv4(groups[0]!);
+    if (isPrivateIPv4Octets(a, b)) return true;
+  }
+
   return false;
 }
 
@@ -81,12 +90,6 @@ export function isPrivateUrl(url: string): boolean {
       if (ipv6.startsWith("100:")) return true;
       if (ipv6.startsWith("::1")) return true;
       if (isPrivateEmbeddedIPv4(ipv6)) return true;
-
-      const v4compat = ipv6.match(/^::(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-      if (v4compat) {
-        const [, a] = v4compat.map(Number);
-        if (a === 127 || a === 10 || a === 0) return true;
-      }
     }
 
     return false;
