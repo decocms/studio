@@ -338,7 +338,7 @@ export const chat = {
   "chat.runtimeSwitcher.runsOnYourMachineViaDecoLink":
     "Executa em sua máquina via deco link",
   "chat.runtimeSwitcher.runtime": "Tempo de execução: {label}",
-  "chat.runtimeSwitcher.thisDevice": "Este dispositivo",
+  "chat.runtimeSwitcher.thisDevice": "Dispositivo",
   "chat.selectModel.selectModel": "Selecionar modelo",
   "chat.selectVirtualMcp.chooseAgentTooltip":
     "Escolha um agente para conversar",
@@ -406,7 +406,7 @@ export const chat = {
   "chat.tierTrigger.runtimeClaudeCode": "Claude Code",
   "chat.tierTrigger.runtimeCloud": "Nuvem",
   "chat.tierTrigger.runtimeCodex": "Codex",
-  "chat.tierTrigger.runtimeThisDevice": "Este dispositivo",
+  "chat.tierTrigger.runtimeThisDevice": "Dispositivo",
   "chat.tierTrigger.selected": "Selecionado",
   "chat.tierTrigger.tierFast": "Rápido",
   "chat.tierTrigger.tierSmart": "Inteligente",
