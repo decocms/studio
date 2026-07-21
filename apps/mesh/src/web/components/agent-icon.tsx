@@ -2,7 +2,7 @@
  * Agent Icon System
  *
  * Renders agent avatars as colored background + icon, custom image, or
- * deterministic fallback (color + first letter).
+ * deterministic fallback (color + icon).
  *
  * Icon format stored in the `icon` string field:
  *   - "icon://IconName?color=emerald" → colored icon
@@ -257,38 +257,13 @@ function hashString(input: string): number {
 // ---------------------------------------------------------------------------
 
 const SIZES = {
-  "2xs": {
-    container: "w-5 h-5",
-    icon: 12,
-    text: "text-[9px]",
-    radius: "rounded-md",
-  },
-  xs: { container: "w-6 h-6", icon: 14, text: "text-xs", radius: "rounded-md" },
-  sm: { container: "w-8 h-8", icon: 16, text: "text-sm", radius: "rounded-lg" },
-  "sm+": {
-    container: "w-10 h-10",
-    icon: 20,
-    text: "text-base",
-    radius: "rounded-lg",
-  },
-  md: {
-    container: "w-12 h-12",
-    icon: 24,
-    text: "text-xl",
-    radius: "rounded-xl",
-  },
-  lg: {
-    container: "w-16 h-16",
-    icon: 32,
-    text: "text-3xl",
-    radius: "rounded-2xl",
-  },
-  xl: {
-    container: "w-20 h-20",
-    icon: 40,
-    text: "text-4xl",
-    radius: "rounded-2xl",
-  },
+  "2xs": { container: "w-5 h-5", icon: 12, radius: "rounded-md" },
+  xs: { container: "w-6 h-6", icon: 14, radius: "rounded-md" },
+  sm: { container: "w-8 h-8", icon: 16, radius: "rounded-lg" },
+  "sm+": { container: "w-10 h-10", icon: 20, radius: "rounded-lg" },
+  md: { container: "w-12 h-12", icon: 24, radius: "rounded-xl" },
+  lg: { container: "w-16 h-16", icon: 32, radius: "rounded-2xl" },
+  xl: { container: "w-20 h-20", icon: 40, radius: "rounded-2xl" },
 } as const;
 
 export type AgentAvatarSize = keyof typeof SIZES;
