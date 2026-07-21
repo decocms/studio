@@ -222,6 +222,22 @@ function withDeviceHint(url: string, device: PreviewDeviceSize): string {
   return parsed.href;
 }
 
+/**
+ * Reload the iframe in place; falls back to reassigning `src` when the
+ * iframe's live location is cross-origin (sandbox preview domain) and
+ * `.reload()` throws.
+ */
+function reloadIframeOrFallback(
+  iframe: HTMLIFrameElement,
+  fallbackSrc: string | null,
+) {
+  try {
+    iframe.contentWindow?.location.reload();
+  } catch {
+    if (fallbackSrc) iframe.src = fallbackSrc;
+  }
+}
+
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
@@ -705,12 +721,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     iframe.tabIndex = -1;
     iframe.style.pointerEvents = "none";
     iframe.blur();
-    try {
-      iframe.contentWindow?.location.reload();
-    } catch {
-      const src = iframeSrcRef.current;
-      if (src) iframe.src = src;
-    }
+    reloadIframeOrFallback(iframe, iframeSrcRef.current);
     let fallbackTimer: ReturnType<typeof setTimeout>;
     const restore = () => {
       clearTimeout(fallbackTimer);
@@ -1523,12 +1534,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               setTimeout(() => {
                 const iframe = previewIframeRef.current;
                 if (!iframe) return;
-                try {
-                  iframe.contentWindow?.location.reload();
-                } catch {
-                  const src = iframeSrcRef.current;
-                  if (src) iframe.src = src;
-                }
+                reloadIframeOrFallback(iframe, iframeSrcRef.current);
               }, DEV_SERVER_SETTLE_MS);
             }}
             target={{ kind: "site" }}
