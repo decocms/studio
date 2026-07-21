@@ -268,4 +268,10 @@ export const common = {
   "common.createAgentDropdown.createFromScratch": "Criar do zero",
   "common.createAgentDropdown.importFromGitHub": "Importar do GitHub",
   "common.createAgentDropdown.importFromDeco": "Importar do deco.cx",
+  "common.mainPanelTabs.overview": "Visão Geral",
+  "common.mainPanelTabs.content": "Conteúdo",
+  "common.mainPanelTabs.reviewChanges": "Revisar alterações",
+  "common.mainPanelTabs.automations": "Automações",
+  "common.mainPanelTabs.settings": "Configurações",
+  "common.mainPanelTabs.report": "Relatório",
 } satisfies Record<keyof typeof commonEn, string>;

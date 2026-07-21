@@ -258,4 +258,10 @@ export const common = {
   "common.createAgentDropdown.createFromScratch": "Create from scratch",
   "common.createAgentDropdown.importFromGitHub": "Import from GitHub",
   "common.createAgentDropdown.importFromDeco": "Import from deco.cx",
+  "common.mainPanelTabs.overview": "Overview",
+  "common.mainPanelTabs.content": "Content",
+  "common.mainPanelTabs.reviewChanges": "Review changes",
+  "common.mainPanelTabs.automations": "Automations",
+  "common.mainPanelTabs.settings": "Settings",
+  "common.mainPanelTabs.report": "Report",
 } as const;
