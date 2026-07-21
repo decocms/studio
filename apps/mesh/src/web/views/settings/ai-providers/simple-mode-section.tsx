@@ -113,7 +113,7 @@ function SimpleModeModelRow({
     : true;
 
   const resolvedModel: AiProviderModel | null = slot
-    ? ({
+    ? {
         modelId: slot.modelId,
         title: slot.title ?? slot.modelId,
         keyId: slot.keyId,
@@ -123,7 +123,7 @@ function SimpleModeModelRow({
         capabilities: [],
         limits: null,
         costs: null,
-      } as AiProviderModel)
+      }
     : null;
 
   if (filterModels && !hasFilteredModels) {
