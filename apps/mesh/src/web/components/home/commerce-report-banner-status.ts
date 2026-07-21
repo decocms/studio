@@ -16,6 +16,9 @@
 export interface CommerceDiagnosticRunState {
   scanned_at?: string | null;
   run_in_progress?: boolean;
+  /** Paywall state — true until the org buys the one-time unlock. The board
+   *  paywall banner shows while this is true; it clears itself on payment. */
+  locked?: boolean;
 }
 
 export type CommerceReportBannerStatus = "generating" | "ready" | "none";
