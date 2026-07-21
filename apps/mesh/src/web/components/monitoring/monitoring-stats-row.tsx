@@ -212,6 +212,8 @@ export interface KPIChartProps {
   colorNum: number;
   chartHeight: string;
   variant?: "bar" | "area";
+  /** Accessible label describing what this chart shows, e.g. "Tool calls over time". */
+  ariaLabel: string;
 }
 
 function formatYAxisValue(value: number): string {
@@ -278,6 +280,7 @@ export function KPIChart({
   colorNum,
   chartHeight,
   variant = "bar",
+  ariaLabel,
 }: KPIChartProps) {
   const colorVar = `var(--chart-${colorNum})`;
   const gradientId = `kpi-gradient-${dataKey}-${colorNum}`;
@@ -288,6 +291,8 @@ export function KPIChart({
   if (variant === "area") {
     return (
       <ChartContainer
+        role="img"
+        aria-label={ariaLabel}
         className={cn(chartHeight, "w-full")}
         config={{ [dataKey]: { label: dataKey, color: colorVar } }}
       >
@@ -366,6 +371,8 @@ export function KPIChart({
 
   return (
     <ChartContainer
+      role="img"
+      aria-label={ariaLabel}
       className={cn(chartHeight, "w-full")}
       config={{ [dataKey]: { label: dataKey, color: colorVar } }}
     >
