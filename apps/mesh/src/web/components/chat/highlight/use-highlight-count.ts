@@ -13,8 +13,11 @@
 
 import type { UIMessage } from "ai";
 import { deriveCurrentTodos } from "./derive-current-todos";
-import { extractPendingApprovals } from "./extract-pending-approvals";
-import { extractPendingPlans } from "./extract-pending-plans";
+import {
+  extractPendingApprovals,
+  type PendingApproval,
+} from "./extract-pending-approvals";
+import { extractPendingPlans, type PendingPlan } from "./extract-pending-plans";
 import { isCreditError } from "../is-credit-error";
 import { useChatStream } from "../context";
 
@@ -26,6 +29,10 @@ export interface HighlightFlags {
   hasApprovals: boolean;
   hasPlans: boolean;
   isWaitingForUserInput: boolean;
+  // Exposed so callers that need to render the cards (not just decide
+  // whether to) don't re-run the same extraction over the same parts.
+  pendingPlans: PendingPlan[];
+  pendingApprovals: PendingApproval[];
 }
 
 export interface DeriveHighlightFlagsInput {
@@ -44,6 +51,8 @@ const EMPTY_FLAGS: HighlightFlags = {
   hasApprovals: false,
   hasPlans: false,
   isWaitingForUserInput: false,
+  pendingPlans: [],
+  pendingApprovals: [],
 };
 
 export function deriveHighlightFlags(
@@ -111,6 +120,8 @@ export function deriveHighlightFlags(
     hasApprovals,
     hasPlans,
     isWaitingForUserInput,
+    pendingPlans,
+    pendingApprovals,
   };
 }
 

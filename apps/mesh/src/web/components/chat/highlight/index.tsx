@@ -8,12 +8,8 @@ import {
 } from "@/web/hooks/use-preferences.ts";
 import { useChatPrefs, useChatStream, useChatTask } from "../context";
 import type { RequestOptions } from "../store/thread-connection";
-import { ApprovalHighlight, extractPendingApprovals } from "./approval";
-import {
-  ProposePlanHighlight,
-  extractPendingPlans,
-  selectActivePlan,
-} from "./propose-plan";
+import { ApprovalHighlight } from "./approval";
+import { ProposePlanHighlight, selectActivePlan } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
 import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
@@ -183,17 +179,6 @@ export function ChatHighlight() {
   const userAskParts = assistantParts.filter(
     (part) => part.type === "tool-user_ask",
   );
-  const pendingPlans = extractPendingPlans(assistantParts);
-  const pendingApprovals = extractPendingApprovals(
-    assistantParts as Array<{
-      type: string;
-      state?: string;
-      approval?: { id: string };
-      toolCallId?: string;
-      toolName?: string;
-      input?: unknown;
-    }>,
-  );
 
   const handleFixInChat = () => {
     if (error) {
@@ -276,7 +261,13 @@ export function ChatHighlight() {
     return <CreditsExhaustedBanner onDismiss={clearError} />;
   }
 
-  const { showError, showWarning, hasApprovals } = flags;
+  const {
+    showError,
+    showWarning,
+    hasApprovals,
+    pendingPlans,
+    pendingApprovals,
+  } = flags;
   const userAskKey = userAskParts.map((p) => p.toolCallId).join("|");
   const planKey = selectActivePlan(pendingPlans)?.toolCallId ?? "";
   const approvalKey = pendingApprovals.map((a) => a.approvalId).join("|");

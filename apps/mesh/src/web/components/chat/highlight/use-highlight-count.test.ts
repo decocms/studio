@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessage } from "ai";
-import { deriveHighlightFlags } from "./use-highlight-count";
+import { deriveHighlightFlags, type HighlightFlags } from "./use-highlight-count";
 
-const noFlags = {
+const noFlags: HighlightFlags = {
   isCreditExhausted: false,
   hasTodos: false,
   showError: false,
@@ -10,7 +10,9 @@ const noFlags = {
   hasApprovals: false,
   hasPlans: false,
   isWaitingForUserInput: false,
-} as const;
+  pendingPlans: [],
+  pendingApprovals: [],
+};
 
 const baseInput = {
   messages: [] as UIMessage[],
