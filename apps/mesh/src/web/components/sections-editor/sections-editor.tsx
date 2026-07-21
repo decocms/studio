@@ -42,11 +42,7 @@ import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
 import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
 import { PageSeoForm } from "./page-seo-form";
-import {
-  MatcherPicker,
-  extractMatcherGlobals,
-  extractMatchers,
-} from "./matcher-picker";
+import { extractMatcherGlobals, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
@@ -109,8 +105,8 @@ import {
   parsePageVariantsForEditor,
   SchemaFormPanel,
   VARIANT_TAB_ACTIVE_CLASS,
-  VariantRuleForm,
 } from "./sections-editor-panels";
+import { VariantRuleEditor } from "./variant-rule-editor";
 
 /**
  * Side panel for editing deco.cx page sections.
@@ -2500,7 +2496,7 @@ export function SectionsEditor({
                   <span className="text-xs font-medium text-muted-foreground">
                     Variant rule
                   </span>
-                  <MatcherPicker
+                  <VariantRuleEditor
                     currentRt={sectionRuleResolveType ?? ""}
                     currentLabel={resolveVariantRuleLabel(
                       activeSectionFlagVariant?.rule,
@@ -2519,21 +2515,16 @@ export function SectionsEditor({
                     globals={availableMatcherGlobals}
                     onSelect={handleSectionMatcherTypeChange}
                     onSelectGlobal={handleSectionVariantSelectGlobal}
+                    schema={sectionRuleSchema}
+                    formValue={sectionRuleFormValue}
+                    onChange={handleSectionRuleFormChange}
+                    formKey={`${selectedSectionIndex ?? "none"}:${safeSectionVariantIndex}:${sectionRuleResolveType ?? ""}`}
+                    formWrapperClassName="pt-1"
+                    meta={meta ?? undefined}
+                    decofile={decofile}
+                    onSaveReferencedBlock={saveReferencedBlock}
+                    sandbox={sandbox}
                   />
-                  {sectionRuleSchema && sectionRuleFormValue && (
-                    <div className="pt-1">
-                      <VariantRuleForm
-                        key={`${selectedSectionIndex ?? "none"}:${safeSectionVariantIndex}:${sectionRuleResolveType ?? ""}`}
-                        schema={sectionRuleSchema}
-                        value={sectionRuleFormValue}
-                        onChange={handleSectionRuleFormChange}
-                        meta={meta ?? undefined}
-                        decofile={decofile}
-                        onSaveReferencedBlock={saveReferencedBlock}
-                        sandbox={sandbox}
-                      />
-                    </div>
-                  )}
                 </div>
               )}
             </>
@@ -2617,7 +2608,7 @@ export function SectionsEditor({
                     renameVariantPending && "pointer-events-none opacity-50",
                   )}
                 >
-                  <MatcherPicker
+                  <VariantRuleEditor
                     currentRt={ruleResolveType}
                     currentLabel={resolveVariantRuleLabel(
                       activeVariant?.rule,
@@ -2636,21 +2627,16 @@ export function SectionsEditor({
                     globals={availableMatcherGlobals}
                     onSelect={handleMatcherTypeChange}
                     onSelectGlobal={handlePageVariantSelectGlobal}
+                    schema={ruleSchema}
+                    formValue={ruleFormValue}
+                    onChange={handleRuleFormChange}
+                    formKey={`${safeVariantIndex}:${ruleResolveType ?? ""}`}
+                    formWrapperClassName="space-y-3"
+                    meta={meta ?? undefined}
+                    decofile={decofile}
+                    onSaveReferencedBlock={saveReferencedBlock}
+                    sandbox={sandbox}
                   />
-                  {ruleSchema && ruleFormValue && (
-                    <div className="space-y-3">
-                      <VariantRuleForm
-                        key={`${safeVariantIndex}:${ruleResolveType ?? ""}`}
-                        schema={ruleSchema}
-                        value={ruleFormValue}
-                        onChange={handleRuleFormChange}
-                        meta={meta ?? undefined}
-                        decofile={decofile}
-                        onSaveReferencedBlock={saveReferencedBlock}
-                        sandbox={sandbox}
-                      />
-                    </div>
-                  )}
                 </div>
               )}
             </div>
