@@ -49,6 +49,15 @@ function domainHref(domain: string): string {
   return domain.startsWith("http") ? domain : `https://${domain}`;
 }
 
+function getColorEntries(
+  colors?: BrandColors | null,
+): Array<[keyof BrandColors, string]> {
+  if (!colors) return [];
+  return (Object.entries(colors) as Array<[keyof BrandColors, string]>).filter(
+    ([, v]) => typeof v === "string" && v.trim().length > 0,
+  );
+}
+
 function SectionLabel({ children }: { children: string }) {
   return (
     <span className="text-sm font-medium text-foreground">{children}</span>
@@ -120,9 +129,7 @@ function BrandLogo({
 }
 
 function ColorStrip({ colors }: { colors: BrandColors }) {
-  const entries = (
-    Object.entries(colors) as Array<[keyof BrandColors, string]>
-  ).filter(([, v]) => typeof v === "string" && v.trim().length > 0);
+  const entries = getColorEntries(colors);
   if (entries.length === 0) return null;
   return (
     <div className="flex h-1.5">
@@ -160,11 +167,7 @@ function BrandCard({
   showDefaultBadge?: boolean;
   isDefault?: boolean;
 }) {
-  const colorEntries = colors
-    ? (Object.entries(colors) as Array<[keyof BrandColors, string]>).filter(
-        ([, v]) => typeof v === "string" && v.trim().length > 0,
-      )
-    : [];
+  const colorEntries = getColorEntries(colors);
   const fontEntries = fonts
     ? (Object.entries(fonts) as Array<[keyof BrandFonts, string]>).filter(
         ([, v]) => typeof v === "string" && v.trim().length > 0,
@@ -424,13 +427,7 @@ export function BrandContextListPart({
       />
       <div className="mt-2 flex flex-col gap-1.5">
         {items.map((brand) => {
-          const colorEntries = brand.colors
-            ? (
-                Object.entries(brand.colors) as Array<
-                  [keyof BrandColors, string]
-                >
-              ).filter(([, v]) => typeof v === "string" && v.trim().length > 0)
-            : [];
+          const colorEntries = getColorEntries(brand.colors);
           return (
             <div
               key={brand.id ?? `${brand.name}-${brand.domain}`}
