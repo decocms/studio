@@ -171,6 +171,13 @@ export function FileExplorer({
     generation: number;
     files: string[];
   } | null>(null);
+  // In-flight whole-repo glob (keyed by generation), so two searches that
+  // both miss the cache before the first glob resolves share one request
+  // instead of each firing their own full-repo walk.
+  const allPathsInflightRef = useRef<{
+    generation: number;
+    promise: Promise<string[]>;
+  } | null>(null);
   // Line to reveal once the target file's editor mounts (set when opening a
   // content-search hit).
   const pendingRevealRef = useRef<{ path: string; line: number } | null>(null);
@@ -589,6 +596,7 @@ export function FileExplorer({
   async function fetchFileTree() {
     const generation = ++treeGenerationRef.current;
     allPathsRef.current = null;
+    allPathsInflightRef.current = null;
     lazyLoadInflightRef.current.clear();
     setLoading(true);
     updateLoadedLazyDirs(new Set());
@@ -653,21 +661,38 @@ export function FileExplorer({
     setContentSearchTruncated(false);
   }
 
-  /** Whole-repo path list (all depths), cached per tree generation. */
+  /**
+   * Whole-repo path list (all depths), cached per tree generation. Two
+   * searches that both miss the cache before the first glob resolves share
+   * the same in-flight request rather than each firing a full-repo walk.
+   */
   async function ensureAllPaths(): Promise<string[]> {
     const generation = treeGenerationRef.current;
     const cached = allPathsRef.current;
     if (cached && cached.generation === generation) return cached.files;
-    // No maxDepth → every file, unlike the eager tree (depth-capped) and the
-    // lazy per-directory loads.
-    const result = await fetchGlob({
-      pattern: "**/*",
-      limit: EXPLORER_GLOB_LIMIT,
-    });
-    if (treeGenerationRef.current === generation) {
-      allPathsRef.current = { generation, files: result.files };
+    const inflight = allPathsInflightRef.current;
+    if (inflight && inflight.generation === generation) return inflight.promise;
+
+    const promise = (async () => {
+      // No maxDepth → every file, unlike the eager tree (depth-capped) and
+      // the lazy per-directory loads.
+      const result = await fetchGlob({
+        pattern: "**/*",
+        limit: EXPLORER_GLOB_LIMIT,
+      });
+      if (treeGenerationRef.current === generation) {
+        allPathsRef.current = { generation, files: result.files };
+      }
+      return result.files;
+    })();
+    allPathsInflightRef.current = { generation, promise };
+    try {
+      return await promise;
+    } finally {
+      if (allPathsInflightRef.current?.generation === generation) {
+        allPathsInflightRef.current = null;
+      }
     }
-    return result.files;
   }
 
   async function runFileNameSearch(term: string, gen: number) {

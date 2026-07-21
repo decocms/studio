@@ -225,6 +225,34 @@ describe("file-explorer utils", () => {
     expect(hl.segments[0]?.text.length).toBeLessThanOrEqual(24);
   });
 
+  it("buildGrepHighlight highlights every occurrence after clipping a long prefix", () => {
+    const line = `${"x".repeat(60)}NEEDLE bar NEEDLE tail`;
+    const hl = buildGrepHighlight(line, "needle");
+    expect(hl.leadingEllipsis).toBe(true);
+    const matchCount = hl.segments.filter((s) => s.match).length;
+    expect(matchCount).toBe(2);
+    // Reconstructing the (clipped) segments must reproduce the clipped tail
+    // exactly — no characters dropped or duplicated by the clip + scan logic.
+    const reconstructed = hl.segments.map((s) => s.text).join("");
+    expect(line.endsWith(reconstructed)).toBe(true);
+  });
+
+  it("buildGrepHighlight has no ellipsis exactly at the clip boundary", () => {
+    // First match starts right at GREP_HIGHLIGHT_PREFIX (24 context chars) —
+    // the `first > 24` check must not clip on the boundary itself.
+    const line = `${"x".repeat(24)}NEEDLE`;
+    const hl = buildGrepHighlight(line, "needle");
+    expect(hl.leadingEllipsis).toBe(false);
+  });
+
+  it("buildGrepHighlight matches back-to-back overlapping-alphabet runs without dropping chars", () => {
+    const hl = buildGrepHighlight("aaaa", "aa");
+    expect(hl.segments).toEqual([
+      { text: "aa", match: true },
+      { text: "aa", match: true },
+    ]);
+  });
+
   it("buildGrepHighlight returns a single plain run when nothing matches", () => {
     expect(buildGrepHighlight("  no hits here", "zzz")).toEqual({
       leadingEllipsis: false,

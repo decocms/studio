@@ -341,6 +341,11 @@ interface GrepFileGroup {
  * separated `file:line:text` rows (ripgrep `--line-number`, repo-relative
  * paths) — into structured hits. Rows that don't match the shape (e.g. ripgrep
  * context separators) are skipped.
+ *
+ * `packages/sandbox/server/provider/sandbox-fs-hooks.ts` has an equivalent
+ * `parseGrepResults` for the LLM-facing grep tool — same wire shape, kept
+ * separate because packages can't import app code. Update both if the shape
+ * changes.
  */
 export function parseGrepContent(results: string): GrepContentMatch[] {
   const matches: GrepContentMatch[] = [];
@@ -385,12 +390,12 @@ export function matchFileNames(
 }
 
 /** One run of a grep result line — `match` runs are the highlighted query. */
-export interface GrepHighlightSegment {
+interface GrepHighlightSegment {
   text: string;
   match: boolean;
 }
 
-export interface GrepHighlight {
+interface GrepHighlight {
   /** True when the prefix was clipped so the first match stays visible. */
   leadingEllipsis: boolean;
   segments: GrepHighlightSegment[];

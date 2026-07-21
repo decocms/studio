@@ -426,26 +426,17 @@ export function makeGrepHandler(deps: FsDeps) {
     if (body.glob) args.push("--glob", body.glob);
     args.push("--", body.pattern, searchPath);
 
-    const limit = body.limit ?? 250;
+    const limit = resolveGrepResultLimit(body.limit);
     // rg prints paths prefixed with the (absolute) search path argument. Strip
     // that back to a repo-relative path so grep matches glob's wire contract
-    // (agents/tools glob+grep over repo-relative, POSIX-style paths). "files"
-    // mode emits a bare path per line; "content"/"count" emit `path:rest`
-    // (paths never contain ":" on the Linux daemon), so relativize the segment
-    // before the first colon.
-    const relativizeGrepLine = (line: string): string => {
-      if (mode === "files") {
-        return toRepoRelativePath(line, searchPath, deps.repoDir);
-      }
-      const colon = line.indexOf(":");
-      if (colon < 0) return line;
-      const rel = toRepoRelativePath(
-        line.slice(0, colon),
-        searchPath,
-        deps.repoDir,
-      );
-      return rel + line.slice(colon);
-    };
+    // (agents/tools glob+grep over repo-relative, POSIX-style paths). Every
+    // mode's path is a literal prefix of the line — "files" mode emits a bare
+    // path, "content"/"count" emit `path:rest`, and `-C` context rows emit
+    // `path-rest` — so strip the known absolute prefix directly rather than
+    // splitting on ":" (which misparses context rows' "-" separator and any
+    // path that itself contains a colon).
+    const relativizeGrepLine = (line: string): string =>
+      toRepoRelativePath(line, searchPath, deps.repoDir);
     const child = spawn(
       "rg",
       args,
@@ -457,12 +448,19 @@ export function makeGrepHandler(deps: FsDeps) {
     let stdout = "";
     let lineCount = 0;
     let truncated = false;
+    // rg's stdout arrives in arbitrary chunk boundaries, which don't align
+    // with line boundaries — buffer the trailing partial line across `data`
+    // events instead of treating every chunk as whole lines (that would
+    // corrupt/drop a match line split across two chunks).
+    let pendingLine = "";
     child.stdout!.on("data", (chunk: Buffer) => {
       if (truncated) return;
-      const lines = chunk.toString("utf-8").split("\n");
-      for (const line of lines) {
+      const pieces = (pendingLine + chunk.toString("utf-8")).split("\n");
+      pendingLine = pieces.pop() ?? "";
+      for (const line of pieces) {
         if (lineCount >= limit) {
           truncated = true;
+          pendingLine = "";
           try {
             child.kill("SIGTERM");
           } catch {}
@@ -499,6 +497,12 @@ export function makeGrepHandler(deps: FsDeps) {
         { error: stderr || `rg failed with code ${code}` },
         500,
       );
+    // Flush a final line left in the buffer with no trailing newline (rg was
+    // killed or exited before emitting one).
+    if (!truncated && pendingLine && lineCount < limit) {
+      stdout += (stdout ? "\n" : "") + relativizeGrepLine(pendingLine);
+      lineCount++;
+    }
     return jsonResponse({ results: stdout, matchCount: lineCount });
   };
 }
@@ -736,6 +740,19 @@ export function registerGlobAncestorDirectories(
   for (let i = 1; i <= Math.min(dirParts.length, maxDepth); i++) {
     directoryPaths.add(dirParts.slice(0, i).join("/"));
   }
+}
+
+/** Default cap for agent grep calls. */
+export const GREP_RESULT_LIMIT = 250;
+/** Hard ceiling when callers pass an explicit `limit` (file explorer). */
+export const GREP_MAX_RESULT_LIMIT = 10_000;
+
+/** Same shape as `resolveGlobResultLimit`, just a lower default (grep rows are wider than glob paths). */
+export function resolveGrepResultLimit(limit: unknown): number {
+  if (limit === undefined || limit === null) return GREP_RESULT_LIMIT;
+  const n = typeof limit === "number" ? limit : Number(limit);
+  if (!Number.isFinite(n) || n < 1) return GREP_RESULT_LIMIT;
+  return Math.min(Math.floor(n), GREP_MAX_RESULT_LIMIT);
 }
 
 export function resolveGlobResultLimit(limit: unknown): number {
