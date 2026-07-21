@@ -44,6 +44,15 @@ function hostFromSiteUrl(siteUrl: unknown): string | null {
   }
 }
 
+/** Minimal shape of the Commerce Discovery MCP client we use — enough to call
+ *  a tool (e.g. start_checkout) without pulling the full SDK client type in. */
+export interface CommerceDiscoveryClient {
+  callTool: (input: {
+    name: string;
+    arguments: Record<string, unknown>;
+  }) => Promise<unknown>;
+}
+
 export interface UseCommerceDiagnosticResult {
   /** The owner diagnostic, or null (no CD connection, never run, or an error). */
   diagnostic: CommerceDiagnosticRunState | null;
@@ -52,6 +61,8 @@ export interface UseCommerceDiagnosticResult {
   /** The store's hostname from the connection metadata, for copy. */
   host: string | null;
   connectionId: string;
+  /** The CD MCP client (once gate 2 opens), for tool calls like start_checkout. */
+  cdClient: CommerceDiscoveryClient | null;
 }
 
 export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
@@ -121,6 +132,7 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
     isSuccess: diagnosticQuery.isSuccess,
     host: hostFromSiteUrl(connectionItem?.metadata?.siteUrl),
     connectionId,
+    cdClient: (cdClient as CommerceDiscoveryClient | undefined) ?? null,
   };
 }
 
