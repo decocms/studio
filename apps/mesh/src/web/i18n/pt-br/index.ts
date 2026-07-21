@@ -32,6 +32,7 @@ import { admin } from "./admin.ts";
 import { sandbox } from "./sandbox.ts";
 import type { TranslationKey } from "../en/index.ts";
 import { settings } from "./settings.ts";
+import { announcements } from "./announcements.ts";
 
 export const ptBR = {
   ...virtualMcp,
@@ -67,4 +68,5 @@ export const ptBR = {
   ...admin,
   ...sandbox,
   ...settings,
+  ...announcements,
 } satisfies Record<TranslationKey, string>;

@@ -31,6 +31,7 @@ import { agentShellLayout } from "./agent-shell-layout.ts";
 import { admin } from "./admin.ts";
 import { sandbox } from "./sandbox.ts";
 import { settings } from "./settings.ts";
+import { announcements } from "./announcements.ts";
 
 // English is the source of truth: every domain file is spread here and
 // TranslationKey is derived from the result. pt-BR mirrors this structure
@@ -69,6 +70,7 @@ export const en = {
   ...admin,
   ...sandbox,
   ...settings,
+  ...announcements,
 } as const;
 
 export type TranslationKey = keyof typeof en;

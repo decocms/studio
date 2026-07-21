@@ -36,6 +36,10 @@ export const home = {
   "home.addTileDrawer.title": "Gerenciar home",
   "home.addTileDrawer.updateError":
     "N\u00e3o foi poss\u00edvel atualizar o home \u2014 por favor, tente novamente.",
+  "home.customizeToolbar.label": "Personalizar",
+  "home.customizeToolbar.addTile": "Adicionar tile",
+  "home.customizeToolbar.cancel": "Cancelar",
+  "home.customizeToolbar.save": "Salvar",
   "home.agentPromptList.addToHome": "Adicionar \u00e0 p\u00e1gina inicial",
   "home.agentPromptList.couldntUpdateHome":
     "N\u00e3o foi poss\u00edvel atualizar a p\u00e1gina inicial \u2014 tente novamente.",
