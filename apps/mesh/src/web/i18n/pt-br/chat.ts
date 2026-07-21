@@ -273,6 +273,8 @@ export const chat = {
   "chat.input.useTranscription": "Usar transcrição",
   "chat.input.voiceInput": "Entrada de voz",
   "chat.input.webSearch": "Busca na web",
+  "chat.input.placeholder":
+    "Pergunte qualquer coisa, / para prompts & habilidades, @ para agentes & recursos...",
   "chat.markdown.copyAsCSV": "Copiar como CSV",
   "chat.markdown.copyCode": "Copiar código",
   "chat.markdown.image": "Imagem",

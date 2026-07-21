@@ -53,7 +53,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
   const displayName = preset
     ? preset.name
     : isOpenAICompatible
-      ? "Custom OpenAI-compatible"
+      ? t("settings.aiProviders.customOpenAiCompatible")
       : provider.name;
   const logo = preset?.logo ?? provider.logo;
 

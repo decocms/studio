@@ -266,6 +266,8 @@ export const chat = {
   "chat.input.useTranscription": "Use transcription",
   "chat.input.voiceInput": "Voice input",
   "chat.input.webSearch": "Web search",
+  "chat.input.placeholder":
+    "Ask anything, / for prompts & skills, @ for agents & resources...",
   "chat.markdown.copyAsCSV": "Copy as CSV",
   "chat.markdown.copyCode": "Copy code",
   "chat.markdown.image": "Image",

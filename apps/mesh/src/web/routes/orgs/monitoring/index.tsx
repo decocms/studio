@@ -806,6 +806,84 @@ function MonitoringDashboardContent({
               <TimeRangePicker
                 value={{ from, to }}
                 onChange={onTimeRangeChange}
+                labels={{
+                  absoluteTimeRange: t(
+                    "monitoring.timeRangePicker.absoluteTimeRange",
+                  ),
+                  from: t("monitoring.timeRangePicker.from"),
+                  to: t("monitoring.timeRangePicker.to"),
+                  applyTimeRange: t(
+                    "monitoring.timeRangePicker.applyTimeRange",
+                  ),
+                }}
+                quickRanges={[
+                  {
+                    label: t("monitoring.timeRangePicker.last5Minutes"),
+                    from: "now-5m",
+                    to: "now",
+                    value: "5m",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last15Minutes"),
+                    from: "now-15m",
+                    to: "now",
+                    value: "15m",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last30Minutes"),
+                    from: "now-30m",
+                    to: "now",
+                    value: "30m",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last1Hour"),
+                    from: "now-1h",
+                    to: "now",
+                    value: "1h",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last3Hours"),
+                    from: "now-3h",
+                    to: "now",
+                    value: "3h",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last6Hours"),
+                    from: "now-6h",
+                    to: "now",
+                    value: "6h",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last12Hours"),
+                    from: "now-12h",
+                    to: "now",
+                    value: "12h",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last24Hours"),
+                    from: "now-24h",
+                    to: "now",
+                    value: "24h",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last2Days"),
+                    from: "now-2d",
+                    to: "now",
+                    value: "2d",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last7Days"),
+                    from: "now-7d",
+                    to: "now",
+                    value: "7d",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last30Days"),
+                    from: "now-30d",
+                    to: "now",
+                    value: "30d",
+                  },
+                ]}
               />
             </div>
           </div>

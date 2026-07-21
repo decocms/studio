@@ -30,6 +30,13 @@ export interface TimeRangePickerProps {
   disabled?: boolean;
   /** Quick ranges to display. Defaults to QUICK_RANGES */
   quickRanges?: QuickRange[];
+  /** Optional translations for the UI labels */
+  labels?: {
+    absoluteTimeRange?: string;
+    from?: string;
+    to?: string;
+    applyTimeRange?: string;
+  };
 }
 
 export function TimeRangePicker({
@@ -38,7 +45,13 @@ export function TimeRangePicker({
   className,
   disabled,
   quickRanges = QUICK_RANGES,
+  labels,
 }: TimeRangePickerProps) {
+  const absoluteTimeRangeLabel =
+    labels?.absoluteTimeRange ?? "Absolute time range";
+  const fromLabel = labels?.from ?? "From";
+  const toLabel = labels?.to ?? "To";
+  const applyTimeRangeLabel = labels?.applyTimeRange ?? "Apply time range";
   const [open, setOpen] = React.useState(false);
   const [localFrom, setLocalFrom] = React.useState(value.from);
   const [localTo, setLocalTo] = React.useState(value.to);
@@ -127,12 +140,14 @@ export function TimeRangePicker({
         <div className="flex">
           {/* Left: Absolute time range */}
           <div className="flex-1 p-4 border-r">
-            <h4 className="text-sm font-medium mb-4">Absolute time range</h4>
+            <h4 className="text-sm font-medium mb-4">
+              {absoluteTimeRangeLabel}
+            </h4>
 
             <div className="space-y-4">
               <div>
                 <label className="text-xs text-muted-foreground mb-1.5 block">
-                  From
+                  {fromLabel}
                 </label>
                 <DateTimeInput
                   value={localFrom}
@@ -143,7 +158,7 @@ export function TimeRangePicker({
 
               <div>
                 <label className="text-xs text-muted-foreground mb-1.5 block">
-                  To
+                  {toLabel}
                 </label>
                 <DateTimeInput
                   value={localTo}
@@ -157,7 +172,7 @@ export function TimeRangePicker({
               )}
 
               <Button onClick={handleApply} className="w-full" size="sm">
-                Apply time range
+                {applyTimeRangeLabel}
               </Button>
             </div>
           </div>

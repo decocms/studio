@@ -11,6 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ProjectCardProps {
   project: VirtualMCPEntity;
@@ -24,6 +25,7 @@ export function ProjectCard({
   onDeleteClick,
 }: ProjectCardProps) {
   const navigateToAgent = useNavigateToAgent();
+  const t = useT();
 
   return (
     <Card className="relative transition-colors group overflow-hidden flex flex-col h-full hover:bg-muted/50">
@@ -97,8 +99,16 @@ export function ProjectCard({
           <div className="h-10 flex items-center px-4.5">
             <p className="text-xs text-muted-foreground">
               {lastUsedAt
-                ? `Last used ${formatDistanceToNow(new Date(lastUsedAt), { addSuffix: true })}`
-                : `Updated ${formatDistanceToNow(new Date(project.updated_at), { addSuffix: true })}`}
+                ? t("home.projectCard.lastUsed", {
+                    time: formatDistanceToNow(new Date(lastUsedAt), {
+                      addSuffix: true,
+                    }),
+                  })
+                : t("home.projectCard.updated", {
+                    time: formatDistanceToNow(new Date(project.updated_at), {
+                      addSuffix: true,
+                    }),
+                  })}
             </p>
           </div>
         </div>

@@ -99,4 +99,6 @@ export const home = {
   "home.tileErrorBoundary.defaultError":
     "Something went wrong rendering this tile.",
   "home.tileErrorBoundary.tileCrashed": "This tile crashed",
+  "home.projectCard.lastUsed": "Last used {time}",
+  "home.projectCard.updated": "Updated {time}",
 } as const;

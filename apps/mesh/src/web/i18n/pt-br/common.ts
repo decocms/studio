@@ -265,4 +265,7 @@ export const common = {
   "common.versionCheckDialog.outdatedVersion":
     "Você está visualizando uma versão desatualizada desta página. Atualize para obter as últimas atualizações.",
   "common.versionCheckDialog.refresh": "Atualizar",
+  "common.createAgentDropdown.createFromScratch": "Criar do zero",
+  "common.createAgentDropdown.importFromGitHub": "Importar do GitHub",
+  "common.createAgentDropdown.importFromDeco": "Importar do deco.cx",
 } satisfies Record<keyof typeof commonEn, string>;

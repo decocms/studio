@@ -255,4 +255,7 @@ export const common = {
   "common.versionCheckDialog.outdatedVersion":
     "You're viewing an outdated version of this page. Refresh to get the latest updates.",
   "common.versionCheckDialog.refresh": "Refresh",
+  "common.createAgentDropdown.createFromScratch": "Create from scratch",
+  "common.createAgentDropdown.importFromGitHub": "Import from GitHub",
+  "common.createAgentDropdown.importFromDeco": "Import from deco.cx",
 } as const;

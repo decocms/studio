@@ -26,11 +26,9 @@ import { initPwaInstallCapture } from "@/web/lib/pwa-install";
 const rootRoute = createRootRoute({
   component: () => (
     <ChunkErrorBoundary>
-      <Providers>
-        <Suspense fallback={<SplashScreen />}>
-          <Outlet />
-        </Suspense>
-      </Providers>
+      <Suspense fallback={<SplashScreen />}>
+        <Outlet />
+      </Suspense>
     </ChunkErrorBoundary>
   ),
 });
@@ -718,6 +716,8 @@ const rootElement = document.getElementById("root")!;
 
 createRoot(rootElement).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <Providers>
+      <RouterProvider router={router} />
+    </Providers>
   </StrictMode>,
 );

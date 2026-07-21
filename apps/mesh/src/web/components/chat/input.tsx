@@ -518,6 +518,7 @@ export function ChatInput({
             setTiptapDoc={setTiptapDoc}
             disabled={false}
             enterToSubmit={true}
+            placeholder={t("chat.input.placeholder")}
             onSubmit={handleSubmit}
           >
             <form

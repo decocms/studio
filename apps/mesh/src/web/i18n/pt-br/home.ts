@@ -106,4 +106,6 @@ export const home = {
   "home.tileErrorBoundary.defaultError":
     "Algo deu errado ao renderizar este card.",
   "home.tileErrorBoundary.tileCrashed": "Este card falhou",
+  "home.projectCard.lastUsed": "Último uso {time}",
+  "home.projectCard.updated": "Atualizado {time}",
 } satisfies Record<keyof typeof homeEn, string>;

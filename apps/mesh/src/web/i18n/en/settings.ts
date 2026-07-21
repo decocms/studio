@@ -601,4 +601,10 @@ export const settings = {
   "settings.simpleModeSection.tierWebSearch": "Web search",
   "settings.simpleModeSection.tierWebSearchDesc":
     "Quick, up-to-date answers from the web",
+  "settings.aiProviders.recommended":
+    "Recommended — 100+ models, pay as you go",
+  "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
+  "settings.aiProviders.customOpenAiDescription":
+    "Bring your own model server (advanced)",
+  "settings.aiProviders.moreProviders": "{count} more provider{plural}",
 } as const;

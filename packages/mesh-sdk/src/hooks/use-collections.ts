@@ -30,6 +30,56 @@ import { toast } from "sonner";
 import { KEYS } from "../lib/query-keys";
 
 /**
+ * Translation registry for collection mutation messages.
+ * Applications can register translations via setCollectionToastTranslations()
+ */
+const toastTranslations: Record<
+  string,
+  string | ((context: Record<string, unknown>) => string)
+> = {
+  itemCreatedSuccessfully: "Item created successfully",
+  itemUpdatedSuccessfully: "Item updated successfully",
+  itemDeletedSuccessfully: "Item deleted successfully",
+  createItemFailed: "Failed to create item: {error}",
+  updateItemFailed: "Failed to update item: {error}",
+  deleteItemFailed: "Failed to delete item: {error}",
+};
+
+/**
+ * Register translations for collection mutation toasts.
+ * Call this from your app initialization to provide translated messages.
+ * @example
+ * setCollectionToastTranslations({
+ *   itemCreatedSuccessfully: "Item criado com sucesso",
+ *   createItemFailed: "Falha ao criar item: {error}",
+ * });
+ */
+export function setCollectionToastTranslations(
+  translations: Record<
+    string,
+    string | ((context: Record<string, unknown>) => string)
+  >,
+) {
+  Object.assign(toastTranslations, translations);
+}
+
+function getToastMessage(
+  key: string,
+  context?: Record<string, unknown>,
+): string {
+  const translation = toastTranslations[key];
+  if (typeof translation === "function") {
+    return translation(context ?? {});
+  }
+  if (typeof translation === "string" && context) {
+    return translation.replace(/\{(\w+)\}/g, (_, field) =>
+      String(context[field] ?? ""),
+    );
+  }
+  return translation ?? key;
+}
+
+/**
  * Collection entity base type that matches the collection binding pattern
  * Note: id can be nullable for synthetic entities like Decopilot agent
  */
@@ -417,11 +467,11 @@ export function useCollectionActions<T extends CollectionEntity>(
     },
     onSuccess: () => {
       invalidateCollection();
-      toast.success("Item created successfully");
+      toast.success(getToastMessage("itemCreatedSuccessfully"));
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(`Failed to create item: ${message}`);
+      toast.error(getToastMessage("createItemFailed", { error: message }));
     },
   });
 
@@ -437,11 +487,11 @@ export function useCollectionActions<T extends CollectionEntity>(
     },
     onSuccess: () => {
       invalidateCollection();
-      toast.success("Item updated successfully");
+      toast.success(getToastMessage("itemUpdatedSuccessfully"));
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(`Failed to update item: ${message}`);
+      toast.error(getToastMessage("updateItemFailed", { error: message }));
     },
   });
 
@@ -457,11 +507,11 @@ export function useCollectionActions<T extends CollectionEntity>(
     },
     onSuccess: () => {
       invalidateCollection();
-      toast.success("Item deleted successfully");
+      toast.success(getToastMessage("itemDeletedSuccessfully"));
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(`Failed to delete item: ${message}`);
+      toast.error(getToastMessage("deleteItemFailed", { error: message }));
     },
   });
 
