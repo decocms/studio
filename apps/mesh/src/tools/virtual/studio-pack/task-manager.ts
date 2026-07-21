@@ -59,7 +59,7 @@ You are the Task Manager. You organize and maintain this organization's task boa
 export const taskManagerAgent = {
   id: "studio-task-manager",
   title: "Task Manager",
-  icon: "icon://Flag01?color=chart-1",
+  icon: "icon://Flag01?color=indigo",
   description: "Create, prioritize, assign, and track work on the task board",
   selectedTools: [
     "TASK_BOARD_ITEM_CREATE",

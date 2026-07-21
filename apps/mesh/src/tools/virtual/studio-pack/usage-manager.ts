@@ -57,7 +57,7 @@ You are the Usage Manager. You analyze how this workspace is actually used — w
 export const usageManagerAgent = {
   id: "studio-usage-manager",
   title: "Usage Manager",
-  icon: "icon://BarChart10?color=chart-2",
+  icon: "icon://BarChart10?color=blue",
   description: "Analyze usage, costs, and clean up idle agents and connections",
   selectedTools: [
     "MONITORING_STATS",

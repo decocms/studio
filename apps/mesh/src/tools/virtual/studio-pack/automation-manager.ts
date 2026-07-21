@@ -64,7 +64,7 @@ You are the Automation Manager. You create, configure, and manage automations â€
 export const automationManagerAgent = {
   id: "studio-automation-manager",
   title: "Automation Manager",
-  icon: "icon://Zap?color=chart-4",
+  icon: "icon://Zap?color=amber",
   description: "Create, configure, and run automations with triggers",
   selectedTools: [
     "AUTOMATION_CREATE",

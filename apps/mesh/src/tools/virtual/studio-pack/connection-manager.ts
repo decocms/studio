@@ -43,7 +43,7 @@ You are the Connection Manager. You create, configure, test, and manage MCP conn
 export const connectionManagerAgent = {
   id: "studio-connection-manager",
   title: "Connection Manager",
-  icon: "icon://Link01?color=chart-3",
+  icon: "icon://Link01?color=cyan",
   description: "Create, configure, test, and manage connections",
   selectedTools: [
     "COLLECTION_CONNECTIONS_CREATE",

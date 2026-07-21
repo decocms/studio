@@ -80,7 +80,7 @@ You are the Brand Manager. You manage the organization's brand contexts (company
 export const brandManagerAgent = {
   id: "studio-brand-manager",
   title: "Brand Manager",
-  icon: "icon://Brand?color=chart-5",
+  icon: "icon://Brand?color=orange",
   description:
     "Create, configure, and manage brand contexts (company profiles) for the organization.",
   selectedTools: [

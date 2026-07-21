@@ -73,7 +73,7 @@ export function IconPicker({
   // Local fallback color used only when `value` does not encode a color
   // (i.e. fallback type). When `value` carries a color it wins, so prop
   // updates stay in sync with the picker UI.
-  const [fallbackColor, setFallbackColor] = useState("chart-1");
+  const [fallbackColor, setFallbackColor] = useState("blue");
   const parsedValue = parseIconString(value);
   const selectedColor =
     parsedValue.type === "icon"
