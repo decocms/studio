@@ -41,11 +41,11 @@ function BacklogPaywallBannerInner() {
       </span>
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="text-sm font-medium text-foreground">
-          Seu plano de trabalho completo está bloqueado
+          Seu plano de ação está a um clique
         </span>
         <span className="text-sm text-muted-foreground">
-          Desbloqueie o diagnóstico e as tarefas priorizadas entram no quadro,
-          da maior prioridade para a menor.
+          Desbloqueie o diagnóstico completo e as tarefas entram aqui, da maior
+          prioridade para a menor.
         </span>
       </div>
       <Button size="sm" className="shrink-0 gap-2" onClick={openReport}>
