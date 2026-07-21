@@ -14,7 +14,7 @@ on:
   pull_request:
     # Multi-pod tests are slow (~7-10 min cold image build + serialized
     # boot + scenarios). Only run on PRs that change code the framework
-    # actually exercises — server-side mesh, dispatch/automations, storage
+    # actually exercises — server-side studio, dispatch/automations, storage
     # schema, or the test infra itself. UI/docs/plugin PRs skip.
     paths:
       - "apps/mesh/src/api/**"
@@ -56,16 +56,16 @@ jobs:
       # No --wait here: the one-shot `migrate` service exits 0 once schemas
       # are created and `--wait` mis-classifies that as a failure. The test
       # suite's beforeAll hook (lib/hooks.ts → cluster.waitReady) polls
-      # /health/live on each mesh pod instead.
+      # /health/live on each studio pod instead.
       - name: Start cluster
         run: docker compose -f tests/multi-pod/docker-compose.yml up -d --build
 
       - name: Run multi-pod scenarios
         run: bun test tests/multi-pod/scenarios/ --serial --timeout 900000
 
-      - name: Dump mesh logs
+      - name: Dump studio logs
         if: failure()
-        run: docker compose -f tests/multi-pod/docker-compose.yml logs mesh-1 mesh-2 mesh-3
+        run: docker compose -f tests/multi-pod/docker-compose.yml logs studio-1 studio-2 studio-3
 
       - name: Dump infra logs
         if: failure()

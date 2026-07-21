@@ -37,7 +37,7 @@ async function getSessionUserId(
 
 describe("session rehoming", () => {
   test("sign-out on pod-2 invalidates the cookie on every pod", async () => {
-    const session = await bootstrapSession(PODS.MESH_1);
+    const session = await bootstrapSession(PODS.STUDIO_1);
 
     // Baseline: cookie is valid on all three pods. If this fails, the
     // smoke test would already have flagged it — but we want a fresh
@@ -51,7 +51,7 @@ describe("session rehoming", () => {
     // That's the load-bearing assertion: the invalidation isn't local to
     // the pod that minted the session.
     await postJson(
-      PODS.MESH_2,
+      PODS.STUDIO_2,
       "/api/auth/sign-out",
       {},
       { auth: { cookie: session.cookie } },

@@ -156,10 +156,10 @@ jobs:
               echo "  --version ${{ steps.version.outputs.version }} \\"
               echo "  --namespace agent-sandbox-system \\"
               echo "  --set envName=<envName> \\"
-              echo "  --set mesh.namespace=<studio-namespace> \\"
-              echo "  --set mesh.serviceAccountName=<studio-release-name> \\"
-              echo "  --set mesh.serviceName=<studio-release-name> \\"
-              echo "  --set mesh.servicePort=80"
+              echo "  --set studio.namespace=<studio-namespace> \\"
+              echo "  --set studio.serviceAccountName=<studio-release-name> \\"
+              echo "  --set studio.serviceName=<studio-release-name> \\"
+              echo "  --set studio.servicePort=80"
             fi
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"

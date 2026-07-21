@@ -14,7 +14,7 @@ Renders:
 - `SandboxWarmPool` `studio-sandbox-<envName>` (optional)
 - `HorizontalPodAutoscaler` for the warm pool (optional; requires explicit metrics)
 - `Gateway` + `Certificate` `agent-sandbox-preview-<envName>` (optional;
-  per-claim HTTPRoutes are minted by the mesh runner, not by this chart)
+  per-claim HTTPRoutes are minted by the studio runner, not by this chart)
 - `CronJob` + scoped RBAC for idle-claim cleanup (optional)
 
 Requires the [`sandbox-operator`](../sandbox-operator/) chart to already be
@@ -30,19 +30,19 @@ installed (it ships the CRDs + controller).
   sandboxes. Keep these values in the Studio Secret: the sidecar mounts org-fs
   through Studio's authenticated API and must not receive S3 credentials.
 - A named ServiceAccount for the Studio release. Its namespace and name must
-  match `mesh.namespace` and `mesh.serviceAccountName`; this chart grants that
+  match `studio.namespace` and `studio.serviceAccountName`; this chart grants that
   identity the runner permissions in `agent-sandbox-system`.
 - The Studio release must explicitly set
   `STUDIO_SANDBOX_PROVIDER=agent-sandbox`. The default provider is the user's
   linked desktop and is not a production cluster configuration.
-- The studio release for THIS environment must point its mesh runner at
+- The studio release for THIS environment must point its studio runner at
   the env-suffixed SandboxTemplate by setting
   `STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<envName>` in the studio
-  chart's `configMap.meshConfig`. Without that override the runner falls
+  chart's `configMap.studioConfig`. Without that override the runner falls
   back to `studio-sandbox` (no suffix) and claim creation fails with
   `sandboxtemplate not found`.
 - The studio release must also set `STUDIO_ENV=<envName>` (same envName)
-  so mesh stamps `studio.decocms.com/env=<envName>` on every SandboxClaim,
+  so studio stamps `studio.decocms.com/env=<envName>` on every SandboxClaim,
   pod, and HTTPRoute it creates. The housekeeper's default selectors
   scope sweeps to that env label — without it the housekeeper matches
   zero claims and reaps nothing. Set it for every new installation even when
@@ -101,8 +101,8 @@ helm install sandbox-env-staging \
   --version 0.9.6 \
   --namespace agent-sandbox-system \
   --set envName=staging \
-  --set mesh.namespace=deco-studio-staging \
-  --set mesh.serviceAccountName=deco-studio-staging
+  --set studio.namespace=deco-studio-staging \
+  --set studio.serviceAccountName=deco-studio-staging
 ```
 
 Then point the studio (chart-deco-studio) release for the same env at
@@ -116,14 +116,14 @@ serviceAccount:
   automount: true
 
 configMap:
-  meshConfig:
+  studioConfig:
     STUDIO_SANDBOX_PROVIDER: "agent-sandbox"
     STUDIO_ENV: "staging"
     STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-staging"
     # The next three values are required only when previewGateway.enabled=true.
     STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.staging.example.com"
     # Per-claim HTTPRoute attaches to this Gateway. Both required whenever
-    # previewGateway.enabled=true — without them mesh falls back to its
+    # previewGateway.enabled=true — without them studio falls back to its
     # in-process preview proxy, which the chart no longer wires up.
     # NAMESPACE must match `previewGateway.namespace` from the chart values
     # (no default — different gateway controllers live in different
@@ -144,7 +144,7 @@ Studio uses the sentinel only for the first configuration request after a pool
 pod is bound, then rotates the daemon to a per-claim token. If
 `sentinel.token` is omitted, this chart generates and preserves its own value,
 but Studio cannot consume warm-pool pods until it receives that same value.
-Keep it in a Secret, never `configMap.meshConfig`.
+Keep it in a Secret, never `configMap.studioConfig`.
 
 ### ArgoCD Application (one per env)
 
@@ -163,7 +163,7 @@ spec:
     helm:
       values: |
         envName: staging
-        mesh:
+        studio:
           namespace: deco-studio-staging
           serviceAccountName: deco-studio-staging
   destination:
@@ -202,7 +202,7 @@ re-render from scratch, not a merge.
 ```
 sandbox-env/
 ├── Chart.yaml
-├── values.yaml                          # tunables + envName + mesh.* cross-refs
+├── values.yaml                          # tunables + envName + studio.* cross-refs
 ├── examples/
 │   └── values-kind.yaml                 # local dev overrides
 └── templates/
@@ -212,9 +212,9 @@ sandbox-env/
     ├── sandbox-warm-pool.yaml           # SandboxWarmPool (optional)
     ├── sandbox-warmpool-hpa.yaml         # Warm-pool HPA (optional)
     ├── sandbox-sentinel-secret.yaml      # Initial daemon token
-    ├── sandbox-rbac.yaml                # Role + cross-ns RoleBinding to mesh SA
+    ├── sandbox-rbac.yaml                # Role + cross-ns RoleBinding to studio SA
     ├── sandbox-preview-cert.yaml        # cert-manager Certificate (optional)
-    ├── sandbox-preview-gateway.yaml     # Gateway only — per-claim HTTPRoutes are minted by mesh
+    ├── sandbox-preview-gateway.yaml     # Gateway only — per-claim HTTPRoutes are minted by studio
     └── sandbox-housekeeper.yaml         # Idle cleanup CronJob + RBAC (optional)
 ```
 
@@ -238,8 +238,8 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `warmPool.autoscaling.enabled` | `false` | HPA; requires at least one explicit metric |
 | `previewGateway.enabled` | `false` | wildcard `*.preview.<domain>` Gateway + cert |
 | `housekeeper.enabled` | `false` | idle-claim and orphan cleanup CronJob |
-| `mesh.namespace` | `deco-studio` | studio release namespace (this env's) |
-| `mesh.serviceAccountName` | `deco-studio` | Studio ServiceAccount that gets the RoleBinding |
-| `mesh.serviceName` | `deco-studio` | _deprecated, unused since per-claim HTTPRoutes_ |
-| `mesh.servicePort` | `80` | _deprecated, unused since per-claim HTTPRoutes_ |
-| `mesh.podSelectorLabels` | `chart-deco-studio` / `deco-studio` | _deprecated, unused since chart-managed NetworkPolicy removal_ |
+| `studio.namespace` | `deco-studio` | studio release namespace (this env's) |
+| `studio.serviceAccountName` | `deco-studio` | Studio ServiceAccount that gets the RoleBinding |
+| `studio.serviceName` | `deco-studio` | _deprecated, unused since per-claim HTTPRoutes_ |
+| `studio.servicePort` | `80` | _deprecated, unused since per-claim HTTPRoutes_ |
+| `studio.podSelectorLabels` | `chart-deco-studio` / `deco-studio` | _deprecated, unused since chart-managed NetworkPolicy removal_ |

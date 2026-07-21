@@ -2,7 +2,7 @@ apiVersion: v2
 name: sandbox-env
 description: |
   Studio-side resources that consume the agent-sandbox operator: the
-  shared SandboxTemplate, mesh runner RBAC, sandbox-pod NetworkPolicy,
+  shared SandboxTemplate, studio runner RBAC, sandbox-pod NetworkPolicy,
   optional SandboxWarmPool, and optional preview Gateway / HTTPRoute /
   Certificate. Install one release per environment (dev / staging /
   prod / ...). Resource names are suffixed with `envName` so multiple
@@ -40,7 +40,10 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.9.6
+# 0.10.0: mesh.* values block -> studio.* (breaking for values / --set flags;
+# fail-guard on the old key). Prose/comments de-meshed across templates,
+# README, examples and the housekeeper script.
+version: 0.10.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.17.8"
 kubeVersion: ">=1.30.0-0"

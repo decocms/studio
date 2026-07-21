@@ -72,7 +72,7 @@ async function listThreads(
 
 describe("API key cross-pod", () => {
   test("API key minted on pod-1 authenticates on every pod", async () => {
-    const { orgId, apiKey } = await bootstrapSession(PODS.MESH_1);
+    const { orgId, apiKey } = await bootstrapSession(PODS.STUDIO_1);
 
     // The same Bearer key should resolve to the same org on every pod,
     // because API-key lookups go through the shared API-key table — not

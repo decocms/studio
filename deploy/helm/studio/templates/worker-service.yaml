@@ -21,6 +21,6 @@ spec:
     app.kubernetes.io/instance: {{ .Release.Name }}
   ports:
     - name: http
-      port: {{ .Values.configMap.meshConfig.PORT | default "3000" | int }}
-      targetPort: {{ .Values.configMap.meshConfig.PORT | default "3000" | int }}
+      port: {{ .Values.configMap.studioConfig.PORT | default "3000" | int }}
+      targetPort: {{ .Values.configMap.studioConfig.PORT | default "3000" | int }}
 {{- end }}

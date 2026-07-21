@@ -5,19 +5,19 @@ metadata:
   labels:
     {{- include "chart-deco-studio.labels" . | nindent 4 }}
 data:
-  {{- toYaml .Values.configMap.meshConfig | nindent 2 }}
+  {{- toYaml .Values.configMap.studioConfig | nindent 2 }}
   {{- $autoNatsUrl := "" }}
   {{- if .Values.nats.enabled }}
   {{- $autoNatsUrl = printf "nats://%s-nats:4222" .Release.Name }}
   {{- end }}
-  {{- $natsUrl := .Values.configMap.meshConfig.NATS_URL | default $autoNatsUrl }}
-  {{- if and $natsUrl (not (hasKey .Values.configMap.meshConfig "NATS_URL")) }}
+  {{- $natsUrl := .Values.configMap.studioConfig.NATS_URL | default $autoNatsUrl }}
+  {{- if and $natsUrl (not (hasKey .Values.configMap.studioConfig "NATS_URL")) }}
   NATS_URL: {{ $natsUrl | quote }}
   {{- end }}
   {{- /* Auto-derive CLICKHOUSE_URL from the embedded ClickHouseCluster. An
-  explicit value in meshConfig or in the Secret (envFrom lists the Secret
+  explicit value in studioConfig or in the Secret (envFrom lists the Secret
   last, so it wins) takes precedence — use the Secret for authenticated URLs. */}}
-  {{- if and (eq (include "chart-deco-studio.clickhouseEnabled" .) "true") (not (hasKey .Values.configMap.meshConfig "CLICKHOUSE_URL")) }}
+  {{- if and (eq (include "chart-deco-studio.clickhouseEnabled" .) "true") (not (hasKey .Values.configMap.studioConfig "CLICKHOUSE_URL")) }}
   CLICKHOUSE_URL: {{ printf "http://%s-clickhouse-headless:8123" (include "chart-deco-studio.clickhouseCrName" .) | quote }}
   {{- end }}
   {{- if .Values.tunnel.nats.publicUrl }}
