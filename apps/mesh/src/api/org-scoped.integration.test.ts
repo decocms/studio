@@ -125,7 +125,12 @@ describe("org-scoped API coexistence", () => {
     logSpy?.mockRestore();
     logSpy = undefined;
     vi.restoreAllMocks();
-    await closeTestPgDatabase(database);
+    if (app) {
+      await app.shutdown();
+    }
+    if (database) {
+      await closeTestPgDatabase(database);
+    }
   });
 
   it("new path serves the route AND does NOT log deprecation", async () => {
