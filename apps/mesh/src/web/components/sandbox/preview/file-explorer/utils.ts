@@ -322,6 +322,163 @@ export function flattenTree(
   return rows;
 }
 
+/** A single content-search hit inside a file. */
+export interface GrepContentMatch {
+  /** Tree path (leading slash), matching the file-tree node paths. */
+  path: string;
+  line: number;
+  text: string;
+}
+
+/** Content-search hits for one file, in the order ripgrep reported them. */
+interface GrepFileGroup {
+  path: string;
+  matches: GrepContentMatch[];
+}
+
+/**
+ * Parse the daemon grep route's `output_mode: "content"` output — newline-
+ * separated `file:line:text` rows (ripgrep `--line-number`, repo-relative
+ * paths) — into structured hits. Rows that don't match the shape (e.g. ripgrep
+ * context separators) are skipped.
+ *
+ * `packages/sandbox/server/provider/sandbox-fs-hooks.ts` has an equivalent
+ * `parseGrepResults` for the LLM-facing grep tool — same wire shape, kept
+ * separate because packages can't import app code. Update both if the shape
+ * changes.
+ */
+export function parseGrepContent(results: string): GrepContentMatch[] {
+  const matches: GrepContentMatch[] = [];
+  for (const row of results.split("\n")) {
+    if (!row) continue;
+    const firstColon = row.indexOf(":");
+    if (firstColon < 0) continue;
+    const secondColon = row.indexOf(":", firstColon + 1);
+    if (secondColon < 0) continue;
+    const line = Number.parseInt(row.slice(firstColon + 1, secondColon), 10);
+    if (!Number.isFinite(line)) continue;
+    matches.push({
+      path: toTreePath(row.slice(0, firstColon)),
+      line,
+      text: row.slice(secondColon + 1),
+    });
+  }
+  return matches;
+}
+
+/**
+ * Files whose leaf name contains `query` (case-insensitive), across the whole
+ * repo file list, mapped to tree paths and capped at `limit`. Powers the
+ * file-search box so matches aren't limited to the lazily-loaded/expanded tree.
+ */
+export function matchFileNames(
+  files: readonly string[],
+  query: string,
+  limit: number,
+): string[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  const matches: string[] = [];
+  for (const file of files) {
+    const name = file.split("/").pop() ?? file;
+    if (name.toLowerCase().includes(needle)) {
+      matches.push(toTreePath(file));
+      if (matches.length >= limit) break;
+    }
+  }
+  return matches;
+}
+
+/** One run of a grep result line — `match` runs are the highlighted query. */
+interface GrepHighlightSegment {
+  text: string;
+  match: boolean;
+}
+
+interface GrepHighlight {
+  /** True when the prefix was clipped so the first match stays visible. */
+  leadingEllipsis: boolean;
+  segments: GrepHighlightSegment[];
+}
+
+/** Context characters kept before the first match when clipping a long line. */
+const GREP_HIGHLIGHT_PREFIX = 24;
+
+/**
+ * Split a grep result line into highlighted/plain runs around each
+ * case-insensitive occurrence of `query` (the search box does literal,
+ * case-insensitive matching via ripgrep `-F -i`). Leading whitespace is
+ * trimmed, and when the first match sits far into a long line the prefix is
+ * clipped (`leadingEllipsis`) so the highlighted text stays visible under the
+ * row's CSS truncation — mirroring VS Code's search results.
+ */
+export function buildGrepHighlight(
+  lineText: string,
+  query: string,
+): GrepHighlight {
+  const trimmed = lineText.replace(/^\s+/, "");
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return {
+      leadingEllipsis: false,
+      segments: [{ text: trimmed, match: false }],
+    };
+  }
+
+  const first = trimmed.toLowerCase().indexOf(needle);
+  if (first < 0) {
+    return {
+      leadingEllipsis: false,
+      segments: [{ text: trimmed, match: false }],
+    };
+  }
+
+  const leadingEllipsis = first > GREP_HIGHLIGHT_PREFIX;
+  const clipped = leadingEllipsis
+    ? trimmed.slice(first - GREP_HIGHLIGHT_PREFIX)
+    : trimmed;
+  const haystack = clipped.toLowerCase();
+
+  const segments: GrepHighlightSegment[] = [];
+  let cursor = 0;
+  for (;;) {
+    const idx = haystack.indexOf(needle, cursor);
+    if (idx < 0) {
+      if (cursor < clipped.length) {
+        segments.push({ text: clipped.slice(cursor), match: false });
+      }
+      break;
+    }
+    if (idx > cursor) {
+      segments.push({ text: clipped.slice(cursor, idx), match: false });
+    }
+    segments.push({
+      text: clipped.slice(idx, idx + needle.length),
+      match: true,
+    });
+    cursor = idx + needle.length;
+  }
+  return { leadingEllipsis, segments };
+}
+
+/** Group content matches by file, preserving first-seen file order. */
+export function groupGrepMatches(
+  matches: readonly GrepContentMatch[],
+): GrepFileGroup[] {
+  const groups: GrepFileGroup[] = [];
+  const byPath = new Map<string, GrepFileGroup>();
+  for (const match of matches) {
+    let group = byPath.get(match.path);
+    if (!group) {
+      group = { path: match.path, matches: [] };
+      byPath.set(match.path, group);
+      groups.push(group);
+    }
+    group.matches.push(match);
+  }
+  return groups;
+}
+
 /**
  * Strip the line-number prefix from the daemon's read endpoint.
  * The daemon returns content in `"1\tcontent\n2\tcontent"` format.

@@ -500,6 +500,12 @@ export const createSandboxRoutes = () => {
       signal: quickFileOpSignal(c),
     }),
   );
+  app.post("/:virtualMcpId/:branch/grep", (c) =>
+    proxyDaemon(c, "/_sandbox/grep", {
+      forwardJsonBody: true,
+      signal: quickFileOpSignal(c),
+    }),
+  );
 
   // -- Script exec/kill -----------------------------------------------------
   app.post("/:virtualMcpId/:branch/exec/:script", (c) => {

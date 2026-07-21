@@ -274,6 +274,11 @@ async function daemonRequest(
  * separated `file:line:text` rows (ripgrep `--line-number`) — into structured
  * hits. Rows that don't match the shape (e.g. ripgrep context separators) are
  * skipped.
+ *
+ * The file-explorer UI has an equivalent `parseGrepContent` in
+ * `apps/mesh/src/web/components/sandbox/preview/file-explorer/utils.ts` —
+ * same wire shape, kept separate because packages can't import app code.
+ * Update both if the shape changes.
  */
 function parseGrepResults(results: string): SandboxFsGrepHit[] {
   const hits: SandboxFsGrepHit[] = [];
