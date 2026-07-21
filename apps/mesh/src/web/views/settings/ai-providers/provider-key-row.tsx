@@ -28,6 +28,7 @@ import {
   type OpenAICompatiblePreset,
 } from "@/web/utils/openai-compatible-presets";
 import { EditProviderKeyDialog } from "./edit-provider-dialog";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ProviderKeyRowProps {
   providerKey: AiProviderKey;
@@ -40,6 +41,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
   const queryClient = useQueryClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const t = useT();
 
   const isOpenAICompatible = provider.id === "openai-compatible";
 
@@ -72,10 +74,13 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
       queryClient.invalidateQueries({
         queryKey: KEYS.aiProviderModels(org.id, providerKey.id),
       });
-      toast.success("Key deleted");
+      toast.success(t("settings.providerKeyRow.keyDeleted"));
       setConfirmDelete(false);
     },
-    onError: (err) => toast.error(`Failed to delete key: ${err.message}`),
+    onError: (err) =>
+      toast.error(
+        t("settings.providerKeyRow.failedToDeleteKey", { error: err.message }),
+      ),
   });
 
   return (
@@ -102,7 +107,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Edit provider key"
+              aria-label={t("settings.providerKeyRow.editProviderKey")}
               className="h-7 w-7 text-muted-foreground hover:text-foreground"
               onClick={() => setEditOpen(true)}
             >
@@ -111,7 +116,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Delete provider key"
+              aria-label={t("settings.providerKeyRow.deleteProviderKey")}
               className="h-7 w-7 text-muted-foreground hover:text-destructive"
               disabled={isDeleting}
               onClick={() => setConfirmDelete(true)}
@@ -132,22 +137,24 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete API key</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("settings.providerKeyRow.deleteApiKey")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete{" "}
-              <span className="font-medium text-foreground">
-                {providerKey.label}
-              </span>
-              .
+              {t("settings.providerKeyRow.deleteApiKeyWarning", {
+                label: providerKey.label,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("settings.providerKeyRow.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteKey()}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("settings.providerKeyRow.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

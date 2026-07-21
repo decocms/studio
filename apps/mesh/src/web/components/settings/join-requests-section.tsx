@@ -7,6 +7,7 @@ import {
   useJoinRequestActions,
   usePendingJoinRequests,
 } from "@/web/hooks/use-join-requests";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 
@@ -15,6 +16,7 @@ import { Button } from "@deco/ui/components/button.tsx";
  * see them first. Renders nothing when there are none.
  */
 export function JoinRequestsSection() {
+  const t = useT();
   const requests = usePendingJoinRequests();
   const { approve, deny } = useJoinRequestActions();
 
@@ -22,8 +24,8 @@ export function JoinRequestsSection() {
 
   return (
     <SettingsSection
-      title="Join requests"
-      description="People who requested to join via a domain in approval mode."
+      title={t("settings.joinRequestsSection.title")}
+      description={t("settings.joinRequestsSection.description")}
     >
       <SettingsCard>
         {requests.map((r) => (
@@ -49,14 +51,14 @@ export function JoinRequestsSection() {
                   onClick={() => deny.mutate(r.id)}
                   disabled={deny.isPending || approve.isPending}
                 >
-                  Deny
+                  {t("settings.joinRequestsSection.deny")}
                 </Button>
                 <Button
                   size="sm"
                   onClick={() => approve.mutate(r.id)}
                   disabled={approve.isPending || deny.isPending}
                 >
-                  Approve
+                  {t("settings.joinRequestsSection.approve")}
                 </Button>
               </div>
             }
