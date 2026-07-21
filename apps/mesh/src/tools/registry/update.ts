@@ -1,5 +1,6 @@
 import { defineTool } from "@/core/define-tool";
 import { requireOrganization } from "@/core/studio-context";
+import { invalidatePublicRegistryListCache } from "@/api/routes/registry/public-mcp-server";
 import {
   RegistryUpdateInputSchema,
   RegistryUpdateOutputSchema,
@@ -20,6 +21,7 @@ export const REGISTRY_ITEM_UPDATE = defineTool({
       input.id,
       input.data,
     );
+    invalidatePublicRegistryListCache();
     return { item };
   },
 });

@@ -1,5 +1,6 @@
 import { defineTool } from "@/core/define-tool";
 import { requireOrganization } from "@/core/studio-context";
+import { invalidatePublicRegistryListCache } from "@/api/routes/registry/public-mcp-server";
 import {
   RegistryDeleteInputSchema,
   RegistryDeleteOutputSchema,
@@ -19,6 +20,7 @@ export const REGISTRY_ITEM_DELETE = defineTool({
     if (!item) {
       throw new Error(`Registry item not found: ${input.id}`);
     }
+    invalidatePublicRegistryListCache();
     return { item };
   },
 });
