@@ -7,7 +7,7 @@
  */
 
 import type { Kysely } from "kysely";
-import { ADMIN_ROLES } from "@/auth/roles";
+import { hasAdminRole } from "@/auth/roles";
 import type { Database, Permission } from "@/storage/types";
 
 /**
@@ -163,8 +163,10 @@ export async function fetchModelPermissions(
   organizationId: string,
   role: string | undefined,
 ): Promise<string[] | undefined> {
-  // No role or admin/owner = all models allowed
-  if (!role || ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])) {
+  // No role or admin/owner = all models allowed. `hasAdminRole` recognizes a
+  // comma-joined multi-role owner/admin (e.g. "admin,billing-manager"), which
+  // a plain ADMIN_ROLES.includes(role) exact match would miss.
+  if (!role || hasAdminRole(role)) {
     return undefined;
   }
 
