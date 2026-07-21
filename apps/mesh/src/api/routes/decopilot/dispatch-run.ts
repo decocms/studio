@@ -912,7 +912,11 @@ async function prepareRun(
       const allowedModels = await fetchModelPermissions(
         ctx.db,
         input.organizationId,
-        ctx.auth.user?.role,
+        // `ctx.organization?.role` is the path-resolved role for
+        // `input.organizationId` (set by resolveOrgFromPath); ctx.auth.user?.role
+        // is the session's active-org role and may belong to a different org
+        // when the caller's active org differs from the dispatch target.
+        ctx.organization?.role ?? ctx.auth.user?.role,
       );
 
       if (
