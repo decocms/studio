@@ -17,6 +17,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { LayoutLeft, SearchMd } from "@untitledui/icons";
 import { useState } from "react";
 import {
+  filterIconNames,
   getIconComponent,
   getIconNames,
   humanizeIconName,
@@ -54,15 +55,7 @@ export function SimpleIconPicker({
   const currentIconName = parsed.type === "icon" ? parsed.name : null;
 
   const allNames = getIconNames();
-  const filteredNames = search.trim()
-    ? allNames.filter((n) => {
-        const searchLower = search.toLowerCase();
-        return (
-          humanizeIconName(n).includes(searchLower) ||
-          n.toLowerCase().includes(searchLower)
-        );
-      })
-    : allNames;
+  const filteredNames = filterIconNames(allNames, search);
 
   return (
     <Popover open={disabled ? false : open} onOpenChange={setOpen}>
