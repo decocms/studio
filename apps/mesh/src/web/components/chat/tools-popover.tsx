@@ -346,7 +346,7 @@ export function ToolsPopover({
             </span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-52 p-1.5 space-y-1">
+        <DropdownMenuContent align="start" className="w-56 p-1.5 space-y-1">
           {!supportsFiles ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -383,7 +383,9 @@ export function ToolsPopover({
               size={16}
               className={cn(isPlanMode && "text-special")}
             />
-            <span className="flex-1">{t("chat.toolsPopover.planMode")}</span>
+            <span className="flex-1 whitespace-nowrap">
+              {t("chat.toolsPopover.planMode")}
+            </span>
             <span
               className={cn(
                 "text-xs text-muted-foreground",
