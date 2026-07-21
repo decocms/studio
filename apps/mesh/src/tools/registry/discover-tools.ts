@@ -14,6 +14,10 @@ function isPrivateIPv4Octets(a: number, b: number | undefined): boolean {
   if (a === 127) return true;
   if (a === 169 && b === 254) return true;
   if (a === 0) return true;
+  // RFC 6598 Shared Address Space (100.64.0.0/10) — CGNAT range also used by
+  // cloud providers for internal service/metadata endpoints (e.g. Alibaba
+  // Cloud's 100.100.100.200 metadata server).
+  if (a === 100 && b !== undefined && b >= 64 && b <= 127) return true;
   return false;
 }
 

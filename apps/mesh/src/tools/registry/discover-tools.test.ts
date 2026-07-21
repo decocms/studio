@@ -8,6 +8,21 @@ describe("isPrivateUrl", () => {
     expect(isPrivateUrl("http://169.254.169.254/")).toBe(true);
   });
 
+  it("blocks RFC 6598 CGNAT shared address space (100.64.0.0/10)", () => {
+    // Alibaba Cloud's internal metadata endpoint lives in this range.
+    expect(isPrivateUrl("http://100.100.100.200/")).toBe(true);
+    expect(isPrivateUrl("http://100.64.0.1/")).toBe(true);
+    expect(isPrivateUrl("http://100.127.255.255/")).toBe(true);
+    // Outside the /10: 100.63.x.x and 100.128.x.x are ordinary public space.
+    expect(isPrivateUrl("http://100.63.255.255/")).toBe(false);
+    expect(isPrivateUrl("http://100.128.0.0/")).toBe(false);
+  });
+
+  it("blocks a 6to4-embedded CGNAT IPv4 address", () => {
+    // 2002:6464:6464:: embeds 100.100.100.100 (within 100.64.0.0/10)
+    expect(isPrivateUrl("http://[2002:6464:6464::]/")).toBe(true);
+  });
+
   it("blocks a 6to4-embedded private IPv4 address", () => {
     // 2002:7f00:1:: embeds 127.0.0.1 (6to4: 2002:WWXX:YYZZ::)
     expect(isPrivateUrl("http://[2002:7f00:1::]/")).toBe(true);
