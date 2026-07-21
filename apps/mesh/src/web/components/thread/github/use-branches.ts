@@ -1,5 +1,6 @@
 import { KEYS, type SandboxMap, useMCPClient } from "@decocms/mesh-sdk";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { groupBranches } from "./group-branches";
 
 export interface Branch {
   name: string;
@@ -65,7 +66,6 @@ interface BranchesPage {
 }
 
 const BRANCHES_PER_PAGE = 100;
-const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function pageHasBranchMatch(
   pages: BranchesPage[] | undefined,
@@ -188,46 +188,6 @@ export function useBranches({
     },
   });
 
-  // Aggregate sandbox activity across ALL users: who is on each branch and
-  // when it was last started. Powers the "Last 7 days" group + contributor
-  // avatars. sandboxMap shape: sandboxMap[userId][branch][kind] -> record.
-  const activityByBranch = new Map<
-    string,
-    { userIds: Set<string>; lastActiveAt: number }
-  >();
-  for (const [uid, branches] of Object.entries(sandboxMap ?? {})) {
-    for (const [branch, kinds] of Object.entries(branches ?? {})) {
-      let entry = activityByBranch.get(branch);
-      if (!entry) {
-        entry = { userIds: new Set(), lastActiveAt: 0 };
-        activityByBranch.set(branch, entry);
-      }
-      entry.userIds.add(uid);
-      for (const record of Object.values(kinds ?? {})) {
-        const createdAt = record?.createdAt ?? 0;
-        if (createdAt > entry.lastActiveAt) entry.lastActiveAt = createdAt;
-      }
-    }
-  }
-
-  const recentCutoff = Date.now() - RECENT_WINDOW_MS;
-  const recent: Branch[] = [...activityByBranch.entries()]
-    .filter(([, activity]) => activity.lastActiveAt >= recentCutoff)
-    .sort((a, b) => b[1].lastActiveAt - a[1].lastActiveAt)
-    .map(([name, activity]) => ({
-      name,
-      source: "recent" as const,
-      contributors: [...activity.userIds],
-      lastActiveAt: activity.lastActiveAt,
-    }));
-  const recentNames = new Set(recent.map((b) => b.name));
-
-  const yourBranchNames = new Set(Object.keys(sandboxMap?.[userId] ?? {}));
-  const yours: Branch[] = [...yourBranchNames]
-    .filter((name) => !recentNames.has(name))
-    .sort()
-    .map((name) => ({ name, source: "yours" as const }));
-
   const branchesByName = new Map<string, RawBranch>();
   for (const page of data?.pages ?? []) {
     for (const branch of page.branches) {
@@ -237,21 +197,28 @@ export function useBranches({
     }
   }
 
-  const rawBranches: RawBranch[] = [...branchesByName.values()];
-
-  const others: Branch[] = rawBranches
+  const rawBranches = [...branchesByName.values()]
     .filter(
       (b): b is RawBranch & { name: string } => typeof b.name === "string",
     )
-    .filter((b) => !yourBranchNames.has(b.name) && !recentNames.has(b.name))
     .map((b) => ({
       name: b.name,
-      source: "other" as const,
       author:
         typeof b.commit?.author === "string"
           ? b.commit.author
           : (b.commit?.author?.login ?? null),
     }));
+
+  const { recent, yours, others } = groupBranches({
+    sandboxMap,
+    userId,
+    rawBranches,
+    now: Date.now(),
+  });
+
+  // Branch names we can match locally without paging github — all
+  // sandbox-derived (recent + yours). Used to short-circuit remote search.
+  const localBranchNames = new Set([...recent, ...yours].map((b) => b.name));
 
   const defaultBase =
     data?.pages.find((page) => page.default_branch)?.default_branch ?? null;
@@ -261,7 +228,7 @@ export function useBranches({
   ) => {
     if (
       !shouldContinue() ||
-      branchNamesHaveMatch(yourBranchNames, search) ||
+      branchNamesHaveMatch(localBranchNames, search) ||
       isFetchingNextPage
     ) {
       return;
@@ -270,7 +237,7 @@ export function useBranches({
     let pages = data?.pages ?? [];
     while (
       shouldContinue() &&
-      !pageHasBranchMatch(pages, search, yourBranchNames) &&
+      !pageHasBranchMatch(pages, search, localBranchNames) &&
       (pages.at(-1)?.branches.length ?? BRANCHES_PER_PAGE) >= BRANCHES_PER_PAGE
     ) {
       const result = await fetchNextPage();

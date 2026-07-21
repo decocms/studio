@@ -29,6 +29,12 @@ export interface PrSummary {
   head: string;
   /** SHA of the PR head commit — used to fetch check runs. */
   headSha: string;
+  /**
+   * `owner/name` of the repo the head branch lives in. Differs from the base
+   * repo for cross-fork PRs (or null when the fork was deleted) — such PRs
+   * can't be opened as a local branch. Same as the base repo for internal PRs.
+   */
+  headRepoFullName: string | null;
   htmlUrl: string;
   author: string;
 }
@@ -90,6 +96,7 @@ export interface PrComment {
 function mapRawPr(p: Record<string, unknown>): PrSummary {
   const base = p.base as Record<string, unknown> | undefined;
   const head = p.head as Record<string, unknown> | undefined;
+  const headRepo = head?.repo as Record<string, unknown> | undefined;
   const user = p.user as Record<string, unknown> | undefined;
   return {
     number: (p.number as number) ?? 0,
@@ -101,6 +108,7 @@ function mapRawPr(p: Record<string, unknown>): PrSummary {
     base: (base?.ref as string) ?? "main",
     head: (head?.ref as string) ?? "",
     headSha: (head?.sha as string) ?? "",
+    headRepoFullName: (headRepo?.full_name as string) ?? null,
     htmlUrl: (p.html_url as string) ?? "",
     author: (user?.login as string) ?? "",
   };
@@ -140,10 +148,15 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
   });
 }
 
+/** Max open PRs fetched for the picker; the tail beyond this is not shown. */
+const OPEN_PRS_PER_PAGE = 50;
+
 /**
- * Lists all OPEN pull requests for the repo (most recent first, as GitHub
- * returns them). Powers the branch picker's "PRs" tab — selecting a PR is
- * equivalent to selecting its head branch (a PR is just a branch).
+ * Lists open pull requests for the repo (most recent first, as GitHub returns
+ * them), capped at {@link OPEN_PRS_PER_PAGE}. Powers the branch picker's "PRs"
+ * tab — selecting a PR is equivalent to selecting its head branch (a PR is
+ * just a branch). No polling: the picker is an ephemeral popover, so it relies
+ * on refetch-on-open + `staleTime` rather than a background interval.
  */
 export function useOpenPrs(args: RepoArgs & { enabled?: boolean }) {
   const client = useMCPClient({
@@ -159,15 +172,13 @@ export function useOpenPrs(args: RepoArgs & { enabled?: boolean }) {
       owner: args.owner,
       repo: args.repo,
       state: "open",
-      perPage: 50,
+      perPage: OPEN_PRS_PER_PAGE,
     },
     enabled:
       (args.enabled ?? true) &&
       !!args.connectionId &&
       !!args.owner &&
       !!args.repo,
-    refetchInterval: POLL,
-    refetchIntervalInBackground: false,
     staleTime: STALE,
     select: (r) => extractPullRequestList(r).map(mapRawPr),
   });

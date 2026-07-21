@@ -60,6 +60,7 @@ function pr(over: Partial<PrSummary> = {}): PrSummary {
     base: "main",
     head: "feat/x",
     headSha: "abc123",
+    headRepoFullName: "acme/web",
     htmlUrl: "https://github.com/acme/web/pull/42",
     author: "me",
     ...over,

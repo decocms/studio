@@ -1,7 +1,6 @@
 import { type UIEvent, useRef, useState } from "react";
-import { KEYS, type SandboxMap, useProjectContext } from "@decocms/mesh-sdk";
-import { useQuery } from "@tanstack/react-query";
-import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
+import type { SandboxMap } from "@decocms/mesh-sdk";
+import { useMembersQuery } from "@/web/hooks/use-members";
 import { getInitials } from "@/web/lib/get-initials";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -104,15 +103,8 @@ export function BranchPicker({
   });
 
   // userId -> { name, image } for contributor avatars on recent branches.
-  // Non-suspense so the trigger button never blocks on member loading.
-  const { locator } = useProjectContext();
-  const orgAuth = useOrgAuthClient();
-  const { data: membersData } = useQuery({
-    queryKey: KEYS.members(locator),
-    queryFn: () => orgAuth.organization.listMembers(),
-    staleTime: 5 * 60 * 1000,
-    enabled: open,
-  });
+  // Non-suspense variant so the trigger button never blocks on member loading.
+  const { data: membersData } = useMembersQuery({ enabled: open });
   const memberById = new Map<string, MemberUser | undefined>(
     ((membersData?.data?.members ?? []) as OrgMember[]).map(
       (m) => [m.userId, m.user] as const,
@@ -133,6 +125,15 @@ export function BranchPicker({
     repo,
     enabled: open && tab === "prs",
   });
+
+  // Only same-repo PRs are openable: a fork PR's head.ref names a branch in the
+  // fork, not this repo, so picking it would fail or hit a same-named local
+  // branch. Hide those, but surface a count so the drop isn't silent.
+  const repoFullName = `${owner}/${repo}`.toLowerCase();
+  const openablePrs = prs.filter(
+    (pr) => pr.headRepoFullName?.toLowerCase() === repoFullName,
+  );
+  const hiddenForkPrs = prs.length - openablePrs.length;
 
   const pick = (name: string) => {
     onChange(name);
@@ -284,11 +285,15 @@ export function BranchPicker({
                   </div>
                 )}
                 {!prsError && !prsLoading && (
-                  <CommandEmpty>No open pull requests.</CommandEmpty>
+                  <CommandEmpty>
+                    {search.trim()
+                      ? "No pull requests match your search."
+                      : "No open pull requests."}
+                  </CommandEmpty>
                 )}
-                {prs.length > 0 && (
+                {openablePrs.length > 0 && (
                   <CommandGroup heading="Open pull requests">
-                    {prs.map((pr) => (
+                    {openablePrs.map((pr) => (
                       <CommandItem
                         key={pr.number}
                         value={`#${pr.number} ${pr.title} ${pr.head}`}
@@ -308,6 +313,12 @@ export function BranchPicker({
                       </CommandItem>
                     ))}
                   </CommandGroup>
+                )}
+                {hiddenForkPrs > 0 && (
+                  <div className="border-t p-2 text-center text-xs text-muted-foreground">
+                    {hiddenForkPrs} PR{hiddenForkPrs > 1 ? "s" : ""} from forks
+                    hidden — open on a branch in this repo
+                  </div>
                 )}
               </>
             ) : (

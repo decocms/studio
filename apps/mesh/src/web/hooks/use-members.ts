@@ -8,7 +8,9 @@
 import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+
+const MEMBERS_STALE_TIME = 5 * 60 * 1000;
 
 /**
  * Hook to get all organization members
@@ -37,5 +39,27 @@ export function useMembers() {
   return useSuspenseQuery({
     queryKey: KEYS.members(locator),
     queryFn: () => orgAuth.organization.listMembers(),
+  });
+}
+
+/**
+ * Non-Suspense variant of {@link useMembers}, sharing the same query key/cache.
+ * Use in components that must render before members resolve (e.g. a picker
+ * trigger that can't be allowed to suspend). `enabled` lets callers defer the
+ * fetch until the data is actually needed.
+ */
+export function useMembersQuery({
+  enabled = true,
+}: {
+  enabled?: boolean;
+} = {}) {
+  const { locator } = useProjectContext();
+  const orgAuth = useOrgAuthClient();
+
+  return useQuery({
+    queryKey: KEYS.members(locator),
+    queryFn: () => orgAuth.organization.listMembers(),
+    staleTime: MEMBERS_STALE_TIME,
+    enabled,
   });
 }
