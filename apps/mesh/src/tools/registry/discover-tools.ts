@@ -6,7 +6,48 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { z } from "zod";
 
-function isPrivateUrl(url: string): boolean {
+/** RFC 1918 / loopback / link-local ranges, keyed off the first two IPv4 octets. */
+function isPrivateIPv4Octets(a: number, b: number | undefined): boolean {
+  if (a === 10) return true;
+  if (a === 172 && b !== undefined && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 0) return true;
+  return false;
+}
+
+/** Decode the first IPv6 hex word (16 bits) into the first two IPv4 octets. */
+function hexWordToIPv4(word: string): [number, number] {
+  const value = Number.parseInt(word.padStart(4, "0"), 16);
+  return [value >> 8, value & 0xff];
+}
+
+/**
+ * IPv6 transition mechanisms (6to4, NAT64) embed a literal IPv4 address in the
+ * hostname. A private IPv4 embedded this way must be blocked the same as the
+ * plain dotted form, or it bypasses the SSRF guard below.
+ */
+function isPrivateEmbeddedIPv4(ipv6: string): boolean {
+  const groups = ipv6.split(":").filter((g) => g.length > 0);
+
+  // 6to4: 2002:WWXX:YYZZ:... — embedded IPv4's first two octets are word WWXX.
+  if (ipv6.startsWith("2002:") && groups.length >= 2) {
+    const [a, b] = hexWordToIPv4(groups[1]!);
+    if (isPrivateIPv4Octets(a, b)) return true;
+  }
+
+  // NAT64: 64:ff9b::WWXX:YYZZ — embedded IPv4's first two octets are the
+  // second-to-last word (well-known /96 prefix, IPv4 in the last 32 bits).
+  if (ipv6.startsWith("64:ff9b::") && groups.length >= 4) {
+    const [a, b] = hexWordToIPv4(groups[groups.length - 2]!);
+    if (isPrivateIPv4Octets(a, b)) return true;
+  }
+
+  return false;
+}
+
+export function isPrivateUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
@@ -24,12 +65,7 @@ function isPrivateUrl(url: string): boolean {
     const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
     if (ipv4Match) {
       const [, a, b] = ipv4Match.map(Number);
-      if (a === 10) return true;
-      if (a === 172 && b !== undefined && b >= 16 && b <= 31) return true;
-      if (a === 192 && b === 168) return true;
-      if (a === 127) return true;
-      if (a === 169 && b === 254) return true;
-      if (a === 0) return true;
+      if (isPrivateIPv4Octets(a!, b)) return true;
     }
 
     if (hostname.startsWith("[") && hostname.endsWith("]")) {
@@ -40,6 +76,7 @@ function isPrivateUrl(url: string): boolean {
       if (ipv6.startsWith("fe80")) return true;
       if (ipv6.startsWith("100:")) return true;
       if (ipv6.startsWith("::1")) return true;
+      if (isPrivateEmbeddedIPv4(ipv6)) return true;
 
       const v4compat = ipv6.match(/^::(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
       if (v4compat) {
