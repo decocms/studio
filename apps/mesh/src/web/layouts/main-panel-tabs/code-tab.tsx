@@ -10,7 +10,7 @@
 
 import { Suspense, lazy } from "react";
 import { Loading01 } from "@untitledui/icons";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Tooltip,

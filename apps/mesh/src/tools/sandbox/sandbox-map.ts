@@ -11,8 +11,8 @@
  * proper fix requires a Postgres advisory lock or a dedicated sandbox_sessions table.
  */
 
-import { parseBranchMap } from "@decocms/mesh-sdk";
-import type { SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
+import { parseBranchMap } from "@decocms/studio-sdk";
+import type { SandboxMap, SandboxRecord } from "@decocms/studio-sdk";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 import type { VirtualMCPStoragePort } from "../../storage/ports";

@@ -58,7 +58,7 @@ import {
   useMCPClient,
   useProjectContext,
   useVirtualMCP,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { toast } from "sonner";
 
 import {

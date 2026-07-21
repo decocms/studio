@@ -24,8 +24,8 @@ import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
   useVirtualMCP,
-} from "@decocms/mesh-sdk";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+} from "@decocms/studio-sdk";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import {
   OrgIcon,

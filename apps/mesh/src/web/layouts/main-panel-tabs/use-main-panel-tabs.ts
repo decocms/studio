@@ -22,7 +22,7 @@ import {
   useMCPToolsListQuery,
   useProjectContext,
   useVirtualMCP,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { getUIResourceUri } from "@/mcp-apps/types";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
 import { KEYS } from "@/web/lib/query-keys";

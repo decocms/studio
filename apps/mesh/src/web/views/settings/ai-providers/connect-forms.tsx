@@ -8,7 +8,7 @@ import { Eye, EyeOff } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import type { ToolInput } from "@/tools/io-types";
 import { KEYS } from "@/web/lib/query-keys";

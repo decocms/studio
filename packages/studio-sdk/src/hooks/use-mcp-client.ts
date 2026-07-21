@@ -6,7 +6,7 @@ import { createRestSelfClient } from "../lib/rest-self-client";
 import { StreamableHTTPClientTransport } from "../lib/streamable-http-client-transport";
 
 const DEFAULT_CLIENT_INFO = {
-  name: "mesh-sdk",
+  name: "studio-sdk",
   version: "1.0.0",
 };
 
@@ -19,8 +19,8 @@ export interface CreateMcpClientOptions {
   orgSlug: string;
   /** Authorization token - optional */
   token?: string | null;
-  /** Mesh server URL - optional, defaults to window.location.origin (for external apps, provide your Mesh server URL) */
-  meshUrl?: string;
+  /** Studio server URL - optional, defaults to window.location.origin (for external apps, provide your Studio server URL) */
+  studioUrl?: string;
   /**
    * Absolute MCP endpoint URL override. When set, the client connects directly
    * to this URL instead of the org-scoped `/api/:org/mcp/:connectionId` route.
@@ -40,20 +40,20 @@ export interface UseMcpClientOptionalOptions
 }
 
 /**
- * Build the MCP URL from connectionId and optional meshUrl.
+ * Build the MCP URL from connectionId and optional studioUrl.
  * Uses /api/:org/mcp/:connectionId for all servers (org-scoped routing).
  */
 function buildMcpUrl(
   connectionId: string | null,
   orgSlug: string,
-  meshUrl?: string,
+  studioUrl?: string,
 ): string {
   const baseUrl =
-    meshUrl ??
+    studioUrl ??
     (typeof window !== "undefined" ? window.location.origin : undefined);
   if (!baseUrl) {
     throw new Error(
-      "MCP client requires either meshUrl option or a browser environment.",
+      "MCP client requires either studioUrl option or a browser environment.",
     );
   }
 
@@ -76,30 +76,30 @@ export async function createMCPClient({
   orgId,
   orgSlug,
   token,
-  meshUrl,
+  studioUrl,
   mcpUrl,
 }: CreateMcpClientOptions): Promise<Client> {
   const queryKey = KEYS.mcpClient(
     orgId,
     connectionId ?? "self",
     token ?? "",
-    mcpUrl ?? meshUrl ?? "",
+    mcpUrl ?? studioUrl ?? "",
   );
 
   // Self/management connection → REST-backed client. The browser no longer
-  // speaks MCP to the mesh server for builtin tools; they're called over plain
+  // speaks MCP to the Studio server for builtin tools; they're called over plain
   // REST (`/api/:org/tools/:name`). The MCP SDK stays for outbound connections.
   // A direct `mcpUrl` override is never the self client (it targets a dev server).
   if (!mcpUrl && (!connectionId || connectionId === SELF_MCP_ALIAS_ID)) {
     return createRestSelfClient({
       orgSlug,
       token,
-      meshUrl,
+      studioUrl,
       toJSONString: `mcp-client:${queryKey.join(":")}`,
     });
   }
 
-  const url = mcpUrl ?? buildMcpUrl(connectionId, orgSlug, meshUrl);
+  const url = mcpUrl ?? buildMcpUrl(connectionId, orgSlug, studioUrl);
 
   const client = new Client(DEFAULT_CLIENT_INFO, {
     capabilities: {
@@ -143,13 +143,13 @@ export async function createMCPClient({
  * cache entry — the key cannot drift between them.
  */
 export function mcpClientQueryOptions(options: UseMcpClientOptions) {
-  const { connectionId, token, meshUrl, mcpUrl, orgId } = options;
+  const { connectionId, token, studioUrl, mcpUrl, orgId } = options;
   return {
     queryKey: KEYS.mcpClient(
       orgId,
       connectionId ?? "self",
       token ?? "",
-      mcpUrl ?? meshUrl ?? "",
+      mcpUrl ?? studioUrl ?? "",
     ),
     queryFn: () => createMCPClient(options),
     staleTime: Infinity, // Keep client alive while query is active
@@ -188,7 +188,7 @@ export function useMCPClientOptional({
   orgId,
   orgSlug,
   token,
-  meshUrl,
+  studioUrl,
   mcpUrl,
 }: UseMcpClientOptionalOptions): Client | null {
   const queryKey =
@@ -197,7 +197,7 @@ export function useMCPClientOptional({
           orgId,
           connectionId ?? "self",
           token ?? "",
-          mcpUrl ?? meshUrl ?? "",
+          mcpUrl ?? studioUrl ?? "",
         )
       : (["mcp", "client", "skip", orgId] as const);
 
@@ -212,7 +212,7 @@ export function useMCPClientOptional({
         orgId,
         orgSlug,
         token,
-        meshUrl,
+        studioUrl,
         mcpUrl,
       });
     },

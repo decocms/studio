@@ -10,8 +10,8 @@
  */
 
 import { useInfiniteQuery, keepPreviousData } from "@tanstack/react-query";
-import { useProjectContext } from "@decocms/mesh-sdk";
-import { createMCPClient } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
+import { createMCPClient } from "@decocms/studio-sdk";
 import { retry, RetryError } from "@decocms/std";
 import {
   inferRegistryListToolName,

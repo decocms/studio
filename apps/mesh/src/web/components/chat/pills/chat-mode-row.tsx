@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { BranchPill } from "./branch-pill";
 import { RuntimeSwitcher } from "./runtime-switcher";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { authClient } from "@/web/lib/auth-client";
 
 interface PureProps {

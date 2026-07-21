@@ -1,7 +1,7 @@
 import { useRegistryConnections } from "@/web/hooks/use-registry-connections";
 import { useIsRegistryEnabled } from "@/web/hooks/use-organization-settings";
 import { type RegistrySource } from "@/web/hooks/use-merged-store-discovery";
-import { SELF_MCP_ALIAS_ID, useProjectContext } from "@decocms/mesh-sdk";
+import { SELF_MCP_ALIAS_ID, useProjectContext } from "@decocms/studio-sdk";
 
 /**
  * Returns the list of enabled registry sources based on org settings,

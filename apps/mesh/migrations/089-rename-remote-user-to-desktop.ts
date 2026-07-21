@@ -21,9 +21,9 @@
  *      pre-v2 legacy rows that 087 left as bare entries under a renamed
  *      kind.
  *
- * mesh-sdk's `parseBranchMap` / `parseVmMapEntry` continue to tolerate the
+ * studio-sdk's `parseBranchMap` / `parseVmMapEntry` continue to tolerate the
  * legacy `'remote-user'` value/key on read until this migration has run
- * everywhere — see packages/mesh-sdk/src/types/virtual-mcp.ts.
+ * everywhere — see packages/studio-sdk/src/types/virtual-mcp.ts.
  */
 
 import { sql, type Kysely } from "kysely";

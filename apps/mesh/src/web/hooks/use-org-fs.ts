@@ -11,7 +11,7 @@ import {
   useQueryClient,
   keepPreviousData,
 } from "@tanstack/react-query";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 
 export interface OrgFsEntry {

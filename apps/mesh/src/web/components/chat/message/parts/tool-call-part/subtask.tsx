@@ -10,13 +10,13 @@ import {
 } from "@deco/ui/components/sheet.tsx";
 import type { ToolSubtaskMetadata } from "../../use-filter-parts.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon";
-import { useConnection, type ToolDefinition } from "@decocms/mesh-sdk";
+import { useConnection, type ToolDefinition } from "@decocms/studio-sdk";
 import { ArrowUpRight, Tool02, Users03 } from "@untitledui/icons";
 import type { TextUIPart } from "ai";
 import type { SubtaskToolPart } from "../../../types.ts";
 import { useSubtaskRun } from "../../../subtask-runs-context.tsx";
 import { useChatTask } from "../../../context.tsx";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useSubtaskStream } from "./use-subtask-stream.ts";
 import { MemoizedMarkdown } from "../../../markdown.tsx";
 import { MessageUsageStats } from "../../../usage-stats.tsx";

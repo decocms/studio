@@ -1,4 +1,4 @@
-import { type VirtualMCPEntity } from "@decocms/mesh-sdk";
+import { type VirtualMCPEntity } from "@decocms/studio-sdk";
 import { Users03, ChevronRight } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { IntegrationIcon } from "@/web/components/integration-icon";

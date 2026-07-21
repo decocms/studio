@@ -61,7 +61,7 @@ import {
   useProjectContext,
   type AiProviderModel,
   type ConnectionEntity,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { type SimpleModeTier } from "@/web/components/chat/simple-mode-tier-dropdown";
 import { ModelSelector } from "@/web/components/chat/select-model";

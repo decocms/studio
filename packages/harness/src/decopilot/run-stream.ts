@@ -58,7 +58,7 @@ import type {
 } from "./engine";
 import type { DecopilotRunContext } from "./run-context";
 import { sanitizeStreamError, stringifyError } from "../stream-error";
-import { isDecopilot } from "@decocms/mesh-sdk";
+import { isDecopilot } from "@decocms/studio-sdk";
 import {
   createAgentPrepareStep,
   reconstructEnabledTools,
@@ -442,7 +442,7 @@ export async function* runDecopilotStream(
   //   - `additionalSystemMessages` → per-request inline <system> blocks
   const vmMetadata = runContext?.virtualMcp.metadata as
     | {
-        githubRepo?: import("@decocms/mesh-sdk").GithubRepo | null;
+        githubRepo?: import("@decocms/studio-sdk").GithubRepo | null;
         subAgents?: string[] | null;
       }
     | undefined;

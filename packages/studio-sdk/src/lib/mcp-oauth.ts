@@ -145,7 +145,7 @@ class McpOAuthProvider implements OAuthClientProvider {
       token_endpoint_auth_method: "none",
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
-      client_name: options.clientName ?? "@decocms/mesh MCP client",
+      client_name: options.clientName ?? "@decocms/studio MCP client",
       // Only include scope if explicitly provided - some servers have their own scope requirements
       ...(scopeStr && { scope: scopeStr }),
     };
@@ -288,7 +288,7 @@ interface FullTokenResult {
 /**
  * Authenticate with an MCP server using OAuth
  * @param params.connectionId - The connection ID to authenticate
- * @param params.meshUrl - Mesh server URL (optional, defaults to window.location.origin for same-origin apps)
+ * @param params.studioUrl - Studio server URL (optional, defaults to window.location.origin for same-origin apps)
  * @param params.clientName - OAuth client name
  * @param params.clientUri - OAuth client URI
  * @param params.callbackUrl - OAuth callback URL (defaults to current origin + /oauth/callback)
@@ -300,8 +300,8 @@ export async function authenticateMcp(params: {
   connectionId: string;
   /** Organization slug — used to build the org-scoped /api/:org/mcp/... URL. */
   orgSlug?: string;
-  /** Mesh server URL - optional, defaults to window.location.origin (for external apps, provide your Mesh server URL) */
-  meshUrl?: string;
+  /** Studio server URL - optional, defaults to window.location.origin (for external apps, provide your Studio server URL) */
+  studioUrl?: string;
   clientName?: string;
   clientUri?: string;
   callbackUrl?: string;
@@ -311,7 +311,7 @@ export async function authenticateMcp(params: {
   /** Window mode: "popup" (default) or "tab" (for devices that block popups). Tab mode uses localStorage for cross-tab communication. */
   windowMode?: OAuthWindowMode;
 }): Promise<AuthenticateMcpResult> {
-  const baseUrl = params.meshUrl ?? window.location.origin;
+  const baseUrl = params.studioUrl ?? window.location.origin;
   const path = params.orgSlug
     ? `/api/${encodeURIComponent(params.orgSlug)}/mcp/${params.connectionId}`
     : `/mcp/${params.connectionId}`;
@@ -772,20 +772,20 @@ async function checkOAuthTokenStatus(
  * @param params.url - The org-scoped MCP URL to check (`/api/:org/mcp/...`)
  * @param params.token - Authorization token (optional)
  * @param params.orgId - Organization ID (deprecated; org is now resolved from the URL path)
- * @param params.meshUrl - Mesh server URL for API calls (optional, defaults to URL origin)
+ * @param params.studioUrl - Studio server URL for API calls (optional, defaults to URL origin)
  */
 export async function isConnectionAuthenticated({
   url,
   token,
   orgId: _orgId,
-  meshUrl,
+  studioUrl,
 }: {
   url: string;
   token: string | null;
   /** @deprecated Org is resolved from the URL path; this is kept for call-site compatibility. */
   orgId?: string;
-  /** Mesh server URL for API calls - optional, defaults to extracting from url parameter */
-  meshUrl?: string;
+  /** Studio server URL for API calls - optional, defaults to extracting from url parameter */
+  studioUrl?: string;
 }): Promise<McpAuthStatus> {
   try {
     const headers = new Headers();
@@ -806,7 +806,7 @@ export async function isConnectionAuthenticated({
           protocolVersion: "2025-06-18",
           capabilities: {},
           clientInfo: {
-            name: "@decocms/mesh MCP client",
+            name: "@decocms/studio MCP client",
             version: "1.0.0",
           },
         },
@@ -816,11 +816,11 @@ export async function isConnectionAuthenticated({
     // Extract connection ID for OAuth token status check
     const connectionId = extractConnectionIdFromUrl(url);
     const orgSlug = extractOrgSlugFromUrl(url);
-    // Determine base URL for API calls (meshUrl > URL origin > current origin)
+    // Determine base URL for API calls (studioUrl > URL origin > current origin)
     // Use current origin as base for relative URLs (browser only)
     const base = getCurrentOrigin();
     const apiBaseUrl =
-      meshUrl ?? (base ? new URL(url, base).origin : new URL(url).origin);
+      studioUrl ?? (base ? new URL(url, base).origin : new URL(url).origin);
 
     if (response.ok) {
       // Check if we have an OAuth token stored for this connection

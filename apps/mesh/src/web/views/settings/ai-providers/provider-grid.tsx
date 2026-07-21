@@ -1,4 +1,4 @@
-import type { AiProviderInfo } from "@decocms/mesh-sdk";
+import type { AiProviderInfo } from "@decocms/studio-sdk";
 import { ChevronRight } from "@untitledui/icons";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import {

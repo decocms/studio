@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
-import { type ConnectionEntity, parseVirtualUrl } from "@decocms/mesh-sdk";
+import { type ConnectionEntity, parseVirtualUrl } from "@decocms/studio-sdk";
 import {
   CheckCircle,
   ChevronDown,

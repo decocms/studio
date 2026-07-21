@@ -3,7 +3,7 @@
  * Centralizes duplicated logic across store-related files
  */
 
-import { createMCPClient, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { createMCPClient, WellKnownOrgMCPId } from "@decocms/studio-sdk";
 
 /**
  * Check if a connection ID belongs to a well-known (non-private) registry.

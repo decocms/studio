@@ -4,8 +4,8 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import type { useConnections } from "@decocms/mesh-sdk";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import type { useConnections } from "@decocms/studio-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Alert,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { getActiveGithubRepo, resolveGithubAttachment } from "./github-repo";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 
 const baseEntity: VirtualMCPEntity = {
   id: "vmcp-1",

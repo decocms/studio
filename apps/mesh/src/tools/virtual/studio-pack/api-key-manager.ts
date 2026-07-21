@@ -1,4 +1,4 @@
-import { StudioPackAgentId } from "@decocms/mesh-sdk";
+import { StudioPackAgentId } from "@decocms/studio-sdk";
 import type { StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>

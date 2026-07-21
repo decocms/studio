@@ -15,7 +15,7 @@ import {
   type ConnectionEntity,
   useConnectionActions,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Loading01 } from "@untitledui/icons";

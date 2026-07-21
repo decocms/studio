@@ -5,7 +5,7 @@ import {
   useCollectionItem,
   useMCPClient,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import {
   Form,
   FormControl,

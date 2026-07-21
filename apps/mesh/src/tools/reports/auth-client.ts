@@ -1,4 +1,4 @@
-import { COMMERCE_DISCOVERY_MCP_URL } from "@decocms/mesh-sdk";
+import { COMMERCE_DISCOVERY_MCP_URL } from "@decocms/studio-sdk";
 import { z } from "zod";
 import { getSettings } from "../../settings";
 import type { Settings } from "../../settings";

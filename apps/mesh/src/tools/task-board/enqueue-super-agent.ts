@@ -3,7 +3,7 @@ import type { TaskBoardItem } from "@/storage/types";
 import { resolveTier } from "@/core/resolve-tier";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
-import { getDecopilotId } from "@decocms/mesh-sdk";
+import { getDecopilotId } from "@decocms/studio-sdk";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@/shared/task-board";
 
 /**

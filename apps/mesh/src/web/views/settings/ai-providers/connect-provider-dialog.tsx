@@ -11,7 +11,7 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import type { ToolInput } from "@/tools/io-types";
 import { useAiProviders } from "@/web/hooks/collections/use-ai-providers";

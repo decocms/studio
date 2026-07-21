@@ -22,7 +22,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useVirtualMCP } from "@decocms/mesh-sdk";
+import { useVirtualMCP } from "@decocms/studio-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
 import { SimpleIconPicker } from "../../components/simple-icon-picker";

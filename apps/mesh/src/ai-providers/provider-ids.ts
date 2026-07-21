@@ -1,1 +1,1 @@
-export { PROVIDER_IDS, type ProviderId } from "@decocms/mesh-sdk";
+export { PROVIDER_IDS, type ProviderId } from "@decocms/studio-sdk";

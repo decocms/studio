@@ -1,4 +1,4 @@
-import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { GithubRepo } from "@decocms/studio-sdk";
 
 /**
  * Pure decision logic for mirroring a GitHub repo onto the Report Agent's

@@ -31,7 +31,7 @@
  *      structured fields all encode as quoted strings, so this captures
  *      them all while keeping documentation text intact.
  *
- * All four passes are idempotent. mesh-sdk's tolerant readers
+ * All four passes are idempotent. studio-sdk's tolerant readers
  * (`parseBranchMap` / `parseSandboxRecord`) continue to accept the legacy
  * shapes during the rolling deploy window; the follow-up task removes them
  * once this migration has run everywhere.

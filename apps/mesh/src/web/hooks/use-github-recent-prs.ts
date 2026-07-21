@@ -12,7 +12,7 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { fetchGithubInstallations } from "@/web/lib/github-installations";
 import { extractPullRequestList } from "@/web/components/thread/github/github-pr-api";
 import { KEYS } from "@/web/lib/query-keys";

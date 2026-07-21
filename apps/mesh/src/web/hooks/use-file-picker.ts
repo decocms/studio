@@ -8,7 +8,7 @@
  * `@aws-sdk/lib-storage`.
  */
 
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "../lib/query-keys";

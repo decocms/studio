@@ -4,8 +4,8 @@ import type { ToolUIPart } from "ai";
 import { Suspense } from "react";
 import { UserCircle } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
-import { useProjectContext } from "@decocms/mesh-sdk";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import { useProjectContext } from "@decocms/studio-sdk";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import {

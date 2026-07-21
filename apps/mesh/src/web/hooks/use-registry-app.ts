@@ -8,7 +8,7 @@ import {
   useMCPToolCallQuery,
   useProjectContext,
   WellKnownOrgMCPId,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { RegistryItem } from "@/web/components/store/types";
 
 /**

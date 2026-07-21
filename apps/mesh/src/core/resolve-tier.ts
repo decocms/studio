@@ -6,7 +6,7 @@ import {
   type AiProviderModel,
   type SimpleModeDefaults,
   type SimpleModeModelSlot,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 
 export class TierUnavailableError extends Error {
   constructor(public tier: SimpleModeTier) {

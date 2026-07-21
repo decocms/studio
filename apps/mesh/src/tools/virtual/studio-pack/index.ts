@@ -1,4 +1,4 @@
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { WellKnownOrgMCPId } from "@decocms/studio-sdk";
 import type { VirtualMCPStorage } from "@/storage/virtual";
 import type { StudioContext } from "@/core/studio-context";
 import type { VirtualMCPEntity } from "../schema";

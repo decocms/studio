@@ -1,4 +1,4 @@
-import type { ConnectionEntity } from "@decocms/mesh-sdk";
+import type { ConnectionEntity } from "@decocms/studio-sdk";
 import { getConnectionSlug } from "./connection-slug";
 
 export interface ConnectionGroup {

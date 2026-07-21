@@ -3,7 +3,7 @@ import {
   normalizeSandboxProviderKind,
   type LegacySandboxProviderKind,
   type SandboxProviderKind,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 
 export type AgentOption = "decopilot" | "claude-code-desktop" | "codex-desktop";
 

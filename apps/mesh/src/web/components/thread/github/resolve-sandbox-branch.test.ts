@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SandboxMap } from "@decocms/mesh-sdk";
+import type { SandboxMap } from "@decocms/studio-sdk";
 import {
   resolveEffectiveBranch,
   resolveSandboxBranchFromMap,

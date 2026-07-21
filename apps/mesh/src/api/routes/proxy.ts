@@ -35,7 +35,7 @@ import { CONNECTION_ERROR_REPROBE_COOLDOWN_MS } from "@/core/constants";
 import { peekRpcMethod, probeDecision } from "./proxy-handshake";
 import { handleVirtualMcpRequest } from "./virtual-mcp";
 import { resolveDevConnection } from "./dev-connection";
-import { parseDevConnectionId } from "@decocms/mesh-sdk";
+import { parseDevConnectionId } from "@decocms/studio-sdk";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 export { toServerClient, type MCPProxyClient } from "./mcp-proxy-factory";
 

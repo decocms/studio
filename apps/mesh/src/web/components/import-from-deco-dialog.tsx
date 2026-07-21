@@ -7,7 +7,7 @@ import {
   useMCPClient,
   useProjectContext,
   type ConnectionEntity,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { resolveDecoSiteGithubRepo } from "@/shared/deco-sites-github";

@@ -18,7 +18,7 @@ import {
   isQuickSearchModel,
   pickSimpleModeDefaults,
   type SimpleModeModelSlot,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import {
   useSimpleMode,
   useUpdateSimpleMode,
@@ -34,7 +34,7 @@ const filterImageModels = (m: AiProviderModel) =>
   m.capabilities?.includes("image") === true;
 
 // Quick web search vs deep research classifiers are shared with the chat
-// picker and the SDK default-picker (`@decocms/mesh-sdk`) so the three never
+// picker and the SDK default-picker (`@decocms/studio-sdk`) so the three never
 // drift. Quick = search-capable but not async-only (pinning an async model
 // here would make every quick lookup launch a slow research job); deep =
 // async / deep-research, with sonar-pro allowed as a capable fallback.

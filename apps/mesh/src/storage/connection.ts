@@ -29,7 +29,7 @@ import { generatePrefixedId } from "@/shared/utils/generate-id";
 import {
   getWellKnownDecopilotConnection,
   isDecopilot,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { CONNECTION_DECRYPT_DISABLE_THRESHOLD } from "../core/constants";
 import {

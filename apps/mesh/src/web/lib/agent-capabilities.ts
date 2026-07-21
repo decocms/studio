@@ -1,4 +1,4 @@
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 import type { CurrentLink } from "@/web/hooks/use-current-link";
 import { resolveGithubAttachment } from "./github-repo";
 

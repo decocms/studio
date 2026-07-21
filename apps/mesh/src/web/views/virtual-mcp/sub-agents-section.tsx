@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
-import { useProjectContext, useVirtualMCPs } from "@decocms/mesh-sdk";
+import { useProjectContext, useVirtualMCPs } from "@decocms/studio-sdk";
 import { Plus, XClose } from "@untitledui/icons";
 import { useState } from "react";
 import type { VirtualMcpFormReturn } from "./types";

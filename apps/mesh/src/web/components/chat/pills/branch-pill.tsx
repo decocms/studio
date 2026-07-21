@@ -1,4 +1,4 @@
-import type { SandboxMap } from "@decocms/mesh-sdk";
+import type { SandboxMap } from "@decocms/studio-sdk";
 import {
   Tooltip,
   TooltipContent,

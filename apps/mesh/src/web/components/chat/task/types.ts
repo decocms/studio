@@ -1,4 +1,4 @@
-import type { ThreadDisplayStatus } from "@decocms/mesh-sdk";
+import type { ThreadDisplayStatus } from "@decocms/studio-sdk";
 import type { ThreadMetadata } from "@/storage/types";
 
 // Types

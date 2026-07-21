@@ -14,7 +14,7 @@
  * - Supports exclusion strategy for inverse tool selection
  */
 
-import { createServerFromClient, getDecopilotId } from "@decocms/mesh-sdk";
+import { createServerFromClient, getDecopilotId } from "@decocms/studio-sdk";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";

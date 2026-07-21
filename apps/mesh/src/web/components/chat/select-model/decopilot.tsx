@@ -38,7 +38,7 @@ import { useChatPrefs } from "../context";
 import { getProviderLogo } from "@/web/utils/ai-providers-logos";
 import { getPreset } from "@/web/utils/openai-compatible-presets";
 import { useNavigate } from "@tanstack/react-router";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { NoAiProviderEmptyState } from "../no-ai-provider-empty-state";
 import { ModelDetailsPanel, parseModelTitle } from "./shared";
 

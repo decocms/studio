@@ -9,7 +9,7 @@
 import { Coins04, AlertCircle } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useNavigate } from "@tanstack/react-router";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 
 interface CreditsEyebrowProps {
   balanceDollars: number;

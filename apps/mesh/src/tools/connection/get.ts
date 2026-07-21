@@ -8,7 +8,7 @@ import {
   CollectionGetInputSchema,
   createCollectionGetOutputSchema,
 } from "@decocms/bindings/collections";
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { WellKnownOrgMCPId } from "@decocms/studio-sdk";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { defineTool } from "../../core/define-tool";
 import { requireOrganization } from "../../core/studio-context";

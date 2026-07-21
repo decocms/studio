@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { SandboxRecord } from "@decocms/mesh-sdk";
+import type { SandboxRecord } from "@decocms/studio-sdk";
 
 import {
   deleteSandboxMapEntry,

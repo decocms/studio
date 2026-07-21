@@ -48,7 +48,7 @@ import {
   Key01,
   HardDrive,
 } from "@untitledui/icons";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useCapabilities, type CapabilityId } from "@/web/hooks/use-capability";
 import { usePendingJoinRequests } from "@/web/hooks/use-join-requests";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";

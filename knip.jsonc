@@ -40,7 +40,7 @@
         "node-pty"
       ]
     },
-    "packages/mesh-sdk": {
+    "packages/studio-sdk": {
       "ignoreDependencies": ["sonner"]
     },
     "packages/sandbox": {

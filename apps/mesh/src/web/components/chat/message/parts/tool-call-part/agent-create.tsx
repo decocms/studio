@@ -3,7 +3,7 @@
 import type { ToolUIPart } from "ai";
 import { Suspense, useRef, type MouseEvent } from "react";
 import { UserCircle } from "@untitledui/icons";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { Button } from "@deco/ui/components/button.tsx";

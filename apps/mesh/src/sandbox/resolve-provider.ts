@@ -27,7 +27,7 @@
  * as input.
  */
 
-import { parseBranchMap } from "@decocms/mesh-sdk";
+import { parseBranchMap } from "@decocms/studio-sdk";
 import {
   resolveSandboxProviderKindFromEnv,
   type SandboxProvider,

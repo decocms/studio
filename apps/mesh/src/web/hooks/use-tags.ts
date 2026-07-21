@@ -6,7 +6,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { toast } from "sonner";
 import { KEYS } from "../lib/query-keys";
 import { useStudioTools } from "../lib/studio-tools";

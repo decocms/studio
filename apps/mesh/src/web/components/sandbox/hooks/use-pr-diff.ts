@@ -1,4 +1,4 @@
-import { useMCPClient } from "@decocms/mesh-sdk";
+import { useMCPClient } from "@decocms/studio-sdk";
 import { useQuery } from "@tanstack/react-query";
 import {
   countGitDiffFiles,

@@ -1,5 +1,5 @@
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useMCPReadResource, useUiResourceHtml } from "@decocms/mesh-sdk";
+import { useMCPReadResource, useUiResourceHtml } from "@decocms/studio-sdk";
 import type {
   McpUiDisplayMode,
   McpUiHostContext,

@@ -11,7 +11,11 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import type { GithubRepo, SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
+import type {
+  GithubRepo,
+  SandboxMap,
+  SandboxRecord,
+} from "@decocms/studio-sdk";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import {
   deleteSandboxMapEntry,

@@ -1,7 +1,7 @@
 /**
  * CT stub for `@/web/hooks/use-file-configs`.
  *
- * The real hook calls the FILE_CONFIG_LIST MCP tool via @decocms/mesh-sdk,
+ * The real hook calls the FILE_CONFIG_LIST MCP tool via @decocms/studio-sdk,
  * which needs the full app provider tree (ProjectContext + MCP client) and a
  * live backend. In component tests we only exercise the field's own
  * render/paste/remove logic, so we return a fixed shape. Zero configs means

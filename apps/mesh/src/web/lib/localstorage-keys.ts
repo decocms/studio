@@ -1,4 +1,4 @@
-import type { ProjectLocator } from "@decocms/mesh-sdk";
+import type { ProjectLocator } from "@decocms/studio-sdk";
 
 /**
  * Known localStorage keys for the studio app.

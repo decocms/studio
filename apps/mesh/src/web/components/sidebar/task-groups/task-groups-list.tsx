@@ -37,7 +37,7 @@ import {
   useMCPClient,
   useProjectContext,
   useVirtualMCPs,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { authClient } from "@/web/lib/auth-client";
 import {

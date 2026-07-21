@@ -16,7 +16,7 @@ import {
   createDecopilotFinishEvent,
   createDecopilotStepEvent,
   createDecopilotThreadStatusEvent,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { RunEvent, RunTransition } from "./run-state";
 
 /** Recorded on a run the idle reaper force-fails for lack of progress. */

@@ -1,7 +1,7 @@
 import { useChatTask } from "@/web/components/chat/chat-context";
 import { PreviewContent } from "@/web/components/sandbox/preview/preview";
 import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
-import { useVirtualMCP } from "@decocms/mesh-sdk";
+import { useVirtualMCP } from "@decocms/studio-sdk";
 import { AlertCircle } from "@untitledui/icons";
 
 export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {

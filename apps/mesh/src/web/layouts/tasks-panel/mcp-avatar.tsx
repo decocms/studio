@@ -1,5 +1,5 @@
 import { AgentAvatar } from "@/web/components/agent-icon";
-import { useVirtualMCP } from "@decocms/mesh-sdk";
+import { useVirtualMCP } from "@decocms/studio-sdk";
 import { Zap } from "@untitledui/icons";
 
 /**

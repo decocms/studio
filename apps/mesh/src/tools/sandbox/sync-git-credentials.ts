@@ -1,4 +1,4 @@
-import type { GithubRepo } from "@decocms/mesh-sdk/types";
+import type { GithubRepo } from "@decocms/studio-sdk/types";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { StudioContext } from "../../core/studio-context";
 import { RECONNECT_ERROR } from "../../oauth/token-refresh";

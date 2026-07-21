@@ -20,7 +20,7 @@
  */
 
 import type { ToolSet, UIMessageStreamWriter } from "ai";
-import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { GithubRepo } from "@decocms/studio-sdk";
 import type { StudioContext } from "@/core/studio-context";
 import { getThreadGithubRepo, threadBranch } from "@/tools/sandbox/thread-repo";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";

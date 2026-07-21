@@ -1,4 +1,4 @@
-import type { ToolDefinition, UsageStats } from "@decocms/mesh-sdk";
+import type { ToolDefinition, UsageStats } from "@decocms/studio-sdk";
 import type { ModelsConfig } from "@decocms/harness/types";
 import type { ChatMessage } from "../types.ts";
 

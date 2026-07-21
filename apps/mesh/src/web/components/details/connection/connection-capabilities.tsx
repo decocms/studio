@@ -4,7 +4,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@deco/ui/components/tabs.tsx";
-import { useConnection } from "@decocms/mesh-sdk";
+import { useConnection } from "@decocms/studio-sdk";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { BookOpen01, Columns01, ChevronRight, Tool01 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";

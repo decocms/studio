@@ -4,7 +4,7 @@ import {
   useMCPClient,
   useProjectContext,
   type VirtualMCPEntity,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { toast } from "sonner";
 import { useHomeNextActions } from "@/web/hooks/use-home-next-actions";

@@ -1,6 +1,6 @@
 import { DotsVertical, Settings02, Trash01 } from "@untitledui/icons";
 import { formatDistanceToNow } from "date-fns";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { Button } from "@deco/ui/components/button.tsx";

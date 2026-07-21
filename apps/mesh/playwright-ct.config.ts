@@ -46,7 +46,7 @@ export default defineConfig({
       ],
       resolve: {
         // Sever the I/O boundary of ImageField/FileField. Both statically
-        // import these modules (transitively pulling in @decocms/mesh-sdk's
+        // import these modules (transitively pulling in @decocms/studio-sdk's
         // MCP client + @tanstack/react-router), and call useProjectContext()
         // at mount — which throws without the full app provider tree. The
         // stubs let us test the fields' own render/paste/remove logic

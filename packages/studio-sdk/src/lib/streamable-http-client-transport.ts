@@ -59,7 +59,7 @@ function getMockActionFor(message: JSONRPCMessage): MockAction | null {
                 requests: { tool: { call: {} } },
               },
             },
-            serverInfo: { name: "mesh-virtual-mcp", version: "1.0.0" },
+            serverInfo: { name: "studio-virtual-mcp", version: "1.0.0" },
           },
           jsonrpc: m.jsonrpc ?? "2.0",
           // @ts-expect-error - id is not typed

@@ -8,7 +8,7 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { Coins04 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { cn } from "@deco/ui/lib/utils.ts";
 

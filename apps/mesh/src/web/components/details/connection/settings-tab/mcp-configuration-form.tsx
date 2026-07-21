@@ -2,7 +2,7 @@ import {
   useConnection,
   useConnections,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { resolveBindingType } from "@/web/hooks/use-binding";
 import { useInstallFromRegistry } from "@/web/hooks/use-install-from-registry";
 import { Loading01, Plus } from "@untitledui/icons";

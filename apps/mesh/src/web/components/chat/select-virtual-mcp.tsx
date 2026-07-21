@@ -13,8 +13,8 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { isDecopilot, type VirtualMCPEntity } from "@decocms/mesh-sdk";
-import { useVirtualMCPs } from "@decocms/mesh-sdk";
+import { isDecopilot, type VirtualMCPEntity } from "@decocms/studio-sdk";
+import { useVirtualMCPs } from "@decocms/studio-sdk";
 import { Check, Loading01, SearchMd, Users03 } from "@untitledui/icons";
 import {
   Suspense,

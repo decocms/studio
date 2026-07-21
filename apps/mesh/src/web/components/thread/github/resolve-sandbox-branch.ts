@@ -1,4 +1,4 @@
-import type { SandboxMap } from "@decocms/mesh-sdk/types";
+import type { SandboxMap } from "@decocms/studio-sdk/types";
 
 /** First branch with a sandbox record for this user (prefers `prefer` when set). */
 export function resolveSandboxBranchFromMap(

@@ -1,4 +1,4 @@
-import type { GithubRepo, VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import type { GithubRepo, VirtualMCPEntity } from "@decocms/studio-sdk/types";
 
 /**
  * The GitHub attachment status of a Virtual MCP, derived from a SINGLE source

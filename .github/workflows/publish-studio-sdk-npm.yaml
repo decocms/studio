@@ -1,10 +1,10 @@
-name: Publish @decocms/mesh-sdk
+name: Publish @decocms/studio-sdk
 
 on:
   push:
     branches: [main]
     paths:
-      - "packages/mesh-sdk/**"
+      - "packages/studio-sdk/**"
   workflow_dispatch:
 
 permissions:
@@ -40,7 +40,7 @@ jobs:
 
           # Check if this specific version already exists in npm
           # This works for both stable and prerelease versions (unlike checking 'latest' tag)
-          if npm view @decocms/mesh-sdk@$CURRENT_VERSION version >/dev/null 2>&1; then
+          if npm view @decocms/studio-sdk@$CURRENT_VERSION version >/dev/null 2>&1; then
             echo "version-changed=false" >> $GITHUB_OUTPUT
             echo "⏭️ Version $CURRENT_VERSION already published, skipping publish"
           else
@@ -58,31 +58,31 @@ jobs:
             echo "npm-tag=latest" >> $GITHUB_OUTPUT
             echo "📦 Stable version detected, will publish with tag 'latest'"
           fi
-        working-directory: packages/mesh-sdk
+        working-directory: packages/studio-sdk
 
       - name: Publish to npm
         if: steps.version-check.outputs.version-changed == 'true'
         run: npm publish --access public --tag ${{ steps.version-check.outputs.npm-tag }} --provenance
-        working-directory: packages/mesh-sdk
+        working-directory: packages/studio-sdk
 
       - name: Create Release
         if: steps.version-check.outputs.version-changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "mesh-sdk-v${{ steps.version-check.outputs.current-version }}" \
-            --title "@decocms/mesh-sdk v${{ steps.version-check.outputs.current-version }}" \
+          gh release create "studio-sdk-v${{ steps.version-check.outputs.current-version }}" \
+            --title "@decocms/studio-sdk v${{ steps.version-check.outputs.current-version }}" \
             --notes "## Changes
 
-          Automated release of @decocms/mesh-sdk package.
+          Automated release of @decocms/studio-sdk package.
 
           ### Installation
           \`\`\`bash
-          npm install @decocms/mesh-sdk
+          npm install @decocms/studio-sdk
           \`\`\`
           
           ### Features
           - React hooks for MCP connections
           - OAuth authentication utilities
-          - Support for external apps via \`meshUrl\` parameter
+          - Support for external apps via \`studioUrl\` parameter
           - TypeScript types for connections and virtual MCPs"

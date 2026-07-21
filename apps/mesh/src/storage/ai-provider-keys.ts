@@ -3,7 +3,7 @@ import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { ProviderKeyCache } from "./provider-key-cache";
 import type { Database, ProviderKeyInfo } from "./types";
-import type { ProviderId } from "@decocms/mesh-sdk";
+import type { ProviderId } from "@decocms/studio-sdk";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 
 function hashApiKey(apiKey: string): string {

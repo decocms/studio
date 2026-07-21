@@ -2,7 +2,7 @@ import {
   getWellKnownCommunityRegistryConnection,
   getWellKnownRegistryConnection,
   getWellKnownSelfConnection,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { decoAiGatewayAdapter } from "@/ai-providers/adapters/deco-ai-gateway";
 import { getBaseUrl } from "@/core/server-constants";
 import { getDb } from "@/database";

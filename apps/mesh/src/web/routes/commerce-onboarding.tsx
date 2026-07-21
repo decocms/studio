@@ -23,7 +23,7 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   WellKnownOrgMCPId,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import {
   QueryErrorResetBoundary,
   useMutation,

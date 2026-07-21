@@ -24,7 +24,7 @@ import {
   SELF_MCP_ALIAS_ID,
   useProjectContext,
   WellKnownOrgMCPId,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { formatPinnedViewTabId } from "@/web/layouts/main-panel-tabs/tab-id";

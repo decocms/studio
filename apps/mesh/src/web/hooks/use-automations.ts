@@ -9,7 +9,7 @@ import {
   useMCPClient,
   useProjectContext,
   SELF_MCP_ALIAS_ID,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { toast } from "sonner";
 import { KEYS } from "../lib/query-keys";
 import { useStudioTools } from "../lib/studio-tools";

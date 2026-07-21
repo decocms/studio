@@ -1,7 +1,7 @@
 import { useRef } from "react";
-import { getWellKnownDecopilotVirtualMCP } from "@decocms/mesh-sdk";
+import { getWellKnownDecopilotVirtualMCP } from "@decocms/studio-sdk";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { isPerThreadTab } from "@/web/layouts/main-panel-tabs/tab-id";
 import { AUTOSEND_QUERY_VALUE } from "@/web/lib/autosend";
 

@@ -19,7 +19,7 @@ import {
   useVirtualMCPs,
   useProjectContext,
   SELF_MCP_ALIAS_ID,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Card } from "@deco/ui/components/card.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";

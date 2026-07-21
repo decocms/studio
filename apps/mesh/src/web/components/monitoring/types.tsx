@@ -5,7 +5,7 @@
  */
 
 import { formatBytes } from "@/web/lib/format-bytes";
-import { useConnections, useProjectContext } from "@decocms/mesh-sdk";
+import { useConnections, useProjectContext } from "@decocms/studio-sdk";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";

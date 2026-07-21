@@ -1,4 +1,4 @@
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import {
   useMutation,
   useQueryClient,

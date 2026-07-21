@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { Clock, DotsVertical, Trash01, Zap } from "@untitledui/icons";
-import { useVirtualMCP } from "@decocms/mesh-sdk";
+import { useVirtualMCP } from "@decocms/studio-sdk";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import {
   useAutomationActions,

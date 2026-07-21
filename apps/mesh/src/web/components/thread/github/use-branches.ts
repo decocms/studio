@@ -1,4 +1,4 @@
-import { KEYS, type SandboxMap, useMCPClient } from "@decocms/mesh-sdk";
+import { KEYS, type SandboxMap, useMCPClient } from "@decocms/studio-sdk";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 export interface Branch {

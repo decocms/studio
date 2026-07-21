@@ -12,7 +12,7 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useSuspenseInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useRef, useState } from "react";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";

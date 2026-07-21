@@ -17,7 +17,7 @@ import {
   readResource,
   useMCPClient,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type {
   ListPromptsResult,

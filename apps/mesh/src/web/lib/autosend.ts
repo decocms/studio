@@ -1,5 +1,5 @@
 import type { SendMessageParams } from "@/web/components/chat/store/types";
-import type { ProjectLocator } from "@decocms/mesh-sdk";
+import type { ProjectLocator } from "@decocms/studio-sdk";
 import { LOCALSTORAGE_KEYS } from "./localstorage-keys";
 
 export const AUTOSEND_TTL_MS = 10_000;

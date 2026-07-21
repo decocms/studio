@@ -4,7 +4,7 @@
  * This file is the ONE home for `MeshProvider` + `createLanguageModel`, shared
  * by the cluster (the `@/ai-providers/*` aliases re-export from here) and the
  * desktop daemon (which deep-imports the harnesses subtree). It imports ONLY
- * AI-SDK + `@decocms/mesh-sdk` + relative paths — no
+ * AI-SDK + `@decocms/studio-sdk` + relative paths — no
  * `@/*` specifier and no StudioContext — so the daemon bundles it without the
  * tsc stack overflow that cluster types induce.
  */
@@ -12,7 +12,7 @@
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { ProviderV3 } from "@ai-sdk/provider";
 import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
-import type { ModelCapability, ProviderId } from "@decocms/mesh-sdk";
+import type { ModelCapability, ProviderId } from "@decocms/studio-sdk";
 import { isCreditError } from "../stream-error";
 import { withThoughtSignatureCodec } from "./thought-signature";
 

@@ -38,7 +38,7 @@ import {
 import { GitHubIcon } from "@daveyplate/better-auth-ui";
 import { SidebarMenuButton } from "@deco/ui/components/sidebar.tsx";
 import { authClient } from "@/web/lib/auth-client";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { track } from "@/web/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/web/lib/query-persist";
 import { usePreferences, type ThemeMode } from "@/web/hooks/use-preferences.ts";

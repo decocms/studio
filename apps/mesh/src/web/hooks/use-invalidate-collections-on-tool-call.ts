@@ -10,7 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useMatch } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { KEYS } from "../lib/query-keys";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 
 /**
  * Hook that returns an onToolCall handler for invalidating collection queries

@@ -6,7 +6,7 @@ import {
   getWellKnownCommerceDiscoveryVirtualMCP,
   type VirtualMCPEntity,
   WellKnownOrgMCPId,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { z } from "zod";
 import { normalizeReportsSiteUrl } from "../../reports/site-url";
 import type { StudioContext } from "../../core/studio-context";

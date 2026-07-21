@@ -124,7 +124,7 @@ export function getWellKnownCommunityRegistryConnection(): ConnectionCreateData 
  * Get well-known connection definition for the Management MCP (SELF).
  * The connection URL is dynamic based on the base URL, so this is a function.
  *
- * @param baseUrl - The base URL for the MCP server (e.g., "http://localhost:3000" or "https://mesh.example.com")
+ * @param baseUrl - The base URL for the MCP server (e.g., "http://localhost:3000" or "https://studio.example.com")
  * @returns ConnectionCreateData for the Management MCP
  */
 export function getWellKnownSelfConnection(

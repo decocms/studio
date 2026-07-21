@@ -37,8 +37,8 @@ import {
   isStudioPackAgent,
   useProjectContext,
   useVirtualMCPs,
-} from "@decocms/mesh-sdk";
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+} from "@decocms/studio-sdk";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 import { track } from "@/web/lib/posthog-client";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { GitHubIcon } from "@/web/components/icons/github-icon";

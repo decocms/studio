@@ -3,7 +3,7 @@
  *
  * The frontend (`apps/mesh/src/web/`) ships as a separate build artifact (vite →
  * dist/client, served by the nginx `-web` container) and talks to the API over
- * HTTP via `@decocms/mesh-sdk`. It is therefore free to import *types* from the
+ * HTTP via `@decocms/studio-sdk`. It is therefore free to import *types* from the
  * backend (erased at build — end-to-end type safety is a feature), but must NOT
  * make **value** imports from server-only trees: those pull server runtime code
  * (DB drivers, secrets, provider SDKs) into the browser bundle and couple the UI
@@ -16,7 +16,7 @@
  * someone remembers to blocklist it. `import type` / `import { type X }` are
  * allowed. Both `@/…` alias imports and `../…` relative climbs are checked. The
  * fix is to import it `type`-only, or move the shared value (schema, constant,
- * pure helper) into a frontend-safe tree or into `@decocms/mesh-sdk`.
+ * pure helper) into a frontend-safe tree or into `@decocms/studio-sdk`.
  *
  * Companion to `ban-cross-tree-imports.js` (which guards packages/ ↛ apps/mesh)
  * and `ban-e2e-app-imports.js` (which guards the e2e black-box wall).
@@ -108,7 +108,7 @@ const banWebServerImportsRule = {
           `Web ↔ server boundary: "${src.value}" is a VALUE import from the server-only "${tree}" tree. ` +
           `The frontend is a separate bundle — it may import types (use \`import type\`) but not runtime code, ` +
           `which risks pulling server deps/secrets into the browser. Move the shared value into @/web, @/mcp-apps, ` +
-          `@/lib, @/shared or @decocms/mesh-sdk, or import it type-only.`,
+          `@/lib, @/shared or @decocms/studio-sdk, or import it type-only.`,
       });
     };
 

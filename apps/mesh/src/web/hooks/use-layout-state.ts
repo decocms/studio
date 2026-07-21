@@ -14,7 +14,7 @@
 
 import { useRef } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/studio-sdk";
 import { resolveDefaultTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
 import { useThreadActions } from "@/web/components/chat/store/hooks";

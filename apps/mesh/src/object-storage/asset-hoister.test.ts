@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ConnectionEntity } from "@decocms/mesh-sdk/types";
+import type { ConnectionEntity } from "@decocms/studio-sdk/types";
 import type { BoundObjectStorage } from "./bound-object-storage";
 import { decorateStorageWithAssetHoisting } from "./asset-hoister";
 import type {

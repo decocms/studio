@@ -7,7 +7,7 @@
  * connection; no Virtual MCP row is created. Both paths enforce organization
  * scope + active status and return the same runtime target shape.
  */
-import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { GithubRepo } from "@decocms/studio-sdk";
 import type { StudioContext } from "@/core/studio-context";
 import {
   createConnectionClient,

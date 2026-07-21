@@ -28,7 +28,7 @@ import type {
   UIMessageChunk,
   UIMessageStreamWriter,
 } from "ai";
-import type { GithubRepo } from "@decocms/mesh-sdk";
+import type { GithubRepo } from "@decocms/studio-sdk";
 import type { ConnectionsBlockTool } from "./connections-block";
 import type { PendingImage } from "./built-in-tools/vm-tools/types";
 import type { ModelsConfig } from "../types";

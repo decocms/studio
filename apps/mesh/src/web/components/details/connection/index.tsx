@@ -47,7 +47,7 @@ import {
   type HttpConnectionParameters,
   type StdioConnectionParameters,
   type ToolDefinition,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";

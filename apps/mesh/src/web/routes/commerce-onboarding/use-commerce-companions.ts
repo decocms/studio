@@ -1,6 +1,6 @@
 import { KEYS } from "@/web/lib/query-keys";
 import { callRegistryTool } from "@/web/utils/registry-utils";
-import { useMCPClient, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import { useMCPClient, WellKnownOrgMCPId } from "@decocms/studio-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   useQuery,

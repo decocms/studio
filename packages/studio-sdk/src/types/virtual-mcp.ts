@@ -221,7 +221,7 @@ const envVarKey = z.string().min(1).regex(ENV_VAR_KEY_RE, {
 
 /**
  * One env var declaration on a virtual MCP. Literal values live inline in
- * metadata; secret values store a stable secretId that mesh resolves against
+ * metadata; secret values store a stable secretId that Studio resolves against
  * the credential vault on every SANDBOX_START. The env var KEY is independent of
  * the secret's NAME — a single secret can back multiple env keys across
  * different agents.
@@ -272,7 +272,7 @@ const RuntimeMetadataSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Env vars injected on every SANDBOX_START. Literal entries inline their value; secret entries store a secretId that mesh resolves via the credential vault before posting /_sandbox/config.",
+      "Env vars injected on every SANDBOX_START. Literal entries inline their value; secret entries store a secretId that Studio resolves via the credential vault before posting /_sandbox/config.",
     ),
 });
 
@@ -323,7 +323,7 @@ export function normalizeSandboxProviderKind(
  * provider-issued handle plus the preview URL the UI renders.
  *
  * `sandboxProviderKind` lets the UI construct daemon URLs correctly:
- *  - agent-sandbox: daemon is reached via the mesh proxy; preview URL is the
+ *  - agent-sandbox: daemon is reached via the Studio proxy; preview URL is the
  *    per-claim HTTPRoute host (in-cluster) or a local port-forward (kind dev).
  *  - user-desktop: daemon is reached directly via the user's link binary.
  *

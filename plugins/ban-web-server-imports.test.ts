@@ -109,7 +109,7 @@ describe("ban-web-server-imports", () => {
   test("ignores in-tree relative and workspace-package imports", async () => {
     const f = fixture(
       "apps/mesh/src/web/i.ts",
-      `import { a } from "./sibling";\nimport { useProjectContext } from "@decocms/mesh-sdk";\n` +
+      `import { a } from "./sibling";\nimport { useProjectContext } from "@decocms/studio-sdk";\n` +
         `export const x = [a, useProjectContext];\n`,
     );
     expect((await lint(f)).length).toBe(0);

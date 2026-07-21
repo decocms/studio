@@ -9,7 +9,7 @@ import {
   useMCPToolsList,
   useMCPToolCall,
   parseDevConnectionId,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import type {
   McpUiDisplayMode,

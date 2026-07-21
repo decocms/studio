@@ -12,7 +12,7 @@ import {
   type AiProviderKey,
   type AiProviderInfo,
   type UseCollectionListOptions,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 
 export type { AiProviderKey, AiProviderModel, AiProviderInfo };
 import { z } from "zod";

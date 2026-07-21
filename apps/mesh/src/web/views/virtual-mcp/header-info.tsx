@@ -1,4 +1,4 @@
-import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
+import type { VirtualMCPEntity } from "@decocms/studio-sdk/types";
 import { agentShowsGithubHeaderActions } from "@/web/lib/agent-capabilities";
 import { HeaderActions } from "../../components/thread/github/header-actions.tsx";
 import { DevAgentControl } from "../../components/dev-agent/dev-agent-control.tsx";

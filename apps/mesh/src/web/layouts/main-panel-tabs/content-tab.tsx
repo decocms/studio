@@ -1,6 +1,6 @@
 import { ContentBrowser } from "@/web/components/sandbox/content/content-browser";
 import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
-import { useVirtualMCP } from "@decocms/mesh-sdk";
+import { useVirtualMCP } from "@decocms/studio-sdk";
 import { AlertCircle } from "@untitledui/icons";
 
 export function ContentTab({ virtualMcpId }: { virtualMcpId: string }) {

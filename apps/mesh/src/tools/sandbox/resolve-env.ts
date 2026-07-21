@@ -1,4 +1,4 @@
-import type { RuntimeEnvEntry } from "@decocms/mesh-sdk";
+import type { RuntimeEnvEntry } from "@decocms/studio-sdk";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import {
   SecretAccessDeniedError,

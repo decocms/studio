@@ -20,7 +20,7 @@ import {
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
-import { createDecopilotThreadStatusEvent } from "@decocms/mesh-sdk";
+import { createDecopilotThreadStatusEvent } from "@decocms/studio-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";

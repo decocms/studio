@@ -1,7 +1,7 @@
 "use client";
 
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
-import { useConnection } from "@decocms/mesh-sdk";
+import { useConnection } from "@decocms/studio-sdk";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Suspense } from "react";
 

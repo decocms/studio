@@ -1,4 +1,4 @@
-import { pickSimpleModeDefaults } from "@decocms/mesh-sdk";
+import { pickSimpleModeDefaults } from "@decocms/studio-sdk";
 import type {
   AiProviderKey,
   AiProviderModel,

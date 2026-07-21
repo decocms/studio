@@ -27,7 +27,7 @@ import {
   getDevConnectionId,
   parseBranchMap,
   type SandboxMap,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { StudioContext } from "../../core/studio-context";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import {

@@ -1,4 +1,4 @@
-import type { ConnectionEntity } from "@decocms/mesh-sdk";
+import type { ConnectionEntity } from "@decocms/studio-sdk";
 import { GITHUB_SCOPED_PERMISSIONS } from "@/shared/github-repo-scope";
 
 type McpCallTool = (req: {

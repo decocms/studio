@@ -6,7 +6,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
-import type { ToolDefinition } from "@decocms/mesh-sdk";
+import type { ToolDefinition } from "@decocms/studio-sdk";
 import {
   AlertTriangle,
   Eye,

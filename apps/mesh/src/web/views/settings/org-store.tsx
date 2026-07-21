@@ -17,7 +17,7 @@ import {
   useProjectContext,
   WellKnownOrgMCPId,
   useConnectionActions,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { Page } from "@/web/components/page";
 import { ErrorBoundary } from "@/web/components/error-boundary";

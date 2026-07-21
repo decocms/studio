@@ -14,7 +14,7 @@ import { Navigate, useSearch } from "@tanstack/react-router";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useThreads } from "@/web/components/chat/store/hooks";
 import { authClient } from "@/web/lib/auth-client.ts";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";

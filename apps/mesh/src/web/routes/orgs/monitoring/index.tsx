@@ -29,7 +29,7 @@ import {
   useMCPClient,
   useProjectContext,
   useVirtualMCPs,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";

@@ -8,7 +8,7 @@ import {
   isStudioPackAgent,
   useMCPClient,
   useProjectContext,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { useState } from "react";
 import { toast } from "sonner";

@@ -2,7 +2,7 @@ import {
   UI_RESOURCE_HTML_KEY,
   useProjectContext,
   type ConnectionEntity,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";

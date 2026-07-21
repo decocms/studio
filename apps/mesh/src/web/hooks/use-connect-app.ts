@@ -14,7 +14,7 @@ import {
   useMCPClient,
   useProjectContext,
   type ConnectionEntity,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { authenticateAndPersistOAuth } from "@/web/lib/authenticate-and-persist-oauth";
 import { authClient } from "@/web/lib/auth-client";
 import { useRegistryApp } from "@/web/hooks/use-registry-app";

@@ -45,7 +45,7 @@ import {
   ShoppingCart01,
 } from "@untitledui/icons";
 import { Area, AreaChart, XAxis } from "recharts";
-import { useConnections, useProjectContext } from "@decocms/mesh-sdk";
+import { useConnections, useProjectContext } from "@decocms/studio-sdk";
 import { getOrgGithubConnections } from "@/shared/github-repo-scope";
 import { useConnectApp } from "@/web/hooks/use-connect-app";
 import { useGithubRecentPrs } from "@/web/hooks/use-github-recent-prs";

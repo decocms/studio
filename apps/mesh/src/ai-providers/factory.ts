@@ -1,4 +1,4 @@
-import type { ModelCapability } from "@decocms/mesh-sdk";
+import type { ModelCapability } from "@decocms/studio-sdk";
 import type { AIProviderKeyStorage } from "../storage/ai-provider-keys";
 import type { ModelListCache } from "./model-list-cache";
 import type {

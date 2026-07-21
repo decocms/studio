@@ -1,4 +1,4 @@
-import { StudioPackAgentId } from "@decocms/mesh-sdk";
+import { StudioPackAgentId } from "@decocms/studio-sdk";
 import { hasAnyObject } from "./helpers";
 import type {
   ResolveRuntime,

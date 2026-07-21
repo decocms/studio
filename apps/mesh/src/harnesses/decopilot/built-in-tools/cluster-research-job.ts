@@ -33,7 +33,7 @@ import {
   type MeshProvider,
 } from "@/ai-providers/types";
 import type { StudioContext } from "@/core/studio-context";
-import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
+import { sanitizeProviderMetadata } from "@decocms/studio-sdk";
 import type { ModelInfo } from "@decocms/harness/decopilot/model-info";
 import { toStudioStorageUri } from "@decocms/harness/decopilot/studio-storage-uri";
 import type {

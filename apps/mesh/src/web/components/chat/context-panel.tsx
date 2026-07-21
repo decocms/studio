@@ -7,7 +7,7 @@ import {
   XCircle,
   XClose,
 } from "@untitledui/icons";
-import { useVirtualMCP } from "@decocms/mesh-sdk";
+import { useVirtualMCP } from "@decocms/studio-sdk";
 import { calculateUsageStats } from "@/web/lib/usage-utils";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useChatStream, useChatTask, useChatPrefs } from "./context";

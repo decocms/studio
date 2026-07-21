@@ -59,7 +59,7 @@ import {
   useMCPToolsListQuery,
   useProjectContext,
   type ConnectionEntity,
-} from "@decocms/mesh-sdk";
+} from "@decocms/studio-sdk";
 import { contentBlocksToTiptapDoc } from "@/mcp-apps/content-blocks.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { ToolAnnotationBadges } from "@/web/components/tools/tools-list.tsx";

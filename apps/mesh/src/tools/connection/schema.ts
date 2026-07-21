@@ -1,11 +1,11 @@
 /**
  * Connection Schema Re-exports
  *
- * Re-exports schemas from @decocms/mesh-sdk to maintain a single source of truth.
+ * Re-exports schemas from @decocms/studio-sdk to maintain a single source of truth.
  * This file exists to preserve existing import paths while delegating to the SDK.
  */
 
-// Re-export all schemas, types, and utility functions from mesh-sdk
+// Re-export all schemas, types, and utility functions from studio-sdk
 export {
   ConnectionEntitySchema,
   ConnectionCreateDataSchema,
@@ -21,4 +21,4 @@ export {
   type StdioConnectionParameters,
   type OAuthConfig,
   type ToolDefinition,
-} from "@decocms/mesh-sdk/types";
+} from "@decocms/studio-sdk/types";

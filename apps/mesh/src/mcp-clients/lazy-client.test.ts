@@ -12,7 +12,7 @@ import { describe, expect, it, beforeEach, mock } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { createBridgeTransportPair } from "@decocms/mesh-sdk";
+import { createBridgeTransportPair } from "@decocms/studio-sdk";
 import { CircuitOpenError, resetAll } from "./circuit-breaker";
 import { createLazyClient } from "./lazy-client";
 import type { ConnectionEntity } from "../tools/connection/schema";

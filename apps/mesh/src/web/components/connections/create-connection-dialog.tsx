@@ -39,7 +39,7 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
-import { useConnectionActions, useProjectContext } from "@decocms/mesh-sdk";
+import { useConnectionActions, useProjectContext } from "@decocms/studio-sdk";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Container, Globe02, Terminal, XClose } from "@untitledui/icons";

@@ -2,7 +2,7 @@ import { normalizeReportsSiteUrl } from "@/reports/site-url";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { ScrollReveal } from "@/web/components/scroll-reveal";
 import { authClient } from "@/web/lib/auth-client";
-import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
+import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/studio-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { QueryErrorResetBoundary } from "@tanstack/react-query";
 import { Suspense, useState } from "react";

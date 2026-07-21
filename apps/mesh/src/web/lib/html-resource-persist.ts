@@ -20,7 +20,7 @@
  */
 
 import type { QueryClient } from "@tanstack/react-query";
-import { UI_RESOURCE_HTML_KEY } from "@decocms/mesh-sdk";
+import { UI_RESOURCE_HTML_KEY } from "@decocms/studio-sdk";
 
 const DB_NAME = "mesh-ui-resources";
 const STORE = "html";
