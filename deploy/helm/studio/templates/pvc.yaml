@@ -12,10 +12,13 @@ spec:
   resources:
     requests:
       storage: {{ .Values.persistence.size }}
-  {{- if .Values.persistence.storageClass }}
-  storageClassName: {{ .Values.persistence.storageClass }}
-  {{- else }}
-  storageClassName: ""  # Use default storage class
+  {{- with .Values.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
   {{- end }}
+  {{- /*
+  When persistence.storageClass is empty the field is OMITTED (not set to ""),
+  so the cluster's DEFAULT StorageClass is used. An explicit "" would instead
+  DISABLE dynamic provisioning and leave the PVC Pending.
+  */}}
 {{- end }}
 {{- end }}

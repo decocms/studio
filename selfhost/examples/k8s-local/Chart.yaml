@@ -1,0 +1,30 @@
+apiVersion: v2
+name: studio-k8s-local
+description: |
+  Batteries-included local Kubernetes install of deco Studio — one `helm install`.
+  Bundles the Studio app (chart-deco-studio, which itself brings NATS) + the
+  agent-sandbox operator + sandbox-env, and adds throwaway PostgreSQL + MinIO as
+  its own templates. DEV/LOCAL ONLY.
+
+  Install with release name `deco-studio` so every derived name lines up:
+    helm dependency build selfhost/examples/k8s-local
+    helm install deco-studio selfhost/examples/k8s-local -n deco-studio --create-namespace
+
+  For production, do NOT use this — install chart-deco-studio directly and point
+  it at managed Postgres / S3 / NATS / ClickHouse (see selfhost/README.md).
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: chart-deco-studio
+    version: "*"
+    repository: "file://../../../deploy/helm/studio"
+  # Ships the agent-sandbox CRDs in crds/, so Helm installs them before any
+  # templates — the sandbox-env SandboxTemplate CR co-installs in this one
+  # release (no two-phase). Cluster-scoped; installs into agent-sandbox-system.
+  - name: sandbox-operator
+    version: "*"
+    repository: "file://../../../deploy/helm/sandbox-operator"
+  - name: sandbox-env
+    version: "*"
+    repository: "file://../../../deploy/helm/sandbox-env"
