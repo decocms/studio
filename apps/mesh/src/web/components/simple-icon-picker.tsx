@@ -69,6 +69,7 @@ export function SimpleIconPicker({
       <PopoverTrigger asChild>
         <button
           type="button"
+          aria-label="Change icon"
           disabled={disabled}
           className={cn(
             "size-7 shrink-0 rounded-md transition-colors flex items-center justify-center",
