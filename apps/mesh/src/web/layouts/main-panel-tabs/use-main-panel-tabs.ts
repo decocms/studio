@@ -340,7 +340,15 @@ export function useMainPanelTabs(ctx: {
   // have a mirrored `githubRepo`. Clicking from off the Report Agent deep-links
   // into it (see setActiveTab).
   leadingSystemTabs.push(
-    ...getSourceSystemTabs(hasClonableSource || reportsOnly),
+    ...getSourceSystemTabs(hasClonableSource || reportsOnly).map((tab) => ({
+      id: tab.id,
+      title:
+        tab.id === "preview"
+          ? t("common.mainPanelTabs.preview")
+          : tab.id === "code"
+            ? t("common.mainPanelTabs.code")
+            : tab.title,
+    })),
   );
 
   const systemTabs: Array<{ id: string; title: string }> = [];
