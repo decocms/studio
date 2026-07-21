@@ -324,19 +324,6 @@ function authorEmailOf(item: unknown): string {
 }
 
 /**
- * Fields a blog post must have before it can be published/previewed. Order is
- * the order errors are listed to the user. Kept here so the posts list and the
- * post editor validate identically.
- */
-export const REQUIRED_POST_FIELDS = [
-  "Title",
-  "Slug",
-  "Category",
-  "Excerpt",
-  "Cover image",
-] as const;
-
-/**
  * Which required fields a post payload is missing (empty ⇒ valid). A post with
  * no title/slug/excerpt or zero categories is incomplete — the list marks it
  * and the editor blocks preview.
