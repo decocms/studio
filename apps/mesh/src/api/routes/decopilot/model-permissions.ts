@@ -153,10 +153,37 @@ export function parseModelsToMap(models: string[] | undefined): {
 }
 
 /**
+ * Merge the per-role "models" arrays of a multi-role member into one effective
+ * allow-list, matching Better Auth's OR-over-roles semantics (permission.mjs
+ * splits `member.role` on "," and grants access if ANY role allows it): a
+ * model is allowed if any single role allows it. If any role has no "models"
+ * key (that role permits all models), the merged result is "all allowed".
+ */
+export function mergeModelPermissions(
+  perRoleModels: Array<string[] | undefined>,
+): string[] | undefined {
+  if (perRoleModels.some((models) => models === undefined)) {
+    return undefined;
+  }
+  const merged = new Set<string>();
+  for (const models of perRoleModels) {
+    for (const entry of models ?? []) merged.add(entry);
+  }
+  return [...merged];
+}
+
+/**
  * Fetch model permissions for a user's role.
  * Returns undefined for admin/owner roles (they bypass all checks).
  * Returns the "models" array for custom roles.
  * Returns undefined if no "models" key exists (all allowed).
+ *
+ * `role` may be Better Auth's comma-joined multi-role string (e.g.
+ * "editor,billing-manager" — ORGANIZATION_MEMBER_UPDATE_ROLE takes an array of
+ * roles). Each individual role is looked up and the results are OR-merged via
+ * `mergeModelPermissions` — a single-string `where("role", "=", role)` lookup
+ * would never match a stored per-role record for a multi-role string, silently
+ * falling back to "all models allowed" instead of honoring each role's limits.
  */
 export async function fetchModelPermissions(
   db: Kysely<Database>,
@@ -170,27 +197,36 @@ export async function fetchModelPermissions(
     return undefined;
   }
 
+  const roles = role.split(",");
+
   // Query custom role permissions from the organizationRole table
-  const roleRecord = await db
+  const roleRecords = await db
     .selectFrom("organizationRole")
-    .select(["permission"])
+    .select(["role", "permission"])
     .where("organizationId", "=", organizationId)
-    .where("role", "=", role)
-    .executeTakeFirst();
+    .where("role", "in", roles)
+    .execute();
 
-  if (!roleRecord?.permission) {
-    return undefined;
-  }
+  const permissionByRole = new Map(
+    roleRecords.map((record) => [record.role, record.permission]),
+  );
 
-  try {
-    const permission = JSON.parse(roleRecord.permission) as Permission;
-    return extractModelPermissions(permission);
-  } catch {
-    console.error(
-      `[model-permissions] Failed to parse permissions for role: ${role}`,
-    );
-    // Fail-closed: corrupted permission data should deny access, not grant it.
-    // Returning undefined would mean "all models allowed" per the data model.
-    return [];
-  }
+  const perRoleModels = roles.map((r) => {
+    const permissionJson = permissionByRole.get(r);
+    if (!permissionJson) return undefined;
+
+    try {
+      const permission = JSON.parse(permissionJson) as Permission;
+      return extractModelPermissions(permission);
+    } catch {
+      console.error(
+        `[model-permissions] Failed to parse permissions for role: ${r}`,
+      );
+      // Fail-closed: corrupted permission data should deny access, not grant it.
+      // Returning undefined would mean "all models allowed" per the data model.
+      return [];
+    }
+  });
+
+  return mergeModelPermissions(perRoleModels);
 }

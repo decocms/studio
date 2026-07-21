@@ -10,6 +10,7 @@ import {
   checkModelPermission,
   extractModelPermissions,
   filterToolTiersByPermission,
+  mergeModelPermissions,
   parseModelsToMap,
 } from "./model-permissions";
 
@@ -267,5 +268,44 @@ describe("parseModelsToMap", () => {
   it("should return empty map for empty array", () => {
     const result = parseModelsToMap([]);
     expect(result).toEqual({ allowAll: false, models: {} });
+  });
+});
+
+// ============================================================================
+// mergeModelPermissions
+// ============================================================================
+
+describe("mergeModelPermissions", () => {
+  it("unions the allowed models across roles", () => {
+    const result = mergeModelPermissions([
+      ["connA:model-1"],
+      ["connB:model-2"],
+    ]);
+    expect(result).toEqual(
+      expect.arrayContaining(["connA:model-1", "connB:model-2"]),
+    );
+    expect(result).toHaveLength(2);
+  });
+
+  it("deduplicates overlapping entries", () => {
+    const result = mergeModelPermissions([
+      ["connA:model-1", "connB:model-2"],
+      ["connB:model-2"],
+    ]);
+    expect(result).toHaveLength(2);
+  });
+
+  it("allows all models if any role is unrestricted (undefined)", () => {
+    expect(
+      mergeModelPermissions([["connA:model-1"], undefined]),
+    ).toBeUndefined();
+  });
+
+  it("denies all models when every role has an empty models array", () => {
+    expect(mergeModelPermissions([[], []])).toEqual([]);
+  });
+
+  it("returns undefined for a single unrestricted role", () => {
+    expect(mergeModelPermissions([undefined])).toBeUndefined();
   });
 });
