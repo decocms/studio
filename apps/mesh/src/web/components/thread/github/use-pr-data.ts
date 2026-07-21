@@ -86,6 +86,26 @@ export interface PrComment {
   htmlUrl: string;
 }
 
+/** Maps a raw github-mcp list/get PR object into the app's PrSummary. */
+function mapRawPr(p: Record<string, unknown>): PrSummary {
+  const base = p.base as Record<string, unknown> | undefined;
+  const head = p.head as Record<string, unknown> | undefined;
+  const user = p.user as Record<string, unknown> | undefined;
+  return {
+    number: (p.number as number) ?? 0,
+    title: (p.title as string) ?? "",
+    body: (p.body as string) ?? "",
+    state: p.state === "closed" ? ("closed" as const) : ("open" as const),
+    merged: (p.merged_at as string | null) != null,
+    mergedAt: (p.merged_at as string | null) ?? null,
+    base: (base?.ref as string) ?? "main",
+    head: (head?.ref as string) ?? "",
+    headSha: (head?.sha as string) ?? "",
+    htmlUrl: (p.html_url as string) ?? "",
+    author: (user?.login as string) ?? "",
+  };
+}
+
 /**
  * Fetches the first PR matching a branch head (open or closed).
  * Returns null when no PR exists yet for that branch.
@@ -115,24 +135,41 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
     select: (r) => {
       const arr = extractPullRequestList(r);
       if (arr.length === 0) return null;
-      const p = arr[0]!;
-      const base = p.base as Record<string, unknown> | undefined;
-      const head = p.head as Record<string, unknown> | undefined;
-      const user = p.user as Record<string, unknown> | undefined;
-      return {
-        number: (p.number as number) ?? 0,
-        title: (p.title as string) ?? "",
-        body: (p.body as string) ?? "",
-        state: p.state === "closed" ? ("closed" as const) : ("open" as const),
-        merged: (p.merged_at as string | null) != null,
-        mergedAt: (p.merged_at as string | null) ?? null,
-        base: (base?.ref as string) ?? "main",
-        head: (head?.ref as string) ?? "",
-        headSha: (head?.sha as string) ?? "",
-        htmlUrl: (p.html_url as string) ?? "",
-        author: (user?.login as string) ?? "",
-      };
+      return mapRawPr(arr[0]!);
     },
+  });
+}
+
+/**
+ * Lists all OPEN pull requests for the repo (most recent first, as GitHub
+ * returns them). Powers the branch picker's "PRs" tab — selecting a PR is
+ * equivalent to selecting its head branch (a PR is just a branch).
+ */
+export function useOpenPrs(args: RepoArgs & { enabled?: boolean }) {
+  const client = useMCPClient({
+    connectionId: args.connectionId,
+    orgId: args.orgId,
+    orgSlug: args.orgSlug,
+  });
+
+  return useMCPToolCallQuery<PrSummary[]>({
+    client,
+    toolName: "list_pull_requests",
+    toolArguments: {
+      owner: args.owner,
+      repo: args.repo,
+      state: "open",
+      perPage: 50,
+    },
+    enabled:
+      (args.enabled ?? true) &&
+      !!args.connectionId &&
+      !!args.owner &&
+      !!args.repo,
+    refetchInterval: POLL,
+    refetchIntervalInBackground: false,
+    staleTime: STALE,
+    select: (r) => extractPullRequestList(r).map(mapRawPr),
   });
 }
 
