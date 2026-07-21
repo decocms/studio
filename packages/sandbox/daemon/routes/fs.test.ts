@@ -25,6 +25,9 @@ import {
   GLOB_RESULT_LIMIT,
   GLOB_MAX_RESULT_LIMIT,
   resolveGlobResultLimit,
+  GREP_RESULT_LIMIT,
+  GREP_MAX_RESULT_LIMIT,
+  resolveGrepResultLimit,
   toRepoRelativePath,
 } from "./fs";
 
@@ -487,6 +490,16 @@ describe("fs handlers", () => {
     expect(resolveGlobResultLimit(GLOB_MAX_RESULT_LIMIT + 999)).toBe(
       GLOB_MAX_RESULT_LIMIT,
     );
+  });
+
+  it("resolveGrepResultLimit caps at GREP_MAX_RESULT_LIMIT", () => {
+    expect(resolveGrepResultLimit(undefined)).toBe(GREP_RESULT_LIMIT);
+    expect(resolveGrepResultLimit(GREP_MAX_RESULT_LIMIT + 999)).toBe(
+      GREP_MAX_RESULT_LIMIT,
+    );
+    expect(resolveGrepResultLimit(0)).toBe(GREP_RESULT_LIMIT);
+    expect(resolveGrepResultLimit(-5)).toBe(GREP_RESULT_LIMIT);
+    expect(resolveGrepResultLimit(50)).toBe(50);
   });
 
   it("glob: default limit remains GLOB_RESULT_LIMIT for agents", async () => {
