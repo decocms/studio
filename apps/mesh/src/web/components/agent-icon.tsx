@@ -15,112 +15,58 @@ import * as AllIcons from "@untitledui/icons";
 import { useState, type ComponentType, type SVGProps } from "react";
 
 // ---------------------------------------------------------------------------
-// Color palette
+// Color palette (semantic design-system tokens)
 // ---------------------------------------------------------------------------
 
 export interface AgentIconColor {
   name: string;
-  bg: string; // bg-{color}-100
-  text: string; // text-{color}-600
-  dot: string; // bg-{color}-400 (for picker dots)
+  bg: string; // bg-{semantic-token}
+  text: string; // text-{semantic-token}
+  dot: string; // bg-{semantic-token} (for picker dots)
 }
 
 export const AGENT_ICON_COLORS: AgentIconColor[] = [
   {
-    name: "red",
-    bg: "bg-red-100 dark:bg-red-950",
-    text: "text-red-600 dark:text-red-400",
-    dot: "bg-red-400",
+    name: "chart-1",
+    bg: "bg-chart-1",
+    text: "text-chart-1",
+    dot: "bg-chart-1",
   },
   {
-    name: "orange",
-    bg: "bg-orange-100 dark:bg-orange-950",
-    text: "text-orange-600 dark:text-orange-400",
-    dot: "bg-orange-400",
+    name: "chart-2",
+    bg: "bg-chart-2",
+    text: "text-chart-2",
+    dot: "bg-chart-2",
   },
   {
-    name: "amber",
-    bg: "bg-amber-100 dark:bg-amber-950",
-    text: "text-amber-600 dark:text-amber-400",
-    dot: "bg-amber-400",
+    name: "chart-3",
+    bg: "bg-chart-3",
+    text: "text-chart-3",
+    dot: "bg-chart-3",
   },
   {
-    name: "yellow",
-    bg: "bg-yellow-100 dark:bg-yellow-950",
-    text: "text-yellow-600 dark:text-yellow-400",
-    dot: "bg-yellow-400",
+    name: "chart-4",
+    bg: "bg-chart-4",
+    text: "text-chart-4",
+    dot: "bg-chart-4",
   },
   {
-    name: "lime",
-    bg: "bg-lime-100 dark:bg-lime-950",
-    text: "text-lime-600 dark:text-lime-400",
-    dot: "bg-lime-400",
+    name: "chart-5",
+    bg: "bg-chart-5",
+    text: "text-chart-5",
+    dot: "bg-chart-5",
   },
   {
-    name: "green",
-    bg: "bg-green-100 dark:bg-green-950",
-    text: "text-green-600 dark:text-green-400",
-    dot: "bg-green-400",
+    name: "success",
+    bg: "bg-success",
+    text: "text-success",
+    dot: "bg-success",
   },
   {
-    name: "emerald",
-    bg: "bg-emerald-100 dark:bg-emerald-950",
-    text: "text-emerald-600 dark:text-emerald-400",
-    dot: "bg-emerald-400",
-  },
-  {
-    name: "cyan",
-    bg: "bg-cyan-100 dark:bg-cyan-950",
-    text: "text-cyan-600 dark:text-cyan-400",
-    dot: "bg-cyan-400",
-  },
-  {
-    name: "sky",
-    bg: "bg-sky-100 dark:bg-sky-950",
-    text: "text-sky-600 dark:text-sky-400",
-    dot: "bg-sky-400",
-  },
-  {
-    name: "blue",
-    bg: "bg-blue-100 dark:bg-blue-950",
-    text: "text-blue-600 dark:text-blue-400",
-    dot: "bg-blue-400",
-  },
-  {
-    name: "indigo",
-    bg: "bg-indigo-100 dark:bg-indigo-950",
-    text: "text-indigo-600 dark:text-indigo-400",
-    dot: "bg-indigo-400",
-  },
-  {
-    name: "violet",
-    bg: "bg-violet-100 dark:bg-violet-950",
-    text: "text-violet-600 dark:text-violet-400",
-    dot: "bg-violet-400",
-  },
-  {
-    name: "purple",
-    bg: "bg-purple-100 dark:bg-purple-950",
-    text: "text-purple-600 dark:text-purple-400",
-    dot: "bg-purple-400",
-  },
-  {
-    name: "fuchsia",
-    bg: "bg-fuchsia-100 dark:bg-fuchsia-950",
-    text: "text-fuchsia-600 dark:text-fuchsia-400",
-    dot: "bg-fuchsia-400",
-  },
-  {
-    name: "pink",
-    bg: "bg-pink-100 dark:bg-pink-950",
-    text: "text-pink-600 dark:text-pink-400",
-    dot: "bg-pink-400",
-  },
-  {
-    name: "rose",
-    bg: "bg-rose-100 dark:bg-rose-950",
-    text: "text-rose-600 dark:text-rose-400",
-    dot: "bg-rose-400",
+    name: "destructive",
+    bg: "bg-destructive",
+    text: "text-destructive",
+    dot: "bg-destructive",
   },
 ];
 
@@ -179,7 +125,7 @@ export function parseIconString(icon: string | null | undefined): ParsedIcon {
     const name = qIndex >= 0 ? rest.slice(0, qIndex) : rest;
     const params =
       qIndex >= 0 ? new URLSearchParams(rest.slice(qIndex + 1)) : null;
-    const color = params?.get("color") ?? "blue";
+    const color = params?.get("color") ?? "chart-1";
     return { type: "icon", name, color };
   }
 
