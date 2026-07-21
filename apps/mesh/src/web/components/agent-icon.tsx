@@ -358,6 +358,9 @@ export function AgentAvatar({
   if (parsed.type === "url") {
     return (
       <AgentAvatarImage
+        // Remount on URL change so a prior load failure doesn't stick
+        // around as a permanent fallback once the user picks a new image.
+        key={parsed.url}
         url={parsed.url}
         color={parsed.color}
         name={name}
