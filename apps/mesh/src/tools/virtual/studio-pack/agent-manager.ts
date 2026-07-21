@@ -96,7 +96,7 @@ You are the Agent Manager. You create, configure, and maintain agents (Virtual M
 export const agentManagerAgent = {
   id: "studio-agent-manager",
   title: "Agent Manager",
-  icon: "icon://Bot?color=violet",
+  icon: "icon://Bot?color=chart-5",
   description: "Create, configure, and manage agents",
   selectedTools: [
     "COLLECTION_VIRTUAL_MCP_CREATE",

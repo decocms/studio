@@ -46,7 +46,7 @@ Registry, propose installable MCPs to the user, and guide their installation.
 export const storeManagerAgent = {
   id: "studio-store-manager",
   title: "Store Manager",
-  icon: "icon://Store01?color=emerald",
+  icon: "icon://Store01?color=success",
   description:
     "Browse the Deco Store and Community Registry, recommend MCPs, and guide installations.",
   // null = all tools from the connection(s) below
