@@ -15,6 +15,8 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement, useSyncExternalStore } from "react";
 import {
+  COMMERCE_DISCOVERY_ICON,
+  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   getCommerceDiscoveryAgentId,
   getDevConnectionId,
   useConnections,
@@ -22,6 +24,7 @@ import {
   useMCPToolsListQuery,
   useProjectContext,
   useVirtualMCP,
+  WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
 import { getUIResourceUri } from "@/mcp-apps/types";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
@@ -317,7 +320,13 @@ export function useMainPanelTabs(ctx: {
   const leadingSystemTabs: Array<{ id: string; title: string }> = [];
   // Library is agent-independent, so it lives in the LEFT toolbar group next to
   // the Chat toggle (see LibraryToggle), NOT in this per-agent tab bar.
-  if (effectiveDefaultMainView?.type === "overview") {
+  //
+  // Overview (the Super Agent's home board) is agent-independent — it renders
+  // in place on any shell (see MainPanelContent's `overview` branch). Reports-
+  // only orgs pin it as the first tab on EVERY agent, so the top bar stays a
+  // stable Overview · Preview · Code · Report set regardless of which agent the
+  // thread happens to be on. Clicking it never switches agents.
+  if (effectiveDefaultMainView?.type === "overview" || reportsOnly) {
     leadingSystemTabs.push({ id: "overview", title: "Overview" });
   }
   // Reports-only orgs get a persistent Preview/Code entry point to their
@@ -377,6 +386,29 @@ export function useMainPanelTabs(ctx: {
       iconKey: pv.toolName,
       iconUrl: pv.icon ?? null,
     });
+  }
+
+  // Reports-only orgs surface the Report app on EVERY agent, not just the
+  // Report Agent. It renders in place from the Commerce Discovery connection —
+  // AppViewContent fetches that connection directly, so no aggregation into the
+  // current agent (and no agent switch) is needed. On the Report Agent itself
+  // the loop above already added it with its configured label/icon, so this is
+  // a no-op there (dedup by tab id).
+  if (reportsOnly) {
+    const reportConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
+    const reportTabId = formatPinnedViewTabId(
+      reportConnectionId,
+      COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+    );
+    if (!pinnedTabMap.has(reportTabId)) {
+      pinnedTabMap.set(reportTabId, {
+        id: reportTabId,
+        title: "Report",
+        appId: reportConnectionId,
+        iconKey: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+        iconUrl: COMMERCE_DISCOVERY_ICON,
+      });
+    }
   }
 
   // Ephemeral file-preview tab (`?main=file:<key>`): surfaces as a pill
