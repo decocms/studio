@@ -28,6 +28,25 @@ export interface OrgFileOpenValue {
 
 export const OrgFileOpenContext = createContext<OrgFileOpenValue | null>(null);
 
+/**
+ * Next `search` state for opening `browsePath`: mobile gets the dialog overlay
+ * (`?preview=`), desktop gets the main-panel side tab (`?main=`). Each branch
+ * drops the OTHER model's stale param so a leftover from before a viewport
+ * resize can never resolve alongside the freshly-opened file.
+ */
+export function nextOrgFileOpenSearch(
+  prev: Record<string, unknown>,
+  browsePath: string,
+  isMobile: boolean,
+): Record<string, unknown> {
+  if (isMobile) {
+    const { main: _omit, ...rest } = prev;
+    return { ...rest, preview: browsePath };
+  }
+  const { preview: _omit, ...rest } = prev;
+  return { ...rest, main: formatLibraryFileTabId(browsePath) };
+}
+
 export function OrgFileOpenProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -42,13 +61,8 @@ export function OrgFileOpenProvider({ children }: { children: ReactNode }) {
   const open = (browsePath: string) =>
     navigate({
       to: ".",
-      search: (prev: Record<string, unknown>) => {
-        if (isMobile) return { ...prev, preview: browsePath };
-        // Desktop: side tab. Drop any stale `?preview=` so the two models
-        // never both resolve to a file at once.
-        const { preview: _omit, ...rest } = prev;
-        return { ...rest, main: formatLibraryFileTabId(browsePath) };
-      },
+      search: (prev: Record<string, unknown>) =>
+        nextOrgFileOpenSearch(prev, browsePath, isMobile),
     });
 
   return (
