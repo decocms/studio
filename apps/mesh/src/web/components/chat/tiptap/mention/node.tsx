@@ -22,8 +22,9 @@ export interface MentionAttrs<T = unknown> {
   metadata: T;
   /** Character that triggered the mention ("/" prompts+resources, "@" agents) */
   char?: "/" | "@";
-  /** Discriminator for "/" mentions; "@" mentions are always agents. */
-  kind?: "prompt" | "resource" | "skill";
+  /** Discriminator for "/" mentions ("@" mentions are agents), plus "task" for
+   * a task-board reference chip (char "@", metadata carries title/description). */
+  kind?: "prompt" | "resource" | "skill" | "task";
   /** Argument values the user typed in PromptArgsDialog. Only meaningful for prompt mentions. */
   args?: Record<string, string>;
 }
@@ -90,6 +91,7 @@ function MentionNodeView(props: NodeViewProps) {
   const { name, char, kind, id, args } = node.attrs as MentionAttrs;
 
   const isSelected = selected && view.editable;
+  const isTask = kind === "task";
   const isAgent = char === "@";
   // Clickable when editable AND it's a "/" mention that's either a known
   // prompt or a legacy chip without `kind` (we'll re-verify in the handler).
@@ -129,11 +131,21 @@ function MentionNodeView(props: NodeViewProps) {
           : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
         isSelected && "outline-2 outline-blue-300 outline-offset-0",
         isClickable && "hover:brightness-95",
-        "capitalize",
+        // Task titles are full sentences — render them verbatim (no title-case)
+        // and clamp the width so a long title stays a compact chip.
+        !isTask && "capitalize",
       )}
     >
       {char}
-      {name ? toTitleCase(name) : ""}
+      {isTask ? (
+        <span className="inline-block max-w-[220px] truncate align-bottom">
+          {name ?? ""}
+        </span>
+      ) : name ? (
+        toTitleCase(name)
+      ) : (
+        ""
+      )}
     </NodeViewWrapper>
   );
 }
