@@ -240,6 +240,18 @@ export function humanizeIconName(name: string): string {
     .toLowerCase();
 }
 
+/** Filter icon names by search term, matching raw and humanized forms. */
+export function filterIconNames(names: string[], search: string): string[] {
+  const trimmed = search.trim();
+  if (!trimmed) return names;
+  const searchLower = trimmed.toLowerCase();
+  return names.filter(
+    (name) =>
+      humanizeIconName(name).includes(searchLower) ||
+      name.toLowerCase().includes(searchLower),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Hash utility
 // ---------------------------------------------------------------------------

@@ -22,10 +22,10 @@ import {
   AgentAvatar,
   buildIconString,
   buildImageIconString,
+  filterIconNames,
   getIconColor,
   getIconComponent,
   getIconNames,
-  humanizeIconName,
   parseIconString,
   type AgentAvatarSize,
 } from "./agent-icon";
@@ -285,17 +285,7 @@ function IconsTab({
 }) {
   const allNames = getIconNames();
   const color = getIconColor(selectedColor);
-
-  const filteredNames = search.trim()
-    ? allNames.filter((name) => {
-        const humanized = humanizeIconName(name);
-        const searchLower = search.toLowerCase();
-        return (
-          humanized.includes(searchLower) ||
-          name.toLowerCase().includes(searchLower)
-        );
-      })
-    : allNames;
+  const filteredNames = filterIconNames(allNames, search);
 
   return (
     <div className="flex flex-col">
