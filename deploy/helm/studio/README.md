@@ -695,10 +695,19 @@ nginx:
       cpu: "500m"
     limits:
       memory: "256Mi"
+
+worker:
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      memory: 1Gi
 ```
 
 `resources` applies to each Bun API container. With two API containers plus
-nginx, the main pod requests 2 CPU cores by default.
+nginx, the main pod requests 2 CPU cores by default. `worker.resources`
+applies to the separate worker Deployment's container.
 
 ### Health Checks
 

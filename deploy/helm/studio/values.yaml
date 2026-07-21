@@ -82,6 +82,8 @@ worker:
     requests:
       cpu: "1"
       memory: 1Gi
+    limits:
+      memory: 1Gi
   autoscaling:
     enabled: true
     minReplicas: 2
