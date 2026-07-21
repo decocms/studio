@@ -362,6 +362,7 @@ export function TaskGroupsList({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
+              aria-label="New chat"
               tooltip="New chat"
               onClick={() => void handleNewThread()}
             >
@@ -373,6 +374,7 @@ export function TaskGroupsList({
             return (
               <SidebarMenuItem key={t.id}>
                 <SidebarMenuButton
+                  aria-label={t.title || "New chat"}
                   tooltip={t.title || "New chat"}
                   isActive={t.id === activeTaskId}
                   onClick={() => handleSelectTask(t)}
