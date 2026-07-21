@@ -22,7 +22,6 @@ interface MonacoCodeEditorProps {
   readOnly?: boolean;
   height?: string | number;
   language?: "typescript" | "json" | "shell";
-  foldOnMount?: boolean;
   // Suppresses TS error squiggles. Useful when displaying snippets
   // (e.g. top-level `await`) that aren't valid programs on their own.
   disableDiagnostics?: boolean;
@@ -164,12 +163,10 @@ function InternalMonacoEditor({
   readOnly = false,
   height = 300,
   language = "typescript",
-  foldOnMount = false,
   disableDiagnostics = false,
   mountKey = 0,
 }: InternalEditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const onSaveRef = useRef(onSave);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onSaveRef.current = onSave;
@@ -244,13 +241,6 @@ function InternalMonacoEditor({
   const handleEditorDidMount: OnMount = async (editor, monaco) => {
     editorRef.current = editor;
 
-    // Fold first level regions if requested, then reveal
-    if (foldOnMount && containerRef.current) {
-      containerRef.current.style.visibility = "hidden";
-      await editor.getAction("editor.foldLevel2")?.run();
-      containerRef.current.style.visibility = "visible";
-    }
-
     // Configure TypeScript AFTER mount (beforeMount was causing value not to display)
     if (language === "typescript") {
       monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
@@ -287,7 +277,7 @@ function InternalMonacoEditor({
   };
 
   return (
-    <div ref={containerRef} className="h-full">
+    <div className="h-full">
       <Editor
         key={editorKey}
         height={height}
