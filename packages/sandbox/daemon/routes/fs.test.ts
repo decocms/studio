@@ -278,6 +278,58 @@ describe("fs handlers", () => {
     expect(body.results).toContain("hello world");
   });
 
+  (hasRg ? it : it.skip)(
+    "grep: content rows use repo-relative paths",
+    async () => {
+      mkdirSync(join(appRoot, "src"), { recursive: true });
+      writeFileSync(join(appRoot, "src/needle.txt"), "hello world\n");
+      const h = makeGrepHandler({ appRoot, repoDir: appRoot });
+      const res = await h(
+        post("/_sandbox/grep", {
+          pattern: "hello",
+          output_mode: "content",
+        }),
+      );
+      const body = (await res.json()) as { results: string };
+      // Repo-relative (no absolute appRoot prefix), so the UI/agents can map
+      // the hit straight onto glob paths.
+      expect(body.results).toBe("src/needle.txt:1:hello world");
+    },
+  );
+
+  (hasRg ? it : it.skip)(
+    "grep: files mode uses repo-relative paths",
+    async () => {
+      mkdirSync(join(appRoot, "src"), { recursive: true });
+      writeFileSync(join(appRoot, "src/needle.txt"), "hello world\n");
+      const h = makeGrepHandler({ appRoot, repoDir: appRoot });
+      const res = await h(
+        post("/_sandbox/grep", { pattern: "hello", output_mode: "files" }),
+      );
+      const body = (await res.json()) as { results: string };
+      expect(body.results).toBe("src/needle.txt");
+    },
+  );
+
+  (hasRg ? it : it.skip)(
+    "grep: fixed_strings matches the pattern literally",
+    async () => {
+      writeFileSync(join(appRoot, "dots.txt"), "a.b\naxb\n");
+      const h = makeGrepHandler({ appRoot, repoDir: appRoot });
+      const res = await h(
+        post("/_sandbox/grep", {
+          pattern: "a.b",
+          output_mode: "content",
+          fixed_strings: true,
+        }),
+      );
+      const body = (await res.json()) as { results: string };
+      // Without -F the regexp "a.b" would also match "axb"; with it, only the
+      // literal "a.b" line matches.
+      expect(body.results).toBe("dots.txt:1:a.b");
+    },
+  );
+
   (hasRg ? it : it.skip)("glob: returns matching file names", async () => {
     writeFileSync(join(appRoot, "x.txt"), "");
     const h = makeGlobHandler({ appRoot, repoDir: appRoot });

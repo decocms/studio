@@ -1,15 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildFileTree,
+  buildGrepHighlight,
   decoBlockKeyFromTreePath,
   directoryNeedsLazyLoad,
   flattenTree,
   getDirectoryContextPath,
   getParentTreePath,
   getPathDepth,
+  groupGrepMatches,
   isSafeExplorerOpenPath,
   joinTreePath,
+  matchFileNames,
   mergeGlobLists,
+  parseGrepContent,
   pathExistsInFileList,
   toDaemonPath,
   toTreePath,
@@ -137,5 +141,116 @@ describe("file-explorer utils", () => {
       directories: ["src"],
       truncated: true,
     });
+  });
+
+  it("parseGrepContent maps repo-relative rows to tree paths", () => {
+    const matches = parseGrepContent(
+      'src/index.ts:12:const x = 1;\n.deco/blocks/Header.json:3:  "title": "hi"',
+    );
+    expect(matches).toEqual([
+      { path: "/src/index.ts", line: 12, text: "const x = 1;" },
+      { path: "/.deco/blocks/Header.json", line: 3, text: '  "title": "hi"' },
+    ]);
+  });
+
+  it("parseGrepContent keeps colons in the matched text", () => {
+    const [match] = parseGrepContent("a.ts:7:const url = 'http://x';");
+    expect(match).toEqual({
+      path: "/a.ts",
+      line: 7,
+      text: "const url = 'http://x';",
+    });
+  });
+
+  it("parseGrepContent skips rows without a valid file:line prefix", () => {
+    expect(parseGrepContent("")).toEqual([]);
+    // ripgrep context separators / malformed rows are dropped
+    expect(parseGrepContent("--\nnot-a-match\nfile.ts:nope:text")).toEqual([]);
+  });
+
+  it("matchFileNames finds deep files by leaf name, regardless of tree depth", () => {
+    const files = [
+      "src/index.ts",
+      ".deco/blocks/analytics.json",
+      ".deco/blocks/pages/home.json",
+      "README.md",
+    ];
+    // The whole point of the fix: a deep, unexpanded file still matches.
+    expect(matchFileNames(files, "analytics.json", 50)).toEqual([
+      "/.deco/blocks/analytics.json",
+    ]);
+    // Case-insensitive, leaf-name substring.
+    expect(matchFileNames(files, "JSON", 50)).toEqual([
+      "/.deco/blocks/analytics.json",
+      "/.deco/blocks/pages/home.json",
+    ]);
+  });
+
+  it("matchFileNames matches on the leaf name, not the directory path", () => {
+    const files = ["blocks/index.ts", "src/util.ts"];
+    // "blocks" is a directory segment, not part of any leaf name → no match.
+    expect(matchFileNames(files, "blocks", 50)).toEqual([]);
+    expect(matchFileNames(files, "index", 50)).toEqual(["/blocks/index.ts"]);
+  });
+
+  it("matchFileNames caps results and treats blank queries as no-op", () => {
+    const files = Array.from({ length: 10 }, (_, i) => `f${i}.ts`);
+    expect(matchFileNames(files, ".ts", 3)).toHaveLength(3);
+    expect(matchFileNames(files, "   ", 3)).toEqual([]);
+  });
+
+  it("buildGrepHighlight highlights every case-insensitive occurrence", () => {
+    const hl = buildGrepHighlight("  const Foo = foo(bar);", "foo");
+    expect(hl.leadingEllipsis).toBe(false);
+    // Leading whitespace trimmed; both "Foo" and "foo" highlighted.
+    expect(hl.segments).toEqual([
+      { text: "const ", match: false },
+      { text: "Foo", match: true },
+      { text: " = ", match: false },
+      { text: "foo", match: true },
+      { text: "(bar);", match: false },
+    ]);
+    expect(hl.segments.map((s) => s.text).join("")).toBe(
+      "const Foo = foo(bar);",
+    );
+  });
+
+  it("buildGrepHighlight clips a long prefix so the match stays visible", () => {
+    const line = `${"x".repeat(60)}NEEDLE tail`;
+    const hl = buildGrepHighlight(line, "needle");
+    expect(hl.leadingEllipsis).toBe(true);
+    // Prefix trimmed to ~24 context chars before the match.
+    const firstMatch = hl.segments.find((s) => s.match);
+    expect(firstMatch).toEqual({ text: "NEEDLE", match: true });
+    expect(hl.segments[0]?.text.length).toBeLessThanOrEqual(24);
+  });
+
+  it("buildGrepHighlight returns a single plain run when nothing matches", () => {
+    expect(buildGrepHighlight("  no hits here", "zzz")).toEqual({
+      leadingEllipsis: false,
+      segments: [{ text: "no hits here", match: false }],
+    });
+    expect(buildGrepHighlight("anything", "  ")).toEqual({
+      leadingEllipsis: false,
+      segments: [{ text: "anything", match: false }],
+    });
+  });
+
+  it("groupGrepMatches groups by file preserving first-seen order", () => {
+    const groups = groupGrepMatches([
+      { path: "/b.ts", line: 1, text: "a" },
+      { path: "/a.ts", line: 2, text: "b" },
+      { path: "/b.ts", line: 5, text: "c" },
+    ]);
+    expect(groups).toEqual([
+      {
+        path: "/b.ts",
+        matches: [
+          { path: "/b.ts", line: 1, text: "a" },
+          { path: "/b.ts", line: 5, text: "c" },
+        ],
+      },
+      { path: "/a.ts", matches: [{ path: "/a.ts", line: 2, text: "b" }] },
+    ]);
   });
 });

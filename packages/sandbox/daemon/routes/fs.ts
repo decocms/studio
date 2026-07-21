@@ -397,6 +397,7 @@ export function makeGrepHandler(deps: FsDeps) {
       path?: string;
       output_mode?: "files" | "count" | "content";
       ignore_case?: boolean;
+      fixed_strings?: boolean;
       context?: number;
       glob?: string;
       limit?: number;
@@ -419,12 +420,32 @@ export function makeGrepHandler(deps: FsDeps) {
     else if (mode === "count") args.push("--count");
     else args.push("--line-number");
     if (body.ignore_case) args.push("-i");
+    if (body.fixed_strings) args.push("-F");
     if (body.context && mode === "content")
       args.push("-C", String(body.context));
     if (body.glob) args.push("--glob", body.glob);
     args.push("--", body.pattern, searchPath);
 
     const limit = body.limit ?? 250;
+    // rg prints paths prefixed with the (absolute) search path argument. Strip
+    // that back to a repo-relative path so grep matches glob's wire contract
+    // (agents/tools glob+grep over repo-relative, POSIX-style paths). "files"
+    // mode emits a bare path per line; "content"/"count" emit `path:rest`
+    // (paths never contain ":" on the Linux daemon), so relativize the segment
+    // before the first colon.
+    const relativizeGrepLine = (line: string): string => {
+      if (mode === "files") {
+        return toRepoRelativePath(line, searchPath, deps.repoDir);
+      }
+      const colon = line.indexOf(":");
+      if (colon < 0) return line;
+      const rel = toRepoRelativePath(
+        line.slice(0, colon),
+        searchPath,
+        deps.repoDir,
+      );
+      return rel + line.slice(colon);
+    };
     const child = spawn(
       "rg",
       args,
@@ -448,7 +469,7 @@ export function makeGrepHandler(deps: FsDeps) {
           break;
         }
         if (line) {
-          stdout += (stdout ? "\n" : "") + line;
+          stdout += (stdout ? "\n" : "") + relativizeGrepLine(line);
           lineCount++;
         }
       }
