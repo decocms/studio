@@ -1,28 +1,304 @@
+import { useState } from "react";
+import {
+  DotsGrid,
+  Image01,
+  Package,
+  SearchSm,
+  XClose,
+} from "@untitledui/icons";
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  rectSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Label } from "@deco/ui/components/label.tsx";
+import { Spinner } from "@deco/ui/components/spinner.tsx";
+import { cn } from "@deco/ui/lib/utils.js";
+import type { RunBlockSandboxRef } from "@/web/components/sandbox/content/use-run-block";
 import {
   readProductListIds,
   writeProductListIds,
 } from "./product-loader-utils";
-import { AddButton, RemoveButton, str } from "./primitives";
+import { ProductPickerDialog } from "./product-picker-dialog";
+import { type ProductLookup, useProductsByIds } from "./use-product-lookup";
+import type { ProductPickerOption } from "./product-picker-source";
+import {
+  formatHeadingValue,
+  type HeadingLevel,
+  HEADING_LEVELS,
+  parseHeadingValue,
+} from "./heading-value";
+import { AddButton, RemoveButton, str, ToolbarButton } from "./primitives";
 
+const HEADING_LEVEL_LABEL: Record<HeadingLevel, string> = {
+  normal: "Normal",
+  h1: "H1",
+  h2: "H2",
+  h3: "H3",
+};
+
+/** Visual preview of the chosen level for the title input. */
+const HEADING_LEVEL_CLASS: Record<HeadingLevel, string> = {
+  normal: "text-lg font-semibold",
+  h1: "text-3xl font-bold",
+  h2: "text-2xl font-bold",
+  h3: "text-xl font-semibold",
+};
+
+/** Title editor with a Normal/H1/H2/H3 selector that wraps the stored string. */
+function ShelfTitle({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { level, text } = parseHeadingValue(value);
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-0.5">
+        {HEADING_LEVELS.map((l) => (
+          <ToolbarButton
+            key={l}
+            active={level === l}
+            label={HEADING_LEVEL_LABEL[l]}
+            onClick={() => onChange(formatHeadingValue(l, text))}
+          >
+            {HEADING_LEVEL_LABEL[l]}
+          </ToolbarButton>
+        ))}
+      </div>
+      <input
+        value={text}
+        onChange={(e) => onChange(formatHeadingValue(level, e.target.value))}
+        placeholder="Shelf title"
+        className={cn(
+          "w-full border-0 bg-transparent p-0 outline-none placeholder:text-muted-foreground/50 focus:ring-0",
+          HEADING_LEVEL_CLASS[level],
+        )}
+      />
+    </div>
+  );
+}
+
+/** "Browse products" trigger — only shown when a running sandbox is available. */
+function BrowseButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
+    >
+      <SearchSm size={13} />
+      {label}
+    </button>
+  );
+}
+
+/** A framed product thumbnail (image, spinner while resolving, or a fallback). */
+function ProductThumb({
+  option,
+  loading,
+  className,
+  iconSize = 18,
+}: {
+  option?: ProductPickerOption;
+  loading: boolean;
+  className?: string;
+  iconSize?: number;
+}) {
+  return (
+    <span
+      className={cn(
+        "flex items-center justify-center overflow-hidden bg-muted text-muted-foreground",
+        className,
+      )}
+    >
+      {option?.image ? (
+        <img
+          src={option.image}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="h-full w-full object-contain p-1.5"
+        />
+      ) : loading ? (
+        <Spinner size="xs" />
+      ) : (
+        <Image01 size={iconSize} />
+      )}
+    </span>
+  );
+}
+
+/** A product tile in the shelf grid — drag to reorder, hover to remove. */
+function SortableProductCard({
+  id,
+  option,
+  loading,
+  onRemove,
+}: {
+  id: string;
+  option?: ProductPickerOption;
+  loading: boolean;
+  onRemove: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        "group/card relative flex flex-col overflow-hidden rounded-md border bg-background",
+        isDragging && "z-10 opacity-60",
+      )}
+    >
+      <div className="relative aspect-square">
+        <ProductThumb
+          option={option}
+          loading={loading}
+          className="h-full w-full"
+        />
+        <button
+          type="button"
+          aria-label="Drag to reorder"
+          {...attributes}
+          {...listeners}
+          className="absolute left-1 top-1 flex h-6 w-6 cursor-grab items-center justify-center rounded bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-foreground active:cursor-grabbing group-hover/card:opacity-100"
+        >
+          <DotsGrid size={13} />
+        </button>
+        <button
+          type="button"
+          aria-label="Remove product"
+          onClick={onRemove}
+          className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-destructive group-hover/card:opacity-100 cursor-pointer"
+        >
+          <XClose size={13} />
+        </button>
+      </div>
+      <div className="flex flex-col gap-0.5 p-2">
+        <p className="line-clamp-2 text-xs leading-tight text-foreground">
+          {option?.label ?? (loading ? "Loading…" : `Product ${id}`)}
+        </p>
+        <p className="text-[11px] text-muted-foreground">ID {id}</p>
+      </div>
+    </div>
+  );
+}
+
+/** The shelf's product grid with drag-to-reorder. */
+function ProductGrid({
+  ids,
+  lookup,
+  onReorder,
+  onRemove,
+}: {
+  ids: string[];
+  lookup: ProductLookup;
+  onReorder: (ids: string[]) => void;
+  onRemove: (id: string) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const from = ids.indexOf(String(active.id));
+    const to = ids.indexOf(String(over.id));
+    if (from === -1 || to === -1) return;
+    onReorder(arrayMove(ids, from, to));
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext items={ids} strategy={rectSortingStrategy}>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {ids.map((id) => (
+            <SortableProductCard
+              key={id}
+              id={id}
+              option={lookup.byId.get(id)}
+              loading={lookup.isLoading && !lookup.byId.get(id)}
+              onRemove={() => onRemove(id)}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+/** Full-width dashed CTA shown when a shelf has no products yet. */
+function EmptyProducts({ onBrowse }: { onBrowse: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onBrowse}
+      className="flex w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed py-8 text-center transition-colors hover:border-foreground/30 hover:bg-muted/40 cursor-pointer"
+    >
+      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <Package size={16} />
+      </span>
+      <span className="text-sm font-medium text-foreground">Add products</span>
+      <span className="text-xs text-muted-foreground">
+        Search VTEX products, or pick a category or cluster
+      </span>
+    </button>
+  );
+}
+
+/** Manual SKU-id entry — fallback when no running sandbox can resolve products. */
 function ProductIdsEditor({
   ids,
   onChange,
-  label,
 }: {
   ids: string[];
   onChange: (ids: string[]) => void;
-  label: string;
 }) {
   const setAt = (index: number, value: string) =>
     onChange(ids.map((id, i) => (i === index ? value : id)));
 
   return (
     <div className="space-y-2">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Label className="text-xs text-muted-foreground">VTEX product IDs</Label>
       {ids.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          No product IDs yet — add one below.
+          Start the dev server to browse products, or add SKU ids below.
         </p>
       )}
       <ul className="space-y-2">
@@ -49,15 +325,123 @@ function ProductIdsEditor({
   );
 }
 
-export function ProductCardBlock({
+export function ProductShelfBlock({
   block,
   onChange,
+  sandboxRef,
 }: {
   block: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
+  sandboxRef?: RunBlockSandboxRef | null;
 }) {
-  const ids = readProductListIds(block.product);
-  const productId = ids[0] ?? "";
+  const rawIds = readProductListIds(block.products);
+  const ids = [...new Set(rawIds.filter(Boolean))];
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const lookup = useProductsByIds(sandboxRef, ids);
+
+  const setIds = (nextIds: string[]) =>
+    onChange({
+      ...block,
+      products: writeProductListIds(block.products, nextIds),
+    });
+
+  return (
+    <div className="space-y-4 rounded-lg border bg-card p-4">
+      <ShelfTitle
+        value={str(block.title)}
+        onChange={(title) => onChange({ ...block, title })}
+      />
+
+      {sandboxRef ? (
+        <div className="space-y-3">
+          {ids.length > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">
+                {ids.length} {ids.length === 1 ? "product" : "products"}
+              </span>
+              <BrowseButton
+                label="Browse products"
+                onClick={() => setPickerOpen(true)}
+              />
+            </div>
+          )}
+          {ids.length === 0 ? (
+            <EmptyProducts onBrowse={() => setPickerOpen(true)} />
+          ) : (
+            <ProductGrid
+              ids={ids}
+              lookup={lookup}
+              onReorder={setIds}
+              onRemove={(id) => setIds(ids.filter((x) => x !== id))}
+            />
+          )}
+        </div>
+      ) : (
+        <ProductIdsEditor ids={rawIds} onChange={setIds} />
+      )}
+
+      {sandboxRef && (
+        <ProductPickerDialog
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          sandboxRef={sandboxRef}
+          selectedIds={ids}
+          onChange={setIds}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Compact selected-product row for the ProductCard block. */
+function SelectedProductRow({
+  id,
+  option,
+  loading,
+  onRemove,
+}: {
+  id: string;
+  option?: ProductPickerOption;
+  loading: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="group/item flex items-center gap-3 rounded-md border bg-background p-2">
+      <ProductThumb
+        option={option}
+        loading={loading}
+        className="h-11 w-11 shrink-0 rounded"
+        iconSize={16}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-foreground">
+          {option?.label ?? (loading ? "Loading…" : `Product ${id}`)}
+        </p>
+        <p className="text-xs text-muted-foreground">ID {id}</p>
+      </div>
+      <RemoveButton label="Remove product" onClick={onRemove} />
+    </div>
+  );
+}
+
+export function ProductCardBlock({
+  block,
+  onChange,
+  sandboxRef,
+}: {
+  block: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  sandboxRef?: RunBlockSandboxRef | null;
+}) {
+  const productId = readProductListIds(block.product).filter(Boolean)[0] ?? "";
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const lookup = useProductsByIds(sandboxRef, productId ? [productId] : []);
+
+  const setIds = (nextIds: string[]) =>
+    onChange({
+      ...block,
+      product: writeProductListIds(block.product, nextIds),
+    });
 
   return (
     <div className="space-y-4 rounded-lg border bg-card p-4">
@@ -95,59 +479,50 @@ export function ProductCardBlock({
         />
       </div>
       <div className="space-y-2">
-        <Label
-          htmlFor="product-card-id"
-          className="text-xs text-muted-foreground"
-        >
-          VTEX product ID
-        </Label>
-        <input
-          id="product-card-id"
-          value={productId}
-          onChange={(e) =>
-            onChange({
-              ...block,
-              product: writeProductListIds(
-                block.product,
-                e.target.value ? [e.target.value] : [],
-              ),
-            })
-          }
-          placeholder="151331"
-          className="h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground/50 focus:ring-0"
-        />
+        <div className="flex items-center justify-between gap-2">
+          <Label className="text-xs text-muted-foreground">Product</Label>
+          {sandboxRef && productId && (
+            <BrowseButton label="Change" onClick={() => setPickerOpen(true)} />
+          )}
+        </div>
+        {sandboxRef ? (
+          productId ? (
+            <SelectedProductRow
+              id={productId}
+              option={lookup.byId.get(productId)}
+              loading={lookup.isLoading}
+              onRemove={() => setIds([])}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed py-3 text-sm text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
+            >
+              <SearchSm size={14} />
+              Choose a product
+            </button>
+          )
+        ) : (
+          <input
+            value={productId}
+            onChange={(e) => setIds(e.target.value ? [e.target.value] : [])}
+            placeholder="VTEX product ID (e.g. 151331)"
+            className="h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground/50 focus:ring-0"
+          />
+        )}
       </div>
-    </div>
-  );
-}
 
-export function ProductShelfBlock({
-  block,
-  onChange,
-}: {
-  block: Record<string, unknown>;
-  onChange: (next: Record<string, unknown>) => void;
-}) {
-  const ids = readProductListIds(block.products);
-
-  return (
-    <div className="space-y-4 rounded-lg border bg-card p-4">
-      <input
-        value={str(block.title)}
-        onChange={(e) => onChange({ ...block, title: e.target.value })}
-        placeholder="Shelf title"
-        className="w-full border-0 bg-transparent p-0 text-lg font-semibold outline-none placeholder:text-muted-foreground/50 focus:ring-0"
-      />
-      <ProductIdsEditor
-        label="VTEX product IDs"
-        ids={ids}
-        onChange={(nextIds) =>
-          onChange({
-            ...block,
-            products: writeProductListIds(block.products, nextIds),
-          })
-        }
-      />
+      {sandboxRef && (
+        <ProductPickerDialog
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          sandboxRef={sandboxRef}
+          selectedIds={productId ? [productId] : []}
+          onChange={setIds}
+          multiple={false}
+        />
+      )}
     </div>
   );
 }

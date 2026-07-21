@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import {
   AlignCenter,
   AlignJustify,
@@ -8,48 +8,17 @@ import {
   Heading01,
   Heading02,
   Italic01,
-  Link01,
   List,
   Strikethrough01,
   Underline01,
 } from "@untitledui/icons";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
 import { Label } from "@deco/ui/components/label.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import type { FieldProps } from "./field-props";
-import { isSafeLinkUrl } from "../rich-text-link-validation";
-
-function ToolbarButton({
-  active,
-  label,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={active}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      className={cn(
-        "flex h-7 w-7 items-center justify-center rounded transition-colors cursor-pointer",
-        active
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
+import { RichTextLinkControl, ToolbarButton } from "../rich-text-link-control";
 
 export function RichTextField({
   schema,
@@ -64,10 +33,15 @@ export function RichTextField({
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside the onUpdate callback, never during render
   onChangeRef.current = onChange;
 
+  const [linkOpen, setLinkOpen] = useState(false);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
+        // Clear the extension's default target/rel so each link's own
+        // `target` attribute controls same-tab vs new-tab (see link control).
+        link: { HTMLAttributes: {} },
       }),
       TextAlign.configure({
         types: ["heading", "paragraph"],
@@ -88,6 +62,27 @@ export function RichTextField({
     },
   });
 
+  // TipTap v3 no longer re-renders on transactions by default — active mark
+  // state must be selected reactively or the toolbar highlights go stale.
+  const marks = useEditorState({
+    editor,
+    selector: ({ editor }) => ({
+      bold: editor?.isActive("bold") ?? false,
+      italic: editor?.isActive("italic") ?? false,
+      underline: editor?.isActive("underline") ?? false,
+      strike: editor?.isActive("strike") ?? false,
+      h1: editor?.isActive("heading", { level: 1 }) ?? false,
+      h2: editor?.isActive("heading", { level: 2 }) ?? false,
+      bulletList: editor?.isActive("bulletList") ?? false,
+      orderedList: editor?.isActive("orderedList") ?? false,
+      link: editor?.isActive("link") ?? false,
+      alignLeft: editor?.isActive({ textAlign: "left" }) ?? false,
+      alignCenter: editor?.isActive({ textAlign: "center" }) ?? false,
+      alignRight: editor?.isActive({ textAlign: "right" }) ?? false,
+      alignJustify: editor?.isActive({ textAlign: "justify" }) ?? false,
+    }),
+  });
+
   if (!editor) return null;
 
   return (
@@ -103,28 +98,28 @@ export function RichTextField({
       <div className="overflow-hidden rounded-md border border-input">
         <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 bg-muted/30 px-1.5 py-1">
           <ToolbarButton
-            active={editor.isActive("bold")}
+            active={marks.bold}
             label="Bold"
             onClick={() => editor.chain().focus().toggleBold().run()}
           >
             <Bold01 size={14} />
           </ToolbarButton>
           <ToolbarButton
-            active={editor.isActive("italic")}
+            active={marks.italic}
             label="Italic"
             onClick={() => editor.chain().focus().toggleItalic().run()}
           >
             <Italic01 size={14} />
           </ToolbarButton>
           <ToolbarButton
-            active={editor.isActive("underline")}
+            active={marks.underline}
             label="Underline"
             onClick={() => editor.chain().focus().toggleUnderline().run()}
           >
             <Underline01 size={14} />
           </ToolbarButton>
           <ToolbarButton
-            active={editor.isActive("strike")}
+            active={marks.strike}
             label="Strikethrough"
             onClick={() => editor.chain().focus().toggleStrike().run()}
           >
@@ -134,7 +129,7 @@ export function RichTextField({
           <div className="mx-0.5 h-4 w-px bg-border" />
 
           <ToolbarButton
-            active={editor.isActive("heading", { level: 1 })}
+            active={marks.h1}
             label="Heading 1"
             onClick={() =>
               editor.chain().focus().toggleHeading({ level: 1 }).run()
@@ -143,7 +138,7 @@ export function RichTextField({
             <Heading01 size={14} />
           </ToolbarButton>
           <ToolbarButton
-            active={editor.isActive("heading", { level: 2 })}
+            active={marks.h2}
             label="Heading 2"
             onClick={() =>
               editor.chain().focus().toggleHeading({ level: 2 }).run()
@@ -155,14 +150,14 @@ export function RichTextField({
           <div className="mx-0.5 h-4 w-px bg-border" />
 
           <ToolbarButton
-            active={editor.isActive("bulletList")}
+            active={marks.bulletList}
             label="Bullet list"
             onClick={() => editor.chain().focus().toggleBulletList().run()}
           >
             <List size={14} />
           </ToolbarButton>
           <ToolbarButton
-            active={editor.isActive("orderedList")}
+            active={marks.orderedList}
             label="Ordered list"
             onClick={() => editor.chain().focus().toggleOrderedList().run()}
           >
@@ -171,50 +166,38 @@ export function RichTextField({
 
           <div className="mx-0.5 h-4 w-px bg-border" />
 
-          <ToolbarButton
-            active={editor.isActive("link")}
-            label="Link"
-            onClick={() => {
-              const prev = editor.getAttributes("link").href as
-                | string
-                | undefined;
-              const url = window.prompt("Link URL", prev ?? "https://");
-              if (url === null) return;
-              if (url === "") {
-                editor.chain().focus().unsetLink().run();
-              } else if (isSafeLinkUrl(url)) {
-                editor.chain().focus().setLink({ href: url }).run();
-              }
-            }}
-          >
-            <Link01 size={14} />
-          </ToolbarButton>
+          <RichTextLinkControl
+            editor={editor}
+            active={marks.link}
+            open={linkOpen}
+            onOpenChange={setLinkOpen}
+          />
 
           <div className="mx-0.5 h-4 w-px bg-border" />
 
           <ToolbarButton
-            active={editor.isActive({ textAlign: "left" })}
+            active={marks.alignLeft}
             label="Align left"
             onClick={() => editor.chain().focus().setTextAlign("left").run()}
           >
             <AlignLeft size={14} />
           </ToolbarButton>
           <ToolbarButton
-            active={editor.isActive({ textAlign: "center" })}
+            active={marks.alignCenter}
             label="Align center"
             onClick={() => editor.chain().focus().setTextAlign("center").run()}
           >
             <AlignCenter size={14} />
           </ToolbarButton>
           <ToolbarButton
-            active={editor.isActive({ textAlign: "right" })}
+            active={marks.alignRight}
             label="Align right"
             onClick={() => editor.chain().focus().setTextAlign("right").run()}
           >
             <AlignRight size={14} />
           </ToolbarButton>
           <ToolbarButton
-            active={editor.isActive({ textAlign: "justify" })}
+            active={marks.alignJustify}
             label="Justify"
             onClick={() => editor.chain().focus().setTextAlign("justify").run()}
           >

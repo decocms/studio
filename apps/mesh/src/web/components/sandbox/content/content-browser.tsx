@@ -2019,7 +2019,9 @@ function ItemList({
                     key={post.key}
                     icon={File02}
                     title={post.title}
-                    subtitle={post.slug}
+                    subtitle={post.slug || "no slug"}
+                    invalid={post.missing.length > 0}
+                    invalidReason={`Missing: ${post.missing.join(", ")}`}
                     active={
                       selection?.collection === "posts" &&
                       selection.key === post.key

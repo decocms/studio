@@ -15,6 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
+import type { RunBlockSandboxRef } from "@/web/components/sandbox/content/use-run-block";
 import { discoverBlogBlockTypes } from "./blog-data";
 import { InsertBlockDivider } from "./block-picker";
 import { BlockRow } from "./blocks/block-row";
@@ -36,11 +37,14 @@ export function BlockDocument({
   value,
   onChange,
   meta,
+  sandboxRef,
   emptyMessage = "No content yet. Use ⊕ to add your first block.",
 }: {
   value: RawBlock[];
   onChange: (next: RawBlock[]) => void;
   meta: LiveMeta;
+  /** Running sandbox coords — enables the VTEX product picker in blocks. */
+  sandboxRef?: RunBlockSandboxRef | null;
   emptyMessage?: string;
 }) {
   const blockTypes = discoverBlogBlockTypes(meta);
@@ -132,6 +136,7 @@ export function BlockDocument({
                 onChange={(v) => updateAt(index, v)}
                 onDelete={() => removeAt(index)}
                 onDuplicate={() => duplicateAt(index)}
+                sandboxRef={sandboxRef}
               />
               <InsertBlockDivider
                 blockTypes={blockTypes}

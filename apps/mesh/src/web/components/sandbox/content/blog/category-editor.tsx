@@ -258,6 +258,7 @@ export function CategoryEditor({
                 value={asBlocks(category.sections)}
                 onChange={(next) => setField("sections", next)}
                 meta={meta}
+                sandboxRef={{ orgSlug, virtualMcpId, branch }}
                 emptyMessage="This category has no content yet. Use ⊕ to add your first block."
               />
             </CollapsibleSection>

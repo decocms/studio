@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isSafeLinkUrl } from "../rich-text-link-validation";
+import { isSafeLinkUrl, normalizeLinkUrl } from "../rich-text-link-validation";
 
 describe("isSafeLinkUrl", () => {
   test("allows https URLs", () => {
@@ -60,5 +60,46 @@ describe("isSafeLinkUrl", () => {
     // ":::invalid" is parsed as a relative path against the base URL,
     // resulting in https: protocol — this is safe (not javascript:/data:).
     expect(isSafeLinkUrl(":::invalid")).toBe(true);
+  });
+});
+
+describe("normalizeLinkUrl", () => {
+  test("trims whitespace", () => {
+    expect(normalizeLinkUrl("  https://example.com  ")).toBe(
+      "https://example.com",
+    );
+  });
+
+  test("returns empty string for blank input", () => {
+    expect(normalizeLinkUrl("")).toBe("");
+    expect(normalizeLinkUrl("   ")).toBe("");
+  });
+
+  test("prefixes bare domains with https", () => {
+    expect(normalizeLinkUrl("example.com")).toBe("https://example.com");
+    expect(normalizeLinkUrl("www.example.com/path?q=1")).toBe(
+      "https://www.example.com/path?q=1",
+    );
+  });
+
+  test("keeps URLs that already have a scheme", () => {
+    expect(normalizeLinkUrl("http://example.com")).toBe("http://example.com");
+    expect(normalizeLinkUrl("mailto:user@example.com")).toBe(
+      "mailto:user@example.com",
+    );
+    expect(normalizeLinkUrl("tel:+5511999999999")).toBe("tel:+5511999999999");
+  });
+
+  test("keeps relative and fragment links unchanged", () => {
+    expect(normalizeLinkUrl("/about")).toBe("/about");
+    expect(normalizeLinkUrl("./page")).toBe("./page");
+    expect(normalizeLinkUrl("../other")).toBe("../other");
+    expect(normalizeLinkUrl("#section")).toBe("#section");
+  });
+
+  test("does not hide unsafe schemes behind https", () => {
+    // Normalization must leave the scheme intact so isSafeLinkUrl rejects it.
+    expect(normalizeLinkUrl("javascript:alert(1)")).toBe("javascript:alert(1)");
+    expect(isSafeLinkUrl(normalizeLinkUrl("javascript:alert(1)"))).toBe(false);
   });
 });
