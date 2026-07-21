@@ -367,7 +367,7 @@ function SetupForm({
     },
     onSuccess: (data) => {
       if (!data.slug) return;
-      const stepsCount = SETUP_STEPS.filter(
+      const stepsCount = SETUP_STEPS_CONFIG.filter(
         (s) => claimDomain || !s.claimOnly,
       ).length;
       const animationDuration = STEP_DELAY_MS * (stepsCount - 1) + 800;
@@ -377,14 +377,6 @@ function SetupForm({
       }, animationDuration);
     },
   });
-
-  const handleError = (error: unknown) => {
-    if (error instanceof Error) {
-      toast.error(error.message);
-    } else {
-      toast.error(t("routes.onboarding.failedCreateOrg"));
-    }
-  };
 
   const createOrgMutation = useMutation({
     mutationFn: async () => {

@@ -7,6 +7,7 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 
 import {
   ChevronDown,
@@ -139,7 +140,7 @@ const PREVIEW_DEVICE_WIDTHS: Record<PreviewDeviceSize, number | null> = {
 const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
 
 // Device labels are resolved per-render in the component to use t()
-const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, string> = {
+const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, TranslationKey> = {
   mobile: "sandbox.preview.deviceMobile",
   tablet: "sandbox.preview.deviceTablet",
   desktop: "sandbox.preview.deviceDesktop",

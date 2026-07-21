@@ -236,6 +236,7 @@ export function VirtualMCPSelector({
   onVirtualMcpChange,
   variant: _variant,
   className,
+  placeholder: _placeholder,
   showTooltip = true,
   disabled = false,
 }: VirtualMCPSelectorProps) {

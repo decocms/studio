@@ -540,11 +540,11 @@ export function getAcceptedMimeTypesForModel(
 export function getSupportedFileTypesLabel(
   selectedModel: AiProviderModel | null | undefined,
 ): {
-  parts: string[];
+  parts: TranslationKey[];
   count: number;
 } {
   const caps = selectedModel?.capabilities ?? [];
-  const parts: string[] = [];
+  const parts: TranslationKey[] = [];
 
   if (caps.includes("vision") || caps.includes("image"))
     parts.push("chat.shared.fileTypeImages");

@@ -373,7 +373,7 @@ function AvailableSection({
 function useAgentSubtitle(agent: VirtualMCPEntity): string {
   const t = useT();
   const tileCount = getHomeTiles(agent.metadata?.ui).filter(
-    (t) => !!t.resourceUri,
+    (tile) => !!tile.resourceUri,
   ).length;
   const curatedPrompts = agent.metadata?.ui?.homePrompts;
   const promptCount = Array.isArray(curatedPrompts)

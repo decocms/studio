@@ -35,7 +35,6 @@ export function AgentPromptList({
   home: HomeBoard;
   curated: string[] | null;
 }) {
-  const t = useT();
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: agent.id,
@@ -126,6 +125,7 @@ function PromptRow({
   allPromptNames: string[];
   isPinned: boolean;
 }) {
+  const t = useT();
   const [submitting, setSubmitting] = useState(false);
 
   const handleClick = async () => {

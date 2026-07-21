@@ -43,6 +43,7 @@ function ApprovalLevelSelect({
 }: {
   onYolo: (level: ToolApprovalLevel) => void;
 }) {
+  const t = useT();
   const [preferences, setPreferences] = usePreferences();
 
   const handleLevelChange = (value: string) => {
@@ -79,7 +80,7 @@ function ApprovalLevelSelect({
       <SelectContent>
         {APPROVAL_LEVEL_OPTIONS.map((opt) => (
           <SelectItem key={opt.value} value={opt.value}>
-            {opt.label}
+            {t(opt.labelKey)}
           </SelectItem>
         ))}
       </SelectContent>

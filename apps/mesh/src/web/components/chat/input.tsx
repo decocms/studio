@@ -96,6 +96,7 @@ function useWindowFileDrop(
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void,
 ) {
   const { editor } = useCurrentEditor();
+  const t = useT();
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
 
@@ -133,7 +134,14 @@ function useWindowFileDrop(
 
       const { from } = editor.state.selection;
       for (const file of Array.from(files)) {
-        void processFile(editor, selectedModel, file, from, onUnsupportedFile);
+        void processFile(
+          editor,
+          selectedModel,
+          file,
+          from,
+          onUnsupportedFile,
+          t,
+        );
       }
     };
 
@@ -147,7 +155,7 @@ function useWindowFileDrop(
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
     };
-  }, [editor, selectedModel, onUnsupportedFile]);
+  }, [editor, selectedModel, onUnsupportedFile, t]);
 
   return isDraggingOver;
 }

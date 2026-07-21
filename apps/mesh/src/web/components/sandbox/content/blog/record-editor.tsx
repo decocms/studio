@@ -9,6 +9,7 @@ import {
 } from "@deco/ui/components/select.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import { ImageField } from "@/web/components/sections-editor/fields/image-field";
 import { buildBlogBlock, getBlogPayload, type BlogKind } from "./blog-data";
 import { str } from "./blocks/primitives";
@@ -20,11 +21,11 @@ type RecordKind = Extract<BlogKind, "authors">;
 
 interface FieldDef {
   key: string;
-  labelKey: string;
+  labelKey: TranslationKey;
   widget: "text" | "textarea" | "image" | "select";
-  placeholderKey?: string;
+  placeholderKey?: TranslationKey;
   /** Choices for the "select" widget; the first one is the display default. */
-  options?: Array<{ value: string; labelKey: string }>;
+  options?: Array<{ value: string; labelKey: TranslationKey }>;
 }
 
 const FIELDS: Record<RecordKind, FieldDef[]> = {
@@ -66,7 +67,7 @@ const FIELDS: Record<RecordKind, FieldDef[]> = {
   ],
 };
 
-const TITLE: Record<RecordKind, string> = {
+const TITLE: Record<RecordKind, TranslationKey> = {
   authors: "sandbox.recordEditor.titleAuthor",
 };
 

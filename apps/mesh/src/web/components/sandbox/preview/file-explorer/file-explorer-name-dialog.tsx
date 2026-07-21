@@ -10,17 +10,17 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
-import { useT } from "@/web/i18n/use-t.ts";
+import { type TranslationKey, useT } from "@/web/i18n/use-t.ts";
 
 export type FileExplorerNameDialogMode = "new-file" | "new-folder" | "rename";
 
 const MODE_COPY: Record<
   FileExplorerNameDialogMode,
   {
-    titleKey: string;
-    descriptionKey: string;
-    submitKey: string;
-    placeholderKey: string;
+    titleKey: TranslationKey;
+    descriptionKey: TranslationKey;
+    submitKey: TranslationKey;
+    placeholderKey: TranslationKey;
   }
 > = {
   "new-file": {

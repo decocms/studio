@@ -23,20 +23,21 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import type { PostSort } from "./content-browser";
 
 // Sentinel for the "no filter" radio option (Radix forbids empty values).
 const ALL_FILTER = "__all__";
 
 // ponytail: sort labels keyed by PostSort type for runtime translation
-const POST_SORT_LABELS_KEYS: Record<PostSort, string> = {
+const POST_SORT_LABELS_KEYS: Record<PostSort, TranslationKey> = {
   "date-desc": "sandbox.postToolbar.sortNewestFirst",
   "date-asc": "sandbox.postToolbar.sortOldestFirst",
   az: "sandbox.postToolbar.sortTitleAZ",
   za: "sandbox.postToolbar.sortTitleZA",
 };
 
-const POST_SORT_SHORT_KEYS: Record<PostSort, string> = {
+const POST_SORT_SHORT_KEYS: Record<PostSort, TranslationKey> = {
   "date-desc": "sandbox.postToolbar.sortNewest",
   "date-asc": "sandbox.postToolbar.sortOldest",
   az: "sandbox.postToolbar.sortAZ",

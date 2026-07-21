@@ -62,7 +62,7 @@ export interface ShareTarget {
   url?: string;
 }
 
-const MODES: { mode: ShareMode; labelKey: string; Icon: typeof Globe01 }[] = [
+const MODES = [
   {
     mode: "private",
     labelKey: "library.fileShareButton.modeOrgOnly",
@@ -78,7 +78,11 @@ const MODES: { mode: ShareMode; labelKey: string; Icon: typeof Globe01 }[] = [
     labelKey: "library.fileShareButton.modePassword",
     Icon: Key01,
   },
-];
+] as const satisfies {
+  mode: ShareMode;
+  labelKey: string;
+  Icon: typeof Globe01;
+}[];
 
 /** The shared body: a 3-way mode control, an optional password field, and (for
  *  files) a copy-link row. */

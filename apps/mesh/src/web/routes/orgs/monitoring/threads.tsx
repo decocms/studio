@@ -816,7 +816,7 @@ export function ThreadsTabContent({
     !!searchQuery ||
     (filterAgentIds?.length ?? 0) > 0 ||
     (filterUserIds?.length ?? 0) > 0 ||
-    (filterStatus && filterStatus !== "all");
+    !!(filterStatus && filterStatus !== "all");
 
   const handlePrev = () =>
     setSelectedThreadIndex((i) => (i !== null && i > 0 ? i - 1 : i));

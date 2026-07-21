@@ -32,15 +32,15 @@ export default function RegistryMonitorPage() {
         {[
           {
             id: "tests" as const,
-            labelKey: "registry.registryMonitorPage.tabTests",
+            labelKey: "registry.registryMonitorPage.tabTests" as const,
           },
           {
             id: "configuration" as const,
-            labelKey: "registry.registryMonitorPage.tabConfiguration",
+            labelKey: "registry.registryMonitorPage.tabConfiguration" as const,
           },
           {
             id: "connections" as const,
-            labelKey: "registry.registryMonitorPage.tabConnections",
+            labelKey: "registry.registryMonitorPage.tabConnections" as const,
           },
         ].map((item) => {
           const isActive = activeSubTab === item.id;

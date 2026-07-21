@@ -6,6 +6,7 @@ import {
   Loading02,
 } from "@untitledui/icons";
 import type { ToolOutput } from "@/tools/io-types";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 
 export { SUPER_AGENT_ASSIGNEE_ID } from "@/shared/task-board";
 
@@ -47,7 +48,7 @@ export const STATUSES: TaskBoardItemStatus[] = [
 
 export const STATUS_CONFIG: Record<
   TaskBoardItemStatus,
-  { labelKey: string; icon: typeof Circle; iconClassName: string }
+  { labelKey: TranslationKey; icon: typeof Circle; iconClassName: string }
 > = {
   triage: {
     labelKey: "taskBoard.config.statusBacklog",
@@ -87,7 +88,7 @@ export const PRIORITIES: TaskBoardItemPriority[] = [
 export const PRIORITY_CONFIG: Record<
   TaskBoardItemPriority,
   {
-    labelKey: string;
+    labelKey: TranslationKey;
     flagClassName: string;
     dotClassName: string;
   }

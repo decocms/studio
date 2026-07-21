@@ -137,6 +137,7 @@ export function ToolsPopover({
           file,
           from,
           onUnsupportedFile,
+          t,
         );
       }
     } finally {
@@ -168,7 +169,7 @@ export function ToolsPopover({
     APPROVAL_LEVEL_OPTIONS.find(
       (opt) => opt.value === preferences.toolApprovalLevel,
     ) ?? APPROVAL_LEVEL_OPTIONS[0]!;
-  const currentApprovalShort = currentApprovalOption.short;
+  const currentApprovalShort = t(currentApprovalOption.shortKey);
 
   const handleApprovalLevelChange = (next: string) => {
     const matched = APPROVAL_LEVEL_OPTIONS.find((opt) => opt.value === next);
@@ -503,7 +504,7 @@ export function ToolsPopover({
               >
                 {APPROVAL_LEVEL_OPTIONS.map((opt) => (
                   <DropdownMenuRadioItem key={opt.value} value={opt.value}>
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>

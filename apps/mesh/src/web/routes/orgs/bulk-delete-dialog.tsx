@@ -22,7 +22,6 @@ export function BulkDeleteDialog({
   onConfirm: () => void;
 }) {
   const t = useT();
-  const connectionWord = count !== 1 ? "connections" : "connection";
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>

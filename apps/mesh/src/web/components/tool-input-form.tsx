@@ -41,7 +41,6 @@ export function ToolInputForm({
   values,
   onChange,
 }: ToolInputFormProps) {
-  const t = useT();
   const requiredSet = new Set(required ?? []);
 
   return (

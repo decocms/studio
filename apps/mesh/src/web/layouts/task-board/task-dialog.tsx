@@ -290,7 +290,7 @@ export function TaskBoardItemDialog({
                       size={16}
                       className={STATUS_CONFIG[status].iconClassName}
                     />
-                    {STATUS_CONFIG[status].label}
+                    {t(STATUS_CONFIG[status].labelKey)}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
@@ -306,7 +306,7 @@ export function TaskBoardItemDialog({
                           size={16}
                           className={STATUS_CONFIG[s].iconClassName}
                         />
-                        {STATUS_CONFIG[s].label}
+                        {t(STATUS_CONFIG[s].labelKey)}
                       </DropdownMenuItem>
                     );
                   })}
@@ -335,7 +335,7 @@ export function TaskBoardItemDialog({
                             PRIORITY_CONFIG[priority].dotClassName,
                           )}
                         />
-                        {PRIORITY_CONFIG[priority].label}
+                        {t(PRIORITY_CONFIG[priority].labelKey)}
                       </>
                     )}
                   </button>
@@ -349,7 +349,7 @@ export function TaskBoardItemDialog({
                           PRIORITY_CONFIG[p].dotClassName,
                         )}
                       />
-                      {PRIORITY_CONFIG[p].label}
+                      {t(PRIORITY_CONFIG[p].labelKey)}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>

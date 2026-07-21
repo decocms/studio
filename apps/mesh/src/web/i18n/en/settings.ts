@@ -46,9 +46,11 @@ export const settings = {
   "settings.preferences.toolApprovalDescription":
     "Control how tools are approved before execution.",
   "settings.preferences.toolApprovalAsk": "Ask before edit",
+  "settings.preferences.toolApprovalAskShort": "Ask",
   "settings.preferences.toolApprovalAskDescription":
     "Auto-approve read-only tools",
   "settings.preferences.toolApprovalAuto": "Auto approve",
+  "settings.preferences.toolApprovalAutoShort": "Auto",
   "settings.preferences.toolApprovalAutoDescription":
     "Execute all without approval",
   "settings.automations.browseAgentsButton": "Browse agents",

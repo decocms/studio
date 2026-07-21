@@ -4,6 +4,7 @@ import Icon from "../icon";
 import { trackConnectCta } from "../onboarding";
 import { useReportCtaHref } from "../use-report-cta-href";
 import { useT } from "@/web/i18n/use-t";
+import type { TranslationKey } from "@/web/i18n/use-t";
 import { DECK } from "./tokens";
 
 // ── closing pitch (Figma: Product 2, node 9317-17836) ────────────────────────
@@ -15,7 +16,7 @@ const CARD = DECK.forest;
 const LIME = DECK.lime;
 
 // The audited dimensions — each with its own icon and accent (the marquee).
-type Pill = { labelKey: string; icon: string; color: string };
+type Pill = { labelKey: TranslationKey; icon: string; color: string };
 const PILLS: Pill[] = [
   {
     labelKey: "reports.ctaTemplate.pill.seo",
@@ -65,7 +66,7 @@ const PILLS: Pill[] = [
 ];
 
 // The scored areas shown inside the report card (from the attached spec).
-type ReportArea = { labelKey: string; score: number; color: string };
+type ReportArea = { labelKey: TranslationKey; score: number; color: string };
 const REPORT_AREAS: ReportArea[] = [
   {
     labelKey: "reports.ctaTemplate.area.conversion",
@@ -103,7 +104,11 @@ const REPORT_AREAS: ReportArea[] = [
 const SEGMENTS = 14;
 
 // Fixes queued from the findings — the falling backlog on the left.
-type FixTask = { titleKey: string; levelKey: string; color: string };
+type FixTask = {
+  titleKey: TranslationKey;
+  levelKey: TranslationKey;
+  color: string;
+};
 const FIX_TASKS: FixTask[] = [
   {
     titleKey: "reports.ctaTemplate.fixTask.lcpHome",
@@ -150,7 +155,7 @@ function heatLevel(row: number, col: number): number {
   return (row * 3 + col * 5 + ((row * col) % 4)) % 5;
 }
 
-type CadenceMetric = { labelKey: string; valueKey: string };
+type CadenceMetric = { labelKey: TranslationKey; valueKey: TranslationKey };
 const CADENCE_METRICS: CadenceMetric[] = [
   {
     labelKey: "reports.ctaTemplate.cadence.avgFixTime",
@@ -337,7 +342,7 @@ function TaskStream() {
     >
       <div className="report-task-track gap-3">
         {[...FIX_TASKS, ...FIX_TASKS].map((t, i) => (
-          <TaskCard key={`${t.title}-${i}`} {...t} />
+          <TaskCard key={`${t.titleKey}-${i}`} {...t} />
         ))}
       </div>
     </div>
@@ -507,7 +512,7 @@ export default function CtaTemplate({
         >
           <div className="report-marquee-track gap-2">
             {[...PILLS, ...PILLS].map((p, i) => (
-              <DimensionPill key={`${p.label}-${i}`} {...p} />
+              <DimensionPill key={`${p.labelKey}-${i}`} {...p} />
             ))}
           </div>
         </div>

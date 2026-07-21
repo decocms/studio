@@ -25,8 +25,9 @@ export function BrokenMCPList({ results }: { results: MonitorResult[] }) {
 }
 
 function BrokenMCPCard({ result }: { result: MonitorResult }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
-  const failedTools = result.tool_results.filter((t) => !t.success);
+  const failedTools = result.tool_results.filter((r) => !r.success);
 
   return (
     <Card className="overflow-hidden">
@@ -173,14 +174,14 @@ function BrokenMCPCard({ result }: { result: MonitorResult }) {
 
           {/* All tools (passed) */}
           {result.tool_results.length > 0 &&
-            result.tool_results.some((t) => t.success) && (
+            result.tool_results.some((r) => r.success) && (
               <div className="space-y-0.5">
                 <p className="text-[10px] font-semibold text-muted-foreground">
                   {t("registry.brokenMcpList.passingTools")}
                 </p>
                 <div className="flex flex-wrap gap-1">
                   {result.tool_results
-                    .filter((t) => t.success)
+                    .filter((r) => r.success)
                     .map((tool) => (
                       <Badge
                         key={`${result.id}-${tool.toolName}-pass`}

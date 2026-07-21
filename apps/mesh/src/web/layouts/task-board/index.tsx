@@ -121,11 +121,12 @@ function BlockedBadge() {
 }
 
 function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
+  const t = useT();
   const config = PRIORITY_CONFIG[priority];
   return (
     <span className={PILL}>
       <span className={cn("size-2 rounded-full", config.dotClassName)} />
-      {config.label}
+      {t(config.labelKey)}
     </span>
   );
 }
@@ -157,6 +158,7 @@ function AssigneeDisplay({
   assignee?: Member;
   assignedBy?: Member;
 }) {
+  const t = useT();
   if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
     return (
       <span
@@ -595,6 +597,7 @@ function Lanes({
   onMove: (id: string, status: TaskBoardItemStatus) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
 }) {
+  const t = useT();
   const [overLane, setOverLane] = useState<TaskBoardItemStatus | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
@@ -649,7 +652,7 @@ function Lanes({
                   className={cn("shrink-0", config.iconClassName)}
                 />
                 <span className="text-sm font-medium text-foreground">
-                  {config.label}
+                  {t(config.labelKey)}
                 </span>
                 <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
                   {laneItems.length}
@@ -657,10 +660,10 @@ function Lanes({
                 <button
                   type="button"
                   aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-                    lane: config.label,
+                    lane: t(config.labelKey),
                   })}
                   title={t("taskBoard.taskBoard.newTaskInLaneTitle", {
-                    lane: config.label,
+                    lane: t(config.labelKey),
                   })}
                   onClick={() => onCreate(status)}
                   className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -709,6 +712,7 @@ function TaskCard({
   onOpen: () => void;
   onAutoFix?: () => void;
 }) {
+  const t = useT();
   const statusConfig = STATUS_CONFIG[item.status];
   const StatusIcon = statusConfig.icon;
   const lastMessage = primaryThread(item)?.lastMessage;

@@ -27,6 +27,7 @@ import { Label } from "@deco/ui/components/label.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 import type { RunBlockSandboxRef } from "@/web/components/sandbox/content/use-run-block";
 import {
   readProductListIds,
@@ -43,7 +44,7 @@ import {
 } from "./heading-value";
 import { AddButton, RemoveButton, str, ToolbarButton } from "./primitives";
 
-const HEADING_LEVEL_KEYS: Record<HeadingLevel, string> = {
+const HEADING_LEVEL_KEYS: Record<HeadingLevel, TranslationKey> = {
   normal: "sandbox.productBlocks.headingNormal",
   h1: "sandbox.productBlocks.headingH1",
   h2: "sandbox.productBlocks.headingH2",

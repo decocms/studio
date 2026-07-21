@@ -59,19 +59,20 @@ function StatusHighlight(props: StatusHighlightProps) {
     : t("chat.highlight.responseIncomplete");
   const Icon = isError ? AlertCircle : AlertTriangle;
 
-  const rawMessage = props.variant === "error"
-    ? props.error.message
-    : (() => {
-        const warningDescriptionKey =
-          WARNING_DESCRIPTIONS[
-            props.finishReason as keyof typeof WARNING_DESCRIPTIONS
-          ];
-        return warningDescriptionKey
-          ? t(warningDescriptionKey)
-          : t("chat.highlight.responseStoppedUnexpectedly", {
-              reason: props.finishReason,
-            });
-      })();
+  const rawMessage =
+    props.variant === "error"
+      ? props.error.message
+      : (() => {
+          const warningDescriptionKey =
+            WARNING_DESCRIPTIONS[
+              props.finishReason as keyof typeof WARNING_DESCRIPTIONS
+            ];
+          return warningDescriptionKey
+            ? t(warningDescriptionKey)
+            : t("chat.highlight.responseStoppedUnexpectedly", {
+                reason: props.finishReason,
+              });
+        })();
 
   const { summary, rawDetails } = isError
     ? parseErrorMessage(rawMessage)

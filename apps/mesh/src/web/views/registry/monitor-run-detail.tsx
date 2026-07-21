@@ -9,6 +9,7 @@ import {
 } from "@/web/hooks/registry/use-monitor";
 import { summarizeToolResults } from "@/web/lib/registry/monitor-utils";
 import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import type {
   MonitorResult,
   MonitorResultStatus,
@@ -316,10 +317,7 @@ function StatusFilter({
   onChange: (v: MonitorResultStatus | "all") => void;
 }) {
   const t = useT();
-  const options: Array<{
-    value: MonitorResultStatus | "all";
-    labelKey: string;
-  }> = [
+  const options = [
     { value: "all", labelKey: "registry.monitorRunDetail.filterAll" },
     { value: "passed", labelKey: "registry.monitorRunDetail.filterPassed" },
     { value: "failed", labelKey: "registry.monitorRunDetail.filterFailed" },
@@ -329,7 +327,10 @@ function StatusFilter({
       labelKey: "registry.monitorRunDetail.filterNeedsAuth",
     },
     { value: "skipped", labelKey: "registry.monitorRunDetail.filterSkipped" },
-  ];
+  ] as const satisfies ReadonlyArray<{
+    value: MonitorResultStatus | "all";
+    labelKey: TranslationKey;
+  }>;
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {options.map((opt) => (

@@ -50,22 +50,25 @@ import type {
 } from "@/web/lib/registry/types";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 
-const STATUS_OPTIONS: Array<{ value: PublishRequestStatus; labelKey: string }> =
-  [
-    {
-      value: "pending",
-      labelKey: "registry.registryRequestsPage.statusPending",
-    },
-    {
-      value: "approved",
-      labelKey: "registry.registryRequestsPage.statusApproved",
-    },
-    {
-      value: "rejected",
-      labelKey: "registry.registryRequestsPage.statusRejected",
-    },
-  ] as const;
+const STATUS_OPTIONS: Array<{
+  value: PublishRequestStatus;
+  labelKey: TranslationKey;
+}> = [
+  {
+    value: "pending",
+    labelKey: "registry.registryRequestsPage.statusPending",
+  },
+  {
+    value: "approved",
+    labelKey: "registry.registryRequestsPage.statusApproved",
+  },
+  {
+    value: "rejected",
+    labelKey: "registry.registryRequestsPage.statusRejected",
+  },
+] as const;
 
 function formatDate(value: string): string {
   const date = new Date(value);

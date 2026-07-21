@@ -16,6 +16,12 @@ function initializeFromStorage<T>(
   key: string,
   initializer: T | ((existing: T | undefined) => T),
 ): T {
+  // Non-browser render contexts (tests without DOM globals) get defaults.
+  if (typeof localStorage === "undefined") {
+    return typeof initializer === "function"
+      ? (initializer as (existing: T | undefined) => T)(undefined)
+      : initializer;
+  }
   const item = localStorage.getItem(key);
   const existing = item ? safeParse<T>(item) : undefined;
 
@@ -57,8 +63,9 @@ export function useLocalStorage<T>(
   // Mutation to write to localStorage
   const mutation = useMutation({
     mutationFn: async (newValue: T) => {
-      const stringified = JSON.stringify(newValue);
-      localStorage.setItem(key, stringified);
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(key, JSON.stringify(newValue));
+      }
       return newValue;
     },
     onSuccess: (newValue) => {

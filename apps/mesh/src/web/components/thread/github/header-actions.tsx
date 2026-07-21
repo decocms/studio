@@ -36,7 +36,7 @@ import { usePublishGate } from "@/web/components/sandbox/hooks/use-publish-gate.
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 import type { PublishGate } from "./sandbox-git-api.ts";
-import { useT } from "@/web/i18n/use-t";
+import { useT, type TFunction } from "@/web/i18n/use-t";
 
 interface Props {
   virtualMcpId: string;
@@ -350,6 +350,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   return (
     <>
       <HeaderButtonRenderer
+        t={t}
         button={button}
         actionBusy={actionBusy}
         githubActionPending={githubActionPending}
@@ -404,6 +405,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 }
 
 function HeaderButtonRenderer(props: {
+  t: TFunction;
   button: HeaderButton;
   actionBusy: boolean;
   githubActionPending: boolean;
@@ -416,7 +418,7 @@ function HeaderButtonRenderer(props: {
   onSquashMerge: (pullNumber: number) => void | Promise<void>;
   onReview?: () => void;
 }) {
-  const { button, actionBusy, githubActionPending } = props;
+  const { t, button, actionBusy, githubActionPending } = props;
   const chatBlocksAction =
     actionBusy &&
     button.action !== "create-pr" &&

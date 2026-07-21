@@ -294,6 +294,7 @@ function TileMenu({
   onRemove: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>

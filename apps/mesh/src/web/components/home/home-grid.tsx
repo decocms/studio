@@ -342,6 +342,7 @@ function TileLoadingFallback({
   icon: string | null;
   name: string;
 }) {
+  const t = useT();
   return (
     <div className="flex h-full w-full flex-col gap-3 p-5 opacity-60">
       <div className="flex items-center gap-2.5">
@@ -379,6 +380,7 @@ function TileErrorFallback({
   prompts: HomePromptEntry[];
   isEditMode: boolean;
 }) {
+  const t = useT();
   const { open, startBlank, dialog, starting } = usePromptEntryAction(
     tile.agentId,
   );
@@ -416,6 +418,7 @@ function TileErrorFallback({
 }
 
 export function HomeGrid({ isEditMode }: HomeGridProps) {
+  const t = useT();
   const { org } = useProjectContext();
   const {
     isLoading,

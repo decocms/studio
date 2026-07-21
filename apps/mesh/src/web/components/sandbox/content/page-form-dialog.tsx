@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Loading01 } from "@untitledui/icons";
 import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 import {
   Dialog,
   DialogContent,
@@ -19,23 +20,23 @@ import type { PageEntry } from "@/web/components/sections-editor/page-list";
 
 export type PageFormMode = "create" | "duplicate" | "rename";
 
-const TITLE_KEYS: Record<PageFormMode, string> = {
+const TITLE_KEYS: Record<PageFormMode, TranslationKey> = {
   create: "sandbox.pageFormDialog.titleCreate",
   duplicate: "sandbox.pageFormDialog.titleDuplicate",
   rename: "sandbox.pageFormDialog.titleRename",
-} as const;
+};
 
-const SUBMIT_LABEL_KEYS: Record<PageFormMode, string> = {
+const SUBMIT_LABEL_KEYS: Record<PageFormMode, TranslationKey> = {
   create: "sandbox.pageFormDialog.submitCreate",
   duplicate: "sandbox.pageFormDialog.submitDuplicate",
   rename: "sandbox.pageFormDialog.submitSave",
-} as const;
+};
 
-const PENDING_LABEL_KEYS: Record<PageFormMode, string> = {
+const PENDING_LABEL_KEYS: Record<PageFormMode, TranslationKey> = {
   create: "sandbox.pageFormDialog.pendingCreate",
   duplicate: "sandbox.pageFormDialog.pendingDuplicate",
   rename: "sandbox.pageFormDialog.pendingSave",
-} as const;
+};
 
 export function PageFormDialog({
   open,

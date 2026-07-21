@@ -1,9 +1,22 @@
 import { setupComponentTest } from "../../../test/setup"; // happy-dom + jest-dom matchers
 setupComponentTest();
 import { describe, expect, it, mock } from "bun:test";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render as renderBare } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { TierTriggerPure } from "./tier-trigger";
+
+// TierTriggerPure resolves labels via useT(), which reads the language
+// preference through TanStack Query — renders need a QueryClientProvider.
+function wrapper({ children }: { children: ReactNode }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+  });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+const render = (ui: Parameters<typeof renderBare>[0]) =>
+  renderBare(ui, { wrapper });
 
 describe("TierTriggerPure", () => {
   const cloudGroup = (onSelect: (tier: string) => void = () => {}) => ({

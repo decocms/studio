@@ -26,12 +26,13 @@ import {
 } from "./product-picker-source";
 import { invokeLoader } from "./use-product-lookup";
 import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 
-const MODES: { id: ProductPickerMode; labelKey: string }[] = [
+const MODES = [
   { id: "search", labelKey: "sandbox.productPickerDialog.modeSearch" },
   { id: "category", labelKey: "sandbox.productPickerDialog.modeCategory" },
   { id: "cluster", labelKey: "sandbox.productPickerDialog.modeClusterId" },
-];
+] as const satisfies { id: ProductPickerMode; labelKey: TranslationKey }[];
 
 /**
  * Fetch products for the current mode+term. A term can fan out to several

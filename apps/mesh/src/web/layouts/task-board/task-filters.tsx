@@ -6,7 +6,7 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { useT } from "@/web/i18n/use-t.ts";
+import { useT, type TranslationKey } from "@/web/i18n/use-t.ts";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -124,12 +124,12 @@ export function taskMatchesFilters(
   return true;
 }
 
-const DUE_OPTIONS_LABEL_KEYS = {
+const DUE_OPTIONS_LABEL_KEYS: Record<DueFilter, TranslationKey> = {
   overdue: "taskBoard.taskFilters.dueDateFilterOverdue",
   today: "taskBoard.taskFilters.dueDateFilterDueToday",
   week: "taskBoard.taskFilters.dueDateFilterDueThisWeek",
   none: "taskBoard.taskFilters.dueDateFilterNoDueDate",
-} as const;
+};
 
 /**
  * Shared trigger styling — a compact chip that fills in when a value is set.
@@ -281,7 +281,7 @@ function PriorityFilter({
             <Flag01 size={14} className="shrink-0" />
           )}
           {value
-            ? PRIORITY_CONFIG[value].label
+            ? t(PRIORITY_CONFIG[value].labelKey)
             : t("taskBoard.taskFilters.priorityLabel")}
           <ChevronDown size={12} className={chevronClass} />
         </button>
@@ -302,7 +302,7 @@ function PriorityFilter({
                 PRIORITY_CONFIG[p].dotClassName,
               )}
             />
-            {PRIORITY_CONFIG[p].label}
+            {t(PRIORITY_CONFIG[p].labelKey)}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -320,9 +320,7 @@ function DueDateFilter({
   block?: boolean;
 }) {
   const t = useT();
-  const label = value
-    ? t(DUE_OPTIONS_LABEL_KEYS[value] as keyof typeof DUE_OPTIONS_LABEL_KEYS)
-    : undefined;
+  const label = value ? t(DUE_OPTIONS_LABEL_KEYS[value]) : undefined;
   const triggerClass = chipClass(value !== null, block);
   const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
   return (
@@ -340,7 +338,9 @@ function DueDateFilter({
           {t("taskBoard.taskFilters.dueDateAnyTime")}
         </DropdownMenuItem>
         {(
-          Object.entries(DUE_OPTIONS_LABEL_KEYS) as Array<[DueFilter, string]>
+          Object.entries(DUE_OPTIONS_LABEL_KEYS) as Array<
+            [DueFilter, TranslationKey]
+          >
         ).map(([value, labelKey]) => {
           const danger = value === "overdue";
           return (
@@ -356,7 +356,7 @@ function DueDateFilter({
                   danger ? "text-destructive" : "text-muted-foreground",
                 )}
               />
-              {t(labelKey as any)}
+              {t(labelKey)}
             </DropdownMenuItem>
           );
         })}

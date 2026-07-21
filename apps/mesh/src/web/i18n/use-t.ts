@@ -22,3 +22,5 @@ export function useT() {
 
 /** Type of the t() function, for helpers that receive it as a parameter. */
 export type TFunction = ReturnType<typeof useT>;
+
+export type { TranslationKey } from "./en/index.ts";

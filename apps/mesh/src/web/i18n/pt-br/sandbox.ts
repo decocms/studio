@@ -98,92 +98,6 @@ export const sandbox = {
   "sandbox.collectionsSidebar.sections": "Se\u00e7\u00f5es",
   "sandbox.collectionsSidebar.seo": "SEO",
   "sandbox.collectionsSidebar.site": "Site",
-  "sandbox.contentBrowser.appNotInstalled":
-    "{title} n\u00e3o est\u00e1 instalado neste site.",
-  "sandbox.contentBrowser.availableSections":
-    "Se\u00e7\u00f5es dispon\u00edveis",
-  "sandbox.contentBrowser.blogDuplicated": 'Duplicado "{label}"',
-  "sandbox.contentBrowser.blogItemCreated": "Criado(a) {kind}",
-  "sandbox.contentBrowser.bulkAddedToCategory": "Adicionado a {count} {noun}",
-  "sandbox.contentBrowser.bulkAlreadySet": " ({count} j\u00e1 definido)",
-  "sandbox.contentBrowser.bulkMovedCategory": "Movido {count} {noun}",
-  "sandbox.contentBrowser.bulkUpdateFailed":
-    "Falha na atualiza\u00e7\u00e3o em lote",
-  "sandbox.contentBrowser.cancelButton": "Cancelar",
-  "sandbox.contentBrowser.couldNotAddVariant":
-    "N\u00e3o foi poss\u00edvel adicionar a variante",
-  "sandbox.contentBrowser.couldNotCreate": "N\u00e3o foi poss\u00edvel criar",
-  "sandbox.contentBrowser.couldNotCreateRedirect":
-    "N\u00e3o foi poss\u00edvel criar o redirecionamento",
-  "sandbox.contentBrowser.createTooltipBlog": "Criar novo(a) {kind}",
-  "sandbox.contentBrowser.createTooltipPage": "Criar nova p\u00e1gina",
-  "sandbox.contentBrowser.createTooltipRedirect": "Criar novo redirecionamento",
-  "sandbox.contentBrowser.deleteButton": "Deletar",
-  "sandbox.contentBrowser.deleteConfirmBulkPostsDescription":
-    "{count} {noun} ser\u00e3o removidos permanentemente. N\u00e3o \u00e9 poss\u00edvel desfazer.",
-  "sandbox.contentBrowser.deleteConfirmDescription":
-    '"{label}" ser\u00e1 removido permanentemente. N\u00e3o \u00e9 poss\u00edvel desfazer.',
-  "sandbox.contentBrowser.deleteConfirmSectionDescription":
-    '"{label}" ser\u00e1 removido. P\u00e1ginas que ainda o referenciam perder\u00e3o esta se\u00e7\u00e3o.',
-  "sandbox.contentBrowser.deleteConfirmTitle": "Deletar {noun}?",
-  "sandbox.contentBrowser.deleteFailed": "Falha ao deletar",
-  "sandbox.contentBrowser.deletedPosts": "Deletado {count} {noun}",
-  "sandbox.contentBrowser.deletingButton": "Deletando\u2026",
-  "sandbox.contentBrowser.examplePath": "/exemplo",
-  "sandbox.contentBrowser.installedBadge": "Instalado",
-  "sandbox.contentBrowser.itemDeleted": 'Deletado "{label}"',
-  "sandbox.contentBrowser.missing": "Faltando: {fields}",
-  "sandbox.contentBrowser.myNewPage": "Minha nova p\u00e1gina",
-  "sandbox.contentBrowser.noApps": "Nenhum app encontrado.",
-  "sandbox.contentBrowser.noAppsHint": "Tente um termo de pesquisa diferente.",
-  "sandbox.contentBrowser.noBlog": "Nenhum(a) {collection} ainda.",
-  "sandbox.contentBrowser.noBlogHint":
-    'Clique em "+" para criar seu primeiro(a) {kind}.',
-  "sandbox.contentBrowser.noPages": "Nenhuma p\u00e1gina ainda.",
-  "sandbox.contentBrowser.noPagesHint":
-    'Clique em "+" para criar sua primeira p\u00e1gina.',
-  "sandbox.contentBrowser.noPosts": "Nenhum post ainda.",
-  "sandbox.contentBrowser.noPostsHint":
-    'Clique em "+" para criar seu primeiro post.',
-  "sandbox.contentBrowser.noRedirects": "Nenhum redirecionamento ainda.",
-  "sandbox.contentBrowser.noRedirectsHint":
-    'Clique em "+" para criar seu primeiro redirecionamento.',
-  "sandbox.contentBrowser.noSections": "Nenhuma se\u00e7\u00e3o ainda.",
-  "sandbox.contentBrowser.noSectionsHint":
-    "Salve uma se\u00e7\u00e3o de uma p\u00e1gina ou inicie o servidor de desenvolvimento de visualiza\u00e7\u00e3o.",
-  "sandbox.contentBrowser.noSlug": "sem slug",
-  "sandbox.contentBrowser.pageCreated": 'Criado "{name}"',
-  "sandbox.contentBrowser.pageDuplicated": 'Duplicado como "{name}"',
-  "sandbox.contentBrowser.pageNotFound": "P\u00e1gina n\u00e3o encontrada",
-  "sandbox.contentBrowser.pagePathAlreadyExists":
-    'Uma p\u00e1gina com o caminho "{path}" j\u00e1 existe.',
-  "sandbox.contentBrowser.pageSaveFailed": "Falha ao salvar",
-  "sandbox.contentBrowser.pageSourceNotFound":
-    "P\u00e1gina de origem n\u00e3o encontrada",
-  "sandbox.contentBrowser.pageUpdated": "P\u00e1gina atualizada",
-  "sandbox.contentBrowser.pages": "P\u00e1ginas",
-  "sandbox.contentBrowser.recordNotFound": "Registro n\u00e3o encontrado.",
-  "sandbox.contentBrowser.redirectCreated": "Redirecionamento criado",
-  "sandbox.contentBrowser.redirectNoSource": "(sem origem)",
-  "sandbox.contentBrowser.redirectNoTarget": "(sem destino)",
-  "sandbox.contentBrowser.savedSections": "Se\u00e7\u00f5es salvas",
-  "sandbox.contentBrowser.searchPlaceholder": "Pesquisar {collection}\u2026",
-  "sandbox.contentBrowser.sectionCreated": 'Se\u00e7\u00e3o criada "{name}"',
-  "sandbox.contentBrowser.sectionDuplicateFailed": "Falha ao duplicar",
-  "sandbox.contentBrowser.sectionDuplicated": 'Duplicado "{name}"',
-  "sandbox.contentBrowser.sectionNotFound":
-    "Se\u00e7\u00e3o n\u00e3o encontrada.",
-  "sandbox.contentBrowser.sectionRenameFailed": "Falha ao renomear",
-  "sandbox.contentBrowser.sectionRenamed": "Se\u00e7\u00e3o renomeada",
-  "sandbox.contentBrowser.sections": "Se\u00e7\u00f5es",
-  "sandbox.contentBrowser.selectToEdit": "Selecione {item} para editar",
-  "sandbox.contentBrowser.selectToEditAppsDescription":
-    "Navegue por todos os apps e selecione um instalado para editar suas configura\u00e7\u00f5es.",
-  "sandbox.contentBrowser.selectToEditDescription":
-    'Selecione um item da lista ou clique em "+" para criar um.',
-  "sandbox.contentBrowser.selectedTemplateNoLongerExists":
-    "O modelo selecionado n\u00e3o existe mais.",
-  "sandbox.contentBrowser.variantAdded": 'Variante adicionada a "{name}"',
   "sandbox.drawer.failedToRestart": "Falha ao reiniciar {name}",
   "sandbox.drawer.failedToRun": "Falha ao executar {name}",
   "sandbox.drawer.failedToStop": "Falha ao parar {name}",
@@ -399,9 +313,6 @@ export const sandbox = {
     'Usar "{rawTerm}" como {paramLabel}',
   "sandbox.plainBlocks.bulletedLabel": "Com marcadores",
   "sandbox.plainBlocks.codePlaceholder": "C\u00f3digo",
-  "sandbox.plainBlocks.headingLevel1": "T\u00edtulo 1",
-  "sandbox.plainBlocks.headingLevel2": "T\u00edtulo 2",
-  "sandbox.plainBlocks.headingLevel3": "T\u00edtulo 3",
   "sandbox.plainBlocks.headingPlaceholder": "T\u00edtulo",
   "sandbox.plainBlocks.languagePlaceholder": "linguagem",
   "sandbox.plainBlocks.listItemPlaceholder": "Item de lista",

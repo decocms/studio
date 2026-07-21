@@ -41,7 +41,6 @@ interface TagMultiSelectProps {
   memberId: string;
   className?: string;
   disabled?: boolean;
-  placeholder?: string;
   maxDisplay?: number;
 }
 
@@ -49,7 +48,6 @@ export function TagMultiSelect({
   memberId,
   className,
   disabled = false,
-  placeholder = "Add tags...",
   maxDisplay = 2,
 }: TagMultiSelectProps) {
   const t = useT();

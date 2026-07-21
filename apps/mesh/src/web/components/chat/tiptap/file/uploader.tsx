@@ -11,7 +11,7 @@ import type { Editor } from "@tiptap/react";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Attachment01 } from "@untitledui/icons";
 import { toast } from "sonner";
-import { useT } from "@/web/i18n/use-t.ts";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
 import {
   getSupportedFileTypesLabel,
   isFileTypeSupportedByModel,
@@ -40,7 +40,8 @@ export async function processFile(
   selectedModel: AiProviderModel | null,
   file: File,
   position: number,
-  onUnsupportedFile?: (info: UnsupportedFileInfo) => void,
+  onUnsupportedFile: ((info: UnsupportedFileInfo) => void) | undefined,
+  t: TFunction,
 ): Promise<void> {
   // Check if model supports files
   if (!modelSupportsFiles(selectedModel)) {
@@ -52,7 +53,9 @@ export async function processFile(
 
   const fileMimeType = file.type || "application/octet-stream";
   if (!isFileTypeSupportedByModel(fileMimeType, selectedModel)) {
-    const accepted = getSupportedFileTypesLabel(selectedModel);
+    const accepted = getSupportedFileTypesLabel(selectedModel)
+      .parts.map((key) => t(key))
+      .join(", ");
     const modelName = selectedModel?.title ?? "This model";
     if (onUnsupportedFile) {
       onUnsupportedFile({ fileName: file.name, modelName, accepted });
@@ -121,6 +124,7 @@ export function FileUploader({
   selectedModel,
   onUnsupportedFile,
 }: FileUploaderProps) {
+  const t = useT();
   // Use a ref to store the latest processFile handler
   // This ensures we always use the latest selectedModel when processing files
   const processFileRef = useRef<
@@ -137,9 +141,10 @@ export function FileUploader({
         file,
         position,
         onUnsupportedFile,
+        t,
       );
     };
-  }, [editor, selectedModel, onUnsupportedFile]);
+  }, [editor, selectedModel, onUnsupportedFile, t]);
 
   // Register the file drop plugin once per editor instance
   // eslint-disable-next-line ban-use-effect/ban-use-effect

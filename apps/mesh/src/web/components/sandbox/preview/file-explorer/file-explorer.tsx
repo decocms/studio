@@ -1434,7 +1434,7 @@ export function FileExplorer({
             : undefined
         }
         isPending={fsActionPending}
-        onSubmit={handleNameDialogSubmit}
+        onSubmit={(name) => handleNameDialogSubmit(t, name)}
         onOpenChange={(open) => {
           if (!open && !fsActionPending) setNameDialog(null);
         }}
@@ -1447,7 +1447,7 @@ export function FileExplorer({
         onOpenChange={(open) => {
           if (!open && !fsActionPending) setDeleteTarget(null);
         }}
-        onConfirm={(node) => void handleDelete(node)}
+        onConfirm={(node) => void handleDelete(t, node)}
       />
     </div>
   );

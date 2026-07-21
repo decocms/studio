@@ -12,6 +12,7 @@ import { useSaveBlock } from "@/web/components/sections-editor/use-save-block";
 import { useAutosave } from "./blog/use-autosave";
 import { SaveStatus } from "./blog/save-status";
 import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import {
   buildRedirectBlock,
   getRedirectPayload,
@@ -20,7 +21,7 @@ import {
   type RedirectType,
 } from "./redirect-data";
 
-const TYPE_OPTIONS: Array<{ value: RedirectType; labelKey: string }> = [
+const TYPE_OPTIONS: Array<{ value: RedirectType; labelKey: TranslationKey }> = [
   { value: "temporary", labelKey: "sandbox.redirectEditor.typeTemporary" },
   { value: "permanent", labelKey: "sandbox.redirectEditor.typePermanent" },
 ];

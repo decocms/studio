@@ -1,4 +1,5 @@
 import { Image01 } from "@untitledui/icons";
+import type { TranslationKey } from "@/web/i18n/use-t";
 import { useT } from "@/web/i18n/use-t";
 import { safeEditorImageUrl } from "./safe-editor-image-url";
 
@@ -68,7 +69,7 @@ type Layout = "search" | "card" | "chat" | "attachment";
 
 interface PlatformDef {
   id: string;
-  labelKey: string;
+  labelKey: TranslationKey;
   color: string;
   layout: Layout;
 }

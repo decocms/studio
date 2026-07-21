@@ -32,6 +32,7 @@ import {
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import { ImageUpload } from "./image-upload.tsx";
 import { ToolsEditor } from "./tools-editor.tsx";
 import { useImageUpload } from "@/web/hooks/registry/use-image-upload";
@@ -179,10 +180,10 @@ function TagSelector({
   onChange,
 }: {
   id: string;
-  labelKey: string;
+  labelKey: TranslationKey;
   values: string[];
   availableOptions: string[];
-  placeholderKey: string;
+  placeholderKey: TranslationKey;
   onChange: (values: string[]) => void;
 }) {
   const t = useT();

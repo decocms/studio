@@ -388,23 +388,11 @@ export const chat = {
   "chat.shared.pricing": "Pre\u00e7os",
   "chat.shared.selectModel": "Selecionar modelo",
   "chat.shared.tokens": "tokens",
-  "chat.subtask.awaitingApproval": "Aguardando aprova\u00e7\u00e3o...",
-  "chat.subtask.completedNoOutput":
-    "Subtarefa conclu\u00edda (sem sa\u00edda).",
   "chat.subtask.errorLabel": "Erro",
   "chat.subtask.failedWithError": "Subtarefa falhou: {error}",
   "chat.subtask.resultLabel": "Resultado",
   "chat.subtask.running": "Executando\u2026",
   "chat.subtask.runningInBackground": "Executando em background\u2026",
-  "chat.subtask.startingSubtask": "Iniciando subtarefa...",
-  "chat.subtask.stepLimitNoReport":
-    "[Subtarefa atingiu o limite de etapas antes de produzir um relat\u00f3rio final. O subaagente trabalhou, mas ficou sem etapas. Restrinja a tarefa ou aumente o or\u00e7amento.]",
-  "chat.subtask.stepLimitReached":
-    "[Subtarefa atingiu o limite de etapas \u2014 resultado parcial abaixo; considere restringir a tarefa.]\n\n",
-  "chat.subtask.subtask": "Subtarefa",
-  "chat.subtask.subtaskCompleted": "Subtarefa conclu\u00edda",
-  "chat.subtask.subtaskFailed": "Subtarefa falhou",
-  "chat.subtask.subtaskRunning": "Subtarefa em execu\u00e7\u00e3o...",
   "chat.subtask.taskLabel": "Tarefa",
   "chat.takeScreenshot.failed": "Falhou",
   "chat.takeScreenshot.screenshot": "Captura de tela",
@@ -454,7 +442,7 @@ export const chat = {
   "chat.uploader.fileTypeNotSupported": "Tipo de arquivo n\u00e3o suportado",
   "chat.uploader.gotIt": "Entendi",
   "chat.userAskQuestion.choiceOptionsAriaLabel": "Op\u00e7\u00f5es de escolha",
-  "chat.userAskQuestion.confirmNo": "N\u00e3o",
+  "chat.userAskQuestion.confirmNo": "Não",
   "chat.userAskQuestion.confirmValue": "Confirme {value}",
   "chat.userAskQuestion.confirmYes": "Sim",
   "chat.userAskQuestion.confirmationOptionsAriaLabel":
