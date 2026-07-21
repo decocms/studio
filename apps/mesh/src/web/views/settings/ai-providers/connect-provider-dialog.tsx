@@ -300,6 +300,7 @@ export function ConnectProviderDialog({
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label="Back"
                 className="h-7 w-7"
                 onClick={handleBack}
               >
