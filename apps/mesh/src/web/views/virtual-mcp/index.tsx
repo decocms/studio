@@ -1,4 +1,5 @@
-import { formatDistanceToNow, ptBR as ptBRLocale } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { useChatStream } from "@/web/components/chat/context";

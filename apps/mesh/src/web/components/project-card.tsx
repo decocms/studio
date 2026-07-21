@@ -1,5 +1,6 @@
 import { DotsVertical, Settings02, Trash01 } from "@untitledui/icons";
-import { formatDistanceToNow, ptBR as ptBRLocale } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";

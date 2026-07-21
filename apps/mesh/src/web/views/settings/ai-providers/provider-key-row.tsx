@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow, ptBR as ptBRLocale } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { toast } from "sonner";
 import { Edit01, Trash01 } from "@untitledui/icons";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
