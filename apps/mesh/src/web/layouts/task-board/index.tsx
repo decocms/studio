@@ -68,6 +68,7 @@ import { writeChatDraft } from "@/web/lib/chat-draft";
 import { createMentionDoc } from "@/web/components/chat/tiptap/mention";
 import type { TiptapDoc } from "@/web/components/chat/types";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
+import { BacklogPaywallBanner } from "./backlog-paywall";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
 void import("../agent-shell-layout/index.tsx").catch(() => {});
@@ -331,6 +332,10 @@ export function TaskBoardPage() {
           they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
         <h1 className="text-xl font-medium text-foreground">Tasks</h1>
+
+        {/* Commerce orgs: a persistent unlock CTA that self-hides once the
+            diagnostic is paid. The board stays usable in the meantime. */}
+        {reportsOnly && <BacklogPaywallBanner />}
 
         {/* Toolbar — filters on the left (inline bar on desktop, a single
             drawer button on mobile), view toggle + New task on the right. */}

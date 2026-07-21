@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { deriveCommerceReportBannerStatus } from "./commerce-report-banner-status";
+import { deriveCommerceReportBannerStatus } from "./commerce-diagnostic-status";
 
 describe("deriveCommerceReportBannerStatus", () => {
   test("no diagnostic hides the banner", () => {
@@ -48,5 +48,20 @@ describe("deriveCommerceReportBannerStatus", () => {
         scanned_at: "2026-07-01T00:00:00.000Z",
       }),
     ).toBe("ready");
+  });
+
+  test("locked is orthogonal to run status — doesn't affect the derived banner state", () => {
+    expect(
+      deriveCommerceReportBannerStatus({
+        scanned_at: "2026-07-01T00:00:00.000Z",
+        locked: true,
+      }),
+    ).toBe("ready");
+    expect(
+      deriveCommerceReportBannerStatus({
+        run_in_progress: true,
+        locked: false,
+      }),
+    ).toBe("generating");
   });
 });
