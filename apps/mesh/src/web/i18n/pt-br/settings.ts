@@ -1,0 +1,56 @@
+import type { settings as settingsEn } from "../en/settings.ts";
+
+export const settings = {
+  "settings.title": "Perfil e preferências",
+  "settings.nav.organization": "Organização",
+  "settings.nav.general": "Geral",
+  "settings.nav.brandContext": "Contexto da marca",
+  "settings.nav.aiProviders": "Provedores de IA",
+  "settings.nav.secrets": "Segredos",
+  "settings.nav.buckets": "Buckets",
+  "settings.nav.build": "Criação",
+  "settings.nav.connections": "Conexões",
+  "settings.nav.agents": "Agentes",
+  "settings.nav.automations": "Automações",
+  "settings.nav.store": "Loja",
+  "settings.nav.manage": "Gerenciar",
+  "settings.nav.monitor": "Monitoramento",
+  "settings.nav.members": "Membros",
+  "settings.nav.roles": "Papéis",
+  "settings.nav.security": "Segurança",
+  "settings.nav.account": "Conta",
+  "settings.nav.profile": "Perfil e preferências",
+  "settings.nav.signOut": "Sair",
+  "settings.profile.avatar": "Avatar",
+  "settings.profile.displayName": "Nome de exibição",
+  "settings.profile.displayNamePlaceholder": "Seu nome",
+  "settings.profile.email": "E-mail",
+  "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
+  "settings.profile.updateError": "Falha ao atualizar o perfil",
+  "settings.preferences.title": "Preferências",
+  "settings.preferences.theme": "Tema",
+  "settings.preferences.themeDescription": "Seu esquema de cores preferido.",
+  "settings.preferences.themeLight": "Tema claro",
+  "settings.preferences.themeDark": "Tema escuro",
+  "settings.preferences.themeSystem": "Tema do sistema",
+  "settings.preferences.language": "Idioma",
+  "settings.preferences.languageDescription": "O idioma da interface.",
+  "settings.preferences.notifications": "Notificações",
+  "settings.preferences.notificationsDescription":
+    "Receba notificações do navegador para eventos importantes.",
+  "settings.preferences.notificationsDenied":
+    "Notificações negadas. Habilite-as nas configurações do seu navegador.",
+  "settings.preferences.sounds": "Sons",
+  "settings.preferences.soundsDescription":
+    "Reproduza sons para ações de agentes e notificações.",
+  "settings.preferences.soundsPreview": "Ouvir som de notificação",
+  "settings.preferences.toolApproval": "Aprovação de ferramentas",
+  "settings.preferences.toolApprovalDescription":
+    "Controle como as ferramentas são aprovadas antes da execução.",
+  "settings.preferences.toolApprovalAsk": "Perguntar antes de editar",
+  "settings.preferences.toolApprovalAskDescription":
+    "Aprova automaticamente ferramentas somente leitura",
+  "settings.preferences.toolApprovalAuto": "Aprovar automaticamente",
+  "settings.preferences.toolApprovalAutoDescription":
+    "Executa tudo sem aprovação",
+} satisfies Record<keyof typeof settingsEn, string>;
