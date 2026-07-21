@@ -73,6 +73,7 @@ function ConnectionRow({
   const [busy, setBusy] = useState(false);
   const [tokenValue, setTokenValue] = useState("");
   const [isReplacingToken, setIsReplacingToken] = useState(false);
+  const [iconFailed, setIconFailed] = useState(false);
 
   const updateAuth = useUpdateMonitorConnectionAuth();
   const { updateMutation } = useRegistryMutations();
@@ -300,12 +301,13 @@ function ConnectionRow({
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
           <div className="size-10 rounded-lg border border-border bg-muted/20 overflow-hidden shrink-0 flex items-center justify-center">
-            {icon ? (
+            {icon && !iconFailed ? (
               <img
                 src={icon}
                 alt={title}
                 className="h-full w-full object-cover"
                 loading="lazy"
+                onError={() => setIconFailed(true)}
               />
             ) : (
               <span className="text-xs font-semibold text-muted-foreground">
