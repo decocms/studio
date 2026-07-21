@@ -20,6 +20,16 @@ do repositório tem scripts prontos, values de exemplo e o mapa completo de depe
 | **Local — Kubernetes** | um `helm install` do umbrella `selfhost/examples/k8s-local` | tudo embutido (Postgres + MinIO de dev + NATS + sandbox) |
 | **Produção — Kubernetes** | `helm install` [o chart](/pt-br/studio/self-hosting/deploy/kubernetes) | Postgres + S3 + NATS + ClickHouse externos/gerenciados |
 
+<Callout type="tip">
+  **Prefere uma instalação guiada?** Adicione a **skill de self-host** interativa ao Claude Code — ela te conduz pelos tiers abaixo, perguntando o que você tem (dependências gerenciadas ou no cluster, secrets, sandbox), preenchendo os values do Helm, validando com `helm template` e instalando.
+</Callout>
+
+Adicione uma vez (o repositório é público) e diga ao Claude Code **"install Studio"**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/decocms/studio/main/selfhost/skills/install.sh | sh
+```
+
 ### Opção A: local com um comando (CLI)
 
 ```bash
