@@ -65,7 +65,9 @@ import { useFlipLanes } from "./use-flip-lanes";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useThreadActions } from "@/web/components/chat/store/hooks";
-import { writeStoredAutosend } from "@/web/lib/autosend";
+import { writeChatDraft } from "@/web/lib/chat-draft";
+import { createMentionDoc } from "@/web/components/chat/tiptap/mention";
+import type { TiptapDoc } from "@/web/components/chat/types";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
@@ -242,17 +244,28 @@ export function TaskBoardPage() {
   const startChatFromTask = async (task: TaskBoardItem) => {
     const newId = crypto.randomUUID();
     const agentId = getWellKnownDecopilotVirtualMCP(org.id).id;
-    const context = [task.title, task.description?.trim()]
-      .filter(Boolean)
-      .join("\n\n");
-    writeStoredAutosend(sessionStorage, locator, newId, {
-      tiptapDoc: {
-        type: "doc",
-        content: [
-          { type: "paragraph", content: [{ type: "text", text: context }] },
-        ],
-      },
-    });
+    // Prefill the composer with a removable task @ref chip (not raw text) and
+    // do NOT auto-send — the user reviews/adds to it, then hits send. The chip
+    // expands to the task's title + description at send time (see derive-parts).
+    const doc: TiptapDoc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            createMentionDoc({
+              id: task.id,
+              name: task.title,
+              char: "@",
+              kind: "task",
+              metadata: { title: task.title, description: task.description },
+            }),
+            { type: "text", text: " " },
+          ],
+        },
+      ],
+    };
+    writeChatDraft(sessionStorage, locator, newId, doc);
     setDialogOpen(false);
     try {
       await create({ id: newId, virtual_mcp_id: agentId });
@@ -262,7 +275,7 @@ export function TaskBoardPage() {
       // Toast already fired by the manager; navigate anyway so the route
       // loader's ensure-fallback can retry the create.
     }
-    setTaskId(newId, agentId, { autosend: true });
+    setTaskId(newId, agentId);
   };
 
   const visibleItems = items.filter((item) =>
