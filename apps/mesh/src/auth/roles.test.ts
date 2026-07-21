@@ -56,4 +56,16 @@ describe("canAssignRole", () => {
     expect(canAssignRole("admin", [])).toBe(false);
     expect(canAssignRole("owner", [])).toBe(false);
   });
+
+  // Better Auth's `parseRoles` joins an assigned role array with "," before
+  // storing `member.role`, so a multi-role owner/admin's OWN role — the
+  // `callerRole` here — can arrive as that same comma-joined string, not just
+  // as a lone "owner"/"admin". A caller check that only does `=== "owner"`
+  // would wrongly deny a legitimate multi-role owner/admin.
+  it("recognizes a multi-role caller from a comma-joined callerRole", () => {
+    expect(canAssignRole("owner,billing-manager", "admin")).toBe(true);
+    expect(canAssignRole("admin,billing-manager", "user")).toBe(true);
+    expect(canAssignRole("admin,billing-manager", "owner")).toBe(false);
+    expect(canAssignRole("billing-manager,user", "admin")).toBe(false);
+  });
 });
