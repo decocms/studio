@@ -274,17 +274,6 @@ function PinAgentPopoverContent({
           />
         )}
 
-        {/* Agents */}
-        {plainAgents.length > 0 && <SectionLabel>Agents</SectionLabel>}
-        {plainAgents.map((agent) => (
-          <AgentRow
-            key={agent.id}
-            agent={agent}
-            selected={onSelectAgent ? selectedAgentId === agent.id : undefined}
-            onClick={() => handleSelect(agent)}
-          />
-        ))}
-
         {/* Code Agents — repo-backed. The Import button is always available
             when not filtering, so a repo can be imported even with none yet. */}
         {(codeAgents.length > 0 || !search) && (
@@ -304,6 +293,17 @@ function PinAgentPopoverContent({
           </SectionLabel>
         )}
         {codeAgents.map((agent) => (
+          <AgentRow
+            key={agent.id}
+            agent={agent}
+            selected={onSelectAgent ? selectedAgentId === agent.id : undefined}
+            onClick={() => handleSelect(agent)}
+          />
+        ))}
+
+        {/* Agents */}
+        {plainAgents.length > 0 && <SectionLabel>Agents</SectionLabel>}
+        {plainAgents.map((agent) => (
           <AgentRow
             key={agent.id}
             agent={agent}
