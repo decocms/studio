@@ -287,17 +287,16 @@ export function ChatInput({
 
   const handleVoiceStart = async () => {
     voiceBaselineDocRef.current = tiptapDoc;
-    await voice.startRecording();
-    // Fire with the real outcome — voice.status is set inside startRecording
-    // before the promise resolves ("recording" on success, "unsupported" or
-    // "permission-denied" on failure). Button click on its own doesn't tell
-    // us if the mic actually started.
+    // Fire with the real outcome returned by startRecording — reading
+    // voice.status here instead would be a stale closure over the status
+    // from before the click, since setState doesn't mutate it in place.
+    const finalStatus = await voice.startRecording();
     const outcome =
-      voice.status === "recording"
+      finalStatus === "recording"
         ? "started"
-        : voice.status === "unsupported"
+        : finalStatus === "unsupported"
           ? "unsupported"
-          : voice.status === "permission-denied"
+          : finalStatus === "permission-denied"
             ? "permission_denied"
             : "unknown";
     track("chat_voice_started", { thread_id: taskId, outcome });
