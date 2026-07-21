@@ -201,6 +201,9 @@ function ConnectionRow({
           // Fallback: save as plain token
           if (authResult.token) {
             await saveTokenInternal(authResult.token);
+          } else {
+            toast.error(`Failed to save OAuth tokens for "${title}".`);
+            return;
           }
         }
       } else if (authResult.token) {
