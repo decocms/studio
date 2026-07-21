@@ -742,12 +742,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
   };
 
-  const handleCopyUrl = () => {
-    const url =
-      previewIframeRef.current?.contentWindow?.location?.href ??
-      iframeSrc ??
-      previewUrl;
-    if (url) navigator.clipboard.writeText(url);
+  const handleCopyUrl = async () => {
+    // The iframe's live location is cross-origin (sandbox preview domain), so
+    // reading `.location.href` throws — same reason the onLoad handler below
+    // guards the analogous `.pathname` read.
+    let liveUrl: string | null = null;
+    try {
+      liveUrl = previewIframeRef.current?.contentWindow?.location?.href ?? null;
+    } catch {
+      // Cross-origin — fall back below.
+    }
+    const url = liveUrl ?? iframeSrc ?? previewUrl;
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("URL copied to clipboard");
+    } catch {
+      toast.error("Failed to copy URL");
+    }
   };
 
   const previewLabel = (() => {
