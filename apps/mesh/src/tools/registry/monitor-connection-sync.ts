@@ -55,10 +55,20 @@ export const REGISTRY_MONITOR_CONNECTION_SYNC = defineTool({
     let created = 0;
     for (const item of targets) {
       if (!item.server.remotes?.some((r) => r.url)) continue;
-      await ensureMonitorConnection(
-        ctx as Parameters<typeof ensureMonitorConnection>[0],
-        item,
-      );
+      try {
+        await ensureMonitorConnection(
+          ctx as Parameters<typeof ensureMonitorConnection>[0],
+          item,
+        );
+      } catch (error) {
+        // One item's URL failing validation (e.g. a private-network SSRF
+        // target) must not abort syncing the rest of the batch.
+        console.warn(
+          `[REGISTRY_MONITOR_CONNECTION_SYNC] Skipping ${item.id}:`,
+          error instanceof Error ? error.message : error,
+        );
+        continue;
+      }
       if (!existingByItem.has(item.id)) created += 1;
     }
 
