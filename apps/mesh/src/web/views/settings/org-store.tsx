@@ -27,6 +27,7 @@ import {
   useUpdateRegistryConfig,
 } from "@/web/hooks/use-organization-settings";
 import { track } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -35,11 +36,12 @@ import {
 } from "@/web/components/settings/settings-section";
 
 function ErrorFallback({ error }: { error: Error }) {
+  const t = useT();
   return (
     <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
       <AlertCircle size={16} />
       <span className="text-sm font-medium">
-        Failed to load store settings: {error.message}
+        {t("settings.orgStore.failedLoadStoreSettings")} {error.message}
       </span>
     </div>
   );
@@ -52,6 +54,7 @@ function AddPrivateRegistryForm({
   onCancel: () => void;
   onSuccess: (connectionId: string) => void;
 }) {
+  const t = useT();
   const connectionActions = useConnectionActions();
 
   const [name, setName] = useState("");
@@ -61,8 +64,8 @@ function AddPrivateRegistryForm({
   const { mutate: addRegistry, isPending } = useMutation({
     mutationFn: async () => {
       const created = await connectionActions.create.mutateAsync({
-        title: name || "Private Registry",
-        description: "Private MCP registry",
+        title: name || t("settings.orgStore.privateRegistry"),
+        description: t("settings.orgStore.privateMcpRegistry"),
         connection_type: "HTTP",
         connection_url: url,
         connection_token: token || null,
@@ -81,21 +84,23 @@ function AddPrivateRegistryForm({
       track("store_private_registry_added", {
         connection_id: connectionId,
       });
-      toast.success("Private registry added");
+      toast.success(t("settings.orgStore.privateRegistryAdded"));
       onSuccess(connectionId);
     },
     onError: (err) => {
-      toast.error(`Failed to add registry: ${err.message}`);
+      toast.error(
+        t("settings.orgStore.failedAddRegistry", { error: err.message }),
+      );
     },
   });
 
   return (
     <SettingsCard>
       <SettingsCardItem
-        title="Name"
+        title={t("settings.orgStore.nameLabel")}
         action={
           <Input
-            placeholder="e.g. Acme Corp Registry"
+            placeholder={t("settings.orgStore.namePlaceholder")}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-[280px]"
@@ -103,10 +108,10 @@ function AddPrivateRegistryForm({
         }
       />
       <SettingsCardItem
-        title="Registry URL"
+        title={t("settings.orgStore.registryUrlLabel")}
         action={
           <Input
-            placeholder="https://registry.example.com/mcp"
+            placeholder={t("settings.orgStore.registryUrlPlaceholder")}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             className="w-[280px]"
@@ -114,12 +119,12 @@ function AddPrivateRegistryForm({
         }
       />
       <SettingsCardItem
-        title="Auth Token"
-        description="Optional"
+        title={t("settings.orgStore.authTokenLabel")}
+        description={t("settings.orgStore.optional")}
         action={
           <Input
             type="password"
-            placeholder="Bearer token..."
+            placeholder={t("settings.orgStore.authTokenPlaceholder")}
             value={token}
             onChange={(e) => setToken(e.target.value)}
             className="w-[280px]"
@@ -133,14 +138,16 @@ function AddPrivateRegistryForm({
           onClick={onCancel}
           disabled={isPending}
         >
-          Cancel
+          {t("settings.orgStore.cancel")}
         </Button>
         <Button
           size="sm"
           onClick={() => addRegistry()}
           disabled={!url || isPending}
         >
-          {isPending ? "Adding..." : "Add Registry"}
+          {isPending
+            ? t("settings.orgStore.adding")
+            : t("settings.orgStore.addRegistry")}
         </Button>
       </div>
     </SettingsCard>
@@ -164,6 +171,7 @@ function RegistryItem({
   onDelete?: () => void;
   href?: string;
 }) {
+  const t = useT();
   const navigate = useNavigate();
   const { org } = useParams({ from: "/shell/$org" });
 
@@ -210,7 +218,9 @@ function RegistryItem({
               </PopoverTrigger>
               <PopoverContent className="w-auto p-2" align="end">
                 <div className="flex flex-col gap-2">
-                  <p className="text-xs font-medium">Remove this registry?</p>
+                  <p className="text-xs font-medium">
+                    {t("settings.orgStore.removeRegistry")}
+                  </p>
                   <Button
                     variant="destructive"
                     size="xs"
@@ -219,7 +229,7 @@ function RegistryItem({
                       onDelete();
                     }}
                   >
-                    Remove
+                    {t("settings.orgStore.remove")}
                   </Button>
                 </div>
               </PopoverContent>
@@ -238,6 +248,7 @@ function RegistryItem({
 }
 
 function OrgStoreContent() {
+  const t = useT();
   const { org } = useProjectContext();
   const registryConnections = useRegistryConnections();
   const connectionActions = useConnectionActions();
@@ -303,27 +314,27 @@ function OrgStoreContent() {
 
   return (
     <>
-      <SettingsSection title="Deco Store">
+      <SettingsSection title={t("settings.orgStore.decoStoreSection")}>
         <SettingsCard>
           {decoStoreConnection ? (
             <RegistryItem
-              name="Deco Store"
-              description="Official deco MCP registry with curated integrations"
+              name={t("settings.orgStore.decoStoreName")}
+              description={t("settings.orgStore.decoStoreDescription")}
               icon={decoStoreConnection.icon}
               enabled={isRegistryEnabled(decoStoreId)}
               onToggle={(enabled) => handleToggle(decoStoreId, enabled)}
             />
           ) : (
             <SettingsCardItem
-              title="Deco Store"
-              description="Connection not found — will be created automatically."
+              title={t("settings.orgStore.decoStoreName")}
+              description={t("settings.orgStore.connectionNotFound")}
             />
           )}
         </SettingsCard>
       </SettingsSection>
 
       <SettingsSection
-        title="Private Registries"
+        title={t("settings.orgStore.privateRegistriesSection")}
         actions={
           !showAddForm ? (
             <Button
@@ -332,7 +343,7 @@ function OrgStoreContent() {
               onClick={() => setShowAddForm(true)}
             >
               <Plus size={14} />
-              Add registry
+              {t("settings.orgStore.addRegistry")}
             </Button>
           ) : undefined
         }
@@ -345,8 +356,8 @@ function OrgStoreContent() {
         )}
         <SettingsCard>
           <RegistryItem
-            name="Private Registry"
-            description="Your organization's private MCP registry"
+            name={t("settings.orgStore.privateRegistry")}
+            description={t("settings.orgStore.privateRegistryDescription")}
             enabled={isRegistryEnabled("self")}
             onToggle={(enabled) => handleToggle("self", enabled)}
             href="/$org/settings/store/registry"
@@ -355,7 +366,10 @@ function OrgStoreContent() {
             <RegistryItem
               key={registry.id}
               name={registry.title}
-              description={registry.description ?? "Private MCP registry"}
+              description={
+                registry.description ??
+                t("settings.orgStore.privateMcpRegistry")
+              }
               icon={registry.icon}
               enabled={isRegistryEnabled(registry.id)}
               onToggle={(enabled) => handleToggle(registry.id, enabled)}
@@ -365,12 +379,12 @@ function OrgStoreContent() {
         </SettingsCard>
       </SettingsSection>
 
-      <SettingsSection title="Community">
+      <SettingsSection title={t("settings.orgStore.communitySection")}>
         <SettingsCard>
           {communityConnection ? (
             <RegistryItem
-              name="MCP Registry"
-              description="Community MCP registry with thousands of handy MCPs"
+              name={t("settings.orgStore.mcpRegistry")}
+              description={t("settings.orgStore.communityRegistryDescription")}
               icon={communityConnection.icon}
               enabled={isRegistryEnabled(effectiveCommunityId)}
               onToggle={(enabled) =>
@@ -379,8 +393,8 @@ function OrgStoreContent() {
             />
           ) : (
             <SettingsCardItem
-              title="MCP Registry"
-              description="Community MCP registry — not yet added"
+              title={t("settings.orgStore.mcpRegistry")}
+              description={t("settings.orgStore.communityRegistryNotAdded")}
               icon={
                 <Avatar
                   fallback="M"
@@ -399,11 +413,14 @@ function OrgStoreContent() {
 }
 
 export function OrgStorePage() {
+  const t = useT();
   return (
     <ErrorBoundary
       fallback={({ error }) => (
         <ErrorFallback
-          error={error ?? new Error("Failed to load store settings")}
+          error={
+            error ?? new Error(t("settings.orgStore.failedLoadStoreSettings"))
+          }
         />
       )}
     >
@@ -412,7 +429,7 @@ export function OrgStorePage() {
           <Page.Content>
             <Page.Body>
               <SettingsPage>
-                <Page.Title>Store</Page.Title>
+                <Page.Title>{t("settings.orgStore.pageTitle")}</Page.Title>
                 <OrgStoreContent />
               </SettingsPage>
             </Page.Body>

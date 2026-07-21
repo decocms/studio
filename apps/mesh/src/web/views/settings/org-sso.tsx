@@ -6,6 +6,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { useProjectContext } from "@decocms/mesh-sdk";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   useOrgSsoConfig,
   useSaveOrgSsoConfig,
@@ -23,6 +24,7 @@ import { Trash01 } from "@untitledui/icons";
 import { track } from "@/web/lib/posthog-client";
 
 export function OrgSsoPage() {
+  const t = useT();
   const { org } = useProjectContext();
   const { data: ssoData, isLoading } = useOrgSsoConfig(org.id, org.slug);
   const saveMutation = useSaveOrgSsoConfig(org.id, org.slug);
@@ -59,12 +61,12 @@ export function OrgSsoPage() {
 
   const handleSave = async () => {
     if (!formState.issuer || !formState.clientId || !formState.domain) {
-      toast.error("Issuer, Client ID, and Domain are required");
+      toast.error(t("settings.orgSso.requiredFieldsError"));
       return;
     }
 
     if (!isConfigured && !formState.clientSecret) {
-      toast.error("Client Secret is required for initial setup");
+      toast.error(t("settings.orgSso.clientSecretRequiredError"));
       return;
     }
 
@@ -82,24 +84,26 @@ export function OrgSsoPage() {
         organization_id: org.id,
         email_domain: formState.domain,
       });
-      toast.success("SSO configuration saved");
+      toast.success(t("settings.orgSso.configurationSavedSuccess"));
       setIsEditing(false);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to save SSO config",
+        err instanceof Error
+          ? err.message
+          : t("settings.orgSso.saveSsoConfigError"),
       );
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to remove SSO configuration?")) return;
+    if (!confirm(t("settings.orgSso.removeConfirmation"))) return;
     try {
       await deleteMutation.mutateAsync();
       track("sso_config_removed", { organization_id: org.id });
-      toast.success("SSO configuration removed");
+      toast.success(t("settings.orgSso.configurationRemovedSuccess"));
       setIsEditing(false);
     } catch {
-      toast.error("Failed to remove SSO config");
+      toast.error(t("settings.orgSso.removeSsoConfigError"));
     }
   };
 
@@ -111,10 +115,12 @@ export function OrgSsoPage() {
         enforced,
       });
       toast.success(
-        enforced ? "SSO enforcement enabled" : "SSO enforcement disabled",
+        enforced
+          ? t("settings.orgSso.enforcementEnabledSuccess")
+          : t("settings.orgSso.enforcementDisabledSuccess"),
       );
     } catch {
-      toast.error("Failed to toggle SSO enforcement");
+      toast.error(t("settings.orgSso.toggleEnforcementError"));
     }
   };
 
@@ -123,24 +129,26 @@ export function OrgSsoPage() {
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>Security</Page.Title>
+            <Page.Title>{t("settings.orgSso.securityTitle")}</Page.Title>
             <DomainSettings />
             {isLoading ? (
-              <div className="text-sm text-muted-foreground">Loading...</div>
+              <div className="text-sm text-muted-foreground">
+                {t("settings.orgSso.loading")}
+              </div>
             ) : (
               <>
                 {/* Status */}
                 {isConfigured && !isEditing && (
-                  <SettingsSection title="Single Sign-On">
+                  <SettingsSection title={t("settings.orgSso.sectionTitle")}>
                     <SettingsCard>
                       <SettingsCardItem
-                        title="Provider"
+                        title={t("settings.orgSso.providerLabel")}
                         action={
                           <span className="font-medium">{config!.issuer}</span>
                         }
                       />
                       <SettingsCardItem
-                        title="Client ID"
+                        title={t("settings.orgSso.clientIdLabel")}
                         action={
                           <span className="font-mono text-xs">
                             {config!.clientId}
@@ -148,13 +156,13 @@ export function OrgSsoPage() {
                         }
                       />
                       <SettingsCardItem
-                        title="Domain"
+                        title={t("settings.orgSso.domainLabel")}
                         action={
                           <span className="font-medium">{config!.domain}</span>
                         }
                       />
                       <SettingsCardItem
-                        title="Scopes"
+                        title={t("settings.orgSso.scopesLabel")}
                         action={
                           <span className="font-mono text-xs">
                             {config!.scopes.join(" ")}
@@ -163,8 +171,8 @@ export function OrgSsoPage() {
                       />
                       <div className="h-px bg-border mx-5" />
                       <SettingsCardItem
-                        title="Enforce SSO"
-                        description="Require all members to authenticate via SSO"
+                        title={t("settings.orgSso.enforceSsoLabel")}
+                        description={t("settings.orgSso.enforceSsoDescription")}
                         action={
                           <Switch
                             checked={config!.enforced}
@@ -182,7 +190,7 @@ export function OrgSsoPage() {
                           className="text-destructive hover:text-destructive mr-auto"
                         >
                           <Trash01 size={14} />
-                          Remove
+                          {t("settings.orgSso.removeButton")}
                         </Button>
                         <Button
                           variant="outline"
@@ -194,14 +202,14 @@ export function OrgSsoPage() {
                             );
                           }}
                         >
-                          Test SSO
+                          {t("settings.orgSso.testSsoButton")}
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={startEditing}
                         >
-                          Edit configuration
+                          {t("settings.orgSso.editConfigButton")}
                         </Button>
                       </SettingsCardActions>
                     </SettingsCard>
@@ -210,15 +218,17 @@ export function OrgSsoPage() {
 
                 {/* Form (new config or editing) */}
                 {(!isConfigured || isEditing) && (
-                  <SettingsSection title="Single Sign-On">
+                  <SettingsSection title={t("settings.orgSso.sectionTitle")}>
                     <SettingsCard>
                       <SettingsCardItem
-                        title="Issuer URL"
-                        description="The OIDC issuer URL of your identity provider."
+                        title={t("settings.orgSso.issuerUrlLabel")}
+                        description={t("settings.orgSso.issuerUrlDescription")}
                         action={
                           <Input
                             id="sso-issuer"
-                            placeholder="https://login.microsoftonline.com/{tenant}/v2.0"
+                            placeholder={t(
+                              "settings.orgSso.issuerUrlPlaceholder",
+                            )}
                             value={formState.issuer}
                             onChange={(e) =>
                               setFormState((s) => ({
@@ -231,11 +241,13 @@ export function OrgSsoPage() {
                         }
                       />
                       <SettingsCardItem
-                        title="Client ID"
+                        title={t("settings.orgSso.clientIdLabel")}
                         action={
                           <Input
                             id="sso-client-id"
-                            placeholder="your-client-id"
+                            placeholder={t(
+                              "settings.orgSso.clientIdPlaceholder",
+                            )}
                             value={formState.clientId}
                             onChange={(e) =>
                               setFormState((s) => ({
@@ -248,17 +260,19 @@ export function OrgSsoPage() {
                         }
                       />
                       <SettingsCardItem
-                        title="Client Secret"
+                        title={t("settings.orgSso.clientSecretLabel")}
                         description={
                           isEditing && isConfigured
-                            ? "Leave empty to keep current"
+                            ? t("settings.orgSso.clientSecretEditDescription")
                             : undefined
                         }
                         action={
                           <Input
                             id="sso-client-secret"
                             type="password"
-                            placeholder="your-client-secret"
+                            placeholder={t(
+                              "settings.orgSso.clientSecretPlaceholder",
+                            )}
                             value={formState.clientSecret}
                             onChange={(e) =>
                               setFormState((s) => ({
@@ -271,12 +285,16 @@ export function OrgSsoPage() {
                         }
                       />
                       <SettingsCardItem
-                        title="Email Domain"
-                        description="The email domain this SSO provider covers."
+                        title={t("settings.orgSso.emailDomainLabel")}
+                        description={t(
+                          "settings.orgSso.emailDomainDescription",
+                        )}
                         action={
                           <Input
                             id="sso-domain"
-                            placeholder="company.com"
+                            placeholder={t(
+                              "settings.orgSso.emailDomainPlaceholder",
+                            )}
                             value={formState.domain}
                             onChange={(e) =>
                               setFormState((s) => ({
@@ -289,11 +307,11 @@ export function OrgSsoPage() {
                         }
                       />
                       <SettingsCardItem
-                        title="Scopes"
+                        title={t("settings.orgSso.scopesLabel")}
                         action={
                           <Input
                             id="sso-scopes"
-                            placeholder="openid email profile"
+                            placeholder={t("settings.orgSso.scopesPlaceholder")}
                             value={formState.scopes}
                             onChange={(e) =>
                               setFormState((s) => ({
@@ -306,12 +324,16 @@ export function OrgSsoPage() {
                         }
                       />
                       <SettingsCardItem
-                        title="Discovery Endpoint"
-                        description="Optional — auto-detected from issuer if omitted."
+                        title={t("settings.orgSso.discoveryEndpointLabel")}
+                        description={t(
+                          "settings.orgSso.discoveryEndpointDescription",
+                        )}
                         action={
                           <Input
                             id="sso-discovery"
-                            placeholder="Auto-detected from issuer"
+                            placeholder={t(
+                              "settings.orgSso.discoveryEndpointPlaceholder",
+                            )}
                             value={formState.discoveryEndpoint}
                             onChange={(e) =>
                               setFormState((s) => ({
@@ -330,7 +352,7 @@ export function OrgSsoPage() {
                             size="sm"
                             onClick={() => setIsEditing(false)}
                           >
-                            Cancel
+                            {t("settings.orgSso.cancelButton")}
                           </Button>
                         )}
                         <Button
@@ -339,10 +361,10 @@ export function OrgSsoPage() {
                           size="sm"
                         >
                           {saveMutation.isPending
-                            ? "Saving..."
+                            ? t("settings.orgSso.savingButton")
                             : isEditing
-                              ? "Update"
-                              : "Configure SSO"}
+                              ? t("settings.orgSso.updateButton")
+                              : t("settings.orgSso.configureSsoButton")}
                         </Button>
                       </SettingsCardActions>
                     </SettingsCard>

@@ -5,6 +5,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 // --- Types ---
 
@@ -74,6 +75,7 @@ export function AutoExtractBanner({
   onExtract: (domain: string) => void;
   isExtracting?: boolean;
 }) {
+  const t = useT();
   const [domain, setDomain] = useState("");
 
   return (
@@ -84,15 +86,14 @@ export function AutoExtractBanner({
         </div>
         <div className="flex-1">
           <p className="text-sm font-medium text-foreground">
-            Auto-extract brand context
+            {t("settings.brandFormSections.autoExtractTitle")}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Enter your website URL and we'll automatically extract your brand
-            colors, fonts, logos, and company overview.
+            {t("settings.brandFormSections.autoExtractDescription")}
           </p>
           <div className="mt-3 flex gap-2">
             <Input
-              placeholder="acme.com"
+              placeholder={t("settings.brandFormSections.domainPlaceholder")}
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
               className="max-w-xs"
@@ -108,7 +109,9 @@ export function AutoExtractBanner({
               onClick={() => onExtract(domain.trim())}
             >
               <Globe02 size={14} />
-              {isExtracting ? "Extracting..." : "Extract"}
+              {isExtracting
+                ? t("settings.brandFormSections.extracting")
+                : t("settings.brandFormSections.extract")}
             </Button>
           </div>
         </div>
@@ -128,15 +131,16 @@ export function OverviewSection({
   onFieldChange: () => void;
   onFieldCommit: () => void;
 }) {
+  const t = useT();
   const domain = form.watch("domain");
 
   return (
-    <BrandCard title="Company Overview">
+    <BrandCard title={t("settings.brandFormSections.companyOverviewTitle")}>
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs text-muted-foreground">
-              Company name
+              {t("settings.brandFormSections.companyNameLabel")}
             </label>
             <Controller
               control={form.control}
@@ -152,14 +156,16 @@ export function OverviewSection({
                     field.onBlur();
                     onFieldCommit();
                   }}
-                  placeholder="Acme Corp"
+                  placeholder={t(
+                    "settings.brandFormSections.companyNamePlaceholder",
+                  )}
                 />
               )}
             />
           </div>
           <div>
             <label className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span>Domain</span>
+              <span>{t("settings.brandFormSections.domainLabel")}</span>
               {domain && (
                 <a
                   href={`https://${domain}`}
@@ -168,7 +174,7 @@ export function OverviewSection({
                   className="flex items-center gap-1 transition-colors hover:text-foreground"
                 >
                   <LinkExternal01 size={10} />
-                  open
+                  {t("settings.brandFormSections.openLink")}
                 </a>
               )}
             </label>
@@ -186,7 +192,9 @@ export function OverviewSection({
                     field.onBlur();
                     onFieldCommit();
                   }}
-                  placeholder="acme.com"
+                  placeholder={t(
+                    "settings.brandFormSections.domainInputPlaceholder",
+                  )}
                 />
               )}
             />
@@ -194,7 +202,7 @@ export function OverviewSection({
         </div>
         <div>
           <label className="mb-1 block text-xs text-muted-foreground">
-            Overview
+            {t("settings.brandFormSections.overviewLabel")}
           </label>
           <Controller
             control={form.control}
@@ -210,7 +218,9 @@ export function OverviewSection({
                   field.onBlur();
                   onFieldCommit();
                 }}
-                placeholder="Brief description of what the company does..."
+                placeholder={t(
+                  "settings.brandFormSections.overviewPlaceholder",
+                )}
                 rows={3}
               />
             )}
@@ -246,6 +256,7 @@ function LogoFieldRow({
   onFieldChange: () => void;
   onFieldCommit: () => void;
 }) {
+  const t = useT();
   const value = form.watch(name);
   return (
     <div className="flex items-start gap-3">
@@ -262,7 +273,9 @@ function LogoFieldRow({
           />
         ) : (
           <span className="text-[10px] text-muted-foreground/70">
-            No {label.toLowerCase()}
+            {t("settings.brandFormSections.noImageLabel", {
+              label: label.toLowerCase(),
+            })}
           </span>
         )}
       </div>
@@ -284,7 +297,7 @@ function LogoFieldRow({
                 field.onBlur();
                 onFieldCommit();
               }}
-              placeholder="https://..."
+              placeholder={t("settings.brandFormSections.urlPlaceholder")}
             />
           )}
         />
@@ -302,20 +315,21 @@ export function LogosSection({
   onFieldChange: () => void;
   onFieldCommit: () => void;
 }) {
+  const t = useT();
   return (
-    <BrandCard title="Logos & Images">
+    <BrandCard title={t("settings.brandFormSections.logosImagesTitle")}>
       <div className="space-y-3">
         <LogoFieldRow
           form={form}
           name="logo"
-          label="Logo"
+          label={t("settings.brandFormSections.logoLabel")}
           onFieldChange={onFieldChange}
           onFieldCommit={onFieldCommit}
         />
         <LogoFieldRow
           form={form}
           name="favicon"
-          label="Favicon"
+          label={t("settings.brandFormSections.faviconLabel")}
           imgClassName="h-12 w-12 object-contain"
           onFieldChange={onFieldChange}
           onFieldCommit={onFieldCommit}
@@ -323,7 +337,7 @@ export function LogosSection({
         <LogoFieldRow
           form={form}
           name="ogImage"
-          label="SEO / OG image"
+          label={t("settings.brandFormSections.ogImageLabel")}
           imgClassName="h-full w-full object-contain"
           onFieldChange={onFieldChange}
           onFieldCommit={onFieldCommit}
@@ -336,10 +350,13 @@ export function LogosSection({
 // --- Section: Fonts ---
 
 const FONT_ROLES = [
-  { key: "heading" as const, label: "Headings" },
-  { key: "body" as const, label: "Body" },
-  { key: "code" as const, label: "Code" },
-];
+  {
+    key: "heading",
+    labelKey: "settings.brandFormSections.fontRoleHeading",
+  },
+  { key: "body", labelKey: "settings.brandFormSections.fontRoleBody" },
+  { key: "code", labelKey: "settings.brandFormSections.fontRoleCode" },
+] as const;
 
 export function FontsSection({
   form,
@@ -350,12 +367,14 @@ export function FontsSection({
   onFieldChange: () => void;
   onFieldCommit: () => void;
 }) {
+  const t = useT();
   return (
-    <BrandCard title="Fonts">
+    <BrandCard title={t("settings.brandFormSections.fontsTitle")}>
       <div className="space-y-2">
-        {FONT_ROLES.map(({ key, label }) => {
+        {FONT_ROLES.map(({ key, labelKey }) => {
           const fieldName = `fonts.${key}` as const;
           const value = form.watch(fieldName);
+          const label = t(labelKey);
           return (
             <div key={key}>
               <label className="mb-1 flex items-center gap-3 text-xs text-muted-foreground">
@@ -387,7 +406,10 @@ export function FontsSection({
                       field.onBlur();
                       onFieldCommit();
                     }}
-                    placeholder={`Font family for ${label.toLowerCase()}`}
+                    placeholder={t(
+                      "settings.brandFormSections.fontFamilyPlaceholder",
+                      { role: label.toLowerCase() },
+                    )}
                   />
                 )}
               />
@@ -402,12 +424,21 @@ export function FontsSection({
 // --- Section: Colors ---
 
 const COLOR_ROLES = [
-  { key: "primary" as const, label: "Primary" },
-  { key: "secondary" as const, label: "Secondary" },
-  { key: "accent" as const, label: "Accent" },
-  { key: "background" as const, label: "Background" },
-  { key: "foreground" as const, label: "Foreground" },
-];
+  { key: "primary", labelKey: "settings.brandFormSections.colorRolePrimary" },
+  {
+    key: "secondary",
+    labelKey: "settings.brandFormSections.colorRoleSecondary",
+  },
+  { key: "accent", labelKey: "settings.brandFormSections.colorRoleAccent" },
+  {
+    key: "background",
+    labelKey: "settings.brandFormSections.colorRoleBackground",
+  },
+  {
+    key: "foreground",
+    labelKey: "settings.brandFormSections.colorRoleForeground",
+  },
+] as const;
 
 export function ColorsSection({
   form,
@@ -418,11 +449,13 @@ export function ColorsSection({
   onFieldChange: () => void;
   onFieldCommit: () => void;
 }) {
+  const t = useT();
   return (
-    <BrandCard title="Colors">
+    <BrandCard title={t("settings.brandFormSections.colorsTitle")}>
       <div className="space-y-2">
-        {COLOR_ROLES.map(({ key, label }) => {
+        {COLOR_ROLES.map(({ key, labelKey }) => {
           const fieldName = `colors.${key}` as const;
+          const label = t(labelKey);
           return (
             <Controller
               key={key}
@@ -453,7 +486,9 @@ export function ColorsSection({
                       field.onBlur();
                       onFieldCommit();
                     }}
-                    placeholder="#000000"
+                    placeholder={t(
+                      "settings.brandFormSections.colorPlaceholder",
+                    )}
                     className="w-28"
                   />
                   <span className="flex-1 text-xs text-muted-foreground">

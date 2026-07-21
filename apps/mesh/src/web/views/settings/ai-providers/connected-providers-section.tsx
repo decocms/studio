@@ -8,6 +8,7 @@ import {
   useAiProviderKeys,
   useAiProviders,
 } from "@/web/hooks/collections/use-ai-providers";
+import { useT } from "@/web/i18n/use-t.ts";
 import { ProviderKeyRow } from "./provider-key-row";
 
 interface ConnectedProvidersSectionProps {
@@ -17,6 +18,7 @@ interface ConnectedProvidersSectionProps {
 export function ConnectedProvidersSection({
   onConnectClick,
 }: ConnectedProvidersSectionProps) {
+  const t = useT();
   const allKeys = useAiProviderKeys();
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
@@ -39,18 +41,18 @@ export function ConnectedProvidersSection({
 
   return (
     <SettingsSection
-      title="Connected providers"
+      title={t("settings.connectedProvidersSection.sectionTitle")}
       headerClassName="px-0"
       actions={
         <Button size="sm" onClick={onConnectClick}>
           <Plus size={14} />
-          Connect provider
+          {t("settings.connectedProvidersSection.connectButton")}
         </Button>
       }
     >
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground px-1">
-          Bring your own keys to use specific models alongside Deco's gateway.
+          {t("settings.connectedProvidersSection.emptyState")}
         </p>
       ) : (
         <SettingsCard>

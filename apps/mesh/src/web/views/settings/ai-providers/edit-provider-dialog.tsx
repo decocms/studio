@@ -22,6 +22,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
 import {
   getPreset,
   type OpenAICompatiblePreset,
@@ -34,13 +35,17 @@ interface EditProviderKeyDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const editFormSchema = z.object({
-  label: z.string().min(1, "Label is required").max(100),
-  apiKey: z.string().optional(),
-  baseUrl: z.string().optional(),
-});
+const createEditFormSchema = (t: TFunction) =>
+  z.object({
+    label: z
+      .string()
+      .min(1, t("settings.editProviderDialog.labelRequired"))
+      .max(100),
+    apiKey: z.string().optional(),
+    baseUrl: z.string().optional(),
+  });
 
-type EditFormData = z.infer<typeof editFormSchema>;
+type EditFormData = z.infer<ReturnType<typeof createEditFormSchema>>;
 
 interface EditFormProps {
   providerKey: AiProviderKey;
@@ -66,10 +71,13 @@ function EditForm({
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
+  const t = useT();
   const [showKey, setShowKey] = useState(false);
 
   const isOpenAICompatible = provider.id === "openai-compatible";
   const supportsApiKey = provider.supportedMethods.includes("api-key");
+
+  const editFormSchema = createEditFormSchema(t);
 
   const {
     register,
@@ -122,20 +130,23 @@ function EditForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(org.id) });
-      toast.success("Provider updated");
+      toast.success(t("settings.editProviderDialog.providerUpdated"));
       onSuccess();
     },
-    onError: (err) => toast.error(`Failed to update: ${err.message}`),
+    onError: (err) =>
+      toast.error(
+        t("settings.editProviderDialog.failedToUpdate", { error: err.message }),
+      ),
   });
 
   return (
     <form onSubmit={handleSubmit((data) => save(data))} className="space-y-3">
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          Label
+          {t("settings.editProviderDialog.label")}
         </label>
         <Input
-          placeholder="e.g. Personal key"
+          placeholder={t("settings.editProviderDialog.labelPlaceholder")}
           {...register("label")}
           className="h-8 text-sm"
         />
@@ -147,12 +158,13 @@ function EditForm({
       {isOpenAICompatible && !preset?.defaultBaseUrl && (
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">
-            Base URL
+            {t("settings.editProviderDialog.baseUrl")}
           </label>
           <Input
             type="url"
             placeholder={
-              preset?.baseUrlPlaceholder ?? "http://localhost:4000/v1"
+              preset?.baseUrlPlaceholder ??
+              t("settings.editProviderDialog.baseUrlPlaceholder")
             }
             {...register("baseUrl")}
             className="h-8 text-sm"
@@ -163,9 +175,9 @@ function EditForm({
       {supportsApiKey && (
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">
-            API key{" "}
+            {t("settings.editProviderDialog.apiKey")}{" "}
             <span className="text-muted-foreground/60">
-              (leave blank to keep current)
+              ({t("settings.editProviderDialog.leaveBlankHint")})
             </span>
           </label>
           <div className="relative">
@@ -179,7 +191,11 @@ function EditForm({
               <button
                 type="button"
                 onClick={() => setShowKey(!showKey)}
-                aria-label={showKey ? "Hide API key" : "Show API key"}
+                aria-label={
+                  showKey
+                    ? t("settings.editProviderDialog.hideApiKey")
+                    : t("settings.editProviderDialog.showApiKey")
+                }
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -201,10 +217,12 @@ function EditForm({
           onClick={onCancel}
           disabled={isPending}
         >
-          Cancel
+          {t("settings.editProviderDialog.cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={isPending}>
-          {isPending ? "Saving..." : "Save"}
+          {isPending
+            ? t("settings.editProviderDialog.saving")
+            : t("settings.editProviderDialog.save")}
         </Button>
       </DialogFooter>
     </form>
@@ -217,6 +235,7 @@ export function EditProviderKeyDialog({
   open,
   onOpenChange,
 }: EditProviderKeyDialogProps) {
+  const t = useT();
   const studio = useStudioTools();
 
   const preset: OpenAICompatiblePreset | undefined =
@@ -238,7 +257,9 @@ export function EditProviderKeyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit {displayName}</DialogTitle>
+          <DialogTitle>
+            {t("settings.editProviderDialog.editTitle", { name: displayName })}
+          </DialogTitle>
         </DialogHeader>
 
         {isLoading || !preview ? (

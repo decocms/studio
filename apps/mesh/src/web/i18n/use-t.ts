@@ -19,3 +19,6 @@ export function useT() {
   return (key: TranslationKey, vars?: InterpolationVars): string =>
     interpolate(dictionary[key], vars);
 }
+
+/** Type of the t() function, for helpers that receive it as a parameter. */
+export type TFunction = ReturnType<typeof useT>;
