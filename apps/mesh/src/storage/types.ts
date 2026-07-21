@@ -156,8 +156,8 @@ export interface DefaultHomeAgentsConfig {
 
 export interface OrganizationSettingsTable {
   organizationId: string;
-  sidebar_items: JsonArray<SidebarItem[]> | null;
-  enabled_plugins: JsonArray<string[]> | null;
+  sidebar_items: JsonArray<SidebarItem> | null;
+  enabled_plugins: JsonArray<string> | null;
   registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
@@ -205,11 +205,11 @@ export interface MCPConnectionTable {
 
   // Configuration state (for MESH_CONFIGURATION feature)
   configuration_state: string | null; // Encrypted JSON state
-  configuration_scopes: JsonArray<string[]> | null; // Array of scope strings
+  configuration_scopes: JsonArray<string> | null; // Array of scope strings
 
   // Metadata and discovery
   metadata: JsonObject<Record<string, unknown>> | null;
-  bindings: JsonArray<string[]> | null; // Detected bindings (CHAT, EMAIL, etc.)
+  bindings: JsonArray<string> | null; // Detected bindings (CHAT, EMAIL, etc.)
 
   status: "active" | "inactive" | "error";
   pinned: boolean;
@@ -444,8 +444,8 @@ export interface OAuthClientTable {
   clientId: string; // Unique
   clientSecret: string | null; // Hashed, null for public clients
   clientName: string;
-  redirectUris: JsonArray<string[]>; // JSON array
-  grantTypes: JsonArray<string[]>; // JSON array
+  redirectUris: JsonArray<string>; // JSON array
+  grantTypes: JsonArray<string>; // JSON array
   scope: string | null;
   clientUri: string | null;
   logoUri: string | null;
@@ -884,9 +884,9 @@ export interface ConnectionAggregationTable {
   id: string;
   parent_connection_id: string; // The VIRTUAL connection (agent)
   child_connection_id: string; // The connection being aggregated
-  selected_tools: JsonArray<string[]> | null; // null = all tools
-  selected_resources: JsonArray<string[]> | null; // null = all resources, supports URI patterns with * and **
-  selected_prompts: JsonArray<string[]> | null; // null = all prompts
+  selected_tools: JsonArray<string> | null; // null = all tools
+  selected_resources: JsonArray<string> | null; // null = all resources, supports URI patterns with * and **
+  selected_prompts: JsonArray<string> | null; // null = all prompts
   dependency_mode: DependencyMode; // 'direct' = tools exposed, 'indirect' = FK only
   created_at: ColumnType<Date, Date | string, never>;
 }
