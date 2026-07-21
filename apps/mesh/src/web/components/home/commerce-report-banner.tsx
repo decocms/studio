@@ -6,7 +6,7 @@
  * slightly tilted, and straightens on hover. While the run is live the page
  * shimmers and the copy says so; once the deck exists the page shows a score
  * ring and the arrow invites the click. State comes live from
- * `get_my_diagnostic` (see commerce-report-banner-status.ts), polled gently
+ * `get_my_diagnostic` (see hooks/commerce-diagnostic-status.ts), polled gently
  * only while generating.
  *
  * Orgs without the Commerce Discovery connection never get past the first
@@ -27,7 +27,7 @@ import {
 import {
   type CommerceReportBannerStatus,
   deriveCommerceReportBannerStatus,
-} from "./commerce-report-banner-status";
+} from "@/web/hooks/commerce-diagnostic-status";
 
 /** The tilted miniature report page bleeding out of the banner's bottom
  *  edge. Pure decoration (aria-hidden); `generating` swaps the score ring

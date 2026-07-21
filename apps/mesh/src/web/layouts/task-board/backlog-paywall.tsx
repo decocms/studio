@@ -109,6 +109,8 @@ export function BacklogPaywallModal({
         arguments: {},
       });
       const { url } = unwrapToolResult<{ url: string }>(result);
+      if (new URL(url).protocol !== "https:")
+        throw new Error("unsafe checkout url");
       // Stripe hosted checkout opens in a new tab; on return the diagnostic
       // re-polls and unlocks (locked → false), clearing the banner/modal.
       window.open(url, "_blank", "noopener,noreferrer");
@@ -208,14 +210,25 @@ function BacklogPaywallBannerInner() {
   const navigate = useNavigate();
   const { diagnostic, cdClient, connectionId } = useCommerceDiagnostic();
 
-  // Auto-open once per session (read synchronously — no effect needed). The
-  // component only renders while locked, so this only fires for unpaid orgs.
-  const [modalOpen, setModalOpen] = useState(
-    () => !sessionStorage.getItem(seenKey(org.id)),
-  );
+  // Auto-open once per session per org (read synchronously — no effect
+  // needed). Stored alongside the org it was computed for so switching orgs
+  // re-derives fresh from sessionStorage instead of inheriting a dismissal
+  // from the previous org. The component only renders while locked, so this
+  // only fires for unpaid orgs.
+  const [modalState, setModalState] = useState(() => ({
+    orgId: org.id,
+    open: !sessionStorage.getItem(seenKey(org.id)),
+  }));
+  const modalOpen =
+    modalState.orgId === org.id
+      ? modalState.open
+      : !sessionStorage.getItem(seenKey(org.id));
 
   // Only while the diagnostic exists and is still locked (unpaid).
   if (!diagnostic?.locked) return null;
+
+  const setModalOpen = (open: boolean) =>
+    setModalState({ orgId: org.id, open });
 
   const dismiss = (next: boolean) => {
     setModalOpen(next);

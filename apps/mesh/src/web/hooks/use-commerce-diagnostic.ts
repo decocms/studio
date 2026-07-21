@@ -26,7 +26,7 @@ import { unwrapToolResult } from "@/web/routes/commerce-onboarding/companions-co
 import {
   type CommerceDiagnosticRunState,
   deriveCommerceReportBannerStatus,
-} from "@/web/components/home/commerce-report-banner-status";
+} from "./commerce-diagnostic-status";
 
 /** Poll cadence while a run is live; a run takes minutes, not seconds. */
 const GENERATING_POLL_MS = 20_000;
