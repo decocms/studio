@@ -276,4 +276,6 @@ export const common = {
   "common.mainPanelTabs.automations": "Automações",
   "common.mainPanelTabs.settings": "Configurações",
   "common.mainPanelTabs.report": "Relatório",
+  "common.taskBoard.listView": "Lista",
+  "common.taskBoard.boardView": "Quadro",
 } satisfies Record<keyof typeof commonEn, string>;

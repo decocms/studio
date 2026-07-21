@@ -266,4 +266,6 @@ export const common = {
   "common.mainPanelTabs.automations": "Automations",
   "common.mainPanelTabs.settings": "Settings",
   "common.mainPanelTabs.report": "Report",
+  "common.taskBoard.listView": "List",
+  "common.taskBoard.boardView": "Board",
 } as const;

@@ -374,13 +374,13 @@ export function TaskBoardPage() {
                 active={layout === "list"}
                 onClick={() => setLayout("list")}
                 icon={List}
-                label="List"
+                label={t("common.taskBoard.listView")}
               />
               <LayoutToggle
                 active={layout === "board"}
                 onClick={() => setLayout("board")}
                 icon={Columns03}
-                label="Board"
+                label={t("common.taskBoard.boardView")}
               />
             </div>
 
