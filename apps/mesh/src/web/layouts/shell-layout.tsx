@@ -365,15 +365,16 @@ function ShellLayoutContent() {
       <PostHogGroupSync activeOrg={activeOrg} />
       <Outlet />
 
-      <FloatingReleaseCard />
+      <div className="fixed bottom-6 right-6 z-50 flex w-[min(360px,calc(100vw-3rem))] flex-col gap-3">
+        <FloatingReleaseCard />
+        <VersionCheckDialog />
+      </div>
 
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog
         open={shortcutsDialogOpen}
         onOpenChange={setShortcutsDialogOpen}
       />
-
-      <VersionCheckDialog />
     </ShellProjectProvider>
   );
 }
