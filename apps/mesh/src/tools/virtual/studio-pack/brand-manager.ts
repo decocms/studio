@@ -1,10 +1,17 @@
 import { StudioPackAgentId } from "@decocms/mesh-sdk";
+import type { BrandContext } from "@/storage/types";
 import { hasAnyObject } from "./helpers";
 import type {
   ResolveRuntime,
   StudioPackChecklistItem,
   StudioPackConnectionKey,
 } from "./types";
+
+function getActiveBrand(
+  brands: readonly BrandContext[],
+): BrandContext | undefined {
+  return brands.find((b) => b.isDefault) ?? brands[0];
+}
 
 const INSTRUCTIONS_BOOTSTRAP = `<role>
 You are the Brand Manager. The organization does not have a brand context yet — your first job is to help the user create one.
@@ -101,7 +108,7 @@ export const brandManagerAgent = {
   instructions: INSTRUCTIONS_MANAGE,
   resolveRuntime: (async ({ orgId, ctx }) => {
     const brands = await ctx.storage.brandContext.list(orgId);
-    const active = brands.find((b) => b.isDefault) ?? brands[0];
+    const active = getActiveBrand(brands);
     if (!active) {
       return {
         instructions: INSTRUCTIONS_BOOTSTRAP,
@@ -156,9 +163,9 @@ export const brandManagerAgent = {
       },
       isCompleted: async ({ orgId, ctx }) => {
         const brands = await ctx.storage.brandContext.list(orgId);
-        const primary = brands[0];
-        if (!primary) return false;
-        return Boolean(primary.logo && primary.colors && primary.fonts);
+        const active = getActiveBrand(brands);
+        if (!active) return false;
+        return Boolean(active.logo && active.colors && active.fonts);
       },
     },
     {
