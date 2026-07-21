@@ -30,7 +30,7 @@ export const sidebar = {
   "sidebar.taskGroupsList.scopeMine": "Meus",
   "sidebar.taskGroupsList.scopeTeam": "Equipe",
   "sidebar.taskGroupsList.searchChats": "Pesquisar chats",
-  "sidebar.taskGroupsList.toggleSidebar": "Alternar barra lateral",
+  "sidebar.taskGroupsList.toggleSidebar": "Abrir ou fechar barra lateral",
   "sidebar.taskGroupsList.typeAll": "Todos",
   "sidebar.taskGroupsList.typeAuto": "Auto",
   "sidebar.taskGroupsList.typeChats": "Chats",
