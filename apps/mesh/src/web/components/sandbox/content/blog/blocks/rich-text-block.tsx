@@ -35,6 +35,9 @@ export function RichTextBlock({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
+        // Clear the link extension's default target/rel so each link's own
+        // `target` attribute controls same-tab vs new-tab (see link control).
+        link: { HTMLAttributes: {} },
         // Paragraph blocks are inline-only: structural blocks are their own
         // deco blocks, so disable the block-level marks here.
         heading: false,

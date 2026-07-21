@@ -39,6 +39,9 @@ export function RichTextField({
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
+        // Clear the extension's default target/rel so each link's own
+        // `target` attribute controls same-tab vs new-tab (see link control).
+        link: { HTMLAttributes: {} },
       }),
       TextAlign.configure({
         types: ["heading", "paragraph"],
