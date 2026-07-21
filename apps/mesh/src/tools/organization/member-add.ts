@@ -57,9 +57,19 @@ export const ORGANIZATION_MEMBER_ADD = defineTool({
       );
     }
 
-    // Validate the caller is allowed to assign every target role.
+    // Validate the caller is allowed to assign every target role. `ctx.auth.user?.role`
+    // reflects the session's ACTIVE org, which can differ from `organizationId` here
+    // (an org-scoped call can target an org the caller merely holds membership in) —
+    // using it would let an owner/admin of a DIFFERENT org assign "owner" in this one.
+    // Look up the caller's real membership row in the TARGET org instead.
     // Admins cannot assign "owner" — only owners can.
-    if (!canAssignRole(ctx.auth.user?.role, input.role)) {
+    const callerMembership = await ctx.db
+      .selectFrom("member")
+      .select(["role"])
+      .where("userId", "=", getUserId(ctx) ?? "")
+      .where("organizationId", "=", organizationId)
+      .executeTakeFirst();
+    if (!canAssignRole(callerMembership?.role, input.role)) {
       throw new Error(
         `Insufficient privileges to assign role "${input.role.join(",")}"`,
       );
