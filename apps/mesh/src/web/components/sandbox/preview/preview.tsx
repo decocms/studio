@@ -711,14 +711,18 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       const src = iframeSrcRef.current;
       if (src) iframe.src = src;
     }
+    let fallbackTimer: ReturnType<typeof setTimeout>;
     const restore = () => {
+      clearTimeout(fallbackTimer);
       iframe.tabIndex = prevTabIndex;
       iframe.style.pointerEvents = "";
       focused?.focus();
       iframe.removeEventListener("load", restore);
     };
     iframe.addEventListener("load", restore);
-    setTimeout(restore, 3000);
+    // Safety net only — cleared above once `load` fires first, so `restore`
+    // (and its focus() steal) can't fire a second time 3s after a normal load.
+    fallbackTimer = setTimeout(restore, 3000);
   };
 
   const [handledPreviewRevision, setHandledPreviewRevision] = useState(
