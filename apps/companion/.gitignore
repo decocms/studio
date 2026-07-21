@@ -1,0 +1,7 @@
+.zig-cache/
+zig-out/
+bin/
+frontend/dist/
+frontend/node_modules/
+*.deco-tmp
+*.deco-bak
