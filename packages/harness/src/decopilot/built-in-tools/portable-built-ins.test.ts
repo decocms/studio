@@ -151,7 +151,7 @@ describe("buildPortableBuiltInTools", () => {
       )) as { success: boolean; uri?: string; content?: string };
 
       expect(result.success).toBe(true);
-      expect(result.uri).toStartWith("mesh-storage://scraped-pages/");
+      expect(result.uri).toStartWith("studio-storage://scraped-pages/");
       expect(result.content).toBeUndefined();
       expect(writes).toHaveLength(1);
       expect(writes[0]?.contentType).toBe("text/html");

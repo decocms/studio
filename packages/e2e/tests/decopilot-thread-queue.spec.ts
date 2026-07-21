@@ -987,7 +987,7 @@ test.describe("thread queue — live overlap (running head + queued tail)", () =
 test("POST keeps message content (and attachments) out of the DBOS workflow input, externalized into parts", async ({
   authedPage,
 }) => {
-  // Object storage (S3 + org-fs) must be available for the mesh-storage
+  // Object storage (S3 + org-fs) must be available for the studio-storage
   // assertion to hold: uploadFileParts only materializes when ctx.orgFs is
   // present, which requires a real S3-backed objectStorage. Skip on plain
   // local dev without MinIO.
@@ -1087,7 +1087,7 @@ test("POST keeps message content (and attachments) out of the DBOS workflow inpu
     // `uploadFileParts` materializes the data: URL to object storage BEFORE
     // `emitRequestMessage` persists the user turn (both synchronous in the
     // POST handler), so the stored file part must carry the stable
-    // `mesh-storage:` ref, never the raw base64 blob.
+    // `studio-storage:` ref, never the raw base64 blob.
     const { rows: partRows } = await db.query<{ p: string }>(
       `SELECT payload::text AS p
          FROM thread_message_parts
@@ -1098,7 +1098,7 @@ test("POST keeps message content (and attachments) out of the DBOS workflow inpu
     expect(partRows.length).toBeGreaterThan(0);
     const combinedParts = partRows.map((r) => r.p).join("\n");
     expect(combinedParts).not.toContain("data:image/png;base64,");
-    expect(combinedParts).toContain("mesh-storage:");
+    expect(combinedParts).toContain("studio-storage:");
 
     // ── CONTRACT 3: the turn is still claimable (daemon has the work item,
     // relay hasn't landed yet) — GET /queue must hydrate `hasAttachments`

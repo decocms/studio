@@ -81,7 +81,7 @@ describe("createWebSearchTool", () => {
           text: "full report body",
           citations: [],
           usage: { inputTokens: 3, outputTokens: 4 },
-          resultUri: "mesh-storage://web-search/abc.md",
+          resultUri: "studio-storage://web-search/abc.md",
           preview: "full report...",
         };
       },
@@ -99,7 +99,7 @@ describe("createWebSearchTool", () => {
     };
 
     expect(result.success).toBe(true);
-    expect(result.uri).toBe("mesh-storage://web-search/abc.md");
+    expect(result.uri).toBe("studio-storage://web-search/abc.md");
     expect(result.preview).toBe("full report...");
     expect(result.content).toBeUndefined();
   });

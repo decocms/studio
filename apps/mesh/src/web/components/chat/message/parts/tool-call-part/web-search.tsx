@@ -16,10 +16,10 @@ import {
   type UsageData,
   getCostFromUsage,
 } from "@decocms/mesh-sdk";
-import { parseMeshStorageKey } from "@/api/routes/decopilot/mesh-storage-uri";
+import { parseStudioStorageKey } from "@/api/routes/decopilot/studio-storage-uri";
 
 function resolveStorageUri(uri: string, orgSlug: string): string {
-  const key = parseMeshStorageKey(uri);
+  const key = parseStudioStorageKey(uri);
   if (key !== null) return `/api/${orgSlug}/files/${key}`;
   return uri;
 }

@@ -7,10 +7,10 @@ import { ToolCallShell } from "./common.tsx";
 import { getEffectiveState } from "./utils.tsx";
 import { ImageLightbox } from "../../../image-lightbox.tsx";
 import { formatDuration } from "@/web/lib/format-time.ts";
-import { parseMeshStorageKey } from "@/api/routes/decopilot/mesh-storage-uri";
+import { parseStudioStorageKey } from "@/api/routes/decopilot/studio-storage-uri";
 
 function resolveImageSrc(uri: string, orgSlug: string): string {
-  const key = parseMeshStorageKey(uri);
+  const key = parseStudioStorageKey(uri);
   if (key !== null) return `/api/${orgSlug}/files/${key}`;
   // data: URIs or any other URL — use as-is
   return uri;

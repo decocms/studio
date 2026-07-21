@@ -6,7 +6,7 @@
  * `onToolCalled` as injected, ctx-free hooks. This module builds the cluster
  * implementations of those hooks from a `StudioContext`:
  *
- *   - `resolveArgs`  → resolve `mesh-storage:` refs to presigned URLs.
+ *   - `resolveArgs`  → resolve `studio-storage:` refs to presigned URLs.
  *   - `onToolCalled` → emit per-tool-call analytics to PostHog.
  *
  * Lives in the cluster layer (not the portable harness tree) so the
