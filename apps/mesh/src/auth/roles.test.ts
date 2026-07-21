@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { canAssignRole } from "./roles";
+import { canAssignRole, hasAdminRole } from "./roles";
 
 describe("canAssignRole", () => {
   it("owner can assign any role", () => {
@@ -67,5 +67,26 @@ describe("canAssignRole", () => {
     expect(canAssignRole("admin,billing-manager", "user")).toBe(true);
     expect(canAssignRole("admin,billing-manager", "owner")).toBe(false);
     expect(canAssignRole("billing-manager,user", "admin")).toBe(false);
+  });
+});
+
+describe("hasAdminRole", () => {
+  it("recognizes a plain admin/owner role", () => {
+    expect(hasAdminRole("owner")).toBe(true);
+    expect(hasAdminRole("admin")).toBe(true);
+  });
+
+  it("denies non-admin roles", () => {
+    expect(hasAdminRole("user")).toBe(false);
+    expect(hasAdminRole("member")).toBe(false);
+    expect(hasAdminRole(undefined)).toBe(false);
+  });
+
+  // Same comma-joined multi-role string canAssignRole's callerRole handles —
+  // an exact-match check must not deny a legitimate multi-role owner/admin.
+  it("recognizes an admin/owner role inside a comma-joined multi-role string", () => {
+    expect(hasAdminRole("admin,billing-manager")).toBe(true);
+    expect(hasAdminRole("billing-manager,owner")).toBe(true);
+    expect(hasAdminRole("billing-manager,user")).toBe(false);
   });
 });
