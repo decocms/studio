@@ -258,6 +258,11 @@ export function SectionsEditor({
     virtualMcpId,
     branch,
   });
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sectionRuleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // Reset form state when the active page or global block changes
   const [prevPath, setPrevPath] = useState(currentPath);
@@ -270,6 +275,15 @@ export function SectionsEditor({
     prevGlobalBlockKey !== activeGlobalBlockKey
   ) {
     queueMicrotask(() => pageBlockSave.flush());
+    // Cancel pending section/rule autosave timers — they read the latest
+    // render's decofile via latestRef, so left running across a page switch
+    // they'd write this page's stale edit into the new page's section at the
+    // same index instead of just being dropped.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (ruleDebounceRef.current) clearTimeout(ruleDebounceRef.current);
+    if (sectionRuleDebounceRef.current) {
+      clearTimeout(sectionRuleDebounceRef.current);
+    }
     setPrevPath(currentPath);
     setPrevPageBlockKey(activePageBlockKey);
     setPrevGlobalBlockKey(activeGlobalBlockKey);
@@ -303,11 +317,6 @@ export function SectionsEditor({
   });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const [renameVariantPending, setRenameVariantPending] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sectionRuleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
   // Accumulates pending page header field changes to avoid losing edits
   const pendingPageFieldsRef = useRef<Record<string, string>>({});
 
