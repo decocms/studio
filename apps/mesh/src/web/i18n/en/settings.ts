@@ -51,4 +51,12 @@ export const settings = {
   "settings.preferences.toolApprovalAuto": "Auto approve",
   "settings.preferences.toolApprovalAutoDescription":
     "Execute all without approval",
+  "settings.providerGrid.recommendedBadge":
+    "Recommended — 100+ models, pay as you go",
+  "settings.providerGrid.customOpenaiCompatibleTitle":
+    "Custom OpenAI-compatible",
+  "settings.providerGrid.customOpenaiCompatibleDescription":
+    "Bring your own model server (advanced)",
+  "settings.providerGrid.moreProviderSingular": "{count} more provider",
+  "settings.providerGrid.moreProvidersPlural": "{count} more providers",
 } as const;
