@@ -261,11 +261,7 @@ export function BrandContextPart({ part, latency }: BrandContextPartProps) {
         title="Brand extraction failed"
         summary={result?.error ?? "Unknown error"}
         state="error"
-        trailing={
-          latency != null && latency > 0 ? (
-            <LatencyLabel latency={latency} />
-          ) : undefined
-        }
+        trailing={<LatencyLabel latency={latency} />}
       />
     );
   }
@@ -277,11 +273,7 @@ export function BrandContextPart({ part, latency }: BrandContextPartProps) {
         title={result?.name ? `Brand set: ${result.name}` : "Brand context set"}
         summary={result?.domain}
         state="idle"
-        trailing={
-          latency != null && latency > 0 ? (
-            <LatencyLabel latency={latency} />
-          ) : undefined
-        }
+        trailing={<LatencyLabel latency={latency} />}
       />
       <BrandCard
         logo={result?.logo}
@@ -341,11 +333,7 @@ export function BrandContextGetPart({
         icon={<Palette />}
         title="Couldn't load brand"
         state="error"
-        trailing={
-          latency != null && latency > 0 ? (
-            <LatencyLabel latency={latency} />
-          ) : undefined
-        }
+        trailing={<LatencyLabel latency={latency} />}
       />
     );
   }
@@ -357,11 +345,7 @@ export function BrandContextGetPart({
         title={result.name ? `Brand · ${result.name}` : "Brand"}
         summary={result.domain}
         state="idle"
-        trailing={
-          latency != null && latency > 0 ? (
-            <LatencyLabel latency={latency} />
-          ) : undefined
-        }
+        trailing={<LatencyLabel latency={latency} />}
       />
       <BrandCard
         logo={result.logo}
@@ -413,11 +397,7 @@ export function BrandContextListPart({
         icon={<Palette />}
         title="Couldn't load brands"
         state="error"
-        trailing={
-          latency != null && latency > 0 ? (
-            <LatencyLabel latency={latency} />
-          ) : undefined
-        }
+        trailing={<LatencyLabel latency={latency} />}
       />
     );
   }
@@ -429,11 +409,7 @@ export function BrandContextListPart({
         title="No brands yet"
         summary="The organization hasn't set up any brand context."
         state="idle"
-        trailing={
-          latency != null && latency > 0 ? (
-            <LatencyLabel latency={latency} />
-          ) : undefined
-        }
+        trailing={<LatencyLabel latency={latency} />}
       />
     );
   }
@@ -444,11 +420,7 @@ export function BrandContextListPart({
         icon={<Palette className="text-fuchsia-500" />}
         title={items.length === 1 ? "1 brand" : `${items.length} brands`}
         state="idle"
-        trailing={
-          latency != null && latency > 0 ? (
-            <LatencyLabel latency={latency} />
-          ) : undefined
-        }
+        trailing={<LatencyLabel latency={latency} />}
       />
       <div className="mt-2 flex flex-col gap-1.5">
         {items.map((brand) => {
