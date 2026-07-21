@@ -69,6 +69,7 @@ import { writeChatDraft } from "@/web/lib/chat-draft";
 import { createMentionDoc } from "@/web/components/chat/tiptap/mention";
 import type { TiptapDoc } from "@/web/components/chat/types";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
+import { BacklogPaywall } from "./backlog-paywall";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
 void import("../agent-shell-layout/index.tsx").catch(() => {});
@@ -381,9 +382,13 @@ export function TaskBoardPage() {
 
       {items.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
-          <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
-            No tasks yet. Start one with New task.
-          </div>
+          {reportsOnly ? (
+            <BacklogPaywall />
+          ) : (
+            <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
+              No tasks yet. Start one with New task.
+            </div>
+          )}
         </div>
       ) : visibleItems.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
