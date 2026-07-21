@@ -159,7 +159,7 @@ function groupByTier(
 // Model Shortlist (localStorage)
 // ============================================================================
 
-const SHORTLIST_KEY_PREFIX = "mesh:model-shortlist:";
+const SHORTLIST_KEY_PREFIX = "studio:model-shortlist:";
 
 const DEFAULT_SHORTLIST = new Set([
   // Smarter

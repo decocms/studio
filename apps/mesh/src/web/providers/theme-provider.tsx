@@ -12,7 +12,7 @@ import { KEYS } from "@/web/lib/query-keys";
 import { usePreferences } from "@/web/hooks/use-preferences";
 
 async function fetchPublicConfig(): Promise<PublicConfig> {
-  performance.mark("mesh:config-fetch:start");
+  performance.mark("studio:config-fetch:start");
   try {
     const response = await fetch("/api/config");
     if (!response.ok) {
@@ -24,11 +24,11 @@ async function fetchPublicConfig(): Promise<PublicConfig> {
     }
     return data.config;
   } finally {
-    performance.mark("mesh:config-fetch:end");
+    performance.mark("studio:config-fetch:end");
     performance.measure(
-      "mesh:config-fetch",
-      "mesh:config-fetch:start",
-      "mesh:config-fetch:end",
+      "studio:config-fetch",
+      "studio:config-fetch:start",
+      "studio:config-fetch:end",
     );
   }
 }
@@ -41,7 +41,7 @@ function injectThemeVariables(theme: PublicConfig["theme"]) {
   if (!theme) return;
 
   // Remove any previously injected theme style
-  const existingStyle = document.getElementById("mesh-theme-overrides");
+  const existingStyle = document.getElementById("studio-theme-overrides");
   if (existingStyle) {
     existingStyle.remove();
   }
@@ -67,7 +67,7 @@ function injectThemeVariables(theme: PublicConfig["theme"]) {
   // Only inject if we have rules
   if (cssRules.length > 0) {
     const style = document.createElement("style");
-    style.id = "mesh-theme-overrides";
+    style.id = "studio-theme-overrides";
     style.textContent = cssRules.join("\n\n");
     document.head.appendChild(style);
   }

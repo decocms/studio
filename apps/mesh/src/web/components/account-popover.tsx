@@ -232,7 +232,7 @@ function ThemeSoundVersionBar({
           )}
         </button>
         <span className="text-xs text-muted-foreground/60">
-          v{__MESH_VERSION__}
+          v{__STUDIO_VERSION__}
         </span>
       </div>
     </div>

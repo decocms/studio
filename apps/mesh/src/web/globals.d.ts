@@ -1,4 +1,4 @@
-declare const __MESH_VERSION__: string;
+declare const __STUDIO_VERSION__: string;
 
 declare module "*?raw" {
   const content: string;

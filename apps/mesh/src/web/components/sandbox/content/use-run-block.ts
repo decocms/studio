@@ -5,7 +5,7 @@ interface RunBlockInput {
   props: Record<string, unknown>;
 }
 
-/** Sandbox coordinates the studio preview-invoke proxy route is keyed by. */
+/** Sandbox coordinates the Studio preview-invoke proxy route is keyed by. */
 export interface RunBlockSandboxRef {
   orgSlug: string;
   virtualMcpId: string;
@@ -21,7 +21,7 @@ const RUN_TIMEOUT_MS = 30_000;
  * block-ref body (`{ __resolveType, ...props }`). The proxy re-issues it as
  * `POST <preview>/deco/invoke/<resolveType>` with the props as JSON body.
  *
- * Going through the studio (same-origin) instead of fetching the preview
+ * Going through Studio (same-origin) instead of fetching the preview
  * directly keeps the browser out of CORS territory — previews don't send
  * `Access-Control-Allow-Origin` for `/deco/invoke`.
  */
@@ -110,7 +110,7 @@ async function invokeBlock(
 }
 
 /**
- * Invoke a loader/action against the running sandbox preview (via the studio
+ * Invoke a loader/action against the running sandbox preview (via Studio
  * preview-invoke proxy) and return its structured result.
  */
 export function useRunBlock(ref: RunBlockSandboxRef) {

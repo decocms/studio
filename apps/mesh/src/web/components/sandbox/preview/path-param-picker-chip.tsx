@@ -39,7 +39,7 @@ const KIND_LABELS: Record<PathParamKind, { noun: string; heading: string }> = {
 };
 
 /**
- * Invoke a loader via the studio preview-invoke proxy (same-origin,
+ * Invoke a loader via the Studio preview-invoke proxy (same-origin,
  * authenticated) — the same route useRunBlock uses. Fetching the preview
  * origin directly would hit CORS: previews don't send
  * `Access-Control-Allow-Origin` for `/deco/invoke`.

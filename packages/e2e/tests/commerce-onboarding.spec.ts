@@ -467,7 +467,7 @@ test.describe("Commerce onboarding route isolation", () => {
     );
 
     const sidebarOpen = await page.evaluate(() =>
-      window.localStorage.getItem("mesh:sidebar-open"),
+      window.localStorage.getItem("studio:sidebar-open"),
     );
     expect(sidebarOpen).toBe("false");
   });

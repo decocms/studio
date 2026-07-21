@@ -339,7 +339,7 @@ export function SettingsSidebar() {
       {/* Version */}
       <div className="mt-auto px-4 pb-1">
         <span className="text-xs text-muted-foreground/50">
-          v{__MESH_VERSION__}
+          v{__STUDIO_VERSION__}
         </span>
       </div>
     </Sidebar>
@@ -407,7 +407,7 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
       {/* Version */}
       <div className="px-4 pb-3 pt-1 border-t border-border/50">
         <span className="text-xs text-muted-foreground/50">
-          v{__MESH_VERSION__}
+          v{__STUDIO_VERSION__}
         </span>
       </div>
     </div>

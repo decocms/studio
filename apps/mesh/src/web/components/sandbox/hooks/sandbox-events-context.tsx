@@ -1,7 +1,7 @@
 /**
- * Single SSE connection to studio's `/api/:org/sandbox/:virtualMcpId/:branch/events`, fanned out via context.
+ * Single SSE connection to Studio's `/api/:org/sandbox/:virtualMcpId/:branch/events`, fanned out via context.
  *
- * Keyed on `(virtualMcpId, branch)` — studio derives the userId from the
+ * Keyed on `(virtualMcpId, branch)` — Studio derives the userId from the
  * authenticated session and composes the same claim handle a racing
  * SANDBOX_START would. The stream emits in two phases on one connection:
  *
@@ -130,21 +130,6 @@ const DAEMON_EVENT_TYPES: readonly DaemonEventName[] = [
 // `log` is broadcast separately — same SSE stream, different shape.
 const LOG_EVENT = "log" as const;
 
-/** True when `queryKey` is a cached live-meta entry for this org/vmid/branch, regardless of its previewUrl suffix. */
-export function isLiveMetaKeyForScope(
-  queryKey: readonly unknown[],
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-): boolean {
-  return (
-    queryKey[0] === "live-meta" &&
-    queryKey[1] === orgSlug &&
-    queryKey[2] === virtualMcpId &&
-    queryKey[3] === branch
-  );
-}
-
 export function buildDirectDaemonEventsUrl(
   previewUrl: string | null | undefined,
 ): string | null {
@@ -270,7 +255,7 @@ export function SandboxEventsProvider({
 
     const handleGone = () => {
       // The sandbox is gone (idle-evicted, SANDBOX_DELETE'd, or its pod terminated
-      // and studio has stopped finding the handle). Everything we've cached is
+      // and Studio has stopped finding the handle). Everything we've cached is
       // about to be stale, so reset.
       setNotFound(true);
       setPhase(null);
@@ -397,13 +382,14 @@ export function SandboxEventsProvider({
               liveMetaDebounceTimer = setTimeout(() => {
                 liveMetaDebounceTimer = null;
                 void queryClient.invalidateQueries({
-                  predicate: (query) =>
-                    isLiveMetaKeyForScope(
-                      query.queryKey,
-                      org.slug,
-                      virtualMcpId,
-                      branch,
-                    ),
+                  predicate: (query) => {
+                    const key = query.queryKey;
+                    return (
+                      key[0] === "live-meta" &&
+                      typeof key[1] === "string" &&
+                      key[1].startsWith(`${cacheKey}/`)
+                    );
+                  },
                 });
               }, 1_000);
             }
