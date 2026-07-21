@@ -21,6 +21,15 @@ export interface PendingPlan {
 // Utility: extract pending propose_plan parts from message
 // ============================================================================
 
+// The highlight banner only ever shows the most recently proposed plan —
+// callers must key off this same plan so a dismiss/expand doesn't get
+// reused for a different plan's card once a new one arrives.
+export function selectActivePlan(
+  plans: PendingPlan[],
+): PendingPlan | undefined {
+  return plans.at(-1);
+}
+
 export function extractPendingPlans(
   parts: ChatMessage["parts"],
 ): PendingPlan[] {

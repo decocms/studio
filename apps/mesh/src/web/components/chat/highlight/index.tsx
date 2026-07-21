@@ -9,7 +9,11 @@ import {
 import { useChatPrefs, useChatStream, useChatTask } from "../context";
 import type { RequestOptions } from "../store/thread-connection";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
-import { ProposePlanHighlight, extractPendingPlans } from "./propose-plan";
+import {
+  ProposePlanHighlight,
+  extractPendingPlans,
+  selectActivePlan,
+} from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
 import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
@@ -274,7 +278,7 @@ export function ChatHighlight() {
 
   const { showError, showWarning, hasApprovals } = flags;
   const userAskKey = userAskParts.map((p) => p.toolCallId).join("|");
-  const planKey = pendingPlans[0]?.toolCallId ?? "";
+  const planKey = selectActivePlan(pendingPlans)?.toolCallId ?? "";
   const approvalKey = pendingApprovals.map((a) => a.approvalId).join("|");
 
   return (

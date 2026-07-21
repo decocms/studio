@@ -4,9 +4,10 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Check, ClipboardCheck } from "@untitledui/icons";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { MessageTextPart } from "../message/parts/text-part.tsx";
-import { type PendingPlan } from "./extract-pending-plans";
+import { selectActivePlan, type PendingPlan } from "./extract-pending-plans";
 export {
   extractPendingPlans,
+  selectActivePlan,
   type PendingPlan,
 } from "./extract-pending-plans";
 
@@ -106,7 +107,7 @@ export function ProposePlanHighlight({
   }
 
   // Show only the last pending plan
-  const activePlan = plans.at(-1);
+  const activePlan = selectActivePlan(plans);
   if (!activePlan) {
     return null;
   }
