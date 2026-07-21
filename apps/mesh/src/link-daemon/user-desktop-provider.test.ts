@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -513,6 +513,73 @@ describe("desktop sandbox provider", () => {
       expect(err.message).toContain("sandbox failed to start");
       expect(err.message.toLowerCase()).toContain("config");
     } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("logs a config timeout bring-up failure at warn, not error", async () => {
+    const dataDir = tmpDataDir();
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      let portCounter = 33000;
+      const timeout = new Error("The operation timed out.");
+      timeout.name = "TimeoutError";
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        spawnDaemon: () => fakeDaemonSpawner(),
+        waitForHealth: async () => {},
+        postConfig: async () => {
+          throw timeout;
+        },
+        pickPort: () => portCounter++,
+      });
+      await provider
+        .ensureSandbox({ handle: "h3", repo: undefined })
+        .catch(() => {});
+
+      expect(
+        errorSpy.mock.calls.some((call) =>
+          String(call[0]).includes("sandbox bring-up failed"),
+        ),
+      ).toBe(false);
+      expect(
+        warnSpy.mock.calls.some((call) =>
+          String(call[0]).includes("sandbox bring-up failed"),
+        ),
+      ).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("logs a non-timeout bring-up failure at error", async () => {
+    const dataDir = tmpDataDir();
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      let portCounter = 34000;
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        spawnDaemon: () => fakeDaemonSpawner(),
+        postConfig: async () => {},
+        waitForHealth: async () => {
+          throw new Error("boom");
+        },
+        pickPort: () => portCounter++,
+      });
+      await provider
+        .ensureSandbox({ handle: "h4", repo: undefined })
+        .catch(() => {});
+
+      expect(
+        errorSpy.mock.calls.some((call) =>
+          String(call[0]).includes("sandbox bring-up failed"),
+        ),
+      ).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
       rmSync(dataDir, { recursive: true, force: true });
     }
   });

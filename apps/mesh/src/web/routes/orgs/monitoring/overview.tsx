@@ -391,6 +391,7 @@ export function OverviewTabContent({
           colorNum={1}
           chartHeight="h-[120px] md:h-[180px]"
           variant="area"
+          ariaLabel="Tool calls over time"
         />
         <ConnectionLeaderboardTable
           metrics={connectionBreakdown}
@@ -427,6 +428,7 @@ export function OverviewTabContent({
             dataKey={latencyMetric}
             colorNum={4}
             chartHeight="h-[120px] md:h-[180px]"
+            ariaLabel={`${latencyMetric === "avg" ? "Average" : "P95"} latency over time`}
           />
           <ConnectionLeaderboardTable
             metrics={connectionBreakdown}
@@ -445,6 +447,7 @@ export function OverviewTabContent({
             dataKey="errors"
             colorNum={3}
             chartHeight="h-[120px] md:h-[180px]"
+            ariaLabel="Errors over time"
           />
           {stats.totalErrors === 0 ? (
             <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
@@ -481,6 +484,7 @@ export function OverviewTabContent({
             dataKey="calls"
             colorNum={1}
             chartHeight="h-[80px] md:h-[120px]"
+            ariaLabel="AI calls over time"
           />
           <ModelLeaderboardTable models={llmModels} mode="calls" />
         </MonitoringMetricCard>
@@ -500,6 +504,7 @@ export function OverviewTabContent({
             dataKey="totalTokens"
             colorNum={2}
             chartHeight="h-[80px] md:h-[120px]"
+            ariaLabel="Total tokens over time"
           />
           <ModelLeaderboardTable models={llmModels} mode="tokens" />
         </MonitoringMetricCard>
@@ -520,6 +525,7 @@ export function OverviewTabContent({
             dataKey="costUsd"
             colorNum={5}
             chartHeight="h-[80px] md:h-[120px]"
+            ariaLabel="Cost over time"
           />
           {totalCostUsd > 0 ? (
             <ModelLeaderboardTable models={llmModels} mode="cost" />
@@ -548,6 +554,7 @@ export function OverviewTabContent({
             dataKey="avg"
             colorNum={4}
             chartHeight="h-[80px] md:h-[120px]"
+            ariaLabel="AI latency over time"
           />
           <ModelLeaderboardTable models={llmModels} mode="calls" />
         </MonitoringMetricCard>
@@ -561,6 +568,7 @@ export function OverviewTabContent({
             dataKey="errors"
             colorNum={3}
             chartHeight="h-[80px] md:h-[120px]"
+            ariaLabel="AI errors over time"
           />
           {llmStatsData.totalErrors === 0 ? (
             <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">

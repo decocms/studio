@@ -31,7 +31,10 @@ import {
   isArrayDrillDownField,
   resolveActiveFieldKey,
 } from "./schema-form-breadcrumb";
-import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
+import {
+  blockRefArrayItemSchemaFromRefs,
+  inferBlockRefArrayItemSchema,
+} from "./block-ref-array-inference";
 
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
@@ -155,7 +158,11 @@ export function renderField(props: FieldProps) {
     !isMultivariateArrayWrapper(value) &&
     schema.type === "block-ref"
   ) {
-    const items = inferBlockRefArrayItemSchema(value);
+    // Prefer the real item schema from the block-ref's loader/section branches
+    // (carries `titleBy`/`format`/`@image`); fall back to inferring from data.
+    const items =
+      blockRefArrayItemSchemaFromRefs(schema, value) ??
+      inferBlockRefArrayItemSchema(value);
     if (items) {
       const arraySchema: SchemaProperty = { ...schema, type: "array", items };
       return (

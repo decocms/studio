@@ -15,22 +15,8 @@ import { useFilePickerUpload } from "@/web/hooks/use-file-picker";
 import { ClickToReplaceOverlay } from "./click-to-replace-overlay";
 import { extractUrl } from "./extract-url";
 import type { FieldProps } from "./field-props";
+import { basename, extension } from "./media-filename";
 import { MediaTransformControls } from "./media-transform-controls";
-
-function basename(url: string): string {
-  try {
-    const path = new URL(url).pathname;
-    return decodeURIComponent(path.split("/").pop() ?? url);
-  } catch {
-    return url.split("/").pop() ?? url;
-  }
-}
-
-function extension(filename: string): string {
-  const dot = filename.lastIndexOf(".");
-  if (dot < 0 || dot === filename.length - 1) return "";
-  return filename.slice(dot + 1).toLowerCase();
-}
 
 const ACCEPTED_IMAGE_TYPES = new Set([
   "image/png",

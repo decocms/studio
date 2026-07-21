@@ -67,7 +67,6 @@ import {
   ChevronDown,
   DotsGrid,
   Loading01,
-  Minus,
   Plus,
   SearchSm,
   Settings01,
@@ -84,6 +83,7 @@ import {
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
+import { ToggleButton } from "./toggle-button";
 
 /** How many agents the home view can actually display — adding past this is
  * blocked so the user never pins something that silently won't show. */
@@ -1058,42 +1058,6 @@ function AddToolRow({
         />
       )}
     </div>
-  );
-}
-
-export function ToggleButton({
-  isPinned,
-  submitting,
-  onClick,
-  label,
-}: {
-  isPinned: boolean;
-  submitting: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={submitting}
-      aria-label={label}
-      title={label}
-      className={cn(
-        "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-xs transition-colors disabled:opacity-50 disabled:cursor-progress",
-        isPinned
-          ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-          : "bg-foreground text-background hover:opacity-90",
-      )}
-    >
-      {submitting ? (
-        <Loading01 size={12} className="animate-spin" />
-      ) : isPinned ? (
-        <Minus size={14} />
-      ) : (
-        <Plus size={14} />
-      )}
-    </button>
   );
 }
 

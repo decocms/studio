@@ -49,6 +49,7 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
+import desktopSessionBridgeRoutes from "./routes/desktop-session-bridge";
 import {
   ADMIN_API_PREFIX,
   createAdminRoutes,
@@ -1280,6 +1281,12 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom", authRoutes);
+  // POST /api/auth/desktop/session-from-oauth — mints a real Better Auth
+  // session from a valid MCP OAuth bearer, for the desktop app's
+  // system-browser (Google/GitHub/SAML) login path. Mounted BEFORE the
+  // `/api/auth/*` catchall (`auth.handler`) so it never reaches it. See
+  // `./routes/desktop-session-bridge.ts`'s module doc for why this exists.
+  app.route("/api/auth/desktop", desktopSessionBridgeRoutes);
 
   // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
   // external callers — see fenceRawAdminSurface's doc in routes/admin.ts for

@@ -358,7 +358,12 @@ function ConnectionRow({
         <div className="flex items-center gap-1.5 shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                aria-label={`Actions for ${title}`}
+              >
                 <DotsVertical size={16} />
               </Button>
             </DropdownMenuTrigger>

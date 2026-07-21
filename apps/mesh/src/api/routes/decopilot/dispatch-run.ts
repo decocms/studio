@@ -436,6 +436,18 @@ export interface FrozenRunSnapshot {
   sandboxProviderKind?: SandboxProviderKind | null;
   harnessId?: HarnessId | null;
   target?: DispatchTarget;
+  /**
+   * Per-turn system context the client attached to this user turn (the
+   * `role:"system"` message in the POST body — e.g. the currently-open file,
+   * selected agent, viewed resource; see `useContext` on the web client).
+   *
+   * Carried in the frozen snapshot rather than reloaded from history because
+   * it is ephemeral: the system message is NOT persisted as a thread message,
+   * so the durable dispatch branch (which reloads history from the DB) would
+   * otherwise lose it. Rehydrated into `systemMessages` and appended to the
+   * server-built base system prompt for this run only.
+   */
+  systemContext?: string;
 }
 
 export interface DurableDispatchRunInput extends FrozenRunSnapshot {
@@ -472,6 +484,20 @@ export function buildDurableDispatchInput(
   if (!input.taskId) {
     throw new Error("buildDurableDispatchInput: taskId is required");
   }
+
+  // The client attaches per-turn context as a `role:"system"` message that is
+  // never persisted, so fold its text into the frozen snapshot before the
+  // durable branch drops the `messages` array entirely.
+  const systemContext = input.messages
+    .filter((m) => m.role === "system")
+    .flatMap((m) => m.parts)
+    .filter(
+      (p): p is { type: "text"; text: string } =>
+        p.type === "text" && typeof p.text === "string",
+    )
+    .map((p) => p.text)
+    .join("\n\n")
+    .trim();
 
   return {
     models: input.models,
@@ -510,6 +536,7 @@ export function buildDurableDispatchInput(
       ? { runFenceToken: options.runFenceToken }
       : {}),
     ...(input.isResume !== undefined ? { isResume: input.isResume } : {}),
+    ...(systemContext ? { systemContext } : {}),
   };
 }
 
@@ -1171,6 +1198,18 @@ async function prepareRun(
         durableHistory,
         input.messageId,
       );
+      // Rehydrate the per-turn system context folded into the frozen snapshot
+      // (it isn't a persisted thread message, so it's absent from history).
+      // Deterministic id keyed by messageId so DBOS replay is stable.
+      if (input.systemContext) {
+        systemMessages = [
+          {
+            id: `system-${input.messageId}`,
+            role: "system",
+            parts: [{ type: "text", text: input.systemContext }],
+          } as ChatMessage,
+        ];
+      }
     } else {
       // Split system messages from user message.
       systemMessages = input.messages.filter((m) => m.role === "system");

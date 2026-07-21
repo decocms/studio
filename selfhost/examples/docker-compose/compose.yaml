@@ -1,0 +1,13 @@
+# Local "everything bundled" stack via Docker Compose — the compose analog of
+# the k8s-local umbrella. It does NOT duplicate the stack: it `include`s the
+# canonical compose from deploy/ (Studio + PostgreSQL + NATS + MinIO, all wired)
+# and pairs it with the .env.example in this folder for the override knobs.
+#
+#   cp selfhost/examples/docker-compose/.env.example selfhost/examples/docker-compose/.env
+#   docker compose -f selfhost/examples/docker-compose/compose.yaml up
+#   open http://localhost:3000        # sign up — first user becomes org owner
+#
+# (`include` needs Docker Compose v2.20+. The included file uses ${VAR:-default}
+# so the .env next to this file applies. All images are multi-arch.)
+include:
+  - ../../../deploy/docker-compose/docker-compose.postgres.yml

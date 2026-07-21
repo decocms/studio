@@ -24,7 +24,7 @@ import {
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/query-keys";
 import {
-  OPENAI_COMPATIBLE_PRESETS,
+  getPreset,
   type OpenAICompatiblePreset,
 } from "@/web/utils/openai-compatible-presets";
 import { EditProviderKeyDialog } from "./edit-provider-dialog";
@@ -45,7 +45,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
 
   const preset: OpenAICompatiblePreset | undefined =
     isOpenAICompatible && providerKey.presetId
-      ? OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === providerKey.presetId)
+      ? getPreset(providerKey.presetId)
       : undefined;
 
   const displayName = preset
@@ -102,6 +102,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             <Button
               variant="ghost"
               size="icon"
+              aria-label="Edit provider key"
               className="h-7 w-7 text-muted-foreground hover:text-foreground"
               onClick={() => setEditOpen(true)}
             >
@@ -110,6 +111,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             <Button
               variant="ghost"
               size="icon"
+              aria-label="Delete provider key"
               className="h-7 w-7 text-muted-foreground hover:text-destructive"
               disabled={isDeleting}
               onClick={() => setConfirmDelete(true)}

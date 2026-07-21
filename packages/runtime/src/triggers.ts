@@ -7,12 +7,12 @@ import { z, type ZodObject, type ZodRawShape } from "zod";
 import type { DefaultEnv } from "./index.ts";
 import { createTool, type CreatedTool } from "./tools.ts";
 
-interface CallbackCredentials {
+export interface CallbackCredentials {
   callbackUrl: string;
   callbackToken: string;
 }
 
-interface TriggerState {
+export interface TriggerState {
   credentials: CallbackCredentials;
   activeTriggerTypes: string[];
 }

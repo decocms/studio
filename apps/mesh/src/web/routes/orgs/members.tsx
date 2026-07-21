@@ -118,7 +118,7 @@ function RoleSelector({
   size = "xs",
   className,
 }: RoleSelectorProps) {
-  const roleColor = roleColorMap.get(role) ?? "bg-neutral-400";
+  const roleColor = roleColorMap.get(role) ?? "bg-muted-foreground";
 
   if (isOwner) {
     return (
@@ -146,7 +146,8 @@ function RoleSelector({
                 </SelectTrigger>
                 <SelectContent>
                   {selectableRoles.map((r) => {
-                    const color = roleColorMap.get(r.role) ?? "bg-neutral-400";
+                    const color =
+                      roleColorMap.get(r.role) ?? "bg-muted-foreground";
                     return (
                       <SelectItem key={r.role} value={r.role}>
                         <div className="flex items-center gap-2">
@@ -184,7 +185,7 @@ function RoleSelector({
       </SelectTrigger>
       <SelectContent>
         {selectableRoles.map((r) => {
-          const color = roleColorMap.get(r.role) ?? "bg-neutral-400";
+          const color = roleColorMap.get(r.role) ?? "bg-muted-foreground";
           return (
             <SelectItem key={r.role} value={r.role}>
               <div className="flex items-center gap-2">

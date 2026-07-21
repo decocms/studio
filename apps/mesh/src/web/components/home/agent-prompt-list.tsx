@@ -10,7 +10,8 @@ import { toast } from "sonner";
 import { useHomeNextActions } from "@/web/hooks/use-home-next-actions";
 import { KEYS } from "@/web/lib/query-keys";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
-import { HOME_LIMIT, ToggleButton, type HomeBoard } from "./add-tile-drawer";
+import { HOME_LIMIT, type HomeBoard } from "./add-tile-drawer";
+import { ToggleButton } from "./toggle-button";
 
 interface AgentPrompt {
   name: string;

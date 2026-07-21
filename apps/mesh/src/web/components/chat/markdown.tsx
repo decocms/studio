@@ -220,7 +220,7 @@ function MarkdownCode({ node: _n, className, children, ...p }: MdProps) {
   const text = typeof children === "string" ? children : null;
   const browsePath =
     ctx && !isBlock && text
-      ? resolveOrgFileBrowsePath(text, ctx.orgSlug)
+      ? resolveOrgFileBrowsePath(text, ctx.orgSlug, ctx.threadId)
       : null;
   if (!ctx || !browsePath) {
     return (
@@ -257,7 +257,9 @@ function MarkdownAnchor({
   const ctx = useContext(OrgFileOpenContext);
   const href = typeof p.href === "string" ? p.href : undefined;
   const browsePath =
-    ctx && href ? resolveOrgFileBrowsePath(href, ctx.orgSlug) : null;
+    ctx && href
+      ? resolveOrgFileBrowsePath(href, ctx.orgSlug, ctx.threadId)
+      : null;
   const label = animate ? animateText(children) : children;
   if (ctx && browsePath) {
     return (

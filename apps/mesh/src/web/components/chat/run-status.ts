@@ -20,39 +20,39 @@ export interface RunStatusCopy {
 export const RUN_STATUS_COPY: Record<RunStatusStage, RunStatusCopy> = {
   sending: {
     label: "Sending your message",
-    detail: "Posting the message to the chat",
+    detail: "Adding your message to the chat",
   },
   received: {
-    label: "Request received",
-    detail: "The run was accepted and queued",
+    label: "Message received",
+    detail: "Your message is in line to be worked on",
   },
   "waiting-runner": {
-    label: "Waiting for an available runner",
-    detail: "Waiting for the per-chat dispatch slot",
+    label: "Waiting to start",
+    detail: "Finishing up the previous message in this chat",
   },
   "starting-run": {
-    label: "Starting the run",
-    detail: "A worker picked up the queued message",
+    label: "Getting started",
+    detail: "Setting up to work on your message",
   },
   "gathering-context": {
-    label: "Gathering context",
-    detail: "Loading history, memory, files, and agent context",
+    label: "Reading the chat",
+    detail: "Looking through the history, files, and notes",
   },
   "preparing-tools": {
-    label: "Preparing tools",
-    detail: "Resolving models, permissions, MCP tools, and built-ins",
+    label: "Getting ready",
+    detail: "Setting up the tools it can use",
   },
   "starting-assistant": {
-    label: "Starting the assistant",
-    detail: "Opening the cluster runtime",
+    label: "Warming up",
+    detail: "Almost ready to reply",
   },
   "analyzing-scope": {
-    label: "Analyzing scope",
-    detail: "The model loop is running before first output",
+    label: "Thinking",
+    detail: "Working out how to respond",
   },
   "choosing-next-steps": {
-    label: "Choosing next steps",
-    detail: "The assistant is planning the next action",
+    label: "Thinking",
+    detail: "Deciding what to do next",
   },
 };
 

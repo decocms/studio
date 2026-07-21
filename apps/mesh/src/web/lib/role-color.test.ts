@@ -9,7 +9,7 @@ const DESIGN_SYSTEM_TOKEN_CLASSES = new Set([
   "bg-chart-5",
   "bg-destructive",
   "bg-success",
-  "bg-neutral-400",
+  "bg-muted-foreground",
 ]);
 
 describe("role-color", () => {
@@ -31,6 +31,6 @@ describe("role-color", () => {
   });
 
   test("empty role name falls back to neutral", () => {
-    expect(getRoleColor("")).toBe("bg-neutral-400");
+    expect(getRoleColor("")).toBe("bg-muted-foreground");
   });
 });

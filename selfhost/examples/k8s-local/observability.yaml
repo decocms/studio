@@ -1,0 +1,98 @@
+# Opt-in observability overlay for the local umbrella: in-cluster ClickHouse
+# (monitoring dashboard) + an OpenTelemetry Collector that ships Studio logs
+# into it. Everything sized tiny for a laptop.
+#
+# Layer it on top of the umbrella's values:
+#   helm install deco-studio selfhost/examples/k8s-local -n deco-studio \
+#     --create-namespace -f selfhost/examples/k8s-local/observability.yaml
+#
+# TWO-PHASE (the clickhouse-operator ships its CRDs as templates, not in crds/,
+# so a ClickHouseCluster CR can't reliably co-install with its CRD in one pass):
+#   1. install with --set chart-deco-studio.clickhouse-cluster.enabled=false
+#   2. wait: kubectl wait --for condition=established crd/clickhouseclusters.clickhouse.com
+#   3. helm upgrade with this file as-is (CR now enabled)
+# `OBSERVABILITY=1 ./selfhost/scripts/local-k8s.sh` does all three automatically.
+#
+# After the collector starts writing otel_logs, provision the
+# studio_monitoring_logs VIEW once — DDL in apps/mesh/src/monitoring/clickhouse-setup.md.
+
+chart-deco-studio:
+  # ── ClickHouse operator (embedded; no cert-manager locally) ───────────────
+  clickhouse-operator:
+    enabled: true
+    controller:
+      # REQUIRED: the release namespace, so the operator watches where the CR lands.
+      watchNamespaces:
+        - deco-studio
+    # No cert-manager in a local cluster → the webhook can't get a serving cert.
+    certManager:
+      enabled: false
+    webhook:
+      enabled: false
+
+  # ── ClickHouse cluster CR (single node, tiny) ─────────────────────────────
+  clickhouse-cluster:
+    enabled: true
+    imageTag: "25.8"
+    clickhouse:
+      spec:
+        replicas: 1
+        shards: 1
+        # Small footprint for a laptop (merges with the chart-generated image).
+        containerTemplate:
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              memory: "1Gi"
+        dataVolumeClaimSpec:
+          resources:
+            requests:
+              storage: 2Gi
+    keeper:
+      spec:
+        replicas: 1
+        containerTemplate:
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              memory: "256Mi"
+        dataVolumeClaimSpec:
+          resources:
+            requests:
+              storage: 1Gi
+
+  # ── Studio → collector → ClickHouse ───────────────────────────────────────
+  otel:
+    enabled: true
+    collector:
+      enabled: true
+
+  # ── Collector: tiny, no autoscaling, logs → ClickHouse ────────────────────
+  opentelemetry-collector:
+    replicaCount: 1
+    autoscaling:
+      enabled: false
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "128Mi"
+      limits:
+        memory: "256Mi"
+    config:
+      exporters:
+        clickhouse:
+          # <release>-clickhouse-cluster-clickhouse-headless, native port 9000.
+          endpoint: tcp://deco-studio-clickhouse-cluster-clickhouse-headless:9000
+          logs_table_name: otel_logs
+          ttl: 720h
+      service:
+        pipelines:
+          # Helm replaces lists wholesale — this logs pipeline must be complete.
+          logs:
+            receivers: [otlp]
+            processors: [memory_limiter, batch]
+            exporters: [clickhouse]

@@ -372,10 +372,17 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./layouts/library/index.tsx")),
 });
 
-// Task board (/$org/board) — org-owned task board.
+// Task board (/$org/board) — org-owned task board. `task` deep-links a
+// specific card's modal open (used by the "open in board" button from a
+// linked chat).
+const boardSearchSchema = z.object({
+  task: z.string().optional(),
+});
+
 const boardRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/board",
+  validateSearch: boardSearchSchema,
   component: lazyRouteComponent(() => import("./layouts/task-board/index.tsx")),
 });
 

@@ -1,208 +1,357 @@
 ---
 title: "Kubernetes"
-description: Deploy deco Studio on Kubernetes using Helm
+description: Deploy deco Studio and agent sandboxes on Kubernetes using Helm
 icon: Rocket
 ---
 
 import Callout from "../../../../../../components/ui/Callout.astro";
 
-This guide explains how to deploy deco Studio on Kubernetes using the Helm chart.
+This guide deploys deco Studio and its hosted agent sandboxes on Kubernetes.
 
-Chart source: [decocms/studio → deploy/helm/studio](https://github.com/decocms/studio/tree/main/deploy/helm/studio)
+Chart sources:
 
-For how the pieces fit together at runtime (web / API / worker split, Postgres, NATS, sandboxes), see [Architecture](/en/studio/architecture).
+- [Studio](https://github.com/decocms/studio/tree/main/deploy/helm/studio)
+- [Sandbox operator](https://github.com/decocms/studio/tree/main/deploy/helm/sandbox-operator)
+- [Sandbox environment](https://github.com/decocms/studio/tree/main/deploy/helm/sandbox-env)
 
-## What the chart deploys
+<Callout type="tip">
+  **Easiest path:** for a one-command install with bundled dependencies (local or a POC cluster), use the [umbrella chart](https://github.com/decocms/studio/tree/main/selfhost/examples/k8s-local) or `selfhost/scripts/local-k8s.sh` (see [Quickstart](/en/studio/self-hosting/quickstart)). There's also an **interactive install skill** (`self-host-studio`) that interviews you, fills the values, and validates before installing. This page is the **chart reference** for installing directly and for production — the full dependency guide (managed vs in-cluster Postgres/S3/ClickHouse, secrets with/without ESO, ingress, sandbox) lives in [`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production).
+</Callout>
 
-- **Deployment** — the application pods (security context, health checks)
-- **Service** — in-cluster exposure (ClusterIP by default)
-- **ConfigMap / Secret** — non-sensitive config and secrets (`BETTER_AUTH_SECRET`, DB URL)
-- **PersistentVolumeClaim** — persistent storage at `/app/data`
-- **ServiceAccount** and an optional **HorizontalPodAutoscaler**
+For the runtime architecture (web/API/worker split, Postgres, NATS, and sandbox providers), see [Architecture](/en/studio/architecture).
+
+## Deployment model
+
+A production deployment uses three Helm releases:
+
+| Chart | Scope | Purpose |
+| --- | --- | --- |
+| `chart-deco-studio` | Once per Studio environment | Runs an nginx front door with two API containers per pod, queue workers, NATS, persistence, and optional observability components |
+| `sandbox-operator` | Once per Kubernetes cluster | Installs the upstream Kubernetes SIGs [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) controller and CRDs |
+| `sandbox-env` | Once per Studio environment | Installs the environment's `SandboxTemplate`, runner RBAC, sentinel Secret, and optional warm pool, preview Gateway, and idle housekeeper |
+
+The operator is shared cluster infrastructure. Each `sandbox-env` release is isolated by `envName`, so production, staging, and other Studio releases can share the operator and the `agent-sandbox-system` namespace without resource-name collisions.
+
+When a hosted agent needs a sandbox, Studio creates a `SandboxClaim`. The operator turns that claim into an ephemeral sandbox pod from the environment's `SandboxTemplate`. Studio reaches the daemon through Kubernetes port-forward for control traffic. If preview routing is enabled, Studio also creates one `HTTPRoute` per claim so the wildcard Gateway routes directly to the sandbox Service on port 9000.
 
 ## Prerequisites
 
-- Kubernetes 1.32+
-- Helm 3.0+
-- `kubectl` configured for your cluster
-- A StorageClass (for the PVC), and — for any real deployment — a **PostgreSQL** database
+- Kubernetes 1.32+ and Helm 3
+- `kubectl` configured for the cluster
+- A PostgreSQL database; the current API/worker topology requires PostgreSQL
+- A StorageClass for Studio and the chart-managed NATS JetStream PVCs
+- An S3-compatible object store and credentials for the organization filesystem (org-fs)
+- Support for `spec.hostUsers: true` and privileged sidecars in `agent-sandbox-system`; the mandatory org-fs sidecar uses FUSE and bidirectional mount propagation
+- For public preview URLs only: Gateway API CRDs, a Gateway controller, wildcard DNS, and either cert-manager with a DNS-01 `ClusterIssuer` or load-balancer TLS termination
 
-## Quick Start
+For production, schedule sandbox pods on a dedicated, tainted node pool. Sandbox pods run user-authored code and should not share nodes with Studio, Postgres, NATS, or observability workloads.
 
-Run from the chart directory (`deploy/helm/studio`):
+## Install Studio with agent sandboxes
+
+The commands below use the versions currently declared by the charts. Pin versions in your own deployment instead of tracking `latest`.
 
 ```bash
-# 1. Generate a secure secret for authentication
-SECRET=$(openssl rand -base64 32)
-
-# 2. Install the chart
-helm install deco-studio . \
-  --namespace deco-studio \
-  --create-namespace \
-  --set secret.BETTER_AUTH_SECRET="$SECRET"
-
-# 3. Wait for pods to be ready
-kubectl wait --for=condition=ready pod \
-  -l app.kubernetes.io/instance=deco-studio \
-  -n deco-studio \
-  --timeout=300s
-
-# 4. Access via port-forward
-kubectl port-forward svc/deco-studio 8080:80 -n deco-studio
+export STUDIO_CHART_VERSION=0.12.2
+export SANDBOX_OPERATOR_CHART_VERSION=0.1.3
+export SANDBOX_ENV_CHART_VERSION=0.9.6
 ```
 
-The application will be available at `http://localhost:8080`.
+### 1. Install the cluster-wide sandbox operator
+
+The operator chart has no configurable values and must be installed in `agent-sandbox-system` because the vendored controller manifest targets that namespace.
+
+```bash
+helm install sandbox-operator \
+  oci://ghcr.io/decocms/studio/charts/sandbox-operator \
+  --version "$SANDBOX_OPERATOR_CHART_VERSION" \
+  --namespace agent-sandbox-system \
+  --create-namespace
+```
+
+Verify the controller and CRDs:
+
+```bash
+kubectl rollout status deployment/agent-sandbox-controller \
+  -n agent-sandbox-system --timeout=300s
+kubectl get crd sandboxclaims.extensions.agents.x-k8s.io \
+  sandboxtemplates.extensions.agents.x-k8s.io \
+  sandboxwarmpools.extensions.agents.x-k8s.io
+```
+
+### 2. Configure and install Studio
+
+Hosted sandboxes require S3-compatible object storage. Studio considers it configured only when all four required variables are present:
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `S3_ENDPOINT` | Yes | Full S3-compatible API endpoint, such as `https://s3.us-east-1.amazonaws.com` |
+| `S3_BUCKET` | Yes | Bucket that backs org-fs |
+| `S3_ACCESS_KEY_ID` | Yes | Access key used by Studio |
+| `S3_SECRET_ACCESS_KEY` | Yes | Secret key used by Studio |
+| `S3_REGION` | Provider-specific | Defaults to `auto`; set the actual region for AWS S3 |
+| `S3_FORCE_PATH_STYLE` | Provider-specific | Set `false` for AWS S3 virtual-hosted addressing; commonly `true` for MinIO and other path-style providers |
+
+The credentials need `s3:ListBucket` on the bucket and `s3:GetObject`, `s3:PutObject`, and `s3:DeleteObject` on its objects. These variables configure the org filesystem and are separate from the optional `s3Sync.*` backup sidecar and `MONITORING_S3_*` settings.
+
+Store the S3 variables alongside `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `ENCRYPTION_KEY` in the Kubernetes Secret consumed by Studio. Do not put credentials in `configMap.meshConfig` or in the `sandbox-env` release; sandbox pods access org-fs through Studio's authenticated API and do not receive the S3 keys directly.
+
+Create `studio-values.yaml`. `envName`, the template suffix, Studio namespace, release name, and service-account name must agree with the `sandbox-env` release installed in the next step.
+
+```yaml
+database:
+  engine: postgresql
+  url: "" # supplied as DATABASE_URL by the existing Secret
+
+serviceAccount:
+  create: true
+  name: deco-studio
+  automount: true
+
+configMap:
+  meshConfig:
+    BETTER_AUTH_URL: "https://studio.example.com"
+    BASE_URL: "https://studio.example.com"
+    STUDIO_SANDBOX_PROVIDER: "agent-sandbox"
+    STUDIO_ENV: "production"
+    STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-production"
+
+secret:
+  secretName: deco-studio-secrets
+```
 
 <Callout type="warning">
-  **Use PostgreSQL for anything real.** Studio's runtime is PostgreSQL-based, and only PostgreSQL supports more than one replica. The chart ships a single-node default for evaluation; for staging or production, set `database.engine: postgresql` with a `database.url`, and enable autoscaling/multiple replicas from there (see [Database](#database) and [Scaling](#replicas-scaling-and-strategy)).
+  The existing `deco-studio-secrets` Secret must contain `DATABASE_URL`, `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY`, plus provider-specific `S3_REGION` and `S3_FORCE_PATH_STYLE`. Prefer `externalSecret` or another secret manager in production; do not commit these values to Git.
 </Callout>
 
-## Installation
+Provision `deco-studio-secrets` in the `deco-studio` namespace before running the Helm install below. Alternatively, configure the chart's `externalSecret` values to create it from AWS Secrets Manager.
+
+Install the application chart:
 
 ```bash
-# Install with default values
-helm install deco-studio . --namespace deco-studio --create-namespace
-
-# Install with custom values
-helm install deco-studio . -f my-values.yaml -n deco-studio --create-namespace
+helm install deco-studio \
+  oci://ghcr.io/decocms/chart-deco-studio \
+  --version "$STUDIO_CHART_VERSION" \
+  --namespace deco-studio \
+  --create-namespace \
+  --values studio-values.yaml
 ```
 
-### Verify
+The main Deployment contains nginx and two API containers. The separate worker Deployment is required and enabled by default. The chart also enables its NATS dependency by default and requires PostgreSQL so API and worker pods share the DBOS run queue.
+
+### 3. Install the per-environment sandbox resources
+
+```bash
+helm install sandbox-env-production \
+  oci://ghcr.io/decocms/studio/charts/sandbox-env \
+  --version "$SANDBOX_ENV_CHART_VERSION" \
+  --namespace agent-sandbox-system \
+  --set envName=production \
+  --set mesh.namespace=deco-studio \
+  --set mesh.serviceAccountName=deco-studio
+```
+
+This creates `SandboxTemplate/studio-sandbox-production` and grants only the named Studio service account permission to manage claims, read sandboxes, port-forward to sandbox pods, patch their Services, and manage per-claim `HTTPRoute` objects in `agent-sandbox-system`.
+
+<Callout type="note">
+  `mesh.serviceName`, `mesh.servicePort`, and `mesh.podSelectorLabels` are deprecated and unused by the current per-claim preview routing design. New installations do not need to set them.
+</Callout>
+
+### 4. Verify the complete deployment
 
 ```bash
 helm status deco-studio -n deco-studio
-kubectl get all -l app.kubernetes.io/instance=deco-studio -n deco-studio
-kubectl logs -l app.kubernetes.io/instance=deco-studio -n deco-studio
+helm status sandbox-operator -n agent-sandbox-system
+helm status sandbox-env-production -n agent-sandbox-system
+
+kubectl get deployments,pods -n deco-studio
+kubectl get deployment -n agent-sandbox-system
+kubectl get sandboxtemplate,sandboxwarmpool -n agent-sandbox-system
+kubectl auth can-i create sandboxclaims.extensions.agents.x-k8s.io \
+  --as=system:serviceaccount:deco-studio:deco-studio \
+  -n agent-sandbox-system
 ```
 
-### Uninstall
+To access Studio before configuring ingress:
 
 ```bash
-helm uninstall deco-studio -n deco-studio
+kubectl port-forward svc/deco-studio 8080:80 -n deco-studio
 ```
 
-## Using external Secrets
+Studio is then available at `http://localhost:8080`.
 
-To keep sensitive values out of `values.yaml` (e.g. for GitOps/ArgoCD), create Kubernetes Secrets and reference them. When `secret.secretName` is set, the chart references that Secret instead of creating one. The Secret must contain at least `BETTER_AUTH_SECRET`, plus `DATABASE_URL` when using PostgreSQL.
+## Sandbox configuration
+
+### Isolation and egress
+
+The sandbox container runs as a non-root user with privilege escalation disabled, all Linux capabilities dropped, a `RuntimeDefault` seccomp profile, and a read-only root filesystem. Writable `emptyDir` volumes are mounted where the runtime needs them.
+
+The org-fs sidecar is mandatory: it uses privileged FUSE mounts to expose organization skills, uploads, outputs, and home directories under `/app/org`. Only this sidecar is privileged. `disableFsSidecar: true` is a debugging escape hatch, not a supported production mode.
+
+By default, a short-lived `NET_ADMIN` init container installs iptables rules and exits before user code starts. It blocks private, link-local, and shared-address IPv4/IPv6 ranges—which cover the pod and Service CIDRs on most clusters—and allows outbound DNS plus HTTPS. Override the CIDR lists when your cluster uses different ranges. The chart does not currently create a Kubernetes `NetworkPolicy`. If your CNI or external firewall owns sandbox egress, set `netinit.enabled: false` and supply equivalent controls.
+
+Recommended production scheduling:
 
 ```yaml
-secret:
-  secretName: "deco-studio-secrets"
-  authConfigSecretName: "deco-studio-auth-secrets"
+nodeSelector:
+  workload: sandbox
 
-database:
-  engine: postgresql
-  url: "" # comes from DATABASE_URL in the Secret
+tolerations:
+  - key: workload
+    operator: Equal
+    value: sandbox
+    effect: NoSchedule
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: studio-sandbox-production
 ```
 
-For deployment-wide enforced SSO, pass the SSO env vars through the auth-config Secret — see [Authentication → Deployment-wide SSO](/en/studio/self-hosting/authentication).
+### Warm pool
 
-## Configuration
+Warm pools are disabled by default because every idle warm pod consumes the full sandbox resource request. Enabling one also requires Studio and the sandbox template to share a sentinel token. Studio uses it only for the first daemon configuration request and immediately rotates the daemon to a per-claim token.
 
-### Main values
+Generate the token once, store it in the Studio Secret as `STUDIO_SANDBOX_SENTINEL_TOKEN`, and pass the same value to `sandbox-env`:
 
-These are the actual chart defaults (`deploy/helm/studio/values.yaml`):
+```bash
+export SANDBOX_SENTINEL_TOKEN="$(openssl rand -base64 48)"
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `replicaCount` | Number of replicas | `1` |
-| `image.repository` | Image repository | `ghcr.io/decocms/studio/studio` |
-| `image.tag` | Image tag | `latest` |
-| `image.pullPolicy` | Pull policy | `IfNotPresent` |
-| `service.type` / `port` / `targetPort` | Service exposure | `ClusterIP` / `80` / `3000` |
-| `persistence.enabled` | Create a PVC | `true` |
-| `persistence.accessMode` | PVC access mode | `ReadWriteOnce` |
-| `persistence.storageClass` | PVC StorageClass | `gp3` |
-| `persistence.distributed` | Storage supports ReadWriteMany | `false` |
-| `persistence.size` | PVC size | `10Gi` |
-| `autoscaling.enabled` | Enable HPA | `false` |
-| `database.engine` | `sqlite` \| `postgresql` | `sqlite` |
-| `database.url` | DB URL (required for PostgreSQL) | `""` |
-
-### Database
-
-```yaml
-database:
-  engine: postgresql
-  url: "postgresql://studio_user:studio_password@postgres.example.com:5432/studio_db"
-  caCert: "" # optional CA cert for managed-Postgres SSL validation
+helm upgrade sandbox-env-production \
+  oci://ghcr.io/decocms/studio/charts/sandbox-env \
+  --version "$SANDBOX_ENV_CHART_VERSION" \
+  --namespace agent-sandbox-system \
+  --reuse-values \
+  --set-string sentinel.token="$SANDBOX_SENTINEL_TOKEN" \
+  --set warmPool.enabled=true \
+  --set warmPool.size=2
 ```
 
-PostgreSQL is required for multiple replicas, autoscaling, and production use. For managed databases (AWS RDS, Cloud SQL, etc.) that require SSL validation, supply `database.caCert` and set `configMap.meshConfig.DATABASE_PG_SSL: "true"`.
+If `sentinel.token` is omitted, the chart generates and preserves a Secret for sandbox pods, but Studio still needs the same value before it can consume warm-pool pods. For GitOps, generate the value in your secret manager and deliver it to both namespaces. Do not place it in `configMap.meshConfig`.
 
-### Replicas, scaling, and strategy
+The optional warm-pool HPA requires `warmPool.enabled: true`, `warmPool.autoscaling.enabled: true`, and at least one explicit `autoscaling/v2` metric. The chart intentionally provides no default metric.
 
-```yaml
-replicaCount: 1 # ignored if autoscaling.enabled: true
+### Idle housekeeper
 
-autoscaling:
-  enabled: false
-  minReplicas: 3
-  maxReplicas: 6
-  targetMemoryUtilizationPercentage: 80
-```
-
-`replicaCount > 1` or `autoscaling.enabled: true` is only valid with **PostgreSQL** or **distributed storage** (`persistence.distributed: true` / `accessMode: ReadWriteMany`). The chart auto-selects a `RollingUpdate` strategy in those cases and `Recreate` for single-writer storage.
-
-### Persistence
+Studio refreshes claim activity, while the optional housekeeper CronJob cleans up idle or unrecoverable claims and orphaned routes/pods. Its defaults run every five minutes and reap claims idle for 15 minutes.
 
 ```yaml
-persistence:
+housekeeper:
   enabled: true
-  accessMode: ReadWriteOnce
-  storageClass: "gp3"
-  size: 10Gi
-  claimName: ""       # if set, an existing PVC is referenced
-  distributed: false  # set true (or accessMode: ReadWriteMany) for multi-replica file storage
+  schedule: "*/5 * * * *"
+  idleTtlSeconds: 900
 ```
 
-### Resources
+`STUDIO_ENV` is required when the housekeeper is enabled because its default selectors are environment-scoped. Without the matching label, it intentionally selects no claims.
+
+### Preview Gateway
+
+Without a preview Gateway, Studio can use its legacy in-process preview proxy when a preview URL pattern and the required external routing are provided. The current production design uses Gateway API and routes each preview directly to its sandbox daemon:
+
+```text
+Browser -> load balancer -> Gateway -> per-claim HTTPRoute -> sandbox Service:9000
+```
+
+Configure `sandbox-env`:
 
 ```yaml
-resources:
-  requests:
-    memory: "2Gi"
-    cpu: "2000m"
-  limits:
-    memory: "2Gi"
+previewGateway:
+  enabled: true
+  gatewayClassName: istio
+  namespace: istio-system
+  domain: preview.example.com
+  tlsTermination: gateway
+  clusterIssuer: letsencrypt-dns
 ```
 
-## Maintenance
+Then add the matching values to Studio:
 
-```bash
-# Upgrade with new values
-helm upgrade deco-studio . -f custom-values.yaml -n deco-studio
-
-# Update the image tag
-helm upgrade deco-studio . --set image.tag=v1.2.3 -n deco-studio
-
-# Render/diff before applying
-helm template deco-studio . -n deco-studio
-helm diff upgrade deco-studio . -n deco-studio   # with the helm-diff plugin
-
-# History / rollback
-helm history deco-studio -n deco-studio
-helm rollback deco-studio -n deco-studio
+```yaml
+configMap:
+  meshConfig:
+    STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.example.com"
+    STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME: "agent-sandbox-preview-production"
+    STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE: "istio-system"
 ```
 
-## Security
+The Gateway name and namespace must either both be set or both be absent. Create wildcard DNS for `*.preview.example.com` pointing to the Gateway load balancer. With `tlsTermination: gateway`, the `ClusterIssuer` must support DNS-01 because wildcard certificates cannot use HTTP-01. Set `tlsTermination: loadBalancer` instead when the external load balancer owns the certificate.
 
 <Callout type="warning">
-  **Do not commit secrets to Git.** Prefer External Secrets Operator (or similar), or pass secrets at install time.
+  The sandbox handle in the hostname is the preview route's only built-in authorization. Treat preview URLs as secrets: handles can appear in CDN, load-balancer, and proxy logs. Add Gateway-level authorization (for example, Istio `AuthorizationPolicy` or Envoy external auth) when hostname secrecy is not sufficient.
 </Callout>
 
+Each environment that enables previews needs a distinct `previewGateway.domain`; two Gateways cannot safely bind the same wildcard hostname.
+
+## Main Studio values
+
+These defaults come from `deploy/helm/studio/values.yaml`:
+
+| Parameter | Description | Default |
+| --- | --- | --- |
+| `replicaCount` | API pod replicas | `1` |
+| `image.repository` | Studio API/worker image | `ghcr.io/decocms/studio/studio` |
+| `nginx.image.repository` | Front-door image | `ghcr.io/decocms/studio/studio-nginx` |
+| `service.type` / `service.port` | Service exposure | `ClusterIP` / `80` |
+| `database.engine` | Database engine | `postgresql` |
+| `worker.enabled` / `worker.replicaCount` | Queue worker Deployment | `true` / `2` |
+| `worker.autoscaling.enabled` | Worker HPA | `true` |
+| `nats.enabled` | NATS subchart with JetStream | `true` |
+| `persistence.enabled` / `persistence.size` | Studio PVC | `true` / `10Gi` |
+| `autoscaling.enabled` | API HPA | `false` |
+| `metrics.scrape` | Prometheus pod annotations | `true` |
+
+## Main sandbox values
+
+| Parameter | Description | Default |
+| --- | --- | --- |
+| `envName` | DNS-label suffix for environment resources | Required |
+| `image.repository` / `image.tag` | Sandbox daemon image | `ghcr.io/decocms/studio/studio-sandbox` / `1.17.8` |
+| `resources.requests` | Per-sandbox request | `500m` CPU / `1Gi` memory |
+| `resources.limits` | Per-sandbox limit | `2` CPU / `4Gi` memory / `10Gi` ephemeral storage |
+| `terminationGracePeriodSeconds` | Time for final git sync and unmount | `90` |
+| `netinit.enabled` | Install default iptables egress policy | `true` |
+| `readOnlyRootFilesystem` | Read-only sandbox root filesystem | `true` |
+| `depsCache.enabled` / `depsCache.golden` | Node-local dependency caches | `false` / `false` |
+| `warmPool.enabled` / `warmPool.size` | Pre-warmed sandboxes | `false` / `0` |
+| `previewGateway.enabled` | Wildcard preview Gateway | `false` |
+| `housekeeper.enabled` | Idle-claim cleanup CronJob | `false` |
+
+## Upgrades and removal
+
+Render and lint all three charts before applying changes:
+
 ```bash
-helm install deco-studio . \
-  --set secret.BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
-  -n deco-studio --create-namespace
+helm lint deploy/helm/studio \
+  --set database.url=postgresql://user:pass@postgres.example.com:5432/studio
+helm lint deploy/helm/sandbox-operator \
+  --namespace agent-sandbox-system
+helm lint deploy/helm/sandbox-env \
+  --namespace agent-sandbox-system \
+  --set envName=production
+
+helm template deco-studio deploy/helm/studio --values studio-values.yaml
+helm template sandbox-operator deploy/helm/sandbox-operator \
+  --namespace agent-sandbox-system
+helm template sandbox-env-production deploy/helm/sandbox-env \
+  --namespace agent-sandbox-system \
+  --set envName=production
 ```
 
-The chart runs as a non-root user (`runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: ALL`).
-
-## Monitoring
+Files under a Helm chart's `crds/` directory are installed once but are not upgraded by `helm upgrade`. When the sandbox operator's upstream `appVersion` changes, apply the new CRDs before upgrading the operator:
 
 ```bash
-kubectl get all -l app.kubernetes.io/instance=deco-studio -n deco-studio
-kubectl logs -l app.kubernetes.io/instance=deco-studio -n deco-studio
-kubectl top pods -l app.kubernetes.io/instance=deco-studio -n deco-studio
+kubectl apply -f deploy/helm/sandbox-operator/crds/agent-sandbox-crds.yaml
+helm upgrade sandbox-operator deploy/helm/sandbox-operator \
+  --namespace agent-sandbox-system
+```
+
+Uninstall environment resources before the shared operator. Removing the operator first leaves claims and custom resources without a controller.
+
+```bash
+helm uninstall sandbox-env-production -n agent-sandbox-system
+helm uninstall deco-studio -n deco-studio
+# Only after every environment has removed sandbox-env:
+helm uninstall sandbox-operator -n agent-sandbox-system
 ```

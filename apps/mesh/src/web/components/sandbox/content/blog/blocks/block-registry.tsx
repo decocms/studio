@@ -3,6 +3,7 @@ import {
   resolveSchema,
   type LiveMeta,
 } from "@/web/components/sections-editor/resolve-schema";
+import type { RunBlockSandboxRef } from "@/web/components/sandbox/content/use-run-block";
 import { RichTextBlock } from "./rich-text-block";
 import { CodeBlock, HeadingBlock, ListBlock, QuoteBlock } from "./plain-blocks";
 import {
@@ -37,10 +38,13 @@ export function BlockEditor({
   block,
   meta,
   onChange,
+  sandboxRef,
 }: {
   block: RawBlock;
   meta: LiveMeta;
   onChange: (next: RawBlock) => void;
+  /** Running sandbox coords — enables the VTEX product picker when present. */
+  sandboxRef?: RunBlockSandboxRef | null;
 }) {
   const resolveType = block.__resolveType ?? "";
   const componentName = blockComponentName(resolveType);
@@ -184,9 +188,21 @@ export function BlockEditor({
           />
         );
       case "ProductCard":
-        return <ProductCardBlock block={block} onChange={onChange} />;
+        return (
+          <ProductCardBlock
+            block={block}
+            onChange={onChange}
+            sandboxRef={sandboxRef}
+          />
+        );
       case "ProductShelf":
-        return <ProductShelfBlock block={block} onChange={onChange} />;
+        return (
+          <ProductShelfBlock
+            block={block}
+            onChange={onChange}
+            sandboxRef={sandboxRef}
+          />
+        );
       default:
         break;
     }

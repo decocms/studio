@@ -701,6 +701,11 @@ export function ChatInput({
                               ? "Microphone access denied — click to try again"
                               : "Voice input"
                           }
+                          aria-label={
+                            voice.status === "permission-denied"
+                              ? "Microphone access denied — click to try again"
+                              : "Voice input"
+                          }
                         >
                           <Microphone01 size={18} />
                         </Button>
@@ -732,6 +737,13 @@ export function ChatInput({
                               ? "Stop generating"
                               : "Cancel run"
                             : "Send message (Enter)"
+                        }
+                        aria-label={
+                          composerAction === "stop"
+                            ? isStreaming
+                              ? "Stop generating"
+                              : "Cancel run"
+                            : "Send message"
                         }
                       >
                         {showStopOrCancel ? (

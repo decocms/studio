@@ -18,6 +18,22 @@ import {
   Plus,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/web/components/super-agent-icon";
+import { GitHubIcon } from "@/web/components/icons/github-icon";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@deco/ui/components/dialog.tsx";
+import {
+  getWellKnownDecopilotVirtualMCP,
+  useConnections,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
+import { getOrgGithubConnections } from "@/shared/github-repo-scope";
+import { useConnectApp } from "@/web/hooks/use-connect-app";
 import { useMembers } from "@/web/hooks/use-members";
 import {
   useTaskBoardItemActions,
@@ -46,6 +62,11 @@ import {
 } from "./task-filters";
 import { useFlipLanes } from "./use-flip-lanes";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useThreadActions } from "@/web/components/chat/store/hooks";
+import { writeChatDraft } from "@/web/lib/chat-draft";
+import { createMentionDoc } from "@/web/components/chat/tiptap/mention";
+import type { TiptapDoc } from "@/web/components/chat/types";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
@@ -173,6 +194,12 @@ export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const reportsOnly = useReportsOnly();
+  // Auto-fix hands the task to the Super Agent, which opens a PR — so it needs
+  // an org-level GitHub connection. If the org has none, prompt to connect
+  // instead of enqueueing a run that can't push.
+  const hasGithub =
+    getOrgGithubConnections(useConnections({ slug: "mcp-github" })).length > 0;
+  const [connectGithubOpen, setConnectGithubOpen] = useState(false);
   const { data: membersData } = useMembers();
   const members = (membersData?.data?.members ?? []) as Member[];
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
@@ -187,6 +214,68 @@ export function TaskBoardPage() {
     null,
   );
   const { setTaskId } = usePanelActions();
+  const { create } = useThreadActions();
+  const { org, locator } = useProjectContext();
+  const navigate = useNavigate();
+  // Deep link: `/$org/board?task=<id>` opens that task's modal (from a linked
+  // chat's "open in board" button). Derived, so it opens as soon as the item
+  // loads without an effect.
+  const { task: deepLinkTaskId } = useSearch({ strict: false }) as {
+    task?: string;
+  };
+  const deepLinkItem = deepLinkTaskId
+    ? (items.find((i) => i.id === deepLinkTaskId) ?? null)
+    : null;
+
+  const clearDeepLink = () => {
+    if (deepLinkTaskId)
+      navigate({
+        to: "/$org/board",
+        params: { org: org.slug },
+        search: {},
+        replace: true,
+      });
+  };
+
+  // Start a fresh chat on the default Decopilot agent, seeded with the task's
+  // title + description as the first user message (via the autosend buffer),
+  // and link the new thread to the task so it shows on the modal.
+  const startChatFromTask = async (task: TaskBoardItem) => {
+    const newId = crypto.randomUUID();
+    const agentId = getWellKnownDecopilotVirtualMCP(org.id).id;
+    // Prefill the composer with a removable task @ref chip (not raw text) and
+    // do NOT auto-send — the user reviews/adds to it, then hits send. The chip
+    // expands to the task's title + description at send time (see derive-parts).
+    const doc: TiptapDoc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            createMentionDoc({
+              id: task.id,
+              name: task.title,
+              char: "@",
+              kind: "task",
+              metadata: { title: task.title, description: task.description },
+            }),
+            { type: "text", text: " " },
+          ],
+        },
+      ],
+    };
+    writeChatDraft(sessionStorage, locator, newId, doc);
+    setDialogOpen(false);
+    try {
+      await create({ id: newId, virtual_mcp_id: agentId });
+      // Best-effort — a link failure shouldn't block navigating into the chat.
+      await actions.link.mutateAsync({ id: task.id, linkThreadId: newId });
+    } catch {
+      // Toast already fired by the manager; navigate anyway so the route
+      // loader's ensure-fallback can retry the create.
+    }
+    setTaskId(newId, agentId);
+  };
 
   const visibleItems = items.filter((item) =>
     taskMatchesFilters(item, filters),
@@ -212,6 +301,18 @@ export function TaskBoardPage() {
   // Opening a card always opens the task modal. The modal's activity area is
   // what navigates into the run's chat (see onOpenThread below).
   const openTask = openEdit;
+
+  // The task the modal is editing — a locally-opened card, or the deep-linked
+  // one. The modal is open when either is set.
+  const activeItem = editingItem ?? deepLinkItem;
+  const modalOpen = dialogOpen || !!deepLinkItem;
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingItem(null);
+    setCreateStatus(null);
+    clearDeepLink();
+  };
 
   if (isLoading && items.length === 0) {
     return (
@@ -305,11 +406,16 @@ export function TaskBoardPage() {
           onMove={(id, status) => actions.update.mutate({ id, status })}
           onAutoFix={
             reportsOnly
-              ? (item) =>
+              ? (item) => {
+                  if (!hasGithub) {
+                    setConnectGithubOpen(true);
+                    return;
+                  }
                   actions.update.mutate({
                     id: item.id,
                     assigneeId: SUPER_AGENT_ASSIGNEE_ID,
-                  })
+                  });
+                }
               : undefined
           }
         />
@@ -339,40 +445,93 @@ export function TaskBoardPage() {
 
       <TaskBoardItemDialog
         key={
-          dialogOpen
-            ? (editingItem?.id ?? `new-${createStatus ?? "default"}`)
+          modalOpen
+            ? (activeItem?.id ?? `new-${createStatus ?? "default"}`)
             : "closed"
         }
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        item={editingItem ?? undefined}
+        open={modalOpen}
+        onClose={closeDialog}
+        item={activeItem ?? undefined}
         defaultStatus={createStatus ?? undefined}
         isSaving={actions.create.isPending || actions.update.isPending}
         onSubmit={(input) => {
-          if (editingItem) {
-            actions.update.mutate({ id: editingItem.id, ...input });
+          if (activeItem) {
+            actions.update.mutate({ id: activeItem.id, ...input });
           } else {
             actions.create.mutate(input);
           }
-          setDialogOpen(false);
+          closeDialog();
         }}
         onDelete={
-          editingItem
+          activeItem
             ? () => {
-                actions.remove.mutate(editingItem.id);
-                setDialogOpen(false);
+                actions.remove.mutate(activeItem.id);
+                closeDialog();
               }
             : undefined
         }
+        onNewChat={
+          activeItem ? () => void startChatFromTask(activeItem) : undefined
+        }
         onOpenThread={(thread) => {
           if (!thread.virtualMcpId) return;
-          setDialogOpen(false);
+          closeDialog();
           setTaskId(thread.threadId, thread.virtualMcpId, {
             main: thread.hasPreview ? "preview" : "board",
           });
         }}
       />
+
+      <ConnectGitHubDialog
+        open={connectGithubOpen}
+        onOpenChange={setConnectGithubOpen}
+      />
     </div>
+  );
+}
+
+/**
+ * Small prompt shown when Auto-fix is used in an org with no GitHub connection.
+ * The Super Agent needs GitHub to open a PR, so we connect first. Once the
+ * connection lands the card's Auto-fix button works on the next click.
+ */
+function ConnectGitHubDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { connect, isConnecting } = useConnectApp("deco/mcp-github");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Connect GitHub</DialogTitle>
+          <DialogDescription>
+            Auto-fix hands the task to the Super Agent, which opens a pull
+            request with the change. Connect GitHub so it can push and open PRs.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            onClick={async () => {
+              await connect();
+              onOpenChange(false);
+            }}
+            disabled={isConnecting}
+            className="gap-2"
+          >
+            {isConnecting ? (
+              <Loading01 size={16} className="animate-spin" />
+            ) : (
+              <GitHubIcon className="size-4" />
+            )}
+            Connect GitHub
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

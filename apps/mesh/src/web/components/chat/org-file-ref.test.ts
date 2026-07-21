@@ -43,7 +43,19 @@ describe("resolveOrgFileBrowsePath", () => {
     );
   });
 
-  it("skips thread-scoped upload/output mounts (they have their own chips)", () => {
+  it("resolves thread-scoped output/upload mounts against the thread's subtree", () => {
+    expect(resolveOrgFileBrowsePath("org/output/report.md", SLUG, "t_1")).toBe(
+      "outputs/t_1/report.md",
+    );
+    expect(
+      resolveOrgFileBrowsePath("org/output/sub/deck.html", SLUG, "t_1"),
+    ).toBe("outputs/t_1/sub/deck.html");
+    expect(resolveOrgFileBrowsePath("org/upload/report.pdf", SLUG, "t_1")).toBe(
+      "uploads/t_1/report.pdf",
+    );
+  });
+
+  it("leaves output/upload unlinked without a thread id", () => {
     expect(resolveOrgFileBrowsePath("org/upload/report.pdf", SLUG)).toBeNull();
     expect(resolveOrgFileBrowsePath("org/output/deck.html", SLUG)).toBeNull();
   });

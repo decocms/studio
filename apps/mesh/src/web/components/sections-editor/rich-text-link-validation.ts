@@ -19,3 +19,17 @@ export function isSafeLinkUrl(url: string): boolean {
     return false;
   }
 }
+
+/**
+ * Normalize user-typed link input: trim whitespace and default bare domains
+ * to https ("example.com" → "https://example.com"). Relative paths, fragment
+ * links, and URLs that already carry a scheme pass through unchanged.
+ */
+export function normalizeLinkUrl(raw: string): string {
+  const url = raw.trim();
+  if (!url) return "";
+  if (url.startsWith("/") || url.startsWith(".") || url.startsWith("#")) {
+    return url;
+  }
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) ? url : `https://${url}`;
+}

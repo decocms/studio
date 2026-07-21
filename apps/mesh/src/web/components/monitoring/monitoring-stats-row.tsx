@@ -212,11 +212,18 @@ export interface KPIChartProps {
   colorNum: number;
   chartHeight: string;
   variant?: "bar" | "area";
+  /** Accessible label describing what this chart shows, e.g. "Tool calls over time". */
+  ariaLabel: string;
 }
 
 function formatYAxisValue(value: number): string {
   if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
   return String(value);
+}
+
+interface KPITooltipPayloadItem {
+  value?: unknown;
+  payload?: BucketPoint;
 }
 
 function KPITooltipContent({
@@ -226,8 +233,7 @@ function KPITooltipContent({
   colorVar,
 }: {
   active?: boolean;
-  // biome-ignore lint: recharts payload is loosely typed
-  payload?: any[];
+  payload?: KPITooltipPayloadItem[];
   dataKey: string;
   colorVar: string;
 }) {
@@ -274,6 +280,7 @@ export function KPIChart({
   colorNum,
   chartHeight,
   variant = "bar",
+  ariaLabel,
 }: KPIChartProps) {
   const colorVar = `var(--chart-${colorNum})`;
   const gradientId = `kpi-gradient-${dataKey}-${colorNum}`;
@@ -284,6 +291,8 @@ export function KPIChart({
   if (variant === "area") {
     return (
       <ChartContainer
+        role="img"
+        aria-label={ariaLabel}
         className={cn(chartHeight, "w-full")}
         config={{ [dataKey]: { label: dataKey, color: colorVar } }}
       >
@@ -362,6 +371,8 @@ export function KPIChart({
 
   return (
     <ChartContainer
+      role="img"
+      aria-label={ariaLabel}
       className={cn(chartHeight, "w-full")}
       config={{ [dataKey]: { label: dataKey, color: colorVar } }}
     >

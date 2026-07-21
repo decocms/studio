@@ -13,7 +13,7 @@ const BUILTIN_ROLE_COLORS: Record<string, string> = {
 };
 
 export function getRoleColor(roleName: string): string {
-  if (!roleName) return "bg-neutral-400";
+  if (!roleName) return "bg-muted-foreground";
   let hash = 0;
   for (let i = 0; i < roleName.length; i++) {
     const char = roleName.charCodeAt(i);
@@ -21,10 +21,10 @@ export function getRoleColor(roleName: string): string {
     hash = hash & hash;
   }
   const index = Math.abs(hash) % ROLE_COLORS.length;
-  return ROLE_COLORS[index] ?? ROLE_COLORS[0];
+  return ROLE_COLORS[index]!;
 }
 
 export function getRoleDotColor(role: string, isBuiltin: boolean): string {
-  if (isBuiltin) return BUILTIN_ROLE_COLORS[role] ?? "bg-neutral-400";
+  if (isBuiltin) return BUILTIN_ROLE_COLORS[role] ?? "bg-muted-foreground";
   return getRoleColor(role);
 }

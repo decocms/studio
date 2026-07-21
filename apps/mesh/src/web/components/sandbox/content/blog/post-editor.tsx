@@ -1,4 +1,9 @@
-import { LinkExternal01, Pilcrow01, Settings01 } from "@untitledui/icons";
+import {
+  AlertCircle,
+  LinkExternal01,
+  Pilcrow01,
+  Settings01,
+} from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
@@ -17,9 +22,15 @@ import {
   buildBlogBlock,
   getBlogPayload,
   listBlogPayloads,
+  missingPostFields,
   relationPickerState,
   stampPostModified,
 } from "./blog-data";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
@@ -87,6 +98,12 @@ export function PostEditor({
     previewBaseUrl,
   });
 
+  const missing = missingPostFields(post);
+  const hasErrors = missing.length > 0;
+  const missingLabel = `Missing required ${
+    missing.length === 1 ? "field" : "fields"
+  }: ${missing.join(", ")}`;
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
@@ -94,19 +111,32 @@ export function PostEditor({
           {str(post.title) || "Untitled post"}
         </span>
         <div className="flex shrink-0 items-center gap-3">
+          {hasErrors && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="flex items-center gap-1.5 text-xs font-medium text-destructive">
+                  <AlertCircle size={14} />
+                  {missing.length} {missing.length === 1 ? "issue" : "issues"}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{missingLabel}</TooltipContent>
+            </Tooltip>
+          )}
           <SaveStatus isPending={save.isPending} isError={save.isError} />
           <Button
             type="button"
             variant="outline"
             size="sm"
-            disabled={!previewUrl}
+            disabled={!previewUrl || hasErrors}
             title={
-              previewUrl
-                ? "Open the post preview in a new tab"
-                : "Set the post slug (and its category) plus the blog app's pageSlug to preview"
+              hasErrors
+                ? missingLabel
+                : previewUrl
+                  ? "Open the post preview in a new tab"
+                  : "Set the post slug (and its category) plus the blog app's pageSlug to preview"
             }
             onClick={() => {
-              if (previewUrl) {
+              if (previewUrl && !hasErrors) {
                 window.open(previewUrl, "_blank", "noopener,noreferrer");
               }
             }}
@@ -146,6 +176,7 @@ export function PostEditor({
                   value={asBlocks(post.sections)}
                   onChange={(next) => setField("sections", next)}
                   meta={meta}
+                  sandboxRef={{ orgSlug, virtualMcpId, branch }}
                   emptyMessage="This post has no content yet. Use ⊕ to add your first block."
                 />
               </div>
