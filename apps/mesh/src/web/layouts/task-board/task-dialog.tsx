@@ -97,7 +97,7 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
  * (wrapping row); a borderless ghost row in the desktop sidebar.
  */
 const PROPERTY_BUTTON =
-  "inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:border-transparent";
+  "inline-flex h-9 items-center justify-start gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:border-transparent";
 
 // ponytail: THREAD_STATUS labels moved into component to access t()
 // each status key is resolved dynamically via t() in ActivityCard
