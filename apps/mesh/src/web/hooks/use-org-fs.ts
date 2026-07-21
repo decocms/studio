@@ -496,19 +496,23 @@ export function useOrgFsMutations(volume: string) {
 
   const upload = useMutation({
     mutationFn: async (input: { dir: string; files: File[] }) => {
-      for (const file of input.files) {
-        const path = input.dir ? `${input.dir}/${file.name}` : file.name;
-        await fsFetch(fsUrl(org.slug, volume, "file", { path }), {
-          method: "PUT",
-          headers: {
-            "content-type": file.type || "application/octet-stream",
-          },
-          body: file,
-        });
-      }
+      // Independent PUTs (distinct paths, server creates parent dirs per
+      // write) — run them concurrently instead of one round trip at a time.
+      await Promise.all(
+        input.files.map((file) => {
+          const path = input.dir ? `${input.dir}/${file.name}` : file.name;
+          return fsFetch(fsUrl(org.slug, volume, "file", { path }), {
+            method: "PUT",
+            headers: {
+              "content-type": file.type || "application/octet-stream",
+            },
+            body: file,
+          });
+        }),
+      );
     },
-    // Settled, not success: files upload sequentially, so a mid-batch failure
-    // (quota, size) leaves earlier files written — the listing must refresh.
+    // Settled, not success: uploads run independently, so one failure
+    // (quota, size) doesn't stop the rest — the listing must still refresh.
     onSettled: invalidate,
   });
 
