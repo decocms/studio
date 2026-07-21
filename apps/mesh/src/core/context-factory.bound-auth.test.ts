@@ -86,4 +86,28 @@ describe("createBoundAuthClient — API-key authorization", () => {
 
     expect(await client.hasPermission({ self: ["API_KEY_CREATE"] })).toBe(true);
   });
+
+  // `role` here is resolved once, from the session's active org, at
+  // context-creation time — and `boundAuth` is never rebuilt when
+  // `resolveOrgFromPath` targets a different org. AccessControl.setRole
+  // keeps its OWN `this.role` in sync with the path-resolved org and passes
+  // it as `options.role` on every hasPermission() call; that must win over
+  // the stale closure role, or an owner of the session's active org would
+  // bypass every permission check on an unrelated org where they hold only
+  // a lesser role.
+  it("prefers options.role (path-resolved org) over the stale session-org role", async () => {
+    const client = createBoundAuthClient({
+      auth: stubAuth,
+      headers: new Headers(),
+      role: "owner", // session's active org — NOT the org being checked
+      // no `permissions` — this is the browser-session flow (Flow 2)
+    });
+
+    expect(
+      await client.hasPermission(
+        { self: ["API_KEY_CREATE"] },
+        { role: "user" }, // path-resolved org: caller is only a plain member
+      ),
+    ).toBe(false);
+  });
 });

@@ -240,7 +240,15 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       // `role` may be Better Auth's comma-joined multi-role string, so a
       // plain exact-match here would deny a legitimate multi-role
       // owner/admin the bypass — see `hasAdminRole`.
-      if (hasAdminRole(role)) {
+      //
+      // Prefer `options.role` (the path-resolved org's role, kept fresh via
+      // AccessControl.setRole) over the closure `role` (resolved once, from
+      // the session's active org, at context-creation time). `boundAuth` is
+      // never rebuilt when `resolveOrgFromPath` targets a different org — so
+      // using the closure role here would let an owner/admin of the SESSION's
+      // active org bypass permission checks on an unrelated path-resolved org
+      // where they hold only a lesser role.
+      if (hasAdminRole(options?.role ?? role)) {
         return true;
       }
 
