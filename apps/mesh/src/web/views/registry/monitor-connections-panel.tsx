@@ -121,7 +121,13 @@ function ConnectionRow({
   const markAuthenticated = () => {
     updateAuth.mutate(
       { connectionId, authStatus: "authenticated" },
-      { onSuccess: () => onAuthChanged() },
+      {
+        onSuccess: () => onAuthChanged(),
+        onError: (err) =>
+          toast.error(
+            `Failed to save auth status for "${title}": ${err instanceof Error ? err.message : String(err)}`,
+          ),
+      },
     );
   };
 
