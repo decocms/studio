@@ -259,8 +259,14 @@ function ConnectionRow({
   };
 
   const showMaskedToken =
+    !isProbeLoading &&
     authStatus === "authenticated" &&
     !hasOAuthToken &&
+    !isReplacingToken &&
+    tokenValue.length === 0;
+  const isCheckingTokenField =
+    isProbeLoading &&
+    authStatus === "authenticated" &&
     !isReplacingToken &&
     tokenValue.length === 0;
   const applyVisibility = async (patch: {
@@ -427,7 +433,11 @@ function ConnectionRow({
         <p className="text-[10px] text-muted-foreground">
           Token/API key (for MCPs that require manual auth)
         </p>
-        {showMaskedToken ? (
+        {isCheckingTokenField ? (
+          <div className="h-8 px-3 flex items-center rounded-md border border-border bg-muted/30 text-muted-foreground text-xs">
+            Checking auth...
+          </div>
+        ) : showMaskedToken ? (
           <div className="relative group">
             <div className="h-8 px-3 flex items-center rounded-md border border-border bg-muted/50 text-muted-foreground font-mono text-xs">
               ••••••••••••••••
