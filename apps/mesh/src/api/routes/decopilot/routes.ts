@@ -452,7 +452,10 @@ async function validate(
   const allowedModels = await fetchModelPermissions(
     ctx.db,
     organization.id,
-    ctx.auth.user?.role,
+    // `organization.role` is the path-resolved role (set by resolveOrgFromPath);
+    // ctx.auth.user?.role is the session's active-org role and may belong to a
+    // different org than `organization` if the caller's active org differs.
+    organization.role ?? ctx.auth.user?.role,
   );
   if (
     allowedModels !== undefined &&
@@ -518,7 +521,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     try {
       const ctx = c.get("studioContext");
       const organization = ensureOrganization(c);
-      const role = ctx.auth.user?.role;
+      // `organization.role` is the path-resolved role (set by resolveOrgFromPath);
+      // ctx.auth.user?.role is the session's active-org role and may belong to a
+      // different org than `organization` if the caller's active org differs.
+      const role = organization.role ?? ctx.auth.user?.role;
 
       const models = await fetchModelPermissions(ctx.db, organization.id, role);
 
