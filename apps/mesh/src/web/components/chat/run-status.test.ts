@@ -15,14 +15,14 @@ describe("run status copy", () => {
     }
   });
 
-  test("uses the agreed cluster runtime labels", () => {
+  test("uses plain, user-friendly copy", () => {
     expect(RUN_STATUS_COPY["waiting-runner"]).toEqual({
-      label: "Waiting for an available runner",
-      detail: "Waiting for the per-chat dispatch slot",
+      label: "Waiting to start",
+      detail: "Finishing up the previous message in this chat",
     });
     expect(RUN_STATUS_COPY["analyzing-scope"]).toEqual({
-      label: "Analyzing scope",
-      detail: "The model loop is running before first output",
+      label: "Thinking",
+      detail: "Working out how to respond",
     });
   });
 });
