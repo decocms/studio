@@ -36,6 +36,16 @@ describe("isPrivateUrl", () => {
     expect(isPrivateUrl("http://[64:ff9b::169.254.169.254]/")).toBe(true);
   });
 
+  it("blocks a private IPv4 embedded via deprecated IPv4-compatible IPv6 (::a.b.c.d)", () => {
+    // `new URL()` normalizes ::127.0.0.1 to ::7f00:1 before isPrivateUrl sees
+    // it — the old dotted-quad regex never matched, silently letting these
+    // through despite looking like an active guard.
+    expect(isPrivateUrl("http://[::127.0.0.1]/")).toBe(true);
+    expect(isPrivateUrl("http://[::10.0.0.5]/")).toBe(true);
+    expect(isPrivateUrl("http://[::192.168.1.1]/")).toBe(true);
+    expect(isPrivateUrl("http://[::100.100.100.200]/")).toBe(true);
+  });
+
   it("does not block a public IPv4 embedded via 6to4/NAT64", () => {
     // 2002:0808:0808:: embeds 8.8.8.8
     expect(isPrivateUrl("http://[2002:808:808::]/")).toBe(false);
@@ -45,5 +55,6 @@ describe("isPrivateUrl", () => {
   it("does not block ordinary public URLs", () => {
     expect(isPrivateUrl("https://example.com/mcp")).toBe(false);
     expect(isPrivateUrl("http://8.8.8.8/")).toBe(false);
+    expect(isPrivateUrl("http://[::8.8.8.8]/")).toBe(false);
   });
 });
