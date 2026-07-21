@@ -64,7 +64,7 @@ You are the API Key Manager. You create and manage the current user's API keys f
 export const apiKeyManagerAgent = {
   id: "studio-api-key-manager",
   title: "API Key Manager",
-  icon: "icon://Key01?color=destructive",
+  icon: "icon://Key01?color=red",
   description: "Create, scope, audit, rotate, and revoke API keys safely",
   selectedTools: [
     "API_KEY_CREATE",
