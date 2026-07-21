@@ -36,19 +36,11 @@ export function extractPendingPlans(
   const result: PendingPlan[] = [];
 
   for (const part of parts) {
-    if (
-      "type" in part &&
-      (part as { type: string }).type === "tool-propose_plan" &&
-      "state" in part &&
-      (part as { state: string }).state === "input-available" &&
-      "toolCallId" in part &&
-      "input" in part
-    ) {
-      const input = (part as { input: { plan: string } }).input;
+    if (part.type === "tool-propose_plan" && part.state === "input-available") {
       result.push({
-        toolCallId: (part as { toolCallId: string }).toolCallId,
-        plan: input.plan,
-        state: (part as { state: string }).state,
+        toolCallId: part.toolCallId,
+        plan: part.input.plan,
+        state: part.state,
       });
     }
   }
