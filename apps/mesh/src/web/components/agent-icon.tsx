@@ -391,9 +391,19 @@ export function AgentAvatar({
 // Image sub-component (handles load errors)
 // ---------------------------------------------------------------------------
 
+// Special-case brand colors that aren't part of the selectable palette.
 const URL_COLOR_BG: Record<string, string> = {
   "brand-green": "bg-[var(--brand-green-light)]",
 };
+
+/** Resolve the background class for a URL icon's encoded color: special
+ * brand colors first, falling back to the shared picker palette so a color
+ * chosen in `IconPicker` (e.g. for an uploaded image) actually renders. */
+function resolveUrlBgClass(color: string | undefined): string {
+  if (!color) return "";
+  if (URL_COLOR_BG[color]) return URL_COLOR_BG[color];
+  return COLOR_MAP.has(color) ? getIconColor(color).bg : "";
+}
 
 function AgentAvatarImage({
   url,
@@ -414,7 +424,7 @@ function AgentAvatarImage({
 }) {
   const [errored, setErrored] = useState(false);
   const sizeConfig = SIZES[size];
-  const bgClass = color ? (URL_COLOR_BG[color] ?? "") : "";
+  const bgClass = resolveUrlBgClass(color);
 
   if (errored) {
     const { IconComp, color } = getDeterministicIcon(name);

@@ -4,9 +4,22 @@ setupComponentTest();
 import { fireEvent, render } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { describe, expect, it } from "bun:test";
-import { AgentAvatar } from "./agent-icon";
+import { AgentAvatar, buildImageIconString } from "./agent-icon";
 
 describe("AgentAvatar", () => {
+  it("applies the picker's palette color as a background for an uploaded image icon", () => {
+    const { container } = render(
+      <AgentAvatar
+        icon={buildImageIconString("https://example.com/logo.png", "red")}
+        name="Test Agent"
+      />,
+    );
+
+    const img = container.querySelector("img");
+    expect(img).toBeInTheDocument();
+    expect(img?.parentElement?.className).toContain("bg-red-100");
+  });
+
   it("recovers after an image load error once a new URL is set", () => {
     const { container, rerender } = render(
       <AgentAvatar icon="https://example.com/broken.png" name="Test Agent" />,
