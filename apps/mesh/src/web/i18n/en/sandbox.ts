@@ -369,6 +369,7 @@ export const sandbox = {
   "sandbox.preview.globalComponents": "Global components",
   "sandbox.preview.hardReload": "Hard Reload",
   "sandbox.preview.invalidPageBlockKey": "Invalid page block key",
+  "sandbox.preview.moreOptions": "More options",
   "sandbox.preview.noPagesFound": "No pages found in this site.",
   "sandbox.preview.noSearchResults": "No results match your search.",
   "sandbox.preview.noServerRunning": "No server running",

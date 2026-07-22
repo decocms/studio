@@ -1014,7 +1014,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               <div className="flex w-full min-w-0 max-w-[500px] items-center gap-0.5">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={handleRefresh}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleRefresh}
+                      aria-label={t("sandbox.preview.refresh")}
+                    >
                       <RefreshCw01 size={14} />
                     </Button>
                   </TooltipTrigger>
@@ -1268,6 +1273,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         const url = iframeSrc ?? previewState.previewUrl;
                         if (url) window.open(url, "_blank", "noopener");
                       }}
+                      aria-label={t("sandbox.preview.openInNewTab")}
                     >
                       <LinkExternal01 size={14} />
                     </Button>
@@ -1281,7 +1287,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               <div className="flex shrink-0 items-center">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t("sandbox.preview.moreOptions")}
+                    >
                       <DotsHorizontal size={14} />
                     </Button>
                   </DropdownMenuTrigger>
