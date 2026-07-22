@@ -21,9 +21,16 @@ function xmlEscape(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** URL pathname (possibly encoded, with slashes) → normalized in-volume path. */
+/** URL pathname (possibly encoded, with slashes) → normalized in-volume path.
+ *  Throws OrgFsApiError(400) on invalid percent-encoding (e.g. `%zz`) instead
+ *  of letting decodeURIComponent's URIError escape as an uncaught rejection. */
 function pathFromUrl(req: Request): string {
-  const raw = decodeURIComponent(new URL(req.url).pathname);
+  let raw: string;
+  try {
+    raw = decodeURIComponent(new URL(req.url).pathname);
+  } catch {
+    throw new OrgFsApiError(400, "Malformed request path");
+  }
   return raw.replace(/^\/+/, "").replace(/\/+$/, "");
 }
 
@@ -133,30 +140,31 @@ export function createWebdavHandler(
       : api.stat(p);
 
   return async (req) => {
-    const path = pathFromUrl(req);
     const method = req.method.toUpperCase();
 
-    // mac junk never reaches the backing fs: pretend writes/deletes succeed
-    // (nothing stored), report reads as absent. A MOVE whose *source* is junk
-    // is equally a no-op; a real file moved TO a junk name falls through (a
-    // deliberate rename must not silently lose data).
-    if (isMacJunk(path)) {
-      switch (method) {
-        case "PUT":
-        case "MKCOL":
-        case "MOVE":
-          return new Response(null, { status: 201 });
-        case "DELETE":
-          return new Response(null, { status: 204 });
-        case "GET":
-        case "HEAD":
-        case "PROPFIND":
-          return new Response("Not Found", { status: 404 });
-        // OPTIONS/PROPPATCH/default fall through to the normal handling below.
-      }
-    }
-
     try {
+      const path = pathFromUrl(req);
+
+      // mac junk never reaches the backing fs: pretend writes/deletes succeed
+      // (nothing stored), report reads as absent. A MOVE whose *source* is
+      // junk is equally a no-op; a real file moved TO a junk name falls
+      // through (a deliberate rename must not silently lose data).
+      if (isMacJunk(path)) {
+        switch (method) {
+          case "PUT":
+          case "MKCOL":
+          case "MOVE":
+            return new Response(null, { status: 201 });
+          case "DELETE":
+            return new Response(null, { status: 204 });
+          case "GET":
+          case "HEAD":
+          case "PROPFIND":
+            return new Response("Not Found", { status: 404 });
+          // OPTIONS/PROPPATCH/default fall through to the normal handling below.
+        }
+      }
+
       switch (method) {
         case "OPTIONS":
           return new Response(null, {

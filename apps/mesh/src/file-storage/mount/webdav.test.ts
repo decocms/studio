@@ -134,3 +134,12 @@ describe("WebDAV read push-down", () => {
     expect((await dav(new Request("http://dav/nope.txt"))).status).toBe(404);
   });
 });
+
+describe("WebDAV malformed request path", () => {
+  it("400s instead of throwing on invalid percent-encoding", async () => {
+    const fs = memFs();
+    const dav = createWebdavHandler(fs.api);
+    const res = await dav(new Request("http://dav/%zz"));
+    expect(res.status).toBe(400);
+  });
+});
