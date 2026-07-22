@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { fixtures } from "../../dispatch/index";
-import { handleCancelRequest, handleDispatchRequest } from "./dispatch";
+import {
+  getTombstoneCountForTests,
+  handleCancelRequest,
+  handleDispatchRequest,
+  resetDispatchStateForTests,
+} from "./dispatch";
 
 const DAEMON_TOKEN = "test-daemon-token-32-chars-min-aaaa";
 
@@ -501,5 +506,32 @@ describe("DELETE /_sandbox/runs/:runId", () => {
       { daemonToken: DAEMON_TOKEN },
     );
     expect(res.status).toBe(401);
+  });
+
+  it("sweeps expired tombstones instead of growing forever", async () => {
+    // Most cancelled runs are never re-dispatched, so the only other read
+    // site (the dispatch handler's own-runId check) never fires for them.
+    // Without a sweep, every cancel the daemon ever handles leaks one entry
+    // for the lifetime of the process.
+    resetDispatchStateForTests();
+    const originalNow = Date.now;
+    try {
+      let now = 1_000_000;
+      Date.now = () => now;
+
+      await handleCancelRequest(authedCancel("run-leak-1"), {
+        daemonToken: DAEMON_TOKEN,
+      });
+      expect(getTombstoneCountForTests()).toBe(1);
+
+      now += 61_000; // past the 60s tombstone TTL
+      await handleCancelRequest(authedCancel("run-leak-2"), {
+        daemonToken: DAEMON_TOKEN,
+      });
+      // run-leak-1's entry expired and was swept; only the fresh one remains.
+      expect(getTombstoneCountForTests()).toBe(1);
+    } finally {
+      Date.now = originalNow;
+    }
   });
 });
