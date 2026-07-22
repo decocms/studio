@@ -52,6 +52,13 @@ interface TiptapProviderProps {
   enterToSubmit?: boolean;
   placeholder?: string;
   onSubmit?: () => void;
+  /**
+   * Set to true while an @/ suggestion dropdown is open. ProseMirror's own
+   * keydown listener runs before the suggestion's — see mention-at.tsx /
+   * mention-slash.tsx — so without this check, Enter-to-select a suggestion
+   * would also submit the still-unresolved draft first.
+   */
+  suggestionOpenRef?: { current: boolean };
   children: React.ReactNode;
 }
 
@@ -66,6 +73,7 @@ export function TiptapProvider({
   enterToSubmit = false,
   placeholder,
   onSubmit,
+  suggestionOpenRef,
   children,
 }: TiptapProviderProps) {
   // Store callbacks and config in refs to avoid recreating the editor on every render
@@ -88,7 +96,8 @@ export function TiptapProvider({
         if (
           event.key === "Enter" &&
           !event.shiftKey &&
-          enterToSubmitRef.current
+          enterToSubmitRef.current &&
+          !suggestionOpenRef?.current
         ) {
           event.preventDefault();
           onSubmitRef.current?.();
@@ -156,6 +165,8 @@ interface TiptapInputProps {
   showFileUploader?: boolean;
   selectedModel?: AiProviderModel | null;
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
+  /** Forwarded to AtMention/SlashMention — see TiptapProviderProps. */
+  suggestionOpenRef?: { current: boolean };
   ref?: Ref<TiptapInputHandle>;
   className?: string;
 }
@@ -170,6 +181,7 @@ export function TiptapInput({
   showFileUploader = false,
   selectedModel,
   onUnsupportedFile,
+  suggestionOpenRef,
   ref,
   className,
 }: TiptapInputProps) {
@@ -242,12 +254,20 @@ export function TiptapInput({
 
       {/* Render slash dropdown menu for prompts + resources (/) */}
       <Suspense fallback={null}>
-        <SlashMention editor={editor} virtualMcpId={virtualMcpId ?? null} />
+        <SlashMention
+          editor={editor}
+          virtualMcpId={virtualMcpId ?? null}
+          suggestionOpenRef={suggestionOpenRef}
+        />
       </Suspense>
 
       {/* Render @ dropdown menu (agents + resources) */}
       <Suspense fallback={null}>
-        <AtMention editor={editor} virtualMcpId={virtualMcpId ?? null} />
+        <AtMention
+          editor={editor}
+          virtualMcpId={virtualMcpId ?? null}
+          suggestionOpenRef={suggestionOpenRef}
+        />
       </Suspense>
 
       {/* Render file upload handler */}

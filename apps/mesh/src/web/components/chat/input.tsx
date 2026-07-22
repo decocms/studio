@@ -423,6 +423,11 @@ export function ChatInput({
     selectedModel?.limits?.contextWindow;
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
+  // True while the @/ suggestion dropdown is open — read by TiptapProvider's
+  // Enter-to-submit handler so selecting a suggestion doesn't also send the
+  // still-unresolved draft (ProseMirror's keydown listener runs before the
+  // suggestion's own, see tiptap/input.tsx).
+  const suggestionOpenRef = useRef(false);
 
   const isPlanMode = chatMode === "plan";
 
@@ -531,6 +536,7 @@ export function ChatInput({
             enterToSubmit={true}
             placeholder={t("chat.input.placeholder")}
             onSubmit={handleSubmit}
+            suggestionOpenRef={suggestionOpenRef}
           >
             <form
               onSubmit={handleSubmit}
@@ -552,6 +558,7 @@ export function ChatInput({
                   showFileUploader={true}
                   selectedModel={selectedModel}
                   onUnsupportedFile={onUnsupportedFile}
+                  suggestionOpenRef={suggestionOpenRef}
                 />
               </div>
 
