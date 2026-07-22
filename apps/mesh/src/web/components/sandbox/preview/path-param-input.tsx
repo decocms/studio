@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { CornerDownLeft } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /**
  * Inline editor for one `:param` or `*` (catch-all) token, rendered in place
@@ -14,6 +15,7 @@ export function PathParamInput({
   value: string;
   onCommit: (value: string) => void;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
   const cancelledRef = useRef(false);
@@ -34,7 +36,7 @@ export function PathParamInput({
           type="text"
           value={draft}
           placeholder={label}
-          title={`Value for ${label}`}
+          title={t("sandbox.preview.valueForParam", { label })}
           spellCheck={false}
           className="absolute inset-0 rounded-sm bg-violet-500/15 px-1 text-[12px] text-violet-600 outline-none placeholder:text-violet-500/60 focus:bg-violet-500/25 dark:text-violet-400"
           onClick={(e) => e.stopPropagation()}
@@ -66,8 +68,7 @@ export function PathParamInput({
       {focused && (
         <span className="pointer-events-none ml-1.5 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
           <CornerDownLeft size={10} />
-          {/* TODO(i18n): "Enter to go" is part of inline editing hint; needs component context for t() */}
-          Enter to go
+          {t("sandbox.preview.enterToGo")}
         </span>
       )}
     </>

@@ -379,6 +379,7 @@ export const sandbox = {
   "sandbox.preview.deviceMobile": "Celular (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
   "sandbox.preview.editSeo": "Editar SEO",
+  "sandbox.preview.enterToGo": "Enter para ir",
   "sandbox.preview.failedToCopyUrl": "Falha ao copiar URL",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
   "sandbox.preview.globalComponents": "Componentes globais",
@@ -405,6 +406,7 @@ export const sandbox = {
     "O modelo selecionado não existe mais.",
   "sandbox.preview.urlCopiedToClipboard":
     "URL copiada para a área de transferência",
+  "sandbox.preview.valueForParam": "Valor de {label}",
   "sandbox.preview.viewJson": "Visualizar JSON",
   "sandbox.preview.visualEditor": "Editor visual",
   "sandbox.productBlocks.addProductIdButton": "Adicionar ID do produto",
