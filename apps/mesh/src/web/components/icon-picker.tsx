@@ -159,9 +159,25 @@ export function IconPicker({
           </div>
 
           {/* Tab bar */}
-          <div className="flex items-center border-b border-border px-3">
+          <div
+            role="tablist"
+            aria-label="Icon source"
+            className="flex items-center border-b border-border px-3"
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              e.preventDefault();
+              const nextTab = tab === "icons" ? "upload" : "icons";
+              setTab(nextTab);
+              document.getElementById(`icon-picker-tab-${nextTab}`)?.focus();
+            }}
+          >
             <button
+              id="icon-picker-tab-icons"
               type="button"
+              role="tab"
+              aria-selected={tab === "icons"}
+              aria-controls="icon-picker-panel-icons"
+              tabIndex={tab === "icons" ? 0 : -1}
               onClick={() => setTab("icons")}
               className={cn(
                 "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
@@ -173,7 +189,12 @@ export function IconPicker({
               Icons
             </button>
             <button
+              id="icon-picker-tab-upload"
               type="button"
+              role="tab"
+              aria-selected={tab === "upload"}
+              aria-controls="icon-picker-panel-upload"
+              tabIndex={tab === "upload" ? 0 : -1}
               onClick={() => setTab("upload")}
               className={cn(
                 "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
@@ -189,19 +210,31 @@ export function IconPicker({
 
           {/* Tab content */}
           {tab === "icons" ? (
-            <IconsTab
-              search={search}
-              onSearchChange={setSearch}
-              selectedColor={selectedColor}
-              onColorChange={handleColorChange}
-              onSelectIcon={handleSelectIcon}
-              onRandom={handleRandomIcon}
-              currentIconName={
-                parsedValue.type === "icon" ? parsedValue.name : null
-              }
-            />
+            <div
+              id="icon-picker-panel-icons"
+              role="tabpanel"
+              aria-labelledby="icon-picker-tab-icons"
+            >
+              <IconsTab
+                search={search}
+                onSearchChange={setSearch}
+                selectedColor={selectedColor}
+                onColorChange={handleColorChange}
+                onSelectIcon={handleSelectIcon}
+                onRandom={handleRandomIcon}
+                currentIconName={
+                  parsedValue.type === "icon" ? parsedValue.name : null
+                }
+              />
+            </div>
           ) : (
-            <UploadTab onUpload={handleUpload} />
+            <div
+              id="icon-picker-panel-upload"
+              role="tabpanel"
+              aria-labelledby="icon-picker-tab-upload"
+            >
+              <UploadTab onUpload={handleUpload} />
+            </div>
           )}
         </div>
       </PopoverContent>
