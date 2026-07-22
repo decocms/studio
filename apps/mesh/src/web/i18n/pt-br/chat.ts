@@ -441,6 +441,7 @@ export const chat = {
     "Entrada de escolha customizada",
   "chat.userAskQuestion.preparingQuestion": "Preparando pergunta...",
   "chat.userAskQuestion.question": "Pergunta",
+  "chat.userAskQuestion.questionCount": "{current} de {total}",
   "chat.userAskQuestion.questionPending": "Pergunta pendente",
   "chat.userAskQuestion.selectOption": "Selecione {option}",
   "chat.userAskQuestion.skip": "Pular",

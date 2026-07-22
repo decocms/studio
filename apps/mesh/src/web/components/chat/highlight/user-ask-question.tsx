@@ -474,7 +474,10 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
         <CollapsibleHighlight
           icon={<MessageQuestionCircle size={14} />}
           label={t("chat.userAskQuestion.questionPending")}
-          count={`${decisionForm.currentIndex + 1} of ${parts.length}`}
+          count={t("chat.userAskQuestion.questionCount", {
+            current: decisionForm.currentIndex + 1,
+            total: parts.length,
+          })}
           title={current?.input?.prompt ?? t("chat.userAskQuestion.question")}
           defaultExpanded={true}
           footerLeft={footerLeft}
