@@ -166,9 +166,9 @@ export const createCommerceDiagnosticShareRoutes = () => {
       invitationId = crypto.randomUUID();
       await sql`
         insert into invitation
-          (id, "organizationId", email, role, status, "inviterId", "expiresAt", "createdAt", "teamId")
+          (id, "organizationId", email, role, status, "inviterId", "expiresAt", "createdAt")
         values
-          (${invitationId}, ${org.id}, ${email}, 'user', 'pending', ${owner.userId}, now() + interval '7 days', now(), null)
+          (${invitationId}, ${org.id}, ${email}, 'user', 'pending', ${owner.userId}, now() + interval '7 days', now())
       `.execute(db);
     }
 
