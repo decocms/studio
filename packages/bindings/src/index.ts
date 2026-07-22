@@ -17,13 +17,6 @@ export {
   type ConnectionForBinding,
 } from "./core/binder";
 
-// Re-export registry binding types
-export {
-  MCPRegistryServerSchema,
-  type RegistryAppCollectionEntity,
-  REGISTRY_APP_BINDING,
-} from "./well-known/registry";
-
 // Re-export event subscriber binding types (for connections that receive events)
 export {
   CloudEventSchema,
