@@ -63,6 +63,7 @@ export function SimpleIconPicker({
         <button
           type="button"
           disabled={disabled}
+          aria-label="Change icon"
           className={cn(
             "size-7 shrink-0 rounded-md transition-colors flex items-center justify-center",
             disabled

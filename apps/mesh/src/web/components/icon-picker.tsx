@@ -26,6 +26,7 @@ import {
   getIconColor,
   getIconComponent,
   getIconNames,
+  humanizeIconName,
   parseIconString,
   type AgentAvatarSize,
 } from "./agent-icon";
@@ -124,6 +125,7 @@ export function IconPicker({
         <button
           type="button"
           data-testid="icon-picker-trigger"
+          aria-label="Change icon"
           disabled={disabled}
           className={cn(
             "relative group overflow-hidden",
@@ -232,6 +234,7 @@ function ColorPickerDropdown({
             "ring-foreground/20",
           )}
           title="Change color"
+          aria-label="Change color"
         />
       </PopoverTrigger>
       <PopoverContent
@@ -258,6 +261,7 @@ function ColorPickerDropdown({
                   : "hover:scale-110",
               )}
               title={c.name}
+              aria-label={c.name}
             />
           ))}
         </div>
@@ -308,6 +312,7 @@ function IconsTab({
           onClick={onRandom}
           className="h-8 w-8 flex items-center justify-center rounded-md border border-border hover:bg-accent transition-colors shrink-0"
           title="Random icon"
+          aria-label="Random icon"
         >
           <Shuffle01 size={14} className="text-muted-foreground" />
         </button>
@@ -336,6 +341,7 @@ function IconsTab({
                     : cn(color.text, "hover:bg-accent"),
                 )}
                 title={iconName}
+                aria-label={humanizeIconName(iconName)}
               >
                 <IconComp size={18} />
               </button>
