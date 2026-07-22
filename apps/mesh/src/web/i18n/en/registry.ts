@@ -145,6 +145,8 @@ export const registry = {
     "Hide from private store",
   "registry.monitorConnectionsPanel.hideFromPublicStore":
     "Hide from public store",
+  "registry.monitorConnectionsPanel.loadFailed":
+    "Failed to load QA connections.",
   "registry.monitorConnectionsPanel.needsAuth": "Needs Auth",
   "registry.monitorConnectionsPanel.noConnectionsForFilter":
     'No QA connections for this filter. Click "Sync" to create mappings from store items and pending requests.',
@@ -186,6 +188,7 @@ export const registry = {
     "Token cannot be empty.",
   "registry.monitorConnectionsPanel.tokenManualAuth": "Token/manual auth",
   "registry.monitorConnectionsPanel.tokenSaved": 'Token saved for "{title}"!',
+  "registry.monitorConnectionsPanel.unknownError": "Unknown error",
   "registry.monitorConnectionsPanel.visibilityOnlyForStore":
     "Visibility controls are available only for store items.",
   "registry.monitorConnectionsPanel.visibilityUpdated": "Visibility updated",

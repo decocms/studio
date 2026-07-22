@@ -696,12 +696,12 @@ export function MonitorConnectionsPanel() {
         {listQuery.isError ? (
           <div className="p-8 text-center rounded-lg border border-border">
             <p className="text-sm text-destructive">
-              Failed to load QA connections.
+              {t("registry.monitorConnectionsPanel.loadFailed")}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               {listQuery.error instanceof Error
                 ? listQuery.error.message
-                : "Unknown error"}
+                : t("registry.monitorConnectionsPanel.unknownError")}
             </p>
           </div>
         ) : (

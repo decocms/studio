@@ -153,6 +153,8 @@ export const registry = {
     "Ocultar da loja privada",
   "registry.monitorConnectionsPanel.hideFromPublicStore":
     "Ocultar da loja pública",
+  "registry.monitorConnectionsPanel.loadFailed":
+    "Falha ao carregar conexões de QA.",
   "registry.monitorConnectionsPanel.needsAuth": "Requer Autenticação",
   "registry.monitorConnectionsPanel.noConnectionsForFilter":
     'Nenhuma conexão de QA para este filtro. Clique em "Sincronizar" para criar mapeamentos de itens da loja e solicitações pendentes.',
@@ -196,6 +198,7 @@ export const registry = {
   "registry.monitorConnectionsPanel.tokenManualAuth":
     "Token/autenticação manual",
   "registry.monitorConnectionsPanel.tokenSaved": 'Token salvo para "{title}"!',
+  "registry.monitorConnectionsPanel.unknownError": "Erro desconhecido",
   "registry.monitorConnectionsPanel.visibilityOnlyForStore":
     "Os controles de visibilidade estão disponíveis apenas para itens da loja.",
   "registry.monitorConnectionsPanel.visibilityUpdated":
