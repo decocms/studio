@@ -4,6 +4,19 @@ import type { ClaimPhase } from "@/web/components/sandbox/hooks/sandbox-events-c
 import { selectHeaderButton } from "./panel-state";
 import type { CheckRun, PrSummary } from "./use-pr-data";
 import type { PrReviewSignals } from "./use-pr-reviews";
+import type { TFunction, TranslationKey } from "@/web/i18n/use-t.ts";
+import type { InterpolationVars } from "@/web/i18n/interpolate.ts";
+import { thread as threadEn } from "@/web/i18n/en/thread.ts";
+
+const mockT: TFunction = (key: TranslationKey, vars?: InterpolationVars) => {
+  const template =
+    (threadEn as Record<string, string>)[key as string] ?? (key as string);
+  if (!vars) return template;
+  return Object.entries(vars).reduce(
+    (s, [k, v]) => s.replace(`{${k}}`, String(v)),
+    template,
+  );
+};
 
 type ReadyBranch = Extract<BranchMeta, { kind: "ready" }>;
 
@@ -35,6 +48,7 @@ interface BaseInput {
   checks: CheckRun[];
   reviews: PrReviewSignals | null;
   loading?: boolean;
+  t: TFunction;
 }
 
 function happyInput(over: Partial<BaseInput> = {}): BaseInput {
@@ -45,6 +59,7 @@ function happyInput(over: Partial<BaseInput> = {}): BaseInput {
     pr: null,
     checks: [],
     reviews: null,
+    t: mockT,
     ...over,
   };
 }
