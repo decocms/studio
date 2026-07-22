@@ -163,7 +163,7 @@ function ChoiceInput({
                 type="button"
                 onClick={() => optionField.onChange(option)}
                 className={cn(
-                  "flex items-center gap-3 px-2 py-3 rounded-lg text-left transition-colors w-full",
+                  "flex items-start gap-3 px-2 py-3 rounded-lg text-left transition-colors w-full",
                   isSelected && "bg-accent/50",
                   !isSelected && "hover:bg-accent/30",
                 )}
@@ -171,7 +171,7 @@ function ChoiceInput({
               >
                 <span
                   className={cn(
-                    "flex items-center justify-center size-6 rounded-md text-sm shrink-0",
+                    "flex items-center justify-center size-6 rounded-md text-sm shrink-0 mt-0.5",
                     isSelected
                       ? "bg-chart-1 text-white"
                       : "bg-muted text-foreground",
@@ -179,7 +179,7 @@ function ChoiceInput({
                 >
                   {index + 1}
                 </span>
-                <span className="text-sm text-foreground truncate">
+                <span className="text-sm text-foreground">
                   {option}
                 </span>
               </button>

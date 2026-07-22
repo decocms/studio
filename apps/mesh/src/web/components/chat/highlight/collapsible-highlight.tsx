@@ -224,7 +224,7 @@ export function CollapsibleHighlight({
                 the children must carry that top padding themselves so every
                 card has the same chip → body distance. */}
             {children ? (
-              <div className={cn("overflow-clip pb-4", !title && "pt-4")}>
+              <div className={cn("pb-4", !title && "pt-4")}>
                 {children}
               </div>
             ) : null}
