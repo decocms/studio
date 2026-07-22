@@ -455,4 +455,5 @@ export const chat = {
   "chat.webSearch.showMore": "+{count} mais",
   "chat.webSearch.title": "Busca na web",
   "chat.mention.editPrompt": "Editar argumentos do prompt {name}",
+  "chat.mention.noItemsFound": "Nenhum item encontrado",
 } satisfies Record<keyof typeof chatEn, string>;
