@@ -13,6 +13,12 @@ export interface PhaseManagerDeps {
   onChange?: (phases: Phase[]) => void;
 }
 
+// A long-lived daemon can run many thousands of tasks (every /exec call
+// registers a phase); without a cap, finished phases accumulate in `all`
+// forever. `recent()` only ever surfaces the last 20 anyway, so anything
+// beyond this cap is unreachable dead weight.
+const MAX_FINISHED_PHASES = 200;
+
 /**
  * Lightweight in-memory phase registry. Tracks named setup phases (clone,
  * install, transition) so the LLM and the SSE stream have a structured view
@@ -47,6 +53,7 @@ export class PhaseManager {
     if (!t) return;
     t.status = "done";
     t.doneAt = Date.now();
+    this.trim();
     this.emit();
   }
 
@@ -56,6 +63,7 @@ export class PhaseManager {
     t.status = "failed";
     t.doneAt = Date.now();
     if (error) t.error = error;
+    this.trim();
     this.emit();
   }
 
@@ -75,6 +83,18 @@ export class PhaseManager {
 
   private findRunning(id: string): Phase | undefined {
     return this.all.find((t) => t.id === id && t.status === "running");
+  }
+
+  /** Drop the oldest finished phases once they exceed MAX_FINISHED_PHASES,
+   *  keeping all running ones regardless of count. */
+  private trim(): void {
+    const finished = this.all.filter((t) => t.status !== "running");
+    if (finished.length <= MAX_FINISHED_PHASES) return;
+    const drop = new Set(
+      finished.slice(0, finished.length - MAX_FINISHED_PHASES).map((t) => t.id),
+    );
+    const kept = this.all.filter((t) => !drop.has(t.id));
+    this.all.splice(0, this.all.length, ...kept);
   }
 
   private emit(): void {
