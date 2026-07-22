@@ -2,6 +2,15 @@ import { useState } from "react";
 import { DomainSettings } from "@/web/components/settings/domain-settings";
 import { toast } from "sonner";
 import { Page } from "@/web/components/page";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@deco/ui/components/alert-dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
@@ -40,6 +49,7 @@ export function OrgSsoPage() {
     scopes: "openid email profile",
   });
   const [isEditing, setIsEditing] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const isConfigured = ssoData?.configured && ssoData.config;
   const config = ssoData?.config;
@@ -96,12 +106,12 @@ export function OrgSsoPage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm(t("settings.orgSso.removeConfirmation"))) return;
     try {
       await deleteMutation.mutateAsync();
       track("sso_config_removed", { organization_id: org.id });
       toast.success(t("settings.orgSso.configurationRemovedSuccess"));
       setIsEditing(false);
+      setConfirmDeleteOpen(false);
     } catch {
       toast.error(t("settings.orgSso.removeSsoConfigError"));
     }
@@ -185,7 +195,7 @@ export function OrgSsoPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={handleDelete}
+                          onClick={() => setConfirmDeleteOpen(true)}
                           disabled={deleteMutation.isPending}
                           className="text-destructive hover:text-destructive mr-auto"
                         >
@@ -375,6 +385,28 @@ export function OrgSsoPage() {
           </SettingsPage>
         </Page.Body>
       </Page.Content>
+
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("settings.orgSso.removeConfirmation")}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              {t("settings.orgSso.cancelButton")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t("settings.orgSso.removeButton")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Page>
   );
 }
