@@ -163,6 +163,7 @@ function SortableProductCard({
   loading: boolean;
   onRemove: () => void;
 }) {
+  const t = useT();
   const {
     attributes,
     listeners,
@@ -189,7 +190,7 @@ function SortableProductCard({
         />
         <button
           type="button"
-          aria-label={useT()("sandbox.productBlocks.dragToReorderLabel")}
+          aria-label={t("sandbox.productBlocks.dragToReorderLabel")}
           {...attributes}
           {...listeners}
           className="absolute left-1 top-1 flex h-6 w-6 cursor-grab items-center justify-center rounded bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-foreground active:cursor-grabbing group-hover/card:opacity-100"
@@ -198,7 +199,7 @@ function SortableProductCard({
         </button>
         <button
           type="button"
-          aria-label={useT()("sandbox.productBlocks.removeProductLabel")}
+          aria-label={t("sandbox.productBlocks.removeProductLabel")}
           onClick={onRemove}
           className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-destructive group-hover/card:opacity-100 cursor-pointer"
         >
@@ -209,11 +210,11 @@ function SortableProductCard({
         <p className="line-clamp-2 text-xs leading-tight text-foreground">
           {option?.label ??
             (loading
-              ? useT()("sandbox.productBlocks.loadingEllipsis")
-              : useT()("sandbox.productBlocks.productWithId", { id }))}
+              ? t("sandbox.productBlocks.loadingEllipsis")
+              : t("sandbox.productBlocks.productWithId", { id }))}
         </p>
         <p className="text-[11px] text-muted-foreground">
-          {useT()("sandbox.productBlocks.idLabel", { id })}
+          {t("sandbox.productBlocks.idLabel", { id })}
         </p>
       </div>
     </div>
@@ -348,6 +349,7 @@ export function ProductShelfBlock({
   onChange: (next: Record<string, unknown>) => void;
   sandboxRef?: RunBlockSandboxRef | null;
 }) {
+  const t = useT();
   const rawIds = readProductListIds(block.products);
   const ids = [...new Set(rawIds.filter(Boolean))];
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -372,14 +374,14 @@ export function ProductShelfBlock({
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-muted-foreground">
                 {ids.length}{" "}
-                {useT()(
+                {t(
                   ids.length === 1
                     ? "sandbox.productBlocks.productSingular"
                     : "sandbox.productBlocks.productPlural",
                 )}
               </span>
               <BrowseButton
-                label={useT()("sandbox.productBlocks.browseProductsButton")}
+                label={t("sandbox.productBlocks.browseProductsButton")}
                 onClick={() => setPickerOpen(true)}
               />
             </div>
