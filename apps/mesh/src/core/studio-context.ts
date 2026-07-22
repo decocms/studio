@@ -373,6 +373,15 @@ export interface StudioContext extends HarnessContext {
   // Connection ID (from url)
   connectionId?: string;
 
+  /**
+   * Virtual MCP id the request entered through. Set ONLY by the virtual-mcp
+   * route after the agent is resolved and org-validated — never from request
+   * input (`connectionId` above can come from the x-caller-id header, so it
+   * must not be trusted for authorization). AuthTransport uses this to honor
+   * `{ vir_<id>: [tools] }` grants on gateway tool calls.
+   */
+  gatewayVirtualMcpId?: string;
+
   // Timings for measuring performance
   timings: Timings;
 

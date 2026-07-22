@@ -132,6 +132,7 @@ export async function handleVirtualMcpRequest(
     // Set connection context (Virtual MCPs are now connections)
     // Note: virtualMcp.id can be null for Decopilot agent, but connectionId should be set for routing
     ctx.connectionId = virtualMcp.id ?? undefined;
+    ctx.gatewayVirtualMcpId = virtualMcp.id ?? undefined;
 
     // Set organization context
     const organization = await ctx.db

@@ -14,7 +14,7 @@ import {
   REVALIDATE_MIN_INTERVAL_MS,
 } from "@/mcp-clients/mcp-list-cache";
 import type { ConnectionEntity } from "@/tools/connection/schema";
-import { AccessControl } from "@/core/access-control";
+import { AccessControl, ForbiddenError } from "@/core/access-control";
 import type {
   JSONRPCMessage,
   JSONRPCRequest,
@@ -166,17 +166,32 @@ export class AuthTransport extends WrapperTransport {
     // session-derived ones. The session's active-org role may not match the
     // org in the URL — e.g. owner of /api/foo with no/different active org
     // would otherwise lose the admin/owner bypass and 403 on every tool call.
-    const connectionAccessControl = new AccessControl(
-      ctx.auth.user?.id ?? ctx.auth.apiKey?.userId,
-      toolName, // Tool being called
-      ctx.boundAuth, // Bound auth client (encapsulates headers)
-      ctx.organization?.role ?? ctx.auth.user?.role, // Role for built-in role bypass
-      connection.id, // Connection ID for permission check
-      getToolMeta, // Callback for public tool check
-      ctx.organization?.id, // Path-resolved org for permission checks
-    );
+    const checkFor = (connectionId: string) =>
+      new AccessControl(
+        ctx.auth.user?.id ?? ctx.auth.apiKey?.userId,
+        toolName, // Tool being called
+        ctx.boundAuth, // Bound auth client (encapsulates headers)
+        ctx.organization?.role ?? ctx.auth.user?.role, // Role for built-in role bypass
+        connectionId, // Permission resource key
+        getToolMeta, // Callback for public tool check
+        ctx.organization?.id, // Path-resolved org for permission checks
+      ).check(toolName);
 
-    await connectionAccessControl.check(toolName);
+    try {
+      await checkFor(connection.id);
+    } catch (err) {
+      // A grant may be keyed on the virtual MCP the request entered through
+      // ({ vir_<id>: [tools] } — what the Connect modal mints) instead of the
+      // underlying connection, so retry the check keyed on the gateway id.
+      // NEVER read ctx.connectionId here: it can come from the caller-set
+      // x-caller-id header, which would let a vir-scoped key escape to any
+      // connection. gatewayVirtualMcpId is set only by the virtual-mcp route.
+      const gatewayId = ctx.gatewayVirtualMcpId;
+      if (!(err instanceof ForbiddenError) || !gatewayId) {
+        throw err;
+      }
+      await checkFor(gatewayId);
+    }
   }
 
   private async isPublicTool(toolName: string): Promise<boolean> {
