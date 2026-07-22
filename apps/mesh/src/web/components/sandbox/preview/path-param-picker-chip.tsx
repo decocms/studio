@@ -38,6 +38,10 @@ const KIND_LABELS: Record<PathParamKind, { noun: string; heading: string }> = {
   category: { noun: "category", heading: "Categories" },
 };
 
+// Styling for parameter label badges (both the button and the inline badge in modal)
+const PARAM_LABEL_CLASS =
+  "rounded-sm bg-violet-500/15 px-1 py-0.5 text-[12px] text-violet-600 dark:text-violet-400";
+
 /**
  * Invoke a loader via the studio preview-invoke proxy (same-origin,
  * authenticated) — the same route useRunBlock uses. Fetching the preview
@@ -259,8 +263,9 @@ export function PathParamPickerChip({
           chip must not let clicks bubble. */}
       <button
         type="button"
+        aria-label={`Edit value for ${paramLabel}`}
         title={`Value for ${paramLabel} — click to pick`}
-        className="max-w-64 shrink-0 cursor-pointer truncate rounded-sm bg-violet-500/15 px-1 py-0.5 text-[12px] text-violet-600 hover:bg-violet-500/25 dark:text-violet-400"
+        className={`max-w-64 shrink-0 cursor-pointer truncate hover:bg-violet-500/25 ${PARAM_LABEL_CLASS}`}
         onClick={(e) => {
           e.stopPropagation();
           handleOpenChange(true);
@@ -283,7 +288,7 @@ export function PathParamPickerChip({
             <SearchSm size={16} className="shrink-0 text-foreground" />
             <span className="text-sm font-medium text-foreground">
               Pick a value for{" "}
-              <span className="rounded-sm bg-violet-500/15 px-1 py-0.5 font-mono text-[12px] text-violet-600 dark:text-violet-400">
+              <span className={`font-mono ${PARAM_LABEL_CLASS}`}>
                 {paramLabel}
               </span>
             </span>
