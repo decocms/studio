@@ -288,6 +288,11 @@ describe("fs handlers", () => {
         "invalid JSON",
       );
     });
+    it("matches case-insensitively (.JSON on case-insensitive filesystems)", () => {
+      expect(
+        invalidDecofileBlockJson(".deco/blocks/pages-home.JSON", "{ bad"),
+      ).toContain("invalid JSON");
+    });
     it("ignores files outside .deco/blocks, JSONC configs, and .gen.json artifacts", () => {
       // out of scope → never parsed, so invalid content is allowed through
       expect(invalidDecofileBlockJson("tsconfig.json", "{ // c\n}")).toBeNull();

@@ -18,9 +18,16 @@
  * the exact corruption surface. It deliberately does NOT touch JSONC configs
  * (`tsconfig.json` allows comments) or the multi-MB `.deco/*.gen.json` artifacts
  * (parsing those synchronously would risk the daemon's event loop).
+ *
+ * The frontend has its own `.deco/blocks` vocabulary
+ * (`apps/mesh/.../sections-editor/deco-block-key.ts`); the daemon can't import
+ * across that process boundary, so this small predicate is intentionally
+ * independent, not accidental duplication.
  */
 
-const DECOFILE_BLOCK_RE = /(^|\/)\.deco\/blocks\/.+\.json$/;
+// Case-insensitive: on case-insensitive filesystems (macOS/Windows) an
+// `.deco/blocks/x.JSON` must not slip past the "last-resort net".
+const DECOFILE_BLOCK_RE = /(^|\/)\.deco\/blocks\/.+\.json$/i;
 
 /** True when `relPath` points at a decofile block JSON file. */
 export function isDecofileBlockPath(relPath: string): boolean {

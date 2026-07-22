@@ -521,6 +521,11 @@ export function makeGrepHandler(deps: FsDeps) {
  *
  * Body: { path: string; url: string }
  */
+// Unlike /write and /edit, this handler streams (potentially large, binary)
+// presigned-URL payloads and deliberately does NOT validate decofile-block JSON
+// — buffering the whole body to JSON.parse it would violate the daemon's
+// no-blocking rule. publish() is the backstop that catches any invalid block
+// written by this path (or any other) at the commit boundary.
 export function makeWriteFromUrlHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { path?: string; url?: string };

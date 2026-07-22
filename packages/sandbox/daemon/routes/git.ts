@@ -492,7 +492,23 @@ function pushBranch(repoDir: string, branch: string): void {
   );
 }
 
-export function publish(deps: GitDeps, message: string): { pushed: boolean } {
+/**
+ * A publish blocked because a changed decofile block is invalid JSON. Thrown so
+ * the HTTP route can map it to 4xx (a client/data condition, not a 5xx server
+ * fault) and the shutdown path can tell it apart from a real git failure.
+ */
+class InvalidDecofileBlockError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidDecofileBlockError";
+  }
+}
+
+export function publish(
+  deps: GitDeps,
+  message: string,
+  opts: { onInvalidBlock?: "throw" | "skip" } = {},
+): { pushed: boolean } {
   const repoDir = deps.repoDir;
   // The HTTP route guards with isGitRepo(); the shutdown handler calls publish()
   // directly, so a never-cloned/empty dir would throw 128 ("not a git
@@ -515,12 +531,20 @@ export function publish(deps: GitDeps, message: string): { pushed: boolean } {
   }
 
   const status = computeWorkingTreeStatus(repoDir);
-  const paths = changedPathsFromStatus(status);
+  let paths = changedPathsFromStatus(status);
   // Last-resort net: never let a syntactically invalid decofile block reach the
   // branch. The /write and /edit handlers already reject invalid blocks, but a
-  // mutation that bypassed them (or a future one) would otherwise be committed
-  // verbatim by publish() — which is also the shutdown-sync path — and break the
-  // whole site render. Refuse the publish with a clear, file-pointed error.
+  // mutation that bypassed them (bash, a git merge, a future write path) would
+  // otherwise be committed verbatim by publish() and break the whole site render.
+  //
+  // Two dispositions, by caller:
+  // - "throw" (default, interactive publish): fail loudly so the user fixes it.
+  // - "skip" (shutdown-sync): drop just the bad block and still sync everything
+  //   else. Aborting the whole shutdown commit would silently lose all the
+  //   user's OTHER valid work when the sandbox is torn down — a worse failure
+  //   mode than not syncing one already-corrupt block (which stays uncommitted
+  //   and is discarded on the next re-clone).
+  const invalidBlocks: string[] = [];
   for (const rel of paths) {
     if (!isDecofileBlockPath(rel)) continue;
     let content: string;
@@ -530,9 +554,17 @@ export function publish(deps: GitDeps, message: string): { pushed: boolean } {
       continue; // deleted or unreadable — nothing to validate
     }
     const jsonError = invalidDecofileBlockJson(rel, content);
-    if (jsonError) {
-      throw new Error(`Refusing to publish: ${jsonError}`);
+    if (!jsonError) continue;
+    if (opts.onInvalidBlock === "skip") {
+      console.warn(`[daemon] skipping from sync: ${jsonError}`);
+      invalidBlocks.push(rel);
+    } else {
+      throw new InvalidDecofileBlockError(`Refusing to publish: ${jsonError}`);
     }
+  }
+  if (invalidBlocks.length > 0) {
+    const skip = new Set(invalidBlocks);
+    paths = paths.filter((p) => !skip.has(p));
   }
   if (paths.length > 0) {
     runGit(repoDir, ["add", "--", ...paths]);
@@ -683,6 +715,10 @@ export function makeGitPublishHandler(deps: GitDeps) {
         publish(deps, typeof body.message === "string" ? body.message : ""),
       );
     } catch (err) {
+      // An invalid-block refusal is a client/data condition, not a server fault.
+      if (err instanceof InvalidDecofileBlockError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
       return jsonResponse({ error: formatGitError(err) }, 500);
     }
   };
