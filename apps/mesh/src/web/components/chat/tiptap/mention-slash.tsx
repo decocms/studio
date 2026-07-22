@@ -44,6 +44,7 @@ import {
   createMentionDoc,
   getMentionStorage,
   insertMention,
+  isMentionNodeAt,
   OnSelectProps,
   Suggestion,
   type EditMentionRequest,
@@ -294,6 +295,14 @@ export const SlashMention = ({
 
   const handleEditDialogSubmit = async (newValues: PromptArgumentValues) => {
     if (!editingMention || !client) return;
+    // The dialog captured `pos` when the chip was clicked; the doc may have
+    // changed since (chip deleted, text shifted) while the prompt fetch and
+    // the dialog were open. Bail instead of crashing the editor on a stale pos.
+    if (!isMentionNodeAt(editor, editingMention.pos, editingMention.promptId)) {
+      toast.error(t("chat.mentionSlash.failedUpdatePrompt"));
+      setEditingMention(null);
+      return;
+    }
     try {
       const result = await getPrompt(
         client,

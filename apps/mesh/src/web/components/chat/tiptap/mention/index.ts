@@ -3,6 +3,7 @@ export {
   createMentionDoc,
   getMentionStorage,
   insertMention,
+  isMentionNodeAt,
   MentionNode,
   type EditMentionRequest,
   type MentionAttrs,

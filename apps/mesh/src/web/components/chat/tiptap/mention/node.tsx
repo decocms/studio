@@ -87,6 +87,23 @@ export function createMentionDoc<T>(attrs: MentionAttrs<T>): JSONContent {
   };
 }
 
+/**
+ * Confirms a mention chip with the given id still exists at `pos`. The
+ * edit dialog captures `pos` at click time and only resolves later (after an
+ * async prompt fetch) — if the doc changed in the meantime (chip deleted, or
+ * text inserted/removed before it), `pos` may no longer point at that node.
+ * `setNodeSelection` on such a stale/empty position throws (ProseMirror's
+ * NodeSelection reads `.nodeSize` off a null `nodeAfter`), crashing the editor.
+ */
+export function isMentionNodeAt(
+  editor: Editor,
+  pos: number,
+  id: string,
+): boolean {
+  const node = editor.state.doc.nodeAt(pos);
+  return node?.type.name === "mention" && node.attrs.id === id;
+}
+
 // ============================================================================
 // React Node View Component
 // ============================================================================
