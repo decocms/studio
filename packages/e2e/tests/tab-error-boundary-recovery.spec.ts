@@ -105,6 +105,15 @@ test.describe("tab error boundary recovers on tab switch", () => {
         "settings";
     });
 
+    // The terminal drawer is opt-in (hidden by default; enabled via the preview
+    // ⋯ menu, persisted at `preview-terminal-visible:<virtualMcpId>` — see
+    // terminal-visibility.tsx). Seed it on so the drawer chrome renders and we
+    // can assert it survives a crashed tab body.
+    await page.addInitScript(
+      (key) => localStorage.setItem(key, JSON.stringify({ visible: true })),
+      `preview-terminal-visible:${agentId}`,
+    );
+
     await page.goto(
       `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=settings`,
     );
