@@ -483,7 +483,7 @@ export function ChatInput({
             key={taskId}
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
-            disabled={false}
+            disabled={voice.status === "recording"}
             enterToSubmit={true}
             onSubmit={handleSubmit}
           >
