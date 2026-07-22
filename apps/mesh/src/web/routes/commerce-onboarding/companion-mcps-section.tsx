@@ -2,6 +2,7 @@ import { normalizeReportsSiteUrl } from "@/reports/site-url";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { ScrollReveal } from "@/web/components/scroll-reveal";
 import { authClient } from "@/web/lib/auth-client";
+import { useT } from "@/web/i18n/use-t.ts";
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { QueryErrorResetBoundary } from "@tanstack/react-query";
@@ -22,11 +23,12 @@ const SECTION_CONTAINER_CLASS =
   "flex min-h-0 flex-1 flex-col gap-4 md:grid md:flex-none md:gap-4";
 
 function SectionIntro() {
+  const t = useT();
   // Matches the onboarding title scale (CommerceHeader / auth screen use the
   // same text-2xl font-medium leading-8).
   return (
     <h1 className="text-lg font-medium leading-6 text-foreground lg:text-2xl lg:leading-8">
-      Conecte suas ferramentas para ver o diagnóstico completo
+      {t("routes.commerceOnboarding.companionSection.title")}
     </h1>
   );
 }
@@ -55,6 +57,7 @@ export function CompanionMcpsSectionSkeleton() {
 }
 
 function CompanionMcpsSectionError({ onRetry }: { onRetry: () => void }) {
+  const t = useT();
   return (
     <div className={SECTION_CONTAINER_CLASS}>
       <SectionIntro />
@@ -63,10 +66,10 @@ function CompanionMcpsSectionError({ onRetry }: { onRetry: () => void }) {
         className="rounded-2xl border border-border bg-card p-4"
       >
         <p className="text-sm text-foreground">
-          Não foi possível carregar as integrações complementares.
+          {t("routes.commerceOnboarding.companionSection.loadError")}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Algo deu errado ao carregar suas integrações.
+          {t("routes.commerceOnboarding.companionSection.loadErrorDescription")}
         </p>
         <Button
           type="button"
@@ -75,7 +78,7 @@ function CompanionMcpsSectionError({ onRetry }: { onRetry: () => void }) {
           className="mt-3"
           onClick={onRetry}
         >
-          Tentar novamente
+          {t("routes.commerceOnboarding.companionSection.retry")}
         </Button>
       </div>
     </div>

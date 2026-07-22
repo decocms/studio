@@ -121,6 +121,38 @@ export const routes = {
   "routes.commerceOnboarding.siteUrlPlaceholder": "https://example.com",
   "routes.commerceOnboarding.unlockDiagnostic":
     "Desbloqueie seu diagnóstico completo",
+  "routes.commerceOnboarding.loading.preparingWorkspace":
+    "Preparando seu workspace de commerce...",
+  "routes.commerceOnboarding.loading.preparing": "Preparando...",
+  "routes.commerceOnboarding.scheduleMeeting.headline":
+    "Precisa de ajuda? Fale conosco",
+  "routes.commerceOnboarding.scheduleMeeting.body":
+    "Agende uma chamada e ajudamos você a conectar suas ferramentas.",
+  "routes.commerceOnboarding.scheduleMeeting.scheduleButton":
+    "Agendar uma reunião",
+  "routes.commerceOnboarding.scheduleMeeting.expertAlt": "Especialista da deco",
+  "routes.commerceOnboarding.connectModal.dialogTitle":
+    "Conecte suas ferramentas para ver o diagnóstico completo",
+  "routes.commerceOnboarding.connectModal.loadError":
+    "Não foi possível carregar as integrações. Você pode continuar e abrir o relatório mesmo assim.",
+  "routes.commerceOnboarding.connectModal.continueButton": "Continuar",
+  "routes.commerceOnboarding.connectModal.couldNotGenerateReport":
+    "Não foi possível gerar o relatório para este site. Recarregue a página e tente novamente.",
+  "routes.commerceOnboarding.connectModal.somethingWentWrong":
+    "Algo deu errado ao gerar seu relatório. Tente novamente em instantes.",
+  "routes.commerceOnboarding.connectModal.openingReport":
+    "Abrindo relatório...",
+  "routes.commerceOnboarding.connectModal.connectToolToContinue":
+    "Conecte uma ferramenta para continuar",
+  "routes.commerceOnboarding.connectModal.viewFullReport":
+    "Ver relatório completo",
+  "routes.commerceOnboarding.companionSection.title":
+    "Conecte suas ferramentas para ver o diagnóstico completo",
+  "routes.commerceOnboarding.companionSection.loadError":
+    "Não foi possível carregar as integrações complementares.",
+  "routes.commerceOnboarding.companionSection.loadErrorDescription":
+    "Algo deu errado ao carregar suas integrações.",
+  "routes.commerceOnboarding.companionSection.retry": "Tentar novamente",
   "routes.oauthCallback.authenticationComplete": "Autenticação concluída.",
   "routes.oauthCallback.authenticationFailed": "Falha na autenticação do MCP",
   "routes.oauthCallback.authenticationFailedTitle": "Autenticação Falhou",
