@@ -619,13 +619,26 @@ export function MonitorConnectionsPanel() {
         </Button>
       </div>
       <div className="space-y-2">
-        {filteredItems.length === 0 && (
-          <p className="text-xs text-muted-foreground text-center py-3">
-            No QA connections for this filter. Click &quot;Sync&quot; to create
-            mappings from store items and pending requests.
-          </p>
+        {listQuery.isError ? (
+          <div className="p-8 text-center rounded-lg border border-border">
+            <p className="text-sm text-destructive">
+              Failed to load QA connections.
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {listQuery.error instanceof Error
+                ? listQuery.error.message
+                : "Unknown error"}
+            </p>
+          </div>
+        ) : (
+          filteredItems.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-3">
+              No QA connections for this filter. Click &quot;Sync&quot; to
+              create mappings from store items and pending requests.
+            </p>
+          )
         )}
-        {filteredItems.length > 0 && (
+        {!listQuery.isError && filteredItems.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {filteredItems.map((entry) => {
               const counts = failuresByItem[entry.mapping.item_id] ?? {
