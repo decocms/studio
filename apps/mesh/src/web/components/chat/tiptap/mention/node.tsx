@@ -1,6 +1,6 @@
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { JSONContent, Node } from "@tiptap/core";
+import { JSONContent, mergeAttributes, Node } from "@tiptap/core";
 import {
   NodeViewWrapper,
   ReactNodeViewRenderer,
@@ -240,33 +240,14 @@ export const MentionNode = Node.create({
     ];
   },
 
-  renderHTML({ node, HTMLAttributes }) {
-    // Required by ProseMirror (maps to toDOM)
-    // React component handles actual visual rendering
-    const attrs: Record<string, string> = {
-      "data-type": "mention",
-    };
-
-    if (node.attrs.id) {
-      attrs["data-id"] = node.attrs.id;
-    }
-    if (node.attrs.name) {
-      attrs["data-name"] = node.attrs.name;
-    }
-    if (node.attrs.char) {
-      attrs["data-char"] = node.attrs.char;
-    }
-    if (node.attrs.metadata) {
-      attrs["data-metadata"] = JSON.stringify(node.attrs.metadata);
-    }
-    if (node.attrs.kind) {
-      attrs["data-kind"] = node.attrs.kind;
-    }
-    if (node.attrs.args) {
-      attrs["data-args"] = JSON.stringify(node.attrs.args);
-    }
-
-    return ["span", { ...HTMLAttributes, ...attrs }];
+  renderHTML({ HTMLAttributes }) {
+    // React component handles actual visual rendering; this only satisfies
+    // ProseMirror's toDOM requirement. HTMLAttributes already carries every
+    // data-* entry from each attribute's own renderHTML (see addAttributes above).
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, { "data-type": "mention" }),
+    ];
   },
 
   renderText({ node }) {
