@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { isPrivateUrl, parseToolsListResponse } from "./discover-tools";
+import {
+  fetchWithoutRedirects,
+  isPrivateUrl,
+  parseToolsListResponse,
+} from "./discover-tools";
 
 describe("isPrivateUrl", () => {
   it("blocks plain private/loopback/link-local IPv4", () => {
@@ -56,6 +60,29 @@ describe("isPrivateUrl", () => {
     expect(isPrivateUrl("https://example.com/mcp")).toBe(false);
     expect(isPrivateUrl("http://8.8.8.8/")).toBe(false);
     expect(isPrivateUrl("http://[::8.8.8.8]/")).toBe(false);
+  });
+});
+
+describe("fetchWithoutRedirects", () => {
+  it("forces redirect: manual so a remote server can't 3xx to a private address, even if called with redirect: follow", async () => {
+    const calls: RequestInit[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+      calls.push(init ?? {});
+      return new Response("ok");
+    }) as typeof fetch;
+
+    try {
+      await fetchWithoutRedirects("http://example.com", {
+        redirect: "follow",
+        headers: { "x-test": "1" },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(calls[0]?.redirect).toBe("manual");
+    expect(calls[0]?.headers).toEqual({ "x-test": "1" });
   });
 });
 

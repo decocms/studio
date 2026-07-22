@@ -191,6 +191,20 @@ export function parseToolsListResponse(text: string): DiscoverTool[] | null {
   }));
 }
 
+/**
+ * A remote MCP server could 3xx-redirect a connection to an internal address
+ * (e.g. a cloud metadata endpoint) to bypass the `isPrivateUrl` guard above,
+ * since `fetch` follows redirects by default. Passed as the SDK client's
+ * `fetch` option, this blocks that bypass the same way `tryRawToolsList`
+ * already does for its own raw fetch.
+ */
+export function fetchWithoutRedirects(
+  input: Parameters<typeof fetch>[0],
+  init?: RequestInit,
+): Promise<Response> {
+  return fetch(input, { ...init, redirect: "manual" });
+}
+
 async function tryRawToolsList(
   url: string,
   timeoutMs: number,
@@ -293,9 +307,11 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
           attempt.transport === "sse"
             ? new SSEClientTransport(new URL(attempt.url), {
                 requestInit: { headers },
+                fetch: fetchWithoutRedirects,
               })
             : new StreamableHTTPClientTransport(new URL(attempt.url), {
                 requestInit: { headers },
+                fetch: fetchWithoutRedirects,
               });
 
         await Promise.race([client.connect(transport), makeTimeout()]);
