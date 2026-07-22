@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from "react";
+import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setCollectionToastTranslations } from "@decocms/mesh-sdk";
 
@@ -49,22 +49,14 @@ function SdkTranslationInitializer({
 }) {
   const t = useT();
 
-  useEffect(() => {
-    setCollectionToastTranslations({
-      itemCreatedSuccessfully: t(
-        "collections.mutations.itemCreatedSuccessfully",
-      ),
-      itemUpdatedSuccessfully: t(
-        "collections.mutations.itemUpdatedSuccessfully",
-      ),
-      itemDeletedSuccessfully: t(
-        "collections.mutations.itemDeletedSuccessfully",
-      ),
-      createItemFailed: t("collections.mutations.createItemFailed"),
-      updateItemFailed: t("collections.mutations.updateItemFailed"),
-      deleteItemFailed: t("collections.mutations.deleteItemFailed"),
-    });
-  }, [t]);
+  setCollectionToastTranslations({
+    itemCreatedSuccessfully: t("collections.mutations.itemCreatedSuccessfully"),
+    itemUpdatedSuccessfully: t("collections.mutations.itemUpdatedSuccessfully"),
+    itemDeletedSuccessfully: t("collections.mutations.itemDeletedSuccessfully"),
+    createItemFailed: t("collections.mutations.createItemFailed"),
+    updateItemFailed: t("collections.mutations.updateItemFailed"),
+    deleteItemFailed: t("collections.mutations.deleteItemFailed"),
+  });
 
   return <>{children}</>;
 }

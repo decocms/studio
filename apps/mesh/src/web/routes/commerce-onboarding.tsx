@@ -49,6 +49,7 @@ import {
 import { SiteBadge } from "./commerce-onboarding/site-badge.tsx";
 import { CommerceOnboardingLoadingIndicator } from "./commerce-onboarding/loading-state.tsx";
 import { parseSelfToolResult } from "./commerce-onboarding/self-tool-result.ts";
+import { cn } from "@deco/ui/lib/utils.ts";
 
 interface CommerceOrganization {
   id: string;
@@ -114,7 +115,7 @@ function LanguageSwitcher() {
               language: "en",
             }));
           }}
-          className={preferences.language === "en" ? "bg-accent" : ""}
+          className={cn(preferences.language === "en" && "bg-accent")}
         >
           English
         </DropdownMenuItem>
@@ -125,7 +126,7 @@ function LanguageSwitcher() {
               language: "pt-BR",
             }));
           }}
-          className={preferences.language === "pt-BR" ? "bg-accent" : ""}
+          className={cn(preferences.language === "pt-BR" && "bg-accent")}
         >
           Português (Brasil)
         </DropdownMenuItem>

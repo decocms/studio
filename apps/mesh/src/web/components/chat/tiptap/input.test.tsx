@@ -1,12 +1,24 @@
 import { setupComponentTest } from "../../../../test/setup";
 setupComponentTest();
 import { describe, expect, it } from "bun:test";
-import { render } from "@testing-library/react";
+import { render as renderBare } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { EditorContent, useCurrentEditor, type Editor } from "@tiptap/react";
 import { TiptapProvider } from "./input";
 import { FileUploader } from "./file";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers.ts";
+
+// FileUploader uses useT() which reads language preference via TanStack Query.
+function wrapper({ children }: { children: ReactNode }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+  });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+const render = (ui: Parameters<typeof renderBare>[0]) =>
+  renderBare(ui, { wrapper });
 
 function EditableProbe() {
   const { editor } = useCurrentEditor();
