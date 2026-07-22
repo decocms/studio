@@ -4,8 +4,10 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { authClient } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export default function ResetPasswordRoute() {
+  const t = useT();
   const { token, error: tokenError } = useSearch({ from: "/reset-password" });
   const navigate = useNavigate();
   const [newPassword, setNewPassword] = useState("");
@@ -74,7 +76,9 @@ export default function ResetPasswordRoute() {
           {/* Header */}
           <div className="text-center space-y-1">
             <p className="text-sm text-foreground/70">
-              {success ? "Password reset successful" : "Set a new password"}
+              {success
+                ? t("routes.resetPassword.passwordResetSuccessful")
+                : t("routes.resetPassword.setNewPassword")}
             </p>
           </div>
 
@@ -82,14 +86,14 @@ export default function ResetPasswordRoute() {
           {(hasTokenError || (!token && !success)) && (
             <>
               <div className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center">
-                This reset link is invalid or has expired.
+                {t("routes.resetPassword.invalidOrExpiredLink")}
               </div>
               <Button
                 onClick={() => navigate({ to: "/login" })}
                 className="w-full font-semibold"
                 size="lg"
               >
-                Back to login
+                {t("routes.resetPassword.backToLogin")}
               </Button>
             </>
           )}
@@ -97,7 +101,7 @@ export default function ResetPasswordRoute() {
           {/* Error from API */}
           {error && (
             <div className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive text-center">
-              {error.message || "Failed to reset password. Please try again."}
+              {error.message || t("routes.resetPassword.failedToReset")}
             </div>
           )}
 
@@ -105,15 +109,14 @@ export default function ResetPasswordRoute() {
           {success && (
             <>
               <div className="rounded-xl bg-success/10 p-3 text-sm text-success text-center">
-                Your password has been reset. You can now sign in with your new
-                password.
+                {t("routes.resetPassword.passwordResetDescription")}
               </div>
               <Button
                 onClick={() => navigate({ to: "/login" })}
                 className="w-full font-semibold"
                 size="lg"
               >
-                Go to login
+                {t("routes.resetPassword.goToLogin")}
               </Button>
             </>
           )}
@@ -123,7 +126,7 @@ export default function ResetPasswordRoute() {
             <form onSubmit={handleSubmit} className="grid gap-4">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
-                  New password
+                  {t("routes.resetPassword.newPasswordLabel")}
                 </label>
                 <Input
                   type="password"
@@ -137,7 +140,7 @@ export default function ResetPasswordRoute() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
-                  Confirm password
+                  {t("routes.resetPassword.confirmPasswordLabel")}
                 </label>
                 <Input
                   type="password"
@@ -150,7 +153,7 @@ export default function ResetPasswordRoute() {
                 />
                 {confirmPassword && !passwordsMatch && (
                   <p className="text-xs text-destructive mt-1.5">
-                    Passwords do not match
+                    {t("routes.resetPassword.passwordsDoNotMatch")}
                   </p>
                 )}
               </div>
@@ -161,7 +164,9 @@ export default function ResetPasswordRoute() {
                 className="w-full font-semibold"
                 size="lg"
               >
-                {isLoading ? "Resetting..." : "Reset password"}
+                {isLoading
+                  ? t("routes.resetPassword.resetting")
+                  : t("routes.resetPassword.resetPassword")}
               </Button>
             </form>
           )}
@@ -175,7 +180,7 @@ export default function ResetPasswordRoute() {
                 onClick={() => navigate({ to: "/login" })}
                 className="text-sm text-muted-foreground hover:text-foreground"
               >
-                Back to sign in
+                {t("routes.resetPassword.backToSignIn")}
               </Button>
             </div>
           )}

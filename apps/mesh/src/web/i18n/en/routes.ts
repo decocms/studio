@@ -231,4 +231,20 @@ export const routes = {
   "routes.reports.failedToLoadReportTitle":
     "Não foi possível carregar este relatório.",
   "routes.reports.retryButton": "Tentar novamente",
+  "routes.resetPassword.passwordResetSuccessful": "Password reset successful",
+  "routes.resetPassword.setNewPassword": "Set a new password",
+  "routes.resetPassword.invalidOrExpiredLink":
+    "This reset link is invalid or has expired.",
+  "routes.resetPassword.backToLogin": "Back to login",
+  "routes.resetPassword.failedToReset":
+    "Failed to reset password. Please try again.",
+  "routes.resetPassword.passwordResetDescription":
+    "Your password has been reset. You can now sign in with your new password.",
+  "routes.resetPassword.goToLogin": "Go to login",
+  "routes.resetPassword.newPasswordLabel": "New password",
+  "routes.resetPassword.confirmPasswordLabel": "Confirm password",
+  "routes.resetPassword.passwordsDoNotMatch": "Passwords do not match",
+  "routes.resetPassword.resetting": "Resetting...",
+  "routes.resetPassword.resetPassword": "Reset password",
+  "routes.resetPassword.backToSignIn": "Back to sign in",
 } as const;

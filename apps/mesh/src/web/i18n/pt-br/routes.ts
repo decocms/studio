@@ -236,4 +236,21 @@ export const routes = {
   "routes.reports.failedToLoadReportTitle":
     "Não foi possível carregar este relatório.",
   "routes.reports.retryButton": "Tentar novamente",
+  "routes.resetPassword.passwordResetSuccessful":
+    "Senha redefinida com sucesso",
+  "routes.resetPassword.setNewPassword": "Defina uma nova senha",
+  "routes.resetPassword.invalidOrExpiredLink":
+    "Este link de redefinição é inválido ou expirou.",
+  "routes.resetPassword.backToLogin": "Voltar para o login",
+  "routes.resetPassword.failedToReset":
+    "Falha ao redefinir a senha. Tente novamente.",
+  "routes.resetPassword.passwordResetDescription":
+    "Sua senha foi redefinida. Agora você pode entrar com sua nova senha.",
+  "routes.resetPassword.goToLogin": "Ir para o login",
+  "routes.resetPassword.newPasswordLabel": "Nova senha",
+  "routes.resetPassword.confirmPasswordLabel": "Confirmar senha",
+  "routes.resetPassword.passwordsDoNotMatch": "As senhas não coincidem",
+  "routes.resetPassword.resetting": "Redefinindo...",
+  "routes.resetPassword.resetPassword": "Redefinir senha",
+  "routes.resetPassword.backToSignIn": "Voltar para o login",
 } satisfies Record<keyof typeof routesEn, string>;
