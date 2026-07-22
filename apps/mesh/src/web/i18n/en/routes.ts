@@ -17,108 +17,137 @@ export const routes = {
   "routes.agentsList.searchPlaceholder": "Search for an agent...",
   "routes.agentsList.title": "Agents",
   "routes.commerceOnboarding.authCopy.accountExists":
-    "Já existe uma conta com este e-mail. Tente entrar em vez de criar uma nova conta.",
-  "routes.commerceOnboarding.authCopy.alreadyHaveAccount": "Já tem uma conta? ",
+    "An account with this email already exists. Try signing in instead.",
+  "routes.commerceOnboarding.authCopy.alreadyHaveAccount":
+    "Already have an account? ",
   "routes.commerceOnboarding.authCopy.authenticationFailed":
-    "Falha na autenticação",
-  "routes.commerceOnboarding.authCopy.backToSignIn": "Voltar para entrar",
-  "routes.commerceOnboarding.authCopy.codeSentTo":
-    "Código enviado para {email}",
-  "routes.commerceOnboarding.authCopy.continue": "Continuar",
-  "routes.commerceOnboarding.authCopy.continueWith": "Continuar com {provider}",
-  "routes.commerceOnboarding.authCopy.creatingAccount": "Criando conta...",
+    "Authentication failed",
+  "routes.commerceOnboarding.authCopy.backToSignIn": "Back to sign in",
+  "routes.commerceOnboarding.authCopy.codeSentTo": "Code sent to {email}",
+  "routes.commerceOnboarding.authCopy.continue": "Continue",
+  "routes.commerceOnboarding.authCopy.continueWith": "Continue with {provider}",
+  "routes.commerceOnboarding.authCopy.creatingAccount": "Creating account...",
   "routes.commerceOnboarding.authCopy.defaultSubtitle":
-    "Entre ou crie uma nova conta",
+    "Sign in or create a new account",
   "routes.commerceOnboarding.authCopy.divider": "or",
-  "routes.commerceOnboarding.authCopy.dontHaveAccount": "Não tem uma conta? ",
-  "routes.commerceOnboarding.authCopy.emailLabel": "E-mail",
-  "routes.commerceOnboarding.authCopy.emailPlaceholder": "Endereço de e-mail",
-  "routes.commerceOnboarding.authCopy.enterCodePlaceholder": "Informe o código",
-  "routes.commerceOnboarding.authCopy.forgotPassword": "Esqueceu a senha?",
+  "routes.commerceOnboarding.authCopy.dontHaveAccount":
+    "Don't have an account? ",
+  "routes.commerceOnboarding.authCopy.emailLabel": "Email",
+  "routes.commerceOnboarding.authCopy.emailPlaceholder": "Email address",
+  "routes.commerceOnboarding.authCopy.enterCodePlaceholder": "Enter code",
+  "routes.commerceOnboarding.authCopy.forgotPassword": "Forgot password?",
   "routes.commerceOnboarding.authCopy.genericError":
-    "Algo deu errado. Tente novamente.",
-  "routes.commerceOnboarding.authCopy.invalidCode": "Código inválido",
-  "routes.commerceOnboarding.authCopy.invalidEmail": "E-mail inválido",
+    "Something went wrong. Please try again.",
+  "routes.commerceOnboarding.authCopy.invalidCode": "Invalid code",
+  "routes.commerceOnboarding.authCopy.invalidEmail": "Invalid email",
   "routes.commerceOnboarding.authCopy.invalidEmailOrPassword":
-    "E-mail ou senha inválidos. Tente novamente.",
+    "Invalid email or password. Please try again.",
   "routes.commerceOnboarding.authCopy.invalidOrExpiredCode":
-    "Código inválido ou expirado. Tente novamente.",
+    "Invalid or expired code. Please try again.",
   "routes.commerceOnboarding.authCopy.nameLabel": "Name",
-  "routes.commerceOnboarding.authCopy.namePlaceholder": "Seu nome",
+  "routes.commerceOnboarding.authCopy.namePlaceholder": "Your name",
   "routes.commerceOnboarding.authCopy.networkError":
-    "Erro de rede. Verifique sua conexão e tente novamente.",
-  "routes.commerceOnboarding.authCopy.otpSendFailed":
-    "Não foi possível enviar o código",
+    "Network error. Check your connection and try again.",
+  "routes.commerceOnboarding.authCopy.otpSendFailed": "Could not send code",
   "routes.commerceOnboarding.authCopy.passwordLabel": "Password",
   "routes.commerceOnboarding.authCopy.resetEmailFailed":
-    "Não foi possível enviar o e-mail de redefinição",
+    "Could not send reset email",
   "routes.commerceOnboarding.authCopy.resetEmailSent":
-    "Verifique seu e-mail para redefinir a senha.",
+    "Check your email to reset your password.",
   "routes.commerceOnboarding.authCopy.resetPasswordSubtitle":
-    "Enviaremos um link de redefinição",
+    "We'll send you a reset link",
   "routes.commerceOnboarding.authCopy.resetPasswordTitle":
-    "Redefinir sua senha",
-  "routes.commerceOnboarding.authCopy.sendCode": "Enviar código",
-  "routes.commerceOnboarding.authCopy.sendResetLink":
-    "Enviar link de redefinição",
-  "routes.commerceOnboarding.authCopy.sending": "Enviando...",
-  "routes.commerceOnboarding.authCopy.signIn": "Entrar",
-  "routes.commerceOnboarding.authCopy.signInFailed": "Falha ao entrar",
+    "Reset your password",
+  "routes.commerceOnboarding.authCopy.sendCode": "Send code",
+  "routes.commerceOnboarding.authCopy.sendResetLink": "Send reset link",
+  "routes.commerceOnboarding.authCopy.sending": "Sending...",
+  "routes.commerceOnboarding.authCopy.signIn": "Sign in",
+  "routes.commerceOnboarding.authCopy.signInFailed": "Sign in failed",
   "routes.commerceOnboarding.authCopy.signInWithEmailCode":
-    "Entrar com código por e-mail",
-  "routes.commerceOnboarding.authCopy.signInWithPassword": "Entrar com senha",
-  "routes.commerceOnboarding.authCopy.signUp": "Criar conta",
-  "routes.commerceOnboarding.authCopy.signUpFailed": "Falha ao criar conta",
-  "routes.commerceOnboarding.authCopy.signingIn": "Entrando...",
+    "Sign in with email code",
+  "routes.commerceOnboarding.authCopy.signInWithPassword":
+    "Sign in with password",
+  "routes.commerceOnboarding.authCopy.signUp": "Create account",
+  "routes.commerceOnboarding.authCopy.signUpFailed": "Sign up failed",
+  "routes.commerceOnboarding.authCopy.signingIn": "Signing in...",
   "routes.commerceOnboarding.authCopy.tooManyAttempts":
-    "Muitas tentativas. Aguarde um momento e tente novamente.",
-  "routes.commerceOnboarding.authCopy.useDifferentEmail": "Usar outro e-mail",
+    "Too many attempts. Wait a moment and try again.",
+  "routes.commerceOnboarding.authCopy.useDifferentEmail":
+    "Use a different email",
   "routes.commerceOnboarding.authCopy.verificationCodeLabel":
-    "Código de verificação",
+    "Verification code",
   "routes.commerceOnboarding.authCopy.verificationCodeTitle":
-    "Informe o código de verificação",
-  "routes.commerceOnboarding.authCopy.verify": "Verificar",
-  "routes.commerceOnboarding.authCopy.verifying": "Verificando...",
-  "routes.commerceOnboarding.authCopy.welcomeTitle": "Bem-vindo à deco",
-  "routes.commerceOnboarding.chooseOrg": "Escolha uma organização",
-  "routes.commerceOnboarding.commerceDiagnostic": "Diagnóstico de commerce",
+    "Enter verification code",
+  "routes.commerceOnboarding.authCopy.verify": "Verify",
+  "routes.commerceOnboarding.authCopy.verifying": "Verifying...",
+  "routes.commerceOnboarding.authCopy.welcomeTitle": "Welcome to deco",
+  "routes.commerceOnboarding.chooseOrg": "Choose an organization",
+  "routes.commerceOnboarding.commerceDiagnostic": "Commerce diagnostic",
   "routes.commerceOnboarding.commerceDiscoveryBeingPrepared":
-    "O Commerce Discovery está sendo preparado para {url}.",
+    "Commerce Discovery is being prepared for {url}.",
   "routes.commerceOnboarding.configurationFailed":
-    "A configuração do Commerce Discovery falhou.",
+    "Commerce Discovery configuration failed.",
   "routes.commerceOnboarding.configurationWillContinueIn":
-    "A configuração de commerce continuará em {orgName}.",
+    "Commerce setup will continue in {orgName}.",
   "routes.commerceOnboarding.couldNotDetermineOrg":
-    "Não conseguimos determinar uma organização de commerce para esta conta.",
+    "We could not determine a commerce organization for this account.",
   "routes.commerceOnboarding.couldNotFindOrg":
-    "Não conseguimos encontrar essa organização na sua conta.",
+    "We could not find that organization in your account.",
   "routes.commerceOnboarding.couldNotLoadOrgs":
-    "Não foi possível carregar suas organizações",
+    "Could not load your organizations",
   "routes.commerceOnboarding.couldNotPrepareOrg":
-    "Não foi possível preparar uma organização para a configuração de commerce. Tente novamente por esta página ou fale com o suporte.",
+    "Could not prepare an organization for commerce setup. Try again from this page or contact support.",
   "routes.commerceOnboarding.couldNotVerifyCommerceSetting":
     "Unable to verify Commerce Discovery configuration.",
   "routes.commerceOnboarding.emailAccessMultipleOrgs":
-    "Seu e-mail pode acessar mais de uma organização. Escolha onde a configuração de commerce deve continuar.",
+    "Your email can access more than one organization. Choose where commerce setup should continue.",
   "routes.commerceOnboarding.onboardingNeedsSupport":
-    "O onboarding de commerce precisa de suporte",
+    "Commerce onboarding needs support",
   "routes.commerceOnboarding.onboardingUnavailable":
-    "Onboarding de commerce indisponível",
-  "routes.commerceOnboarding.orgNotFound": "Organização não encontrada",
-  "routes.commerceOnboarding.retryAgain": "Tentar novamente",
+    "Commerce onboarding unavailable",
+  "routes.commerceOnboarding.orgNotFound": "Organization not found",
+  "routes.commerceOnboarding.retryAgain": "Try again",
   "routes.commerceOnboarding.retryToConfigureCommerce":
-    "Tente novamente para continuar a configuração de commerce nesta página.",
+    "Try again to continue commerce setup from this page.",
   "routes.commerceOnboarding.selectWhereCommerceContinues":
-    "Selecione onde o diagnóstico de commerce deve continuar.",
-  "routes.commerceOnboarding.siteUrl.enterUrl": "Informe a URL de um site.",
+    "Select where the commerce diagnostic should continue.",
+  "routes.commerceOnboarding.siteUrl.enterUrl": "Enter a website URL.",
   "routes.commerceOnboarding.siteUrl.enterValidUrl":
-    "Informe uma URL de site válida.",
+    "Enter a valid website URL.",
   "routes.commerceOnboarding.siteUrl.useHttpOrHttps":
-    "Use uma URL de site HTTP ou HTTPS.",
-  "routes.commerceOnboarding.siteUrlLabel": "URL do site",
+    "Use an HTTP or HTTPS website URL.",
+  "routes.commerceOnboarding.siteUrlLabel": "Site URL",
   "routes.commerceOnboarding.siteUrlPlaceholder": "https://example.com",
-  "routes.commerceOnboarding.unlockDiagnostic":
-    "Desbloqueie seu diagnóstico completo",
+  "routes.commerceOnboarding.unlockDiagnostic": "Unlock your full diagnostic",
+  "routes.commerceOnboarding.loading.preparingWorkspace":
+    "Preparing your commerce workspace...",
+  "routes.commerceOnboarding.loading.preparing": "Preparing...",
+  "routes.commerceOnboarding.scheduleMeeting.headline": "Need help? Talk to us",
+  "routes.commerceOnboarding.scheduleMeeting.body":
+    "Schedule a call and we'll help you connect your tools.",
+  "routes.commerceOnboarding.scheduleMeeting.scheduleButton":
+    "Schedule a meeting",
+  "routes.commerceOnboarding.scheduleMeeting.expertAlt": "deco specialist",
+  "routes.commerceOnboarding.connectModal.dialogTitle":
+    "Connect your tools to see the full diagnostic",
+  "routes.commerceOnboarding.connectModal.loadError":
+    "Could not load integrations. You can continue and open the report anyway.",
+  "routes.commerceOnboarding.connectModal.continueButton": "Continue",
+  "routes.commerceOnboarding.connectModal.couldNotGenerateReport":
+    "Could not generate the report for this site. Reload the page and try again.",
+  "routes.commerceOnboarding.connectModal.somethingWentWrong":
+    "Something went wrong generating your report. Try again in a moment.",
+  "routes.commerceOnboarding.connectModal.openingReport": "Opening report...",
+  "routes.commerceOnboarding.connectModal.connectToolToContinue":
+    "Connect a tool to continue",
+  "routes.commerceOnboarding.connectModal.viewFullReport": "View full report",
+  "routes.commerceOnboarding.companionSection.title":
+    "Connect your tools to see the full diagnostic",
+  "routes.commerceOnboarding.companionSection.loadError":
+    "Could not load companion integrations.",
+  "routes.commerceOnboarding.companionSection.loadErrorDescription":
+    "Something went wrong loading your integrations.",
+  "routes.commerceOnboarding.companionSection.retry": "Try again",
   "routes.oauthCallback.authenticationComplete": "Authentication complete.",
   "routes.oauthCallback.authenticationFailed": "MCP authentication failed",
   "routes.oauthCallback.authenticationFailedTitle": "Authentication Failed",

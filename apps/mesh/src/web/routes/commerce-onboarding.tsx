@@ -142,9 +142,11 @@ function CommerceOnboardingLayout({
 }: CommerceOnboardingLayoutProps) {
   const search = useSearch({ from: "/commerce-onboarding" });
   const { data: session } = authClient.useSession();
+  const [preferences] = usePreferences();
   const meetingUrl = buildScheduleMeetingUrl({
     siteUrl: search.siteUrl,
     email: session?.user?.email,
+    locale: preferences.language,
   });
 
   return (
@@ -238,10 +240,10 @@ function getCommerceAuthCopy(t: ReturnType<typeof useT>) {
   };
 }
 
-function commerceSiteUrlErrorPtBr(
-  t: ReturnType<typeof useT>,
-  error: string,
-): string {
+// Translates raw error strings (from normalizeReportsSiteUrl or well-known
+// internal sentinels) into the current locale. Dynamic server errors fall
+// through to the default and are shown as-is.
+function translateSiteError(t: ReturnType<typeof useT>, error: string): string {
   switch (error) {
     case "Enter a website URL.":
       return t("routes.commerceOnboarding.siteUrl.enterUrl");
@@ -249,6 +251,8 @@ function commerceSiteUrlErrorPtBr(
       return t("routes.commerceOnboarding.siteUrl.useHttpOrHttps");
     case "Enter a valid website URL.":
       return t("routes.commerceOnboarding.siteUrl.enterValidUrl");
+    case "__configurationFailed":
+      return t("routes.commerceOnboarding.configurationFailed");
     default:
       return error;
   }
@@ -640,9 +644,11 @@ function CommerceSetup({
   initialSiteUrl?: string;
 }) {
   const { data: session } = authClient.useSession();
+  const [preferences] = usePreferences();
   const meetingUrl = buildScheduleMeetingUrl({
     siteUrl: initialSiteUrl,
     email: session?.user?.email,
+    locale: preferences.language,
   });
   const meetingVisual = (
     <ScheduleMeetingVisual href={meetingUrl} orgId={org.id} />
@@ -795,11 +801,10 @@ function CommerceSetupContent({
         organization_id: org.id,
         error: error instanceof Error ? error.message : String(error),
       });
-      // ponytail: error.message is dynamic; only fallback is translated
+      // Dynamic server errors pass through; the static fallback uses a sentinel
+      // translated at render time so it respects language switches.
       setInlineError(
-        error instanceof Error
-          ? error.message
-          : t("routes.commerceOnboarding.configurationFailed"),
+        error instanceof Error ? error.message : "__configurationFailed",
       );
     },
   });
@@ -833,20 +838,26 @@ function CommerceSetupContent({
   const setupReady = connectionExists && claimedForRequestedSite;
   const currentSiteUrl =
     initialSiteUrl || siteUrlInput || connectionSiteUrl || "";
+  const t = useT();
+  const [preferences] = usePreferences();
+
   const currentMeetingUrl = buildScheduleMeetingUrl({
     siteUrl: currentSiteUrl,
     email: sessionEmail,
+    locale: preferences.language,
   });
   const currentMeetingVisual = (
     <ScheduleMeetingVisual href={currentMeetingUrl} orgId={org.id} />
   );
 
-  const t = useT();
+  const translatedError = inlineError
+    ? translateSiteError(t, inlineError)
+    : null;
 
   const runSetup = (rawSiteUrl: string) => {
     const normalized = normalizeReportsSiteUrl(rawSiteUrl);
     if (!normalized.ok) {
-      setInlineError(commerceSiteUrlErrorPtBr(t, normalized.error));
+      setInlineError(normalized.error);
       return;
     }
     setInlineError(null);
@@ -913,12 +924,10 @@ function CommerceSetupContent({
                 { orgName: org.name },
               )}
             />
-            <InlineError
-              message={commerceSiteUrlErrorPtBr(t, normalized.error)}
-            />
+            <InlineError message={translateSiteError(t, normalized.error)} />
             <SiteUrlForm
               siteUrl={siteUrlInput}
-              error={inlineError}
+              error={translatedError}
               isSubmitting={setupMutation.isPending}
               onSiteUrlChange={setSiteUrlInput}
               onSubmit={handleSubmit}
@@ -938,9 +947,9 @@ function CommerceSetupContent({
               { url: normalized.value },
             )}
           />
-          {inlineError ? (
+          {translatedError ? (
             <>
-              <InlineError message={inlineError} />
+              <InlineError message={translatedError} />
               <SiteUrlForm
                 siteUrl={siteUrlInput}
                 error={null}
@@ -969,7 +978,7 @@ function CommerceSetupContent({
         />
         <SiteUrlForm
           siteUrl={siteUrlInput}
-          error={inlineError}
+          error={translatedError}
           isSubmitting={setupMutation.isPending}
           onSiteUrlChange={setSiteUrlInput}
           onSubmit={handleSubmit}
