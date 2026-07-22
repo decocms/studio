@@ -12,7 +12,6 @@ import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import {
   ChevronDown,
   Code01,
-  CornerDownLeft,
   CursorClick01,
   DotsHorizontal,
   Globe02,
@@ -99,6 +98,7 @@ import {
   PathParamAutoFill,
   PathParamPickerChip,
 } from "./path-param-picker-chip";
+import { PathParamInput } from "./path-param-input";
 import { manifestLoaderResolveTypes } from "@/web/components/sandbox/content/runnable-catalog";
 import { track } from "@/web/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
@@ -146,79 +146,6 @@ const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, TranslationKey> = {
   tablet: "sandbox.preview.deviceTablet",
   desktop: "sandbox.preview.deviceDesktop",
 };
-
-/**
- * Inline editor for one `:param` or `*` (catch-all) token, rendered in place
- * inside the URL label. Grows with its content and commits on Enter/blur.
- */
-function PathParamInput({
-  name,
-  value,
-  onCommit,
-}: {
-  name: string;
-  value: string;
-  onCommit: (value: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const [focused, setFocused] = useState(false);
-  const cancelledRef = useRef(false);
-  const label = name === "*" ? "path" : `:${name}`;
-  const sizer = draft || label;
-  return (
-    <>
-      <span className="relative inline-flex max-w-64 shrink-0 items-center overflow-hidden">
-        {/* Invisible sizer: the box hugs the rendered text exactly. Must
-          mirror the input's font size and horizontal padding. */}
-        <span
-          aria-hidden
-          className="invisible whitespace-pre px-1 py-0.5 text-[12px]"
-        >
-          {sizer}
-        </span>
-        <input
-          type="text"
-          value={draft}
-          placeholder={label}
-          title={`Value for ${label}`}
-          spellCheck={false}
-          className="absolute inset-0 rounded-sm bg-violet-500/15 px-1 text-[12px] text-violet-600 outline-none placeholder:text-violet-500/60 focus:bg-violet-500/25 dark:text-violet-400"
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => setDraft(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur();
-            if (e.key === "Escape") {
-              cancelledRef.current = true;
-              setDraft(value);
-              e.currentTarget.blur();
-            }
-          }}
-          onBlur={() => {
-            setFocused(false);
-            if (cancelledRef.current) {
-              cancelledRef.current = false;
-              return;
-            }
-            // Blank values are not accepted: clearing the input reverts to the
-            // bare `:param` token (placeholder) and the template URL.
-            const next = draft.trim();
-            setDraft(next);
-            if (next !== value) onCommit(next);
-          }}
-        />
-      </span>
-      {/* Editing hint, outside the value box */}
-      {focused && (
-        <span className="pointer-events-none ml-1.5 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-          <CornerDownLeft size={10} />
-          {/* TODO(i18n): "Enter to go" is part of inline editing hint; needs component context for t() */}
-          Enter to go
-        </span>
-      )}
-    </>
-  );
-}
 
 /** Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`). */
 function withDeviceHint(url: string, device: PreviewDeviceSize): string {
