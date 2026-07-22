@@ -944,7 +944,19 @@ function MembersTabContent({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div>
-                          <Button variant="ghost" size="sm" disabled>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled
+                            aria-label={t(
+                              "settings.orgRoleDetail.removeMember",
+                              {
+                                name:
+                                  member.user?.name ||
+                                  t("settings.orgRoleDetail.unknown"),
+                              },
+                            )}
+                          >
                             <X size={16} />
                           </Button>
                         </div>
@@ -958,6 +970,11 @@ function MembersTabContent({
                   <Button
                     variant="ghost"
                     size="sm"
+                    aria-label={t("settings.orgRoleDetail.removeMember", {
+                      name:
+                        member.user?.name ||
+                        t("settings.orgRoleDetail.unknown"),
+                    })}
                     onClick={() =>
                       onMemberIdsChange(
                         memberIds.filter((id) => id !== member.id),
