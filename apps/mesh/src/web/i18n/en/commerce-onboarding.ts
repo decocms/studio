@@ -39,20 +39,20 @@ export const commerceOnboarding = {
   "commerceOnboarding.githubConfigForm.searchRepositoryPlaceholder":
     "Search repository",
   "commerceOnboarding.githubConfigForm.selectRepository": "Select a repository",
-  "commerceOnboarding.saBindingForm.bind": "Vincular",
-  "commerceOnboarding.saBindingForm.bindError": "Não foi possível vincular.",
-  "commerceOnboarding.saBindingForm.cancel": "Cancelar",
-  "commerceOnboarding.saBindingForm.connectedSuccess": "{label} conectado",
+  "commerceOnboarding.saBindingForm.bind": "Bind",
+  "commerceOnboarding.saBindingForm.bindError": "Failed to bind.",
+  "commerceOnboarding.saBindingForm.cancel": "Cancel",
+  "commerceOnboarding.saBindingForm.connectedSuccess": "{label} connected",
   "commerceOnboarding.saBindingForm.copyEmailLabel":
-    "Copiar e-mail do service account",
-  "commerceOnboarding.saBindingForm.emailCopied": "E-mail copiado",
+    "Copy service account email",
+  "commerceOnboarding.saBindingForm.emailCopied": "Email copied",
   "commerceOnboarding.saBindingForm.googleLoginAlternative":
-    "autorizar via login do Google",
+    "authorize via Google login",
   "commerceOnboarding.saBindingForm.resourceIdRequired":
-    "Informe o {resourceLabel}",
+    "Provide the {resourceLabel}",
   "commerceOnboarding.saBindingForm.storeUrlUnavailable":
-    "URL da loja indisponível — recarregue a página.",
-  "commerceOnboarding.saBindingForm.verifying": "Verificando...",
+    "Store URL unavailable — reload the page.",
+  "commerceOnboarding.saBindingForm.verifying": "Verifying...",
   "commerceOnboarding.vtexConfigForm.accountNameLabel": "Account name",
   "commerceOnboarding.vtexConfigForm.accountNamePlaceholder":
     "Name of your VTEX account",
