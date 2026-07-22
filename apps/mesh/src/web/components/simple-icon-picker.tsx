@@ -115,6 +115,7 @@ export function SimpleIconPicker({
                         : "text-muted-foreground hover:bg-accent hover:text-foreground",
                     )}
                     title={humanizeIconName(iconName)}
+                    aria-label={humanizeIconName(iconName)}
                   >
                     <IconComp size={16} />
                   </button>
