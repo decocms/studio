@@ -170,6 +170,11 @@ async function tryRawToolsList(
         method: "tools/list",
         params: {},
       }),
+      // `isPrivateUrl` only vets the URL we're about to fetch — a remote
+      // server could otherwise 3xx-redirect this request to an internal
+      // address (e.g. the cloud metadata endpoint) and bypass that check
+      // entirely, since fetch follows redirects by default.
+      redirect: "manual",
       signal: controller.signal,
     });
 
