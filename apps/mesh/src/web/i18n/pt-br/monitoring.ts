@@ -32,6 +32,8 @@ export const monitoring = {
   "monitoring.types.timestamp": "Data e hora",
   "monitoring.types.truncated": "truncado",
   "monitoring.types.user": "Usu\u00e1rio",
+  "monitoring.logRow.statusError": "Erro",
+  "monitoring.logRow.statusOk": "OK",
   "monitoring.timeRangePicker.absoluteTimeRange": "Intervalo de tempo absoluto",
   "monitoring.timeRangePicker.from": "De",
   "monitoring.timeRangePicker.to": "Para",

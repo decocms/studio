@@ -26,6 +26,8 @@ export const monitoring = {
   "monitoring.types.timestamp": "Timestamp",
   "monitoring.types.truncated": "truncated",
   "monitoring.types.user": "User",
+  "monitoring.logRow.statusError": "Error",
+  "monitoring.logRow.statusOk": "OK",
   "monitoring.timeRangePicker.absoluteTimeRange": "Absolute time range",
   "monitoring.timeRangePicker.from": "From",
   "monitoring.timeRangePicker.to": "To",
