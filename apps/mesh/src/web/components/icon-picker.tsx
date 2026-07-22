@@ -26,6 +26,7 @@ import {
   getIconColor,
   getIconComponent,
   getIconNames,
+  getSizeRadius,
   humanizeIconName,
   parseIconString,
   type AgentAvatarSize,
@@ -110,15 +111,6 @@ export function IconPicker({
     onChange(buildIconString(randomName, selectedColor));
   };
 
-  const sizeRadius: Record<string, string> = {
-    xs: "rounded-md",
-    sm: "rounded-lg",
-    "sm+": "rounded-xl",
-    md: "rounded-xl",
-    lg: "rounded-2xl",
-    xl: "rounded-2xl",
-  };
-
   return (
     <Popover open={disabled ? false : open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -130,7 +122,7 @@ export function IconPicker({
           className={cn(
             "relative group overflow-hidden",
             disabled ? "cursor-default opacity-50" : "cursor-pointer",
-            sizeRadius[size],
+            getSizeRadius(size),
             className,
           )}
         >
