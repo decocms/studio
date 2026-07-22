@@ -364,6 +364,7 @@ export const sandbox = {
   "sandbox.preview.deviceMobile": "Mobile (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
   "sandbox.preview.editSeo": "Edit SEO",
+  "sandbox.preview.enterToGo": "Enter to go",
   "sandbox.preview.failedToCopyUrl": "Failed to copy URL",
   "sandbox.preview.failedToCreatePage": "Failed to create page",
   "sandbox.preview.globalComponents": "Global components",
@@ -386,6 +387,7 @@ export const sandbox = {
   "sandbox.preview.templateNoLongerExists":
     "Selected template no longer exists.",
   "sandbox.preview.urlCopiedToClipboard": "URL copied to clipboard",
+  "sandbox.preview.valueForParam": "Value for {label}",
   "sandbox.preview.viewJson": "View JSON",
   "sandbox.preview.visualEditor": "Visual editor",
   "sandbox.productBlocks.addProductIdButton": "Add product ID",
