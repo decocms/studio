@@ -44,10 +44,14 @@ export interface MentionStorage {
   onEditChip: ((req: EditMentionRequest) => void) | null;
 }
 
+declare module "@tiptap/core" {
+  interface Storage {
+    mention: MentionStorage;
+  }
+}
+
 export function getMentionStorage(editor: Editor): MentionStorage | undefined {
-  return (editor.storage as unknown as Record<string, unknown>).mention as
-    | MentionStorage
-    | undefined;
+  return editor.storage.mention;
 }
 
 // ============================================================================
