@@ -164,10 +164,22 @@ async function streamHarnessRun(
       `[dispatch] done harness=${harnessId} runId=${runId} chunks=${chunkCount} aborted=${ctrl.signal.aborted}`,
     );
   } catch (err) {
-    console.error(
-      `[dispatch] harness crashed harness=${harnessId} runId=${runId} chunks=${chunkCount}:`,
-      err,
-    );
+    // An aborted run (DELETE /_sandbox/runs/:id, or a daemon-side timeout
+    // aborting `ctrl`) makes the harness's in-flight fetch/streamText throw
+    // "The operation was aborted." — expected control flow, not a crash.
+    // Logging it via console.error floods error tracking with noise on every
+    // cancelled run. `harness_crashed` still fires below so cluster-side
+    // cleanup is unchanged.
+    if (ctrl.signal.aborted) {
+      console.log(
+        `[dispatch] harness aborted harness=${harnessId} runId=${runId} chunks=${chunkCount}`,
+      );
+    } else {
+      console.error(
+        `[dispatch] harness crashed harness=${harnessId} runId=${runId} chunks=${chunkCount}:`,
+        err,
+      );
+    }
     const code: LinkErrorCode = "harness_crashed";
     write({
       type: "error",
