@@ -19,9 +19,7 @@ interface BrandFonts {
   code?: string;
 }
 
-interface BrandContextResult {
-  success?: boolean;
-  error?: string;
+interface BrandContextFields {
   name?: string;
   domain?: string;
   overview?: string;
@@ -30,6 +28,11 @@ interface BrandContextResult {
   ogImage?: string | null;
   colors?: BrandColors | null;
   fonts?: BrandFonts | null;
+}
+
+interface BrandContextResult extends BrandContextFields {
+  success?: boolean;
+  error?: string;
 }
 
 interface BrandContextPartProps {
@@ -45,7 +48,7 @@ const COLOR_LABELS: Record<keyof BrandColors, string> = {
   foreground: "Foreground",
 };
 
-function domainHref(domain: string): string {
+export function domainHref(domain: string): string {
   try {
     const url = new URL(
       domain.startsWith("http") ? domain : `https://${domain}`,
@@ -59,11 +62,20 @@ function domainHref(domain: string): string {
   }
 }
 
-function getColorEntries(
+export function getColorEntries(
   colors?: BrandColors | null,
 ): Array<[keyof BrandColors, string]> {
   if (!colors) return [];
   return (Object.entries(colors) as Array<[keyof BrandColors, string]>).filter(
+    ([, v]) => typeof v === "string" && v.trim().length > 0,
+  );
+}
+
+export function getFontEntries(
+  fonts?: BrandFonts | null,
+): Array<[keyof BrandFonts, string]> {
+  if (!fonts) return [];
+  return (Object.entries(fonts) as Array<[keyof BrandFonts, string]>).filter(
     ([, v]) => typeof v === "string" && v.trim().length > 0,
   );
 }
@@ -178,11 +190,7 @@ function BrandCard({
   isDefault?: boolean;
 }) {
   const colorEntries = getColorEntries(colors);
-  const fontEntries = fonts
-    ? (Object.entries(fonts) as Array<[keyof BrandFonts, string]>).filter(
-        ([, v]) => typeof v === "string" && v.trim().length > 0,
-      )
-    : [];
+  const fontEntries = getFontEntries(fonts);
 
   return (
     <div className="mt-2 rounded-lg overflow-hidden border border-border">
@@ -301,18 +309,10 @@ export function BrandContextPart({ part, latency }: BrandContextPartProps) {
   );
 }
 
-interface BrandContextRecord {
+interface BrandContextRecord extends BrandContextFields {
   id?: string;
   success?: boolean;
   error?: string;
-  name?: string;
-  domain?: string;
-  overview?: string;
-  logo?: string | null;
-  favicon?: string | null;
-  ogImage?: string | null;
-  colors?: BrandColors | null;
-  fonts?: BrandFonts | null;
   isDefault?: boolean;
 }
 
@@ -436,11 +436,11 @@ export function BrandContextListPart({
         trailing={<LatencyLabel latency={latency} />}
       />
       <div className="mt-2 flex flex-col gap-1.5">
-        {items.map((brand) => {
+        {items.map((brand, index) => {
           const colorEntries = getColorEntries(brand.colors);
           return (
             <div
-              key={brand.id ?? `${brand.name}-${brand.domain}`}
+              key={brand.id ?? `${brand.name}-${brand.domain}-${index}`}
               className="rounded-lg border border-border overflow-hidden"
             >
               {brand.colors && <ColorStrip colors={brand.colors} />}
