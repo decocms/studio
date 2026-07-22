@@ -2,7 +2,7 @@
  * Migration 052: Trigger Callback Tokens
  *
  * Stores hashed callback tokens that external MCPs use to call back
- * to Mesh when a trigger fires (e.g., GitHub webhook → Mesh automation).
+ * to Studio when a trigger fires (e.g., GitHub webhook → Studio automation).
  * One token per connection+organization pair.
  */
 

@@ -17,11 +17,13 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { LayoutLeft, SearchMd } from "@untitledui/icons";
 import { useState } from "react";
 import {
+  filterIconNames,
   getIconComponent,
   getIconNames,
   humanizeIconName,
   parseIconString,
 } from "./agent-icon";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface SimpleIconPickerProps {
   value: string | null | undefined;
@@ -47,6 +49,7 @@ export function SimpleIconPicker({
   className,
   disabled,
 }: SimpleIconPickerProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -54,15 +57,7 @@ export function SimpleIconPicker({
   const currentIconName = parsed.type === "icon" ? parsed.name : null;
 
   const allNames = getIconNames();
-  const filteredNames = search.trim()
-    ? allNames.filter((n) => {
-        const searchLower = search.toLowerCase();
-        return (
-          humanizeIconName(n).includes(searchLower) ||
-          n.toLowerCase().includes(searchLower)
-        );
-      })
-    : allNames;
+  const filteredNames = filterIconNames(allNames, search);
 
   return (
     <Popover open={disabled ? false : open} onOpenChange={setOpen}>
@@ -70,6 +65,7 @@ export function SimpleIconPicker({
         <button
           type="button"
           disabled={disabled}
+          aria-label="Change icon"
           className={cn(
             "size-7 shrink-0 rounded-md transition-colors flex items-center justify-center",
             disabled
@@ -96,7 +92,7 @@ export function SimpleIconPicker({
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Filter..."
+                placeholder={t("common.simpleIconPicker.filterPlaceholder")}
                 className="h-7 text-xs pl-7"
               />
             </div>
@@ -121,6 +117,7 @@ export function SimpleIconPicker({
                         : "text-muted-foreground hover:bg-accent hover:text-foreground",
                     )}
                     title={humanizeIconName(iconName)}
+                    aria-label={humanizeIconName(iconName)}
                   >
                     <IconComp size={16} />
                   </button>
@@ -129,7 +126,7 @@ export function SimpleIconPicker({
             </div>
             {filteredNames.length === 0 && (
               <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
-                No icons found
+                {t("common.simpleIconPicker.noIconsFound")}
               </div>
             )}
           </ScrollArea>

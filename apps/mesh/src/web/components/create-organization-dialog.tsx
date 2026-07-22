@@ -24,6 +24,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { useT } from "@/web/i18n/use-t.ts";
 
 // Simple slugify function for client-side use
 function slugify(input: string): string {
@@ -35,6 +36,7 @@ function slugify(input: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+// ponytail: validation strings are not user-facing, they're internal error messages; actual errors will be translated in component below
 const createOrgSchema = z.object({
   name: z.string().min(2, "Organization name is required"),
 });
@@ -50,6 +52,7 @@ export function CreateOrganizationDialog({
   open,
   onOpenChange,
 }: CreateOrganizationDialogProps) {
+  const t = useT();
   const form = useForm<CreateOrgFormData>({
     resolver: zodResolver(createOrgSchema),
     defaultValues: { name: "" },
@@ -59,7 +62,7 @@ export function CreateOrganizationDialog({
     mutationFn: async (data: CreateOrgFormData) => {
       const computedSlug = slugify(data.name);
       if (!computedSlug) {
-        throw new Error("Organization slug is invalid");
+        throw new Error(t("common.createOrganizationDialog.invalidSlug"));
       }
 
       const result = await authClient.organization.create({
@@ -69,13 +72,14 @@ export function CreateOrganizationDialog({
 
       if (result?.error) {
         throw new Error(
-          result.error.message || "Failed to create organization",
+          result.error.message ||
+            t("common.createOrganizationDialog.failedToCreate"),
         );
       }
 
       const orgSlug = result?.data?.slug ?? computedSlug;
       if (!orgSlug) {
-        throw new Error("Failed to create organization");
+        throw new Error(t("common.createOrganizationDialog.failedToCreate"));
       }
 
       return { orgSlug };
@@ -89,16 +93,18 @@ export function CreateOrganizationDialog({
     createOrgMutation.error instanceof Error
       ? createOrgMutation.error.message
       : createOrgMutation.error
-        ? "Failed to create organization."
+        ? t("common.createOrganizationDialog.failedToCreateGeneric")
         : null;
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Create a new organization</AlertDialogTitle>
+          <AlertDialogTitle>
+            {t("common.createOrganizationDialog.title")}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            Set up a new organization to collaborate with others.
+            {t("common.createOrganizationDialog.description")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <Form {...form}>
@@ -114,21 +120,25 @@ export function CreateOrganizationDialog({
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Organization Name</FormLabel>
+                  <FormLabel>
+                    {t("common.createOrganizationDialog.nameLabel")}
+                  </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder="Acme Inc."
+                      placeholder={t(
+                        "common.createOrganizationDialog.namePlaceholder",
+                      )}
                       disabled={form.formState.isSubmitting}
                     />
                   </FormControl>
                   <FormDescription>
-                    The name of your company or organization
+                    {t("common.createOrganizationDialog.nameDescription")}
                   </FormDescription>
                   {/* Slug preview */}
                   {field.value && (
                     <div className="text-xs text-muted-foreground mt-1">
-                      Organization URL:{" "}
+                      {t("common.createOrganizationDialog.urlLabel")}{" "}
                       <span className="font-mono">
                         {typeof window !== "undefined"
                           ? globalThis.location.origin
@@ -154,7 +164,7 @@ export function CreateOrganizationDialog({
                   form.reset();
                 }}
               >
-                Cancel
+                {t("common.createOrganizationDialog.cancel")}
               </AlertDialogCancel>
               <Button
                 type="submit"
@@ -165,10 +175,11 @@ export function CreateOrganizationDialog({
               >
                 {form.formState.isSubmitting ? (
                   <span className="flex items-center gap-2">
-                    <Spinner size="xs" /> Creating...
+                    <Spinner size="xs" />{" "}
+                    {t("common.createOrganizationDialog.creating")}
                   </span>
                 ) : (
-                  "Create Organization"
+                  t("common.createOrganizationDialog.createButton")
                 )}
               </Button>
             </AlertDialogFooter>

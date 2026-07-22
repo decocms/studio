@@ -4,6 +4,7 @@ import { SplashScreen } from "@/web/components/splash-screen";
 import { FloatingReleaseCard } from "@/web/components/release-channel/floating-release-card";
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
 import { VersionCheckDialog } from "@/web/components/version-check-dialog";
+import { LanguageAnnouncementDialog } from "@/web/components/language-announcement-dialog";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
@@ -365,7 +366,10 @@ function ShellLayoutContent() {
       <PostHogGroupSync activeOrg={activeOrg} />
       <Outlet />
 
-      <FloatingReleaseCard />
+      <div className="fixed bottom-6 right-6 z-50 flex w-[min(360px,calc(100vw-3rem))] flex-col gap-3">
+        <FloatingReleaseCard />
+        <VersionCheckDialog />
+      </div>
 
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog
@@ -373,7 +377,7 @@ function ShellLayoutContent() {
         onOpenChange={setShortcutsDialogOpen}
       />
 
-      <VersionCheckDialog />
+      <LanguageAnnouncementDialog />
     </ShellProjectProvider>
   );
 }

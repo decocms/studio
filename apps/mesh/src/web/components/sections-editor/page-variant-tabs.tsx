@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   DndContext,
   DragOverlay,
@@ -114,6 +115,7 @@ function PageVariantRowContent({
   onDuplicate?: () => void;
   onDelete?: () => void;
 }) {
+  const t = useT();
   return (
     <>
       <VariantTabIcon rule={effectiveRule} matchers={matchers} />
@@ -128,7 +130,9 @@ function PageVariantRowContent({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label={`Actions for ${label}`}
+              aria-label={t("sectionsEditor.pageVariantTabs.actionsAriaLabel", {
+                label,
+              })}
               className="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
@@ -144,7 +148,7 @@ function PageVariantRowContent({
               }}
             >
               <Edit01 size={14} />
-              Rename
+              {t("sectionsEditor.pageVariantTabs.renameAction")}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={(e) => {
@@ -153,7 +157,7 @@ function PageVariantRowContent({
               }}
             >
               <Copy01 size={14} />
-              Duplicate
+              {t("sectionsEditor.pageVariantTabs.duplicateAction")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -165,7 +169,7 @@ function PageVariantRowContent({
               }}
             >
               <Trash01 size={14} />
-              Delete
+              {t("sectionsEditor.pageVariantTabs.deleteAction")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -315,6 +319,7 @@ export function PageVariantTabs({
   onDelete: (index: number) => void;
   onAdd: () => void;
 }) {
+  const t = useT();
   const [entries, setEntries] = useState<VariantTabEntry[]>(() =>
     createEntries(variants),
   );
@@ -399,7 +404,7 @@ export function PageVariantTabs({
     <div className="space-y-1 border-b p-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">
-          Variants
+          {t("sectionsEditor.pageVariantTabs.variantsLabel")}
         </span>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -407,14 +412,18 @@ export function PageVariantTabs({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Add variant"
+              aria-label={t(
+                "sectionsEditor.pageVariantTabs.addVariantAriaLabel",
+              )}
               className="size-6"
               onClick={onAdd}
             >
               <Plus size={14} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Add variant</TooltipContent>
+          <TooltipContent>
+            {t("sectionsEditor.pageVariantTabs.addVariantTooltip")}
+          </TooltipContent>
         </Tooltip>
       </div>
       <DndContext

@@ -15,12 +15,12 @@ import { Glob } from "bun";
 // `@decocms/harness` specifiers in the later package-move slice, not here.
 //
 // Excludes:
-//  - *.integration.test.ts (DB-backed; stays mesh-side, not packaged)
-//  - local-dispatch.ts / index.ts (mesh-only, folded into InProcessSandboxClient)
+//  - *.integration.test.ts (DB-backed; stays studio-side, not packaged)
+//  - local-dispatch.ts / index.ts (studio-only, folded into InProcessSandboxClient)
 const EXCLUDED = new Set([
   "local-dispatch.ts",
   "local-dispatch.test.ts",
-  "index.ts", // top-level mesh barrel
+  "index.ts", // top-level studio barrel
 ]);
 const CROSS_TREE =
   /from\s+["'](?:\.\.\/)+(?:api\/routes\/decopilot|ai-providers|shared)\//;

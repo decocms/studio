@@ -67,7 +67,7 @@ test("selectLoadableRepos excludes inactive and non-repo connections", () => {
   expect(repos).toEqual([]);
 });
 
-test("parseCloneProbe reports cloned when the marker is present", () => {
+test("parseCloneProbe reports cloned when HEAD marker + working tree present", () => {
   const { cloned, listing } = parseCloneProbe(
     "__CLONED__\npackage.json\nsrc\n.git\n",
   );
@@ -75,10 +75,12 @@ test("parseCloneProbe reports cloned when the marker is present", () => {
   expect(listing).toBe("package.json\nsrc");
 });
 
-test("parseCloneProbe never leaks the marker into the listing", () => {
-  // Marker without a trailing newline must not appear as a file entry.
+test("parseCloneProbe reports NOT cloned when HEAD exists but the tree is empty", () => {
+  // The clone race: the HEAD ref (marker) lands before the working tree is
+  // checked out. HEAD alone must NOT count as cloned, or file tools hit an
+  // empty /app/repo. (Was asserted true — inverted with the fix.)
   const { cloned, listing } = parseCloneProbe("__CLONED__");
-  expect(cloned).toBe(true);
+  expect(cloned).toBe(false);
   expect(listing).toBe("");
 });
 

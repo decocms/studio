@@ -23,6 +23,7 @@ export {
   buildOrderByExpression,
   buildCollectionQueryKey,
   EMPTY_COLLECTION_LIST_RESULT,
+  setCollectionToastTranslations,
   type CollectionEntity,
   type CollectionFilter,
   type UseCollectionListOptions,
@@ -240,6 +241,7 @@ export {
   getWellKnownCommerceDiscoveryConnection,
   // Virtual MCP factory functions
   getWellKnownDecopilotVirtualMCP,
+  SUPER_AGENT_ICON_URL,
   getWellKnownDecopilotConnection,
   getWellKnownCommerceDiscoveryVirtualMCP,
   // Decopilot utilities

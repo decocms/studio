@@ -7,14 +7,26 @@ import {
   resetTestPgDatabase,
 } from "../database/test-db-pg";
 import type { StudioDatabase } from "../database";
+import { sleep } from "@decocms/std";
 import { SqlThreadStorage } from "./threads";
-import { SqlThreadMessagePartStorage } from "./thread-message-parts";
+import {
+  SqlThreadMessagePartStorage,
+  serializePayload,
+} from "./thread-message-parts";
 import type { ThreadMessagePart } from "./fold-parts";
 import { foldedToUIMessage } from "@/api/routes/decopilot/projector-seed";
 import { createRunPersistence } from "@/api/routes/decopilot/run-persistence";
 import { projectChunks } from "@/api/routes/decopilot/project-chunks";
 
 const ORG = "org_1";
+
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
 
 describe("SqlThreadMessagePartStorage", () => {
   let database: StudioDatabase;
@@ -158,6 +170,72 @@ describe("SqlThreadMessagePartStorage", () => {
       database.db,
     );
     expect(Number(rows[0]!.n)).toBe(3);
+  });
+
+  it("R9b: replaceMessageParts survives a concurrent committed row on the same id (no dup-key throw)", async () => {
+    // Regression for the prod "No response was generated": replaceMessageParts'
+    // DELETE-then-INSERT is not atomic against a concurrent writer (the
+    // projector's appendParts, or a redelivered consumeRunProjection step) that
+    // commits a colliding (id) between the DELETE and the INSERT. A bare INSERT
+    // then violated thread_message_parts_pkey, the projection step threw, and
+    // the assistant message was left empty. The fix makes the INSERT
+    // upsert-on-conflict.
+    //
+    // Reproduced deterministically: a concurrent txn inserts the colliding id
+    // and holds OPEN (uncommitted) so replaceMessageParts' INSERT blocks on the
+    // unique index; committing it then forces the exact conflict. (The natural
+    // DELETE→INSERT window is too tight to hit by scheduling alone.)
+    const M = "m_race";
+    const run = "r_race";
+    const mkr = (seq: number, extra: Partial<ThreadMessagePart> = {}) =>
+      mk({
+        id: `${run}:${M}:${seq}`,
+        seq,
+        run_id: run,
+        message_id: M,
+        ...extra,
+      });
+
+    const inserted = deferred();
+    const release = deferred();
+    const other = database.db.transaction().execute(async (trx) => {
+      await trx
+        .insertInto("thread_message_parts")
+        .values({
+          id: `${run}:${M}:0`,
+          seq: 0,
+          org_id: ORG,
+          thread_id: threadId,
+          run_id: run,
+          message_id: M,
+          role: "assistant",
+          kind: "text",
+          payload: serializePayload({ type: "text", text: "concurrent" }),
+          payload_ref: null,
+          metadata: null,
+          created_at: new Date(1700000000000).toISOString(),
+        })
+        .execute();
+      inserted.resolve();
+      await release.promise; // hold the txn open (uncommitted)
+    });
+
+    await inserted.promise;
+    // DELETE sees no committed rows; the INSERT then blocks on the held id.
+    const replacePromise = parts.replaceMessageParts(threadId, M, [
+      mkr(0, { payload: { type: "text", text: "answer" } }),
+      mkr(1, { kind: "finish", payload: {} }),
+    ]);
+    await sleep(300); // let replace reach and block on its INSERT
+    release.resolve(); // commit the concurrent row → replace's INSERT conflicts
+    await other;
+    await replacePromise; // pre-fix: rejects with dup-key; post-fix: upserts
+
+    // The message ends complete with replace's authoritative snapshot.
+    const { messages } = await parts.loadWindow(threadId, { limit: 500 });
+    const msg = messages.find((m) => m.id === M)!;
+    expect(msg.status).toBe("complete");
+    expect(msg.parts).toMatchObject([{ type: "text", text: "answer" }]);
   });
 
   it("deleteMessageParts hard-deletes one message's rows (incl. finish anchor) and leaves the other message intact", async () => {

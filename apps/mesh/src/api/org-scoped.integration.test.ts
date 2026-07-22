@@ -125,7 +125,12 @@ describe("org-scoped API coexistence", () => {
     logSpy?.mockRestore();
     logSpy = undefined;
     vi.restoreAllMocks();
-    await closeTestPgDatabase(database);
+    if (app) {
+      await app.shutdown();
+    }
+    if (database) {
+      await closeTestPgDatabase(database);
+    }
   });
 
   it("new path serves the route AND does NOT log deprecation", async () => {
@@ -170,6 +175,43 @@ describe("org-scoped API coexistence", () => {
   // Deprecation-log assertions remain above (Playwright can't capture
   // dev-server stdout).
 
+  it("serves Better Auth metadata for the org-scoped self MCP aliases", async () => {
+    const paths = [
+      "/api/org_1/mcp/self/.well-known/oauth-protected-resource",
+      "/.well-known/oauth-protected-resource/api/org_1/mcp/self",
+    ];
+
+    for (const path of paths) {
+      const res = await app.fetch(new Request(`http://mesh.localhost${path}`));
+
+      expect(res.status, path).toBe(200);
+      const body = (await res.json()) as {
+        resource: string;
+        authorization_servers?: string[];
+      };
+      expect(body.resource, path).toBe(
+        "http://mesh.localhost/api/org_1/mcp/self",
+      );
+      expect(body.authorization_servers?.length, path).toBeGreaterThan(0);
+    }
+  });
+
+  it("rejects an API key whose organization differs from the URL org", async () => {
+    mockApiKey("user_1", "org_2", "org_2");
+
+    const res = await app.fetch(
+      new Request("http://test/api/org_1/mcp/self", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-key" },
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: "forbidden: API key is scoped to another organization",
+    });
+  });
+
   it("well-known prefix discovery for org-scoped MCP resolves the right org", async () => {
     // The MCP SDK probes /.well-known/oauth-protected-resource{resource-path}
     // (RFC 9728 Format 2 / Smithery-style) to discover OAuth metadata. With
@@ -177,7 +219,7 @@ describe("org-scoped API coexistence", () => {
     // /.well-known/oauth-protected-resource/api/:org/mcp/:connectionId — this
     // path lives at the *root* (the well-known prefix is anchored there), not
     // under the /api/:org sub-app. Without a top-level mount the SDK gets a
-    // 404 here and falls back to treating the mesh root as the auth server,
+    // 404 here and falls back to treating the studio root as the auth server,
     // breaking every OAuth-gated MCP (GitHub import-from-repo, Cursor, etc.).
 
     // Mock the origin: well-known endpoints 404, but the initialize probe
@@ -242,19 +284,14 @@ describe("org-scoped API coexistence", () => {
     }
   });
 
-  it("well-known prefix discovery uses the path slug, not the session's active org", async () => {
+  it("well-known prefix discovery uses the path slug", async () => {
     // Regression for #3272 fallout: multi-org users hitting another org's
     // URL would 404 here because the handler resolved `orgSlug` as
     // `ctx.organization?.slug ?? c.req.param("org")`. The well-known prefix
     // route is mounted at the URL root (outside `/api/:org`), so
-    // `resolveOrgFromPath` doesn't run — `ctx.organization` falls through to
-    // the session's `activeOrganizationId`, which silently overrode the path
-    // slug. For a user whose active org is `org_456`, a discovery probe at
-    // `/api/org_1/mcp/conn_1` would scope the lookup to `org_456` and 404
-    // even though the path AND the connection both belong to `org_1`. Fix:
-    // path param takes priority — `c.req.param("org") ?? ctx.organization?.slug`.
-    mockApiKey("user_1", "org_456", "org_456");
-
+    // `resolveOrgFromPath` doesn't run. The path parameter must therefore be
+    // selected before any context fallback — `c.req.param("org") ??
+    // ctx.organization?.slug` — or the connection lookup loses its tenant.
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((async (
       _input,
       init,
@@ -276,7 +313,6 @@ describe("org-scoped API coexistence", () => {
       const res = await app.fetch(
         new Request(
           "http://mesh.localhost/.well-known/oauth-protected-resource/api/org_1/mcp/conn_1",
-          { headers: { Authorization: "Bearer test-key" } },
         ),
       );
 
@@ -388,22 +424,24 @@ describe("org-scoped API coexistence", () => {
     }
   });
 
-  it("DCR survives a multi-org user whose session active org differs from the path", async () => {
+  it("DCR uses the URL org for a multi-org API-key owner", async () => {
     // The popup-not-opening bug surfaced because DCR (the SDK's
     // POST /register call right before opening the authorize popup) hit the
-    // legacy `/oauth-proxy/:connectionId/*` mount and 404'd against the
-    // session's `activeOrganizationId`. With the AS metadata now pointing at
-    // `/api/:org/oauth-proxy/...`, `resolveOrgFromPath` resolves the org from
-    // the URL and verifies membership instead — independent of session state.
+    // legacy `/oauth-proxy/:connectionId/*` mount and 404'd against a stale
+    // tenant. With the AS metadata now pointing at `/api/:org/oauth-proxy/...`,
+    // `resolveOrgFromPath` resolves the org from the URL and verifies
+    // membership instead.
 
-    // Seed user_1 into a second org and switch the active session there. The
-    // path under test still names org_1 (where conn_1 lives).
+    // Seed user_1 into a second org. The path under test still names org_1
+    // (where conn_1 lives), and the API key is explicitly bound to org_1.
     await sql`
       INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
       VALUES ('mem_1_456', 'user_1', 'org_456', 'member', ${new Date().toISOString()})
       ON CONFLICT (id) DO NOTHING
     `.execute(database.db);
-    mockApiKey("user_1", "org_456", "org_456");
+    // The credential is scoped to org_1, even though its owner is also a
+    // member of org_456. The URL's org remains the sole tenant selector.
+    mockApiKey("user_1", "org_1", "org_1");
 
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((async (
       input: string | URL | Request,
@@ -469,9 +507,8 @@ describe("org-scoped API coexistence", () => {
 
   it("oauth-proxy refuses slug-spoofing on the org-scoped mount", async () => {
     // Member of both org_1 and org_456 asks for an org_1 connection under
-    // org_456's slug. The path-resolved org scopes the connection lookup, so
-    // findById returns null and the handler 404s — preventing OAuth proxying
-    // for connections that don't belong to the URL's org.
+    // org_456's slug with an org_1-bound API key. Reject the credential/path
+    // mismatch before looking up or proxying the connection.
     const now = new Date().toISOString();
     await sql`
       INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
@@ -493,7 +530,10 @@ describe("org-scoped API coexistence", () => {
       ),
     );
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: "forbidden: API key is scoped to another organization",
+    });
   });
 
   it("DCR injects the connection's owning org into the registration metadata", async () => {

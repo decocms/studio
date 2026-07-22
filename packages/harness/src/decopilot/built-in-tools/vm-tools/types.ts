@@ -52,7 +52,7 @@ export interface VmToolsParams {
    */
   readonly pendingImages: PendingImage[];
   /**
-   * Mesh context for tools that resolve the org id / object storage for
+   * Studio context for tools that resolve the org id / object storage for
    * stable file URLs (and the deck fast-path mirror).
    */
   readonly ctx: VmToolContext;

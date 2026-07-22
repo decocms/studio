@@ -40,7 +40,10 @@ export const AI_PROVIDER_KEY_LIST = defineTool({
         organizationId: org.id,
         providerId: input.providerId,
       }),
-      fetchModelPermissions(ctx.db, org.id, ctx.auth.user?.role),
+      // `org.role` is the path-resolved role (set by resolveOrgFromPath);
+      // ctx.auth.user?.role is the session's active-org role and may belong
+      // to a different org than `org` if this MCP call targets a non-active one.
+      fetchModelPermissions(ctx.db, org.id, org.role ?? ctx.auth.user?.role),
     ]);
 
     const filtered = keys.filter((k) =>

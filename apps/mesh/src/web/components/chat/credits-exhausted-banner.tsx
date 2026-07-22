@@ -29,24 +29,25 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { useT } from "@/web/i18n/use-t";
 
 const QUICK_AMOUNTS = {
   usd: [
-    { dollars: 10, label: "Starter" },
-    { dollars: 20, label: "Popular" },
-    { dollars: 100, label: "Best value" },
+    { dollars: 10, labelKey: "chat.creditsExhaustedBanner.tierStarter" },
+    { dollars: 20, labelKey: "chat.creditsExhaustedBanner.tierPopular" },
+    { dollars: 100, labelKey: "chat.creditsExhaustedBanner.tierBestValue" },
   ],
   brl: [
-    { dollars: 50, label: "Starter" },
-    { dollars: 100, label: "Popular" },
-    { dollars: 500, label: "Best value" },
+    { dollars: 50, labelKey: "chat.creditsExhaustedBanner.tierStarter" },
+    { dollars: 100, labelKey: "chat.creditsExhaustedBanner.tierPopular" },
+    { dollars: 500, labelKey: "chat.creditsExhaustedBanner.tierBestValue" },
   ],
 } as const;
 
-const BENEFITS = [
-  "Access to 100+ AI models",
-  "Unified API, no separate keys needed",
-  "Pay only for what you use",
+const BENEFITS_KEYS = [
+  "chat.creditsExhaustedBanner.benefit1",
+  "chat.creditsExhaustedBanner.benefit2",
+  "chat.creditsExhaustedBanner.benefit3",
 ] as const;
 
 export function CreditsExhaustedBanner({
@@ -58,6 +59,7 @@ export function CreditsExhaustedBanner({
   const navigate = useNavigate();
   const { decoKeyId } = useDecoCredits();
   const studio = useStudioTools();
+  const t = useT();
 
   const [customAmount, setCustomAmount] = useState("");
   const [showCustom, setShowCustom] = useState(false);
@@ -83,7 +85,9 @@ export function CreditsExhaustedBanner({
       onDismiss?.();
     },
     onError: (err) => {
-      toast.error(`Top-up failed: ${err.message}`);
+      toast.error(
+        t("chat.creditsExhaustedBanner.topupError", { error: err.message }),
+      );
     },
   });
 
@@ -119,11 +123,10 @@ export function CreditsExhaustedBanner({
             />
             <div>
               <DialogTitle className="text-xl font-semibold tracking-tight">
-                Top up to keep building
+                {t("chat.creditsExhaustedBanner.title")}
               </DialogTitle>
               <DialogDescription className="mt-1.5 text-sm leading-relaxed">
-                Your credits are used up. Add more to continue using AI across
-                all your agents.
+                {t("chat.creditsExhaustedBanner.description")}
               </DialogDescription>
             </div>
           </DialogHeader>
@@ -155,7 +158,7 @@ export function CreditsExhaustedBanner({
             {/* Pricing card */}
             <div className="rounded-xl border border-border p-5">
               <div className="grid grid-cols-3 gap-2.5">
-                {QUICK_AMOUNTS[currency].map(({ dollars, label }) => (
+                {QUICK_AMOUNTS[currency].map(({ dollars, labelKey }) => (
                   <button
                     key={dollars}
                     type="button"
@@ -164,7 +167,7 @@ export function CreditsExhaustedBanner({
                       track("credits_topup_clicked", {
                         amount_cents: dollars * 100,
                         currency,
-                        tier_label: label,
+                        tier_label: labelKey,
                         source: "exhausted_banner",
                       });
                       topUp(dollars * 100);
@@ -180,7 +183,7 @@ export function CreditsExhaustedBanner({
                       {dollars}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {label}
+                      {t(labelKey)}
                     </span>
                   </button>
                 ))}
@@ -197,7 +200,9 @@ export function CreditsExhaustedBanner({
                       type="number"
                       min="1"
                       step="1"
-                      placeholder="50"
+                      placeholder={t(
+                        "chat.creditsExhaustedBanner.customPlaceholder",
+                      )}
                       value={customAmount}
                       onChange={(e) => setCustomAmount(e.target.value)}
                       className="h-10 text-sm pl-7"
@@ -217,7 +222,9 @@ export function CreditsExhaustedBanner({
                       topUp(Math.round(customNum * 100));
                     }}
                   >
-                    {isPending ? "Opening..." : "Add"}
+                    {isPending
+                      ? t("chat.creditsExhaustedBanner.opening")
+                      : t("chat.creditsExhaustedBanner.add")}
                   </Button>
                 </div>
               ) : (
@@ -226,19 +233,19 @@ export function CreditsExhaustedBanner({
                   className="w-full mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
                   onClick={() => setShowCustom(true)}
                 >
-                  Enter custom amount
+                  {t("chat.creditsExhaustedBanner.enterCustom")}
                 </button>
               )}
             </div>
 
             {/* Benefits */}
             <div className="mt-5 rounded-xl bg-muted/25 border border-border/50 p-4 space-y-3">
-              {BENEFITS.map((text) => (
-                <div key={text} className="flex items-center gap-3">
+              {BENEFITS_KEYS.map((key) => (
+                <div key={key} className="flex items-center gap-3">
                   <div className="flex items-center justify-center size-5 rounded-full bg-[hsl(var(--chart-1))]/15 shrink-0">
                     <Check size={12} className="text-[hsl(var(--chart-1))]" />
                   </div>
-                  <span className="text-sm text-foreground/80">{text}</span>
+                  <span className="text-sm text-foreground/80">{t(key)}</span>
                 </div>
               ))}
             </div>
@@ -248,7 +255,7 @@ export function CreditsExhaustedBanner({
         {/* Footer */}
         <div className="px-8 py-4 border-t border-border bg-muted/30 flex items-center justify-between">
           <Button variant="ghost" size="sm" onClick={onDismiss}>
-            Dismiss
+            {t("chat.creditsExhaustedBanner.dismiss")}
           </Button>
           <button
             type="button"
@@ -261,7 +268,7 @@ export function CreditsExhaustedBanner({
               onDismiss?.();
             }}
           >
-            Manage providers
+            {t("chat.creditsExhaustedBanner.manageProviders")}
           </button>
         </div>
       </DialogContent>

@@ -14,6 +14,7 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import type { RegistryItem } from "@/web/lib/registry/types";
+import { useT } from "@/web/i18n/use-t.ts";
 
 function extractProvider(item: RegistryItem): string {
   const [provider] = item.id.split("/");
@@ -47,6 +48,7 @@ export function RegistryItemCard({
   onToggleVerified,
   onToggleOfficial,
 }: RegistryItemCardProps) {
+  const t = useT();
   const icon = extractIcon(item);
   const isVerified = item._meta?.["mcp.mesh"]?.verified === true;
   const isOfficial = item._meta?.["mcp.mesh"]?.official === true;
@@ -81,21 +83,23 @@ export function RegistryItemCard({
               {item.is_public ? (
                 <Badge variant="default" className="gap-1">
                   <Globe01 size={10} />
-                  Public
+                  {t("registry.registryItemCard.public")}
                 </Badge>
               ) : (
-                <Badge variant="secondary">Private</Badge>
+                <Badge variant="secondary">
+                  {t("registry.registryItemCard.private")}
+                </Badge>
               )}
               {isOfficial && (
                 <Badge variant="outline" className="gap-1 text-primary">
                   <CheckVerified02 size={10} />
-                  Official
+                  {t("registry.registryItemCard.official")}
                 </Badge>
               )}
               {!isOfficial && isVerified && (
                 <Badge variant="outline" className="gap-1 text-success">
                   <CheckVerified02 size={10} />
-                  Verified
+                  {t("registry.registryItemCard.verified")}
                 </Badge>
               )}
             </div>
@@ -104,26 +108,37 @@ export function RegistryItemCard({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              aria-label={t("registry.registryItemCard.actionsFor", {
+                title: item.title,
+              })}
+            >
               <DotsVertical size={18} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onEdit(item)}>
-              Edit
+              {t("registry.registryItemCard.edit")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onToggleVerified(item)}>
-              {isVerified ? "Unmark as Verified" : "Mark as Verified"}
+              {isVerified
+                ? t("registry.registryItemCard.unmarkAsVerified")
+                : t("registry.registryItemCard.markAsVerified")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onToggleOfficial(item)}>
-              {isOfficial ? "Unmark as Official" : "Mark as Official"}
+              {isOfficial
+                ? t("registry.registryItemCard.unmarkAsOfficial")
+                : t("registry.registryItemCard.markAsOfficial")}
             </DropdownMenuItem>
             <DropdownMenuItem
               variant="destructive"
               onClick={() => onDelete(item)}
             >
               <Trash01 size={14} />
-              Delete
+              {t("registry.registryItemCard.delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -133,7 +148,7 @@ export function RegistryItemCard({
         {item._meta?.["mcp.mesh"]?.short_description ||
           item.description ||
           item.server.description ||
-          "No description provided."}
+          t("registry.registryItemCard.noDescriptionProvided")}
       </p>
 
       <div className="flex flex-wrap gap-1">

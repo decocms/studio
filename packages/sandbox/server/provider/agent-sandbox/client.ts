@@ -296,7 +296,7 @@ async function ensureOk(resp: Response, action: string): Promise<void> {
 
 /**
  * Issue a kube call where 404 is *not* an error (the resource was already
- * gone; mesh's next ensure() recreates it). On 404, returns `null`. On 2xx,
+ * gone; studio's next ensure() recreates it). On 404, returns `null`. On 2xx,
  * returns the parsed JSON body — or `null` for callers that don't need it.
  * All other errors are wrapped in `SandboxError` with `wrapMessage` as the
  * surfaced label.
@@ -361,7 +361,7 @@ export async function createSandboxClaim(
   );
   // 409 is split out so the runner can wait for the still-terminating prior
   // claim to drain finalizers and retry. This is the canonical race when the
-  // operator's idle-TTL just reaped a claim and mesh's next ensure() hits
+  // operator's idle-TTL just reaped a claim and studio's next ensure() hits
   // before the resource is fully GC'd. Stuck-finalizer cases also surface as
   // 409 but never recover from a wait — those need operator intervention.
   if (resp.status === 409) {
@@ -421,14 +421,14 @@ function claimPath(namespace: string, claimName: string): string {
  * `spec.lifecycle.shutdownTime` with `shutdownPolicy: Delete`: once the
  * wall clock passes `shutdownTime`, the operator deletes the claim + pod.
  *
- * Mesh calls this on every `ensure()` hit so an active sandbox continuously
+ * Studio calls this on every `ensure()` hit so an active sandbox continuously
  * pushes its deadline forward; an abandoned one hits the deadline and the
- * operator reaps it. No mesh-side cron/reconcile needed.
+ * operator reaps it. No studio-side cron/reconcile needed.
  *
  * Uses merge-patch (RFC 7396), which is the documented patch format for
  * CRDs — strategic-merge only works on built-in types that ship merge
  * keys. 404 is swallowed because a deleted-since-lookup claim is not an
- * error from mesh's perspective; the caller's next ensure() will
+ * error from studio's perspective; the caller's next ensure() will
  * re-provision.
  */
 export async function patchSandboxClaimShutdown(
@@ -485,7 +485,7 @@ export async function getSandboxClaim(
  * the bound Sandbox's name. The operator (v0.4.x) writes this in two paths:
  * cold-start (claim's own template-rendered Sandbox, name == claim name)
  * and warm-pool adoption (an existing pool Sandbox, name = pool pod's
- * generated name). Mesh must use this value, not the claim name, because
+ * generated name). Studio must use this value, not the claim name, because
  * the v0.4.x adoption reconciler has a status-update conflict race that
  * sometimes also creates a stray same-named cold-path Sandbox alongside
  * the adopted pool one — only `status.sandbox.name` points at the
@@ -650,7 +650,7 @@ export const HTTPROUTE_CONSTANTS = {
 /**
  * Field-manager identity asserted on Server-Side Apply calls. K8s tracks
  * ownership per-field by this string; reusing it across calls (and across
- * mesh restarts) is what lets the second SSA see "I already own ports[]"
+ * studio restarts) is what lets the second SSA see "I already own ports[]"
  * and treat it as a no-op rather than a conflict.
  */
 const SSA_FIELD_MANAGER = "mesh-sandbox-runner";
@@ -671,7 +671,7 @@ const SSA_FIELD_MANAGER = "mesh-sandbox-runner";
  * error (because the empty 500 also has no `access-control-allow-origin`).
  *
  * Why SSA over strategic-merge-patch:
- *   - SSA establishes mesh as the *owner* of `spec.ports`. If a future
+ *   - SSA establishes studio as the *owner* of `spec.ports`. If a future
  *     operator revision performs a full Update of the Service (Get →
  *     mutate → Put), the API server rejects the conflicting write unless
  *     the operator explicitly forces — which would surface in operator

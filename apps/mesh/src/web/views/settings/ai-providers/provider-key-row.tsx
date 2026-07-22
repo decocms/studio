@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
+import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { toast } from "sonner";
 import { Edit01, Trash01 } from "@untitledui/icons";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
@@ -22,12 +23,14 @@ import {
   type AiProviderKey,
 } from "@decocms/mesh-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { KEYS } from "@/web/lib/query-keys";
 import {
-  OPENAI_COMPATIBLE_PRESETS,
+  getPreset,
   type OpenAICompatiblePreset,
 } from "@/web/utils/openai-compatible-presets";
 import { EditProviderKeyDialog } from "./edit-provider-dialog";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ProviderKeyRowProps {
   providerKey: AiProviderKey;
@@ -40,18 +43,21 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
   const queryClient = useQueryClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const t = useT();
+  const [preferences] = usePreferences();
+  const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
 
   const isOpenAICompatible = provider.id === "openai-compatible";
 
   const preset: OpenAICompatiblePreset | undefined =
     isOpenAICompatible && providerKey.presetId
-      ? OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === providerKey.presetId)
+      ? getPreset(providerKey.presetId)
       : undefined;
 
   const displayName = preset
     ? preset.name
     : isOpenAICompatible
-      ? "Custom OpenAI-compatible"
+      ? t("settings.aiProviders.customOpenAiCompatible")
       : provider.name;
   const logo = preset?.logo ?? provider.logo;
 
@@ -59,7 +65,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
     if (isOpenAICompatible) {
       return providerKey.label;
     }
-    return `${providerKey.label} · added ${formatDistanceToNow(new Date(providerKey.createdAt))} ago`;
+    return `${providerKey.label} · added ${formatDistanceToNow(new Date(providerKey.createdAt), { locale })} ago`;
   })();
 
   const { mutate: deleteKey, isPending: isDeleting } = useMutation({
@@ -72,10 +78,13 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
       queryClient.invalidateQueries({
         queryKey: KEYS.aiProviderModels(org.id, providerKey.id),
       });
-      toast.success("Key deleted");
+      toast.success(t("settings.providerKeyRow.keyDeleted"));
       setConfirmDelete(false);
     },
-    onError: (err) => toast.error(`Failed to delete key: ${err.message}`),
+    onError: (err) =>
+      toast.error(
+        t("settings.providerKeyRow.failedToDeleteKey", { error: err.message }),
+      ),
   });
 
   return (
@@ -102,6 +111,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             <Button
               variant="ghost"
               size="icon"
+              aria-label={t("settings.providerKeyRow.editProviderKey")}
               className="h-7 w-7 text-muted-foreground hover:text-foreground"
               onClick={() => setEditOpen(true)}
             >
@@ -110,6 +120,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             <Button
               variant="ghost"
               size="icon"
+              aria-label={t("settings.providerKeyRow.deleteProviderKey")}
               className="h-7 w-7 text-muted-foreground hover:text-destructive"
               disabled={isDeleting}
               onClick={() => setConfirmDelete(true)}
@@ -130,8 +141,11 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete API key</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("settings.providerKeyRow.deleteApiKey")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
+              {/* TODO(i18n): rich text — bolded label can't round-trip through t()'s plain-string interpolation */}
               This action cannot be undone. This will permanently delete{" "}
               <span className="font-medium text-foreground">
                 {providerKey.label}
@@ -140,12 +154,14 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("settings.providerKeyRow.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteKey()}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("settings.providerKeyRow.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

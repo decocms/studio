@@ -94,6 +94,13 @@ export type RunCommand =
        * in-memory state to derive orgId from.
        */
       orgId: string;
+      /**
+       * The run fence token current when this cancel was issued. Scopes the
+       * force-fail to that specific turn so a follow-up turn (fresh fence) sent
+       * while the cancel is still settling is never clobbered. Omitted →
+       * unconditional force-fail (legacy).
+       */
+      expectedFenceToken?: string | null;
     }
   | {
       type: "FORCE_FAIL";
@@ -157,6 +164,13 @@ export type RunEvent =
       taskId: string;
       orgId: string;
       reason: RunFailedReason;
+      /**
+       * Fence scope for a ghost force-fail (see the FORCE_FAIL command). Only
+       * set on the ghost path; when present the reactor's `forceFailIfInProgress`
+       * fails the thread ONLY if its current fence still matches — so a
+       * follow-up turn already re-running under a new fence is left untouched.
+       */
+      expectedFenceToken?: string | null;
     }
   /**
    * Signals that a concurrent run was aborted to make room for a new one.

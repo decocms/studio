@@ -83,7 +83,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
   switch (event.type) {
     case "RUN_STARTED": {
       // Single-execution is guaranteed by the DBOS thread-gate queue
-      // (concurrency=1 per threadId partition), so there is no mesh-level
+      // (concurrency=1 per threadId partition), so there is no studio-level
       // run-owner claim to win/lose here — just record the run as active.
       await storage.update(event.taskId, event.orgId, {
         status: "in_progress",
@@ -113,8 +113,19 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
     }
 
     case "RUN_RESUMED": {
+      // A resumed run (DBOS recovery / reaper hand-back) is executing again —
+      // flip the thread out of any terminal state a prior force-fail (ghost /
+      // reaped) left it in and clear the stale failure, so the UI reflects the
+      // running state immediately instead of only at the next FINISH. Mirrors
+      // RUN_STARTED, minus run_config (resume keeps the prior run's config).
+      // last_progress_at is reset so the stall reaper gives the resumed run a
+      // fresh idle window rather than re-reaping it on a stale timestamp.
       await storage.update(event.taskId, event.orgId, {
+        status: "in_progress",
         run_started_at: new Date().toISOString(),
+        last_progress_at: null,
+        failure_reason: null,
+        failure_kind: null,
       });
       const resumedThread = await storage.get(event.taskId, event.orgId);
       sseHub.emit(
@@ -158,6 +169,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         const transitioned = await storage.forceFailIfInProgress(
           event.taskId,
           event.orgId,
+          event.expectedFenceToken,
         );
         if (!transitioned) return;
         // Clear run columns for ghost failures too

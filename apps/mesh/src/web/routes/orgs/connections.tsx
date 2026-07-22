@@ -1,11 +1,11 @@
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { CollectionDisplayButton } from "@/web/components/collections/collection-display-button.tsx";
 import { SearchInput } from "@deco/ui/components/search-input.tsx";
+import { useT } from "@/web/i18n/use-t";
 import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
 import { ConnectionCard } from "@/web/components/connections/connection-card.tsx";
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
-import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { Page } from "@/web/components/page";
 import type { RegistryItem } from "@/web/components/store/types";
 import { DeleteConnectionDialogs } from "@/web/components/delete-connection-dialogs";
@@ -19,20 +19,10 @@ import { useListState } from "@/web/hooks/use-list-state";
 import { authClient } from "@/web/lib/auth-client";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { useMergedStoreDiscovery } from "@/web/hooks/use-merged-store-discovery";
-import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
+import { BulkDeleteDialog } from "./bulk-delete-dialog.tsx";
+import { CatalogItemCard } from "./catalog-item-card.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { Checkbox } from "@deco/ui/components/checkbox.tsx";
 import {
   Dialog,
   DialogContent,
@@ -51,12 +41,6 @@ import {
   DrawerTitle,
 } from "@deco/ui/components/drawer.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@deco/ui/components/dropdown-menu.tsx";
 import {
   Form,
   FormControl,
@@ -81,7 +65,6 @@ import {
   useProjectContext,
   type ConnectionEntity,
   useVirtualMCPs,
-  type VirtualMCPEntity,
 } from "@decocms/mesh-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { toast } from "sonner";
@@ -89,17 +72,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
-  CheckSquare,
   Container,
-  DotsVertical,
-  Eye,
   Globe02,
   Loading01,
   Plus,
-  Power01,
-  SlashCircle01,
   Terminal,
-  Trash01,
   XClose,
 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
@@ -134,10 +111,13 @@ import {
 // Grouping helpers (shared with agent add-connection dialog)
 // ---------------------------------------------------------------------------
 
+import { groupConnections } from "@/shared/utils/group-connections";
 import {
-  groupConnections,
-  type ConnectionGroup,
-} from "@/shared/utils/group-connections";
+  AddToAgentDialog,
+  BulkActionBar,
+  ConnectionCardHeaderActions,
+  ConnectionGroupCard,
+} from "./connection-selection-ui.tsx";
 
 // ---------------------------------------------------------------------------
 // Connection type / status filter types
@@ -146,357 +126,6 @@ import {
 type ConnectionTypeFilter = "ALL" | "HTTP" | "SSE" | "Websocket" | "STDIO";
 
 type ConnectionStatusFilter = "ALL" | "active" | "inactive" | "error";
-
-// ---------------------------------------------------------------------------
-// Grouped card: collapsible row for connections sharing the same app_name
-// ---------------------------------------------------------------------------
-
-function ConnectionGroupCard({
-  group,
-  onOpen,
-  selectionMode,
-  selectedIds,
-  onToggleSelect,
-}: {
-  group: ConnectionGroup;
-  onOpen: () => void;
-  selectionMode: boolean;
-  selectedIds: Set<string>;
-  onToggleSelect: (id: string) => void;
-}) {
-  const allSelected = group.connections.every((c) => selectedIds.has(c.id));
-  const someSelected = group.connections.some((c) => selectedIds.has(c.id));
-
-  return (
-    <>
-      <ConnectionCard
-        connection={{
-          title: group.title,
-          icon: group.icon,
-          description: `${group.connections.length} instances`,
-        }}
-        onClick={() =>
-          selectionMode
-            ? (() => {
-                for (const c of group.connections) {
-                  if (allSelected) {
-                    if (selectedIds.has(c.id)) onToggleSelect(c.id);
-                  } else {
-                    if (!selectedIds.has(c.id)) onToggleSelect(c.id);
-                  }
-                }
-              })()
-            : onOpen()
-        }
-        className={cn(
-          selectionMode && allSelected && "ring-2 ring-primary",
-          selectionMode &&
-            someSelected &&
-            !allSelected &&
-            "ring-1 ring-primary/50",
-        )}
-        fallbackIcon={<Container />}
-        headerActionsAlwaysVisible
-        headerActions={
-          <div className="flex items-center gap-1">
-            {selectionMode ? (
-              <Checkbox
-                checked={
-                  allSelected ? true : someSelected ? "indeterminate" : false
-                }
-                onCheckedChange={() => {
-                  for (const c of group.connections) {
-                    if (allSelected) {
-                      if (selectedIds.has(c.id)) onToggleSelect(c.id);
-                    } else {
-                      if (!selectedIds.has(c.id)) onToggleSelect(c.id);
-                    }
-                  }
-                }}
-              />
-            ) : (
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-muted-foreground font-normal">
-                  Connected
-                </span>
-                <span className="text-xs text-muted-foreground font-normal tabular-nums">
-                  x{group.connections.length}
-                </span>
-              </div>
-            )}
-            <div
-              className={cn(
-                "overflow-hidden transition-all duration-150 ease-out",
-                selectionMode
-                  ? "w-8 opacity-100"
-                  : "w-0 opacity-0 group-hover:w-8 group-hover:opacity-100",
-              )}
-            >
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <DotsVertical size={20} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpen();
-                    }}
-                  >
-                    <Eye size={16} />
-                    Open
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        }
-      />
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Floating bulk action bar (centered, same pattern as private-registry)
-// ---------------------------------------------------------------------------
-
-function BulkActionBar({
-  count,
-  total,
-  canManage,
-  canManageAgents,
-  onSelectAll,
-  onDeselectAll,
-  onDelete,
-  onAddToAgent,
-  onToggleStatus,
-  onCancel,
-}: {
-  count: number;
-  total: number;
-  canManage: boolean;
-  canManageAgents: boolean;
-  onSelectAll: () => void;
-  onDeselectAll: () => void;
-  onDelete: () => void;
-  onAddToAgent: () => void;
-  onToggleStatus: (status: "active" | "inactive") => void;
-  onCancel: () => void;
-}) {
-  if (count === 0) return null;
-
-  return (
-    <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
-      <div className="rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur px-3 py-2 flex items-center gap-2">
-        <div className="text-xs text-muted-foreground pr-1 tabular-nums">
-          {count} selected
-        </div>
-        {count < total ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs px-2"
-            onClick={onSelectAll}
-          >
-            Select all ({total})
-          </Button>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs px-2"
-            onClick={onDeselectAll}
-          >
-            Clear selection
-          </Button>
-        )}
-        {canManageAgents && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs px-2"
-            onClick={onAddToAgent}
-          >
-            <Plus size={13} />
-            Add to Agent
-          </Button>
-        )}
-        {canManage && (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs px-2"
-              onClick={() => onToggleStatus("active")}
-            >
-              Enable
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs px-2"
-              onClick={() => onToggleStatus("inactive")}
-            >
-              Disable
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-7 text-xs px-2"
-              onClick={onDelete}
-            >
-              <Trash01 size={13} />
-              Delete
-            </Button>
-          </>
-        )}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs px-2"
-          onClick={onCancel}
-        >
-          <XClose size={13} />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Add to Agent dialog
-// ---------------------------------------------------------------------------
-
-function AddToAgentDialog({
-  open,
-  onOpenChange,
-  agents,
-  onConfirm,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  agents: VirtualMCPEntity[];
-  onConfirm: (agentId: string) => void;
-}) {
-  const [selected, setSelected] = useState<string | null>(null);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader>
-          <DialogTitle>Add to Agent</DialogTitle>
-          <DialogDescription>
-            Select an agent to add the selected connections to.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="max-h-60 overflow-auto py-2 space-y-1">
-          {agents.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No agents found
-            </p>
-          ) : (
-            agents.map((agent) => (
-              <button
-                key={agent.id}
-                type="button"
-                onClick={() => setSelected(agent.id)}
-                className={cn(
-                  "flex items-center gap-3 w-full rounded-md px-3 py-2 text-left transition-colors",
-                  selected === agent.id
-                    ? "bg-primary/10 ring-1 ring-primary"
-                    : "hover:bg-muted/50",
-                )}
-              >
-                <IntegrationIcon
-                  icon={agent.icon}
-                  name={agent.title}
-                  size="sm"
-                  className="shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{agent.title}</p>
-                  {agent.description && (
-                    <p className="text-xs text-muted-foreground truncate">
-                      {agent.description}
-                    </p>
-                  )}
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            disabled={!selected}
-            onClick={() => {
-              if (selected) {
-                onConfirm(selected);
-                onOpenChange(false);
-                setSelected(null);
-              }
-            }}
-          >
-            Add
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Bulk delete confirmation dialog
-// ---------------------------------------------------------------------------
-
-function BulkDeleteDialog({
-  open,
-  onOpenChange,
-  count,
-  onConfirm,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  count: number;
-  onConfirm: () => void;
-}) {
-  return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            Delete {count} connection{count !== 1 ? "s" : ""}?
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            This will permanently delete the selected connection
-            {count !== 1 ? "s" : ""}. This action cannot be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            Delete {count} connection{count !== 1 ? "s" : ""}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
 
 // ===========================================================================
 
@@ -519,163 +148,6 @@ interface ConnectionResultsProps {
 }
 
 // ---------------------------------------------------------------------------
-// Catalog item card (used in "All" tab for registry items)
-// ---------------------------------------------------------------------------
-
-function isCommunityItem(item: RegistryItem): boolean {
-  return item._registryId?.includes("community-registry") === true;
-}
-
-function CatalogItemCard({
-  item,
-  canManage,
-  allConnections,
-  connectedAppNames,
-  connectingItemId,
-  onNavigateConnected,
-  onConnect,
-}: {
-  item: RegistryItem;
-  canManage: boolean;
-  allConnections: ConnectionEntity[];
-  connectedAppNames: Set<string>;
-  connectingItemId: string | null;
-  onNavigateConnected: (conn: ConnectionEntity) => void;
-  onConnect: (item: RegistryItem) => void;
-}) {
-  const [communityWarningOpen, setCommunityWarningOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"connect" | null>(null);
-
-  const appName = getRegistryItemAppName(item) ?? "";
-  const isConnected = connectedAppNames.has(appName);
-  const studioMeta = item._meta?.["mcp.mesh"] as
-    | Record<string, string>
-    | undefined;
-  const title =
-    studioMeta?.friendlyName ||
-    studioMeta?.friendly_name ||
-    item.server?.title ||
-    item.title ||
-    item.server?.name ||
-    item.name ||
-    item.id ||
-    "";
-  const description = item.server?.description || item.description || null;
-  const icon =
-    item.server?.icons?.[0]?.src ||
-    getGitHubAvatarUrl(item.server?.repository) ||
-    null;
-  const appInstances = allConnections.filter(
-    (c) => c.connection_type !== "VIRTUAL" && c.app_name === appName,
-  );
-
-  const isCommunity = isCommunityItem(item);
-
-  const handleClick = () => {
-    if (isConnected) {
-      const first = appInstances[0];
-      if (first) {
-        onNavigateConnected(first);
-      }
-      return;
-    }
-    // Connecting installs a connection (connections:manage). Members without it
-    // can browse the catalog but not connect.
-    if (canManage) {
-      handleConnect();
-    }
-  };
-
-  const handleConnect = () => {
-    if (isCommunity) {
-      setPendingAction("connect");
-      setCommunityWarningOpen(true);
-    } else {
-      onConnect(item);
-    }
-  };
-
-  const handleCommunityConfirm = () => {
-    track("connections_community_warning_confirmed", {
-      registry_item_id: item.id,
-    });
-    setCommunityWarningOpen(false);
-    if (pendingAction === "connect") {
-      onConnect(item);
-    }
-    setPendingAction(null);
-  };
-
-  return (
-    <>
-      <ConnectionCard
-        connection={{ title, description, icon }}
-        fallbackIcon={<Container />}
-        onClick={handleClick}
-        headerActionsAlwaysVisible
-        headerActions={
-          <div className="flex items-center gap-2">
-            {isCommunity && item._sourceIcon && (
-              <img
-                src={item._sourceIcon}
-                alt="Community"
-                className="size-4 rounded-sm object-contain"
-              />
-            )}
-            {isConnected ? (
-              <span className="text-xs text-muted-foreground font-normal">
-                Connected
-              </span>
-            ) : (
-              canManage && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-3 rounded-lg text-sm font-medium"
-                  disabled={connectingItemId !== null}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleConnect();
-                  }}
-                >
-                  {connectingItemId === item.id ? (
-                    <Loading01 size={14} className="animate-spin" />
-                  ) : (
-                    "Connect"
-                  )}
-                </Button>
-              )
-            )}
-          </div>
-        }
-      />
-      <AlertDialog
-        open={communityWarningOpen}
-        onOpenChange={setCommunityWarningOpen}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Community MCP Server</AlertDialogTitle>
-            <AlertDialogDescription>
-              This MCP server is from the Community MCP Registry and is not
-              maintained or verified by Deco. Community servers may have varying
-              levels of quality, security, and reliability. Proceed with caution
-              and review the server details before connecting.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCommunityConfirm}>
-              Continue
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // ConnectionResults — inner component wrapped in Suspense
 // ---------------------------------------------------------------------------
 
@@ -687,6 +159,7 @@ function ConnectionResults({
   registryFilter,
   enabledRegistries,
 }: ConnectionResultsProps) {
+  const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -811,9 +284,7 @@ function ConnectionResults({
         "command" in connectionData.connection_headers;
 
       if (!hasUrl && !hasStdioConfig) {
-        toast.error(
-          "This MCP Server cannot be connected: no connection method available",
-        );
+        toast.error(t("orgs.connections.cannotConnectNoMethod"));
         setConnectingItemId(null);
         return;
       }
@@ -838,7 +309,9 @@ function ConnectionResults({
           error: auth.error ?? "no_token",
         });
         toast.error(
-          `Authentication failed: ${auth.error ?? "no token received"}`,
+          t("orgs.connections.authenticationFailed", {
+            error: auth.error ?? "no token received",
+          }),
         );
         return;
       }
@@ -856,13 +329,15 @@ function ConnectionResults({
           queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
         });
         invalidateConnections();
-        toast.success("Authentication successful");
+        toast.success(t("orgs.connections.authenticationSuccessful"));
       }
 
-      toast.success("Connected successfully");
+      toast.success(t("orgs.connections.connectedSuccessfully"));
     } catch (error) {
       toast.error(
-        `Failed to connect: ${error instanceof Error ? error.message : String(error)}`,
+        t("orgs.connections.failedToConnect", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
     } finally {
       setConnectingItemId(null);
@@ -901,7 +376,7 @@ function ConnectionResults({
     }
 
     invalidateConnections();
-    toast.success(`Deleted ${deleted} connection${deleted !== 1 ? "s" : ""}`);
+    toast.success(t("orgs.connections.deletedConnections", { count: deleted }));
     exitSelectionMode();
   };
 
@@ -913,10 +388,12 @@ function ConnectionResults({
       await actions.update.mutateAsync({ id, data: { status } });
       invalidateConnections();
       toast.success(
-        status === "active" ? "Connection enabled" : "Connection disabled",
+        status === "active"
+          ? t("orgs.connections.connectionEnabled")
+          : t("orgs.connections.connectionDisabled"),
       );
     } catch {
-      toast.error("Failed to update connection");
+      toast.error(t("orgs.connections.failedToUpdateConnection"));
     }
   };
 
@@ -939,7 +416,9 @@ function ConnectionResults({
 
     invalidateConnections();
     toast.success(
-      `${status === "active" ? "Enabled" : "Disabled"} ${updated} connection${updated !== 1 ? "s" : ""}`,
+      status === "active"
+        ? t("orgs.connections.enabledConnections", { count: updated })
+        : t("orgs.connections.disabledConnections", { count: updated }),
     );
     exitSelectionMode();
   };
@@ -965,7 +444,7 @@ function ConnectionResults({
       }));
 
     if (newConns.length === 0) {
-      toast.info("All selected connections are already in that agent");
+      toast.info(t("orgs.connections.allConnectionsAlreadyInAgent"));
       return;
     }
 
@@ -989,11 +468,14 @@ function ConnectionResults({
       });
 
       toast.success(
-        `Added ${newConns.length} connection${newConns.length !== 1 ? "s" : ""} to "${agent.title}"`,
+        t("orgs.connections.addedConnectionsToAgent", {
+          count: newConns.length,
+          agentTitle: agent.title,
+        }),
       );
       exitSelectionMode();
     } catch {
-      toast.error("Failed to add connections to agent");
+      toast.error(t("orgs.connections.failedToAddConnectionsToAgent"));
     }
   };
 
@@ -1039,13 +521,15 @@ function ConnectionResults({
                   aria-hidden="true"
                 />
               }
-              title="No Connections found"
+              title={t("orgs.connections.noConnectionsFound")}
               description={
                 listState.search
-                  ? `No Connections match "${listState.search}"`
+                  ? t("orgs.connections.noConnectionsMatchSearch", {
+                      search: listState.search,
+                    })
                   : canManage
-                    ? "Create a connection to get started."
-                    : "Ask an organization admin to add one."
+                    ? t("orgs.connections.createConnectionToGetStarted")
+                    : t("orgs.connections.askAdminToAddConnection")
               }
             />
           ) : (
@@ -1095,111 +579,29 @@ function ConnectionResults({
                     )}
                     headerActionsAlwaysVisible
                     headerActions={
-                      <div className="flex items-center gap-1">
-                        {selectionMode ? (
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleSelect(connection.id)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        ) : (
-                          <span className="text-xs text-muted-foreground font-normal">
-                            Connected
-                          </span>
-                        )}
-                        <div
-                          className={cn(
-                            "overflow-hidden transition-all duration-150 ease-out",
-                            selectionMode
-                              ? "w-8 opacity-100"
-                              : "w-0 opacity-0 group-hover:w-8 group-hover:opacity-100",
-                          )}
-                        >
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <DotsVertical size={20} />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              align="end"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigate({
-                                    to: "/$org/settings/connections/$appSlug",
-                                    params: {
-                                      org: org.slug,
-                                      appSlug: getConnectionSlug(connection),
-                                    },
-                                  });
-                                }}
-                              >
-                                <Eye size={16} />
-                                Open
-                              </DropdownMenuItem>
-                              {(canManage || canManageAgents) && (
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleSelect(connection.id);
-                                  }}
-                                >
-                                  <CheckSquare size={16} />
-                                  Select
-                                </DropdownMenuItem>
-                              )}
-                              {canManage &&
-                                (connection.status === "active" ? (
-                                  <DropdownMenuItem
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleToggleStatus(
-                                        connection.id,
-                                        "inactive",
-                                      );
-                                    }}
-                                  >
-                                    <SlashCircle01 size={16} />
-                                    Disable
-                                  </DropdownMenuItem>
-                                ) : (
-                                  <DropdownMenuItem
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleToggleStatus(
-                                        connection.id,
-                                        "active",
-                                      );
-                                    }}
-                                  >
-                                    <Power01 size={16} />
-                                    Enable
-                                  </DropdownMenuItem>
-                                ))}
-                              {canManage && (
-                                <DropdownMenuItem
-                                  variant="destructive"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteConnection.requestDelete(connection);
-                                  }}
-                                >
-                                  <Trash01 size={16} />
-                                  Delete
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
+                      <ConnectionCardHeaderActions
+                        connection={connection}
+                        isSelected={isSelected}
+                        selectionMode={selectionMode}
+                        canManage={canManage}
+                        canManageAgents={canManageAgents}
+                        onToggleSelect={() => toggleSelect(connection.id)}
+                        onOpen={() =>
+                          navigate({
+                            to: "/$org/settings/connections/$appSlug",
+                            params: {
+                              org: org.slug,
+                              appSlug: getConnectionSlug(connection),
+                            },
+                          })
+                        }
+                        onToggleStatus={(status) =>
+                          handleToggleStatus(connection.id, status)
+                        }
+                        onDelete={() =>
+                          deleteConnection.requestDelete(connection)
+                        }
+                      />
                     }
                   />
                 );
@@ -1265,6 +667,7 @@ function ConnectionResults({
 }
 
 function OrgMcpsContent() {
+  const t = useT();
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as {
@@ -1548,7 +951,9 @@ function OrgMcpsContent() {
     <div className="flex items-center gap-2">
       <Button variant="outline" onClick={openCreateDialog}>
         <Plus size={14} className="sm:hidden" />
-        <span className="hidden sm:inline">Custom Connection</span>
+        <span className="hidden sm:inline">
+          {t("orgs.connections.customConnection")}
+        </span>
       </Button>
     </div>
   ) : null;
@@ -1557,12 +962,13 @@ function OrgMcpsContent() {
     <>
       <Page>
         {(() => {
-          const dialogTitle = "Create Connection";
-          const dialogDescription =
-            "Create a custom connection in your organization. Fill in the details below.";
+          const dialogTitle = t("orgs.connections.createConnection");
+          const dialogDescription = t(
+            "orgs.connections.createConnectionDescription",
+          );
           const submitLabel = form.formState.isSubmitting
-            ? "Saving..."
-            : "Create Connection";
+            ? t("orgs.connections.saving")
+            : t("orgs.connections.createConnection");
 
           const formFields = (
             <div className="grid gap-4">
@@ -1571,7 +977,7 @@ function OrgMcpsContent() {
                 name="ui_type"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Type *</FormLabel>
+                    <FormLabel>{t("orgs.connections.type")}</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger>
@@ -1602,13 +1008,13 @@ function OrgMcpsContent() {
                             <SelectItem value="NPX">
                               <span className="flex items-center gap-2">
                                 <Container className="w-4 h-4" />
-                                NPX Package
+                                {t("orgs.connections.npxPackage")}
                               </span>
                             </SelectItem>
                             <SelectItem value="STDIO">
                               <span className="flex items-center gap-2">
                                 <Terminal className="w-4 h-4" />
-                                Custom Command
+                                {t("orgs.connections.customCommand")}
                               </span>
                             </SelectItem>
                           </>
@@ -1627,10 +1033,12 @@ function OrgMcpsContent() {
                   name="npx_package"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>NPM Package *</FormLabel>
+                      <FormLabel>{t("orgs.connections.npmPackage")}</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="@perplexity-ai/mcp-server"
+                          placeholder={t(
+                            "orgs.connections.npmPackagePlaceholder",
+                          )}
                           {...field}
                           value={field.value ?? ""}
                           onPaste={(e) => {
@@ -1663,10 +1071,12 @@ function OrgMcpsContent() {
                       name="stdio_command"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Command *</FormLabel>
+                          <FormLabel>{t("orgs.connections.command")}</FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="node, bun, python..."
+                              placeholder={t(
+                                "orgs.connections.commandPlaceholder",
+                              )}
                               {...field}
                               value={field.value ?? ""}
                             />
@@ -1681,10 +1091,14 @@ function OrgMcpsContent() {
                       name="stdio_args"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Arguments</FormLabel>
+                          <FormLabel>
+                            {t("orgs.connections.arguments")}
+                          </FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="arg1 arg2 --flag value"
+                              placeholder={t(
+                                "orgs.connections.argumentsPlaceholder",
+                              )}
                               {...field}
                               value={field.value ?? ""}
                             />
@@ -1700,16 +1114,20 @@ function OrgMcpsContent() {
                     name="stdio_cwd"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Working Directory</FormLabel>
+                        <FormLabel>
+                          {t("orgs.connections.workingDirectory")}
+                        </FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="/path/to/project (optional)"
+                            placeholder={t(
+                              "orgs.connections.workingDirectoryPlaceholder",
+                            )}
                             {...field}
                             value={field.value ?? ""}
                           />
                         </FormControl>
                         <p className="text-xs text-muted-foreground">
-                          Directory where the command will be executed
+                          {t("orgs.connections.directoryExecutionNote")}
                         </p>
                         <FormMessage />
                       </FormItem>
@@ -1725,7 +1143,9 @@ function OrgMcpsContent() {
                   name="env_vars"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Environment Variables</FormLabel>
+                      <FormLabel>
+                        {t("orgs.connections.environmentVariables")}
+                      </FormLabel>
                       <FormControl>
                         <EnvVarsEditor
                           value={field.value ?? []}
@@ -1746,10 +1166,10 @@ function OrgMcpsContent() {
                     name="connection_url"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>URL *</FormLabel>
+                        <FormLabel>{t("orgs.connections.url")}</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="https://example.com/mcp"
+                            placeholder={t("orgs.connections.urlPlaceholder")}
                             {...field}
                             value={field.value ?? ""}
                             onPaste={(e) => {
@@ -1778,14 +1198,15 @@ function OrgMcpsContent() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          {providerHint?.token?.label ?? "Token (optional)"}
+                          {providerHint?.token?.label ??
+                            t("orgs.connections.tokenOptional")}
                         </FormLabel>
                         <FormControl>
                           <Input
                             type="password"
                             placeholder={
                               providerHint?.token?.placeholder ??
-                              "Bearer token or API key"
+                              t("orgs.connections.tokenPlaceholder")
                             }
                             {...field}
                             value={field.value ?? ""}
@@ -1804,7 +1225,7 @@ function OrgMcpsContent() {
                                   target="_blank"
                                   rel="noreferrer"
                                 >
-                                  Open GitHub PAT settings
+                                  {t("orgs.connections.openGitHubPatSettings")}
                                 </a>
                               </>
                             )}
@@ -1823,9 +1244,12 @@ function OrgMcpsContent() {
                 name="title"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Name *</FormLabel>
+                    <FormLabel>{t("orgs.connections.name")}</FormLabel>
                     <FormControl>
-                      <Input placeholder="My Connection" {...field} />
+                      <Input
+                        placeholder={t("orgs.connections.namePlaceholder")}
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1837,10 +1261,12 @@ function OrgMcpsContent() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Description</FormLabel>
+                    <FormLabel>{t("orgs.connections.description")}</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="A brief description of this connection"
+                        placeholder={t(
+                          "orgs.connections.descriptionPlaceholder",
+                        )}
                         rows={3}
                         {...field}
                         value={field.value ?? ""}
@@ -1872,6 +1298,7 @@ function OrgMcpsContent() {
                           variant="ghost"
                           size="icon"
                           className="shrink-0 -mt-1"
+                          aria-label={t("orgs.connections.close")}
                         >
                           <XClose size={16} />
                         </Button>
@@ -1915,7 +1342,7 @@ function OrgMcpsContent() {
                         variant="outline"
                         onClick={() => handleDialogClose(false)}
                       >
-                        Cancel
+                        {t("orgs.connections.cancel")}
                       </Button>
                       <Button
                         type="submit"
@@ -1936,13 +1363,13 @@ function OrgMcpsContent() {
           {/* Title + Toolbar */}
           <Page.Body>
             <div className="flex flex-col gap-6">
-              <Page.Title>Connections</Page.Title>
+              <Page.Title>{t("orgs.connections.pageTitle")}</Page.Title>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <SearchInput
                     value={listState.search}
                     onChange={listState.setSearch}
-                    placeholder="Search for a connection"
+                    placeholder={t("orgs.connections.searchPlaceholder")}
                     className="w-full md:w-[375px]"
                     onKeyDown={(event) => {
                       if (event.key === "Escape") {
@@ -1956,20 +1383,32 @@ function OrgMcpsContent() {
                     sortDirection={listState.sortDirection}
                     onSort={listState.handleSort}
                     sortOptions={[
-                      { id: "title", label: "Name" },
-                      { id: "description", label: "Description" },
-                      { id: "connection_type", label: "Type" },
-                      { id: "updated_by", label: "Updated by" },
-                      { id: "updated_at", label: "Updated" },
+                      { id: "title", label: t("orgs.connections.sortName") },
+                      {
+                        id: "description",
+                        label: t("orgs.connections.sortDescription"),
+                      },
+                      {
+                        id: "connection_type",
+                        label: t("orgs.connections.sortType"),
+                      },
+                      {
+                        id: "updated_by",
+                        label: t("orgs.connections.sortUpdatedBy"),
+                      },
+                      {
+                        id: "updated_at",
+                        label: t("orgs.connections.sortUpdated"),
+                      },
                     ]}
                     filters={[
                       {
-                        label: "Type",
+                        label: t("orgs.connections.filterType"),
                         value: typeFilter,
                         onChange: (v) =>
                           setTypeFilter((v as ConnectionTypeFilter) || "ALL"),
                         options: [
-                          { id: "ALL", label: "All" },
+                          { id: "ALL", label: t("orgs.connections.filterAll") },
                           { id: "HTTP", label: "HTTP" },
                           { id: "SSE", label: "SSE" },
                           { id: "Websocket", label: "WebSocket" },
@@ -1977,32 +1416,46 @@ function OrgMcpsContent() {
                         ],
                       },
                       {
-                        label: "Status",
+                        label: t("orgs.connections.filterStatus"),
                         value: statusFilter,
                         onChange: (v) =>
                           setStatusFilter(
                             (v as ConnectionStatusFilter) || "ALL",
                           ),
                         options: [
-                          { id: "ALL", label: "All" },
-                          { id: "active", label: "Active" },
-                          { id: "inactive", label: "Inactive" },
-                          { id: "error", label: "Error" },
+                          { id: "ALL", label: t("orgs.connections.filterAll") },
+                          {
+                            id: "active",
+                            label: t("orgs.connections.filterActive"),
+                          },
+                          {
+                            id: "inactive",
+                            label: t("orgs.connections.filterInactive"),
+                          },
+                          {
+                            id: "error",
+                            label: t("orgs.connections.filterError"),
+                          },
                         ],
                       },
                       ...(enabledRegistries.length > 1
                         ? [
                             {
-                              label: "Registry",
+                              label: t("orgs.connections.filterRegistry"),
                               value: registryFilter,
                               onChange: (v: string) =>
                                 setRegistryFilter(v || "ALL"),
                               options: [
-                                { id: "ALL", label: "All registries" },
+                                {
+                                  id: "ALL",
+                                  label: t(
+                                    "orgs.connections.filterAllRegistries",
+                                  ),
+                                },
                                 ...enabledRegistries.map((r) => ({
                                   id: r.id,
                                   label: r.id.includes("community-registry")
-                                    ? "Community MCP Registry"
+                                    ? t("orgs.connections.communityMcpRegistry")
                                     : r.title,
                                 })),
                               ],
@@ -2016,8 +1469,11 @@ function OrgMcpsContent() {
               </div>
               <CollectionTabs
                 tabs={[
-                  { id: "all", label: "All" },
-                  { id: "connected", label: "Connected" },
+                  { id: "all", label: t("orgs.connections.tabAll") },
+                  {
+                    id: "connected",
+                    label: t("orgs.connections.tabConnected"),
+                  },
                 ]}
                 activeTab={activeTab}
                 onTabChange={(id) => {

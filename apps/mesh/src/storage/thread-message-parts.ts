@@ -49,6 +49,23 @@ function estimatePayloadBytes(value: unknown, budget: number): number {
   return total;
 }
 
+// Postgres `jsonb`/`text` cannot store U+0000, and rejects unpaired UTF-16
+// surrogates, with SQLSTATE 22P05 ("unsupported Unicode escape sequence").
+// A part whose payload carries either — e.g. a tool result that inlined raw
+// binary such as a PNG (full of NUL bytes) — fails the INSERT and, because the
+// projection step is the sole writer of terminal thread status, strands the
+// whole run `in_progress` forever. Content arriving from the harness/desktop is
+// untrusted, so sanitize it here at the storage boundary rather than trusting
+// every producer. Clean strings are returned unchanged, so ids derived from the
+// serialized payload stay stable.
+const NUL = /\u0000/g;
+const LONE_SURROGATE =
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+function sanitizeForPg(value: string): string {
+  return value.replace(NUL, "").replace(LONE_SURROGATE, "\uFFFD");
+}
+
 export function serializePayload(payload: unknown): string {
   if (
     estimatePayloadBytes(payload, MAX_PART_PAYLOAD_BYTES) >
@@ -59,7 +76,12 @@ export function serializePayload(payload: unknown): string {
       reason: "payload exceeds max stored size",
     });
   }
-  return JSON.stringify(payload);
+  // A JSON replacer visits every string in the payload tree; clean strings pass
+  // through untouched (byte-identical output, so ids derived from the payload
+  // stay stable).
+  return JSON.stringify(payload, (_key, value) =>
+    typeof value === "string" ? sanitizeForPg(value) : value,
+  );
 }
 
 export class SqlThreadMessagePartStorage {
@@ -176,6 +198,25 @@ export class SqlThreadMessagePartStorage {
         await trx
           .insertInto("thread_message_parts")
           .values(rowsToInsert)
+          // Concurrency / DBOS-retry safety: this DELETE-then-INSERT is not
+          // atomic against a concurrent writer (the projector's `appendParts`,
+          // or a redelivered `consumeRunProjection` step) that commits a
+          // colliding `id` between our DELETE and INSERT. A bare INSERT then
+          // fails the whole batch on `thread_message_parts_pkey`, the
+          // projection step throws, and the assistant message is left empty
+          // ("No response was generated"). This method owns the authoritative
+          // snapshot, so overwrite the row on conflict rather than aborting.
+          .onConflict((oc) =>
+            oc.column("id").doUpdateSet((eb) => ({
+              seq: eb.ref("excluded.seq"),
+              role: eb.ref("excluded.role"),
+              kind: eb.ref("excluded.kind"),
+              payload: eb.ref("excluded.payload"),
+              payload_ref: eb.ref("excluded.payload_ref"),
+              metadata: eb.ref("excluded.metadata"),
+              created_at: eb.ref("excluded.created_at"),
+            })),
+          )
           .execute();
       }
     });

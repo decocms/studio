@@ -1,5 +1,6 @@
 "use client";
 
+import { useT } from "@/web/i18n/use-t.ts";
 import { contentBlocksToTiptapDoc } from "@/mcp-apps/content-blocks.ts";
 import { MCPAppRenderer as MCPAppIframeRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
@@ -178,20 +179,24 @@ function getSummary(
   state: string,
   output?: unknown,
   errorText?: string,
+  t?: ReturnType<typeof useT>,
 ): string {
+  // ponytail: t param optional; used only for async/reactive state labels
   switch (state) {
     case "input-streaming":
     case "input-available":
-      return "Preparing...";
+      return t ? t("chat.generic.preparing") : "Preparing...";
     case "approval-requested":
-      return "Waiting for your approval";
+      return t
+        ? t("chat.generic.waitingForApproval")
+        : "Waiting for your approval";
     case "output-denied":
-      return "Cancelled";
+      return t ? t("chat.generic.cancelled") : "Cancelled";
     case "output-error":
-      return errorText ?? "Failed";
+      return errorText ?? (t ? t("chat.generic.failed") : "Failed");
     case "output-available": {
       // Try to surface a concise result snippet
-      if (output == null) return "Done";
+      if (output == null) return t ? t("chat.generic.done") : "Done";
       if (typeof output === "string") {
         const trimmed = output.trim();
         return trimmed.length > 100 ? trimmed.slice(0, 100) + "…" : trimmed;
@@ -223,12 +228,13 @@ export function GenericToolCallPart({
   isLastMessage,
   toolMeta,
 }: GenericToolCallPartProps) {
+  const t = useT();
   // Extract tool name with proper dynamic-tool handling
   const rawToolName =
     "toolName" in part && typeof part.toolName === "string"
       ? part.toolName
       : part.type === "dynamic-tool"
-        ? "Dynamic Tool"
+        ? t("chat.generic.dynamicTool")
         : part.type.replace("tool-", "") || "Tool";
   // Strip mcp__<server>__ prefix (e.g. mcp__cms__conn-abc_hello → conn-abc_hello)
   const mcpStrippedName = stripMcpServerPrefix(rawToolName);
@@ -371,11 +377,11 @@ export function GenericToolCallPart({
         anchorMs={partCreatedAtMs(part)}
       />
     ) : isStaleApproval ? (
-      "Cancelled"
+      t("chat.generic.cancelled")
     ) : isOutputError ? (
-      "Failed"
+      t("chat.generic.failed")
     ) : (
-      getSummary(part.state, part.output, errorText)
+      getSummary(part.state, part.output, errorText, t)
     );
 
   // Build expanded content
@@ -425,7 +431,7 @@ export function GenericToolCallPart({
             className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground rounded-md [@media(hover:hover)]:hover:bg-accent/50 [@media(hover:hover)]:hover:text-foreground transition-colors"
           >
             <Expand06 className="size-3.5" />
-            Open in panel
+            {t("chat.generic.openInPanel")}
           </button>
         </div>
       )}
@@ -436,8 +442,7 @@ export function GenericToolCallPart({
               <div className="mt-2 flex items-center gap-2 px-3 py-2.5 border border-dashed border-destructive/30 bg-destructive/5 rounded-lg">
                 <AlertCircle size={16} className="shrink-0 text-destructive" />
                 <span className="flex-1 text-xs text-destructive font-medium">
-                  Failed to load{" "}
-                  <span className="font-mono">{friendlyName}</span> app
+                  {t("chat.generic.failedToLoad", { toolName: friendlyName })}
                 </span>
                 <Button
                   size="sm"
@@ -446,7 +451,7 @@ export function GenericToolCallPart({
                   onClick={resetError}
                 >
                   <RefreshCw01 className="size-3.5" />
-                  Retry
+                  {t("chat.generic.retry")}
                 </Button>
               </div>
             )}
@@ -456,7 +461,9 @@ export function GenericToolCallPart({
                 <div className="mt-2 flex items-center justify-center h-12 border border-border/75 rounded-lg overflow-hidden p-3">
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    <span className="text-sm">Loading app...</span>
+                    <span className="text-sm">
+                      {t("chat.generic.loadingApp")}
+                    </span>
                   </div>
                 </div>
               }

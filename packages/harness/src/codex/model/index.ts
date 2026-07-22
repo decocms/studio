@@ -28,7 +28,7 @@ export function createCodexModel(
     /** Chat mode plan — stricter approval policy */
     isPlanMode?: boolean;
     /** Working directory for Codex's app-server subprocess. Defaults to
-     *  mesh's cwd — mirrors `createClaudeCodeModel`. Without this, the
+     *  studio's cwd — mirrors `createClaudeCodeModel`. Without this, the
      *  codex CLI runs in the daemon's own cwd (typically the app root)
      *  instead of the cloned repo, so file edits land in the wrong tree. */
     cwd?: string;

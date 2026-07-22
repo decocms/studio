@@ -1,6 +1,7 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { Lock01, SearchLg } from "@untitledui/icons";
 import { AccessScreenLayout } from "@/web/components/access-screen-layout";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface NoAccessScreenProps {
   orgSlug: string;
@@ -13,22 +14,26 @@ export function NoAccessScreen({
   orgName,
   reason,
 }: NoAccessScreenProps) {
+  const t = useT();
   const handleGoHome = () => {
     window.location.href = "/";
   };
 
   const isNotFound = reason === "not-found";
   const Icon = isNotFound ? SearchLg : Lock01;
-  const title = isNotFound ? "Organization not found" : "No access";
+  const title = isNotFound
+    ? t("common.noAccessScreen.organizationNotFound")
+    : t("common.noAccessScreen.noAccess");
   const body = isNotFound ? (
     <>
-      We couldn&apos;t find an organization called <strong>{orgSlug}</strong>.
+      {t("common.noAccessScreen.couldNotFind")} <strong>{orgSlug}</strong>.
     </>
   ) : (
     <>
-      You don&apos;t have access to <strong>{orgName ?? orgSlug}</strong>.
+      {t("common.noAccessScreen.noAccessTo")}{" "}
+      <strong>{orgName ?? orgSlug}</strong>.
       <br />
-      Ask an admin to invite you.
+      {t("common.noAccessScreen.askAdminToInvite")}
     </>
   );
 
@@ -41,7 +46,9 @@ export function NoAccessScreen({
         <h3 className="text-lg font-medium">{title}</h3>
         <p className="text-sm text-muted-foreground">{body}</p>
       </div>
-      <Button onClick={handleGoHome}>Go to home</Button>
+      <Button onClick={handleGoHome}>
+        {t("common.noAccessScreen.goToHome")}
+      </Button>
     </AccessScreenLayout>
   );
 }

@@ -240,6 +240,12 @@ function makeCtx(overrides: {
       connections: {
         findById: mock(async (_id: string) => ({ metadata: null })),
       },
+      // A `thread:` branch resolves the thread's bound repo; return no thread so
+      // provisioning falls back to the VM's own githubRepo.
+      threads: {
+        get: mock(async (_id: string) => null),
+        update: mock(async () => {}),
+      },
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
@@ -340,6 +346,32 @@ describe("SANDBOX_START", () => {
       packageManager: "npm",
       devPort: 3000,
     });
+  });
+
+  it("sends a real git branch for a synthetic thread branch, keeping the ref synthetic", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({ virtualMcp });
+    const synthetic = "thread:t1/conn_a";
+
+    await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: synthetic },
+      ctx,
+    );
+
+    const [id, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    // Git config gets a REAL, non-default ref — so shutdown-sync persists to git
+    // on its own branch, never `main`.
+    expect(opts.repo?.branch).toBe("sandbox/thread-t1-conn_a");
+    // Isolation stays synthetic: projectRef + handle key are unchanged, so
+    // sandbox identity/reuse is stable across reboots.
+    expect(opts.branch).toBe(synthetic);
+    expect(id.projectRef).toBe(
+      composeSandboxRef({
+        orgId: ORG_ID,
+        virtualMcpId: VMCP_ID,
+        branch: synthetic,
+      }),
+    );
   });
 
   it("persists sandboxMap entry with handle + previewUrl + sandboxProviderKind", async () => {

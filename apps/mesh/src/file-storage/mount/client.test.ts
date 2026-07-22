@@ -3,7 +3,7 @@ import { OrgFsClient } from "./client";
 
 describe("OrgFsClient.readResponse", () => {
   it("falls back (null) when the presigned host is unreachable", async () => {
-    // The mesh fetch is injected and presigns to a port nothing listens on —
+    // The studio fetch is injected and presigns to a port nothing listens on —
     // a real refused connection, like a cluster pod given a localhost MinIO
     // URL. Found by the Stage-2 kind e2e: a propagated error here makes
     // rclone retry-loop forever instead of using the buffered path.

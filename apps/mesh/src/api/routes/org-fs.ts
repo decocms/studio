@@ -591,7 +591,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   });
 
   // Read a file: `?presign=1` returns a presigned URL (the mount's byte path);
-  // otherwise the bytes are streamed through mesh (convenient for the UI/dev).
+  // otherwise the bytes are streamed through studio (convenient for the UI/dev).
   //
   // Share fast-path: resolveOrgFromPath binds ctx.orgFs and lets anonymous /
   // non-member callers reach this route (its public-share carve-out). A

@@ -30,17 +30,18 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const QUICK_AMOUNTS = {
   usd: [
-    { dollars: 10, label: "Starter" },
-    { dollars: 20, label: "Popular" },
-    { dollars: 100, label: "Best value" },
+    { dollars: 10, labelKey: "chat.creditsEmptyState.starterLabel" },
+    { dollars: 20, labelKey: "chat.creditsEmptyState.popularLabel" },
+    { dollars: 100, labelKey: "chat.creditsEmptyState.bestValueLabel" },
   ],
   brl: [
-    { dollars: 50, label: "Starter" },
-    { dollars: 100, label: "Popular" },
-    { dollars: 500, label: "Best value" },
+    { dollars: 50, labelKey: "chat.creditsEmptyState.starterLabel" },
+    { dollars: 100, labelKey: "chat.creditsEmptyState.popularLabel" },
+    { dollars: 500, labelKey: "chat.creditsEmptyState.bestValueLabel" },
   ],
 } as const;
 
@@ -58,6 +59,7 @@ export function wasCreditsEmptyDismissed(orgId: string): boolean {
 }
 
 export function CreditsEmptyState() {
+  const t = useT();
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const { decoKeyId } = useDecoCredits();
@@ -100,7 +102,9 @@ export function CreditsEmptyState() {
       dismiss();
     },
     onError: (err) => {
-      toast.error(`Top-up failed: ${err.message}`);
+      toast.error(
+        t("chat.creditsEmptyState.topUpFailed", { message: err.message }),
+      );
     },
   });
 
@@ -117,21 +121,17 @@ export function CreditsEmptyState() {
       >
         {/* Header */}
         <div className="relative px-6 pt-7 pb-5">
-          <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-amber-500/8 to-transparent pointer-events-none rounded-t-lg" />
+          <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-warning/8 to-transparent pointer-events-none rounded-t-lg" />
           <DialogHeader className="relative gap-3">
-            <div className="flex items-center justify-center size-11 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-200/60 dark:border-amber-800/40 mx-auto">
-              <Coins04
-                size={20}
-                className="text-amber-600 dark:text-amber-400"
-              />
+            <div className="flex items-center justify-center size-11 rounded-full bg-warning/10 border border-warning/20 mx-auto">
+              <Coins04 size={20} className="text-warning" />
             </div>
             <div className="text-center">
               <DialogTitle className="text-lg font-semibold">
-                This workspace has no credits
+                {t("chat.creditsEmptyState.title")}
               </DialogTitle>
               <DialogDescription className="mt-2 text-[13px] leading-relaxed max-w-[320px] mx-auto">
-                Your free credits were used in another workspace. Add credits to
-                use AI here.
+                {t("chat.creditsEmptyState.description")}
               </DialogDescription>
             </div>
           </DialogHeader>
@@ -161,7 +161,7 @@ export function CreditsEmptyState() {
             </div>
 
             <div className="grid grid-cols-3 gap-2.5">
-              {QUICK_AMOUNTS[currency].map(({ dollars, label }) => (
+              {QUICK_AMOUNTS[currency].map(({ dollars, labelKey }) => (
                 <button
                   key={dollars}
                   type="button"
@@ -170,7 +170,7 @@ export function CreditsEmptyState() {
                     track("credits_topup_clicked", {
                       amount_cents: dollars * 100,
                       currency,
-                      tier_label: label,
+                      tier_label: labelKey,
                       source: "empty_state",
                     });
                     topUp(dollars * 100);
@@ -185,7 +185,9 @@ export function CreditsEmptyState() {
                     {currencySymbol}
                     {dollars}
                   </span>
-                  <span className="text-xs text-muted-foreground">{label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t(labelKey)}
+                  </span>
                 </button>
               ))}
             </div>
@@ -221,7 +223,9 @@ export function CreditsEmptyState() {
                     topUp(Math.round(customNum * 100));
                   }}
                 >
-                  {isPending ? "Opening..." : "Add"}
+                  {isPending
+                    ? t("chat.creditsEmptyState.opening")
+                    : t("chat.creditsEmptyState.add")}
                 </Button>
               </div>
             ) : (
@@ -230,7 +234,7 @@ export function CreditsEmptyState() {
                 className="w-full mt-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
                 onClick={() => setShowCustom(true)}
               >
-                Enter custom amount
+                {t("chat.creditsEmptyState.enterCustomAmount")}
               </button>
             )}
           </div>
@@ -249,7 +253,7 @@ export function CreditsEmptyState() {
               dismiss();
             }}
           >
-            Use your own provider
+            {t("chat.creditsEmptyState.useYourOwnProvider")}
             <ArrowRight
               size={12}
               className="transition-transform duration-150 group-hover:translate-x-0.5"
@@ -261,7 +265,7 @@ export function CreditsEmptyState() {
             className="text-xs text-muted-foreground"
             onClick={dismiss}
           >
-            Skip for now
+            {t("chat.creditsEmptyState.skipForNow")}
           </Button>
         </div>
       </DialogContent>

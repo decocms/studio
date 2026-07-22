@@ -218,4 +218,46 @@ describe("resolveEffectiveVirtualMcpForHarness", () => {
       },
     ]);
   });
+
+  it("restores API key tools when an installed manager has stale selections", async () => {
+    const virtualMcp = {
+      id: "studio-api-key-manager_org-1",
+      title: "API Key Manager",
+      description: "Manage API keys",
+      icon: null,
+      created_at: "2026-07-17T00:00:00.000Z",
+      updated_at: "2026-07-17T00:00:00.000Z",
+      created_by: "user-1",
+      organization_id: "org-1",
+      status: "active" as const,
+      pinned: false,
+      metadata: { instructions: "persisted instructions" },
+      connections: [
+        {
+          connection_id: "org-1_self",
+          selected_tools: [],
+          selected_resources: null,
+          selected_prompts: null,
+        },
+      ],
+    };
+
+    const resolved = await resolveEffectiveVirtualMcpForHarness({
+      virtualMcp,
+      agentId: virtualMcp.id,
+      organizationId: "org-1",
+      ctx: {} as never,
+    });
+
+    expect(resolved.connections[0]?.selected_tools).toEqual([
+      "API_KEY_CREATE",
+      "API_KEY_LIST",
+      "API_KEY_UPDATE",
+      "API_KEY_DELETE",
+      "COLLECTION_VIRTUAL_MCP_LIST",
+      "COLLECTION_VIRTUAL_MCP_GET",
+      "COLLECTION_CONNECTIONS_LIST",
+      "COLLECTION_CONNECTIONS_GET",
+    ]);
+  });
 });

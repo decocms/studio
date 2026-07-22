@@ -1,7 +1,7 @@
 import type { ProjectLocator } from "@decocms/mesh-sdk";
 
 /**
- * Known localStorage keys for the mesh app.
+ * Known localStorage keys for the studio app.
  * When adding a new use of useLocalStorage, add the key to this object.
  * This is used to avoid inline key definitions and to ensure consistency.
  */
@@ -30,4 +30,5 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:chat:task-last-viewed:${locator}`,
   sidebarGroupOrder: (orgId: string, userId: string) =>
     `sidebar.group-order.${orgId}.${userId}`,
+  ptBrAnnouncementSeen: (userId: string) => `mesh:announcement:pt-br:${userId}`,
 } as const;

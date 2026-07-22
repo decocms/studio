@@ -96,7 +96,7 @@ export interface BoundAuthClient {
    * authorized SOLELY by the key's stored allowlist — it must NOT inherit the
    * owner's admin/owner role. Both `hasPermission` here and the role bypass in
    * `AccessControl.checkResource` read this single flag so every call site
-   * (REST + MCP) agrees. Absent/false for browser sessions, MCP OAuth, and mesh
+   * (REST + MCP) agrees. Absent/false for browser sessions, MCP OAuth, and studio
    * JWTs, which keep the role-based behavior.
    */
   isApiKeyPrincipal?: boolean;
@@ -194,6 +194,13 @@ export interface BoundAuthClient {
  * Authentication state from Better Auth
  */
 export interface MeshAuth {
+  /**
+   * Organization encoded in a bearer credential (API key or mesh JWT).
+   * Org-scoped middleware must not rebind a token issued for one org to a
+   * different org named in the request path.
+   */
+  tokenOrganizationId?: string;
+
   user?: {
     id: string;
     connectionId?: string;

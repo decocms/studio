@@ -7,6 +7,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { useT } from "@/web/i18n/use-t";
 import {
   SectionVariantList,
   type SectionVariantEntry,
@@ -75,6 +76,7 @@ export function MultivariateFieldWrapper({
   renderInnerField,
   ...props
 }: MultivariateFieldWrapperProps) {
+  const t = useT();
   const { value, onChange, meta, path } = props;
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -88,7 +90,9 @@ export function MultivariateFieldWrapper({
               variant="ghost"
               size="icon"
               className="absolute right-0 top-0 size-6 text-muted-foreground hover:text-foreground"
-              aria-label="Add variant"
+              aria-label={t(
+                "sectionsEditor.multivariateFieldWrapper.addVariant",
+              )}
               onClick={() => {
                 onChange(wrapAsMultivariate(value, multivariateResolveType));
                 setSelectedIndex(0);
@@ -97,7 +101,9 @@ export function MultivariateFieldWrapper({
               <Flag01 size={14} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Add variant</TooltipContent>
+          <TooltipContent>
+            {t("sectionsEditor.multivariateFieldWrapper.addVariant")}
+          </TooltipContent>
         </Tooltip>
         {renderInnerField(props)}
       </div>
@@ -112,7 +118,9 @@ export function MultivariateFieldWrapper({
     index: i,
     label:
       formatMatcher(v.rule as Record<string, unknown> | undefined) ||
-      `Variant ${i + 1}`,
+      t("sectionsEditor.multivariateFieldWrapper.variantN", {
+        n: String(i + 1),
+      }),
   }));
 
   const currentVariant = variants[safeIndex];

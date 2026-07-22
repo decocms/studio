@@ -178,7 +178,7 @@ async function requireMeshContext(
   );
   if (!studioCtx) {
     throw new Error(
-      `[background-tool] mesh context unavailable for org ${ctx.orgId} user ${ctx.userId}`,
+      `[background-tool] studio context unavailable for org ${ctx.orgId} user ${ctx.userId}`,
     );
   }
   return studioCtx;
@@ -653,7 +653,7 @@ export async function deliverBackgroundSubtaskResult(args: {
 }
 
 /** Resolve the reaction turn's target + harness from the thread row. Returns
- *  null only when the mesh context can't be rebuilt. */
+ *  null only when the studio context can't be rebuilt. */
 async function resolveReactionTargetStep(
   ctx: BackgroundToolContext,
 ): Promise<{ target: DispatchTarget; harnessId: HarnessId | null } | null> {

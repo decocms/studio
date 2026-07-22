@@ -1,5 +1,5 @@
 /**
- * Builds the `ORGFS_CONFIG` payload the mesh pushes to a sandbox daemon (as a
+ * Builds the `ORGFS_CONFIG` payload the studio pushes to a sandbox daemon (as a
  * boot env var) to turn on org-fs mounting. The daemon's `parseOrgFsConfig`
  * (packages/sandbox/daemon/org-fs/config.ts) validates this shape.
  *
@@ -20,7 +20,7 @@
  *     subtree of the org-wide `outputs` volume (the share-files-back flow).
  *   - `uploads` → mounted at `<appRoot>/org/.uploads` (hidden); same per-run
  *     symlink trick (`org/upload → .uploads/<threadId>`) in the inbound
- *     direction — chat attachments the mesh writes to the thread's uploads
+ *     direction — chat attachments the studio writes to the thread's uploads
  *     folder appear in the sandbox with no copy step.
  */
 

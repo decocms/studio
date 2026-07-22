@@ -3,7 +3,7 @@
  * runner.
  *
  * The `host` SandboxProvider was the local-dev shortcut that spawned the
- * sandbox daemon as a child of the mesh process. It has been retired in
+ * sandbox daemon as a child of the studio process. It has been retired in
  * favor of the laptop-side `deco link` daemon (auto-spawned by
  * `bun run dev --local-sandbox-provider`), which exercises the same
  * remote-cli + desktop code paths production uses.

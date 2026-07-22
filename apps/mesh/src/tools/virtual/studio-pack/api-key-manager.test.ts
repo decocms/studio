@@ -29,7 +29,10 @@ describe("apiKeyManagerAgent", () => {
       "returns the key value exactly once",
     );
     expect(apiKeyManagerAgent.instructions).toContain(
-      "Do not repeat that value",
+      "print that value exactly once in a fenced plain-text code block",
+    );
+    expect(apiKeyManagerAgent.instructions).not.toContain(
+      "Never reproduce the key value",
     );
   });
 });

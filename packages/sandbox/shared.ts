@@ -42,7 +42,7 @@ export {
 /**
  * Injected into proxied dev-server HTML. Two jobs:
  * 1. WebSocket rewriter — Vite/Fresh/Next/Webpack/Bun bake the dev WS URL
- *    (container-internal host:port) at startup; inside mesh's iframe under
+ *    (container-internal host:port) at startup; inside studio's iframe under
  *    `/api/sandbox/.../preview/<port>/` those URLs don't route. We patch
  *    `WebSocket` so loopback/same-hostname-different-port URLs are rewritten
  *    to the iframe origin + same proxy prefix, so HMR lands on the daemon.

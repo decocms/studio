@@ -16,11 +16,17 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
+
+/** One entry of an MCP tool's `inputSchema.properties`. */
+export interface ToolInputProperty {
+  type: string;
+  description?: string;
+}
 
 interface ToolInputFormProps {
   /** `inputSchema.properties` from the MCP tool definition. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  properties: Record<string, any>;
+  properties: Record<string, ToolInputProperty>;
   /** Names of required fields (`inputSchema.required`). */
   required?: string[];
   /** Current field values. */
@@ -45,7 +51,7 @@ export function ToolInputForm({
             <label className="text-xs font-medium leading-none flex items-center gap-1">
               {key}
               {requiredSet.has(key) && (
-                <span className="text-red-500 text-[10px]">*</span>
+                <span className="text-destructive text-[10px]">*</span>
               )}
             </label>
             <span className="text-[10px] text-muted-foreground font-mono">
@@ -80,13 +86,14 @@ function FieldInput({
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
+  const t = useT();
   if (type === "object" || type === "array") {
     return (
       <Textarea
         className="font-mono text-xs h-16"
         value={(value as string) ?? ""}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={`Enter ${fieldKey} as JSON…`}
+        placeholder={t("common.toolInputForm.jsonPlaceholder", { fieldKey })}
         rows={2}
       />
     );
@@ -98,11 +105,15 @@ function FieldInput({
         onValueChange={(v) => onChange(v === "true")}
       >
         <SelectTrigger className="h-7 text-xs">
-          <SelectValue placeholder="Select…" />
+          <SelectValue
+            placeholder={t("common.toolInputForm.selectPlaceholder")}
+          />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="true">true</SelectItem>
-          <SelectItem value="false">false</SelectItem>
+          <SelectItem value="true">{t("common.toolInputForm.true")}</SelectItem>
+          <SelectItem value="false">
+            {t("common.toolInputForm.false")}
+          </SelectItem>
         </SelectContent>
       </Select>
     );
@@ -112,7 +123,7 @@ function FieldInput({
       className="h-7 text-xs"
       value={(value as string) ?? ""}
       onChange={(e) => onChange(e.target.value)}
-      placeholder={`Enter ${fieldKey}…`}
+      placeholder={t("common.toolInputForm.enterPlaceholder", { fieldKey })}
     />
   );
 }

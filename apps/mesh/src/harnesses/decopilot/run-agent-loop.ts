@@ -40,6 +40,11 @@ import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
 import type { BuiltinToolParams } from "./built-in-tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
+import {
+  advanceTaskBoardForRun,
+  capturePrForRun,
+  isPrCreateBashCommand,
+} from "@/tools/task-board/run-reactions";
 import type { SubtaskParams } from "./built-in-tools/subtask";
 import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
 import {
@@ -178,7 +183,10 @@ export async function runAgentLoop(
   // ── Tools ─────────────────────────────────────────────────────────
   // Cluster MCP tool-call hooks: storage-ref resolution + posthog
   // analytics, built from ctx. The portable assembler forwards them as-is.
-  const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(opts.ctx);
+  const { resolveArgs, onToolCalled, onPrOpened } = buildClusterMcpToolHooks(
+    opts.ctx,
+    opts.currentThreadId,
+  );
   const { tools: assembledTools } = await assembleAgentTools({
     kind: opts.kind,
     ctx: opts.ctx,
@@ -189,6 +197,7 @@ export async function runAgentLoop(
     subtaskParams: opts.subtaskParams,
     resolveArgs,
     onToolCalled,
+    onPrOpened,
     fullBuiltInParams: opts.subagentBuiltInParams,
   });
   // Merge extra tools (e.g., parent's state-dependent `enable_tool`) after
@@ -202,6 +211,48 @@ export async function runAgentLoop(
   const model = (opts as { __streamText?: unknown }).__streamText
     ? (undefined as never)
     : createLanguageModel(opts.provider, opts.models.thinking);
+
+  // Watch each step's bash calls for `gh pr create` (or a REST fallback) and
+  // move a linked task card to In Review. The scan itself is a cheap per-step
+  // array walk, so it's unconditional — a normal run never has a `bash` call
+  // matching the PR regexes, and `advanceTaskBoardForRun` hits the DB only when
+  // one does: a link SELECT to resolve the target, then a write only if that
+  // run is actually task-linked (a non-task match reads nothing to update).
+  // (The GitHub MCP tool path is caught separately via
+  // `onToolCalled`, whose raw tool name is reliable; here the model-facing tool
+  // name can be mangled, so we key off the built-in `bash` tool + its command.)
+  // `currentThreadId` lets the resolution fall back to the thread link when the
+  // run carries no `runMetadata.taskBoardItemId` (a re-prompted task's 2nd PR).
+  const onStepFinish: StreamTextOnStepFinishCallback<ToolSet> = (step) => {
+    for (const call of step.toolCalls ?? []) {
+      const command = (call.input as { command?: string } | undefined)?.command;
+      if (
+        call.toolName === "bash" &&
+        command &&
+        isPrCreateBashCommand(command)
+      ) {
+        void advanceTaskBoardForRun(
+          opts.ctx,
+          "in_review",
+          opts.currentThreadId,
+        );
+        // Link the PR too — its URL is in the bash call's stdout (`gh pr create`
+        // prints it; a `curl … /pulls` POST returns it in the response body).
+        // Only parse the matched call's own output, never every bash stdout.
+        const output = (step.toolResults ?? []).find(
+          (r) => (r as { toolCallId?: string }).toolCallId === call.toolCallId,
+        ) as { output?: unknown } | undefined;
+        void capturePrForRun(
+          opts.ctx,
+          output?.output,
+          null,
+          opts.currentThreadId,
+        );
+        break;
+      }
+    }
+    return opts.onStepFinish?.(step);
+  };
 
   const handle = runNativeAgentLoopCore({
     model,
@@ -218,7 +269,7 @@ export async function runAgentLoop(
     ),
     stopWhen: stepCountIs(stepLimit),
     abortSignal: opts.abortSignal,
-    onStepFinish: opts.onStepFinish,
+    onStepFinish,
     streamText: (opts as { __streamText?: typeof import("ai").streamText })
       .__streamText,
     onError: (message, error) => {

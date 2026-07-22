@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Automation } from "@/storage/types";
 import {
   buildStreamRequest,
+  contextMessageId,
   type ResolvedAutomationModel,
 } from "./build-stream-request";
 
@@ -43,7 +44,7 @@ function makeResolvedModel(
 }
 
 describe("buildStreamRequest", () => {
-  it("generates fresh message ids (not the stored ones)", () => {
+  it("generates fresh message ids derived from taskId (not the stored ones)", () => {
     const result = buildStreamRequest(
       makeAutomation(),
       "trig_1",
@@ -55,9 +56,27 @@ describe("buildStreamRequest", () => {
     expect(msg.role).toBe("user");
     expect(msg.parts).toEqual([{ type: "text", text: "hello" }]);
     expect(msg.id).not.toBe("m1");
-    expect(msg.id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    expect(msg.id).toBe("thrd_1:0");
+  });
+
+  it("generates the SAME message ids across repeated calls for the same taskId", () => {
+    // buildDispatchRequestStep (the DBOS step wrapping this call) pre-persists
+    // this message via PartEmitter before the step's own output is recorded.
+    // A crash mid-step forces a full re-invocation with the same taskId — the
+    // id must stay stable or the replay orphans a duplicate message row.
+    const first = buildStreamRequest(
+      makeAutomation(),
+      "trig_1",
+      "thrd_1",
+      makeResolvedModel(),
     );
+    const second = buildStreamRequest(
+      makeAutomation(),
+      "trig_1",
+      "thrd_1",
+      makeResolvedModel(),
+    );
+    expect(second.messages[0]!.id).toBe(first.messages[0]!.id);
   });
 
   it("places the resolved model in the request body", () => {
@@ -231,5 +250,21 @@ describe("buildStreamRequest", () => {
       makeResolvedModel(),
     );
     expect(result.maxAgentSteps).toBe(50);
+  });
+});
+
+describe("contextMessageId", () => {
+  it("is stable across repeated calls for the same taskId", () => {
+    // buildDispatchRequestStep's fallback (no non-system message to prepend
+    // event parts onto) uses this id for the synthetic message it pre-persists
+    // via PartEmitter before its own step output is durably recorded — a
+    // crash mid-step forces a full re-invocation, so a random id here would
+    // orphan a duplicate message row the same way the fix in #4790 prevented
+    // for the taskId-derived `${taskId}:${i}` ids above.
+    expect(contextMessageId("thrd_1")).toBe(contextMessageId("thrd_1"));
+  });
+
+  it("never collides with a rawMessages index id", () => {
+    expect(contextMessageId("thrd_1")).not.toMatch(/^thrd_1:\d+$/);
   });
 });

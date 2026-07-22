@@ -7,12 +7,12 @@ import { z, type ZodObject, type ZodRawShape } from "zod";
 import type { DefaultEnv } from "./index.ts";
 import { createTool, type CreatedTool } from "./tools.ts";
 
-interface CallbackCredentials {
+export interface CallbackCredentials {
   callbackUrl: string;
   callbackToken: string;
 }
 
-interface TriggerState {
+export interface TriggerState {
   credentials: CallbackCredentials;
   activeTriggerTypes: string[];
 }
@@ -53,8 +53,8 @@ interface Triggers<TDefs extends TriggerDef[]> {
   tools(): CreatedTool[];
 
   /**
-   * Notify Mesh that an event occurred.
-   * The SDK matches it to stored callback credentials and POSTs to Mesh.
+   * Notify Studio that an event occurred.
+   * The SDK matches it to stored callback credentials and POSTs to Studio.
    * Fire-and-forget — errors are logged, not thrown.
    */
   notify<T extends TDefs[number]["type"]>(

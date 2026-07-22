@@ -9,6 +9,10 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.9.6: default studio-sandbox image tag bumped to 1.17.8 — catches the chart
+# up to the current sandbox image (the tag lockstep had drifted from 1.12.0,
+# missing 5 minors of image changes, incl. the slides deck-as-theme CSS fix
+# #4868). Image-tag change only; no chart template changes.
 # 0.9.5: housekeeper reaps orphaned phase=Failed sandbox pods (left when the
 # orgfs-sidecar is SIGKILLed on teardown and its Sandbox CR is already gone) +
 # grants the housekeeper Role `delete` on pods. Additive; existing reap paths
@@ -36,7 +40,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.9.5
+version: 0.9.8
 # appVersion tracks the studio-sandbox image version (image.tag default).
-appVersion: "1.12.0"
+appVersion: "1.18.1"
 kubeVersion: ">=1.30.0-0"

@@ -21,25 +21,26 @@ export interface PendingPlan {
 // Utility: extract pending propose_plan parts from message
 // ============================================================================
 
+// The highlight banner only ever shows the most recently proposed plan —
+// callers must key off this same plan so a dismiss/expand doesn't get
+// reused for a different plan's card once a new one arrives.
+export function selectActivePlan(
+  plans: PendingPlan[],
+): PendingPlan | undefined {
+  return plans.at(-1);
+}
+
 export function extractPendingPlans(
   parts: ChatMessage["parts"],
 ): PendingPlan[] {
   const result: PendingPlan[] = [];
 
   for (const part of parts) {
-    if (
-      "type" in part &&
-      (part as { type: string }).type === "tool-propose_plan" &&
-      "state" in part &&
-      (part as { state: string }).state === "input-available" &&
-      "toolCallId" in part &&
-      "input" in part
-    ) {
-      const input = (part as { input: { plan: string } }).input;
+    if (part.type === "tool-propose_plan" && part.state === "input-available") {
       result.push({
-        toolCallId: (part as { toolCallId: string }).toolCallId,
-        plan: input.plan,
-        state: (part as { state: string }).state,
+        toolCallId: part.toolCallId,
+        plan: part.input.plan,
+        state: part.state,
       });
     }
   }

@@ -40,10 +40,7 @@ import {
   shouldOffload,
   type MessagesRef,
 } from "@decocms/harness/offload-messages";
-import {
-  findStudioPackAgentByMcpId,
-  resolveStudioPackRuntime,
-} from "@/tools/virtual/studio-pack";
+import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
 import { computeClaimHandle } from "@/sandbox/claim-handle";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 import { normalizeCoAuthorIdentity } from "@decocms/sandbox/shared";
@@ -439,6 +436,18 @@ export interface FrozenRunSnapshot {
   sandboxProviderKind?: SandboxProviderKind | null;
   harnessId?: HarnessId | null;
   target?: DispatchTarget;
+  /**
+   * Per-turn system context the client attached to this user turn (the
+   * `role:"system"` message in the POST body — e.g. the currently-open file,
+   * selected agent, viewed resource; see `useContext` on the web client).
+   *
+   * Carried in the frozen snapshot rather than reloaded from history because
+   * it is ephemeral: the system message is NOT persisted as a thread message,
+   * so the durable dispatch branch (which reloads history from the DB) would
+   * otherwise lose it. Rehydrated into `systemMessages` and appended to the
+   * server-built base system prompt for this run only.
+   */
+  systemContext?: string;
 }
 
 export interface DurableDispatchRunInput extends FrozenRunSnapshot {
@@ -475,6 +484,20 @@ export function buildDurableDispatchInput(
   if (!input.taskId) {
     throw new Error("buildDurableDispatchInput: taskId is required");
   }
+
+  // The client attaches per-turn context as a `role:"system"` message that is
+  // never persisted, so fold its text into the frozen snapshot before the
+  // durable branch drops the `messages` array entirely.
+  const systemContext = input.messages
+    .filter((m) => m.role === "system")
+    .flatMap((m) => m.parts)
+    .filter(
+      (p): p is { type: "text"; text: string } =>
+        p.type === "text" && typeof p.text === "string",
+    )
+    .map((p) => p.text)
+    .join("\n\n")
+    .trim();
 
   return {
     models: input.models,
@@ -513,6 +536,7 @@ export function buildDurableDispatchInput(
       ? { runFenceToken: options.runFenceToken }
       : {}),
     ...(input.isResume !== undefined ? { isResume: input.isResume } : {}),
+    ...(systemContext ? { systemContext } : {}),
   };
 }
 
@@ -782,28 +806,12 @@ export async function resolveEffectiveVirtualMcpForHarness({
   organizationId: string;
   ctx: StudioContext;
 }): Promise<VirtualMCPEntity> {
-  const studioPackAgent = findStudioPackAgentByMcpId(agentId);
-  if (!studioPackAgent) return virtualMcp;
-
-  const resolved = await resolveStudioPackRuntime(studioPackAgent, {
-    orgId: organizationId,
+  return resolveEffectiveStudioPackVirtualMcp({
+    virtualMcp,
+    agentId,
+    organizationId,
     ctx,
   });
-  const selectedTools = resolved.selectedTools
-    ? [...resolved.selectedTools]
-    : null;
-
-  return {
-    ...virtualMcp,
-    metadata: {
-      ...((virtualMcp.metadata as Record<string, unknown>) ?? {}),
-      instructions: resolved.instructions,
-    },
-    connections: virtualMcp.connections.map((connection) => ({
-      ...connection,
-      selected_tools: selectedTools,
-    })),
-  };
 }
 
 /**
@@ -904,7 +912,11 @@ async function prepareRun(
       const allowedModels = await fetchModelPermissions(
         ctx.db,
         input.organizationId,
-        ctx.auth.user?.role,
+        // `ctx.organization?.role` is the path-resolved role for
+        // `input.organizationId` (set by resolveOrgFromPath); ctx.auth.user?.role
+        // is the session's active-org role and may belong to a different org
+        // when the caller's active org differs from the dispatch target.
+        ctx.organization?.role ?? ctx.auth.user?.role,
       );
 
       if (
@@ -1170,8 +1182,15 @@ async function prepareRun(
       }
     }
 
-    // Purge stale buffered chunks from any previous run on this thread
-    streamBuffer?.purge(mem.thread.id);
+    // Purge stale buffered chunks from any PREVIOUS run on this thread — but
+    // NOT on resume. A resumed run (DBOS recovery after its owner pod died) IS
+    // "the previous run": purging here beheads the very chunk log its projector
+    // must replay, so replay hits a StreamGapError ("missing seq 1") and the
+    // recovered run is marked `failed` instead of completing. Recovery depends
+    // on the seq 1..N log surviving the pod that owned it.
+    if (!input.isResume) {
+      streamBuffer?.purge(mem.thread.id);
+    }
 
     let systemMessages: ChatMessage[] = [];
     let materializedRequestMessage: ChatMessage | undefined;
@@ -1183,6 +1202,18 @@ async function prepareRun(
         durableHistory,
         input.messageId,
       );
+      // Rehydrate the per-turn system context folded into the frozen snapshot
+      // (it isn't a persisted thread message, so it's absent from history).
+      // Deterministic id keyed by messageId so DBOS replay is stable.
+      if (input.systemContext) {
+        systemMessages = [
+          {
+            id: `system-${input.messageId}`,
+            role: "system",
+            parts: [{ type: "text", text: input.systemContext }],
+          } as ChatMessage,
+        ];
+      }
     } else {
       // Split system messages from user message.
       systemMessages = input.messages.filter((m) => m.role === "system");
@@ -1266,7 +1297,7 @@ async function prepareRun(
     //   - `prepareLinkWorkDispatch` returns it verbatim so the thread gate can
     //     publish it as the link work item's `harnessInput`.
 
-    // Resolve mesh-storage: URIs to fresh presigned URLs for the current user
+    // Resolve studio-storage: URIs to fresh presigned URLs for the current user
     // message only. The v3 harness contract carries one wire-ready userMessage;
     // long-lived CLI context is represented separately by harness.sessionId.
     const wireUserMessage = materializedRequestMessage

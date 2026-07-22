@@ -211,7 +211,10 @@ Sentinel token. Priority order:
 {{- .Values.sentinel.token -}}
 {{- else -}}
 {{- $name := include "sandbox-env.sentinelSecretName" . -}}
-{{- $existing := lookup "v1" "Secret" .Release.Namespace $name -}}
+{{- /* Look up in agent-sandbox-system — where the Secret is actually created
+       (see sandbox-sentinel-secret.yaml) — so the token is preserved across
+       `helm upgrade` even when the release namespace differs (e.g. umbrella). */ -}}
+{{- $existing := lookup "v1" "Secret" "agent-sandbox-system" $name -}}
 {{- if and $existing $existing.data $existing.data.daemonToken -}}
 {{- $existing.data.daemonToken | b64dec -}}
 {{- else -}}

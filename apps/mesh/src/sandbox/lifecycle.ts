@@ -44,7 +44,7 @@ const lifecycleGlobal = globalThis as unknown as LifecycleGlobal;
 const runners: Partial<Record<SandboxProviderKind, SandboxProvider>> =
   (lifecycleGlobal[RUNNERS_KEY] ??= {});
 // In-flight instantiate() promises, memoized per kind. Two concurrent
-// callers on a cold mesh would otherwise both miss the resolved-runner
+// callers on a cold studio would otherwise both miss the resolved-runner
 // cache and both call instantiate(); memoizing the promise (and only
 // promoting to `runners` once it resolves) collapses them to a single
 // build. Cleared on failure so a retry can take a fresh swing.
@@ -81,7 +81,7 @@ function readPreviewUrlPattern(): string | undefined {
 
 // Per-env SandboxTemplate name. The sandbox-env Helm chart suffixes the
 // template name with envName so multiple envs share `agent-sandbox-system`
-// without collisions; mesh in this env must point its claims at the
+// without collisions; studio in this env must point its claims at the
 // matching suffixed name. Empty/unset → AgentSandboxProvider's built-in
 // default ("studio-sandbox") so single-env installs that didn't suffix
 // keep working.
@@ -96,7 +96,7 @@ function readEnvName(): string | undefined {
 }
 
 // Shared bearer baked into the SandboxTemplate's pod env via the
-// sandbox-env helm chart's Secret. Set on the mesh side from the same
+// sandbox-env helm chart's Secret. Set on the studio side from the same
 // Secret so both ends agree on what the warm-pool sentinel is.
 //
 // Presence flips AgentSandboxProvider into warm-pool mode (claims with
@@ -108,9 +108,9 @@ function readSandboxSentinelToken(): string | undefined {
 }
 
 // Per-claim HTTPRoute attaches to this Gateway. When NAME + NAMESPACE are
-// set alongside STUDIO_SANDBOX_PREVIEW_URL_PATTERN, mesh mints one
+// set alongside STUDIO_SANDBOX_PREVIEW_URL_PATTERN, studio mints one
 // HTTPRoute per SandboxClaim so the wildcard Gateway can route directly
-// to each sandbox's Service:9000 (mesh leaves the data path).
+// to each sandbox's Service:9000 (studio leaves the data path).
 //
 // Both required — no default — because the provider is Gateway-API-generic
 // (Istio, Envoy Gateway, Cilium, Kong, ...) and there's no portable
@@ -118,7 +118,7 @@ function readSandboxSentinelToken(): string | undefined {
 // ambient prefers a separate `istio-ingress`/`gateway` ns, and other
 // implementations vary. A wrong default would silently write routes that
 // fail to attach (parentRef → non-existent Gateway) and the failure mode
-// is a 404 from the gateway with no log on the mesh side.
+// is a 404 from the gateway with no log on the studio side.
 //
 // Both unset → provider falls back to in-process preview proxying (legacy).
 // Half-configured (one set, the other not) → fail fast at boot rather

@@ -85,6 +85,26 @@ export class ThreadManagerStore {
   private nextOffset = 0;
   private readonly pageSize = 10;
   /**
+   * Server-side filter fragment merged into `where` for both the initial page
+   * and `fetchNextPage`. Defaults to the current user ("me" is resolved
+   * server-side) so the sidebar's default "Mine" scope paginates only the
+   * user's threads. Without it, "Show more" pages the org-wide feed while the
+   * sidebar filters to the user client-side — so a page of teammates' rows is
+   * fetched, discarded, and nothing new appears. `setScope` swaps it (`{}` for
+   * Team scope). Only the owner scope is pushed here, never the type filter:
+   * other readers (org-home, breadcrumb) read this shared store via
+   * `findReusableNewChat`, so narrowing by `has_trigger` would hide the user's
+   * manual "New chat" and make them mint a duplicate. Widening to Team scope is
+   * harmless because those readers re-filter to the user themselves.
+   */
+  private scopeWhere: Record<string, unknown> = { created_by: "me" };
+  private scopeKey = JSON.stringify({ created_by: "me" });
+  /**
+   * Bumped on every (re)load so a scope switch mid-flight discards the stale
+   * response instead of clobbering the newer scope's list.
+   */
+  private loadGeneration = 0;
+  /**
    * Event buffer: `[]` means "boot, buffering"; `null` means "ready, dispatching live".
    * thread.* events arriving before loadInitialPage resolves are queued here
    * and replayed (tombstone-checked) after the first page lands.
@@ -289,6 +309,7 @@ export class ThreadManagerStore {
   }
 
   private async loadInitialPage(): Promise<void> {
+    const gen = ++this.loadGeneration;
     if (!this.client) {
       // No MCP client — drain the buffer immediately so SSE events are
       // dispatched live (store stays in "loading" status until a client
@@ -303,9 +324,10 @@ export class ThreadManagerStore {
           limit: this.pageSize,
           offset: 0,
           orderBy: [{ field: ["updated_at"], direction: "desc" }],
-          where: { hidden: false },
+          where: { hidden: false, ...this.scopeWhere },
         },
       });
+      if (gen !== this.loadGeneration) return;
       if ((result as { isError?: boolean }).isError) {
         throw new Error(
           extractToolErrorMessage(result, "COLLECTION_THREADS_LIST failed"),
@@ -320,11 +342,30 @@ export class ThreadManagerStore {
       this.threadsStatus.set({ kind: "ready" });
       this.drainEventBuffer();
     } catch (err) {
+      if (gen !== this.loadGeneration) return;
       this.threadsStatus.set({
         kind: "error",
         error: err instanceof Error ? err : new Error(String(err)),
       });
     }
+  }
+
+  /**
+   * Repoint the paginated feed at a new server-side scope (the `where`
+   * fragment merged into every list call). No-op if unchanged. Resets
+   * pagination and reloads the first page.
+   *
+   * Safe to call during render: the synchronous body only mutates plain
+   * fields and kicks the async reload, which performs no store writes before
+   * its first `await`.
+   */
+  setScope(where: Record<string, unknown>): void {
+    const key = JSON.stringify(where);
+    if (key === this.scopeKey) return;
+    this.scopeKey = key;
+    this.scopeWhere = where;
+    this.nextOffset = 0;
+    void this.loadInitialPage();
   }
 
   private drainEventBuffer(): void {
@@ -341,6 +382,7 @@ export class ThreadManagerStore {
     if (!this.hasMore.get()) return;
     if (this.isFetchingMore.get()) return;
     this.isFetchingMore.set(true);
+    const gen = this.loadGeneration;
     try {
       const result = await this.client.callTool({
         name: "COLLECTION_THREADS_LIST",
@@ -348,9 +390,12 @@ export class ThreadManagerStore {
           limit: this.pageSize,
           offset: this.nextOffset,
           orderBy: [{ field: ["updated_at"], direction: "desc" }],
-          where: { hidden: false },
+          where: { hidden: false, ...this.scopeWhere },
         },
       });
+      // A scope switch reset pagination mid-flight — this page is for the old
+      // scope, so drop it rather than appending it to the new list.
+      if (gen !== this.loadGeneration) return;
       if ((result as { isError?: boolean }).isError) {
         throw new Error(
           extractToolErrorMessage(result, "COLLECTION_THREADS_LIST failed"),

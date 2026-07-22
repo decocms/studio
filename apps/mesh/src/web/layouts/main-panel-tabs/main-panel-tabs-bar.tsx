@@ -27,7 +27,8 @@ import type { TabIcon } from "./resolve-tab-icon";
 import { track } from "@/web/lib/posthog-client";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { useMainOverlayToggle } from "@/web/layouts/agent-shell-layout/use-main-overlay-toggle";
-import { useTaskBoardEnabled } from "@/web/hooks/use-organization-settings";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
+import { useT } from "@/web/i18n/use-t";
 
 /** Hard cap on visible tab buttons; the shell narrows this further when the
  *  header runs out of room (see `maxVisible`). */
@@ -65,9 +66,11 @@ export function MainPanelTabsBar({
     virtualMcpId,
     taskId,
   });
+  const t = useT();
   const library = useMainOverlayToggle("files");
   const tasks = useMainOverlayToggle("board");
-  const taskBoardEnabled = useTaskBoardEnabled();
+  // Commerce (reports-only) orgs hide the Library overlay (see PR #4711).
+  const reportsOnly = useReportsOnly();
   // Key is versioned (v2): the default lead order changed (Preview · Content ·
   // Library now lead), so arrangements persisted under the old order — which
   // could pin Code second — must be discarded rather than override the new
@@ -109,10 +112,10 @@ export function MainPanelTabsBar({
   // (?main=files / ?main=board). They trail the view tabs so the primary views
   // lead the row; when the row overflows they fall into the stack popover.
   const overlayItems: BarItem[] = [];
-  if (library.enabled) {
+  if (library.enabled && !reportsOnly) {
     overlayItems.push({
       id: "files",
-      title: "Library",
+      title: t("agentShellLayout.libraryToggle.library"),
       icon: { kind: "component", Component: Folder },
       active: library.active,
       locked: false,
@@ -125,10 +128,10 @@ export function MainPanelTabsBar({
       },
     });
   }
-  if (taskBoardEnabled && tasks.enabled) {
+  if (tasks.enabled) {
     overlayItems.push({
       id: "board",
-      title: "Tasks",
+      title: t("agentShellLayout.tasksToggle.tasks"),
       icon: { kind: "component", Component: Columns03 },
       active: tasks.active,
       locked: false,

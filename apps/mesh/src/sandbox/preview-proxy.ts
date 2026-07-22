@@ -2,7 +2,7 @@
  * Sandbox preview reverse-proxy.
  *
  * Inbound requests to `<handle>.preview.<base-domain>` are routed to the
- * matching sandbox's daemon at port 9000. Mesh stays in the request path
+ * matching sandbox's daemon at port 9000. Studio stays in the request path
  * for the first ship; long-term plan is per-claim HTTPRoute objects (see
  * the K8s sandbox plan), but this keeps DNS + RBAC simple while we ship.
  *
@@ -27,7 +27,7 @@ import {
  * Cap on frames buffered between client upgrade and upstream WS open. Vite
  * HMR sends ~1 frame per file event, so 256 covers a normal cold start with
  * room to spare while preventing a slow/blackholed upstream from exhausting
- * mesh memory.
+ * studio memory.
  */
 const MAX_PENDING_FRAMES = 256;
 
@@ -95,8 +95,8 @@ export function parsePreviewBaseDomain(
 /**
  * Pulls the sandbox handle out of a request Host header. Returns null when
  * the host doesn't match `<handle>.<baseDomain>` (meaning the request isn't
- * for a mesh sandbox preview and should fall through to the rest of the
- * mesh API).
+ * for a studio sandbox preview and should fall through to the rest of the
+ * studio API).
  */
 export function extractHandleFromHost(
   host: string | null | undefined,
@@ -117,7 +117,7 @@ export function extractHandleFromHost(
 
 export interface PreviewProxyDeps {
   /**
-   * Lazy runner accessor. Returns null when the mesh isn't configured for
+   * Lazy runner accessor. Returns null when the studio isn't configured for
    * the agent-sandbox runner — the caller treats null as "not a preview
    * deployment" and falls through.
    */
@@ -130,7 +130,7 @@ export interface PreviewProxyDeps {
  * otherwise null (caller should fall through to its normal routing).
  *
  * 503 is returned when the runner isn't ready yet — preview traffic hit the
- * mesh before any sandbox tool initialized the runner. The browser will
+ * studio before any sandbox tool initialized the runner. The browser will
  * retry; by then the runner should be up.
  */
 export async function tryHandlePreviewHttp(

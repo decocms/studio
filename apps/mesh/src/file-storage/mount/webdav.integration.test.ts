@@ -1,6 +1,6 @@
 /**
  * WebDAV serve layer — integration tier. Exercises the FULL daemon read path
- * with no mocks: WebDAV handler → OrgFsClient → (in-process) mesh
+ * with no mocks: WebDAV handler → OrgFsClient → (in-process) studio
  * `/api/:org/fs/*` routes + real `resolveOrgFromPath` → real `OrgFs` (real
  * Postgres + DevObjectStorage). Only the NFS kernel mount is out of scope here
  * (covered by the manual end-to-end harness `.context/webdav-nfs-smoke`).

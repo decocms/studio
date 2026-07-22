@@ -20,7 +20,7 @@ import { PreviewDrawer } from "@/web/components/sandbox/preview/drawer/drawer";
 
 const STORAGE_KEY = (id: string) => `preview-drawer:${id}`;
 
-// Clone aborts (exit 128) when the GitHub token mesh handed the orchestrator is
+// Clone aborts (exit 128) when the GitHub token studio handed the orchestrator is
 // stale/invalid. A restart re-mints a fresh installation token, so auto
 // stop+start once per VM to recover. Match the auth-specific lines, not the
 // bare exit code (which covers unrelated git failures).

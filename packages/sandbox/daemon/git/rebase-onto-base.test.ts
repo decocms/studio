@@ -103,4 +103,25 @@ describe("rebaseOntoBase", () => {
       cleanup();
     }
   });
+
+  it("refuses to rebase and force-push a protected branch (main)", () => {
+    const { repoDir, cleanup } = setupConflictingRepo();
+    try {
+      execSync(`git -C ${repoDir} checkout main`, { stdio: "ignore" });
+      const mainBefore = execSync(`git -C ${repoDir} rev-parse origin/main`)
+        .toString()
+        .trim();
+
+      expect(() => rebaseOntoBase(repoDir, "main", { asUser: false })).toThrow(
+        /protected branch "main"/,
+      );
+
+      const mainAfter = execSync(`git -C ${repoDir} rev-parse origin/main`)
+        .toString()
+        .trim();
+      expect(mainAfter).toBe(mainBefore);
+    } finally {
+      cleanup();
+    }
+  });
 });

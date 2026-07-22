@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildDirectDaemonEventsUrl,
   isDirectDaemonEventsGoneStatus,
+  isLiveMetaKeyForScope,
 } from "./sandbox-events-context";
 
 describe("buildDirectDaemonEventsUrl", () => {
@@ -32,5 +33,37 @@ describe("isDirectDaemonEventsGoneStatus", () => {
     expect(isDirectDaemonEventsGoneStatus(429)).toBe(false);
     expect(isDirectDaemonEventsGoneStatus(502)).toBe(false);
     expect(isDirectDaemonEventsGoneStatus(503)).toBe(false);
+  });
+});
+
+describe("isLiveMetaKeyForScope", () => {
+  test("matches a live-meta key regardless of its previewUrl suffix", () => {
+    expect(
+      isLiveMetaKeyForScope(
+        ["live-meta", "acme", "vmid-1", "main", "https://preview.example.com"],
+        "acme",
+        "vmid-1",
+        "main",
+      ),
+    ).toBe(true);
+  });
+
+  test("does not match a different org, vmid, or branch", () => {
+    const scope = [
+      "live-meta",
+      "acme",
+      "vmid-1",
+      "main",
+      "https://x.example.com",
+    ];
+    expect(isLiveMetaKeyForScope(scope, "other-org", "vmid-1", "main")).toBe(
+      false,
+    );
+    expect(isLiveMetaKeyForScope(scope, "acme", "other-vmid", "main")).toBe(
+      false,
+    );
+    expect(isLiveMetaKeyForScope(scope, "acme", "vmid-1", "other-branch")).toBe(
+      false,
+    );
   });
 });

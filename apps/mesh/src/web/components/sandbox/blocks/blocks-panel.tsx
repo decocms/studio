@@ -25,6 +25,17 @@ const SectionsEditor = lazy(() =>
   })),
 );
 
+function errorStatus(error: unknown): number | undefined {
+  if (
+    error instanceof Error &&
+    "status" in error &&
+    typeof error.status === "number"
+  ) {
+    return error.status;
+  }
+  return undefined;
+}
+
 export function BlocksPanel({
   virtualMcpId,
   externalSelectedIndex = null,
@@ -40,15 +51,17 @@ export function BlocksPanel({
   const workspace = useBlocksPreviewWorkspace();
   const devServerReady = sandboxEvents.lifecycle.phase === "running";
   const previewUrl = lifecycle.previewUrl;
-  const fetchParams =
-    currentBranch && devServerReady
-      ? {
-          orgSlug: org.slug,
-          virtualMcpId,
-          branch: currentBranch,
-          previewUrl,
-        }
-      : null;
+  // Not gated on the dev server: when it's down (crashed/paused) we read the
+  // committed `.deco/*.gen.json` snapshot so the Blocks form editor still opens
+  // (block edits persist to the FS). The live routes take over once it's up.
+  const fetchParams = currentBranch
+    ? {
+        orgSlug: org.slug,
+        virtualMcpId,
+        branch: currentBranch,
+        previewUrl,
+      }
+    : null;
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
   const state = resolveBlocksTabState({
@@ -56,8 +69,13 @@ export function BlocksPanel({
     decofile: {
       status: decofile.status,
       hasData: decofile.data !== undefined,
+      errorStatus: errorStatus(decofile.error),
     },
-    meta: { status: meta.status, hasData: meta.data !== undefined },
+    meta: {
+      status: meta.status,
+      hasData: meta.data !== undefined,
+      errorStatus: errorStatus(meta.error),
+    },
     hasEditableContent: hasEditableDecoContent(decofile.data, meta.data),
   });
 
@@ -134,7 +152,6 @@ export function BlocksPanel({
             workspace.state.editSeoPageKey === activePageBlockKey
           }
           onExitSeo={workspace.consumeEditSeo}
-          onSaved={workspace.notifySaved}
           onVariantPreviewOverride={workspace.setVariantOverride}
         />
       </Suspense>

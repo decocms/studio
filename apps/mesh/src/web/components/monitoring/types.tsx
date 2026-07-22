@@ -31,6 +31,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t";
 import { MONITORING_CONFIG } from "./config.ts";
 
 // ============================================================================
@@ -50,6 +51,7 @@ export type { BaseMonitoringLog, BaseMonitoringLogsResponse };
 // Home Page Types (KPIs, Dashboard)
 // ----------------------------------------------------------------------------
 
+/** KPI metrics for the monitoring dashboard. */
 export interface MonitoringStats {
   totalCalls: number;
   errorRate: number;
@@ -57,10 +59,12 @@ export interface MonitoringStats {
   errorRatePercent: string;
 }
 
+/** Extends base log with virtual MCP context (may be null if tool is not from a virtual MCP). */
 export interface MonitoringLogWithVirtualMCP extends BaseMonitoringLog {
   virtualMcpId?: string | null;
 }
 
+/** Response wrapper for home page monitoring logs with pagination. */
 export interface MonitoringLogsWithVirtualMCPResponse {
   logs: MonitoringLogWithVirtualMCP[];
   total: number;
@@ -68,8 +72,14 @@ export interface MonitoringLogsWithVirtualMCPResponse {
 
 // ----------------------------------------------------------------------------
 // Full Monitoring Page Types
-// ----------------------------------------------------------------------------
+// ============================================================================
+// TRUST BOUNDARY: MonitoringLog contains user-submitted input/output from tool calls.
+// Callers MUST validate input/output before display or further processing.
+// ============================================================================
 
+/** Complete monitoring log for a single tool call (API response).
+ * @trust-boundary input and output are untrusted user/tool-generated data
+ */
 export interface MonitoringLog extends BaseMonitoringLog {
   organizationId: string;
   userId: string | null;
@@ -81,6 +91,9 @@ export interface MonitoringLog extends BaseMonitoringLog {
   properties: Record<string, string> | null;
 }
 
+/** MonitoringLog enriched with resolved user and virtual MCP metadata.
+ * Safe for display; trust boundary validation already applied.
+ */
 export interface EnrichedMonitoringLog extends MonitoringLog {
   userName: string;
   userImage: string | undefined;
@@ -88,41 +101,63 @@ export interface EnrichedMonitoringLog extends MonitoringLog {
   virtualMcpIcon: string | null;
 }
 
+/** Paginated response wrapper for full monitoring logs. */
 export interface MonitoringLogsResponse
   extends Omit<BaseMonitoringLogsResponse, "logs"> {
   logs: MonitoringLog[];
 }
 
+/** Search and filter parameters for the monitoring dashboard.
+ * Designed as URL-safe serializable state; values are validated on deserialization.
+ */
 export interface MonitoringSearchParams {
-  // Tab selection
   tab?: "overview" | "audit" | "dashboards" | "threads" | "automations";
-  // Time range using expressions (from/to)
-  from?: string; // e.g., "now-24h", "now-7d", or ISO string
-  to?: string; // e.g., "now" or ISO string
-  connectionId?: string[]; // Array of connection IDs
-  virtualMcpId?: string[]; // Array of virtual MCP IDs
+  from?: string;
+  to?: string;
+  connectionId?: string[];
+  virtualMcpId?: string[];
   tool?: string;
   status?: "all" | "success" | "errors";
   search?: string;
   page?: number;
   streaming?: boolean;
-  // Property filters (serialized as "key:operator:value,key2:operator2:value2")
-  // Operators: eq (equals), contains, exists
   propertyFilters?: string;
-  // Hide system/management tool calls (e.g. from the self MCP)
   hideSystem?: boolean;
 }
 
 // ============================================================================
 // Property Filter Types
 // ============================================================================
+// TRUST BOUNDARY: property filters come from URL params and must be validated.
+// ============================================================================
 
 export type PropertyFilterOperator = "eq" | "contains" | "exists" | "in";
 
+const PROPERTY_FILTER_OPERATORS: readonly PropertyFilterOperator[] = [
+  "eq",
+  "contains",
+  "exists",
+  "in",
+];
+
+/** Type guard: validates that a value is a known PropertyFilterOperator.
+ * Unknown operators fall back to "eq" in deserialization.
+ */
+function isPropertyFilterOperator(
+  value: string,
+): value is PropertyFilterOperator {
+  return (PROPERTY_FILTER_OPERATORS as readonly string[]).includes(value);
+}
+
+/** Parsed property filter for a single criterion.
+ * @param key - property key (non-empty after trim)
+ * @param operator - comparison operator
+ * @param value - comparison value (empty for "exists" operator)
+ */
 export interface PropertyFilter {
   key: string;
   operator: PropertyFilterOperator;
-  value: string; // Empty for "exists" operator
+  value: string;
 }
 
 /**
@@ -140,19 +175,27 @@ export function serializePropertyFilters(filters: PropertyFilter[]): string {
     .join(",");
 }
 
-/**
- * Deserialize property filters from URL string.
+/** Deserialize property filters from URL-encoded string.
+ * Format: "key:operator:value,key2:operator2:value2"
+ * Safely handles malformed input by falling back to "eq" operator for unknown types.
  */
 export function deserializePropertyFilters(str: string): PropertyFilter[] {
-  if (!str) return [];
-  return str.split(",").map((part) => {
-    const [key, operator, ...valueParts] = part.split(":");
-    return {
-      key: decodeURIComponent(key || ""),
-      operator: (operator as PropertyFilterOperator) || "eq",
-      value: decodeURIComponent(valueParts.join(":") || ""),
-    };
-  });
+  if (!str || typeof str !== "string") return [];
+  return str
+    .split(",")
+    .map((part) => {
+      if (!part) return undefined;
+      const [key, operator, ...valueParts] = part.split(":");
+      const decodedKey = key ? decodeURIComponent(key) : "";
+      if (!decodedKey.trim()) return undefined;
+      return {
+        key: decodedKey,
+        operator:
+          operator && isPropertyFilterOperator(operator) ? operator : "eq",
+        value: decodeURIComponent(valueParts.join(":") || ""),
+      };
+    })
+    .filter((f) => f !== undefined);
 }
 
 /**
@@ -299,6 +342,14 @@ interface TruncatedJson {
   originalSize: number;
 }
 
+/**
+ * Safely process and optionally truncate JSON data for display.
+ * Handles both regular objects and server-side pre-truncated payloads.
+ *
+ * @param data Raw JSON object (null-safe). May contain `_decocms_truncated` string for server-truncated payloads.
+ * @returns Processed JSON with truncation flag and original size.
+ * @throws Never — always returns a valid TruncatedJson even on malformed input.
+ */
 function truncateJsonForDisplay(
   data: Record<string, unknown> | null,
 ): TruncatedJson {
@@ -306,23 +357,37 @@ function truncateJsonForDisplay(
     return { content: "null", isTruncated: false, originalSize: 4 };
   }
 
-  // Server-side truncated output: render the raw truncated string directly
-  if (typeof data._decocms_truncated === "string") {
+  // Server-side truncated output: render the raw truncated string directly.
+  // Guard: ensure the property exists, is a string, and is non-empty.
+  const truncatedProp = data._decocms_truncated;
+  if (typeof truncatedProp === "string" && truncatedProp.length > 0) {
     return {
-      content: data._decocms_truncated,
+      content: truncatedProp,
       isTruncated: true,
-      originalSize: data._decocms_truncated.length,
+      originalSize: truncatedProp.length,
     };
   }
 
-  const fullJson = JSON.stringify(data, null, 2);
+  // Regular object: stringify and check size.
+  let fullJson: string;
+  try {
+    fullJson = JSON.stringify(data, null, 2);
+  } catch {
+    // Fallback for circular refs or non-serializable values.
+    return {
+      content: "[Unable to serialize JSON]",
+      isTruncated: false,
+      originalSize: 0,
+    };
+  }
+
   const originalSize = fullJson.length;
 
   if (originalSize <= MONITORING_CONFIG.maxJsonRenderSize) {
     return { content: fullJson, isTruncated: false, originalSize };
   }
 
-  // Truncate and add indicator
+  // Truncate and add indicator.
   const truncated = fullJson.slice(0, MONITORING_CONFIG.maxJsonRenderSize);
   return {
     content: truncated + "\n\n... [TRUNCATED - content too large to display]",
@@ -344,6 +409,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
   const [copiedOutput, setCopiedOutput] = useState(false);
   const navigate = useNavigate();
   const { org } = useProjectContext();
+  const t = useT();
   // Reads from the same cache the monitoring page already populated, so this
   // doesn't trigger an extra fetch — we just need the connection's slug
   // (the tool detail route keys off $appSlug, not the connection id).
@@ -369,8 +435,8 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
         setCopiedOutput(true);
         setTimeout(() => setCopiedOutput(false), 2000);
       }
-    } catch {
-      toast.error("Failed to copy to clipboard");
+    } catch (error) {
+      toast.error(t("monitoring.types.failedToCopy"));
     }
   };
 
@@ -390,7 +456,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
     // so map this log's connectionId to its slug before navigating.
     const connection = connections.find((c) => c.id === log.connectionId);
     if (!connection) {
-      toast.error("Could not find the connection for this tool call");
+      toast.error(t("monitoring.types.connectionNotFound"));
       return;
     }
     // Generate unique replay ID
@@ -417,8 +483,8 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
       await navigator.clipboard.writeText(log.requestId);
       setCopiedRequestId(true);
       setTimeout(() => setCopiedRequestId(false), 2000);
-    } catch {
-      toast.error("Failed to copy to clipboard");
+    } catch (error) {
+      toast.error(t("monitoring.types.failedToCopy"));
     }
   };
 
@@ -438,13 +504,17 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
         {/* Timestamp */}
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Timestamp</div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("monitoring.types.timestamp")}
+          </div>
           <div className="text-sm text-foreground">{formattedTimestamp}</div>
         </div>
 
         {/* Duration */}
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Duration</div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("monitoring.types.duration")}
+          </div>
           <div className="text-sm font-mono text-foreground">
             {log.durationMs}ms
           </div>
@@ -452,21 +522,27 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
 
         {/* User */}
         <div>
-          <div className="text-xs text-muted-foreground mb-1">User</div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("monitoring.types.user")}
+          </div>
           <div className="text-sm text-foreground">{log.userName}</div>
         </div>
 
         {/* Agent */}
         {log.virtualMcpName && (
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Agent</div>
+            <div className="text-xs text-muted-foreground mb-1">
+              {t("monitoring.types.agent")}
+            </div>
             <div className="text-sm text-foreground">{log.virtualMcpName}</div>
           </div>
         )}
 
         {/* Request ID */}
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Request ID</div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("monitoring.types.requestId")}
+          </div>
           <div className="flex items-center gap-1">
             <code className="font-mono text-foreground text-[11px]">
               {log.requestId}
@@ -475,7 +551,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
               size="icon"
               variant="ghost"
               onClick={handleCopyRequestId}
-              aria-label="Copy request ID"
+              aria-label={t("monitoring.types.copyRequestId")}
               className="h-5 w-5 text-muted-foreground hover:text-foreground"
             >
               {copiedRequestId ? <Check size={12} /> : <Copy01 size={12} />}
@@ -486,7 +562,9 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
         {/* Client */}
         {log.userAgent && (
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Client</div>
+            <div className="text-xs text-muted-foreground mb-1">
+              {t("monitoring.types.client")}
+            </div>
             <div className="text-sm font-mono text-foreground">
               {log.userAgent}
             </div>
@@ -497,7 +575,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
         {log.properties && Object.keys(log.properties).length > 0 && (
           <div className="md:col-span-2">
             <div className="text-xs text-muted-foreground mb-1.5">
-              Properties
+              {t("monitoring.types.properties")}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(log.properties).map(([key, value]) => (
@@ -536,7 +614,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         }}
                       >
                         <FilterLines size={14} className="mr-2" />
-                        Filter by this property
+                        {t("monitoring.types.filterByProperty")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -547,14 +625,14 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                             await navigator.clipboard.writeText(
                               `${key}=${value}`,
                             );
-                            toast.success("Copied filter to clipboard");
-                          } catch {
-                            toast.error("Failed to copy to clipboard");
+                            toast.success(t("monitoring.types.copiedFilter"));
+                          } catch (error) {
+                            toast.error(t("monitoring.types.failedToCopy"));
                           }
                         }}
                       >
                         <Copy01 size={14} className="mr-2" />
-                        Copy filter
+                        {t("monitoring.types.copyFilter")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -563,14 +641,14 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(key);
-                            toast.success("Copied key to clipboard");
-                          } catch {
-                            toast.error("Failed to copy to clipboard");
+                            toast.success(t("monitoring.types.copiedKey"));
+                          } catch (error) {
+                            toast.error(t("monitoring.types.failedToCopy"));
                           }
                         }}
                       >
                         <Key01 size={14} className="mr-2" />
-                        Copy key
+                        {t("monitoring.types.copyKey")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -579,14 +657,14 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(value);
-                            toast.success("Copied value to clipboard");
-                          } catch {
-                            toast.error("Failed to copy to clipboard");
+                            toast.success(t("monitoring.types.copiedValue"));
+                          } catch (error) {
+                            toast.error(t("monitoring.types.failedToCopy"));
                           }
                         }}
                       >
                         <Type01 size={14} className="mr-2" />
-                        Copy value
+                        {t("monitoring.types.copyValue")}
                       </Button>
                     </div>
                   </PopoverContent>
@@ -600,7 +678,9 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
       {/* Error message */}
       {log.errorMessage && (
         <div>
-          <div className="text-xs text-destructive mb-1">Error</div>
+          <div className="text-xs text-destructive mb-1">
+            {t("monitoring.types.error")}
+          </div>
           <div className="text-destructive font-mono text-xs bg-destructive/10 p-2 rounded break-all">
             {log.errorMessage}
           </div>
@@ -614,11 +694,12 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
             <div className="flex items-center justify-between p-1 pl-4 border-b border-border">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground select-none">
-                  Input
+                  {t("monitoring.types.input")}
                 </span>
                 {inputJson.isTruncated && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400">
-                    ({formatBytes(inputJson.originalSize)} - truncated)
+                  <span className="text-xs text-warning">
+                    ({formatBytes(inputJson.originalSize)} -{" "}
+                    {t("monitoring.types.truncated")})
                   </span>
                 )}
               </div>
@@ -630,13 +711,15 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         size="icon"
                         variant="ghost"
                         onClick={handleReplay}
-                        aria-label="Replay tool call"
+                        aria-label={t("monitoring.types.replayToolCall")}
                         className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
                       >
                         <Play size={14} />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Replay tool call</TooltipContent>
+                    <TooltipContent>
+                      {t("monitoring.types.replayToolCall")}
+                    </TooltipContent>
                   </Tooltip>
                 )}
                 {inputJson.isTruncated && (
@@ -646,20 +729,22 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         size="icon"
                         variant="ghost"
                         onClick={() => handleDownload("input")}
-                        aria-label="Download full input"
+                        aria-label={t("monitoring.types.downloadFullInput")}
                         className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
                       >
                         <Download01 size={14} />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Download full input</TooltipContent>
+                    <TooltipContent>
+                      {t("monitoring.types.downloadFullInput")}
+                    </TooltipContent>
                   </Tooltip>
                 )}
                 <Button
                   size="icon"
                   variant="ghost"
                   onClick={() => handleCopy("input")}
-                  aria-label="Copy input"
+                  aria-label={t("monitoring.types.copyInput")}
                   className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
                 >
                   {copiedInput ? <Check size={14} /> : <Copy01 size={14} />}
@@ -681,11 +766,12 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
             <div className="flex items-center justify-between p-1 pl-4 border-b border-border">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground select-none">
-                  Output
+                  {t("monitoring.types.output")}
                 </span>
                 {outputJson.isTruncated && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400">
-                    ({formatBytes(outputJson.originalSize)} - truncated)
+                  <span className="text-xs text-warning">
+                    ({formatBytes(outputJson.originalSize)} -{" "}
+                    {t("monitoring.types.truncated")})
                   </span>
                 )}
               </div>
@@ -697,20 +783,22 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         size="icon"
                         variant="ghost"
                         onClick={() => handleDownload("output")}
-                        aria-label="Download full output"
+                        aria-label={t("monitoring.types.downloadFullOutput")}
                         className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
                       >
                         <Download01 size={14} />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Download full output</TooltipContent>
+                    <TooltipContent>
+                      {t("monitoring.types.downloadFullOutput")}
+                    </TooltipContent>
                   </Tooltip>
                 )}
                 <Button
                   size="icon"
                   variant="ghost"
                   onClick={() => handleCopy("output")}
-                  aria-label="Copy output"
+                  aria-label={t("monitoring.types.copyOutput")}
                   className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
                 >
                   {copiedOutput ? <Check size={14} /> : <Copy01 size={14} />}

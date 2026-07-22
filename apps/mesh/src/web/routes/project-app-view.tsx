@@ -21,6 +21,7 @@ import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri, MCP_APP_DISPLAY_MODES } from "@/mcp-apps/types.ts";
 import { useChatStream, useChatPrefs } from "@/web/components/chat/context.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { resolveAppNavigateTarget } from "@/web/routes/project-app-navigate.ts";
 
 const EMPTY_TOOL_INPUT: Record<string, unknown> = {};
 
@@ -76,6 +77,13 @@ function AppRenderer({
   };
 
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
+    // Intercept a navigate request and drive the router instead of inserting
+    // it into chat; any other message falls through to the normal path.
+    const navigateResult = resolveAppNavigateTarget(params.content);
+    if (navigateResult.isNavigate) {
+      if (navigateResult.tab) openTab(navigateResult.tab);
+      return;
+    }
     const doc = contentBlocksToTiptapDoc(params.content);
     if (doc.content.length > 0) {
       openSidePanel("chat");

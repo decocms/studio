@@ -1,0 +1,95 @@
+# PRODUCTION sandbox-env example — the hardened posture, with PLACEHOLDERS.
+# Every knob here already ships in the public sandbox-env chart; this file just
+# shows how to turn on the production-grade settings. Replace <PLACEHOLDERS>
+# with your own values — there is nothing environment-specific baked in.
+#
+#   helm install sandbox-env-prod deploy/helm/sandbox-env \
+#     -n agent-sandbox-system -f selfhost/production/values-sandbox-env-prod.yaml
+#
+# Requires the sandbox-operator installed first (CRDs + controller).
+
+envName: "prod"
+
+# Per-sandbox-pod compute — baseline from deco's own production. Each claim gets
+# one pod this size; scale is bounded by the warm pool + how many run at once.
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2
+    memory: 4Gi
+
+mesh:
+  namespace: "deco-studio"          # your Studio release namespace
+  serviceAccountName: "deco-studio"
+  podSelectorLabels:
+    app.kubernetes.io/name: "chart-deco-studio"
+    app.kubernetes.io/instance: "deco-studio"
+
+# ── Egress enforcement ("proxy pra fora") ──────────────────────────────────
+# Sandbox pods run untrusted code, so outbound is locked down by an iptables
+# init container: REJECT in-cluster/link-local CIDRs, ALLOW only 443 + 53.
+# The defaults cover RFC1918 + IMDS + CGNAT; override blockCIDRs ONLY if your
+# pod/Service CIDR sits outside them (e.g. a 100.x VPC).
+netinit:
+  enabled: true
+  # blockCIDRs: [ ... ]   # override only if your cluster CIDR differs
+  allowedTCPPorts: [53, 443]
+  allowedUDPPorts: [53]
+# Sandboxes resolve via public DNS (bypass in-cluster kube-dns, which is blocked).
+# dnsConfig.nameservers default to 1.1.1.1; override if you require your own.
+
+# ── Isolation: pin sandboxes to a dedicated node pool ──────────────────────
+# So a container escape lands on a node with no mesh/Postgres/NATS pods. Pair
+# with a tainted+labeled NodePool (Karpenter/managed).
+# nodeSelector:
+#   workload: sandbox
+# tolerations:
+#   - { key: workload, operator: Equal, value: sandbox, effect: NoSchedule }
+
+# ── Spread across zones (HA) ───────────────────────────────────────────────
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: studio-sandbox-prod   # studio-sandbox-<envName>
+
+# ── Warm pool (zero cold-start) ────────────────────────────────────────────
+# Every warm pod costs full resources; size to your claim rate. Optional HPA.
+warmPool:
+  enabled: true
+  size: 2
+
+# ── Sentinel token ─────────────────────────────────────────────────────────
+# Leave empty to auto-generate (preserved across upgrades). Supply your own
+# only if you need the same value in another release; source it from a secret,
+# not this file, in real deployments.
+sentinel:
+  token: ""
+
+# ── Preview URLs (wildcard *.<domain>) ─────────────────────────────────────
+# Renders an Istio Gateway (HTTPS) + a cert-manager Certificate. Left OFF here
+# so the file installs cleanly; flip to true ONLY after the prerequisites are
+# in place (the chart fail-closes otherwise):
+#   1. Gateway API CRDs + a controller implementing gatewayClassName (Istio/…).
+#   2. DNS wildcard *.<domain> → your cluster LB.
+#   3. a cert-manager ClusterIssuer using DNS-01 (HTTP-01 can't do wildcards).
+previewGateway:
+  enabled: false                     # flip to true once 1-3 above exist
+  gatewayClassName: "istio"          # confirm: kubectl get gatewayclasses
+  namespace: "istio-system"
+  domain: "preview.example.com"      # <-- your wildcard domain
+  # clusterIssuer: "<your-dns01-clusterissuer>"
+
+# Then wire the Studio release (chart-deco-studio values):
+#   configMap:
+#     meshConfig:
+#       STUDIO_SANDBOX_PROVIDER: "agent-sandbox"
+#       STUDIO_ENV: "prod"
+#       STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-prod"
+#       STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.example.com"
+#       STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME: "agent-sandbox-preview-prod"
+#       STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE: "istio-system"

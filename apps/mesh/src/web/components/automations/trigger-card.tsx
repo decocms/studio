@@ -7,6 +7,7 @@ import {
   useAutomationActions,
   type AutomationTrigger,
 } from "@/web/hooks/use-automations";
+import { useT } from "@/web/i18n/use-t.ts";
 import { WebhookSecretDialog } from "@/web/components/automations/webhook-secret-dialog";
 import {
   buildCronFromInterval,
@@ -47,6 +48,7 @@ export function TriggerCard({
   automationId: string;
   connectionName?: string;
 }) {
+  const t = useT();
   const {
     triggerAdd: addTrigger,
     triggerRemove: removeTrigger,
@@ -77,11 +79,25 @@ export function TriggerCard({
         trigger_id: trigger.id,
         automation_id: automationId,
       });
-      toast.success("Starter removed");
+      toast.success(t("automations.triggerCard.starterRemoved"));
     } catch {
-      toast.error("Failed to remove starter");
+      toast.error(t("automations.triggerCard.failedToRemoveStarter"));
     }
     setConfirmDelete(false);
+  };
+
+  // Cron triggers have no update endpoint: a new schedule is added, then the
+  // old trigger row is removed.
+  const replaceCronTrigger = async (cronExpression: string) => {
+    await addTrigger.mutateAsync({
+      automation_id: automationId,
+      type: "cron",
+      cron_expression: cronExpression,
+    });
+    await removeTrigger.mutateAsync({
+      trigger_id: trigger.id,
+      automation_id: automationId,
+    });
   };
 
   const handleEditSave = async () => {
@@ -92,18 +108,10 @@ export function TriggerCard({
       return;
     }
     try {
-      await addTrigger.mutateAsync({
-        automation_id: automationId,
-        type: "cron",
-        cron_expression: val,
-      });
-      await removeTrigger.mutateAsync({
-        trigger_id: trigger.id,
-        automation_id: automationId,
-      });
+      await replaceCronTrigger(val);
       setIsEditing(false);
     } catch {
-      toast.error("Failed to update starter");
+      toast.error(t("automations.triggerCard.failedToUpdateStarter"));
       setEditValue(trigger.cron_expression ?? "");
       setIsEditing(false);
     }
@@ -132,17 +140,9 @@ export function TriggerCard({
     const newCron = buildCronFromInterval(clamped, interval.unit);
     if (newCron === trigger.cron_expression) return;
     try {
-      await addTrigger.mutateAsync({
-        automation_id: automationId,
-        type: "cron",
-        cron_expression: newCron,
-      });
-      await removeTrigger.mutateAsync({
-        trigger_id: trigger.id,
-        automation_id: automationId,
-      });
+      await replaceCronTrigger(newCron);
     } catch {
-      toast.error("Failed to update starter");
+      toast.error(t("automations.triggerCard.failedToUpdateStarter"));
       setCount(interval.count);
     }
   };
@@ -160,7 +160,9 @@ export function TriggerCard({
 
         {interval && isCron ? (
           <>
-            <span className="text-sm text-muted-foreground">Every</span>
+            <span className="text-sm text-muted-foreground">
+              {t("automations.triggerCard.every")}
+            </span>
             <input
               type="number"
               min={interval.unit === "minutes" ? 5 : 1}
@@ -195,7 +197,7 @@ export function TriggerCard({
             />
             {editValue && !isValidCron(editValue) && (
               <span className="text-xs text-muted-foreground/60 shrink-0">
-                invalid
+                {t("automations.triggerCard.invalid")}
               </span>
             )}
           </>
@@ -205,7 +207,7 @@ export function TriggerCard({
               {isCron
                 ? humanReadableCron(trigger.cron_expression ?? "")
                 : isWebhook
-                  ? "Webhook · POST to fire"
+                  ? t("automations.triggerCard.webhookPostToFire")
                   : `${trigger.event_type}${connectionName ? ` · ${connectionName}` : ""}`}
             </span>
             {!isCron &&
@@ -246,7 +248,7 @@ export function TriggerCard({
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-              title="Rotate token"
+              title={t("automations.triggerCard.rotateToken")}
               onClick={() => setConfirmRotate(true)}
             >
               <RefreshCw01 size={13} className="text-muted-foreground" />
@@ -266,18 +268,22 @@ export function TriggerCard({
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Starter</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("automations.triggerCard.removeStarter")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove this starter?
+              {t("automations.triggerCard.confirmRemoveStarter")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("automations.triggerCard.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRemove}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Remove
+              {t("automations.triggerCard.remove")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -286,15 +292,20 @@ export function TriggerCard({
       <AlertDialog open={confirmRotate} onOpenChange={setConfirmRotate}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Rotate webhook token</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("automations.triggerCard.rotateWebhookToken")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              A new token will be generated and the current token will stop
-              working. Any senders using the old token must be updated.
+              {t("automations.triggerCard.rotateWebhookTokenDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRotate}>Rotate</AlertDialogAction>
+            <AlertDialogCancel>
+              {t("automations.triggerCard.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleRotate}>
+              {t("automations.triggerCard.rotate")}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -306,8 +317,8 @@ export function TriggerCard({
         }}
         url={rotatedSecret?.url ?? null}
         token={rotatedSecret?.token ?? null}
-        title="New webhook token"
-        description="The previous token has been revoked. Copy the new token now — it will not be shown again."
+        title={t("automations.triggerCard.newWebhookToken")}
+        description={t("automations.triggerCard.newWebhookTokenDescription")}
       />
     </>
   );

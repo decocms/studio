@@ -32,6 +32,7 @@ import {
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { Page } from "@/web/components/page";
 import { SettingsPage } from "@/web/components/settings/settings-section";
@@ -71,11 +72,12 @@ function formatToolError(err: unknown, fallback: string): string {
 }
 
 function ErrorFallback({ error }: { error: Error }) {
+  const t = useT();
   return (
     <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
       <AlertCircle size={16} />
       <span className="text-sm font-medium">
-        Failed to load file configurations: {error.message}
+        {t("settings.buckets.failedToLoadConfigs", { error: error.message })}
       </span>
     </div>
   );
@@ -88,6 +90,7 @@ function FileConfigRow({
   config: FileConfigInfo;
   onDelete: (config: FileConfigInfo) => void;
 }) {
+  const t = useT();
   return (
     <div className="flex items-start justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
       <div className="flex items-start gap-3 min-w-0">
@@ -103,7 +106,7 @@ function FileConfigRow({
               </span>
             ) : config.credentialType === "managed" ? (
               <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
-                Managed
+                {t("settings.buckets.managed")}
               </span>
             ) : null}
             <span className="text-xs text-muted-foreground truncate">
@@ -118,17 +121,19 @@ function FileConfigRow({
           {config.endpoint ? (
             <p className="text-xs text-muted-foreground/80 mt-0.5 truncate font-mono">
               {config.endpoint}
-              {config.forcePathStyle ? " (path-style)" : ""}
+              {config.forcePathStyle
+                ? ` (${t("settings.buckets.pathStyle")})`
+                : ""}
             </p>
           ) : null}
           {config.prefix ? (
             <p className="text-xs text-muted-foreground/80 mt-0.5 truncate font-mono">
-              prefix: {config.prefix}
+              {t("settings.buckets.prefix", { prefix: config.prefix })}
             </p>
           ) : null}
           {config.publicUrlBase ? (
             <p className="text-xs text-muted-foreground/80 mt-0.5 truncate font-mono">
-              public: {config.publicUrlBase}
+              {t("settings.buckets.public", { url: config.publicUrlBase })}
             </p>
           ) : null}
         </div>
@@ -141,7 +146,7 @@ function FileConfigRow({
           variant="ghost"
           size="sm"
           onClick={() => onDelete(config)}
-          aria-label={`Delete ${config.name}`}
+          aria-label={t("settings.buckets.deleteButton", { name: config.name })}
         >
           <Trash01 size={14} />
         </Button>
@@ -151,22 +156,23 @@ function FileConfigRow({
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const t = useT();
   return (
     <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
       <div className="size-12 rounded-full bg-muted flex items-center justify-center">
         <HardDrive size={20} className="text-muted-foreground" />
       </div>
       <div>
-        <p className="font-medium text-sm">No buckets configured</p>
+        <p className="font-medium text-sm">
+          {t("settings.buckets.noBucketsConfigured")}
+        </p>
         <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-          Add an S3-compatible bucket (AWS S3, Cloudflare R2, Google Cloud
-          Storage, MinIO). Access keys are encrypted at rest and never returned
-          over the API.
+          {t("settings.buckets.emptyStateDescription")}
         </p>
       </div>
       <Button onClick={onCreate} size="sm" className="mt-2">
         <Plus size={14} />
-        Add bucket
+        {t("settings.buckets.addBucket")}
       </Button>
     </div>
   );
@@ -181,6 +187,7 @@ function CreateFileConfigDialog({
   open,
   onOpenChange,
 }: CreateFileConfigDialogProps) {
+  const t = useT();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [bucket, setBucket] = useState("");
@@ -249,11 +256,13 @@ function CreateFileConfigDialog({
         publicUrlBase: publicUrlBase.trim() || undefined,
         ...credentialFields,
       });
-      toast.success(`Bucket "${name.trim()}" added`);
+      toast.success(t("settings.buckets.bucketAdded", { name: name.trim() }));
       reset();
       onOpenChange(false);
     } catch (err) {
-      toast.error(formatToolError(err, "Failed to add bucket"));
+      toast.error(
+        formatToolError(err, t("settings.buckets.failedToAddBucket")),
+      );
     }
   }
 
@@ -268,49 +277,52 @@ function CreateFileConfigDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add S3 bucket</DialogTitle>
+          <DialogTitle>{t("settings.buckets.addS3Bucket")}</DialogTitle>
           <DialogDescription>
-            Credentials are encrypted at rest and never returned over the API.
-            For Cloudflare R2, Google Cloud Storage, or MinIO, set a custom
-            endpoint.
+            {t("settings.buckets.credentialsEncryptedDescription")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="file-config-name">Name</Label>
+            <Label htmlFor="file-config-name">
+              {t("settings.buckets.nameLabel")}
+            </Label>
             <Input
               id="file-config-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="production-uploads"
+              placeholder={t("settings.buckets.namePlaceholder")}
               autoComplete="off"
               required
             />
             <p className="text-xs text-muted-foreground">
-              Letters, digits, underscore, dot, hyphen. Unique within the
-              organization.
+              {t("settings.buckets.nameHelperText")}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="file-config-bucket">Bucket</Label>
+              <Label htmlFor="file-config-bucket">
+                {t("settings.buckets.bucketLabel")}
+              </Label>
               <Input
                 id="file-config-bucket"
                 value={bucket}
                 onChange={(e) => setBucket(e.target.value)}
-                placeholder="my-bucket"
+                placeholder={t("settings.buckets.bucketPlaceholder")}
                 autoComplete="off"
                 required
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="file-config-region">Region</Label>
+              <Label htmlFor="file-config-region">
+                {t("settings.buckets.regionLabel")}
+              </Label>
               <Input
                 id="file-config-region"
                 value={region}
                 onChange={(e) => setRegion(e.target.value)}
-                placeholder="us-east-1"
+                placeholder={t("settings.buckets.regionPlaceholder")}
                 autoComplete="off"
                 required
               />
@@ -318,27 +330,29 @@ function CreateFileConfigDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="file-config-endpoint">Endpoint (optional)</Label>
+            <Label htmlFor="file-config-endpoint">
+              {t("settings.buckets.endpointLabel")}
+            </Label>
             <Input
               id="file-config-endpoint"
               type="url"
               value={endpoint}
               onChange={(e) => setEndpoint(e.target.value)}
-              placeholder="https://<account>.r2.cloudflarestorage.com"
+              placeholder={t("settings.buckets.endpointPlaceholder")}
               autoComplete="off"
             />
             <p className="text-xs text-muted-foreground">
-              Required for non-AWS providers (R2, GCS, MinIO).
+              {t("settings.buckets.endpointHelperText")}
             </p>
           </div>
 
           <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-3">
             <div className="min-w-0">
               <Label htmlFor="file-config-path-style" className="text-sm">
-                Force path-style URLs
+                {t("settings.buckets.forcePathStyleLabel")}
               </Label>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Required for Google Cloud Storage and most MinIO setups.
+                {t("settings.buckets.forcePathStyleHelperText")}
               </p>
             </div>
             <Switch
@@ -349,42 +363,42 @@ function CreateFileConfigDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="file-config-prefix">Key prefix (optional)</Label>
+            <Label htmlFor="file-config-prefix">
+              {t("settings.buckets.prefixLabel")}
+            </Label>
             <Input
               id="file-config-prefix"
               value={prefix}
               onChange={(e) => setPrefix(e.target.value)}
-              placeholder="tenants/acme/"
+              placeholder={t("settings.buckets.prefixPlaceholder")}
               autoComplete="off"
             />
             <p className="text-xs text-muted-foreground">
-              All object keys are written under this prefix. Useful for
-              multi-tenant buckets or credentials scoped to a sub-path. A
-              trailing slash is added automatically.
+              {t("settings.buckets.prefixHelperText")}
             </p>
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="file-config-public-url-base">
-              Public URL base (optional)
+              {t("settings.buckets.publicUrlBaseLabel")}
             </Label>
             <Input
               id="file-config-public-url-base"
               type="url"
               value={publicUrlBase}
               onChange={(e) => setPublicUrlBase(e.target.value)}
-              placeholder="https://pub-xxxx.r2.dev or https://cdn.example.com"
+              placeholder={t("settings.buckets.publicUrlBasePlaceholder")}
               autoComplete="off"
             />
             <p className="text-xs text-muted-foreground">
-              Host used to build public URLs returned by the picker (R2 dev
-              domain, CDN, custom host). Leave blank to use the bucket's S3 host
-              (AWS default).
+              {t("settings.buckets.publicUrlBaseHelperText")}
             </p>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="file-config-credential-type">Credentials</Label>
+            <Label htmlFor="file-config-credential-type">
+              {t("settings.buckets.credentialsLabel")}
+            </Label>
             <Select
               value={credentialType}
               onValueChange={(v) =>
@@ -399,24 +413,26 @@ function CreateFileConfigDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="static">
-                  Static key pair (long-lived)
+                  {t("settings.buckets.staticKeyOption")}
                 </SelectItem>
                 <SelectItem value="sts-session">
-                  Temporary session (STS, auto-refreshed)
+                  {t("settings.buckets.temporarySessionOption")}
                 </SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
               {credentialType === "sts-session"
-                ? "Stores only a refresh endpoint + API key; short-lived credentials are fetched on demand and refreshed automatically."
-                : "A long-lived access key ID and secret, used as-is."}
+                ? t("settings.buckets.stsSessionHelperText")
+                : t("settings.buckets.staticKeyHelperText")}
             </p>
           </div>
 
           {credentialType === "static" ? (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor="file-config-access-key">Access key ID</Label>
+                <Label htmlFor="file-config-access-key">
+                  {t("settings.buckets.accessKeyIdLabel")}
+                </Label>
                 <Input
                   id="file-config-access-key"
                   value={accessKeyId}
@@ -428,7 +444,7 @@ function CreateFileConfigDialog({
 
               <div className="space-y-1.5">
                 <Label htmlFor="file-config-secret-key">
-                  Secret access key
+                  {t("settings.buckets.secretAccessKeyLabel")}
                 </Label>
                 <Input
                   id="file-config-secret-key"
@@ -443,25 +459,27 @@ function CreateFileConfigDialog({
           ) : (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor="file-config-refresh-url">Refresh URL</Label>
+                <Label htmlFor="file-config-refresh-url">
+                  {t("settings.buckets.refreshUrlLabel")}
+                </Label>
                 <Input
                   id="file-config-refresh-url"
                   type="url"
                   value={refreshUrl}
                   onChange={(e) => setRefreshUrl(e.target.value)}
-                  placeholder="https://admin.example.com/api/acme/s3-credentials"
+                  placeholder={t("settings.buckets.refreshUrlPlaceholder")}
                   autoComplete="off"
                   required
                 />
                 <p className="text-xs text-muted-foreground">
-                  Endpoint POSTed (with the API key below) to vend temporary
-                  credentials. Must return accessKeyId, secretAccessKey,
-                  sessionToken, and expiration.
+                  {t("settings.buckets.refreshUrlHelperText")}
                 </p>
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="file-config-api-key">API key</Label>
+                <Label htmlFor="file-config-api-key">
+                  {t("settings.buckets.apiKeyLabel")}
+                </Label>
                 <Input
                   id="file-config-api-key"
                   type="password"
@@ -471,8 +489,7 @@ function CreateFileConfigDialog({
                   required
                 />
                 <p className="text-xs text-muted-foreground">
-                  Sent as the <code>x-api-key</code> header on each refresh
-                  call.
+                  {t("settings.buckets.apiKeyHelperText")}
                 </p>
               </div>
             </>
@@ -480,14 +497,14 @@ function CreateFileConfigDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="file-config-description">
-              Description (optional)
+              {t("settings.buckets.descriptionLabel")}
             </Label>
             <Textarea
               id="file-config-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              placeholder="What is this bucket used for?"
+              placeholder={t("settings.buckets.descriptionPlaceholder")}
             />
           </div>
 
@@ -501,10 +518,12 @@ function CreateFileConfigDialog({
               }}
               disabled={createConfig.isPending}
             >
-              Cancel
+              {t("settings.buckets.cancelButton")}
             </Button>
             <Button type="submit" disabled={submitDisabled}>
-              {createConfig.isPending ? "Adding…" : "Add bucket"}
+              {createConfig.isPending
+                ? t("settings.buckets.addingButton")
+                : t("settings.buckets.addBucketButton")}
             </Button>
           </DialogFooter>
         </form>
@@ -520,17 +539,20 @@ function DeleteFileConfigDialog({
   config: FileConfigInfo | null;
   onClose: () => void;
 }) {
+  const t = useT();
   const deleteConfig = useDeleteFileConfig();
 
   async function handleConfirm() {
     if (!config) return;
     try {
       await deleteConfig.mutateAsync(config.id);
-      toast.success(`Bucket "${config.name}" removed`);
+      toast.success(t("settings.buckets.bucketRemoved", { name: config.name }));
       onClose();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to remove bucket",
+        err instanceof Error
+          ? err.message
+          : t("settings.buckets.failedToRemoveBucket"),
       );
     }
   }
@@ -539,22 +561,26 @@ function DeleteFileConfigDialog({
     <AlertDialog open={config !== null} onOpenChange={(o) => !o && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Remove bucket configuration?</AlertDialogTitle>
+          <AlertDialogTitle>
+            {t("settings.buckets.removeBucketTitle")}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            This deletes the encrypted credentials for{" "}
-            <span className="font-medium">{config?.name}</span>. The bucket
-            itself is not affected. This cannot be undone.
+            {t("settings.buckets.removeBucketDescription", {
+              name: config?.name ?? "",
+            })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={deleteConfig.isPending}>
-            Cancel
+            {t("settings.buckets.cancelButton")}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={deleteConfig.isPending}
           >
-            {deleteConfig.isPending ? "Removing…" : "Remove"}
+            {deleteConfig.isPending
+              ? t("settings.buckets.removingButton")
+              : t("settings.buckets.removeButton")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -563,6 +589,7 @@ function DeleteFileConfigDialog({
 }
 
 function FilesContent() {
+  const t = useT();
   const configs = useFileConfigs();
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<FileConfigInfo | null>(
@@ -585,11 +612,11 @@ function FilesContent() {
     <>
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {configs.length} bucket{configs.length === 1 ? "" : "s"} configured
+          {t("settings.buckets.bucketsConfigured", { count: configs.length })}
         </p>
         <Button onClick={() => setCreateOpen(true)} size="sm">
           <Plus size={14} />
-          Add bucket
+          {t("settings.buckets.addBucket")}
         </Button>
       </div>
 
@@ -611,16 +638,20 @@ function FilesContent() {
 }
 
 export function OrgBucketsPage() {
+  const t = useT();
   return (
     <Page>
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>Buckets</Page.Title>
+            <Page.Title>{t("settings.buckets.pageTitle")}</Page.Title>
             <ErrorBoundary
               fallback={({ error }) => (
                 <ErrorFallback
-                  error={error ?? new Error("Failed to load file configs")}
+                  error={
+                    error ??
+                    new Error(t("settings.buckets.failedToLoadConfigsFallback"))
+                  }
                 />
               )}
             >

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Globe02, LinkExternal01 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
@@ -16,10 +17,10 @@ import {
   type UsageData,
   getCostFromUsage,
 } from "@decocms/mesh-sdk";
-import { parseMeshStorageKey } from "@/api/routes/decopilot/mesh-storage-uri";
+import { parseStudioStorageKey } from "@/api/routes/decopilot/studio-storage-uri";
 
 function resolveStorageUri(uri: string, orgSlug: string): string {
-  const key = parseMeshStorageKey(uri);
+  const key = parseStudioStorageKey(uri);
   if (key !== null) return `/api/${orgSlug}/files/${key}`;
   return uri;
 }
@@ -144,6 +145,7 @@ function linkifyCitations(text: string, citations: Citation[]): string {
 const MAX_VISIBLE_SOURCES = 5;
 
 function SourcesList({ citations }: { citations: Citation[] }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const hasOverflow = citations.length > MAX_VISIBLE_SOURCES;
   const visible = expanded
@@ -162,8 +164,10 @@ function SourcesList({ citations }: { citations: Citation[] }) {
           className="inline-flex items-center rounded-md border border-border/50 bg-muted/30 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:border-border hover:text-foreground"
         >
           {expanded
-            ? "show less"
-            : `+${citations.length - MAX_VISIBLE_SOURCES} more`}
+            ? t("chat.webSearch.showLess")
+            : t("chat.webSearch.showMore", {
+                count: citations.length - MAX_VISIBLE_SOURCES,
+              })}
         </button>
       )}
     </div>
@@ -175,6 +179,7 @@ export function WebSearchPart({
   latency,
   streamingText,
 }: WebSearchPartProps) {
+  const t = useT();
   const org = useOrg();
   const state = getEffectiveState(part.state);
   const input = part.input as { query?: string } | undefined;
@@ -219,8 +224,8 @@ export function WebSearchPart({
     return (
       <ToolCallShell
         icon={<Globe02 size={14} />}
-        title="Web search"
-        summary="Failed"
+        title={t("chat.webSearch.title")}
+        summary={t("chat.webSearch.failed")}
         state="error"
         usage={usage}
         trailing={latencyLabel}
@@ -236,7 +241,9 @@ export function WebSearchPart({
           className={cn(isLoading ? "animate-pulse" : "text-blue-500")}
         />
       }
-      title={isLoading ? "Researching..." : "Web search"}
+      title={
+        isLoading ? t("chat.webSearch.researching") : t("chat.webSearch.title")
+      }
       summary={
         isDone
           ? (result?.model ?? input?.query?.slice(0, 60))

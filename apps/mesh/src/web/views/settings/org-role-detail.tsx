@@ -12,6 +12,7 @@ import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { getInitials } from "@/web/lib/get-initials";
 import { KEYS } from "@/web/lib/query-keys";
 import { track } from "@/web/lib/posthog-client";
+import { getRoleColor, getRoleDotColor } from "@/web/lib/role-color";
 import {
   useConnections,
   useProjectContext,
@@ -53,6 +54,7 @@ import { z } from "zod";
 import { SearchInput } from "@deco/ui/components/search-input.tsx";
 import { Page } from "@/web/components/page";
 import { IntegrationIcon } from "@/web/components/integration-icon";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -76,53 +78,6 @@ export type RoleEditorTarget =
   | { kind: "builtin"; role: "owner" | "admin" | "user" }
   | { kind: "custom"; role: OrganizationRole }
   | { kind: "new" };
-
-// ============================================================================
-// Role color helpers
-// ============================================================================
-
-const ROLE_COLORS = [
-  "bg-red-500",
-  "bg-orange-500",
-  "bg-amber-500",
-  "bg-yellow-500",
-  "bg-lime-500",
-  "bg-green-500",
-  "bg-emerald-500",
-  "bg-teal-500",
-  "bg-cyan-500",
-  "bg-sky-500",
-  "bg-blue-500",
-  "bg-indigo-500",
-  "bg-violet-500",
-  "bg-purple-500",
-  "bg-fuchsia-500",
-  "bg-pink-500",
-  "bg-rose-500",
-] as const;
-
-const BUILTIN_ROLE_COLORS: Record<string, string> = {
-  owner: "bg-red-500",
-  admin: "bg-blue-500",
-  user: "bg-green-500",
-};
-
-function getRoleColor(roleName: string): string {
-  if (!roleName) return "bg-neutral-400";
-  let hash = 0;
-  for (let i = 0; i < roleName.length; i++) {
-    const char = roleName.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  const index = Math.abs(hash) % ROLE_COLORS.length;
-  return ROLE_COLORS[index] ?? ROLE_COLORS[0];
-}
-
-function getRoleDotColor(roleSlug: string, isBuiltin: boolean): string {
-  if (isBuiltin) return BUILTIN_ROLE_COLORS[roleSlug] ?? "bg-neutral-400";
-  return getRoleColor(roleSlug);
-}
 
 // ============================================================================
 // Zod Schema
@@ -158,6 +113,7 @@ interface OrgPermissionsTabProps {
 }
 
 function makeToggle(checked: boolean, readOnly: boolean, onToggle: () => void) {
+  const t = useT();
   const sw = (
     <Switch checked={checked} disabled={readOnly} onCheckedChange={onToggle} />
   );
@@ -169,7 +125,9 @@ function makeToggle(checked: boolean, readOnly: boolean, onToggle: () => void) {
           <div>{sw}</div>
         </TooltipTrigger>
         <TooltipContent>
-          <p>Built-in role permissions cannot be changed</p>
+          <p>
+            {t("settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged")}
+          </p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -184,6 +142,7 @@ function OrgPermissionsTab({
   readOnly = false,
   searchQuery,
 }: OrgPermissionsTabProps) {
+  const t = useT();
   const deferredQuery = useDeferredValue(searchQuery.trim().toLowerCase());
   const sections = getCapabilitySections();
 
@@ -221,11 +180,13 @@ function OrgPermissionsTab({
   return (
     <div>
       <div className="flex flex-col gap-10 py-4">
-        <SettingsSection title="General">
+        <SettingsSection title={t("settings.orgRoleDetail.general")}>
           <SettingsCard>
             <SettingsCardItem
-              title="All organization permissions"
-              description="Grant full access to all features below"
+              title={t("settings.orgRoleDetail.allOrgPermissions")}
+              description={t(
+                "settings.orgRoleDetail.grantFullAccessToAllFeaturesBelow",
+              )}
               action={makeToggle(allowAllStaticPermissions, readOnly, () => {
                 onAllowAllChange(!allowAllStaticPermissions);
                 onPermissionsChange([]);
@@ -244,7 +205,7 @@ function OrgPermissionsTab({
 
         {filteredSections.length === 0 && deferredQuery ? (
           <p className="text-sm text-muted-foreground py-4">
-            No permissions match &ldquo;{searchQuery}&rdquo;
+            {t("settings.orgRoleDetail.noPermissionsMatch", { searchQuery })}
           </p>
         ) : (
           filteredSections.map(({ section, capabilities }) => (
@@ -265,7 +226,7 @@ function OrgPermissionsTab({
                           {cap.dangerous && (
                             <AlertTriangle
                               size={12}
-                              className="text-amber-500 shrink-0"
+                              className="text-warning shrink-0"
                             />
                           )}
                         </span>
@@ -396,6 +357,7 @@ function SubProviderGroup({
   readOnly: boolean;
   defaultExpanded: boolean;
 }) {
+  const t = useT();
   const [userExpanded, setUserExpanded] = useState(defaultExpanded);
   // Honor `defaultExpanded` whenever it's true (e.g. active search) so
   // matching groups expand automatically even after the user collapsed them
@@ -432,7 +394,10 @@ function SubProviderGroup({
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <Badge variant="secondary" className="text-xs text-muted-foreground">
-            {enabledCount}/{models.length} enabled
+            {t("settings.orgRoleDetail.enabledCount", {
+              enabledCount,
+              total: models.length,
+            })}
           </Badge>
           {expanded ? (
             <ChevronDown size={16} className="text-muted-foreground shrink-0" />
@@ -482,7 +447,11 @@ function SubProviderGroup({
                           </div>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Built-in role permissions cannot be changed</p>
+                          <p>
+                            {t(
+                              "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged",
+                            )}
+                          </p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -502,7 +471,9 @@ function SubProviderGroup({
               className="w-full px-4 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
               onClick={() => setVisibleCount((c) => c + MODELS_PAGE_SIZE)}
             >
-              Show more ({models.length - visibleCount} remaining)
+              {t("settings.orgRoleDetail.showMore", {
+                remaining: models.length - visibleCount,
+              })}
             </button>
           )}
         </div>
@@ -623,6 +594,7 @@ function ModelsPermissionsTab({
   readOnly = false,
   searchQuery,
 }: ModelsPermissionsTabProps) {
+  const t = useT();
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const allModelsConnections = useAiProviderKeys();
 
@@ -670,7 +642,9 @@ function ModelsPermissionsTab({
           if (newValue) onModelSetChange({});
         }}
       >
-        <span className="text-sm font-medium">All models</span>
+        <span className="text-sm font-medium">
+          {t("settings.orgRoleDetail.allModels")}
+        </span>
         <div onClick={(e) => e.stopPropagation()}>
           {readOnly ? (
             <TooltipProvider>
@@ -685,7 +659,11 @@ function ModelsPermissionsTab({
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Built-in role permissions cannot be changed</p>
+                  <p>
+                    {t(
+                      "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged",
+                    )}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -702,7 +680,7 @@ function ModelsPermissionsTab({
       </div>
       {allModelsConnections.length === 0 ? (
         <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-          No LLM connections configured
+          {t("settings.orgRoleDetail.noLlmConnectionsConfigured")}
         </div>
       ) : (
         allModelsConnections.map((conn) => (
@@ -711,7 +689,7 @@ function ModelsPermissionsTab({
             fallback={
               <div className="px-4 py-3 flex items-center gap-2 text-sm text-muted-foreground">
                 <Loading01 className="size-4 animate-spin" />
-                Loading models...
+                {t("settings.orgRoleDetail.loadingModels")}
               </div>
             }
           >
@@ -749,6 +727,7 @@ function AddMemberDialog({
   selectedMemberIds: string[];
   onAddMembers: (memberIds: string[]) => void;
 }) {
+  const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [pendingMemberIds, setPendingMemberIds] = useState<string[]>([]);
@@ -775,9 +754,11 @@ function AddMemberDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="sm:max-w-md p-0">
         <AlertDialogHeader className="px-6 pt-6">
-          <AlertDialogTitle>Add Members to Role</AlertDialogTitle>
+          <AlertDialogTitle>
+            {t("settings.orgRoleDetail.addMembersToRole")}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            Select members to add to this role.
+            {t("settings.orgRoleDetail.selectMembersToAddToThisRole")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="flex flex-col h-80">
@@ -785,7 +766,7 @@ function AddMemberDialog({
             <SearchInput
               value={searchQuery}
               onChange={setSearchQuery}
-              placeholder="Search members..."
+              placeholder={t("settings.orgRoleDetail.searchMembers")}
               className="w-full"
             />
           </div>
@@ -793,7 +774,9 @@ function AddMemberDialog({
             {filteredMembers.length === 0 ? (
               <div className="flex items-center justify-center h-full px-6">
                 <p className="text-sm text-muted-foreground">
-                  {searchQuery ? "No members found" : "No members available"}
+                  {searchQuery
+                    ? t("settings.orgRoleDetail.noMembersFound")
+                    : t("settings.orgRoleDetail.noMembersAvailable")}
                 </p>
               </div>
             ) : (
@@ -832,7 +815,8 @@ function AddMemberDialog({
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">
-                          {member.user?.name || "Unknown"}
+                          {member.user?.name ||
+                            t("settings.orgRoleDetail.unknown")}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
                           {member.user?.email}
@@ -840,12 +824,12 @@ function AddMemberDialog({
                       </div>
                       {!eligible && (
                         <Badge variant="secondary" className="shrink-0">
-                          Owner
+                          {t("settings.orgRoleDetail.owner")}
                         </Badge>
                       )}
                       {alreadyInRole && eligible && (
                         <Badge variant="outline" className="shrink-0">
-                          Added
+                          {t("settings.orgRoleDetail.added")}
                         </Badge>
                       )}
                     </label>
@@ -856,12 +840,16 @@ function AddMemberDialog({
           </div>
         </div>
         <AlertDialogFooter className="px-6 pb-6">
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>
+            {t("settings.orgRoleDetail.cancel")}
+          </AlertDialogCancel>
           <AlertDialogAction
             onClick={handleAdd}
             disabled={pendingMemberIds.length === 0}
           >
-            Add {pendingMemberIds.length > 0 && `(${pendingMemberIds.length})`}
+            {t("settings.orgRoleDetail.addWithCount", {
+              count: pendingMemberIds.length,
+            })}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -877,7 +865,7 @@ function MembersTabContent({
   memberIds,
   onMemberIdsChange,
   readOnly = false,
-  readOnlyMessage = "Owner membership cannot be changed",
+  readOnlyMessage = undefined,
   searchQuery,
   addMemberDialogOpen,
   onAddMemberDialogOpenChange,
@@ -890,6 +878,7 @@ function MembersTabContent({
   addMemberDialogOpen: boolean;
   onAddMemberDialogOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const { data } = useMembers();
@@ -905,22 +894,28 @@ function MembersTabContent({
     );
   });
 
+  const displayReadOnlyMessage =
+    readOnlyMessage ??
+    t("settings.orgRoleDetail.ownerMembershipCannotBeChanged");
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-auto">
         {roleMembers.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <h3 className="text-base font-medium mb-1">No members</h3>
+              <h3 className="text-base font-medium mb-1">
+                {t("settings.orgRoleDetail.noMembers")}
+              </h3>
               <p className="text-sm text-muted-foreground">
-                Add members to grant them the configured permissions.
+                {t("settings.orgRoleDetail.addMembersToGrantPermissions")}
               </p>
             </div>
           </div>
         ) : filteredMembers.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-muted-foreground">
-              No members match "{searchQuery}"
+              {t("settings.orgRoleDetail.noMembersMatch", { searchQuery })}
             </p>
           </div>
         ) : (
@@ -938,7 +933,7 @@ function MembersTabContent({
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">
-                    {member.user?.name || "Unknown"}
+                    {member.user?.name || t("settings.orgRoleDetail.unknown")}
                   </p>
                   <p className="text-xs text-muted-foreground truncate">
                     {member.user?.email}
@@ -949,13 +944,25 @@ function MembersTabContent({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div>
-                          <Button variant="ghost" size="sm" disabled>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled
+                            aria-label={t(
+                              "settings.orgRoleDetail.removeMember",
+                              {
+                                name:
+                                  member.user?.name ||
+                                  t("settings.orgRoleDetail.unknown"),
+                              },
+                            )}
+                          >
                             <X size={16} />
                           </Button>
                         </div>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>{readOnlyMessage}</p>
+                        <p>{displayReadOnlyMessage}</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -963,6 +970,11 @@ function MembersTabContent({
                   <Button
                     variant="ghost"
                     size="sm"
+                    aria-label={t("settings.orgRoleDetail.removeMember", {
+                      name:
+                        member.user?.name ||
+                        t("settings.orgRoleDetail.unknown"),
+                    })}
                     onClick={() =>
                       onMemberIdsChange(
                         memberIds.filter((id) => id !== member.id),
@@ -1182,13 +1194,18 @@ function getInitialFormValues(
 
 function MembersAddButton({
   readOnly,
-  readOnlyMessage = "Owner membership cannot be changed",
+  readOnlyMessage = undefined,
   onOpen,
 }: {
   readOnly: boolean;
   readOnlyMessage?: string;
   onOpen: () => void;
 }) {
+  const t = useT();
+  const displayReadOnlyMessage =
+    readOnlyMessage ??
+    t("settings.orgRoleDetail.ownerMembershipCannotBeChanged");
+
   if (readOnly) {
     return (
       <TooltipProvider>
@@ -1197,12 +1214,12 @@ function MembersAddButton({
             <div>
               <Button variant="outline" size="sm" disabled>
                 <Plus size={16} />
-                Add Member
+                {t("settings.orgRoleDetail.addMember")}
               </Button>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{readOnlyMessage}</p>
+            <p>{displayReadOnlyMessage}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -1211,7 +1228,7 @@ function MembersAddButton({
   return (
     <Button variant="outline" size="sm" onClick={onOpen}>
       <Plus size={16} />
-      Add Member
+      {t("settings.orgRoleDetail.addMember")}
     </Button>
   );
 }
@@ -1262,6 +1279,7 @@ function RoleDetailPageInner({
   members: MemberLike[];
   connections: ConnectionEntity[];
 }) {
+  const t = useT();
   const { locator } = useProjectContext();
   const orgAuth = useOrgAuthClient();
   const queryClient = useQueryClient();
@@ -1310,7 +1328,9 @@ function RoleDetailPageInner({
             role: [currentSlug],
           });
           if (r?.error)
-            throw new Error(r.error.message ?? "Something went wrong");
+            throw new Error(
+              r.error.message ?? t("settings.orgRoleDetail.somethingWentWrong"),
+            );
         }
         for (const memberId of toRemove) {
           const r = await orgAuth.organization.updateMemberRole({
@@ -1318,7 +1338,9 @@ function RoleDetailPageInner({
             role: ["user"],
           });
           if (r?.error)
-            throw new Error(r.error.message ?? "Something went wrong");
+            throw new Error(
+              r.error.message ?? t("settings.orgRoleDetail.somethingWentWrong"),
+            );
         }
       };
 
@@ -1337,7 +1359,9 @@ function RoleDetailPageInner({
           },
         });
         if (r?.error)
-          throw new Error(r.error.message ?? "Something went wrong");
+          throw new Error(
+            r.error.message ?? t("settings.orgRoleDetail.somethingWentWrong"),
+          );
         await syncMembers(
           slugChanged ? newSlug : oldSlug,
           slugChanged ? oldSlug : undefined,
@@ -1351,7 +1375,9 @@ function RoleDetailPageInner({
           permission,
         });
         if (r?.error)
-          throw new Error(r.error.message ?? "Something went wrong");
+          throw new Error(
+            r.error.message ?? t("settings.orgRoleDetail.somethingWentWrong"),
+          );
         for (const memberId of formData.memberIds) {
           const mr = await orgAuth.organization.updateMemberRole({
             memberId,
@@ -1387,24 +1413,26 @@ function RoleDetailPageInner({
       );
       toast.success(
         wasOwnerBuiltin
-          ? "Members updated successfully!"
+          ? t("settings.orgRoleDetail.membersUpdatedSuccessfully")
           : wasNew
-            ? "Role created successfully!"
-            : "Role updated successfully!",
+            ? t("settings.orgRoleDetail.roleCreatedSuccessfully")
+            : t("settings.orgRoleDetail.roleUpdatedSuccessfully"),
       );
       form.reset(data);
       onSaved(data.role.id);
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save role",
+        error instanceof Error
+          ? error.message
+          : t("settings.orgRoleDetail.failedToSaveRole"),
       );
     },
   });
 
   const handleSubmit = form.handleSubmit((data) => {
     if (!data.role.label.trim()) {
-      toast.error("Role name is required");
+      toast.error(t("settings.orgRoleDetail.roleNameIsRequired"));
       form.setFocus("role.label");
       return;
     }
@@ -1422,11 +1450,19 @@ function RoleDetailPageInner({
 
   const tabs = [
     ...(!isOwnerBuiltin
-      ? [{ id: "mcp" as const, label: "MCP Permissions" }]
+      ? [
+          {
+            id: "mcp" as const,
+            label: t("settings.orgRoleDetail.mcpPermissions"),
+          },
+        ]
       : []),
-    { id: "org" as const, label: "Organization Permissions" },
-    { id: "models" as const, label: "Models" },
-    { id: "members" as const, label: "Members" },
+    {
+      id: "org" as const,
+      label: t("settings.orgRoleDetail.organizationPermissions"),
+    },
+    { id: "models" as const, label: t("settings.orgRoleDetail.models") },
+    { id: "members" as const, label: t("settings.orgRoleDetail.members") },
   ];
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -1438,10 +1474,10 @@ function RoleDetailPageInner({
   };
 
   const searchPlaceholders: Record<string, string> = {
-    mcp: "Search MCP servers...",
-    org: "Search permissions...",
-    models: "Search models...",
-    members: "Search members...",
+    mcp: t("settings.orgRoleDetail.searchMcpServers"),
+    org: t("settings.orgRoleDetail.searchPermissions"),
+    models: t("settings.orgRoleDetail.searchModels"),
+    members: t("settings.orgRoleDetail.searchMembers"),
   };
 
   return (
@@ -1464,7 +1500,7 @@ function RoleDetailPageInner({
                       onClick={onBack}
                       disabled={saveMutation.isPending}
                     >
-                      Cancel
+                      {t("settings.orgRoleDetail.cancel")}
                     </Button>
                     <Button
                       size="sm"
@@ -1474,10 +1510,10 @@ function RoleDetailPageInner({
                       }
                     >
                       {saveMutation.isPending
-                        ? "Saving..."
+                        ? t("settings.orgRoleDetail.saving")
                         : isNew
-                          ? "Create Role"
-                          : "Save Changes"}
+                          ? t("settings.orgRoleDetail.createRole")
+                          : t("settings.orgRoleDetail.saveChanges")}
                     </Button>
                   </>
                 )
@@ -1501,7 +1537,7 @@ function RoleDetailPageInner({
                 {isNew || target.kind === "custom" ? (
                   <input
                     {...form.register("role.label")}
-                    placeholder="Role name"
+                    placeholder={t("settings.orgRoleDetail.roleName")}
                     className="leading-tight text-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-64 placeholder:text-muted-foreground/50"
                     autoFocus={isNew}
                   />
@@ -1615,8 +1651,8 @@ function RoleDetailPageInner({
                 }
                 readOnlyMessage={
                   target.kind === "builtin" && target.role === "user"
-                    ? "User is the default role — members can't be removed from it; assign another role to change their access"
-                    : "Owner membership cannot be changed"
+                    ? t("settings.orgRoleDetail.userIsDefaultRoleMessage")
+                    : t("settings.orgRoleDetail.ownerMembershipCannotBeChanged")
                 }
                 searchQuery={searchQuery}
                 addMemberDialogOpen={addMemberDialogOpen}

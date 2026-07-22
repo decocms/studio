@@ -30,7 +30,7 @@ export function createClaudeCodeModel(
           preset: "claude_code";
           append?: string;
         };
-    /** Working directory for Claude Code's subprocess. Defaults to mesh's cwd. */
+    /** Working directory for Claude Code's subprocess. Defaults to studio's cwd. */
     cwd?: string;
   },
 ): LanguageModelV3 {

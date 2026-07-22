@@ -22,8 +22,9 @@ import {
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
 import {
-  OPENAI_COMPATIBLE_PRESETS,
+  getPreset,
   type OpenAICompatiblePreset,
 } from "@/web/utils/openai-compatible-presets";
 
@@ -34,13 +35,39 @@ interface EditProviderKeyDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const editFormSchema = z.object({
-  label: z.string().min(1, "Label is required").max(100),
-  apiKey: z.string().optional(),
-  baseUrl: z.string().optional(),
-});
+const createEditFormSchema = (t: TFunction) =>
+  z.object({
+    label: z
+      .string()
+      .min(1, t("settings.editProviderDialog.labelRequired"))
+      .max(100),
+    apiKey: z.string().optional(),
+    baseUrl: z.string().optional(),
+  });
 
-type EditFormData = z.infer<typeof editFormSchema>;
+type EditFormData = z.infer<ReturnType<typeof createEditFormSchema>>;
+
+/**
+ * The stored apiKey blob for openai-compatible keys encodes {baseUrl, apiKey}
+ * together. If the base URL changes without a freshly typed apiKey, the
+ * previous plaintext key isn't available client-side (only a masked preview
+ * is) to re-encode — so submitting would silently wipe the stored credential.
+ */
+export function needsApiKeyForBaseUrlChange({
+  isOpenAICompatible,
+  baseUrl,
+  currentBaseUrl,
+  apiKey,
+}: {
+  isOpenAICompatible: boolean;
+  baseUrl?: string;
+  currentBaseUrl?: string;
+  apiKey?: string;
+}): boolean {
+  return (
+    isOpenAICompatible && !!baseUrl && baseUrl !== currentBaseUrl && !apiKey
+  );
+}
 
 interface EditFormProps {
   providerKey: AiProviderKey;
@@ -66,15 +93,19 @@ function EditForm({
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
+  const t = useT();
   const [showKey, setShowKey] = useState(false);
 
   const isOpenAICompatible = provider.id === "openai-compatible";
   const supportsApiKey = provider.supportedMethods.includes("api-key");
 
+  const editFormSchema = createEditFormSchema(t);
+
   const {
     register,
     handleSubmit,
     watch,
+    setError,
     formState: { errors },
   } = useForm<EditFormData>({
     resolver: zodResolver(editFormSchema),
@@ -100,17 +131,6 @@ function EditForm({
         } else {
           apiKeyValue = data.apiKey;
         }
-      } else if (
-        isOpenAICompatible &&
-        data.baseUrl &&
-        data.baseUrl !== currentBaseUrl
-      ) {
-        // Base URL changed but no new API key — re-encode with existing masked key not possible.
-        // We encode the new baseUrl with empty apiKey so the connection still works.
-        apiKeyValue = JSON.stringify({
-          baseUrl: data.baseUrl,
-          apiKey: "",
-        });
       }
 
       await studio.call("AI_PROVIDER_KEY_UPDATE", {
@@ -122,20 +142,43 @@ function EditForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(org.id) });
-      toast.success("Provider updated");
+      toast.success(t("settings.editProviderDialog.providerUpdated"));
       onSuccess();
     },
-    onError: (err) => toast.error(`Failed to update: ${err.message}`),
+    onError: (err) =>
+      toast.error(
+        t("settings.editProviderDialog.failedToUpdate", { error: err.message }),
+      ),
   });
 
   return (
-    <form onSubmit={handleSubmit((data) => save(data))} className="space-y-3">
+    <form
+      onSubmit={handleSubmit((data) => {
+        if (
+          needsApiKeyForBaseUrlChange({
+            isOpenAICompatible,
+            baseUrl: data.baseUrl,
+            currentBaseUrl,
+            apiKey: data.apiKey,
+          })
+        ) {
+          setError("apiKey", {
+            message: t(
+              "settings.editProviderDialog.apiKeyRequiredForBaseUrlChange",
+            ),
+          });
+          return;
+        }
+        save(data);
+      })}
+      className="space-y-3"
+    >
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          Label
+          {t("settings.editProviderDialog.label")}
         </label>
         <Input
-          placeholder="e.g. Personal key"
+          placeholder={t("settings.editProviderDialog.labelPlaceholder")}
           {...register("label")}
           className="h-8 text-sm"
         />
@@ -147,12 +190,13 @@ function EditForm({
       {isOpenAICompatible && !preset?.defaultBaseUrl && (
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">
-            Base URL
+            {t("settings.editProviderDialog.baseUrl")}
           </label>
           <Input
             type="url"
             placeholder={
-              preset?.baseUrlPlaceholder ?? "http://localhost:4000/v1"
+              preset?.baseUrlPlaceholder ??
+              t("settings.editProviderDialog.baseUrlPlaceholder")
             }
             {...register("baseUrl")}
             className="h-8 text-sm"
@@ -163,9 +207,9 @@ function EditForm({
       {supportsApiKey && (
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">
-            API key{" "}
+            {t("settings.editProviderDialog.apiKey")}{" "}
             <span className="text-muted-foreground/60">
-              (leave blank to keep current)
+              ({t("settings.editProviderDialog.leaveBlankHint")})
             </span>
           </label>
           <div className="relative">
@@ -179,12 +223,20 @@ function EditForm({
               <button
                 type="button"
                 onClick={() => setShowKey(!showKey)}
+                aria-label={
+                  showKey
+                    ? t("settings.editProviderDialog.hideApiKey")
+                    : t("settings.editProviderDialog.showApiKey")
+                }
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
             )}
           </div>
+          {errors.apiKey && (
+            <p className="text-xs text-destructive">{errors.apiKey.message}</p>
+          )}
         </div>
       )}
 
@@ -200,10 +252,12 @@ function EditForm({
           onClick={onCancel}
           disabled={isPending}
         >
-          Cancel
+          {t("settings.editProviderDialog.cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={isPending}>
-          {isPending ? "Saving..." : "Save"}
+          {isPending
+            ? t("settings.editProviderDialog.saving")
+            : t("settings.editProviderDialog.save")}
         </Button>
       </DialogFooter>
     </form>
@@ -216,11 +270,12 @@ export function EditProviderKeyDialog({
   open,
   onOpenChange,
 }: EditProviderKeyDialogProps) {
+  const t = useT();
   const studio = useStudioTools();
 
   const preset: OpenAICompatiblePreset | undefined =
     provider.id === "openai-compatible" && providerKey.presetId
-      ? OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === providerKey.presetId)
+      ? getPreset(providerKey.presetId)
       : undefined;
 
   const displayName = preset?.name ?? provider.name;
@@ -237,7 +292,9 @@ export function EditProviderKeyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit {displayName}</DialogTitle>
+          <DialogTitle>
+            {t("settings.editProviderDialog.editTitle", { name: displayName })}
+          </DialogTitle>
         </DialogHeader>
 
         {isLoading || !preview ? (

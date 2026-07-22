@@ -39,8 +39,24 @@ export function normalizeThreadForResponse(
   let status: ThreadStatusForResponse = thread.status;
 
   if (status === "in_progress") {
+    // Liveness = the most recent of `updated_at` (bumped by terminal writers)
+    // and `last_progress_at` (bumped per streamed chunk, throttled). A
+    // still-streaming run keeps `last_progress_at` fresh even though
+    // `updated_at` stays stale for the whole turn, so keying only off
+    // `updated_at` would falsely flip an actively-streaming thread to
+    // "expired" after 30 min. Use the same heartbeat the reaper trusts.
     const updatedAtMs = new Date(thread.updated_at).getTime();
-    if (!Number.isFinite(updatedAtMs) || now - updatedAtMs > THREAD_EXPIRY_MS) {
+    const progressAtMs = thread.last_progress_at
+      ? new Date(thread.last_progress_at).getTime()
+      : Number.NaN;
+    const lastActiveMs = Math.max(
+      Number.isFinite(updatedAtMs) ? updatedAtMs : Number.NEGATIVE_INFINITY,
+      Number.isFinite(progressAtMs) ? progressAtMs : Number.NEGATIVE_INFINITY,
+    );
+    if (
+      !Number.isFinite(lastActiveMs) ||
+      now - lastActiveMs > THREAD_EXPIRY_MS
+    ) {
       status = "expired";
     }
   }

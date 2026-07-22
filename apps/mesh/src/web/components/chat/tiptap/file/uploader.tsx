@@ -11,6 +11,7 @@ import type { Editor } from "@tiptap/react";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Attachment01 } from "@untitledui/icons";
 import { toast } from "sonner";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
 import {
   getSupportedFileTypesLabel,
   isFileTypeSupportedByModel,
@@ -39,21 +40,28 @@ export async function processFile(
   selectedModel: AiProviderModel | null,
   file: File,
   position: number,
-  onUnsupportedFile?: (info: UnsupportedFileInfo) => void,
+  onUnsupportedFile: ((info: UnsupportedFileInfo) => void) | undefined,
+  t: TFunction,
 ): Promise<void> {
   // Check if model supports files
   if (!modelSupportsFiles(selectedModel)) {
+    // ponytail: toast.error has no i18n context here (not a React component).
+    // Caller will use UnsupportedFileDialog for user-facing messages.
     toast.error("Selected model does not support file uploads");
     return;
   }
 
   const fileMimeType = file.type || "application/octet-stream";
   if (!isFileTypeSupportedByModel(fileMimeType, selectedModel)) {
-    const accepted = getSupportedFileTypesLabel(selectedModel);
+    const accepted = getSupportedFileTypesLabel(selectedModel)
+      .parts.map((key) => t(key))
+      .join(", ");
     const modelName = selectedModel?.title ?? "This model";
     if (onUnsupportedFile) {
       onUnsupportedFile({ fileName: file.name, modelName, accepted });
     } else {
+      // ponytail: toast.error has no i18n context here (not a React component).
+      // Caller will use UnsupportedFileDialog for user-facing messages.
       toast.error(`"${file.name}" can't be attached`, {
         description: `${modelName} accepts ${accepted}.`,
       });
@@ -64,6 +72,7 @@ export async function processFile(
   const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 
   if (file.size > MAX_SIZE) {
+    // ponytail: toast.error has no i18n context here (not a React component).
     toast.error(`File "${file.name}" exceeds 10MB limit`);
     return;
   }
@@ -101,6 +110,7 @@ export async function processFile(
     insertFile(editor, { from: position, to: position }, fileAttrs);
   } catch (error) {
     console.error("Failed to process file:", error);
+    // ponytail: toast.error has no i18n context here (not a React component).
     toast.error(`Failed to load file "${file.name}"`);
   }
 }
@@ -114,6 +124,7 @@ export function FileUploader({
   selectedModel,
   onUnsupportedFile,
 }: FileUploaderProps) {
+  const t = useT();
   // Use a ref to store the latest processFile handler
   // This ensures we always use the latest selectedModel when processing files
   const processFileRef = useRef<
@@ -130,9 +141,10 @@ export function FileUploader({
         file,
         position,
         onUnsupportedFile,
+        t,
       );
     };
-  }, [editor, selectedModel, onUnsupportedFile]);
+  }, [editor, selectedModel, onUnsupportedFile, t]);
 
   // Register the file drop plugin once per editor instance
   // eslint-disable-next-line ban-use-effect/ban-use-effect
@@ -171,15 +183,17 @@ export function FileUploader({
 
           if (!coordinates) return false;
 
-          // Process all dropped files sequentially at the drop position
+          // Process dropped files one at a time, re-reading the selection after
+          // each insert so multiple files land in order instead of racing to
+          // insert at the same stale position.
           const fileArray = Array.from(files);
-          const currentPos = coordinates.pos;
-
-          for (const file of fileArray) {
-            // Call the ref to use the latest selectedModel
-            void processFileRef.current?.(file, currentPos);
-            // In practice, they'll be inserted at the same position which is fine
-          }
+          void (async () => {
+            let insertPos = coordinates.pos;
+            for (const file of fileArray) {
+              await processFileRef.current?.(file, insertPos);
+              insertPos = view.state.selection.to;
+            }
+          })();
 
           return true;
         },
@@ -195,11 +209,15 @@ export function FileUploader({
 
           event.preventDefault();
 
-          const { from } = view.state.selection;
-          for (const item of fileItems) {
-            const file = item.getAsFile();
-            if (file) void processFileRef.current?.(file, from);
-          }
+          void (async () => {
+            let insertPos = view.state.selection.from;
+            for (const item of fileItems) {
+              const file = item.getAsFile();
+              if (!file) continue;
+              await processFileRef.current?.(file, insertPos);
+              insertPos = view.state.selection.to;
+            }
+          })();
 
           return true;
         },
@@ -230,6 +248,7 @@ export function UnsupportedFileDialog({
   info: UnsupportedFileInfo | null;
   onClose: () => void;
 }) {
+  const t = useT();
   return (
     <Dialog open={info !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
@@ -252,18 +271,18 @@ export function UnsupportedFileDialog({
             }}
           />
           <DialogHeader className="relative gap-4">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
+            <div className="flex items-center justify-center size-9 rounded-lg bg-warning/15 text-warning">
               <AlertTriangle size={18} />
             </div>
             <div>
               <DialogTitle className="text-xl font-semibold tracking-tight">
-                File type not supported
+                {t("chat.uploader.fileTypeNotSupported")}
               </DialogTitle>
               <DialogDescription className="mt-1.5 text-sm leading-relaxed">
                 <span className="font-medium text-foreground">
                   &ldquo;{info?.fileName}&rdquo;
                 </span>{" "}
-                can&apos;t be attached to this chat.
+                {t("chat.uploader.cantAttachToChat")}
               </DialogDescription>
             </div>
           </DialogHeader>
@@ -273,7 +292,7 @@ export function UnsupportedFileDialog({
         <div className="px-8 pt-3 pb-6 space-y-3">
           <div className="rounded-xl border border-border p-4">
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-              {info?.modelName} accepts
+              {t("chat.uploader.accepts", { modelName: info?.modelName ?? "" })}
             </div>
             <div className="flex items-center gap-2 text-sm text-foreground">
               <Attachment01 size={14} className="text-muted-foreground" />
@@ -284,7 +303,7 @@ export function UnsupportedFileDialog({
 
         {/* Footer */}
         <div className="px-8 py-4 border-t border-border bg-muted/30 flex items-center justify-end">
-          <Button onClick={onClose}>Got it</Button>
+          <Button onClick={onClose}>{t("chat.uploader.gotIt")}</Button>
         </div>
       </DialogContent>
     </Dialog>

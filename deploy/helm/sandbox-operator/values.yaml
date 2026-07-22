@@ -10,6 +10,13 @@
 # templates/agent-sandbox-manifest.yaml — but prefer re-running
 # vendor.sh against a newer upstream release first.
 
+# Standalone installs must target the agent-sandbox-system namespace (the chart
+# fails at template time otherwise). Set this to true ONLY when installing the
+# chart as a subchart of an umbrella whose release namespace is something else
+# (e.g. Studio's local umbrella): every resource here is pinned to
+# agent-sandbox-system explicitly, so they land there regardless.
+allowForeignNamespace: false
+
 controller:
   # Annotations applied to the controller Pod template. The controller
   # already exposes Prometheus metrics on port 8080 (/metrics) but the

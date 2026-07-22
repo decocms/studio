@@ -13,8 +13,10 @@
  */
 
 import { Hono } from "hono";
+import { oAuthProtectedResourceMetadata } from "better-auth/plugins";
 import { ContextFactory } from "../../core/context-factory";
 import type { StudioContext } from "../../core/studio-context";
+import { auth } from "../../auth";
 import { retry, RetryError } from "@decocms/std";
 import {
   authorizationServerMetadataUrls,
@@ -320,6 +322,38 @@ const fixProtocol = (url: URL) => {
 };
 
 /**
+ * Convert either RFC 9728 discovery URL shape back to the protected resource
+ * URL that the client originally requested. Better Auth's generic metadata
+ * handler intentionally advertises the auth server's origin; the org-scoped
+ * self endpoint needs its concrete `/api/:org/mcp/self` resource instead.
+ */
+function protectedResourceUrlFromDiscovery(url: URL): string {
+  const resourceRelativeSuffix = "/.well-known/oauth-protected-resource";
+  const wellKnownPrefix = resourceRelativeSuffix;
+  let pathname = url.pathname;
+
+  if (pathname.endsWith(resourceRelativeSuffix)) {
+    pathname = pathname.slice(0, -resourceRelativeSuffix.length) || "/";
+  } else if (pathname.startsWith(wellKnownPrefix)) {
+    pathname = pathname.slice(wellKnownPrefix.length) || "/";
+  }
+
+  return `${url.origin}${pathname}`;
+}
+
+async function studioProtectedResourceMetadata(
+  request: Request,
+  resource?: string,
+): Promise<Response> {
+  const res = await oAuthProtectedResourceMetadata(auth)(request);
+  const data = (await res.json()) as Record<string, unknown>;
+  if (resource) {
+    data.resource = resource;
+  }
+  return Response.json(data, res);
+}
+
+/**
  * Handler for proxying OAuth protected resource metadata
  * Rewrites resource to /mcp/:connectionId and authorization_servers to /oauth-proxy/:connectionId
  *
@@ -385,9 +419,48 @@ export const protectedResourceMetadataHandler = async (c: {
     }
   }
 
+  // The RFC 9728 prefix form is mounted at the root, outside
+  // `resolveOrgFromPath`. Keep the same bearer-token tenant fence here so a
+  // token issued for org B cannot probe metadata for org A through that public
+  // route. Anonymous discovery remains public because it has no token binding.
+  if (
+    scopedOrgId &&
+    ctx.auth?.tokenOrganizationId &&
+    ctx.auth.tokenOrganizationId !== scopedOrgId
+  ) {
+    return c.json(
+      { error: "forbidden: token is scoped to another organization" },
+      403,
+    );
+  }
+
+  // `self` is the org's built-in management MCP alias, not a persisted
+  // connection row. Its OAuth resource is Studio itself, so both RFC 9728
+  // discovery shapes (`/mcp/self/.well-known/...` and the origin-anchored
+  // `/.well-known/.../api/:org/mcp/self`) must return Better Auth metadata
+  // instead of falling through to a connection lookup for id "self".
+  if (connectionId === "self") {
+    return studioProtectedResourceMetadata(
+      c.req.raw,
+      protectedResourceUrlFromDiscovery(requestUrl),
+    );
+  }
+
   const connectionUrl = await getConnectionUrl(connectionId, ctx, scopedOrgId);
   if (!connectionUrl) {
     return c.json({ error: "Connection not found" }, 404);
+  }
+
+  // Virtual MCPs (`virtual://<id>`) are Studio-native aggregators with no
+  // downstream OAuth server to proxy — trying to fetch protected-resource
+  // metadata from `virtual://` fails ("protocol must be http/https/s3"). Their
+  // OAuth resource is Studio itself: the Better Auth MCP authorization server,
+  // which supports Dynamic Client Registration and therefore accepts an
+  // external MCP client's own `redirect_uri` (e.g. Claude Desktop). The
+  // connection `oauth-proxy` only accepts Studio's own origin, so it can't
+  // serve external clients. Hand back Better Auth's metadata instead.
+  if (connectionUrl.startsWith("virtual://")) {
+    return studioProtectedResourceMetadata(c.req.raw);
   }
 
   const prefix = buildPathPrefix(orgSlug);

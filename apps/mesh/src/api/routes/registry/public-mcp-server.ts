@@ -28,6 +28,15 @@ const publicListCache = createTtlLruCache<PrivateRegistryListResult>({
 });
 
 /**
+ * Clear the public list cache. Call this after any write to registry items
+ * (create/update/delete) so the unauthenticated public endpoint doesn't keep
+ * serving a deleted or newly-private item for up to LIST_CACHE_TTL_MS.
+ */
+export function invalidatePublicRegistryListCache(): void {
+  publicListCache.clear();
+}
+
+/**
  * Create public MCP tools for the registry
  * These tools only expose public items
  */
@@ -207,7 +216,7 @@ export function createPublicMCPHandler(
     });
 
     // Forward request to MCP server with a minimal env that satisfies DefaultEnv.
-    // This is a public endpoint (no Mesh proxy), so we provide stub values for
+    // This is a public endpoint (no Studio proxy), so we provide stub values for
     // the required fields that are only used by authenticated/internal flows.
     const env = {
       organizationId: org.id,

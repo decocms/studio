@@ -43,7 +43,7 @@ const NO_CLAIM_MAX_MS = 90_000;
 const HEARTBEAT_MS = 15_000;
 
 /**
- * Budget for the "lifecycle says ready but mesh hasn't finished its
+ * Budget for the "lifecycle says ready but studio hasn't finished its
  * post-Ready bookkeeping" race.
  */
 const PROXY_OPEN_RETRY_BUDGET_MS = 60_000;

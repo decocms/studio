@@ -1,5 +1,5 @@
 /**
- * Persistent sandbox runner state — survives mesh restarts so we can
+ * Persistent sandbox runner state — survives studio restarts so we can
  * recover or terminate live sandboxes. `state` jsonb is opaque: each
  * runner serialises its own shape (e.g. docker: {token, hostPort, ...}).
  */

@@ -13,11 +13,13 @@
  *
  * The tool clones EAGERLY and waits: it provisions the repo sandbox and blocks
  * until the git checkout is present before returning, then signals the client
- * to open the Preview panel. File tools the model calls in the SAME turn are
- * still bound to the pre-load branch (the turn's binding is fixed at
- * turn-start); they pick up the repo from the next message — by which point the
- * eager clone has it hot. The returned root listing lets the model confirm the
- * repo without a same-turn `bash`.
+ * to open the Preview panel. Once the clone is confirmed it re-points the run's
+ * live VM file tools at the new sandbox branch (`rebindFs`), so the model can
+ * read/edit/bash the repo in the SAME turn — without this the tools stay bound
+ * to the turn-start branch and only pick up the repo on the next message, which
+ * an autonomous single-turn run (e.g. a delegated task) never sends, so it
+ * loops on an empty `/app/repo`. The returned root listing lets the model
+ * confirm the repo without a same-turn `bash`.
  *
  * CLUSTER-GLUE: `@/`-coupled, same tier as `cluster-sandbox-fs.ts`.
  */
@@ -95,9 +97,14 @@ async function listOrgRepos(
 }
 
 /**
- * Interpret the clone-probe stdout (`echo __CLONED__` marker + `ls -A`).
- * `cloned` is true once git has a HEAD or any non-`.git` entry appears; the
- * listing is the repo root minus `.git`. Pure so it's unit-testable.
+ * Interpret the clone-probe stdout (`echo __CLONED__` HEAD marker + `ls -A`).
+ * `cloned` requires actual working-tree entries — a HEAD ref (the `__CLONED__`
+ * marker) can appear BEFORE the checkout lands on a lagging sandbox FS, so
+ * HEAD alone is NOT "ready" (that false-positive returned success with an empty
+ * `/app/repo`, and the agent's first grep/read hit "No such file or directory").
+ * The listing is the repo root minus `.git`; the caller additionally waits for
+ * it to STABILIZE across polls to survive a progressive checkout. Pure so it's
+ * unit-testable.
  */
 export function parseCloneProbe(stdout: string): {
   cloned: boolean;
@@ -107,7 +114,7 @@ export function parseCloneProbe(stdout: string): {
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l && l !== ".git" && l !== "__CLONED__");
-  const cloned = stdout.includes("__CLONED__") || entries.length > 0;
+  const cloned = entries.length > 0;
   return { cloned, listing: cloned ? entries.join("\n") : "" };
 }
 
@@ -133,8 +140,15 @@ export async function createLoadRepoTool(opts: {
   userId: string;
   threadId: string;
   writer: UIMessageStreamWriter;
+  /**
+   * Re-point the run's live VM file tools at the sandbox branch this load
+   * provisioned, so the model can use the repo in the SAME turn. Called once
+   * the checkout is confirmed present. Omitted in contexts with no swappable
+   * fs (tests) — then the legacy "next message" binding still applies.
+   */
+  rebindFs?: (branch: string) => Promise<void>;
 }) {
-  const { ctx, orgId, virtualMcpId, userId, threadId, writer } = opts;
+  const { ctx, orgId, virtualMcpId, userId, threadId, writer, rebindFs } = opts;
   const repos = await listOrgRepos(ctx, orgId);
   // Nothing to switch between — don't expose the tool at all.
   if (repos.length === 0) return null;
@@ -241,6 +255,11 @@ export async function createLoadRepoTool(opts: {
       let listing = "";
       let cloned = false;
       let consecutiveFailures = 0;
+      // A lagging clone reveals the working tree progressively, so a single
+      // non-empty listing can still be mid-checkout (more files land the next
+      // second). Require the listing to STABILIZE — two consecutive identical
+      // non-empty probes — before declaring the repo ready.
+      let lastListing: string | null = null;
       while (Date.now() < deadline) {
         const probe = await fs
           .onBash(
@@ -257,12 +276,28 @@ export async function createLoadRepoTool(opts: {
         }
         consecutiveFailures = 0;
         const result = parseCloneProbe(probe.stdout);
-        if (result.cloned) {
+        if (result.cloned && result.listing === lastListing) {
           cloned = true;
           listing = result.listing;
           break;
         }
+        lastListing = result.cloned ? result.listing : null;
         await sleep(CLONE_POLL_MS);
+      }
+
+      // Re-point the run's live VM file tools at this repo's sandbox so the
+      // model can read/edit/bash it in the SAME turn. Only after the clone is
+      // confirmed present — swapping earlier would bind the tools to an empty
+      // checkout and reproduce the original loop. Best-effort: a rebind failure
+      // just falls back to the next-message binding, so never fail the load.
+      let reboundThisTurn = false;
+      if (cloned && rebindFs) {
+        try {
+          await rebindFs(branch);
+          reboundThisTurn = true;
+        } catch (err) {
+          console.warn("[load_repo] live fs rebind failed", err);
+        }
       }
 
       return {
@@ -271,11 +306,13 @@ export async function createLoadRepoTool(opts: {
         previewUrl: entry.previewUrl ?? null,
         cloned,
         files: listing,
-        message: cloned
-          ? `Loaded ${repo.owner}/${repo.repo} and opened the Preview. The repo is cloned and its dev server is booting. Your file tools operate on it from your next message.`
-          : `Loaded ${repo.owner}/${repo.repo} and opened the Preview, but the clone did not finish within ${Math.round(
+        message: !cloned
+          ? `Loaded ${repo.owner}/${repo.repo} and opened the Preview, but the clone did not finish within ${Math.round(
               CLONE_TIMEOUT_MS / 1000,
-            )}s. It may still be in progress — your file tools will use it next message.`,
+            )}s. It may still be in progress — your file tools will use it next message.`
+          : reboundThisTurn
+            ? `Loaded ${repo.owner}/${repo.repo} and opened the Preview. The repo is cloned and its dev server is booting. Your file tools (read/write/edit/bash/grep/glob) now operate on it — you can use it right away.`
+            : `Loaded ${repo.owner}/${repo.repo} and opened the Preview. The repo is cloned and its dev server is booting. Your file tools operate on it from your next message.`,
       };
     },
   });

@@ -4,6 +4,7 @@ import path from "node:path";
 import { appendCoAuthorTrailer } from "../../git-co-author";
 import { computeBranchDivergence } from "../git/branch-divergence";
 import { parsePorcelainFiles } from "../git/porcelain";
+import { protectedBranches } from "../git/protect-branch";
 import { rebaseOntoBase } from "../git/rebase-onto-base";
 import {
   cloneUrlHasCredentials,
@@ -498,6 +499,15 @@ export function publish(deps: GitDeps, message: string): { pushed: boolean } {
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
     throw new Error("Cannot publish from a detached HEAD");
+  }
+  // The pre-push hook (protect-branch.ts) also guards this, but the push below
+  // runs with --no-verify and skips it — so the block MUST live in code too.
+  // Refuse before committing so we never leave a stray commit on a protected
+  // branch either. Changes reach the default branch via PR, never a direct push.
+  if (protectedBranches(repoDir).has(branch)) {
+    throw new Error(
+      `Refusing to push to protected branch "${branch}" from a sandbox. Work on a feature branch; changes reach the default branch via PR.`,
+    );
   }
 
   const status = computeWorkingTreeStatus(repoDir);

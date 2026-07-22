@@ -64,6 +64,29 @@ export function slugify(input: string): string {
 }
 
 /**
+ * Short, stable namespace code for a connection key.
+ *
+ * The aggregated tool name is `${namespaceCode(key)}_${toolName}`. Downstream
+ * clients often add their OWN prefix on top (e.g. Hermes prepends
+ * `mcp_<server>_`, ~21 chars), and tool names are capped at 64 chars by the
+ * Anthropic API (`^[A-Za-z0-9_-]{1,64}$`). Using the full slugified connection
+ * id (~26 chars) as the prefix blew the budget once a second prefix was added.
+ *
+ * This produces a 7-char code (`a` + 6 base36 chars of an FNV-1a hash) with NO
+ * underscore, so `resolveToolTarget`'s split on the first `_` still cleanly
+ * separates the prefix from the (possibly `_`-containing) tool name. Collisions
+ * are astronomically unlikely for a handful of connections and, if they ever
+ * happen, the GatewayClient constructor throws on a duplicate code.
+ */
+export function namespaceCode(input: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    h = Math.imul(h ^ input.charCodeAt(i), 0x01000193);
+  }
+  return `a${(h >>> 0).toString(36).padStart(6, "0").slice(-6)}`;
+}
+
+/**
  * Extract `gatewayClientId` from an item's `_meta` object.
  * Returns `undefined` when the field is absent or not a string.
  */
@@ -89,7 +112,7 @@ export function stripToolNamespace(
   clientId?: string,
 ): string {
   if (!clientId) return namespacedName;
-  const prefix = `${slugify(clientId)}_`;
+  const prefix = `${namespaceCode(clientId)}_`;
   return namespacedName.startsWith(prefix)
     ? namespacedName.slice(prefix.length)
     : namespacedName;
@@ -151,10 +174,10 @@ export class GatewayClient extends Client {
     });
     this.clients = clients;
     for (const key of Object.keys(clients)) {
-      const slug = slugify(key);
+      const slug = namespaceCode(key);
       if (this.slugToKey.has(slug)) {
         throw new Error(
-          `GatewayClient: duplicate slug "${slug}" from keys "${this.slugToKey.get(slug)}" and "${key}"`,
+          `GatewayClient: duplicate namespace code "${slug}" from keys "${this.slugToKey.get(slug)}" and "${key}"`,
         );
       }
       this.slugToKey.set(slug, key);
@@ -166,7 +189,7 @@ export class GatewayClient extends Client {
   // ---------------------------------------------------------------------------
 
   private namespace(clientKey: string, name: string): string {
-    return `${slugify(clientKey)}_${name}`;
+    return `${namespaceCode(clientKey)}_${name}`;
   }
 
   /**
@@ -296,6 +319,31 @@ export class GatewayClient extends Client {
   // Auto-pagination helpers
   // ---------------------------------------------------------------------------
 
+  /**
+   * Resolve one upstream client and list its items, tolerating failure. A
+   * single unreachable/unauthenticated connection (401, circuit-breaker-open,
+   * transport error) must NOT abort the whole aggregation — that would take
+   * down the entire agent run over one broken connection. Log and contribute
+   * nothing instead; the caller degrades to the connections that did resolve.
+   */
+  private async listFromClient<T>(
+    clientKey: string,
+    fetchAll: (client: IClient) => Promise<T[]>,
+    kind: string,
+  ): Promise<T[]> {
+    try {
+      const client = await this.resolveClient(clientKey);
+      return await fetchAll(client);
+    } catch (err) {
+      console.warn(
+        `GatewayClient: skipping ${kind} from client "${clientKey}" — ${
+          (err as Error)?.message ?? err
+        }`,
+      );
+      return [];
+    }
+  }
+
   private async fetchAllTools(client: IClient): Promise<Tool[]> {
     const tools: Tool[] = [];
     let cursor: string | undefined;
@@ -364,8 +412,11 @@ export class GatewayClient extends Client {
     const tools: Tool[] = [];
 
     for (const [clientKey, entry] of Object.entries(this.clients)) {
-      const client = await this.resolveClient(clientKey);
-      const clientTools = await this.fetchAllTools(client);
+      const clientTools = await this.listFromClient(
+        clientKey,
+        (c) => this.fetchAllTools(c),
+        "tools",
+      );
 
       const selected = entry.tools;
       const selectedSet = selected ? new Set(selected) : null;
@@ -403,8 +454,11 @@ export class GatewayClient extends Client {
     const routeMap = new Map<string, string>();
 
     for (const [clientKey, entry] of Object.entries(this.clients)) {
-      const client = await this.resolveClient(clientKey);
-      const clientResources = await this.fetchAllResources(client);
+      const clientResources = await this.listFromClient(
+        clientKey,
+        (c) => this.fetchAllResources(c),
+        "resources",
+      );
 
       const selected = entry.resources;
       const selectedSet = selected ? new Set(selected) : null;
@@ -455,8 +509,11 @@ export class GatewayClient extends Client {
     const resourceTemplates: ResourceTemplate[] = [];
 
     for (const [clientKey, _entry] of Object.entries(this.clients)) {
-      const client = await this.resolveClient(clientKey);
-      const clientTemplates = await this.fetchAllResourceTemplates(client);
+      const clientTemplates = await this.listFromClient(
+        clientKey,
+        (c) => this.fetchAllResourceTemplates(c),
+        "resource templates",
+      );
 
       for (const template of clientTemplates) {
         if (seen.has(template.uriTemplate)) {
@@ -494,8 +551,11 @@ export class GatewayClient extends Client {
     const prompts: Prompt[] = [];
 
     for (const [clientKey, entry] of Object.entries(this.clients)) {
-      const client = await this.resolveClient(clientKey);
-      const clientPrompts = await this.fetchAllPrompts(client);
+      const clientPrompts = await this.listFromClient(
+        clientKey,
+        (c) => this.fetchAllPrompts(c),
+        "prompts",
+      );
 
       const selected = entry.prompts;
       const selectedSet = selected ? new Set(selected) : null;

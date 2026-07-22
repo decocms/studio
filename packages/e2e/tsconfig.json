@@ -4,7 +4,7 @@
     "noEmit": true,
     "baseUrl": ".",
     // Drop the root "@deco/*" alias so the suite cannot resolve into
-    // packages/*/src, and so the "@/" mesh alias never resolves here either.
+    // packages/*/src, and so the "@/" studio alias never resolves here either.
     // This is the type-checker half of the deny-by-default isolation; the
     // oxlint rule (ban-e2e-app-imports) is the lint half.
     "paths": {}

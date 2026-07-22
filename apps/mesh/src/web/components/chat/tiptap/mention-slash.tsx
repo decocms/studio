@@ -34,6 +34,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Editor, Range } from "@tiptap/react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   PromptArgsDialog,
   type PromptArgumentValues,
@@ -43,6 +44,7 @@ import {
   createMentionDoc,
   getMentionStorage,
   insertMention,
+  isMentionNodeAt,
   OnSelectProps,
   Suggestion,
   type EditMentionRequest,
@@ -52,6 +54,8 @@ import { track } from "@/web/lib/posthog-client";
 interface SlashMentionProps {
   editor: Editor;
   virtualMcpId: string | null;
+  /** Set to true while this dropdown is open — see TiptapProviderProps. */
+  suggestionOpenRef?: { current: boolean };
 }
 
 interface SlashItem extends BaseItem {
@@ -89,13 +93,18 @@ interface EditingMention {
   prompt: Prompt;
 }
 
+interface FetcherDeps {
+  t: ReturnType<typeof useT>;
+}
+
 async function fetchAndInsertPrompt(
   editor: Editor,
   range: Range,
   client: Client,
   promptName: string,
   clientId: string | undefined,
-  values?: PromptArgumentValues,
+  values: PromptArgumentValues | undefined,
+  deps: FetcherDeps,
 ) {
   try {
     const result = await getPrompt(client, promptName, values);
@@ -110,7 +119,7 @@ async function fetchAndInsertPrompt(
     });
   } catch (error) {
     console.error("[slash] Failed to fetch prompt:", error);
-    toast.error("Failed to load prompt. Please try again.");
+    toast.error(deps.t("chat.mentionSlash.failedLoadPrompt"));
   }
 }
 
@@ -119,6 +128,7 @@ async function fetchAndInsertResource(
   range: Range,
   client: Client,
   resourceUri: string,
+  deps: FetcherDeps,
 ) {
   try {
     const result = await readResource(client, resourceUri);
@@ -132,7 +142,7 @@ async function fetchAndInsertResource(
     });
   } catch (error) {
     console.error("[slash] Failed to fetch resource:", error);
-    toast.error("Failed to load resource. Please try again.");
+    toast.error(deps.t("chat.mentionSlash.failedLoadResource"));
   }
 }
 
@@ -141,6 +151,7 @@ async function fetchAndInsertSkill(
   range: Range,
   orgSlug: string,
   skill: OrgFsSkillCatalogEntry,
+  deps: FetcherDeps,
 ) {
   try {
     const { files, omittedPaths } = await fetchOrgFsSkillFiles(
@@ -162,11 +173,16 @@ async function fetchAndInsertSkill(
     });
   } catch (error) {
     console.error("[slash] Failed to fetch skill:", error);
-    toast.error("Failed to load skill. Please try again.");
+    toast.error(deps.t("chat.mentionSlash.failedLoadSkill"));
   }
 }
 
-export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
+export const SlashMention = ({
+  editor,
+  virtualMcpId,
+  suggestionOpenRef,
+}: SlashMentionProps) => {
+  const t = useT();
   const queryClient = useQueryClient();
   const { org } = useProjectContext();
   const client = useMCPClient({
@@ -210,7 +226,7 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
         setEditingMention({ ...req, prompt });
       } catch (error) {
         console.error("[slash] Failed to load prompt for editing:", error);
-        toast.error("Failed to load prompt. Please try again.");
+        toast.error(t("chat.mentionSlash.failedLoadPrompt"));
       }
     };
   }
@@ -239,15 +255,23 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
         return;
       }
       const clientId = getGatewayClientId(item._meta);
-      await fetchAndInsertPrompt(editor, range, client, item.name, clientId);
+      await fetchAndInsertPrompt(
+        editor,
+        range,
+        client,
+        item.name,
+        clientId,
+        undefined,
+        { t },
+      );
     } else if (item.kind === "skill") {
       if (item.skill) {
-        await fetchAndInsertSkill(editor, range, org.slug, item.skill);
+        await fetchAndInsertSkill(editor, range, org.slug, item.skill, { t });
       }
     } else {
       // Resource
       if (item.uri) {
-        await fetchAndInsertResource(editor, range, client, item.uri);
+        await fetchAndInsertResource(editor, range, client, item.uri, { t });
       }
     }
   };
@@ -264,12 +288,21 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
       item.name,
       clientId,
       values,
+      { t },
     );
     setActivePrompt(null);
   };
 
   const handleEditDialogSubmit = async (newValues: PromptArgumentValues) => {
     if (!editingMention || !client) return;
+    // The dialog captured `pos` when the chip was clicked; the doc may have
+    // changed since (chip deleted, text shifted) while the prompt fetch and
+    // the dialog were open. Bail instead of crashing the editor on a stale pos.
+    if (!isMentionNodeAt(editor, editingMention.pos, editingMention.promptId)) {
+      toast.error(t("chat.mentionSlash.failedUpdatePrompt"));
+      setEditingMention(null);
+      return;
+    }
     try {
       const result = await getPrompt(
         client,
@@ -301,7 +334,7 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
       });
     } catch (error) {
       console.error("[slash] Failed to update prompt:", error);
-      toast.error("Failed to update prompt. Please try again.");
+      toast.error(t("chat.mentionSlash.failedUpdatePrompt"));
     }
     setEditingMention(null);
   };
@@ -397,6 +430,7 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
         queryFn={fetchItems}
         onSelect={handleItemSelect}
         onOpenChange={(open) => {
+          if (suggestionOpenRef) suggestionOpenRef.current = open;
           // Fires when the / picker dropdown actually renders (TipTap's
           // onStart). NOT when a literal "/" is typed — e.g. inside a URL
           // the picker won't open so the event won't fire.

@@ -5,7 +5,7 @@ const appPort = process.env.VITE_PORT || "4000";
 const appOrigin = process.env.BASE_URL || `http://localhost:${appPort}`;
 
 // Commerce Discovery setup mints a one-time client token by calling the
-// commerce-skills internal upgrade API. We point the mesh server at a local
+// commerce-skills internal upgrade API. We point the studio server at a local
 // mock (commerce-upgrade-mock.ts, started as a webServer below) so onboarding
 // specs exercise the real setup path without hitting the production worker.
 const commerceMockPort = process.env.COMMERCE_MOCK_PORT || "4100";
@@ -67,7 +67,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      // Mock commerce-skills upgrade API. Started before the mesh server so
+      // Mock commerce-skills upgrade API. Started before the studio server so
       // COMMERCE_DISCOVERY_SETUP can mint a token over HTTP without reaching
       // the production worker. Standalone process (no app imports).
       command: `COMMERCE_MOCK_PORT=${commerceMockPort} bun run fixtures/commerce-upgrade-mock.ts`,

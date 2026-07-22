@@ -16,6 +16,7 @@ import {
   useDiscoverTools,
   type DiscoverStatus,
 } from "@/web/hooks/registry/use-discover-tools";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ToolsEditorProps {
   tools: RegistryToolMeta[];
@@ -35,6 +36,7 @@ export function ToolsEditor({
   externalDiscoverStatus,
   externalDiscoverError,
 }: ToolsEditorProps) {
+  const t = useT();
   const [isOpen, setIsOpen] = useState(tools.length > 0);
   const {
     discover,
@@ -70,7 +72,7 @@ export function ToolsEditor({
           onClick={() => setIsOpen(!isOpen)}
         >
           <Tool02 size={14} className="text-muted-foreground" />
-          <span>Tools</span>
+          <span>{t("registry.toolsEditor.tools")}</span>
           {tools.length > 0 && (
             <Badge variant="secondary" className="text-xs px-1.5 py-0">
               {tools.length}
@@ -93,7 +95,7 @@ export function ToolsEditor({
               onClick={handleClearTools}
             >
               <Trash01 size={12} />
-              Clear
+              {t("registry.toolsEditor.clear")}
             </Button>
           )}
           {remoteUrl && (
@@ -101,7 +103,7 @@ export function ToolsEditor({
               type="button"
               variant="outline"
               size="sm"
-              className="h-7 text-xs gap-1.5 border-green-500/30 text-green-600 dark:text-green-400 shadow-[0_0_8px_rgba(34,197,94,0.3)] hover:shadow-[0_0_14px_rgba(34,197,94,0.5)] hover:border-green-500/50 transition-all"
+              className="h-7 text-xs gap-1.5 border-success/30 text-success shadow-[0_0_8px_color-mix(in_oklch,var(--success)_30%,transparent)] hover:shadow-[0_0_14px_color-mix(in_oklch,var(--success)_50%,transparent)] hover:border-success/50 transition-all"
               onClick={handleDiscover}
               disabled={discoverStatus === "loading"}
             >
@@ -111,10 +113,10 @@ export function ToolsEditor({
                 <RefreshCcw01 size={12} />
               )}
               {discoverStatus === "loading"
-                ? "Discovering..."
+                ? t("registry.toolsEditor.discovering")
                 : tools.length > 0
-                  ? "Refresh"
-                  : "Auto-discover"}
+                  ? t("registry.toolsEditor.refresh")
+                  : t("registry.toolsEditor.autoDiscover")}
             </Button>
           )}
         </div>
@@ -122,11 +124,12 @@ export function ToolsEditor({
 
       {/* Status feedback */}
       {discoverStatus === "success" && (
-        <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 text-xs text-success bg-success/10 rounded-lg px-3 py-2">
           <CheckCircle size={14} className="shrink-0" />
           <span>
-            Discovered {tools.length} tool{tools.length !== 1 ? "s" : ""}{" "}
-            successfully.
+            {t("registry.toolsEditor.discoveredSuccess", {
+              count: tools.length,
+            })}
           </span>
         </div>
       )}
@@ -160,8 +163,8 @@ export function ToolsEditor({
       {isOpen && tools.length === 0 && discoverStatus === "idle" && (
         <p className="text-xs text-muted-foreground px-1">
           {remoteUrl
-            ? 'Click "Auto-discover" to load tools from the MCP server.'
-            : "Add a Remote URL first, then tools can be auto-discovered."}
+            ? t("registry.toolsEditor.emptyHintWithUrl")
+            : t("registry.toolsEditor.emptyHintWithoutUrl")}
         </p>
       )}
     </div>

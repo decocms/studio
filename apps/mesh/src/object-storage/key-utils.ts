@@ -63,7 +63,7 @@ export function buildS3Prefix(orgId: string, prefix?: string): string {
 /**
  * Build the stable, non-expiring URL the UI / tools use to read an object by
  * key. Backed by `GET /api/:org/files/*`, which proxies the object bytes
- * through mesh (presigning internally). Single source of truth for this
+ * through studio (presigning internally). Single source of truth for this
  * route shape.
  */
 export function toFilesUrl(

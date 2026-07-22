@@ -63,11 +63,27 @@ describe("createBoundAuthClient — API-key authorization", () => {
       auth: stubAuth,
       headers: new Headers(),
       role: "admin",
-      permissions: { self: ["ORGANIZATION_GET"] }, // e.g. a mesh JWT payload
+      permissions: { self: ["ORGANIZATION_GET"] }, // e.g. a studio JWT payload
       // no apiKeyId — not an API key principal
     });
 
     expect(client.isApiKeyPrincipal).toBe(false);
+    expect(await client.hasPermission({ self: ["API_KEY_CREATE"] })).toBe(true);
+  });
+
+  // Better Auth's `parseRoles` joins an assigned role array with "," before
+  // storing `member.role`, so a multi-role owner/admin's role can arrive here
+  // as e.g. "admin,billing-manager", not a lone "admin". An exact-match bypass
+  // check would wrongly fall through to the narrower stored `permissions`
+  // (e.g. a studio JWT payload) and deny an action the role actually grants.
+  it("keeps the admin/owner bypass for a comma-joined multi-role principal", async () => {
+    const client = createBoundAuthClient({
+      auth: stubAuth,
+      headers: new Headers(),
+      role: "admin,billing-manager",
+      permissions: { self: ["ORGANIZATION_GET"] },
+    });
+
     expect(await client.hasPermission({ self: ["API_KEY_CREATE"] })).toBe(true);
   });
 });

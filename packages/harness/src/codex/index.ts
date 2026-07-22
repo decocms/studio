@@ -4,7 +4,7 @@
  *
  * Unlike Decopilot, this harness:
  *  - Does NOT register built-in tools (the CLI manages its own tools and
- *    reaches mesh's MCP endpoint directly).
+ *    reaches studio's MCP endpoint directly).
  *  - Does NOT build a system prompt (the CLI has its own).
  *  - Supports resume: each turn spawns a fresh codex app-server process, but
  *    `resume: input.harness.sessionId` reloads the on-disk thread (the app

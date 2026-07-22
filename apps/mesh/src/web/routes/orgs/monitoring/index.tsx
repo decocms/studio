@@ -67,10 +67,12 @@ import { Switch } from "@deco/ui/components/switch.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { useT } from "@/web/i18n/use-t";
 
 import { OverviewTabContent, OverviewTabSkeleton } from "./overview.tsx";
 import { AuditTabContent, MonitoringLogsTable } from "./audit.tsx";
-import { ThreadsTabContent, ThreadsFiltersPopover } from "./threads.tsx";
+import { ThreadsTabContent } from "./threads.tsx";
+import { ThreadsFiltersPopover } from "./threads-filters-popover.tsx";
 import { AutomationsTabContent } from "./automations.tsx";
 import { getOrgMembers } from "./utils.ts";
 import { track } from "@/web/lib/posthog-client";
@@ -99,14 +101,20 @@ interface FiltersPopoverProps {
   showMemberFilter?: boolean;
 }
 
-const OPERATOR_OPTIONS: Array<{
+interface OperatorOption {
   value: PropertyFilterOperator;
-  label: string;
-}> = [
-  { value: "eq", label: "equals" },
-  { value: "contains", label: "contains" },
-  { value: "in", label: "in (list)" },
-  { value: "exists", label: "exists" },
+  labelKey:
+    | "orgs.monitoring.operatorEquals"
+    | "orgs.monitoring.operatorContains"
+    | "orgs.monitoring.operatorIn"
+    | "orgs.monitoring.operatorExists";
+}
+
+const OPERATOR_OPTIONS: OperatorOption[] = [
+  { value: "eq", labelKey: "orgs.monitoring.operatorEquals" },
+  { value: "contains", labelKey: "orgs.monitoring.operatorContains" },
+  { value: "in", labelKey: "orgs.monitoring.operatorIn" },
+  { value: "exists", labelKey: "orgs.monitoring.operatorExists" },
 ];
 
 function FiltersPopover({
@@ -126,6 +134,7 @@ function FiltersPopover({
   onLlmUserIdsChange,
   showMemberFilter,
 }: FiltersPopoverProps) {
+  const t = useT();
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
   const [propertyFilterMode, setPropertyFilterMode] = useState<"raw" | "form">(
     "form",
@@ -220,7 +229,9 @@ function FiltersPopover({
       <PopoverTrigger asChild>
         <Button variant="outline" className="relative">
           <FilterLines size={16} />
-          <span className="hidden sm:inline">Filters</span>
+          <span className="hidden sm:inline">
+            {t("orgs.monitoring.filters")}
+          </span>
           {activeFiltersCount > 0 && (
             <>
               <Badge
@@ -242,7 +253,9 @@ function FiltersPopover({
       <PopoverContent align="end" className="w-[320px]">
         <div className="space-y-4">
           <div>
-            <h4 className="font-medium text-sm mb-3">Filter Logs</h4>
+            <h4 className="font-medium text-sm mb-3">
+              {t("orgs.monitoring.filterLogs")}
+            </h4>
           </div>
 
           <div className="space-y-3">
@@ -251,7 +264,7 @@ function FiltersPopover({
                 htmlFor="hide-system-calls"
                 className="text-xs font-medium text-muted-foreground cursor-pointer"
               >
-                Hide system calls
+                {t("orgs.monitoring.hideSystemCalls")}
               </Label>
               <Switch
                 id="hide-system-calls"
@@ -264,7 +277,7 @@ function FiltersPopover({
 
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Connections
+                {t("orgs.monitoring.connections")}
               </label>
               <MultiSelect
                 options={connectionOptions}
@@ -273,7 +286,7 @@ function FiltersPopover({
                   onUpdateFilters({ connectionId: values })
                 }
                 onSearchChange={onConnectionSearchChange}
-                placeholder="All servers"
+                placeholder={t("orgs.monitoring.allServers")}
                 variant="secondary"
                 className="w-full"
                 maxCount={2}
@@ -282,7 +295,7 @@ function FiltersPopover({
 
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Agents
+                {t("orgs.monitoring.agents")}
               </label>
               <MultiSelect
                 options={virtualMcpOptions}
@@ -290,7 +303,7 @@ function FiltersPopover({
                 onValueChange={(values) =>
                   onUpdateFilters({ virtualMcpId: values })
                 }
-                placeholder="All Agents"
+                placeholder={t("orgs.monitoring.allAgents")}
                 variant="secondary"
                 className="w-full"
                 maxCount={2}
@@ -300,30 +313,30 @@ function FiltersPopover({
             {showMemberFilter && (
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  Members
+                  {t("orgs.monitoring.members")}
                 </label>
                 <MultiSelect
                   options={memberOptions ?? []}
                   defaultValue={llmUserIds}
                   onValueChange={(values) => onLlmUserIdsChange?.(values)}
-                  placeholder="All members"
+                  placeholder={t("orgs.monitoring.allMembers")}
                   variant="secondary"
                   className="w-full"
                   maxCount={2}
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Filters AI usage (calls, tokens, cost) only.
+                  {t("orgs.monitoring.filtersAiUsageOnly")}
                 </p>
               </div>
             )}
 
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Tool Name
+                {t("orgs.monitoring.toolName")}
               </label>
               <Input
                 id="filter-tool"
-                placeholder="Filter by tool..."
+                placeholder={t("orgs.monitoring.filterByToolPlaceholder")}
                 value={localTool}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setLocalTool(e.target.value)
@@ -344,7 +357,7 @@ function FiltersPopover({
 
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Status
+                {t("orgs.monitoring.status")}
               </label>
               <Select
                 value={status}
@@ -358,9 +371,15 @@ function FiltersPopover({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="success">Success Only</SelectItem>
-                  <SelectItem value="errors">Errors Only</SelectItem>
+                  <SelectItem value="all">
+                    {t("orgs.monitoring.allStatus")}
+                  </SelectItem>
+                  <SelectItem value="success">
+                    {t("orgs.monitoring.successOnly")}
+                  </SelectItem>
+                  <SelectItem value="errors">
+                    {t("orgs.monitoring.errorsOnly")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -368,7 +387,7 @@ function FiltersPopover({
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-medium text-muted-foreground">
-                  Property Filters
+                  {t("orgs.monitoring.propertyFilters")}
                 </label>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -387,8 +406,8 @@ function FiltersPopover({
                   </TooltipTrigger>
                   <TooltipContent>
                     {propertyFilterMode === "raw"
-                      ? "Switch to form view"
-                      : "Switch to raw text"}
+                      ? t("orgs.monitoring.switchToFormView")
+                      : t("orgs.monitoring.switchToRawText")}
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -396,7 +415,9 @@ function FiltersPopover({
               {propertyFilterMode === "raw" ? (
                 <div className="space-y-1.5">
                   <Textarea
-                    placeholder={`Paste property filters here:\nthread_id=abc123\nuser~test\ndebug?`}
+                    placeholder={t(
+                      "orgs.monitoring.pastePropertyFiltersPlaceholder",
+                    )}
                     value={localRawFilters}
                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                       setLocalRawFilters(e.target.value)
@@ -412,7 +433,7 @@ function FiltersPopover({
                     className="font-mono text-sm min-h-[80px] resize-none"
                   />
                   <p className="text-xs text-muted-foreground">
-                    One per line:{" "}
+                    {t("orgs.monitoring.onePerLine")}{" "}
                     <code className="bg-muted px-1 rounded">key=value</code>{" "}
                     <code className="bg-muted px-1 rounded">key~contains</code>{" "}
                     <code className="bg-muted px-1 rounded">key@in_list</code>{" "}
@@ -428,7 +449,9 @@ function FiltersPopover({
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted-foreground">
-                          Filter {index + 1}
+                          {t("orgs.monitoring.filter", {
+                            number: (index + 1).toString(),
+                          })}
                         </span>
                         <Button
                           variant="ghost"
@@ -441,7 +464,7 @@ function FiltersPopover({
                       </div>
                       <div className="flex gap-2">
                         <Input
-                          placeholder="Key (e.g., thread_id)"
+                          placeholder={t("orgs.monitoring.keyPlaceholder")}
                           value={filter.key}
                           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                             updatePropertyFilter(index, { key: e.target.value })
@@ -479,7 +502,7 @@ function FiltersPopover({
                           <SelectContent>
                             {OPERATOR_OPTIONS.map((op) => (
                               <SelectItem key={op.value} value={op.value}>
-                                {op.label}
+                                {t(op.labelKey)}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -487,7 +510,7 @@ function FiltersPopover({
                       </div>
                       {filter.operator !== "exists" && (
                         <Input
-                          placeholder="Value"
+                          placeholder={t("orgs.monitoring.valuePlaceholder")}
                           value={filter.value}
                           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                             updatePropertyFilter(index, {
@@ -512,7 +535,7 @@ function FiltersPopover({
                     onClick={addPropertyFilter}
                   >
                     <Plus size={14} className="mr-1.5" />
-                    Add filter
+                    {t("orgs.monitoring.addFilter")}
                   </Button>
                 </div>
               )}
@@ -538,7 +561,7 @@ function FiltersPopover({
                 setFilterPopoverOpen(false);
               }}
             >
-              Clear all filters
+              {t("orgs.monitoring.clearAllFilters")}
             </Button>
           )}
         </div>
@@ -594,6 +617,7 @@ function MonitoringDashboardContent({
   onStreamingToggle,
   onTabChange,
 }: MonitoringDashboardContentProps) {
+  const t = useT();
   const allConnections = useConnections();
   const allVirtualMcps = useVirtualMCPs();
   const { data: membersData } = useMembers();
@@ -697,17 +721,17 @@ function MonitoringDashboardContent({
   };
 
   const tabs = [
-    { id: "overview" as const, label: "Overview" },
-    { id: "audit" as const, label: "Audit" },
-    { id: "threads" as const, label: "Chats" },
-    { id: "automations" as const, label: "Automations" },
+    { id: "overview" as const, label: t("orgs.monitoring.overview") },
+    { id: "audit" as const, label: t("orgs.monitoring.audit") },
+    { id: "threads" as const, label: t("orgs.monitoring.chats") },
+    { id: "automations" as const, label: t("orgs.monitoring.automations") },
   ];
 
   return (
     <>
       <Page.Body className="!pb-4">
         <div className="flex flex-col gap-5">
-          <Page.Title>Monitoring</Page.Title>
+          <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
           <div className="flex items-center justify-between gap-4">
             <CollectionTabs
               tabs={tabs}
@@ -727,9 +751,9 @@ function MonitoringDashboardContent({
                     onClick={onStreamingToggle}
                   >
                     {isStreaming && (
-                      <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="size-2 rounded-full bg-success animate-pulse" />
                     )}
-                    <span>Live</span>
+                    <span>{t("orgs.monitoring.live")}</span>
                     {isStreaming && (
                       <span className="text-muted-foreground text-xs">3s</span>
                     )}
@@ -782,6 +806,84 @@ function MonitoringDashboardContent({
               <TimeRangePicker
                 value={{ from, to }}
                 onChange={onTimeRangeChange}
+                labels={{
+                  absoluteTimeRange: t(
+                    "monitoring.timeRangePicker.absoluteTimeRange",
+                  ),
+                  from: t("monitoring.timeRangePicker.from"),
+                  to: t("monitoring.timeRangePicker.to"),
+                  applyTimeRange: t(
+                    "monitoring.timeRangePicker.applyTimeRange",
+                  ),
+                }}
+                quickRanges={[
+                  {
+                    label: t("monitoring.timeRangePicker.last5Minutes"),
+                    from: "now-5m",
+                    to: "now",
+                    value: "5m",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last15Minutes"),
+                    from: "now-15m",
+                    to: "now",
+                    value: "15m",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last30Minutes"),
+                    from: "now-30m",
+                    to: "now",
+                    value: "30m",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last1Hour"),
+                    from: "now-1h",
+                    to: "now",
+                    value: "1h",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last3Hours"),
+                    from: "now-3h",
+                    to: "now",
+                    value: "3h",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last6Hours"),
+                    from: "now-6h",
+                    to: "now",
+                    value: "6h",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last12Hours"),
+                    from: "now-12h",
+                    to: "now",
+                    value: "12h",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last24Hours"),
+                    from: "now-24h",
+                    to: "now",
+                    value: "24h",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last2Days"),
+                    from: "now-2d",
+                    to: "now",
+                    value: "2d",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last7Days"),
+                    from: "now-7d",
+                    to: "now",
+                    value: "7d",
+                  },
+                  {
+                    label: t("monitoring.timeRangePicker.last30Days"),
+                    from: "now-30d",
+                    to: "now",
+                    value: "30d",
+                  },
+                ]}
               />
             </div>
           </div>
@@ -791,8 +893,8 @@ function MonitoringDashboardContent({
               onChange={(value) => onUpdateFilters({ search: value })}
               placeholder={
                 tab === "threads"
-                  ? "Search by title\u2026"
-                  : "Search by tool name, connection, or error..."
+                  ? t("orgs.monitoring.searchByTitlePlaceholder")
+                  : t("orgs.monitoring.searchByToolPlaceholder")
               }
               onKeyDown={(event) => {
                 if (event.key === "Escape") {
@@ -868,6 +970,7 @@ function MonitoringDashboardContent({
 // ============================================================================
 
 export default function MonitoringDashboard() {
+  const t = useT();
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const search = useSearch({
@@ -937,13 +1040,13 @@ export default function MonitoringDashboard() {
           fallback={
             <>
               <Page.Body className="!pb-3">
-                <Page.Title>Monitoring</Page.Title>
+                <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
               </Page.Body>
               <Page.Content>
                 <div className="flex-1 flex items-center justify-center h-full">
                   <EmptyState
-                    title="Failed to load monitoring data"
-                    description="There was an error loading the monitoring data. Please try again."
+                    title={t("orgs.monitoring.failedLoadTitle")}
+                    description={t("orgs.monitoring.failedLoadDescription")}
                   />
                 </div>
               </Page.Content>
@@ -955,13 +1058,19 @@ export default function MonitoringDashboard() {
               <>
                 <Page.Body className="!pb-3">
                   <div className="flex flex-col gap-4">
-                    <Page.Title>Monitoring</Page.Title>
+                    <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
                     <CollectionTabs
                       tabs={[
-                        { id: "overview", label: "Overview" },
-                        { id: "audit", label: "Audit" },
-                        { id: "threads", label: "Chats" },
-                        { id: "automations", label: "Automations" },
+                        {
+                          id: "overview",
+                          label: t("orgs.monitoring.overview"),
+                        },
+                        { id: "audit", label: t("orgs.monitoring.audit") },
+                        { id: "threads", label: t("orgs.monitoring.chats") },
+                        {
+                          id: "automations",
+                          label: t("orgs.monitoring.automations"),
+                        },
                       ]}
                       activeTab={tab}
                       onTabChange={(tabId) =>

@@ -24,6 +24,7 @@ import {
   FilePreviewShimmer,
   formatSize,
 } from "@/web/components/file-preview";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   useThreadOutputs,
   type ThreadOutput,
@@ -36,6 +37,7 @@ function FileToolbar({
   file: ThreadOutput;
   onClose: () => void;
 }) {
+  const t = useT();
   return (
     <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
       <div className="flex min-w-0 flex-1 items-center gap-2 px-2">
@@ -58,7 +60,9 @@ function FileToolbar({
             </a>
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Download</TooltipContent>
+        <TooltipContent side="bottom">
+          {t("mainPanelTabs.fileTab.download")}
+        </TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -70,7 +74,9 @@ function FileToolbar({
             <LinkExternal01 size={14} />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Open in new tab</TooltipContent>
+        <TooltipContent side="bottom">
+          {t("mainPanelTabs.fileTab.openInNewTab")}
+        </TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -78,7 +84,9 @@ function FileToolbar({
             <XClose size={14} />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Close</TooltipContent>
+        <TooltipContent side="bottom">
+          {t("mainPanelTabs.fileTab.close")}
+        </TooltipContent>
       </Tooltip>
     </div>
   );
@@ -91,6 +99,7 @@ export function FileTab({
   fileKey: string;
   taskId: string;
 }) {
+  const t = useT();
   const navigate = useNavigate();
   // Always enabled while the tab is open — on a fresh page load the
   // message-scan gate (useThreadHasFileWork) may not have hydrated yet,
@@ -123,10 +132,10 @@ export function FileTab({
           className="h-7.5 w-6"
         />
         <span className="text-sm text-muted-foreground">
-          This file is no longer available.
+          {t("mainPanelTabs.fileTab.fileNotAvailable")}
         </span>
         <Button variant="ghost" size="sm" onClick={handleClose}>
-          Close
+          {t("mainPanelTabs.fileTab.close")}
         </Button>
       </div>
     );

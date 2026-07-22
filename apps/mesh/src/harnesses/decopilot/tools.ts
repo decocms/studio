@@ -35,6 +35,7 @@ import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-too
 import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
 import {
   toolsFromMCP,
+  type PrOpenedEvent,
   type ToolCallAnalytics,
 } from "@decocms/harness/decopilot/mcp-tools";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@decocms/harness/decopilot/harness-constants";
@@ -146,6 +147,9 @@ export interface AssembleDecopilotToolsExtras {
   /** Cluster-injected hook: emit per-tool-call analytics (posthog). Omitted
    *  on desktop → no analytics. */
   onToolCalled?: (event: ToolCallAnalytics) => void;
+  /** Cluster-injected hook: a PR was opened via the GitHub MCP — link it to
+   *  the run's task. Omitted on desktop. */
+  onPrOpened?: (event: PrOpenedEvent) => void;
 }
 
 /**
@@ -260,6 +264,7 @@ export async function assembleDecopilotTools(
         timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
         resolveArgs: extras.resolveArgs,
         onToolCalled: extras.onToolCalled,
+        onPrOpened: extras.onPrOpened,
       },
     );
     // Restrict to the allowlist (if any) so enable_tool enumeration, the

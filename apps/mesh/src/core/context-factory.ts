@@ -56,6 +56,7 @@ import {
   MonitorResultStorage,
   MonitorConnectionStorage,
 } from "../storage/registry";
+import type { PrivateRegistryDatabase } from "../storage/registry/types";
 import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
@@ -175,6 +176,23 @@ interface AuthenticatedUser {
   role?: string;
 }
 
+/**
+ * Extract the canonical organization slug from an org-scoped API path.
+ * Header hints are still supported for legacy, unscoped routes, but the URL
+ * path is authoritative whenever it is present.
+ */
+function getOrgSlugFromRequestPath(req: Request): string | undefined {
+  try {
+    const segments = new URL(req.url).pathname.split("/").filter(Boolean);
+    if (segments[0] === "api" && segments[1]) {
+      return decodeURIComponent(segments[1]);
+    }
+  } catch {
+    // Fall through to legacy header/single-membership resolution.
+  }
+  return undefined;
+}
+
 // Type for the hasPermission API (from @decocms/better-auth organization plugin)
 type HasPermissionAPI = (params: {
   headers: Headers;
@@ -212,7 +230,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
   // admin/owner role never widens it, or a "read-only" key minted by an admin
   // would silently act with full org power. A full-access key carries an
   // explicit wildcard. Only genuine API keys (apiKeyId present) are gated this
-  // way; browser sessions, MCP OAuth, and mesh JWTs keep the role-based path.
+  // way; browser sessions, MCP OAuth, and studio JWTs keep the role-based path.
   const isApiKeyPrincipal = !!apiKeyId;
 
   // Get hasPermission from Better Auth's organization plugin (for browser sessions)
@@ -236,7 +254,10 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       // built-in `user` role is enforced like any member: it gets basic-usage
       // (granted out-of-band in AccessControl) plus its explicit Better Auth /
       // connection grants, and nothing else. See ADMIN_ROLES in auth/roles.ts.
-      if (role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])) {
+      // `role` may be Better Auth's comma-joined multi-role string, so a
+      // plain exact-match here would deny a legitimate multi-role
+      // owner/admin the bypass — see `hasAdminRole`.
+      if (hasAdminRole(role)) {
         return true;
       }
 
@@ -445,7 +466,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
 import { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import { ConnectionEntity } from "@/tools/connection/schema";
-import { ADMIN_ROLES, BUILTIN_ROLES } from "../auth/roles";
+import { BUILTIN_ROLES, hasAdminRole } from "../auth/roles";
 import { checkApiKeyPermission } from "../auth/api-key-permissions";
 import {
   getCachedBuiltinRoleStatements,
@@ -574,7 +595,7 @@ async function resolveAndCacheRole(
 /**
  * Resolve the on-behalf-of user for a self/loopback call.
  *
- * When mesh calls its own management server (the `<org>_self` connection — e.g.
+ * When studio calls its own management server (the `<org>_self` connection — e.g.
  * a Studio Pack agent invoking COLLECTION_VIRTUAL_MCP_CREATE), the outbound
  * request authenticates with that connection's API key (owned by the org
  * creator) but ALSO forwards the REAL acting user in an `x-mesh-token` JWT (see
@@ -582,7 +603,7 @@ async function resolveAndCacheRole(
  * Studio Pack agent is attributed to the org creator instead of the user who
  * actually acted (wrong `created_by`/`updated_by`).
  *
- * `x-mesh-token` is only ever set by mesh's own outbound header builder, so an
+ * `x-mesh-token` is only ever set by studio's own outbound header builder, so an
  * inbound API-key request carrying one is always a self/loopback call. We use
  * the forwarded user for IDENTITY/attribution; the API key's permissions remain
  * the authorizing capability (the caller keeps `permissions`/`apiKeyId`).
@@ -642,6 +663,8 @@ async function authenticateRequest(
   role?: string;
   permissions?: Permission; // Permissions from API key or custom role (for non-browser sessions)
   apiKeyId?: string;
+  apiKey?: StudioContext["auth"]["apiKey"];
+  tokenOrganizationId?: string;
   organization?: OrganizationContext;
 }> {
   const authHeader = req.headers.get("Authorization");
@@ -666,13 +689,20 @@ async function authenticateRequest(
 
       // For MCP OAuth sessions we need to query the database directly because
       // getFullOrganization requires a browser session (cookies). The OAuth
-      // grant doesn't carry org context, so prefer an explicit hint from the
-      // request (x-org-id / x-org-slug) and fall back to the user's first
-      // membership only when no hint is given. Without the hint, multi-org
-      // users get a non-deterministic pick and end up with the wrong
-      // ctx.organization on every request that doesn't target their first org.
+      // grant doesn't carry org context. A canonical `/api/:org` path is
+      // authoritative; legacy callers may still provide x-org-id / x-org-slug
+      // headers, and we fall back to the user's only membership when neither
+      // source is present. Without a deterministic hint, multi-org users would
+      // get the wrong ctx.organization.
       const orgIdHint = req.headers.get("x-org-id");
       const orgSlugHint = req.headers.get("x-org-slug");
+      // External MCP clients (Claude Desktop/Code) authenticate via OAuth and
+      // do NOT send x-org-* headers — the org they target is in the request
+      // path (`/api/:org/mcp/...`). Without honoring it, a multi-org member
+      // falls through to the single-membership guard below, resolves to NO
+      // role, and loses the admin/owner bypass (every connection tool call
+      // 403s "Access denied"). Derive the authoritative slug from the path.
+      const pathOrgSlug = getOrgSlugFromRequestPath(req);
 
       const membership = await timings.measure("auth_query_membership", () => {
         const base = db
@@ -688,6 +718,14 @@ async function authenticateRequest(
           ])
           .where("member.userId", "=", userId);
 
+        // The canonical org path is authoritative. External MCP clients do not
+        // send x-org-* headers, and accepting a stale header ahead of the path
+        // can bind permissions to one org while the route serves another.
+        if (pathOrgSlug) {
+          return base
+            .where("organization.slug", "=", pathOrgSlug)
+            .executeTakeFirst();
+        }
         if (orgIdHint) {
           return base
             .where("organization.id", "=", orgIdHint)
@@ -748,13 +786,13 @@ async function authenticateRequest(
     console.error("[Auth] OAuth session check failed:", err);
   }
 
-  // Try Mesh JWT or API Key authentication (Bearer token)
+  // Try Studio JWT or API Key authentication (Bearer token)
   // These use the same header but different validation
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.replace("Bearer ", "").trim();
 
-    // First, try to verify as Mesh JWT token
-    // These are issued by mesh for downstream services calling back
+    // First, try to verify as Studio JWT token
+    // These are issued by studio for downstream services calling back
     try {
       const meshJwtPayload = await timings.measure("auth_verify_mesh_jwt", () =>
         verifyMeshToken(token),
@@ -821,11 +859,12 @@ async function authenticateRequest(
           },
           role,
           permissions: meshJwtPayload.permissions,
+          tokenOrganizationId: organizationId,
           organization,
         };
       }
     } catch {
-      // Not a valid mesh JWT, continue to API key check
+      // Not a valid studio JWT, continue to API key check
     }
 
     // Try API Key authentication
@@ -836,6 +875,7 @@ async function authenticateRequest(
         valid?: boolean;
         key?: {
           id: string;
+          name?: string | null;
           userId: string;
           metadata?: { organization?: OrganizationContext };
           permissions?: Permission;
@@ -896,6 +936,15 @@ async function authenticateRequest(
           user: onBehalfOf ?? { id: result.key.userId, role },
           role: onBehalfOf ? onBehalfOf.role : role,
           permissions, // Store the API key's permissions
+          apiKey: {
+            id: result.key.id,
+            name: result.key.name ?? "",
+            userId: result.key.userId,
+            metadata: result.key.metadata as
+              | Record<string, unknown>
+              | undefined,
+          },
+          tokenOrganizationId: orgMetadata?.id,
           organization: orgMetadata
             ? {
                 id: orgMetadata.id,
@@ -933,7 +982,7 @@ async function authenticateRequest(
 
   try {
     // Strip the Authorization header before calling getSession.
-    // We've already tried all Bearer-based auth (Mesh JWT, API key) above.
+    // We've already tried all Bearer-based auth (Studio JWT, API key) above.
     // If we pass the Bearer token to getSession, Better Auth's API key plugin
     // will attempt to validate it as an API key and throw INVALID_API_KEY,
     // flooding logs with false-positive errors.
@@ -1306,12 +1355,24 @@ export async function createStudioContextFactory(
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),
     orgSsoSessions: new OrgSsoSessionStorage(config.db),
     registry: {
-      items: new RegistryItemStorage(config.db as any),
-      publishRequests: new PublishRequestStorage(config.db as any),
-      publishApiKeys: new PublishApiKeyStorage(config.db as any),
-      monitorRuns: new MonitorRunStorage(config.db as any),
-      monitorResults: new MonitorResultStorage(config.db as any),
-      monitorConnections: new MonitorConnectionStorage(config.db as any),
+      items: new RegistryItemStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      publishRequests: new PublishRequestStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      publishApiKeys: new PublishApiKeyStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      monitorRuns: new MonitorRunStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      monitorResults: new MonitorResultStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
+      monitorConnections: new MonitorConnectionStorage(
+        config.db as unknown as Kysely<PrivateRegistryDatabase>,
+      ),
     },
     brandContext: new BrandContextStorage(config.db),
     organizationDomains: new OrganizationDomainStorage(config.db),
@@ -1366,7 +1427,7 @@ export async function createStudioContextFactory(
       : { user: undefined };
 
     // Resolve caller connection ID: explicit header takes priority, then fall
-    // back to the connectionId embedded in the mesh JWT. This ensures that
+    // back to the connectionId embedded in the studio JWT. This ensures that
     // management tools on _self see the caller's connection ID even when the
     // runtime doesn't set x-caller-id.
     const connectionId =
@@ -1387,14 +1448,11 @@ export async function createStudioContextFactory(
     // Build auth object for StudioContext
     const studioAuth: StudioContext["auth"] = {
       user: authResult.user,
+      tokenOrganizationId: authResult.tokenOrganizationId,
     };
 
-    if (authResult.apiKeyId) {
-      studioAuth.apiKey = {
-        id: authResult.apiKeyId,
-        name: "", // Not needed for access control
-        userId: "", // Not needed for access control
-      };
+    if (authResult.apiKey) {
+      studioAuth.apiKey = authResult.apiKey;
     }
 
     // Organization from Better Auth (OAuth session or API key metadata)

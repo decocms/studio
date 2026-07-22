@@ -142,3 +142,65 @@ describe("derivePartsFromTiptapDoc — skill mentions", () => {
     expect(text).toContain("Say hello");
   });
 });
+
+describe("derivePartsFromTiptapDoc — task ref mention", () => {
+  /** A doc with a task @ref chip, optionally followed by the user's own text. */
+  function taskDoc(
+    metadata: { title?: string; description?: string | null },
+    trailing = " ",
+  ) {
+    return {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "mention",
+              attrs: {
+                char: "@",
+                kind: "task",
+                id: "task-1",
+                name: metadata.title,
+                metadata,
+              },
+            },
+            { type: "text", text: trailing },
+          ],
+        },
+      ],
+    };
+  }
+
+  test("expands to title + description, not the '@name' label", () => {
+    const text = joinText(
+      taskDoc({ title: "Add SRI to scripts", description: "Risk of XSS." }),
+    );
+    expect(text).toContain("Add SRI to scripts");
+    expect(text).toContain("Risk of XSS.");
+    // The chip must NOT leak its "@..." label into the message text.
+    expect(text).not.toContain("@Add SRI to scripts");
+  });
+
+  test("omits the description block when there is none", () => {
+    const text = joinText(
+      taskDoc({ title: "Just a title", description: null }),
+    );
+    expect(text).toBe("Just a title");
+  });
+
+  test("keeps the user's own words as a separate part", () => {
+    const parts = derivePartsFromTiptapDoc(
+      taskDoc(
+        { title: "Fix login", description: "Broken on Safari." },
+        " please prioritize",
+      ) as Parameters<typeof derivePartsFromTiptapDoc>[0],
+    );
+    const texts = parts
+      .filter((p): p is { type: "text"; text: string } => p.type === "text")
+      .map((p) => p.text);
+    // User text is unshifted to the front; the task body is its own part.
+    expect(texts).toContain("please prioritize");
+    expect(texts.some((t) => t.includes("Broken on Safari."))).toBe(true);
+  });
+});

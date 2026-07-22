@@ -21,6 +21,71 @@ function isPublicSharePath(c: Context): boolean {
   );
 }
 
+/**
+ * Return the organization bound into an API key's metadata, if present.
+ * Keys created for org-scoped access carry `metadata.organization.id`.
+ * Legacy/internal keys without that field are left to their existing route
+ * authorization rules; a malformed explicit organization binding fails closed.
+ */
+function getApiKeyOrganizationBinding(ctx: StudioContext): {
+  present: boolean;
+  id?: string;
+} {
+  const metadata = ctx.auth?.apiKey?.metadata;
+  if (
+    !metadata ||
+    typeof metadata !== "object" ||
+    Array.isArray(metadata) ||
+    !("organization" in metadata)
+  ) {
+    return { present: false };
+  }
+
+  const organization = metadata.organization;
+  if (
+    !organization ||
+    typeof organization !== "object" ||
+    Array.isArray(organization)
+  ) {
+    return { present: true };
+  }
+
+  const id = (organization as Record<string, unknown>).id;
+  return { present: true, id: typeof id === "string" ? id : undefined };
+}
+
+/**
+ * The exhaustive list of service-token routes that resolve the org by ID —
+ * their machine caller (commerce-discovery) holds the org id, not the slug.
+ * One entry per route, as the path segments AFTER `/api/:org` (`"*"` matches
+ * exactly one dynamic segment). Every other route stays slug-only so a slug
+ * that happens to equal another org's id can never cause cross-org resolution
+ * on an unauthenticated route.
+ */
+const SERVICE_TOKEN_ROUTES: readonly (readonly string[])[] = [
+  ["vault", "connections", "*", "access-token"],
+  ["vault", "connections", "*", "configuration"],
+  ["internal", "task-board", "import"],
+];
+
+/**
+ * Segment-exact matcher for SERVICE_TOKEN_ROUTES over a full request path
+ * (`/api/:org/...`). Stricter than the suffix regex it replaced: the route
+ * shape must sit DIRECTLY under `/api/:org`, so a longer path that merely
+ * ends in a service suffix (e.g. an MCP proxy echo of it) can never resolve
+ * by id. Pure — exported for unit tests.
+ */
+export function isServiceTokenPath(path: string): boolean {
+  const segs = path.split("/").filter(Boolean);
+  if (segs[0] !== "api") return false;
+  const rest = segs.slice(2); // drop "api" + the :org segment
+  return SERVICE_TOKEN_ROUTES.some(
+    (route) =>
+      route.length === rest.length &&
+      route.every((seg, i) => seg === "*" || seg === rest[i]),
+  );
+}
+
 export const resolveOrgFromPath: MiddlewareHandler<{
   Variables: { studioContext: StudioContext };
 }> = async (c, next) => {
@@ -35,19 +100,14 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   }
   const db = ctx.db;
 
-  // Only the vault service-lease resolves the org by id — its machine caller
-  // (commerce-discovery) holds the org id, not the slug. Every other route stays
-  // slug-only so a slug that happens to equal another org's id can never cause
-  // cross-org resolution on an unauthenticated route.
-  const isVaultServicePath =
-    /\/vault\/connections\/[^/]+\/(access-token|configuration)$/.test(
-      c.req.path,
-    );
+  // Service-token routes (see SERVICE_TOKEN_ROUTES) may resolve the org by id;
+  // everything else is slug-only.
+  const allowIdResolution = isServiceTokenPath(c.req.path);
   const org = await db
     .selectFrom("organization")
     .select(["id", "slug", "name", "metadata"])
     .where((eb) =>
-      isVaultServicePath
+      allowIdResolution
         ? eb.or([eb("slug", "=", slug), eb("id", "=", slug)])
         : eb("slug", "=", slug),
     )
@@ -60,6 +120,31 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       return c.redirect(`/${encodeURIComponent(slug)}`, 302);
     }
     return c.json({ error: `organization "${slug}" not found` }, 404);
+  }
+
+  // API keys are capabilities bound to the organization that minted them.
+  // Do this check before membership/rebinding so a valid key from org B cannot
+  // be reused against org A merely because its owner is also an A member.
+  const apiKeyBinding = getApiKeyOrganizationBinding(ctx);
+  if (
+    ctx.auth?.apiKey?.id &&
+    apiKeyBinding.present &&
+    apiKeyBinding.id !== org.id
+  ) {
+    return c.json(
+      { error: "forbidden: API key is scoped to another organization" },
+      403,
+    );
+  }
+
+  if (
+    ctx.auth?.tokenOrganizationId &&
+    ctx.auth.tokenOrganizationId !== org.id
+  ) {
+    return c.json(
+      { error: "forbidden: token is scoped to another organization" },
+      403,
+    );
   }
 
   // Archived (soft-deleted) orgs are invisible to the API. Treat them exactly

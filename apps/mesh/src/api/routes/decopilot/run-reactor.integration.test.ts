@@ -184,9 +184,21 @@ describe("reactAll (real Postgres)", () => {
   });
 
   describe("RUN_RESUMED", () => {
-    it("sets run_started_at WITHOUT touching status; emits 1 event", async () => {
+    it("restores in_progress and clears the force-fail columns, keeping run_config; emits 1 event", async () => {
       const { deps, sseEvents } = makeReactor();
-      const thread = await createThread(); // status "completed"
+      // A run force-failed as ghost/reaped: terminal status, a recorded
+      // failure, a stale progress timestamp — but run_config still on the row
+      // (resume must keep it). `create()` doesn't persist these columns, so
+      // drive the row into that state with an explicit update.
+      const thread = await createThread();
+      await storage.update(thread.id, ORG, {
+        status: "failed",
+        failure_reason:
+          "Run stalled — no progress within the idle timeout window",
+        failure_kind: "stall",
+        last_progress_at: "2020-01-01T00:00:00.000Z",
+        run_config: { resume: true },
+      });
 
       await react(
         {
@@ -202,9 +214,22 @@ describe("reactAll (real Postgres)", () => {
 
       const row = await storage.get(thread.id, ORG);
       expect(row?.run_started_at).toBeTruthy();
-      // Proof the status column was never written: it stays "completed".
-      expect(row?.status).toBe("completed");
+      // The recovered run is executing again — the row must reflect it.
+      expect(row?.status).toBe("in_progress");
+      // Resume keeps the prior run's config (only START writes a fresh one).
+      expect(row?.run_config).toEqual({ resume: true });
       expect(sseEvents).toHaveLength(1);
+
+      // `threadFromDbRow` doesn't surface these columns, so read them raw to
+      // prove the write landed (and wasn't dropped by the update() whitelist).
+      const raw = await database.db
+        .selectFrom("threads")
+        .select(["failure_reason", "failure_kind", "last_progress_at"])
+        .where("id", "=", thread.id)
+        .executeTakeFirst();
+      expect(raw?.failure_reason).toBeNull();
+      expect(raw?.failure_kind).toBeNull();
+      expect(raw?.last_progress_at).toBeNull();
     });
   });
 

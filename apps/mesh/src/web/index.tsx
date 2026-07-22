@@ -13,6 +13,7 @@ import {
 import { SplashScreen } from "@/web/components/splash-screen";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 import { ChunkErrorBoundary } from "@/web/components/error-boundary";
+import { useT } from "@/web/i18n/use-t";
 import * as z from "zod";
 
 import "../../index.css";
@@ -25,11 +26,9 @@ import { initPwaInstallCapture } from "@/web/lib/pwa-install";
 const rootRoute = createRootRoute({
   component: () => (
     <ChunkErrorBoundary>
-      <Providers>
-        <Suspense fallback={<SplashScreen />}>
-          <Outlet />
-        </Suspense>
-      </Providers>
+      <Suspense fallback={<SplashScreen />}>
+        <Outlet />
+      </Suspense>
     </ChunkErrorBoundary>
   ),
 });
@@ -372,11 +371,17 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./layouts/library/index.tsx")),
 });
 
-// Task board (/$org/board) — org-owned task board, gated behind the org's
-// task_board_enabled setting.
+// Task board (/$org/board) — org-owned task board. `task` deep-links a
+// specific card's modal open (used by the "open in board" button from a
+// linked chat).
+const boardSearchSchema = z.object({
+  task: z.string().optional(),
+});
+
 const boardRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/board",
+  validateSearch: boardSearchSchema,
   component: lazyRouteComponent(() => import("./layouts/task-board/index.tsx")),
 });
 
@@ -482,6 +487,14 @@ const settingsGeneralRoute = createRoute({
   path: "/general",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/general.tsx"),
+  ),
+});
+
+const settingsConnectRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/connect",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/connect.tsx"),
   ),
 });
 
@@ -616,6 +629,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsAutomationsRoute,
   monitoringRoute,
   settingsGeneralRoute,
+  settingsConnectRoute,
   settingsBrandContextRoute,
   settingsAiProvidersRoute,
   settingsSecretsRoute,
@@ -664,6 +678,29 @@ const routeTree = rootRoute.addChildren([
   oauthCallbackAiProviderRoute,
 ]);
 
+function DefaultNotFoundComponent() {
+  const t = useT();
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div className="flex flex-col items-center gap-4 p-8">
+        <h3 className="text-lg font-medium text-foreground">
+          {t("common.index.pageNotFound")}
+        </h3>
+        <p className="text-sm text-muted-foreground text-center max-w-[300px]">
+          {t("common.index.pageNotFoundDescription")}
+        </p>
+        <button
+          type="button"
+          onClick={() => window.history.back()}
+          className="text-sm text-primary hover:underline"
+        >
+          {t("common.index.goBack")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const router = createRouter({
   routeTree,
   // Show the splash (not a blank screen) while a route loader/beforeLoad is
@@ -671,23 +708,7 @@ const router = createRouter({
   // instant (synchronous) redirects like the returning-user fast path.
   defaultPendingComponent: SplashScreen,
   defaultPendingMs: 200,
-  defaultNotFoundComponent: () => (
-    <div className="flex h-full items-center justify-center">
-      <div className="flex flex-col items-center gap-4 p-8">
-        <h3 className="text-lg font-medium text-foreground">Page not found</h3>
-        <p className="text-sm text-muted-foreground text-center max-w-[300px]">
-          The page you are looking for does not exist or has been moved.
-        </p>
-        <button
-          type="button"
-          onClick={() => window.history.back()}
-          className="text-sm text-primary hover:underline"
-        >
-          Go back
-        </button>
-      </div>
-    </div>
-  ),
+  defaultNotFoundComponent: DefaultNotFoundComponent,
 });
 
 declare module "@tanstack/react-router" {
@@ -704,6 +725,8 @@ const rootElement = document.getElementById("root")!;
 
 createRoot(rootElement).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <Providers>
+      <RouterProvider router={router} />
+    </Providers>
   </StrictMode>,
 );

@@ -23,6 +23,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { ViewModeToggle } from "@deco/ui/components/view-mode-toggle.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   type BlockColor,
   buildBlockColorMap,
@@ -47,9 +48,16 @@ const RANGE_FORMAT = new Intl.DateTimeFormat("en", {
   timeStyle: "short",
 });
 
-function formatRangeForTooltip(v: ScheduledVariant): string {
-  const startText = v.openStart ? "Always" : RANGE_FORMAT.format(v.start);
-  const endText = v.openEnd ? "Ongoing" : RANGE_FORMAT.format(v.end);
+function formatRangeForTooltip(
+  v: ScheduledVariant,
+  t: ReturnType<typeof useT>,
+): string {
+  const startText = v.openStart
+    ? t("sandbox.variantCalendar.always")
+    : RANGE_FORMAT.format(v.start);
+  const endText = v.openEnd
+    ? t("sandbox.variantCalendar.ongoing")
+    : RANGE_FORMAT.format(v.end);
   return `${startText} → ${endText}`;
 }
 
@@ -60,6 +68,7 @@ function formatRangeForTooltip(v: ScheduledVariant): string {
  * coincides with the block name.
  */
 function VariantTooltipBody({ variant }: { variant: ScheduledVariant }) {
+  const t = useT();
   return (
     <TooltipContent>
       <div className="text-xs">
@@ -71,7 +80,7 @@ function VariantTooltipBody({ variant }: { variant: ScheduledVariant }) {
           variant.label !== variant.innerPath && (
             <div className="text-muted-foreground">{variant.label}</div>
           )}
-        <div className="mt-1">{formatRangeForTooltip(variant)}</div>
+        <div className="mt-1">{formatRangeForTooltip(variant, t)}</div>
       </div>
     </TooltipContent>
   );
@@ -148,6 +157,7 @@ export function VariantCalendar({
 }: {
   decofile: Record<string, unknown> | null | undefined;
 }) {
+  const t = useT();
   const [view, setView] = useState<ViewMode>("calendar");
   const [cursor, setCursor] = useState<Date>(() => startOfMonth(new Date()));
   // Open-ended ("ongoing") variants fill the grid to the edge everywhere and
@@ -174,14 +184,14 @@ export function VariantCalendar({
       <div className="flex items-center justify-between px-4 h-12 border-b shrink-0">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={goToday}>
-            Today
+            {t("sandbox.variantCalendar.today")}
           </Button>
           <Button
             variant="ghost"
             size="icon"
             className="size-8"
             onClick={goPrev}
-            aria-label="Previous"
+            aria-label={t("sandbox.variantCalendar.previous")}
           >
             <ChevronLeft size={16} />
           </Button>
@@ -190,7 +200,7 @@ export function VariantCalendar({
             size="icon"
             className="size-8"
             onClick={goNext}
-            aria-label="Next"
+            aria-label={t("sandbox.variantCalendar.next")}
           >
             <ChevronRight size={16} />
           </Button>
@@ -210,7 +220,9 @@ export function VariantCalendar({
                 htmlFor="show-ongoing"
                 className="text-xs text-muted-foreground cursor-pointer"
               >
-                Show ongoing ({ongoingCount})
+                {t("sandbox.variantCalendar.showOngoing", {
+                  count: ongoingCount,
+                })}
               </Label>
             </div>
           )}
@@ -221,12 +233,12 @@ export function VariantCalendar({
               {
                 value: "calendar",
                 icon: <Calendar />,
-                label: "Calendar",
+                label: t("sandbox.variantCalendar.calendarMode"),
               },
               {
                 value: "timeline",
                 icon: <Activity />,
-                label: "Timeline",
+                label: t("sandbox.variantCalendar.timelineMode"),
               },
             ]}
           />
@@ -253,23 +265,24 @@ export function VariantCalendar({
 }
 
 function EmptyState({ hiddenOngoing = 0 }: { hiddenOngoing?: number }) {
+  const t = useT();
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground p-6">
       <Calendar size={24} className="text-muted-foreground/60" />
       {hiddenOngoing > 0 ? (
         <>
-          <div>No dated variants in view.</div>
+          <div>{t("sandbox.variantCalendar.noDatedVariants")}</div>
           <div className="text-xs text-muted-foreground/80">
-            {hiddenOngoing} ongoing{" "}
-            {hiddenOngoing === 1 ? "variant is" : "variants are"} hidden —
-            enable “Show ongoing” to view.
+            {t("sandbox.variantCalendar.hiddenOngoingVariants", {
+              count: hiddenOngoing,
+            })}
           </div>
         </>
       ) : (
         <>
-          <div>No scheduled variants.</div>
+          <div>{t("sandbox.variantCalendar.noScheduledVariants")}</div>
           <div className="text-xs text-muted-foreground/80">
-            Variants gated by a date matcher appear here.
+            {t("sandbox.variantCalendar.dateMatcherInfo")}
           </div>
         </>
       )}
@@ -440,6 +453,7 @@ function TimelineView({
       ? pctOf(today)
       : null;
 
+  const t = useT();
   return (
     <ScrollArea className="flex-1 min-h-0">
       <div className="min-w-[900px] relative">
@@ -448,7 +462,7 @@ function TimelineView({
             className="shrink-0 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground border-r"
             style={{ width: ROW_LABEL_WIDTH }}
           >
-            Variant / Block
+            {t("sandbox.variantCalendar.variantBlock")}
           </div>
           <div
             className="flex-1 grid"
@@ -474,7 +488,7 @@ function TimelineView({
             }}
           >
             <span className="absolute -top-0.5 -translate-x-1/2 rounded-sm bg-primary px-1.5 py-px text-[10px] font-medium text-primary-foreground">
-              Today
+              {t("sandbox.variantCalendar.todayLabel")}
             </span>
           </div>
         )}

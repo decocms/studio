@@ -18,6 +18,7 @@ import {
 import { Clock, Plus, Globe01, Zap } from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export function AddStarterPopover({
   automationId,
@@ -36,6 +37,7 @@ export function AddStarterPopover({
   // URL + token so the parent can show the reveal dialog.
   onWebhookCreated?: (secret: { url: string; token: string }) => void;
 }) {
+  const t = useT();
   const { triggerAdd: addTrigger } = useAutomationActions();
   const [internalOpen, setInternalOpen] = useState(false);
 
@@ -52,11 +54,13 @@ export function AddStarterPopover({
         type: "cron",
         cron_expression: cron,
       });
-      toast.success("Starter added");
+      toast.success(t("automations.addStarterPopover.starterAdded"));
       handleOpenChange(false);
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to add starter";
+        err instanceof Error
+          ? err.message
+          : t("automations.addStarterPopover.failedAddStarter");
       toast.error(message);
     }
   };
@@ -71,11 +75,13 @@ export function AddStarterPopover({
       if (result.webhook) {
         onWebhookCreated?.(result.webhook);
       } else {
-        toast.success("Webhook starter added");
+        toast.success(t("automations.addStarterPopover.webhookStarterAdded"));
       }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to add webhook starter";
+        err instanceof Error
+          ? err.message
+          : t("automations.addStarterPopover.failedAddWebhookStarter");
       toast.error(message);
     }
   };
@@ -85,14 +91,14 @@ export function AddStarterPopover({
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm">
           <Plus size={14} />
-          Add Starter
+          {t("automations.addStarterPopover.addStarter")}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[200px]">
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="gap-2.5">
             <Clock size={14} className="text-muted-foreground shrink-0" />
-            Every...
+            {t("automations.addStarterPopover.every")}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-[160px]">
             {SCHEDULE_UNITS.map((unit) => (
@@ -103,7 +109,9 @@ export function AddStarterPopover({
                 disabled={addTrigger.isPending}
               >
                 <Clock size={14} className="text-muted-foreground shrink-0" />
-                Every {unit.label}
+                {t("automations.addStarterPopover.everyUnit", {
+                  unit: unit.label,
+                })}
               </DropdownMenuItem>
             ))}
           </DropdownMenuSubContent>
@@ -117,7 +125,7 @@ export function AddStarterPopover({
           }}
         >
           <Clock size={14} className="text-muted-foreground shrink-0" />
-          Custom (cron)
+          {t("automations.addStarterPopover.customCron")}
         </DropdownMenuItem>
 
         <DropdownMenuItem
@@ -128,7 +136,7 @@ export function AddStarterPopover({
           }}
         >
           <Zap size={14} className="text-muted-foreground shrink-0" />
-          Event
+          {t("automations.addStarterPopover.event")}
         </DropdownMenuItem>
 
         <DropdownMenuItem
@@ -141,7 +149,7 @@ export function AddStarterPopover({
           disabled={addTrigger.isPending}
         >
           <Globe01 size={14} className="text-muted-foreground shrink-0" />
-          Webhook
+          {t("automations.addStarterPopover.webhook")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

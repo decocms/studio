@@ -13,9 +13,9 @@ export interface OrgFsVolumeMount {
   readonly readonly?: boolean;
 }
 
-/** Mesh-pushed config that turns on org-fs mounting for a sandbox. */
+/** Studio-pushed config that turns on org-fs mounting for a sandbox. */
 export interface OrgFsMountConfig {
-  /** Mesh base URL the daemon calls (e.g. https://cluster.example). */
+  /** Studio base URL the daemon calls (e.g. https://cluster.example). */
   readonly baseUrl: string;
   /** Immutable org slug (the `:org` path segment). */
   readonly orgSlug: string;
@@ -26,7 +26,7 @@ export interface OrgFsMountConfig {
 
 /**
  * Parse the daemon's `ORGFS_CONFIG` boot env (a JSON `OrgFsMountConfig`). The
- * mesh sets it at spawn (like `OFFLOAD_ALLOWED_HOSTS`) rather than via a
+ * studio sets it at spawn (like `OFFLOAD_ALLOWED_HOSTS`) rather than via a
  * post-boot config push, so it's available when the daemon reads it at boot.
  * Returns null for absent/malformed/empty config (mounting is then skipped).
  */

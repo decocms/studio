@@ -8,6 +8,7 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   ToolCallShell,
   LatencyLabel,
@@ -66,6 +67,7 @@ function AgentRow({ agent }: { agent: VirtualMCPEntity }) {
 }
 
 export function AgentListPart({ part, latency }: AgentListPartProps) {
+  const t = useT();
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const state = getEffectiveState(part.state);
@@ -76,7 +78,7 @@ export function AgentListPart({ part, latency }: AgentListPartProps) {
     return (
       <ToolCallShell
         icon={<UserCircle className="animate-pulse" />}
-        title="Loading agents"
+        title={t("chat.agentList.loading")}
         state="loading"
       />
     );
@@ -84,7 +86,11 @@ export function AgentListPart({ part, latency }: AgentListPartProps) {
 
   if (state === "approval") {
     return (
-      <ToolCallShell icon={<UserCircle />} title="List agents" state="idle" />
+      <ToolCallShell
+        icon={<UserCircle />}
+        title={t("chat.agentList.listAgents")}
+        state="idle"
+      />
     );
   }
 
@@ -94,8 +100,8 @@ export function AgentListPart({ part, latency }: AgentListPartProps) {
         icon={<UserCircle />}
         title={
           part.state === "output-denied"
-            ? "Agent list unavailable"
-            : "Couldn't load agents"
+            ? t("chat.agentList.unavailable")
+            : t("chat.agentList.couldntLoad")
         }
         state="error"
         trailing={<LatencyLabel latency={latency} />}
@@ -107,8 +113,8 @@ export function AgentListPart({ part, latency }: AgentListPartProps) {
     return (
       <ToolCallShell
         icon={<UserCircle />}
-        title="No agents yet"
-        summary="This organization hasn't created any agents."
+        title={t("chat.agentList.noAgents")}
+        summary={t("chat.agentList.noAgentsDesc")}
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
       />
@@ -121,8 +127,12 @@ export function AgentListPart({ part, latency }: AgentListPartProps) {
   return (
     <>
       <ToolCallShell
-        icon={<UserCircle className="text-emerald-500" />}
-        title={items.length === 1 ? "1 agent" : `${items.length} agents`}
+        icon={<UserCircle className="text-success" />}
+        title={
+          items.length === 1
+            ? t("chat.agentList.oneAgent")
+            : t("chat.agentList.multiAgents", { count: items.length })
+        }
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
       />
@@ -133,7 +143,7 @@ export function AgentListPart({ part, latency }: AgentListPartProps) {
         {hiddenCount > 0 && (
           <SeeAllRow
             count={items.length}
-            noun="agents"
+            noun={t("chat.agentList.agentsNoun")}
             onClick={() =>
               navigate({
                 to: "/$org/settings/agents",

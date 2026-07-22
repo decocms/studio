@@ -1,5 +1,6 @@
 import { defineTool } from "@/core/define-tool";
 import { requireOrganization } from "@/core/studio-context";
+import { invalidatePublicRegistryListCache } from "@/api/routes/registry/public-mcp-server";
 import {
   RegistryCreateInputSchema,
   RegistryCreateOutputSchema,
@@ -20,6 +21,7 @@ export const REGISTRY_ITEM_CREATE = defineTool({
       organization_id: organization.id,
       created_by: ctx.auth.user?.id ?? null,
     });
+    invalidatePublicRegistryListCache();
     return { item };
   },
 });

@@ -62,7 +62,7 @@ test("file: with a value the filename and uppercase ext chip are shown", async (
   await expect(component.getByText("pdf", { exact: true })).toBeVisible();
 });
 
-test("file: with a value Replace and Remove file controls appear", async ({
+test("file: with a value the clickable row + Remove file controls appear", async ({
   mount,
 }) => {
   const component = await mount(
@@ -74,12 +74,29 @@ test("file: with a value Replace and Remove file controls appear", async ({
     />,
   );
 
+  // Replacing is done by clicking the row now — no separate Replace button.
   await expect(
-    component.getByRole("button", { name: "Replace" }),
+    component.getByRole("button", { name: "Replace file" }),
   ).toBeVisible();
   await expect(
     component.getByRole("button", { name: "Remove file" }),
   ).toBeVisible();
+});
+
+test("file: clicking the file row opens the file picker", async ({ mount }) => {
+  const component = await mount(
+    <FieldHarness
+      schema={FILE_SCHEMA}
+      label="Doc"
+      path="doc"
+      initialValue="https://x.test/report.pdf"
+    />,
+  );
+
+  await expect(component.getByTestId("file-picker-stub")).toHaveCount(0);
+  await component.getByRole("button", { name: "Replace file" }).click();
+
+  await expect(component.getByTestId("file-picker-stub")).toBeVisible();
 });
 
 test("file: clicking Remove file clears the value to an empty string", async ({
@@ -109,9 +126,9 @@ test("file: empty state has no Replace/Remove controls and shows Browse", async 
   await expect(
     component.getByRole("button", { name: "Browse", exact: true }),
   ).toBeVisible();
-  await expect(component.getByRole("button", { name: "Replace" })).toHaveCount(
-    0,
-  );
+  await expect(
+    component.getByRole("button", { name: "Replace", exact: true }),
+  ).toHaveCount(0);
   await expect(
     component.getByRole("button", { name: "Remove file" }),
   ).toHaveCount(0);
@@ -173,4 +190,81 @@ test("video: with a value a <video> element and the filename render", async ({
 
   await expect(component.locator("video")).toBeVisible();
   await expect(component.getByText("clip.mp4", { exact: true })).toBeVisible();
+});
+
+test("video: clicking the preview opens the file picker", async ({ mount }) => {
+  const component = await mount(
+    <FieldHarness
+      schema={VIDEO_SCHEMA}
+      label="Clip"
+      path="clip"
+      initialValue="https://x.test/clip.mp4"
+    />,
+  );
+
+  await expect(component.getByTestId("file-picker-stub")).toHaveCount(0);
+  await component.getByRole("button", { name: "Replace video" }).click();
+
+  await expect(component.getByTestId("file-picker-stub")).toBeVisible();
+});
+
+test("video: quality picked via the ⋮ menu writes ?quality= to the value", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <FieldHarness
+      schema={VIDEO_SCHEMA}
+      label="Clip"
+      path="clip"
+      initialValue="https://x.test/clip.mp4"
+    />,
+  );
+
+  await component.getByRole("button", { name: "Media options" }).click();
+  // Popover content is portaled to <body>, outside the mounted root.
+  await page.getByRole("radio", { name: "medium" }).click();
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual("https://x.test/clip.mp4?quality=medium");
+});
+
+test("video: toggling Muted off writes muted=false to the value", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <FieldHarness
+      schema={VIDEO_SCHEMA}
+      label="Clip"
+      path="clip"
+      initialValue="https://x.test/clip.mp4"
+    />,
+  );
+
+  await component.getByRole("button", { name: "Media options" }).click();
+  // Muted (the CDN default) starts on; turning it off records muted=false.
+  await page.getByRole("switch", { name: "Muted" }).click();
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual("https://x.test/clip.mp4?muted=false");
+});
+
+test("file: plain (non-video) files expose no ⋮ media-options menu", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <FieldHarness
+      schema={FILE_SCHEMA}
+      label="Doc"
+      path="doc"
+      initialValue="https://x.test/report.pdf"
+    />,
+  );
+
+  await expect(
+    component.getByRole("button", { name: "Media options" }),
+  ).toHaveCount(0);
 });

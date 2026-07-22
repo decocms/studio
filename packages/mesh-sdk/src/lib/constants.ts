@@ -266,6 +266,10 @@ export const getDevConnectionId = devConnectionPrefix.get;
 /** Returns the agent id when `id` is a `dev_<agentId>` connection id; else null. */
 export const parseDevConnectionId = devConnectionPrefix.is;
 
+/** The Super Agent (Decopilot) brand glyph — the capybara. */
+export const SUPER_AGENT_ICON_URL =
+  "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png";
+
 export function getWellKnownDecopilotVirtualMCP(
   organizationId: string,
 ): VirtualMCPEntity {
@@ -274,7 +278,7 @@ export function getWellKnownDecopilotVirtualMCP(
     organizationId,
     title: "Super Agent",
     description: "Default agent that aggregates all organization connections",
-    icon: "https://assets.decocache.com/decocms/fd07a578-6b1c-40f1-bc05-88a3b981695d/f7fc4ffa81aec04e37ae670c3cd4936643a7b269.png",
+    icon: SUPER_AGENT_ICON_URL,
     // The org landing IS the Super Agent — it opens on the built-in Overview
     // view (recent team activity) with chat alongside. No bespoke home screen;
     // this is just an agent with a default view, like any other.
@@ -413,6 +417,7 @@ const studioPackAgentPrefixes = {
   API_KEY_MANAGER: createWellKnownAgentPrefix("studio-api-key-manager_"),
   STORE_MANAGER: createWellKnownAgentPrefix("studio-store-manager_"),
   BRAND_MANAGER: createWellKnownAgentPrefix("studio-brand-manager_"),
+  TASK_MANAGER: createWellKnownAgentPrefix("studio-task-manager_"),
   USAGE_MANAGER: createWellKnownAgentPrefix("studio-usage-manager_"),
 } as const;
 
@@ -426,6 +431,7 @@ export const StudioPackAgentId = {
   API_KEY_MANAGER: studioPackAgentPrefixes.API_KEY_MANAGER.get,
   STORE_MANAGER: studioPackAgentPrefixes.STORE_MANAGER.get,
   BRAND_MANAGER: studioPackAgentPrefixes.BRAND_MANAGER.get,
+  TASK_MANAGER: studioPackAgentPrefixes.TASK_MANAGER.get,
   USAGE_MANAGER: studioPackAgentPrefixes.USAGE_MANAGER.get,
 } as const;
 

@@ -19,7 +19,7 @@ import { createVirtualClient } from "./virtual-mcp";
  * - STDIO, HTTP, Websocket, SSE: Creates an outbound client
  *
  * @param connection - Connection entity from database
- * @param ctx - Mesh context for creating clients
+ * @param ctx - Studio context for creating clients
  * @param superUser - Whether to use superuser mode for background processes
  * @returns Client instance connected to the MCP server
  */

@@ -89,7 +89,10 @@ export type EnsureOrganizationResult =
     }
   | {
       status: "skipped";
-      reason: "auto-create-disabled" | "no-safe-domain-action";
+      reason:
+        | "auto-create-disabled"
+        | "no-safe-domain-action"
+        | "pending-invitation";
       domain: string | null;
     };
 
@@ -162,6 +165,13 @@ async function ensureUserOrganizationInTransaction(options: {
 
     if (candidates.length === 1 && candidates[0]?.joinMode === "auto") {
       const organization = candidates[0]!;
+      // An explicit invitation to this org already governs membership. Skip the
+      // domain auto-join so accepting the invitation is the single membership
+      // path — otherwise the user gets a member row here AND a second one when
+      // acceptInvitation unconditionally creates a member, showing up twice.
+      if (await hasPendingInvitationToOrg(db, user.email, organization.id)) {
+        return { status: "skipped", reason: "pending-invitation", domain };
+      }
       await addMemberIdempotent(authApi, user.id, organization.id);
 
       return { status: "joined", organization, domain, createdVia };
@@ -192,6 +202,9 @@ async function ensureUserOrganizationInTransaction(options: {
       lockedCandidates[0]?.joinMode === "auto"
     ) {
       const organization = lockedCandidates[0]!;
+      if (await hasPendingInvitationToOrg(db, user.email, organization.id)) {
+        return { status: "skipped", reason: "pending-invitation", domain };
+      }
       await addMemberIdempotent(authApi, user.id, organization.id);
 
       return { status: "joined", organization, domain, createdVia };
@@ -388,6 +401,25 @@ async function getOrganizationsForDomainRecords(
     const { metadata: _metadata, ...activeOrganization } = organization;
     return [{ ...activeOrganization, joinMode: record.joinMode }];
   });
+}
+
+async function hasPendingInvitationToOrg(
+  db: DatabaseExecutor,
+  email: string,
+  organizationId: string,
+): Promise<boolean> {
+  // The invitation table is managed by Better Auth and isn't in the Kysely
+  // Database type, so query it with raw SQL (camelCase columns need quoting).
+  const result = await sql<{ exists: boolean }>`
+    select exists(
+      select 1 from invitation
+      where lower(email) = lower(${email})
+        and "organizationId" = ${organizationId}
+        and status = 'pending'
+        and "expiresAt" > now()
+    ) as exists
+  `.execute(db);
+  return result.rows[0]?.exists ?? false;
 }
 
 async function addMemberIdempotent(

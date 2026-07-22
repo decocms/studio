@@ -3,12 +3,8 @@ import { useState, useRef } from "react";
 import Editor, { loader } from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
 import {
-  Brackets,
-  File02,
-  FileCode01,
   FilePlus01,
   FolderPlus,
-  Image01,
   Loading01,
   SearchSm,
   XClose,
@@ -21,19 +17,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
 import { toast } from "sonner";
 import { useChatStream } from "@/web/components/chat/context";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { useT } from "@/web/i18n/use-t.ts";
 import { KEYS } from "@/web/lib/query-keys";
 import { saveChangesDebug } from "../../../thread/github/save-changes-debug.ts";
 import {
@@ -45,6 +32,7 @@ import {
   FileExplorerNameDialog,
   type FileExplorerNameDialogMode,
 } from "./file-explorer-name-dialog";
+import { FileExplorerDeleteDialog } from "./file-explorer-delete-dialog";
 import { FileTreeRow } from "./file-tree-row";
 import {
   buildFileTree,
@@ -55,16 +43,23 @@ import {
   flattenTree,
   getAncestorDirectories,
   getDirectoryContextPath,
+  getFileVisual,
   getLanguageFromPath,
   getParentTreePath,
+  buildGrepHighlight,
+  groupGrepMatches,
+  isSafeExplorerOpenPath,
   joinTreePath,
+  matchFileNames,
   mergeGlobLists,
+  parseGrepContent,
   pathExistsInFileList,
   stripLineNumbers,
   toDaemonPath,
   toTreePath,
   validateExplorerEntryName,
   type GlobListResult,
+  type GrepContentMatch,
 } from "./utils";
 
 // Configure Monaco CDN (shared with workflow editor)
@@ -73,6 +68,15 @@ loader.config({
     vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs",
   },
 });
+
+/** Max content-search hits requested from the daemon grep endpoint. */
+const CONTENT_SEARCH_LIMIT = 200;
+/** Minimum query length before firing a (whole-repo) content search. */
+const CONTENT_SEARCH_MIN_CHARS = 2;
+/** Debounce before firing the search as the user types. */
+const SEARCH_DEBOUNCE_MS = 250;
+/** Max filename matches rendered in the search results. */
+const FILENAME_MATCH_LIMIT = 200;
 
 interface FileExplorerProps {
   orgSlug: string;
@@ -95,53 +99,27 @@ function buildApiUrl(
   return `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/${endpoint}`;
 }
 
-/** Reject path traversal and absolute paths outside the workspace root. */
-function isSafeExplorerOpenPath(path: string): boolean {
-  const normalized = toDaemonPath(path);
-  if (!normalized || normalized.includes("..") || normalized.includes("\\")) {
-    return false;
-  }
+/** A grep result line with the matched query runs highlighted (VS Code-style). */
+function GrepMatchLine({ text, query }: { text: string; query: string }) {
+  const { leadingEllipsis, segments } = buildGrepHighlight(text, query);
   return (
-    normalized.startsWith(".deco/blocks/") ||
-    (!normalized.startsWith("/") && !normalized.includes("://"))
+    <span className="truncate font-mono text-muted-foreground">
+      {leadingEllipsis && <span className="text-muted-foreground/50">…</span>}
+      {segments.map((segment, index) =>
+        segment.match ? (
+          <span
+            // Segments are positional within a single line; index is stable.
+            key={index}
+            className="rounded-[2px] bg-primary/20 text-foreground"
+          >
+            {segment.text}
+          </span>
+        ) : (
+          <span key={index}>{segment.text}</span>
+        ),
+      )}
+    </span>
   );
-}
-
-type FileIcon = React.ComponentType<{
-  size?: number;
-  className?: string;
-  style?: React.CSSProperties;
-}>;
-
-/** Warm folder tone — reads well on both light and dark backgrounds. */
-const DEFAULT_FILE_COLOR = "#94a3b8";
-
-/**
- * Maps a filename to an icon + accent color by extension, so the tree reads at
- * a glance (blue for TS, amber for JSON, purple for images, …). Colors are
- * inline (not Tailwind scale tokens) and chosen to work in light and dark.
- */
-function getFileVisual(name: string): { Icon: FileIcon; color: string } {
-  const n = name.toLowerCase();
-  if (n.endsWith(".tsx") || n.endsWith(".ts"))
-    return { Icon: FileCode01, color: "#3b82f6" };
-  if (
-    n.endsWith(".jsx") ||
-    n.endsWith(".js") ||
-    n.endsWith(".mjs") ||
-    n.endsWith(".cjs")
-  )
-    return { Icon: FileCode01, color: "#d9a441" };
-  if (n.endsWith(".json")) return { Icon: Brackets, color: "#cb9b3f" };
-  if (n.endsWith(".css") || n.endsWith(".scss"))
-    return { Icon: FileCode01, color: "#06b6d4" };
-  if (n.endsWith(".html") || n.endsWith(".xml"))
-    return { Icon: FileCode01, color: "#f97316" };
-  if (/\.(png|jpe?g|gif|webp|avif|ico|svg)$/.test(n))
-    return { Icon: Image01, color: "#a855f7" };
-  if (n.endsWith(".md") || n.endsWith(".mdx"))
-    return { Icon: File02, color: "#64748b" };
-  return { Icon: File02, color: DEFAULT_FILE_COLOR };
 }
 
 export function FileExplorer({
@@ -164,6 +142,16 @@ export function FileExplorer({
   );
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  // Filename matches across the WHOLE repo (not just the loaded tree). `null` =
+  // not searching; `[]` = searched, no hits. Tree paths (leading slash).
+  const [fileNameMatches, setFileNameMatches] = useState<string[] | null>(null);
+  // Content search (ripgrep over the whole repo). `null` = not searching /
+  // query too short; `[]` = searched, no hits.
+  const [contentMatches, setContentMatches] = useState<
+    GrepContentMatch[] | null
+  >(null);
+  const [contentSearching, setContentSearching] = useState(false);
+  const [contentSearchTruncated, setContentSearchTruncated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [treeLoaded, setTreeLoaded] = useState(false);
   const [, setLoadedLazyDirs] = useState<Set<string>>(new Set());
@@ -173,6 +161,27 @@ export function FileExplorer({
   const initialTreeLoadRef = useRef<Promise<void> | null>(null);
   const loadedLazyDirsRef = useRef<Set<string>>(new Set());
   const lazyLoadInflightRef = useRef<Map<string, Promise<boolean>>>(new Map());
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bumped on every query change so a slow in-flight search (filename glob or
+  // content grep) can't clobber a newer one (or a cleared search) on resolve.
+  const searchGenRef = useRef(0);
+  // Cache of the whole-repo path list (all depths) used for filename search, so
+  // matches aren't limited to the lazily-loaded/expanded tree. Keyed by tree
+  // generation so it's invalidated whenever the tree is reloaded.
+  const allPathsRef = useRef<{
+    generation: number;
+    files: string[];
+  } | null>(null);
+  // In-flight whole-repo glob (keyed by generation), so two searches that
+  // both miss the cache before the first glob resolves share one request
+  // instead of each firing their own full-repo walk.
+  const allPathsInflightRef = useRef<{
+    generation: number;
+    promise: Promise<string[]>;
+  } | null>(null);
+  // Line to reveal once the target file's editor mounts (set when opening a
+  // content-search hit).
+  const pendingRevealRef = useRef<{ path: string; line: number } | null>(null);
 
   function updateLoadedLazyDirs(
     updater: Set<string> | ((prev: Set<string>) => Set<string>),
@@ -234,10 +243,15 @@ export function FileExplorer({
     });
   }
 
-  function copyText(label: string, value: string) {
+  function copyText(t: ReturnType<typeof useT>, label: string, value: string) {
     void navigator.clipboard.writeText(value).then(
-      () => toast.success(`${label} copied`),
-      () => toast.error(`Failed to copy ${label.toLowerCase()}`),
+      () => toast.success(t("sandbox.fileExplorer.textCopied", { label })),
+      () =>
+        toast.error(
+          t("sandbox.fileExplorer.failedToCopyText", {
+            label: label.toLowerCase(),
+          }),
+        ),
     );
   }
 
@@ -253,7 +267,9 @@ export function FileExplorer({
         return rest;
       },
     );
-    void queryClient.invalidateQueries({ queryKey: KEYS.liveMeta(cacheKey) });
+    void queryClient.invalidateQueries({
+      queryKey: KEYS.liveMeta(orgSlug, virtualMcpId, branch),
+    });
   }
 
   function invalidateDecofileCachesForDeletedNode(node: TreeNode) {
@@ -337,11 +353,11 @@ export function FileExplorer({
     });
   }
 
-  async function handleCreateFile(name: string) {
+  async function handleCreateFile(t: ReturnType<typeof useT>, name: string) {
     if (!nameDialog) return;
     const filePath = joinTreePath(nameDialog.parentDir, name);
     if (pathExistsInFileList(filePath, files, directories)) {
-      throw new Error(`"${name}" already exists`);
+      throw new Error(t("sandbox.fileExplorer.fileAlreadyExists", { name }));
     }
     await postSandbox("write", {
       path: toDaemonPath(filePath),
@@ -353,11 +369,11 @@ export function FileExplorer({
     handleFileClick(filePath);
   }
 
-  async function handleCreateFolder(name: string) {
+  async function handleCreateFolder(t: ReturnType<typeof useT>, name: string) {
     if (!nameDialog) return;
     const folderPath = joinTreePath(nameDialog.parentDir, name);
     if (pathExistsInFileList(folderPath, files, directories)) {
-      throw new Error(`"${name}" already exists`);
+      throw new Error(t("sandbox.fileExplorer.fileAlreadyExists", { name }));
     }
     const daemonFolderPath = toDaemonPath(folderPath);
     await postSandbox("mkdir", { path: daemonFolderPath });
@@ -384,7 +400,7 @@ export function FileExplorer({
     });
   }
 
-  async function handleRename(name: string) {
+  async function handleRename(t: ReturnType<typeof useT>, name: string) {
     if (!nameDialog) return;
     const fromPath = nameDialog.node.path;
     const parentDir = getParentTreePath(fromPath);
@@ -394,7 +410,7 @@ export function FileExplorer({
       return;
     }
     if (pathExistsInFileList(toPath, files, directories)) {
-      throw new Error(`"${name}" already exists`);
+      throw new Error(t("sandbox.fileExplorer.fileAlreadyExists", { name }));
     }
     await postSandbox("rename", {
       from: toDaemonPath(fromPath),
@@ -412,7 +428,7 @@ export function FileExplorer({
     setNameDialog(null);
   }
 
-  async function handleDelete(node: TreeNode) {
+  async function handleDelete(t: ReturnType<typeof useT>, node: TreeNode) {
     setFsActionPending(true);
     try {
       await postSandbox("unlink", {
@@ -424,15 +440,22 @@ export function FileExplorer({
       await fetchFileTree();
       await refreshGitStatus();
       setDeleteTarget(null);
-      toast.success(`Deleted "${node.name}"`);
+      toast.success(t("sandbox.fileExplorer.fileDeleted", { name: node.name }));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Delete failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.fileExplorer.deleteFailed"),
+      );
     } finally {
       setFsActionPending(false);
     }
   }
 
-  async function handleNameDialogSubmit(name: string) {
+  async function handleNameDialogSubmit(
+    t: ReturnType<typeof useT>,
+    name: string,
+  ) {
     const validationError = validateExplorerEntryName(name);
     if (validationError) {
       toast.error(validationError);
@@ -441,17 +464,21 @@ export function FileExplorer({
     setFsActionPending(true);
     try {
       if (nameDialog?.mode === "new-file") {
-        await handleCreateFile(name);
-        toast.success(`Created "${name}"`);
+        await handleCreateFile(t, name);
+        toast.success(t("sandbox.fileExplorer.fileCreated", { name }));
       } else if (nameDialog?.mode === "new-folder") {
-        await handleCreateFolder(name);
-        toast.success(`Created folder "${name}"`);
+        await handleCreateFolder(t, name);
+        toast.success(t("sandbox.fileExplorer.folderCreated", { name }));
       } else if (nameDialog?.mode === "rename") {
-        await handleRename(name);
-        toast.success(`Renamed to "${name}"`);
+        await handleRename(t, name);
+        toast.success(t("sandbox.fileExplorer.renamedTo", { name }));
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Operation failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.fileExplorer.operationFailed"),
+      );
     } finally {
       setFsActionPending(false);
     }
@@ -469,6 +496,7 @@ export function FileExplorer({
 
   // Deep-link: open the requested file when `openPath` is set or changes.
   const [prevOpenPath, setPrevOpenPath] = useState<string | null>(null);
+  const t = useT();
   if (openPath && openPath !== prevOpenPath) {
     setPrevOpenPath(openPath);
     const pathToOpen = openPath;
@@ -476,7 +504,9 @@ export function FileExplorer({
       if (isSafeExplorerOpenPath(pathToOpen)) {
         void handleFileClick(pathToOpen).catch((err) => {
           toast.error(
-            err instanceof Error ? err.message : "Failed to open file",
+            err instanceof Error
+              ? err.message
+              : t("sandbox.fileExplorer.failedToOpenFile"),
           );
         });
       }
@@ -520,7 +550,7 @@ export function FileExplorer({
       };
     });
     if (truncated) {
-      toast.warning("File list truncated — some files may be hidden");
+      toast.warning(t("sandbox.fileExplorer.fileListTruncated"));
     }
     return truncated;
   }
@@ -571,13 +601,16 @@ export function FileExplorer({
     }
   }
 
-  async function ensureAncestorsLoaded(treePath: string) {
+  async function ensureAncestorsLoaded(
+    t: ReturnType<typeof useT>,
+    treePath: string,
+  ) {
     const loaded = new Set(loadedLazyDirsRef.current);
     for (const dir of getAncestorDirectories(treePath)) {
       if (!directoryNeedsLazyLoad(dir, loaded)) continue;
       const truncated = await loadLazyDirectory(dir);
       if (truncated) {
-        throw new Error("Folder listing truncated — expand again to load more");
+        throw new Error(t("sandbox.fileExplorer.folderListingTruncated"));
       }
       loaded.add(dir);
     }
@@ -585,6 +618,8 @@ export function FileExplorer({
 
   async function fetchFileTree() {
     const generation = ++treeGenerationRef.current;
+    allPathsRef.current = null;
+    allPathsInflightRef.current = null;
     lazyLoadInflightRef.current.clear();
     setLoading(true);
     updateLoadedLazyDirs(new Set());
@@ -600,7 +635,7 @@ export function FileExplorer({
       setTreeLoaded(true);
     } catch {
       if (treeLoaded) {
-        toast.error("Failed to refresh file tree");
+        toast.error(t("sandbox.fileExplorer.failedToRefreshFileTree"));
       }
     } finally {
       setLoading(false);
@@ -618,16 +653,10 @@ export function FileExplorer({
     });
 
     try {
-      const res = await fetch(
-        buildApiUrl(orgSlug, virtualMcpId, branch, "read"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ path: toDaemonPath(path), full: true }),
-        },
-      );
-      if (!res.ok) return;
-      const data = (await res.json()) as {
+      const data = (await postSandbox("read", {
+        path: toDaemonPath(path),
+        full: true,
+      })) as {
         kind?: string;
         content?: string;
       };
@@ -646,23 +675,133 @@ export function FileExplorer({
     }
   }
 
+  function clearSearchResults() {
+    // Invalidate any in-flight search so its result can't land after we clear.
+    searchGenRef.current++;
+    setFileNameMatches(null);
+    setContentMatches(null);
+    setContentSearching(false);
+    setContentSearchTruncated(false);
+  }
+
+  /**
+   * Whole-repo path list (all depths), cached per tree generation. Two
+   * searches that both miss the cache before the first glob resolves share
+   * the same in-flight request rather than each firing a full-repo walk.
+   */
+  async function ensureAllPaths(): Promise<string[]> {
+    const generation = treeGenerationRef.current;
+    const cached = allPathsRef.current;
+    if (cached && cached.generation === generation) return cached.files;
+    const inflight = allPathsInflightRef.current;
+    if (inflight && inflight.generation === generation) return inflight.promise;
+
+    const promise = (async () => {
+      // No maxDepth → every file, unlike the eager tree (depth-capped) and
+      // the lazy per-directory loads.
+      const result = await fetchGlob({
+        pattern: "**/*",
+        limit: EXPLORER_GLOB_LIMIT,
+      });
+      if (treeGenerationRef.current === generation) {
+        allPathsRef.current = { generation, files: result.files };
+      }
+      return result.files;
+    })();
+    allPathsInflightRef.current = { generation, promise };
+    try {
+      return await promise;
+    } finally {
+      if (allPathsInflightRef.current?.generation === generation) {
+        allPathsInflightRef.current = null;
+      }
+    }
+  }
+
+  async function runFileNameSearch(term: string, gen: number) {
+    try {
+      const files = await ensureAllPaths();
+      if (gen !== searchGenRef.current) return; // superseded
+      setFileNameMatches(matchFileNames(files, term, FILENAME_MATCH_LIMIT));
+    } catch {
+      if (gen !== searchGenRef.current) return;
+      setFileNameMatches([]);
+    }
+  }
+
+  async function runContentSearch(term: string, gen: number) {
+    setContentSearching(true);
+    try {
+      const data = (await postSandbox("grep", {
+        pattern: term,
+        output_mode: "content",
+        ignore_case: true,
+        // Literal substring match, mirroring the filename filter — the user
+        // isn't writing a regex in the file-search box.
+        fixed_strings: true,
+        limit: CONTENT_SEARCH_LIMIT,
+      })) as { results?: string; matchCount?: number };
+      if (gen !== searchGenRef.current) return; // superseded
+      setContentMatches(parseGrepContent(data.results ?? ""));
+      setContentSearchTruncated((data.matchCount ?? 0) >= CONTENT_SEARCH_LIMIT);
+    } catch {
+      if (gen !== searchGenRef.current) return;
+      setContentMatches([]);
+      setContentSearchTruncated(false);
+    } finally {
+      if (gen === searchGenRef.current) setContentSearching(false);
+    }
+  }
+
+  function runSearch(term: string) {
+    const trimmed = term.trim();
+    const gen = ++searchGenRef.current;
+    // Filename search fires from the first character; content search waits for
+    // 2+ chars (a whole-repo grep on a single char is noise).
+    void runFileNameSearch(trimmed, gen);
+    if (trimmed.length < CONTENT_SEARCH_MIN_CHARS) {
+      setContentMatches(null);
+      setContentSearching(false);
+      setContentSearchTruncated(false);
+    } else {
+      void runContentSearch(trimmed, gen);
+    }
+  }
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (!value.trim()) {
+      clearSearchResults();
+      return;
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      runSearch(value);
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  function applyPendingReveal(editor: Parameters<OnMount>[0]) {
+    const pending = pendingRevealRef.current;
+    if (!pending || pending.path !== selectedFile) return;
+    pendingRevealRef.current = null;
+    const line = Math.max(1, pending.line);
+    editor.revealLineInCenter(line);
+    editor.setPosition({ lineNumber: line, column: 1 });
+    editor.focus();
+  }
+
+  function openContentMatch(match: GrepContentMatch) {
+    pendingRevealRef.current = { path: match.path, line: match.line };
+    const alreadyOpen =
+      selectedFile === match.path && buffers.get(match.path)?.loaded;
+    void handleFileClick(match.path);
+    // Same file already mounted → no remount fires, so reveal immediately.
+    if (alreadyOpen && editorRef.current) applyPendingReveal(editorRef.current);
+  }
+
   async function saveFile(path: string, content: string) {
     try {
-      const res = await fetch(
-        buildApiUrl(orgSlug, virtualMcpId, branch, "write"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ path: toDaemonPath(path), content }),
-        },
-      );
-      if (!res.ok) {
-        saveChangesDebug("file save failed", {
-          path,
-          status: res.status,
-        });
-        return;
-      }
+      await postSandbox("write", { path: toDaemonPath(path), content });
       saveChangesDebug("file saved via sandbox /write", { path });
       void queryClient.invalidateQueries({
         queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
@@ -684,8 +823,11 @@ export function FileExplorer({
         }
         return next;
       });
-    } catch {
-      // Save failed silently
+    } catch (err) {
+      saveChangesDebug("file save failed", {
+        path,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -738,7 +880,9 @@ export function FileExplorer({
         if (truncated) return;
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Failed to load folder",
+          err instanceof Error
+            ? err.message
+            : t("sandbox.fileExplorer.failedToLoadFolder"),
         );
         return;
       }
@@ -756,7 +900,7 @@ export function FileExplorer({
 
   async function handleFileClick(path: string) {
     await initialTreeLoadRef.current;
-    await ensureAncestorsLoaded(path);
+    await ensureAncestorsLoaded(t, path);
     const ancestors = getAncestorDirectories(path);
     setExpandedDirs((prev) => {
       const next = new Set(prev);
@@ -796,12 +940,9 @@ export function FileExplorer({
   const tree = buildFileTree(files, directories);
   const flatNodes = flattenTree(tree, expandedDirs);
 
-  // Filter by search
-  const filteredNodes = search
-    ? flatNodes.filter((row) =>
-        row.node.name.toLowerCase().includes(search.toLowerCase()),
-      )
-    : flatNodes;
+  const fileNameMatchCount = fileNameMatches?.length ?? 0;
+  const contentGroups = groupGrepMatches(contentMatches ?? []);
+  const contentMatchCount = contentMatches?.length ?? 0;
 
   const currentBuffer = selectedFile ? buffers.get(selectedFile) : null;
   const isDirty =
@@ -814,6 +955,9 @@ export function FileExplorer({
 
   const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
+
+    // Jump to a content-search hit's line once the editor is ready.
+    applyPendingReveal(editor);
 
     // Ctrl+S / Cmd+S to save
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
@@ -881,9 +1025,9 @@ export function FileExplorer({
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search files..."
-              aria-label="Search files"
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder={t("sandbox.fileExplorer.searchFilesPlaceholder")}
+              aria-label={t("sandbox.fileExplorer.searchFilesLabel")}
               className="w-full rounded-md border border-input bg-transparent pl-7 pr-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
             />
           </div>
@@ -894,13 +1038,15 @@ export function FileExplorer({
                 variant="ghost"
                 size="icon"
                 className="size-7 shrink-0"
-                aria-label="New file"
+                aria-label={t("sandbox.fileExplorer.newFileLabel")}
                 onClick={() => openCreateDialog("new-file")}
               >
                 <FilePlus01 size={14} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">New file</TooltipContent>
+            <TooltipContent side="bottom">
+              {t("sandbox.fileExplorer.newFile")}
+            </TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -909,76 +1055,182 @@ export function FileExplorer({
                 variant="ghost"
                 size="icon"
                 className="size-7 shrink-0"
-                aria-label="New folder"
+                aria-label={t("sandbox.fileExplorer.newFolderLabel")}
                 onClick={() => openCreateDialog("new-folder")}
               >
                 <FolderPlus size={14} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">New folder</TooltipContent>
+            <TooltipContent side="bottom">
+              {t("sandbox.fileExplorer.newFolder")}
+            </TooltipContent>
           </Tooltip>
         </div>
 
         {/* Tree */}
         <ScrollArea className="flex-1">
           <div className="py-1">
-            {filteredNodes.map((row) => {
-              const { node, depth } = row;
-              const isDir = node.kind === "directory";
-              const isExpanded = expandedDirs.has(node.path);
-              const isSelected = selectedTreeNode?.path === node.path;
-              const parentDir = getDirectoryContextPath(node.path, node.kind);
-              const isDirLoading = isDir && loadingDirs.has(node.path);
+            {/* Lazy file tree (shown when not searching) */}
+            {!search &&
+              flatNodes.map((row) => {
+                const { node, depth } = row;
+                const isDir = node.kind === "directory";
+                const isExpanded = expandedDirs.has(node.path);
+                const isSelected = selectedTreeNode?.path === node.path;
+                const parentDir = getDirectoryContextPath(node.path, node.kind);
+                const isDirLoading = isDir && loadingDirs.has(node.path);
 
-              return (
-                <FileTreeRow
-                  key={node.path}
-                  node={node}
-                  depth={depth}
-                  isExpanded={isExpanded}
-                  isSelected={isSelected}
-                  isLoading={isDirLoading}
-                  fileVisual={getFileVisual(node.name)}
-                  onSelect={() => setSelectedTreeNode(node)}
-                  onOpen={() => {
-                    if (isDir) {
-                      void handleDirectoryOpen(node.path, isExpanded);
-                    } else {
-                      void handleFileClick(node.path);
+                return (
+                  <FileTreeRow
+                    key={node.path}
+                    node={node}
+                    depth={depth}
+                    isExpanded={isExpanded}
+                    isSelected={isSelected}
+                    isLoading={isDirLoading}
+                    fileVisual={getFileVisual(node.name)}
+                    onSelect={() => setSelectedTreeNode(node)}
+                    onOpen={() => {
+                      if (isDir) {
+                        void handleDirectoryOpen(node.path, isExpanded);
+                      } else {
+                        void handleFileClick(node.path);
+                      }
+                    }}
+                    onNewFile={() =>
+                      setNameDialog({
+                        mode: "new-file",
+                        node,
+                        parentDir,
+                      })
                     }
-                  }}
-                  onNewFile={() =>
-                    setNameDialog({
-                      mode: "new-file",
-                      node,
-                      parentDir,
-                    })
-                  }
-                  onNewFolder={() =>
-                    setNameDialog({
-                      mode: "new-folder",
-                      node,
-                      parentDir,
-                    })
-                  }
-                  onCopyPath={() => copyText("Path", toTreePath(node.path))}
-                  onCopyRelativePath={() =>
-                    copyText("Relative path", toDaemonPath(node.path))
-                  }
-                  onRename={() =>
-                    setNameDialog({
-                      mode: "rename",
-                      node,
-                      parentDir,
-                    })
-                  }
-                  onDelete={() => setDeleteTarget(node)}
-                />
-              );
-            })}
-            {treeLoaded && filteredNodes.length === 0 && (
+                    onNewFolder={() =>
+                      setNameDialog({
+                        mode: "new-folder",
+                        node,
+                        parentDir,
+                      })
+                    }
+                    onCopyPath={() =>
+                      copyText(t, "Path", toTreePath(node.path))
+                    }
+                    onCopyRelativePath={() =>
+                      copyText(t, "Relative path", toDaemonPath(node.path))
+                    }
+                    onRename={() =>
+                      setNameDialog({
+                        mode: "rename",
+                        node,
+                        parentDir,
+                      })
+                    }
+                    onDelete={() => setDeleteTarget(node)}
+                  />
+                );
+              })}
+            {!search && treeLoaded && flatNodes.length === 0 && (
               <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                {search ? `No files match "${search}"` : "No files found"}
+                {t("sandbox.fileExplorer.noFilesFound")}
+              </div>
+            )}
+
+            {/* Filename matches (whole repo, independent of tree expansion) */}
+            {search && (
+              <>
+                <div className="flex items-center gap-1.5 px-3 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <span>{t("sandbox.fileExplorer.files")}</span>
+                  {fileNameMatchCount > 0 && (
+                    <span className="normal-case tracking-normal text-muted-foreground/70">
+                      {fileNameMatchCount}
+                      {fileNameMatchCount >= FILENAME_MATCH_LIMIT ? "+" : ""}
+                    </span>
+                  )}
+                </div>
+                {fileNameMatches !== null && fileNameMatches.length === 0 && (
+                  <div className="px-3 py-1 text-xs text-muted-foreground">
+                    {t("sandbox.fileExplorer.noFileNamesMatch")}
+                  </div>
+                )}
+                {fileNameMatches?.map((path) => {
+                  const name = path.split("/").pop() ?? path;
+                  const dir = getParentTreePath(path);
+                  const { Icon, color } = getFileVisual(name);
+                  const isSelected = selectedFile === path;
+                  return (
+                    <button
+                      key={path}
+                      type="button"
+                      onClick={() => void handleFileClick(path)}
+                      title={path}
+                      className={cn(
+                        "flex w-full items-center gap-1.5 px-3 py-1 text-left text-xs hover:bg-accent",
+                        isSelected && "bg-accent",
+                      )}
+                    >
+                      <Icon size={14} className={cn("shrink-0", color)} />
+                      <span className="max-w-40 shrink-0 truncate">{name}</span>
+                      {dir !== "/" && (
+                        <span className="truncate text-muted-foreground/60">
+                          {dir}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Content matches (ripgrep over the whole repo) */}
+            {search && (
+              <div className="mt-1 border-t pt-1">
+                <div className="flex items-center gap-1.5 px-3 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <span>{t("sandbox.fileExplorer.inFiles")}</span>
+                  {contentMatchCount > 0 && (
+                    <span className="text-muted-foreground/70 normal-case tracking-normal">
+                      {contentMatchCount}
+                      {contentSearchTruncated ? "+" : ""}
+                    </span>
+                  )}
+                  {contentSearching && (
+                    <Loading01 size={10} className="animate-spin" />
+                  )}
+                </div>
+                {!contentSearching &&
+                  contentMatches !== null &&
+                  contentGroups.length === 0 && (
+                    <div className="px-3 py-1 text-xs text-muted-foreground">
+                      {t("sandbox.fileExplorer.noMatchesInFileContents")}
+                    </div>
+                  )}
+                {contentGroups.map((group) => {
+                  const name = group.path.split("/").pop() ?? group.path;
+                  const { Icon, color } = getFileVisual(name);
+                  return (
+                    <div key={group.path}>
+                      <div className="flex items-center gap-1.5 px-3 py-1 text-xs text-muted-foreground">
+                        <Icon size={14} className={cn("shrink-0", color)} />
+                        <span className="truncate">{name}</span>
+                        <span className="text-muted-foreground/60">
+                          {group.matches.length}
+                        </span>
+                      </div>
+                      {group.matches.map((match) => (
+                        <button
+                          key={`${group.path}:${match.line}`}
+                          type="button"
+                          onClick={() => openContentMatch(match)}
+                          title={`${group.path}:${match.line}`}
+                          className="flex w-full items-baseline gap-2 pl-8 pr-3 py-0.5 text-left text-xs hover:bg-accent"
+                        >
+                          <span className="shrink-0 tabular-nums text-muted-foreground">
+                            {match.line}
+                          </span>
+                          <GrepMatchLine text={match.text} query={search} />
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1059,7 +1311,7 @@ export function FileExplorer({
                 name="askAiInput"
                 autoFocus
                 type="text"
-                placeholder="Ask the AI..."
+                placeholder={t("sandbox.fileExplorer.askTheAiPlaceholder")}
                 className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 onKeyDown={(e) => {
                   e.stopPropagation();
@@ -1069,7 +1321,7 @@ export function FileExplorer({
               <button
                 type="submit"
                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity"
-                title="Send"
+                title={t("sandbox.fileExplorer.send")}
               >
                 <svg
                   width="10"
@@ -1078,7 +1330,7 @@ export function FileExplorer({
                   fill="none"
                   aria-hidden="true"
                 >
-                  <title>Send</title>
+                  <title>{t("sandbox.fileExplorer.send")}</title>
                   <path
                     d="M5 9V1M1 5l4-4 4 4"
                     stroke="currentColor"
@@ -1151,7 +1403,7 @@ export function FileExplorer({
             </div>
           ) : (
             <div className="flex items-center justify-center h-full w-full text-sm text-muted-foreground">
-              Select a file to edit
+              {t("sandbox.fileExplorer.selectFileToEdit")}
             </div>
           )}
         </div>
@@ -1161,8 +1413,10 @@ export function FileExplorer({
           <div className="flex items-center justify-between px-3 py-1 border-t text-[11px] text-muted-foreground shrink-0">
             <span className="truncate">{selectedFile}</span>
             <span>
-              {isDirty ? "Modified" : "Saved"} &middot;{" "}
-              {getLanguageFromPath(selectedFile)}
+              {isDirty
+                ? t("sandbox.fileExplorer.modified")
+                : t("sandbox.fileExplorer.saved")}{" "}
+              &middot; {getLanguageFromPath(selectedFile)}
             </span>
           </div>
         )}
@@ -1180,55 +1434,21 @@ export function FileExplorer({
             : undefined
         }
         isPending={fsActionPending}
-        onSubmit={handleNameDialogSubmit}
+        onSubmit={(name) => handleNameDialogSubmit(t, name)}
         onOpenChange={(open) => {
           if (!open && !fsActionPending) setNameDialog(null);
         }}
       />
 
-      <AlertDialog
-        open={deleteTarget !== null}
+      <FileExplorerDeleteDialog
+        deleteTarget={deleteTarget}
+        deleteDirtyPaths={deleteDirtyPaths}
+        fsActionPending={fsActionPending}
         onOpenChange={(open) => {
           if (!open && !fsActionPending) setDeleteTarget(null);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {deleteTarget?.kind === "directory" ? "folder" : "file"}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete{" "}
-              <span className="font-mono">{deleteTarget?.name}</span>
-              {deleteTarget?.kind === "directory"
-                ? " and everything inside it."
-                : "."}
-              {deleteDirtyPaths.length > 0 && (
-                <>
-                  {" "}
-                  {deleteDirtyPaths.length === 1
-                    ? "One open file has unsaved changes that will be lost."
-                    : `${deleteDirtyPaths.length} open files have unsaved changes that will be lost.`}
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={fsActionPending}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={fsActionPending || !deleteTarget}
-              onClick={(e) => {
-                e.preventDefault();
-                if (deleteTarget) void handleDelete(deleteTarget);
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={(node) => void handleDelete(t, node)}
+      />
     </div>
   );
 }

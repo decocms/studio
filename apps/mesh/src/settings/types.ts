@@ -1,5 +1,5 @@
 /**
- * Settings type definition for MCP Mesh.
+ * Settings type definition for Studio.
  *
  * Constructed once by the startup pipeline, frozen, and available
  * via getSettings() for the lifetime of the process.

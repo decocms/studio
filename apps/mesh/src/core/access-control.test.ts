@@ -143,6 +143,24 @@ describe("AccessControl", () => {
       expect(ac.granted()).toBe(true);
     });
 
+    it("bypasses checks for a comma-joined multi-role admin without calling boundAuth", async () => {
+      // Better Auth's organization plugin joins an assigned role array with
+      // "," before storing member.role, so a multi-role owner/admin (e.g.
+      // "admin,billing-manager") arrives here as that comma-joined string —
+      // a plain exact-match would miss it and fall through to boundAuth.
+      const mockBoundAuth = createMockBoundAuth({}); // no permissions
+      const ac = new AccessControl(
+        "user_1",
+        "TEST_TOOL",
+        mockBoundAuth,
+        "admin,billing-manager",
+      );
+
+      await ac.check();
+      expect(ac.granted()).toBe(true);
+      expect(mockBoundAuth.hasPermission).not.toHaveBeenCalled();
+    });
+
     it("does NOT bypass the admin role for an API-key principal", async () => {
       // A key scoped to ORGANIZATION_GET is authorized solely by that allowlist —
       // the owner's admin/owner role must not widen it. The flag lives on

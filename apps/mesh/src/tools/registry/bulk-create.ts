@@ -1,5 +1,6 @@
 import { defineTool } from "@/core/define-tool";
 import { requireOrganization } from "@/core/studio-context";
+import { invalidatePublicRegistryListCache } from "@/api/routes/registry/public-mcp-server";
 import {
   RegistryBulkCreateInputSchema,
   RegistryBulkCreateOutputSchema,
@@ -34,6 +35,9 @@ export const REGISTRY_ITEM_BULK_CREATE = defineTool({
       }
     }
 
+    if (created > 0) {
+      invalidatePublicRegistryListCache();
+    }
     return { created, errors };
   },
 });

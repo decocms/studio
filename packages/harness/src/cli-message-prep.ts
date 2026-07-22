@@ -4,7 +4,7 @@
  * CLI harnesses don't run the full decopilot `processConversation` pipeline
  * (which handles `toModelOutput` truncation, todo-write stripping, pending-
  * approval denial, system-prompt splitting, etc.) — they don't carry
- * mesh-side tools into the CLI binary, so most of that work is irrelevant.
+ * studio-side tools into the CLI binary, so most of that work is irrelevant.
  *
  * They DO, however, need basic `UIMessage` -> `ModelMessage` conversion.
  * `input.messages` is typed as `ChatMessage[]` (a `UIMessage` with
@@ -22,7 +22,7 @@
  * prior turn left a tool call without a corresponding result (e.g. the
  * stream was aborted mid-tool), we drop it rather than fail conversion.
  *
- * No `tools` option is passed: CLI harnesses don't register mesh-side
+ * No `tools` option is passed: CLI harnesses don't register studio-side
  * tools, so there's no `toModelOutput` for the conversion to call.
  */
 

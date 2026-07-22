@@ -1,0 +1,81 @@
+{{- /*
+Throwaway PostgreSQL + MinIO for the local umbrella. DEV ONLY — ephemeral
+(emptyDir), fixed Service names (studio-db, studio-minio) so the Studio subchart
+values can reference them statically. For production, drop these and point the
+chart at managed Postgres/S3.
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: studio-db, labels: { app: studio-db } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: studio-db } }
+  template:
+    metadata: { labels: { app: studio-db } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          env:
+            - { name: POSTGRES_USER, value: studio }
+            - { name: POSTGRES_PASSWORD, value: studio }
+            - { name: POSTGRES_DB, value: studio }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports: [{ containerPort: 5432 }]
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "studio"] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits: { memory: "256Mi" }
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+      volumes: [{ name: data, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: studio-db }
+spec:
+  selector: { app: studio-db }
+  ports: [{ port: 5432, targetPort: 5432 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: studio-minio, labels: { app: studio-minio } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: studio-minio } }
+  template:
+    metadata: { labels: { app: studio-minio } }
+    spec:
+      initContainers:
+        - name: create-bucket
+          image: minio/minio
+          command: ["sh", "-c", "mkdir -p /data/studio"]
+          volumeMounts: [{ name: data, mountPath: /data }]
+      containers:
+        - name: minio
+          image: minio/minio
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - { name: MINIO_ROOT_USER, value: minioadmin }
+            - { name: MINIO_ROOT_PASSWORD, value: minioadmin }
+          ports:
+            - { name: s3, containerPort: 9000 }
+            - { name: console, containerPort: 9001 }
+          readinessProbe:
+            httpGet: { path: /minio/health/ready, port: s3 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "25m", memory: "128Mi" }
+            limits: { memory: "256Mi" }
+          volumeMounts: [{ name: data, mountPath: /data }]
+      volumes: [{ name: data, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: studio-minio }
+spec:
+  selector: { app: studio-minio }
+  ports: [{ name: s3, port: 9000, targetPort: s3 }]

@@ -43,6 +43,7 @@ import {
 } from "@untitledui/icons";
 import { Suspense, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t";
 import { track } from "@/web/lib/posthog-client";
 import {
   PromptArgsDialog,
@@ -107,6 +108,7 @@ export function ToolsPopover({
   isStreaming,
   onUnsupportedFile,
 }: ToolsPopoverProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const playSwitchSound = useSound(switch005Sound);
   const { org } = useProjectContext();
@@ -135,6 +137,7 @@ export function ToolsPopover({
           file,
           from,
           onUnsupportedFile,
+          t,
         );
       }
     } finally {
@@ -166,7 +169,7 @@ export function ToolsPopover({
     APPROVAL_LEVEL_OPTIONS.find(
       (opt) => opt.value === preferences.toolApprovalLevel,
     ) ?? APPROVAL_LEVEL_OPTIONS[0]!;
-  const currentApprovalShort = currentApprovalOption.short;
+  const currentApprovalShort = t(currentApprovalOption.shortKey);
 
   const handleApprovalLevelChange = (next: string) => {
     const matched = APPROVAL_LEVEL_OPTIONS.find((opt) => opt.value === next);
@@ -228,7 +231,7 @@ export function ToolsPopover({
         args: values,
       });
     } catch {
-      toast.error("Failed to load prompt. Please try again.");
+      toast.error(t("chat.toolsPopover.failedLoadPrompt"));
     }
   };
 
@@ -325,8 +328,8 @@ export function ToolsPopover({
             variant="ghost"
             size="default"
             disabled={disabled}
-            title="Tools"
-            aria-label="Tools"
+            title={t("chat.toolsPopover.tools")}
+            aria-label={t("chat.toolsPopover.tools")}
             className={cn(
               "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
               "gap-0 @[320px]/chat-bottom:gap-1.5",
@@ -339,11 +342,11 @@ export function ToolsPopover({
                 "@[320px]/chat-bottom:max-w-24 @[320px]/chat-bottom:opacity-100",
               )}
             >
-              Tools
+              {t("chat.toolsPopover.tools")}
             </span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-52 p-1.5 space-y-1">
+        <DropdownMenuContent align="start" className="w-56 p-1.5 space-y-1">
           {!supportsFiles ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -353,11 +356,13 @@ export function ToolsPopover({
                   onSelect={(e) => e.preventDefault()}
                 >
                   <Plus size={16} />
-                  <span className="flex-1">Add file</span>
+                  <span className="flex-1">
+                    {t("chat.toolsPopover.addFile")}
+                  </span>
                 </DropdownMenuItem>
               </TooltipTrigger>
               <TooltipContent side="right">
-                The selected model does not support reading files or images.
+                {t("chat.toolsPopover.modelNoFileSupport")}
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -366,23 +371,25 @@ export function ToolsPopover({
               disabled={isStreaming}
             >
               <Plus size={16} />
-              <span className="flex-1">Add file</span>
+              <span className="flex-1">{t("chat.toolsPopover.addFile")}</span>
             </DropdownMenuItem>
           )}
 
           <DropdownMenuItem
             onClick={handleTogglePlanMode}
-            className={cn(isPlanMode && "text-violet-600 dark:text-violet-400")}
+            className={cn(isPlanMode && "text-special")}
           >
             <BookOpen01
               size={16}
-              className={cn(isPlanMode && "text-violet-500")}
+              className={cn(isPlanMode && "text-special")}
             />
-            <span className="flex-1">Plan mode</span>
+            <span className="flex-1 whitespace-nowrap">
+              {t("chat.toolsPopover.planMode")}
+            </span>
             <span
               className={cn(
                 "text-xs text-muted-foreground",
-                isPlanMode && "text-violet-500 font-medium",
+                isPlanMode && "text-special font-medium",
               )}
             >
               {PLAN_MODE_SHORTCUT}
@@ -392,49 +399,53 @@ export function ToolsPopover({
           {/* Create image */}
           <DropdownMenuItem
             onClick={handleForceImageGeneration}
-            className={cn(isImageActive && "text-pink-600 dark:text-pink-400")}
+            className={cn(isImageActive && "text-special")}
           >
             <Image01
               size={16}
-              className={cn(isImageActive && "text-pink-500")}
+              className={cn(isImageActive && "text-special")}
             />
-            <span className="flex-1">Create image</span>
+            <span className="flex-1">{t("chat.toolsPopover.createImage")}</span>
             {isImageActive && (
-              <span className="text-xs text-pink-500 font-medium">On</span>
+              <span className="text-xs text-special font-medium">
+                {t("chat.toolsPopover.on")}
+              </span>
             )}
           </DropdownMenuItem>
 
           {/* Web search */}
           <DropdownMenuItem
             onClick={handleForceWebSearch}
-            className={cn(
-              isWebSearchActive && "text-blue-600 dark:text-blue-400",
-            )}
+            className={cn(isWebSearchActive && "text-special")}
           >
             <Globe02
               size={16}
-              className={cn(isWebSearchActive && "text-blue-500")}
+              className={cn(isWebSearchActive && "text-special")}
             />
-            <span className="flex-1">Web search</span>
+            <span className="flex-1">{t("chat.toolsPopover.webSearch")}</span>
             {isWebSearchActive && (
-              <span className="text-xs text-blue-500 font-medium">On</span>
+              <span className="text-xs text-special font-medium">
+                {t("chat.toolsPopover.on")}
+              </span>
             )}
           </DropdownMenuItem>
 
           {/* Deep research */}
           <DropdownMenuItem
             onClick={handleForceDeepResearch}
-            className={cn(
-              isDeepResearchActive && "text-blue-600 dark:text-blue-400",
-            )}
+            className={cn(isDeepResearchActive && "text-special")}
           >
             <Telescope
               size={16}
-              className={cn(isDeepResearchActive && "text-blue-500")}
+              className={cn(isDeepResearchActive && "text-special")}
             />
-            <span className="flex-1">Deep research</span>
+            <span className="flex-1">
+              {t("chat.toolsPopover.deepResearch")}
+            </span>
             {isDeepResearchActive && (
-              <span className="text-xs text-blue-500 font-medium">On</span>
+              <span className="text-xs text-special font-medium">
+                {t("chat.toolsPopover.on")}
+              </span>
             )}
           </DropdownMenuItem>
 
@@ -443,17 +454,17 @@ export function ToolsPopover({
               <span className="flex size-4 items-center justify-center text-base font-medium text-muted-foreground">
                 /
               </span>
-              <span className="flex-1">Prompts</span>
+              <span className="flex-1">{t("chat.toolsPopover.prompts")}</span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="w-80 max-h-72 overflow-y-auto p-1.5">
               {isPromptsLoading ? (
                 <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
                   <Loading01 size={14} className="animate-spin" />
-                  Loading prompts…
+                  {t("chat.toolsPopover.loadingPrompts")}
                 </div>
               ) : prompts.length === 0 ? (
                 <div className="px-2 py-3 text-sm text-muted-foreground">
-                  No prompts available
+                  {t("chat.toolsPopover.noPromptsAvailable")}
                 </div>
               ) : (
                 prompts.map((prompt) => (
@@ -483,7 +494,7 @@ export function ToolsPopover({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="gap-2">
               <ShieldTick size={16} />
-              <span className="flex-1">Approval</span>
+              <span className="flex-1">{t("chat.toolsPopover.approval")}</span>
               <span className="text-xs text-muted-foreground">
                 {currentApprovalShort}
               </span>
@@ -495,7 +506,7 @@ export function ToolsPopover({
               >
                 {APPROVAL_LEVEL_OPTIONS.map((opt) => (
                   <DropdownMenuRadioItem key={opt.value} value={opt.value}>
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -504,7 +515,7 @@ export function ToolsPopover({
 
           <DropdownMenuItem onClick={handleConnections}>
             <Link01 size={16} />
-            <span className="flex-1">Connections</span>
+            <span className="flex-1">{t("chat.toolsPopover.connections")}</span>
             <Suspense>
               <ConnectionIcons />
             </Suspense>

@@ -41,6 +41,10 @@ export const KEYS = {
   taskBoardItems: (locator: ProjectLocator) =>
     [locator, "task-board-items"] as const,
 
+  // A task's linked pull requests (live state fetched from GitHub)
+  taskBoardItemPrs: (locator: ProjectLocator, itemId: string) =>
+    [locator, "task-board-item-prs", itemId] as const,
+
   homeGithubRecentPrs: (orgId: string, connectionId: string) =>
     ["home-github-recent-prs", orgId, connectionId] as const,
 
@@ -53,6 +57,10 @@ export const KEYS = {
 
   commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "connection", orgId, connectionId] as const,
+  // Owner diagnostic (get_my_diagnostic) polled by the home report banner —
+  // keyed per org + connection so a credential rotation forces a fresh fetch.
+  commerceDiscoveryDiagnostic: (orgId: string, connectionId: string) =>
+    ["commerce-discovery", "diagnostic", orgId, connectionId] as const,
   commerceDiscoveryVirtualMcp: (orgId: string, virtualMcpId: string) =>
     ["commerce-discovery", "virtual-mcp", orgId, virtualMcpId] as const,
 
@@ -145,6 +153,10 @@ export const KEYS = {
 
   organizationSettings: (organizationId: string) =>
     ["organization-settings", organizationId] as const,
+
+  // API keys (scoped by organization; the LIST tool filters by org server-side)
+  apiKeysList: (organizationId: string) =>
+    ["api-keys", organizationId] as const,
 
   // Active organization
   activeOrganization: (org: string | undefined) =>
@@ -504,7 +516,9 @@ export const KEYS = {
 
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
-  liveMeta: (previewUrl: string) => ["live-meta", previewUrl] as const,
+  // Variadic so an invalidation call can pass just the org/vmid/branch prefix
+  // and still partial-match the full org/vmid/branch/previewUrl query key.
+  liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   sandboxRepoDir: (orgSlug: string, virtualMcpId: string, branch: string) =>

@@ -1,7 +1,7 @@
 /**
  * The minimal filesystem surface the WebDAV serve layer needs. Two
  * implementations exist:
- *   - `OrgFsClient` (client.ts) — talks to the mesh `/api/:org/fs/:volume/*`
+ *   - `OrgFsClient` (client.ts) — talks to the studio `/api/:org/fs/:volume/*`
  *     HTTP contract; this is what the daemon uses (it has no DB/storage).
  *   - a direct adapter over the in-process `OrgFs` service — used by tests and
  *     the end-to-end mount harness.
@@ -29,7 +29,7 @@ export interface OrgFsApi {
   /**
    * Stream a file read straight from the byte store (presigned URL), pushing
    * an optional `Range` header down so only the requested bytes move — where
-   * `read()` buffers every byte through the mesh and this process. Returns
+   * `read()` buffers every byte through the studio and this process. Returns
    * null when no streamable URL is available (presign failed, or dev storage's
    * inline `data:` URLs); callers then fall back to `read()`. Throws
    * OrgFsApiError(404) for a missing file.

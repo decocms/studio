@@ -26,7 +26,7 @@ export {
   sandboxIdKey,
   sandboxProviderKindSchema,
 } from "./types";
-// Needed by mesh callers (decopilot dispatch-run) that compute handles
+// Needed by studio callers (decopilot dispatch-run) that compute handles
 // directly. Re-exported here so consumers don't dig into shared/.
 export { computeHandle } from "./shared";
 export type {

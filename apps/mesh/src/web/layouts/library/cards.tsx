@@ -30,6 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
 import {
   describeFileType,
   FileTypeIcon,
@@ -85,12 +86,19 @@ function extOf(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() ?? "";
 }
 
+/** Shared fetch-as-text helper for the card thumbnail/preview queries below. */
+async function fetchText(url: string, init?: RequestInit): Promise<string> {
+  const res = await fetch(url, { credentials: "include", ...init });
+  if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+  return res.text();
+}
+
 /** Shared "Share" menu item — opens the share dialog for a file/folder. */
-function ShareMenuItem({ onShare }: { onShare: () => void }) {
+function ShareMenuItem({ onShare, t }: { onShare: () => void; t: TFunction }) {
   return (
     <DropdownMenuItem onClick={onShare}>
       <Share07 size={14} />
-      Share
+      {t("library.cards.share")}
     </DropdownMenuItem>
   );
 }
@@ -100,13 +108,13 @@ export type PublicState = "public" | "password" | "inherited";
 
 /** Small badge marking a shared file/folder (globe = public, key = password,
  *  muted globe = inherited from a parent). */
-function PublicBadge({ state }: { state: PublicState }) {
+function PublicBadge({ state, t }: { state: PublicState; t: TFunction }) {
   const label =
     state === "password"
-      ? "Password-protected — link + password to view"
+      ? t("library.cards.passwordProtected")
       : state === "inherited"
-        ? "Shared via a parent folder"
-        : "Public — anyone with the link can view";
+        ? t("library.cards.sharedViaParent")
+        : t("library.cards.publicBadge");
   const Icon = state === "password" ? Key01 : Globe01;
   return (
     <span title={label} className="mt-0.5 flex shrink-0 items-center">
@@ -126,11 +134,13 @@ function FileActions({
   filename,
   onShare,
   onDelete,
+  t,
 }: {
   downloadUrl: string;
   filename: string;
   onShare?: () => void;
   onDelete?: () => void;
+  t: TFunction;
 }) {
   return (
     <DropdownMenu>
@@ -140,23 +150,71 @@ function FileActions({
           size="icon"
           className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
           onClick={(e) => e.stopPropagation()}
-          aria-label={`Actions for ${filename}`}
+          aria-label={t("library.cards.actionsFor", { filename })}
         >
           <DotsVertical size={14} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-        {onShare && <ShareMenuItem onShare={onShare} />}
+        {onShare && <ShareMenuItem onShare={onShare} t={t} />}
         <DropdownMenuItem asChild>
           <a href={downloadUrl} download={filename}>
             <Download01 size={14} />
-            Download
+            {t("library.cards.download")}
           </a>
         </DropdownMenuItem>
         {onDelete && (
           <DropdownMenuItem variant="destructive" onClick={onDelete}>
             <Trash01 size={14} />
-            Delete
+            {t("library.cards.delete")}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Shared "Actions" dropdown for a card: browse/share/delete, whichever
+ *  the caller passes. Renders nothing if none are given. */
+function EntryActionsMenu({
+  label,
+  onBrowse,
+  onShare,
+  onDelete,
+  t,
+}: {
+  label: string;
+  onBrowse?: () => void;
+  onShare?: () => void;
+  onDelete?: () => void;
+  t: TFunction;
+}) {
+  if (!onBrowse && !onShare && !onDelete) return undefined;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+          aria-label={t("library.cards.actionsFor", { label })}
+        >
+          <DotsVertical size={14} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        {onBrowse && (
+          <DropdownMenuItem onClick={onBrowse}>
+            <Folder size={14} />
+            {t("library.cards.browseFiles")}
+          </DropdownMenuItem>
+        )}
+        {onShare && <ShareMenuItem onShare={onShare} t={t} />}
+        {onDelete && (
+          <DropdownMenuItem variant="destructive" onClick={onDelete}>
+            <Trash01 size={14} />
+            {t("library.cards.delete")}
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
@@ -203,6 +261,7 @@ function CardHeader({
   subtitle,
   publicState,
   actions,
+  t,
 }: {
   icon: React.ReactNode;
   name: string;
@@ -211,6 +270,7 @@ function CardHeader({
   /** Render the "public" globe badge next to the name (own vs inherited). */
   publicState?: PublicState;
   actions?: React.ReactNode;
+  t: TFunction;
 }) {
   return (
     <div className="flex w-full items-center gap-2.5">
@@ -223,7 +283,7 @@ function CardHeader({
           >
             {name}
           </span>
-          {publicState && <PublicBadge state={publicState} />}
+          {publicState && <PublicBadge state={publicState} t={t} />}
           {meta && (
             <span className="shrink-0 text-xs text-muted-foreground">
               {meta}
@@ -268,6 +328,7 @@ export function FolderCard({
   onShare?: () => void;
   onDelete?: () => void;
 }) {
+  const t = useT();
   return (
     <CardShell onOpen={onOpen}>
       <CardHeader
@@ -283,34 +344,14 @@ export function FolderCard({
         subtitle={subtitle}
         publicState={publicState}
         actions={
-          onShare || onDelete ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
-                  onClick={(e) => e.stopPropagation()}
-                  aria-label={`Actions for ${name}`}
-                >
-                  <DotsVertical size={14} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {onShare && <ShareMenuItem onShare={onShare} />}
-                {onDelete && (
-                  <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                    <Trash01 size={14} />
-                    Delete
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : undefined
+          <EntryActionsMenu
+            label={name}
+            onShare={onShare}
+            onDelete={onDelete}
+            t={t}
+          />
         }
+        t={t}
       />
     </CardShell>
   );
@@ -336,6 +377,7 @@ export function FileCard({
   onShare?: () => void;
   onDelete?: () => void;
 }) {
+  const t = useT();
   return (
     <CardShell onOpen={onOpen}>
       <CardHeader
@@ -352,8 +394,10 @@ export function FileCard({
             filename={filename}
             onShare={onShare}
             onDelete={onDelete}
+            t={t}
           />
         }
+        t={t}
       />
     </CardShell>
   );
@@ -387,13 +431,10 @@ export function SkillCard({
   onShare?: () => void;
   onDelete?: () => void;
 }) {
+  const t = useT();
   const { data } = useQuery({
     queryKey: KEYS.fileText(skillMdUrl),
-    queryFn: async () => {
-      const res = await fetch(skillMdUrl, { credentials: "include" });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      return res.text();
-    },
+    queryFn: () => fetchText(skillMdUrl),
     staleTime: 60_000,
     retry: false,
   });
@@ -409,39 +450,18 @@ export function SkillCard({
         }
         name={meta?.name ?? dirName}
         meta={timeAgo(updatedAt)}
-        subtitle="Skill"
+        subtitle={t("library.cards.skill")}
         publicState={publicState}
         actions={
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
-                onClick={(e) => e.stopPropagation()}
-                aria-label={`Actions for ${dirName}`}
-              >
-                <DotsVertical size={14} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <DropdownMenuItem onClick={onBrowse}>
-                <Folder size={14} />
-                Browse files
-              </DropdownMenuItem>
-              {onShare && <ShareMenuItem onShare={onShare} />}
-              {onDelete && (
-                <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                  <Trash01 size={14} />
-                  Delete
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <EntryActionsMenu
+            label={dirName}
+            onBrowse={onBrowse}
+            onShare={onShare}
+            onDelete={onDelete}
+            t={t}
+          />
         }
+        t={t}
       />
       <p className="line-clamp-2 min-h-8 text-xs leading-4 text-muted-foreground">
         {meta?.description ?? ""}
@@ -473,19 +493,16 @@ export function BrandCard({
   onBrowse: () => void;
   onDelete?: () => void;
 }) {
+  const t = useT();
   const { data } = useQuery({
     queryKey: KEYS.fileText(tokensUrl),
-    queryFn: async () => {
-      const res = await fetch(tokensUrl, { credentials: "include" });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      return res.text();
-    },
+    queryFn: () => fetchText(tokensUrl),
     staleTime: 60_000,
     retry: false,
   });
   const swatches = data
     ? parseBrandTokens(data)
-        .filter((t) => t.isColor)
+        .filter((token) => token.isColor)
         .slice(0, 6)
     : [];
 
@@ -499,45 +516,24 @@ export function BrandCard({
         }
         name={dirName}
         meta={timeAgo(updatedAt)}
-        subtitle="Brand"
+        subtitle={t("library.cards.brand")}
         actions={
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
-                onClick={(e) => e.stopPropagation()}
-                aria-label={`Actions for ${dirName}`}
-              >
-                <DotsVertical size={14} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <DropdownMenuItem onClick={onBrowse}>
-                <Folder size={14} />
-                Browse files
-              </DropdownMenuItem>
-              {onDelete && (
-                <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                  <Trash01 size={14} />
-                  Delete
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <EntryActionsMenu
+            label={dirName}
+            onBrowse={onBrowse}
+            onDelete={onDelete}
+            t={t}
+          />
         }
+        t={t}
       />
       <div className="flex min-h-5 items-center gap-1.5">
-        {swatches.map((t) => (
+        {swatches.map((swatch) => (
           <span
-            key={t.name}
+            key={swatch.name}
             className="size-5 rounded-full border border-border/60"
-            style={{ backgroundColor: t.value }}
-            title={`${t.name}: ${t.value}`}
+            style={{ backgroundColor: swatch.value }}
+            title={`${swatch.name}: ${swatch.value}`}
           />
         ))}
       </div>
@@ -573,11 +569,7 @@ function LazyThumb({ children }: { children: ReactNode }) {
 function TextThumb({ url }: { url: string }) {
   const { data } = useQuery({
     queryKey: KEYS.fileText(url),
-    queryFn: async () => {
-      const res = await fetch(url, { credentials: "include" });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      return res.text();
-    },
+    queryFn: () => fetchText(url),
     staleTime: 60_000,
     retry: false,
   });
@@ -592,14 +584,7 @@ function TextThumb({ url }: { url: string }) {
 function CsvThumb({ url, ext }: { url: string; ext: string }) {
   const { data } = useQuery({
     queryKey: KEYS.csvThumb(url),
-    queryFn: async () => {
-      const res = await fetch(url, {
-        credentials: "include",
-        headers: { Range: "bytes=0-8191" },
-      });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
-      return res.text();
-    },
+    queryFn: () => fetchText(url, { headers: { Range: "bytes=0-8191" } }),
     staleTime: 60_000,
     retry: false,
   });
@@ -720,6 +705,7 @@ export function RecentFileCard(props: {
   onShare?: () => void;
   onDelete?: () => void;
 }) {
+  const t = useT();
   return (
     <CardShell onOpen={props.onOpen}>
       <CardHeader
@@ -739,8 +725,10 @@ export function RecentFileCard(props: {
             filename={props.filename}
             onShare={props.onShare}
             onDelete={props.onDelete}
+            t={t}
           />
         }
+        t={t}
       />
       <Thumb
         filename={props.filename}

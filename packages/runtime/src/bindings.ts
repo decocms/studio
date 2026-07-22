@@ -76,7 +76,7 @@ export function injectBindingSchemas(
  * Function that returns Zod Schema for a binding field.
  *
  * When `binding` is provided, the tool definitions are embedded as `__binding`
- * in the JSON Schema so the Mesh UI can filter connections by tool capabilities.
+ * in the JSON Schema so the Studio UI can filter connections by tool capabilities.
  *
  * @example
  * ```ts

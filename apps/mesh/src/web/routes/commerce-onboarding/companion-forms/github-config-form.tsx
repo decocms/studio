@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import {
+  type ConnectionEntity,
+  getCommerceDiscoveryAgentId,
+  type GithubRepo,
+  WellKnownOrgMCPId,
+} from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   Form,
@@ -16,16 +21,28 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
 import { SearchSm } from "@untitledui/icons";
-import { KEYS } from "@/web/lib/query-keys";
+import { KEYS, invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
-import { fetchGithubInstallations } from "@/web/lib/github-installations";
+import {
+  fetchGithubInstallations,
+  findGithubInstallation,
+} from "@/web/lib/github-installations";
+import { provisionRepoScopedGithubConnection } from "@/web/lib/provision-repo-scoped-github-connection";
+import {
+  parseRepoFullName,
+  planAgentConnections,
+  planRepoReuse,
+} from "./report-agent-repo-plan";
 import { unwrapToolResult } from "../companions-core.ts";
 import { SelectableList } from "./selectable-list.tsx";
 import { LoadingIndicator } from "../loading-indicator.tsx";
 import type { CompanionFormProps } from "./types.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const schema = z.object({
-  githubRepo: z.string().min(1, "Selecione um repositório"),
+  githubRepo: z
+    .string()
+    .min(1, "commerceOnboarding.githubConfigForm.selectRepository"),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -134,6 +151,7 @@ export function GitHubConfigForm({
   onDone,
   onIsPendingChange,
 }: CompanionFormProps) {
+  const t = useT();
   const queryClient = useQueryClient();
   // The repo is stored on the Commerce Discovery connection's state
   // (github_repo, owner/name) — the field the repo-audit skill reads at run
@@ -142,6 +160,12 @@ export function GitHubConfigForm({
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
+  // Applies the persisted repo to the form ONCE, the first time the prefill
+  // query resolves. selectedQuery only refetches after a successful save, so
+  // without this guard every render caused by the user picking a different
+  // repo would see the (still-stale) persisted value and immediately revert
+  // their selection back to it before they could hit Save.
+  const prefilledRef = useRef(false);
 
   // Prefill: the repo currently persisted on the CD connection.
   const selectedQuery = useQuery({
@@ -204,6 +228,144 @@ export function GitHubConfigForm({
           data: { configuration_state: merged },
         },
       });
+
+      // Mirror onto the Report Agent virtual MCP's `metadata.githubRepo` —
+      // `agentHasClonableSource` reads it to show the Preview/Code tabs and
+      // SANDBOX_START reads it to clone. A bare `{ owner, name, url }` clones
+      // anonymously (fails on a private store repo), so provision a repo-scoped
+      // GitHub connection (same path the repo picker uses) and store its
+      // `connectionId` so the clone is authenticated.
+      const parsed = parseRepoFullName(githubRepo);
+      if (!parsed) {
+        throw new Error(
+          t("commerceOnboarding.githubConfigForm.invalidRepository", {
+            repo: githubRepo,
+          }),
+        );
+      }
+      const { owner, name } = parsed;
+      const agentId = getCommerceDiscoveryAgentId(org.id);
+
+      const agentItem = unwrapToolResult<{
+        item: {
+          metadata?: { githubRepo?: GithubRepo | null } | null;
+          connections?: Array<{ connection_id: string }> | null;
+        } | null;
+      }>(
+        await selfClient.callTool({
+          name: "COLLECTION_VIRTUAL_MCP_GET",
+          arguments: { id: agentId },
+        }),
+      ).item;
+      const existingRepo = agentItem?.metadata?.githubRepo;
+      const existingConnections = agentItem?.connections ?? [];
+
+      // Reuse the existing repo-scoped connection when the same repo is
+      // re-saved so a no-op save doesn't orphan a fresh connection each time.
+      const reuse = planRepoReuse({ existingRepo, owner, name });
+
+      let repoConnectionId = reuse?.connectionId;
+      let installationId = reuse?.installationId;
+      // The connection we mint below, if any — deleted on a later failure so a
+      // partial save leaves nothing behind (the picker flow does the same).
+      let provisionedConnectionId: string | undefined;
+
+      if (!repoConnectionId) {
+        const { installations } = await fetchGithubInstallations(
+          (req) => selfClient.callTool(req),
+          connectionId,
+        );
+        const installation = findGithubInstallation(installations, owner);
+        if (!installation) {
+          throw new Error(
+            t("commerceOnboarding.githubConfigForm.noGithubInstallation", {
+              owner,
+            }),
+          );
+        }
+        installationId = installation.installationId;
+        const sourceConnection = unwrapToolResult<{
+          item: ConnectionEntity | null;
+        }>(
+          await selfClient.callTool({
+            name: "COLLECTION_CONNECTIONS_GET",
+            arguments: { id: connectionId },
+          }),
+        ).item;
+        if (!sourceConnection) {
+          throw new Error(
+            t("commerceOnboarding.githubConfigForm.githubConnectionNotFound"),
+          );
+        }
+        const { childConnectionId } = await provisionRepoScopedGithubConnection(
+          {
+            orgSlug: org.slug,
+            sourceConnection,
+            installationId,
+            owner,
+            repo: name,
+            githubCallTool: (req) => companionClient.callTool(req),
+            selfCallTool: (req) => selfClient.callTool(req),
+          },
+        );
+        repoConnectionId = childConnectionId;
+        provisionedConnectionId = childConnectionId;
+      }
+
+      // Aggregate the repo-scoped connection onto the agent — `git publish`
+      // (parseGithubRepoFromMetadata) only trusts `githubRepo.connectionId` when
+      // it's one of the agent's connections. A previous save may have linked a
+      // different repo whose connection now leaks (metadata overwrite does no
+      // cascade); planAgentConnections drops it from the list so the
+      // de-aggregation lands before its delete below (child_connection_id is
+      // ON DELETE RESTRICT, migration 026).
+      const { staleConnectionId, mergedConnections } = planAgentConnections({
+        existingRepo,
+        existingConnections,
+        repoConnectionId,
+      });
+
+      try {
+        await selfClient.callTool({
+          name: "COLLECTION_VIRTUAL_MCP_UPDATE",
+          arguments: {
+            id: agentId,
+            data: {
+              connections: mergedConnections,
+              metadata: {
+                githubRepo: {
+                  owner,
+                  name,
+                  url: `https://github.com/${githubRepo}`,
+                  installationId,
+                  connectionId: repoConnectionId,
+                },
+              },
+            },
+          },
+        });
+        if (staleConnectionId) {
+          await selfClient
+            .callTool({
+              name: "COLLECTION_CONNECTIONS_DELETE",
+              arguments: { id: staleConnectionId, force: true },
+            })
+            .catch(() => {});
+        }
+      } catch (err) {
+        // The connectionId lives only on the metadata we just failed to write,
+        // so the reuse guard can never recover it — delete it now, else every
+        // retry mints another orphan.
+        if (provisionedConnectionId) {
+          await selfClient
+            .callTool({
+              name: "COLLECTION_CONNECTIONS_DELETE",
+              arguments: { id: provisionedConnectionId, force: true },
+            })
+            .catch(() => {});
+        }
+        throw err;
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -212,6 +374,7 @@ export function GitHubConfigForm({
       await queryClient.invalidateQueries({
         queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
       });
+      invalidateVirtualMcpQueries(queryClient, org.id);
       onDone();
     },
   });
@@ -223,14 +386,17 @@ export function GitHubConfigForm({
     onIsPendingChange?.(isPending);
   }, [isPending, onIsPendingChange]);
 
+  const selectedRepo = selectedQuery.data ?? "";
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- prefill the form once from the persisted repo (an async query result), not on every render
+  useEffect(() => {
+    if (!selectedQuery.isSuccess || prefilledRef.current) return;
+    prefilledRef.current = true;
+    if (selectedQuery.data) form.setValue("githubRepo", selectedQuery.data);
+  }, [selectedQuery.isSuccess, selectedQuery.data, form]);
+
   const handleSubmit = form.handleSubmit(async (data) => {
     saveMutation.mutate(data.githubRepo);
   });
-
-  const selectedRepo = selectedQuery.data ?? "";
-  if (selectedRepo && form.getValues("githubRepo") !== selectedRepo) {
-    form.setValue("githubRepo", selectedRepo);
-  }
 
   const results = reposQuery.data?.repos ?? [];
   const failedAccounts = reposQuery.data?.failed ?? 0;
@@ -254,9 +420,9 @@ export function GitHubConfigForm({
     totalAccounts > 0 && failedAccounts === totalAccounts;
   const searchWarning =
     reposQuery.isError || allAccountsFailed
-      ? "Não foi possível buscar os repositórios (erro ou tempo esgotado). Tente novamente ou digite o repositório no formato owner/nome."
+      ? t("commerceOnboarding.githubConfigForm.searchFailedTotal")
       : failedAccounts > 0
-        ? "Parte da busca falhou — alguns repositórios podem não ter aparecido. Tente novamente ou digite owner/nome."
+        ? t("commerceOnboarding.githubConfigForm.searchFailedPartial")
         : null;
 
   return (
@@ -271,15 +437,21 @@ export function GitHubConfigForm({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           disabled={isPending}
-          placeholder="Buscar repositório"
-          aria-label="Buscar repositório"
+          placeholder={t(
+            "commerceOnboarding.githubConfigForm.searchRepositoryPlaceholder",
+          )}
+          aria-label={t(
+            "commerceOnboarding.githubConfigForm.searchRepositoryLabel",
+          )}
           className="h-8 pl-8"
         />
       </div>
 
       {reposQuery.isLoading ? (
         <div className="flex min-h-[160px] items-center justify-center">
-          <LoadingIndicator label="Carregando repositórios..." />
+          <LoadingIndicator
+            label={t("commerceOnboarding.githubConfigForm.loadingRepositories")}
+          />
         </div>
       ) : (
         <>
@@ -291,8 +463,7 @@ export function GitHubConfigForm({
           {options.length === 0 ? (
             !searchWarning && (
               <p className="text-sm text-muted-foreground">
-                Nenhum repositório encontrado. Digite o nome do repositório
-                (owner/nome) para buscar.
+                {t("commerceOnboarding.githubConfigForm.noRepositoriesFound")}
               </p>
             )
           ) : (
@@ -328,7 +499,7 @@ export function GitHubConfigForm({
         <p role="alert" className="text-sm text-destructive">
           {saveMutation.error instanceof Error
             ? saveMutation.error.message
-            : "Não foi possível salvar a configuração"}
+            : t("commerceOnboarding.githubConfigForm.failedToSave")}
         </p>
       )}
 
@@ -339,10 +510,12 @@ export function GitHubConfigForm({
           onClick={onDone}
           disabled={isPending}
         >
-          Cancelar
+          {t("commerceOnboarding.githubConfigForm.cancel")}
         </Button>
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Salvando..." : "Salvar"}
+          {isPending
+            ? t("commerceOnboarding.githubConfigForm.saving")
+            : t("commerceOnboarding.githubConfigForm.save")}
         </Button>
       </DialogFooter>
     </form>

@@ -6,6 +6,7 @@ import {
 } from "@/web/components/organization-choice";
 import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -159,6 +160,7 @@ function OnboardingContent({
   email: string;
   userName?: string | null;
 }) {
+  const t = useT();
   const emailDomain = email.split("@")[1]?.toLowerCase() ?? "";
   const isCorporateEmail =
     !!emailDomain && !GENERIC_EMAIL_DOMAINS.has(emailDomain);
@@ -168,17 +170,24 @@ function OnboardingContent({
     ? domainLabel
     : (userName?.split(" ")[0] ?? "");
 
-  const { data: domainLookup, isLoading: domainLoading } =
-    useQuery<DomainLookupResult>({
-      queryKey: KEYS.domainLookup(emailDomain),
-      queryFn: async () => {
-        const res = await fetch("/api/auth/custom/domain-lookup", {
-          credentials: "include",
-        });
-        return res.json();
-      },
-      enabled: isCorporateEmail,
-    });
+  const {
+    data: domainLookup,
+    isLoading: domainLoading,
+    isError: domainLookupFailed,
+    refetch: refetchDomainLookup,
+  } = useQuery<DomainLookupResult>({
+    queryKey: KEYS.domainLookup(emailDomain),
+    queryFn: async () => {
+      const res = await fetch("/api/auth/custom/domain-lookup", {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to look up domain (${res.status})`);
+      }
+      return res.json();
+    },
+    enabled: isCorporateEmail,
+  });
 
   // Track which orgs the user has already requested, per-slug, to prevent
   // duplicate access requests across the shared organization picker.
@@ -192,8 +201,31 @@ function OnboardingContent({
         <div className="flex items-center gap-2 py-4">
           <Loading01 size={14} className="animate-spin text-muted-foreground" />
           <span className="text-sm text-muted-foreground">
-            Checking {emailDomain}...
+            {t("routes.onboarding.checking", { domain: emailDomain })}
           </span>
+        </div>
+      </AuthSplitLayout>
+    );
+  }
+
+  // A failed lookup must not silently fall through to "no matching org" —
+  // that would route a corporate-domain user straight into creating a
+  // duplicate organization instead of joining the one they already have
+  // access to.
+  if (domainLookupFailed) {
+    return (
+      <AuthSplitLayout>
+        <div className="flex flex-col items-start gap-3 py-4">
+          <span className="text-sm text-muted-foreground">
+            {t("routes.onboarding.checkFailed", { domain: emailDomain })}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetchDomainLookup()}
+          >
+            {t("routes.onboarding.retry")}
+          </Button>
         </div>
       </AuthSplitLayout>
     );
@@ -242,14 +274,14 @@ function OnboardingContent({
             title={
               canAutoJoin
                 ? discoverableOrgs.length === 1
-                  ? "You have access to an organization"
-                  : "You have access to multiple organizations"
-                : "Request access to an organization"
+                  ? t("routes.onboarding.accessSingle")
+                  : t("routes.onboarding.accessMultiple")
+                : t("routes.onboarding.requestAccess")
             }
             description={
               canAutoJoin
-                ? "Your email domain matches an existing organization."
-                : "Your email domain matches an organization that requires admin approval to join."
+                ? t("routes.onboarding.emailMatchesOrg")
+                : t("routes.onboarding.emailMatchesOrgApproval")
             }
           />
           <OrganizationChoice
@@ -268,7 +300,7 @@ function OnboardingContent({
             className="text-sm text-muted-foreground hover:text-foreground transition-colors text-center"
             onClick={() => setCreatingNewOrg(true)}
           >
-            Create a new organization instead
+            {t("routes.onboarding.createNewOrg")}
           </button>
         </div>
       </AuthSplitLayout>
@@ -301,6 +333,7 @@ function SetupForm({
   allowDomainClaim?: boolean;
   onBack?: () => void;
 }) {
+  const t = useT();
   const defaultLogo =
     isCorporateEmail && allowDomainClaim
       ? `https://www.google.com/s2/favicons?domain=${emailDomain}&sz=128`
@@ -332,7 +365,7 @@ function SetupForm({
     },
     onSuccess: (data) => {
       if (!data.slug) return;
-      const stepsCount = SETUP_STEPS.filter(
+      const stepsCount = SETUP_STEPS_CONFIG.filter(
         (s) => claimDomain || !s.claimOnly,
       ).length;
       const animationDuration = STEP_DELAY_MS * (stepsCount - 1) + 800;
@@ -396,15 +429,19 @@ function SetupForm({
     <AuthSplitLayout>
       <form onSubmit={handleSubmit} className="grid gap-10">
         <OnboardingHeader
-          title="Welcome to deco"
-          description="Set up your organization to get started"
+          title={t("routes.onboarding.welcomeTitle")}
+          description={t("routes.onboarding.setupDescription")}
         />
 
         <div className="rounded-xl card-shadow bg-background dark:bg-input/30 divide-y divide-border">
           <div className="flex items-center justify-between gap-4 p-4">
             <div className="space-y-0.5">
-              <p className="text-sm font-medium">Organization avatar</p>
-              <p className="text-xs text-muted-foreground">Optional</p>
+              <p className="text-sm font-medium">
+                {t("routes.onboarding.orgAvatar")}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("routes.onboarding.optional")}
+              </p>
             </div>
             <LogoUpload
               value={logo}
@@ -418,13 +455,15 @@ function SetupForm({
 
           <div className="flex items-center justify-between gap-4 p-4">
             <Label htmlFor="org-name" className="text-sm font-medium shrink-0">
-              Organization name
+              {t("routes.onboarding.orgName")}
             </Label>
             <Input
               id="org-name"
               value={orgName}
               onChange={(e) => setOrgName(e.target.value)}
-              placeholder={defaultName || "My Organization"}
+              placeholder={
+                defaultName || t("routes.onboarding.myOrganizationPlaceholder")
+              }
               disabled={isSubmitting || domainSetupMutation.isPending}
               className="h-10 max-w-[220px]"
             />
@@ -434,10 +473,12 @@ function SetupForm({
             <div className="flex items-center justify-between gap-4 p-4">
               <div className="space-y-0.5">
                 <p className="text-sm font-medium">
-                  Allow @{emailDomain} sign-ups
+                  {t("routes.onboarding.allowSignups", { domain: emailDomain })}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Anyone with a verified @{emailDomain} email can join this org
+                  {t("routes.onboarding.allowSignupsDescription", {
+                    domain: emailDomain,
+                  })}
                 </p>
               </div>
               <Switch
@@ -453,7 +494,7 @@ function SetupForm({
           <p className="text-xs text-destructive">
             {submissionError instanceof Error
               ? submissionError.message
-              : "Failed to create organization"}
+              : t("routes.onboarding.failedCreateOrg")}
           </p>
         )}
 
@@ -465,10 +506,11 @@ function SetupForm({
         >
           {isSubmitting || domainSetupMutation.isPending ? (
             <span className="flex items-center gap-2">
-              <Loading01 size={14} className="animate-spin" /> Creating...
+              <Loading01 size={14} className="animate-spin" />{" "}
+              {t("routes.onboarding.creating")}
             </span>
           ) : (
-            "Continue"
+            t("routes.onboarding.continue")
           )}
         </Button>
 
@@ -478,7 +520,7 @@ function SetupForm({
             className="text-sm text-muted-foreground hover:text-foreground transition-colors text-center"
             onClick={onBack}
           >
-            See available organizations
+            {t("routes.onboarding.seeAvailableOrgs")}
           </button>
         )}
       </form>
@@ -497,18 +539,19 @@ function LogoUpload({
   onChange: (dataUrl: string | null) => void;
   disabled: boolean;
 }) {
+  const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("Image must be smaller than 2MB");
+      toast.error(t("routes.onboarding.imageTooLarge"));
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
     const reader = new FileReader();
-    reader.onerror = () => toast.error("Failed to read image");
+    reader.onerror = () => toast.error(t("routes.onboarding.failedReadImage"));
     reader.onloadend = () => {
       if (reader.result) onChange(reader.result as string);
       if (inputRef.current) inputRef.current.value = "";
@@ -522,7 +565,7 @@ function LogoUpload({
       onClick={() => inputRef.current?.click()}
       disabled={disabled}
       className="relative rounded-lg overflow-hidden ring-1 ring-border hover:ring-2 hover:ring-ring/40 transition-all disabled:opacity-50 group"
-      aria-label="Upload organization logo"
+      aria-label={t("routes.onboarding.uploadOrgLogo")}
     >
       <input
         ref={inputRef}
@@ -549,12 +592,28 @@ function LogoUpload({
 // Setup Workflow — animated step progression
 // ============================================================================
 
-const SETUP_STEPS = [
-  { icon: Building02, label: "Creating organization", claimOnly: false },
-  { icon: Globe04, label: "Claiming email domain", claimOnly: true },
-  { icon: Users03, label: "Enabling auto-join for your team", claimOnly: true },
-  { icon: Palette, label: "Extracting brand context", claimOnly: false },
-];
+const SETUP_STEPS_CONFIG = [
+  {
+    icon: Building02,
+    labelKey: "routes.onboarding.step.creatingOrg",
+    claimOnly: false,
+  },
+  {
+    icon: Globe04,
+    labelKey: "routes.onboarding.step.claimingDomain",
+    claimOnly: true,
+  },
+  {
+    icon: Users03,
+    labelKey: "routes.onboarding.step.enablingAutoJoin",
+    claimOnly: true,
+  },
+  {
+    icon: Palette,
+    labelKey: "routes.onboarding.step.extractingBrand",
+    claimOnly: false,
+  },
+] as const;
 
 const STEP_DELAY_MS = 1500;
 
@@ -578,8 +637,9 @@ function SetupWorkflow({
   claimDomain: boolean;
   logoUrl?: string | null;
 }) {
+  const t = useT();
   // Filter steps based on whether the user is claiming the domain
-  const steps = SETUP_STEPS.filter((s) => claimDomain || !s.claimOnly);
+  const steps = SETUP_STEPS_CONFIG.filter((s) => claimDomain || !s.claimOnly);
 
   const [activeStep, setActiveStep] = useState(0);
   const didSchedule = useRef(false);
@@ -599,8 +659,8 @@ function SetupWorkflow({
   return (
     <div className="grid gap-10">
       <OnboardingHeader
-        title={`Setting up ${orgName}`}
-        description={`Getting everything ready from ${domain}`}
+        title={t("routes.onboarding.settingUp", { orgName })}
+        description={t("routes.onboarding.gettingReady", { domain })}
         logoUrl={logoUrl ?? null}
         logoFallback={orgName.charAt(0).toUpperCase() || "?"}
       />
@@ -611,10 +671,11 @@ function SetupWorkflow({
           const isActive = i === activeStep;
           const isDone = i < activeStep;
           const color = BRAND_PALETTE[i % BRAND_PALETTE.length]!;
+          const stepLabel = t(step.labelKey);
 
           return (
             <li
-              key={step.label}
+              key={step.labelKey}
               className="flex items-center gap-4 motion-safe:transition-opacity motion-safe:duration-300 motion-safe:ease-out"
               style={{ opacity: isDone || isActive ? 1 : 0.4 }}
             >
@@ -667,7 +728,7 @@ function SetupWorkflow({
                     : "text-muted-foreground",
                 )}
               >
-                {step.label}
+                {stepLabel}
               </span>
             </li>
           );

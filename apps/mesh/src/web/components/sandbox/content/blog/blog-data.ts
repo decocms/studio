@@ -193,6 +193,91 @@ export function blogBlockFilePath(key: string): string {
   return `.deco/blocks/${encodeURIComponent(key)}.json`;
 }
 
+// ------------------ Post relations (authors/categories picker) ------------------
+
+export interface RelationPickerState {
+  /** One option per record, plus one per unresolvable selected ref. */
+  options: Array<{ value: string; label: string }>;
+  /** The current selection expressed as option values. */
+  selectedValues: string[];
+  /** Map the picker's next values back to the denormalized refs to store. */
+  refsForValues: (values: string[]) => unknown[];
+}
+
+/**
+ * State for the multi-select that links a post to Author/Category records.
+ *
+ * Options are keyed by the record's decofile key — the only identity that is
+ * guaranteed present and unique. The denormalized refs stored on the post
+ * (`{ name, email }` / `{ name, slug }`, or plain strings) resolve back to a
+ * record by the identity field when present, falling back to the name —
+ * authors created in the UI start with an empty email, and without the
+ * fallback their selection would never display. Refs that resolve to no
+ * record at all (record deleted, identity renamed) become synthetic options,
+ * so they stay visible and unselectable instead of being silently dropped by
+ * the next change.
+ */
+export function relationPickerState({
+  records,
+  selected,
+  valueField,
+  toRef,
+}: {
+  records: Array<{ key: string; payload: Record<string, unknown> }>;
+  selected: unknown;
+  /** Identity field of the denormalized ref (authors: email, categories: slug). */
+  valueField: string;
+  /** Build the denormalized ref stored on the post for a picked record. */
+  toRef: (payload: Record<string, unknown>) => Record<string, unknown>;
+}): RelationPickerState {
+  const refs = Array.isArray(selected) ? selected : [];
+  const refValue = (ref: unknown): string =>
+    typeof ref === "string" ? ref : str(asRecord(ref)?.[valueField]);
+  const refName = (ref: unknown): string =>
+    typeof ref === "string" ? ref : str(asRecord(ref)?.name);
+
+  const recordFor = (ref: unknown) => {
+    const value = refValue(ref);
+    const byValue = value
+      ? records.find(({ payload }) => str(payload[valueField]) === value)
+      : undefined;
+    if (byValue) return byValue;
+    const name = refName(ref);
+    return name
+      ? records.find(({ payload }) => str(payload.name) === name)
+      : undefined;
+  };
+
+  const options = records.map(({ key, payload }) => ({
+    value: key,
+    label: str(payload.name) || str(payload[valueField]) || key,
+  }));
+
+  const unresolved = new Map<string, unknown>();
+  const selectedValues: string[] = [];
+  refs.forEach((ref, index) => {
+    const match = recordFor(ref);
+    if (match) {
+      if (!selectedValues.includes(match.key)) selectedValues.push(match.key);
+      return;
+    }
+    const value = `unresolved:${index}`;
+    unresolved.set(value, ref);
+    selectedValues.push(value);
+    options.push({ value, label: refName(ref) || refValue(ref) || "Unknown" });
+  });
+
+  const refsForValues = (values: string[]): unknown[] =>
+    values
+      .map((value) => {
+        const record = records.find((r) => r.key === value);
+        return record ? toRef(record.payload) : unresolved.get(value);
+      })
+      .filter((ref) => ref !== undefined);
+
+  return { options, selectedValues, refsForValues };
+}
+
 // ------------------ Post metadata + category mutation ------------------
 
 /** A single category reference, denormalized on a post payload. */
@@ -213,6 +298,8 @@ export interface PostMeta {
   categorySlugs: string[];
   /** Emails of the post's authors (denormalized). */
   authorEmails: string[];
+  /** Required fields the post is missing (empty when valid). */
+  missing: string[];
 }
 
 function toArray(value: unknown): unknown[] {
@@ -237,6 +324,25 @@ function authorEmailOf(item: unknown): string {
 }
 
 /**
+ * Which required fields a post payload is missing (empty ⇒ valid). A post with
+ * no title/slug/excerpt or zero categories is incomplete — the list marks it
+ * and the editor blocks preview.
+ */
+export function missingPostFields(payload: Record<string, unknown>): string[] {
+  const missing: string[] = [];
+  if (!str(payload.title).trim()) missing.push("Title");
+  if (!str(payload.slug).trim()) missing.push("Slug");
+  if (
+    toArray(payload.categories).map(categorySlugOf).filter(Boolean).length === 0
+  ) {
+    missing.push("Category");
+  }
+  if (!str(payload.excerpt).trim()) missing.push("Excerpt");
+  if (!str(payload.image).trim()) missing.push("Cover image");
+  return missing;
+}
+
+/**
  * All posts paired with the metadata the posts list filters and sorts on.
  * Reads the denormalized `categories`/`authors` arrays, tolerating either
  * strings or `{slug}`/`{email}` objects.
@@ -253,6 +359,7 @@ export function listPostsWithMeta(
       .map(categorySlugOf)
       .filter(Boolean),
     authorEmails: toArray(payload.authors).map(authorEmailOf).filter(Boolean),
+    missing: missingPostFields(payload),
   }));
 }
 
@@ -352,6 +459,18 @@ export function removeCategoryFromPost(
   };
 }
 
+/**
+ * Stamp a post payload as modified now (full ISO date-time). Apply on every
+ * write that changes an existing post — editor autosave, category cascades,
+ * bulk updates — but NOT on create/duplicate, where `dateModified` would just
+ * echo the creation date. Pure: returns a new payload.
+ */
+export function stampPostModified(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  return { ...payload, dateModified: new Date().toISOString() };
+}
+
 function randomHex(length: number): string {
   const bytes = new Uint8Array(Math.ceil(length / 2));
   crypto.getRandomValues(bytes);
@@ -387,6 +506,7 @@ export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
     case "authors":
       return {
         name: "New author",
+        type: "Person",
         email: "",
         jobTitle: "",
         company: "",

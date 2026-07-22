@@ -1,5 +1,5 @@
 /**
- * End-to-end roundtrip for mesh's object storage tools against real S3.
+ * End-to-end roundtrip for studio's object storage tools against real S3.
  *
  * In CI (e2e.yml) the running app is configured with S3_* env vars pointing at
  * a MinIO container, so the OBJECT_STORAGE binding resolves to the production

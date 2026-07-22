@@ -1,7 +1,7 @@
 /**
- * Thin sync layer between mesh's `automation_triggers` table and DBOS schedules.
+ * Thin sync layer between studio's `automation_triggers` table and DBOS schedules.
  *
- * Mesh treats `automation_triggers` as the source of truth (it carries
+ * Studio treats `automation_triggers` as the source of truth (it carries
  * user-facing config: cron expression, params, etc.). DBOS owns the actual
  * scheduling, recovery, and concurrency.
  *
@@ -19,7 +19,7 @@ import {
   type FireAutomationOutcome,
 } from "./dbos-workflow";
 
-/** Build the DBOS schedule name from a mesh trigger row. */
+/** Build the DBOS schedule name from a studio trigger row. */
 export function scheduleNameForTrigger(triggerId: string): string {
   return `auto-trigger-${triggerId}`;
 }

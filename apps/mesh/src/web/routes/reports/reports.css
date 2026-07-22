@@ -86,142 +86,166 @@
   animation: logoCycleEnter 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
-/* ── CTA "unlock" reveal ────────────────────────────────────────────────
-   The closing CTA's hero: the 3-D gift box slides in, the lid flips open,
-   god-rays burst from the opening, and the report cards fly out. Gated on
-   [data-play] and React-keyed so it replays each time the slide re-enters. */
-.unlock-rays,
-.unlock-halo {
+/* ── CTA dimension marquee ────────────────────────────────────────────────
+   The closing slide runs the audited dimensions as a slow, endless marquee of
+   pills. The track holds the list twice so the -50% loop is seamless. */
+.report-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: report-marquee 40s linear infinite;
+}
+@keyframes report-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .report-marquee-track {
+    animation: none;
+  }
+}
+
+/* ── CTA task stream ──────────────────────────────────────────────────────
+   The left-hand backlog of fixes drifts downward endlessly. The track holds
+   the list twice so the loop is seamless. */
+.report-task-track {
+  display: flex;
+  flex-direction: column;
+  animation: report-task-fall 22s linear infinite;
+}
+@keyframes report-task-fall {
+  from {
+    transform: translateY(-50%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .report-task-track {
+    animation: none;
+  }
+}
+
+/* ── CTA diagnostic device: scan line + floating finding badges ───────────
+   The closing slide shows a browser-framed store screenshot being scanned —
+   a lime line sweeps top→bottom and three finding badges pop in and float.
+   Ported from the decocms landing's HeroDiagnostic. Gated on [data-play] so it
+   only runs while the CTA slide is on screen. */
+.report-scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(208, 236, 26, 0.9) 40%,
+    rgba(208, 236, 26, 1) 50%,
+    rgba(208, 236, 26, 0.9) 60%,
+    transparent
+  );
+  box-shadow: 0 0 10px 5px rgba(208, 236, 26, 0.3);
   opacity: 0;
 }
-
-[data-play="true"] .unlock-rays {
-  animation: unlockRays 950ms cubic-bezier(0.19, 1, 0.22, 1) 960ms both;
+[data-play="true"] .report-scan-line {
+  animation: report-scan 4s ease-in-out 0.6s infinite;
 }
-[data-play="true"] .unlock-halo {
-  animation: unlockHalo 900ms cubic-bezier(0.19, 1, 0.22, 1) 1010ms both;
-}
-
-@keyframes unlockRays {
+@keyframes report-scan {
   0% {
-    opacity: 0;
-    transform: translateX(-50%) scale(0.55) rotate(-8deg);
-  }
-  22% {
-    opacity: 0.85;
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(-50%) scale(1.9) rotate(20deg);
-  }
-}
-@keyframes unlockHalo {
-  0% {
-    opacity: 0;
-    transform: translateX(-50%) scale(0.5);
-  }
-  45% {
-    opacity: 0.8;
-  }
-  100% {
-    opacity: 0.32;
-    transform: translateX(-50%) scale(1);
-  }
-}
-
-/* ── Box animation (3-D gift-box opener) ─────────────────────────────────
-   The box uses CSS preserve-3d: 3 visible faces (front, right, inside floor)
-   plus a lid wrapper that positions the lid at the top of the cube. The
-   lid-face is animated independently, pivoting around its back edge. */
-.unlock-box,
-.unlock-box-glow,
-.unlock-box-icon,
-.unlock-box-sources {
-  opacity: 0;
-}
-
-[data-play="true"] .unlock-box {
-  animation: unlockBoxEnter 360ms cubic-bezier(0.34, 1.56, 0.64, 1) 800ms both;
-}
-[data-play="true"] .unlock-box-sources {
-  animation: unlockBoxEnter 360ms cubic-bezier(0.34, 1.56, 0.64, 1) 900ms both;
-}
-[data-play="true"] .unlock-box-lid-face {
-  animation: unlockBoxLidOpen 440ms cubic-bezier(0.34, 1.1, 0.64, 1) 980ms both;
-}
-[data-play="true"] .unlock-box-glow {
-  animation: unlockBoxGlow 500ms ease-out 1060ms both;
-}
-[data-play="true"] .unlock-box-icon {
-  animation: unlockBoxIcon 460ms cubic-bezier(0.34, 1.45, 0.64, 1) both;
-}
-
-@keyframes unlockBoxEnter {
-  0% {
-    opacity: 0;
-    transform: translateY(10px) scale(0.85);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-/* Lid starts horizontal (closed). rotateX(+) with transform-origin 50% 0%
-   swings the front edge upward — the back edge stays fixed as the hinge. */
-@keyframes unlockBoxLidOpen {
-  0% {
-    transform: rotateX(0deg);
-  }
-  72% {
-    transform: rotateX(138deg);
-  }
-  100% {
-    transform: rotateX(130deg);
-  }
-}
-@keyframes unlockBoxGlow {
-  0% {
+    top: 0;
     opacity: 0;
   }
-  40% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.6;
-  }
-}
-@keyframes unlockBoxIcon {
-  0% {
-    opacity: 0;
-    transform: translateY(56px) translateX(0px) scale(0.5);
-  }
-  28% {
+  5% {
     opacity: 1;
   }
   62% {
+    top: 100%;
     opacity: 1;
-    transform: translateY(-10px) translateX(var(--icon-dx, 0px)) scale(1.07);
   }
+  68%,
   100% {
-    opacity: 1;
-    transform: translateY(0px) translateX(var(--icon-dx, 0px)) scale(1);
+    top: 100%;
+    opacity: 0;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  [data-play="true"] .unlock-halo,
-  [data-play="true"] .unlock-box,
-  [data-play="true"] .unlock-box-icon,
-  [data-play="true"] .unlock-box-glow,
-  [data-play="true"] .unlock-box-sources {
-    animation: none;
-    opacity: 1;
-    transform: none;
+.report-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.report-badge {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 8px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: #1a1a1a;
+  opacity: 0;
+}
+[data-play="true"] .report-badge-1 {
+  animation:
+    report-badge-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 1s forwards,
+    report-float 3.5s ease-in-out 1.5s infinite;
+}
+[data-play="true"] .report-badge-2 {
+  animation:
+    report-badge-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 1.5s forwards,
+    report-float 3.5s ease-in-out 2s infinite;
+}
+[data-play="true"] .report-badge-3 {
+  animation:
+    report-badge-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 2s forwards,
+    report-float 3.5s ease-in-out 2.5s infinite;
+}
+@keyframes report-badge-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82) translateY(5px);
   }
-  [data-play="true"] .unlock-rays,
-  [data-play="true"] .unlock-box-lid-face {
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes report-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-play="true"] .report-scan-line {
     animation: none;
     opacity: 0;
+  }
+  [data-play="true"] .report-badge-1,
+  [data-play="true"] .report-badge-2,
+  [data-play="true"] .report-badge-3 {
+    animation: none;
+    opacity: 1;
   }
 }
 

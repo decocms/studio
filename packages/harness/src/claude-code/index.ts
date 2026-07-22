@@ -4,7 +4,7 @@
  *
  * Unlike Decopilot, this harness:
  *  - Does NOT register built-in tools (the CLI manages its own tools and
- *    reaches mesh's MCP endpoint directly).
+ *    reaches studio's MCP endpoint directly).
  *  - Does NOT build a Decopilot-style system prompt or tool catalog; it only
  *    appends CLI-safe workspace/instruction context through the SDK's
  *    `systemPrompt` preset.

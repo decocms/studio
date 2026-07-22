@@ -33,6 +33,24 @@ interface DomainRequestJoinResult extends DomainJoinResult {
   alreadyMember: boolean;
 }
 
+async function postDomainAction<T extends DomainJoinResult>(
+  url: string,
+  organizationSlug: string,
+  fallbackError: string,
+): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ organizationSlug }),
+  });
+  const data: T = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || fallbackError);
+  }
+  return data;
+}
+
 export function OrganizationChoice({
   organizations,
   domain,
@@ -54,16 +72,11 @@ export function OrganizationChoice({
 
   const joinOrgMutation = useMutation({
     mutationFn: async (organization: OrganizationChoiceItem) => {
-      const res = await fetch("/api/auth/custom/domain-join", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationSlug: organization.slug }),
-      });
-      const data: DomainJoinResult = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to join organization");
-      }
+      const data = await postDomainAction<DomainJoinResult>(
+        "/api/auth/custom/domain-join",
+        organization.slug,
+        "Failed to join organization",
+      );
       return { organization, slug: data.slug ?? organization.slug };
     },
     onSuccess: ({ organization, slug }) => {
@@ -73,16 +86,11 @@ export function OrganizationChoice({
 
   const requestJoinMutation = useMutation({
     mutationFn: async (organization: OrganizationChoiceItem) => {
-      const res = await fetch("/api/auth/custom/domain-request-join", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationSlug: organization.slug }),
-      });
-      const data: DomainRequestJoinResult = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to request access");
-      }
+      const data = await postDomainAction<DomainRequestJoinResult>(
+        "/api/auth/custom/domain-request-join",
+        organization.slug,
+        "Failed to request access",
+      );
       return {
         organization,
         slug: data.slug,

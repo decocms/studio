@@ -1,7 +1,7 @@
 /**
  * Tool Registry
  *
- * Central export for all MCP Mesh management tools.
+ * Central export for all Studio management tools.
  * Types are inferred from CORE_TOOLS — this is the source of truth.
  */
 
@@ -54,6 +54,7 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_ITEM_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_DELETE,
+  TaskBoardTools.TASK_BOARD_ITEM_PRS_GET,
   OrganizationTools.BRAND_CONTEXT_LIST,
   OrganizationTools.BRAND_CONTEXT_GET,
   OrganizationTools.BRAND_CONTEXT_CREATE,

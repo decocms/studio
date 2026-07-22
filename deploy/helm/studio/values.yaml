@@ -51,7 +51,10 @@ database:
 persistence:
   enabled: true
   accessMode: ReadWriteOnce
-  storageClass: "gp3"  # Empty string applies default storage class.
+  # Empty uses the cluster's default StorageClass (portable across local/kind/
+  # Rancher and managed clusters). Set explicitly (e.g. "gp3" on AWS, "efs" for
+  # ReadWriteMany) when you need a specific provisioner.
+  storageClass: ""
   size: 10Gi
   claimName: ""  # Optional: Specify existing PVC name
   distributed: false  # Mark as true if storage offers ReadWriteMany
@@ -209,8 +212,11 @@ terminationGracePeriodSeconds: 120
 # Optional lifecycle hooks (preStop, postStart)
 # lifecycle: {}
 
-nodeSelector:
-  kubernetes.io/arch: amd64
+# Empty by default so pods schedule on any node arch. Published images are
+# multi-arch (amd64 + arm64), so this works on Apple Silicon and arm64 nodes
+# out of the box. Pin an arch only when your cluster requires it,
+# e.g. { kubernetes.io/arch: amd64 }.
+nodeSelector: {}
 
 tolerations: []
 # Example:

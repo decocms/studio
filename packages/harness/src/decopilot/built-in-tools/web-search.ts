@@ -6,7 +6,7 @@
  * progress event to the UI, and shapes the terminal `ResearchResult` into the
  * tool result. All provider/DB coupling (streaming Perplexity path, durable
  * Gemini Deep Research lifecycle over `async_research_jobs`) lives in the
- * cluster's `researchJob` hook impl (mesh-owned; see
+ * cluster's `researchJob` hook impl (studio-owned; see
  * `createClusterResearchJob` in `cluster-research-job.ts`).
  *
  * Capability gating = hook absence: when `deps.researchJob` is undefined

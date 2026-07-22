@@ -2,6 +2,7 @@ import { invalidateOrganizationListCache } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { track } from "@/web/lib/posthog-client";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import {
   AlertDialog,
@@ -25,6 +26,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 export function DeleteOrganizationSection() {
+  const t = useT();
   const { org } = useProjectContext();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmName, setConfirmName] = useState("");
@@ -47,7 +49,9 @@ export function DeleteOrganizationSection() {
       // back to the just-deleted org.
       invalidateOrganizationListCache();
 
-      toast.success("Organization deleted");
+      toast.success(
+        t("settings.deleteOrganizationSection.organizationDeleted"),
+      );
       // Hard redirect — clears Better Auth nanostores atoms (useListOrganizations)
       // which can't be invalidated via TanStack Query. Full reload is fine for
       // a destructive org-delete action.
@@ -57,7 +61,7 @@ export function DeleteOrganizationSection() {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to delete organization",
+          : t("settings.deleteOrganizationSection.failedToDeleteOrganization"),
       );
     },
   });
@@ -65,13 +69,19 @@ export function DeleteOrganizationSection() {
   return (
     <>
       <SettingsSection
-        title="Danger Zone"
-        description="Irreversible actions that affect your entire organization."
+        title={t("settings.deleteOrganizationSection.dangerZone")}
+        description={t(
+          "settings.deleteOrganizationSection.irreversibleActionsDescription",
+        )}
       >
         <SettingsCard className="border-destructive/40">
           <SettingsCardItem
-            title="Delete organization"
-            description="Permanently delete this organization and all of its data. This action cannot be undone."
+            title={t(
+              "settings.deleteOrganizationSection.deleteOrganizationTitle",
+            )}
+            description={t(
+              "settings.deleteOrganizationSection.deleteOrganizationDescription",
+            )}
             action={
               <Button
                 variant="destructive"
@@ -79,7 +89,7 @@ export function DeleteOrganizationSection() {
                 onClick={() => setConfirmOpen(true)}
                 disabled={deleteMutation.isPending}
               >
-                Delete
+                {t("settings.deleteOrganizationSection.deleteButton")}
               </Button>
             }
           />
@@ -95,22 +105,22 @@ export function DeleteOrganizationSection() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Organization?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t(
+                "settings.deleteOrganizationSection.deleteOrganizationQuestion",
+              )}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div>
                 <p>
-                  This will permanently delete all data associated with{" "}
-                  <span className="font-medium text-foreground">
-                    {org.name}
-                  </span>
-                  . This action cannot be undone.
+                  {t("settings.deleteOrganizationSection.deleteWarning", {
+                    organizationName: org.name,
+                  })}
                 </p>
                 <p className="mt-3 mb-1.5">
-                  Type{" "}
-                  <span className="font-medium text-foreground">
-                    {org.name}
-                  </span>{" "}
-                  to confirm:
+                  {t("settings.deleteOrganizationSection.typeToConfirm", {
+                    organizationName: org.name,
+                  })}
                 </p>
                 <Input
                   value={confirmName}
@@ -122,13 +132,19 @@ export function DeleteOrganizationSection() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("settings.deleteOrganizationSection.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteMutation.mutate()}
               disabled={confirmName !== org.name || deleteMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
             >
-              {deleteMutation.isPending ? "Deleting…" : "Delete organization"}
+              {deleteMutation.isPending
+                ? t("settings.deleteOrganizationSection.deleting")
+                : t(
+                    "settings.deleteOrganizationSection.deleteOrganizationAction",
+                  )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

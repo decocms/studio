@@ -54,18 +54,17 @@ import { resolveSubmitSettings } from "./resolve-submit-settings";
 import {
   isDeepResearchModel,
   isQuickSearchModel,
-  pickSimpleModeDefaults,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t";
 
 import {
   useAiProviderKeys,
   useAiProviderModels,
-  type AiProviderKey,
   type AiProviderModel,
 } from "../../hooks/collections/use-ai-providers";
 import { useContext as useContextHook } from "../../hooks/use-context";
@@ -130,6 +129,13 @@ import { textFromParts } from "./queue-items";
 import { useMessageQueueActions } from "./use-message-queue";
 import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
+import {
+  findModel,
+  pickFallbackChatModel,
+  resolveActiveTier,
+  type ModelRef,
+  type SimpleTier,
+} from "./resolve-chat-model";
 
 // ============================================================================
 // Context Types
@@ -262,92 +268,6 @@ export interface ChatPrefsContextValue {
   pendingHarnessId: HarnessId | null;
   /** Derived from `pendingAgentOption`. Read-only. */
   pendingSandboxProviderKind: SandboxProviderKind | null;
-}
-
-// ============================================================================
-// Model resolution helpers (shared across chat / image / deep-research paths)
-// ============================================================================
-
-type ModelRef = { keyId: string; modelId: string };
-type SimpleTier = "fast" | "smart" | "thinking";
-
-/**
- * Resolve a stored ModelRef against the currently available keys and models.
- * Returns null when the ref's key no longer exists. Match is by `modelId`
- * only within `allModels` — the API-returned model objects don't carry
- * `keyId` (it's a client-side-only field), so we attach it ourselves.
- * When the model isn't in the provided list (list still loading, or list
- * scoped to a different credential), synthesize a minimal AiProviderModel
- * from the ref so callers always get a routable `{ keyId, modelId }`.
- */
-function findModel(
-  ref: ModelRef | null,
-  allKeys: AiProviderKey[],
-  allModels: AiProviderModel[],
-  title?: string,
-): AiProviderModel | null {
-  if (!ref) return null;
-  const key = allKeys.find((k) => k.id === ref.keyId);
-  if (!key) return null;
-  const hit = allModels.find((m) => m.modelId === ref.modelId);
-  if (hit) return { ...hit, keyId: ref.keyId };
-  return {
-    modelId: ref.modelId,
-    title: title ?? ref.modelId,
-    keyId: ref.keyId,
-    providerId: key.providerId,
-    description: null,
-    logo: null,
-    capabilities: [],
-    limits: null,
-    costs: null,
-  } as AiProviderModel;
-}
-
-/**
- * Pick the active chat tier from the user's stored choice, defaulting to
- * "smart". All three chat tiers are always selectable — the backend's
- * resolveTier() falls back to SDK provider defaults when the org's tier
- * slot is unset, so we don't need to gate on slot configuration here.
- */
-function resolveActiveTier(stored: SimpleTier | null): SimpleTier {
-  if (stored === "fast" || stored === "smart" || stored === "thinking") {
-    return stored;
-  }
-  return "smart";
-}
-
-/**
- * Mirror backend resolveTier() when no slot is explicitly assigned: pick a
- * tier-appropriate default from the effective key's catalog so the UI can
- * read capabilities (file upload, vision, etc.) instead of falling back to
- * a null model. Backend pickSimpleModeDefaults considers all keys; we only
- * have the effective key's catalog client-side, so multi-key orgs may see a
- * single-key-derived default. This matches the backend's pick when the
- * effective key is also the first match for the tier.
- */
-function pickFallbackChatModel(
-  tier: SimpleTier,
-  keys: AiProviderKey[],
-  effectiveKeyId: string | null,
-  models: AiProviderModel[],
-): AiProviderModel | null {
-  if (!effectiveKeyId || models.length === 0) return null;
-  const key = keys.find((k) => k.id === effectiveKeyId);
-  if (!key) return null;
-  const defaults = pickSimpleModeDefaults([key], {
-    [effectiveKeyId]: models,
-  });
-  const slot =
-    tier === "fast"
-      ? defaults.chat.fast
-      : tier === "thinking"
-        ? defaults.chat.thinking
-        : defaults.chat.smart;
-  if (!slot) return null;
-  const full = models.find((m) => m.modelId === slot.modelId);
-  if (!full) return null;
-  return { ...full, keyId: effectiveKeyId };
 }
 
 // ============================================================================
@@ -853,6 +773,7 @@ export function ActiveTaskProvider({
   taskId,
   children,
 }: PropsWithChildren<{ taskId: string }>) {
+  const t = useT();
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
 
   // Fire chat_opened once per (page session × taskId). Runs during render, but
@@ -877,9 +798,7 @@ export function ActiveTaskProvider({
   } = useChatPrefs();
   const internals = useContext(TaskInternalsCtx);
   if (!internals) {
-    throw new Error(
-      "ActiveTaskProvider must be used within ChatContextProvider",
-    );
+    throw new Error(t("chat.chatContext.activeTaskProviderMissingContext"));
   }
 
   const { user, contextPrompt, preferences, rawNavigateToTask } = internals;
@@ -1315,7 +1234,9 @@ export function ActiveTaskProvider({
           removeMessage(capturedTaskId, message.id);
           setChatError(err instanceof Error ? err : new Error(String(err)));
           toast.error(
-            err instanceof Error ? err.message : "Failed to queue message",
+            err instanceof Error
+              ? err.message
+              : t("chat.chatContext.failedToQueueMessage"),
           );
         }
         // Reconcile the optimistic row against the gate's authoritative list.
@@ -1384,7 +1305,7 @@ export function ActiveTaskProvider({
     // belt-and-braces guard — but report it honestly rather than resolving
     // as if the edit happened.
     if (sendInFlight.has(taskId)) {
-      toast.info("Still sending your previous message — try again in a moment");
+      toast.info(t("chat.chatContext.stillSendingPreviousMessage"));
       return false;
     }
     sendInFlight.add(taskId);
@@ -1392,7 +1313,7 @@ export function ActiveTaskProvider({
     const ok = await queueActions.cancel(taskId, messageId);
     if (!ok) {
       sendInFlight.delete(taskId);
-      toast.error("Couldn't remove the original message");
+      toast.error(t("chat.chatContext.couldNotRemoveOriginalMessage"));
       return false;
     }
     dropPendingBody(taskId, messageId);
@@ -1424,7 +1345,9 @@ export function ActiveTaskProvider({
       return await dispatchUserMessage(edited);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to send edited message",
+        err instanceof Error
+          ? err.message
+          : t("chat.chatContext.failedToSendEditedMessage"),
       );
       return false;
     }
@@ -1444,10 +1367,16 @@ export function ActiveTaskProvider({
         const data = (await res.json().catch(() => ({}))) as {
           message?: string;
         };
-        throw new Error(data.message ?? `Cancel failed: ${res.status}`);
+        throw new Error(
+          data.message ??
+            t("chat.chatContext.cancelFailedStatus", { status: res.status }),
+        );
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to cancel";
+      const msg =
+        err instanceof Error
+          ? err.message
+          : t("chat.chatContext.failedToCancel");
       toast.error(msg);
       console.error("[chat] cancelRun", err);
     }
@@ -1519,9 +1448,9 @@ export function ActiveTaskProvider({
 // ============================================================================
 
 export function useChatStream(): ChatStreamContextValue {
+  const t = useT();
   const ctx = useContext(ChatStreamCtx);
-  if (!ctx)
-    throw new Error("useChatStream must be used within ActiveTaskProvider");
+  if (!ctx) throw new Error(t("chat.chatContext.useChatStreamMissingContext"));
   return ctx;
 }
 
@@ -1530,16 +1459,16 @@ export function useOptionalChatStream(): ChatStreamContextValue | null {
 }
 
 export function useChatTask(): ChatTaskContextValue {
+  const t = useT();
   const ctx = useContext(ChatTaskCtx);
-  if (!ctx)
-    throw new Error("useChatTask must be used within ChatContextProvider");
+  if (!ctx) throw new Error(t("chat.chatContext.useChatTaskMissingContext"));
   return ctx;
 }
 
 export function useChatPrefs(): ChatPrefsContextValue {
+  const t = useT();
   const ctx = useContext(ChatPrefsCtx);
-  if (!ctx)
-    throw new Error("useChatPrefs must be used within ChatContextProvider");
+  if (!ctx) throw new Error(t("chat.chatContext.useChatPrefsMissingContext"));
   return ctx;
 }
 

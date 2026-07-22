@@ -8,16 +8,17 @@ import {
 import { Image01 } from "@untitledui/icons";
 import type { ToolUIPart } from "ai";
 import { useOrg } from "@decocms/mesh-sdk";
+import { useT } from "@/web/i18n/use-t.ts";
 import { ToolCallShell } from "./common.tsx";
 import { getEffectiveState } from "./utils.tsx";
 import { getToolPartErrorText, safeStringifyFormatted } from "../utils.ts";
 import { ImageLightbox } from "../../../image-lightbox.tsx";
 import type { UsageStats } from "@/web/lib/usage-utils.ts";
 import { formatDuration } from "@/web/lib/format-time.ts";
-import { parseMeshStorageKey } from "@/api/routes/decopilot/mesh-storage-uri";
+import { parseStudioStorageKey } from "@/api/routes/decopilot/studio-storage-uri";
 
 function resolveImageSrc(uri: string, orgSlug: string): string {
-  const key = parseMeshStorageKey(uri);
+  const key = parseStudioStorageKey(uri);
   if (key !== null) return `/api/${orgSlug}/files/${key}`;
   // data: URIs or any other URL — use as-is
   return uri;
@@ -70,11 +71,12 @@ function ReferenceImageChip({
   uri: string;
   orgSlug: string;
 }) {
+  const t = useT();
   const src = resolveImageSrc(uri, orgSlug);
   const label =
-    parseMeshStorageKey(uri) !== null
+    parseStudioStorageKey(uri) !== null
       ? uri.slice(uri.lastIndexOf("/") + 1)
-      : "reference";
+      : t("chat.generateImage.reference");
 
   return (
     <Tooltip>
@@ -95,6 +97,7 @@ function ReferenceImageChip({
 }
 
 export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
+  const t = useT();
   const org = useOrg();
   const state = getEffectiveState(part.state);
   const input = part.input as GenerateImageInput | undefined;
@@ -116,7 +119,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
     return (
       <ToolCallShell
         icon={<Image01 size={14} />}
-        title="Generating image"
+        title={t("chat.generateImage.generatingImage")}
         summary={input?.prompt ? `"${input.prompt.slice(0, 80)}…"` : undefined}
         state="loading"
       />
@@ -130,7 +133,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
     return (
       <ToolCallShell
         icon={<Image01 size={14} />}
-        title="Image queued — generating in the background"
+        title={t("chat.generateImage.imageQueuedGeneratingInBackground")}
         summary={input?.prompt ? `"${input.prompt.slice(0, 80)}…"` : undefined}
         state="idle"
       />
@@ -154,8 +157,12 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
     return (
       <ToolCallShell
         icon={<Image01 size={14} />}
-        title="Image generation"
-        summary={state === "error" ? "Failed" : "No images generated"}
+        title={t("chat.generateImage.imageGeneration")}
+        summary={
+          state === "error"
+            ? t("chat.generateImage.failed")
+            : t("chat.generateImage.noImagesGenerated")
+        }
         state={state === "error" ? "error" : "idle"}
         usage={usage}
         trailing={latencyLabel}
@@ -168,7 +175,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
     <div className="flex flex-col gap-2">
       <ToolCallShell
         icon={<Image01 size={14} className="text-pink-500" />}
-        title="Generated image"
+        title={t("chat.generateImage.generatedImage")}
         summary={modelLabel}
         state="idle"
         usage={usage}
@@ -183,7 +190,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
           {refImages && refImages.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[11px] text-muted-foreground/50">
-                references:
+                {t("chat.generateImage.references")}
               </span>
               {refImages.map((ref, i) => {
                 const raw = (ref.uri ?? ref.url)!;
@@ -204,11 +211,11 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
             <ImageLightbox
               key={i}
               src={src}
-              alt={input?.prompt ?? "Generated image"}
+              alt={input?.prompt ?? t("chat.generateImage.generatedImageAlt")}
             >
               <img
                 src={src}
-                alt={input?.prompt ?? "Generated image"}
+                alt={input?.prompt ?? t("chat.generateImage.generatedImageAlt")}
                 className="max-w-sm max-h-80 object-contain rounded-lg border border-border hover:border-foreground/20 transition-colors"
               />
             </ImageLightbox>

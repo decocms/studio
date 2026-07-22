@@ -2,6 +2,7 @@ import { WELL_KNOWN_STARTERS } from "@decocms/sandbox/shared";
 import { useRef, useState } from "react";
 import { Play } from "@untitledui/icons";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useSandboxEvents } from "../../hooks/use-sandbox-events";
 import { DEFAULT_TAB, DrawerToolbar, type DrawerStatus } from "./toolbar";
 import { SandboxTerminal } from "./terminal";
@@ -23,6 +24,7 @@ export interface PreviewDrawerProps {
 }
 
 export function PreviewDrawer(props: PreviewDrawerProps) {
+  const t = useT();
   const vmEvents = useSandboxEvents();
   const [active, setActive] = useState<string>(DEFAULT_TAB);
   const [scriptTabs, setScriptTabs] = useState<string[]>([]);
@@ -73,7 +75,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     if (!props.open) props.onOpenChange(true);
   };
 
-  // Mesh's sandbox proxy route requires virtualMcpId+branch in the path to
+  // Studio's sandbox proxy route requires virtualMcpId+branch in the path to
   // compute the per-user claim handle. Without them the request 400s
   // before reaching the daemon.
   const execScript = (name: string) => {
@@ -92,10 +94,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     );
   };
 
-  const handleAddScript = async (name: string) => {
-    setScriptTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
-    setActive(name);
-    props.onOpenChange(true);
+  const runExec = async (name: string, failureMessage: string) => {
     try {
       const res = await execScript(name);
       // res === null means missing virtualMcpId/branch — programming error,
@@ -103,8 +102,15 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
       if (res === null) return;
       if (!res.ok) throw new Error(`Exec failed: ${res.statusText}`);
     } catch {
-      toast.error("Failed to run " + name);
+      toast.error(failureMessage);
     }
+  };
+
+  const handleAddScript = async (name: string) => {
+    setScriptTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setActive(name);
+    props.onOpenChange(true);
+    await runExec(name, t("sandbox.drawer.failedToRun", { name }));
   };
 
   // × on a script tab: kill the process AND drop the tab. Active tab
@@ -120,15 +126,10 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // daemon's task-manager replaces the existing task with the same logName.
   const handleRunActive = async () => {
     const wasRunning = vmEvents.activeProcesses.includes(active);
-    try {
-      const res = await execScript(active);
-      if (res === null) return;
-      if (!res.ok) throw new Error(`Exec failed: ${res.statusText}`);
-    } catch {
-      toast.error(
-        (wasRunning ? "Failed to restart " : "Failed to run ") + active,
-      );
-    }
+    const failureMessage = wasRunning
+      ? t("sandbox.drawer.failedToRestart", { name: active })
+      : t("sandbox.drawer.failedToRun", { name: active });
+    await runExec(active, failureMessage);
   };
 
   // Per-script Stop on the active tab. Marks the script as killing so the
@@ -155,7 +156,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
         next.delete(active);
         return next;
       });
-      toast.error("Failed to stop " + active);
+      toast.error(t("sandbox.drawer.failedToStop", { name: active }));
     }
   };
 
@@ -232,6 +233,7 @@ function DrawerBody({
   hasData: boolean;
   onRunActive: () => void;
 }) {
+  const t = useT();
   // When the sandbox isn't running, the preview area shows a starting card
   // (or suspended card) that owns the single empty-state CTA. Rendering
   // anything here (xterm shell or "no output" copy) would compete with it.
@@ -241,16 +243,13 @@ function DrawerBody({
   }
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-      <p>
-        Script "<span className="font-mono text-foreground">{active}</span>" not
-        running
-      </p>
+      <p>{t("sandbox.drawer.scriptNotRunning", { name: active })}</p>
       <button
         type="button"
         onClick={onRunActive}
         className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-accent"
       >
-        <Play className="size-3.5" /> Run
+        <Play className="size-3.5" /> {t("sandbox.drawer.run")}
       </button>
     </div>
   );

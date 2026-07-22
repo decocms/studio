@@ -13,7 +13,7 @@ import { RegistryGetOutputSchema, RegistryListOutputSchema } from "./schema";
  * Cause: the item output schema was a closed object, advertised as JSON Schema
  * with `additionalProperties: false`. The deco store validates output with Zod
  * (which strips unknown keys, so the response is returned), but MCP clients —
- * e.g. the mesh proxy via `client.callTool` — re-validate `structuredContent`
+ * e.g. the studio proxy via `client.callTool` — re-validate `structuredContent`
  * with Ajv, which rejects items carrying fields not modeled in the schema
  * (`is_unlisted`, unmodeled `server.json` keys, etc.). `SEARCH` was unaffected
  * because it returns a slim, exactly-projected object.
@@ -61,7 +61,7 @@ describe("registry output schema – proxy round-trip validation", () => {
     ]);
 
     try {
-      // The mesh proxy lists tools (caching each tool's advertised output
+      // The studio proxy lists tools (caching each tool's advertised output
       // schema), then calls the tool. The SDK client only validates output for
       // tools whose schema was cached via listTools().
       await client.listTools();

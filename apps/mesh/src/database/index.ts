@@ -1,5 +1,5 @@
 /**
- * Database Factory for MCP Mesh
+ * Database Factory for Studio
  *
  * Creates a configured Kysely instance backed by PostgreSQL.
  * Returns a StudioDatabase that includes the Kysely instance and the

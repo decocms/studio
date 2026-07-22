@@ -49,7 +49,7 @@ const DEFAULT_SERVER_CAPABILITIES = {
  * connection cost entirely on cache hits.
  *
  * @param connection - The connection entity to create a server for
- * @param ctx - Mesh context with storage and organization info
+ * @param ctx - Studio context with storage and organization info
  * @param superUser - Whether to create with super-user privileges (cross-org access)
  * @returns An MCP Server ready to be connected to a transport
  *

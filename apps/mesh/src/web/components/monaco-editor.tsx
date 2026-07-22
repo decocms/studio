@@ -1,12 +1,13 @@
-import { useRef, useId, Component, cloneElement } from "react";
+import { useRef, useId } from "react";
 import Editor, {
   loader,
   OnMount,
   type EditorProps,
 } from "@monaco-editor/react";
 import type { Plugin } from "prettier";
-import { Spinner } from "@deco/ui/components/spinner.js";
+import { Spinner } from "@deco/ui/components/spinner.tsx";
 import { getReturnType } from "./monaco";
+import { MonacoErrorBoundary } from "./monaco-error-boundary";
 
 // ============================================
 // Types
@@ -22,7 +23,6 @@ interface MonacoCodeEditorProps {
   readOnly?: boolean;
   height?: string | number;
   language?: "typescript" | "json" | "shell";
-  foldOnMount?: boolean;
   // Suppresses TS error squiggles. Useful when displaying snippets
   // (e.g. top-level `await`) that aren't valid programs on their own.
   disableDiagnostics?: boolean;
@@ -31,49 +31,6 @@ interface MonacoCodeEditorProps {
 // Internal component that receives mountKey from error boundary
 interface InternalEditorProps extends MonacoCodeEditorProps {
   mountKey?: number;
-}
-
-// Error boundary to catch Monaco disposal errors and recover by forcing remount
-class MonacoErrorBoundary extends Component<
-  { children: React.ReactElement<InternalEditorProps> },
-  { hasError: boolean; mountKey: number }
-> {
-  constructor(props: { children: React.ReactElement<InternalEditorProps> }) {
-    super(props);
-    this.state = { hasError: false, mountKey: 0 };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    // Check if it's the specific Monaco disposal error
-    if (error.message?.includes("InstantiationService has been disposed")) {
-      return { hasError: true };
-    }
-    throw error;
-  }
-
-  override componentDidCatch(error: Error) {
-    if (error.message?.includes("InstantiationService has been disposed")) {
-      // Schedule recovery: increment mountKey and clear error
-      this.setState((prev) => ({
-        hasError: false,
-        mountKey: prev.mountKey + 1,
-      }));
-    }
-  }
-
-  override render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex items-center justify-center h-full w-full bg-white dark:bg-[#1e1e1e] text-gray-400">
-          <Spinner size="sm" />
-        </div>
-      );
-    }
-    // Clone child with mountKey to force fresh instance on recovery
-    return cloneElement(this.props.children, {
-      mountKey: this.state.mountKey,
-    });
-  }
 }
 
 // Lazy load Prettier modules
@@ -164,12 +121,10 @@ function InternalMonacoEditor({
   readOnly = false,
   height = 300,
   language = "typescript",
-  foldOnMount = false,
   disableDiagnostics = false,
   mountKey = 0,
 }: InternalEditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const onSaveRef = useRef(onSave);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   onSaveRef.current = onSave;
@@ -244,13 +199,6 @@ function InternalMonacoEditor({
   const handleEditorDidMount: OnMount = async (editor, monaco) => {
     editorRef.current = editor;
 
-    // Fold first level regions if requested, then reveal
-    if (foldOnMount && containerRef.current) {
-      containerRef.current.style.visibility = "hidden";
-      await editor.getAction("editor.foldLevel2")?.run();
-      containerRef.current.style.visibility = "visible";
-    }
-
     // Configure TypeScript AFTER mount (beforeMount was causing value not to display)
     if (language === "typescript") {
       monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
@@ -287,7 +235,7 @@ function InternalMonacoEditor({
   };
 
   return (
-    <div ref={containerRef} className="h-full">
+    <div className="h-full">
       <Editor
         key={editorKey}
         height={height}

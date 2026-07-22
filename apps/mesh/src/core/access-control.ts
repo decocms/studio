@@ -1,5 +1,5 @@
 /**
- * Access Control for MCP Mesh
+ * Access Control for Studio
  *
  * Uses Better Auth's permission system for authorization.
  * Follows a grant-based model:
@@ -11,6 +11,7 @@
 
 import { MCP_MESH_KEY } from "@/core/constants";
 import { BASIC_USAGE_TOOLS } from "@/tools/registry-metadata";
+import { hasAdminRole } from "@/auth/roles";
 import type { BoundAuthClient } from "./studio-context";
 
 // ============================================================================
@@ -184,7 +185,7 @@ export class AccessControl {
     // Two kinds of principal, each with its OWN self-contained rule:
     //   - API key   → the key's stored allowlist is the whole decision. It is a
     //     capability, not a member: no role, no basic-usage, no Better Auth.
-    //   - everyone else (session / MCP OAuth / mesh JWT) → membership floor +
+    //   - everyone else (session / MCP OAuth / studio JWT) → membership floor +
     //     admin/owner bypass + Better Auth grants.
     return this.boundAuth?.isApiKeyPrincipal
       ? this.checkApiKeyAccess(resource)
@@ -205,7 +206,7 @@ export class AccessControl {
   }
 
   /**
-   * Member authorization (session / MCP OAuth / mesh JWT).
+   * Member authorization (session / MCP OAuth / studio JWT).
    *
    * Basic-usage tools are granted to every authenticated org MEMBER regardless
    * of role — resolved here, not baked into each role, so the set evolves with
@@ -219,7 +220,11 @@ export class AccessControl {
     if (this.userId && this.role && BASIC_USAGE_TOOLS.has(resource)) {
       return true;
     }
-    if (this.role === "admin" || this.role === "owner") {
+    // `this.role` may be Better Auth's comma-joined multi-role string (e.g.
+    // "admin,billing-manager") when set via `setRole()` for a path-resolved
+    // org — a plain exact-match here would miss it and fall through to the
+    // slower `boundAuth.hasPermission` DB round-trip. See `hasAdminRole`.
+    if (hasAdminRole(this.role)) {
       return true;
     }
     if (!this.boundAuth) {

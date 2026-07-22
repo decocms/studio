@@ -3,7 +3,7 @@
  *
  * Cluster pods can't get ORGFS_CONFIG as boot env (warm-pool claims reject
  * `spec.env`), and TenantConfig is the wrong vehicle (an orgFs-only patch
- * classifies as no-op and is dropped). So the mesh runner POSTs it here right
+ * classifies as no-op and is dropped). So the studio runner POSTs it here right
  * after `/config`, and the daemon relays it to the privileged org-fs sidecar
  * by writing a file on the shared control volume — the sidecar (which does
  * the actual mounting; this container can't) is watching for it.

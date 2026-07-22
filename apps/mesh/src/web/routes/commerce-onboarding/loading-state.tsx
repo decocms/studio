@@ -1,21 +1,8 @@
 import { AuthSplitLayout } from "@/web/components/auth-split-layout";
+import { useT } from "@/web/i18n/use-t.ts";
 import { LoadingIndicator } from "./loading-indicator.tsx";
 
 export type CommerceOnboardingLoadingVariant = "workspace" | "generic";
-
-const COMMERCE_ONBOARDING_LOADING_LABELS: Record<
-  CommerceOnboardingLoadingVariant,
-  string
-> = {
-  workspace: "Preparando seu workspace de commerce...",
-  generic: "Preparando...",
-};
-
-export function getCommerceOnboardingLoadingLabel(
-  variant: CommerceOnboardingLoadingVariant,
-): string {
-  return COMMERCE_ONBOARDING_LOADING_LABELS[variant];
-}
 
 export function CommerceOnboardingLoading({
   variant,
@@ -34,12 +21,15 @@ export function CommerceOnboardingLoadingIndicator({
 }: {
   variant: CommerceOnboardingLoadingVariant;
 }) {
+  const t = useT();
+  const label =
+    variant === "workspace"
+      ? t("routes.commerceOnboarding.loading.preparingWorkspace")
+      : t("routes.commerceOnboarding.loading.preparing");
+
   return (
     <div className="flex justify-center py-4" role="status" aria-live="polite">
-      <LoadingIndicator
-        label={getCommerceOnboardingLoadingLabel(variant)}
-        className="text-muted-foreground"
-      />
+      <LoadingIndicator label={label} className="text-muted-foreground" />
     </div>
   );
 }

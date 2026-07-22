@@ -1,13 +1,9 @@
 import { cn } from "@deco/ui/lib/utils.ts";
 import type { Todo } from "@decocms/harness/decopilot/built-in-tools/todo-write";
-import { useChatStream } from "../context";
 import { CollapsibleHighlight } from "./collapsible-highlight";
-import { deriveCurrentTodos } from "./derive-current-todos";
 import { type ChipIcon, deriveChipLabel } from "./derive-chip-label";
 
-export function TodosHighlight() {
-  const { messages } = useChatStream();
-  const todos = deriveCurrentTodos(messages);
+export function TodosHighlight({ todos }: { todos: Todo[] }) {
   if (todos.length === 0) return null;
 
   const label = deriveChipLabel(todos);

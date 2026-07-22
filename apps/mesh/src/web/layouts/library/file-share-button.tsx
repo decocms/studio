@@ -42,6 +42,7 @@ import {
 } from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   type ShareMode,
   useOrgFsSetShareMode,
@@ -61,11 +62,27 @@ export interface ShareTarget {
   url?: string;
 }
 
-const MODES: { mode: ShareMode; label: string; Icon: typeof Globe01 }[] = [
-  { mode: "private", label: "Org only", Icon: Lock01 },
-  { mode: "public", label: "Public", Icon: Globe01 },
-  { mode: "password", label: "Password", Icon: Key01 },
-];
+const MODES = [
+  {
+    mode: "private",
+    labelKey: "library.fileShareButton.modeOrgOnly",
+    Icon: Lock01,
+  },
+  {
+    mode: "public",
+    labelKey: "library.fileShareButton.modePublic",
+    Icon: Globe01,
+  },
+  {
+    mode: "password",
+    labelKey: "library.fileShareButton.modePassword",
+    Icon: Key01,
+  },
+] as const satisfies {
+  mode: ShareMode;
+  labelKey: string;
+  Icon: typeof Globe01;
+}[];
 
 /** The shared body: a 3-way mode control, an optional password field, and (for
  *  files) a copy-link row. */
@@ -77,6 +94,7 @@ function ShareControls({
   effectivePublic,
   url,
 }: ShareTarget) {
+  const t = useT();
   const setShareMode = useOrgFsSetShareMode(volume);
   // Read live state so the control reflects the optimistic change immediately
   // (the mutation writes this exact stat key), seeding from the snapshot.
@@ -100,15 +118,17 @@ function ShareControls({
           setPassword("");
           toast.success(
             mode === "private"
-              ? `This ${subject} is now org-only`
+              ? t("library.fileShareButton.toastOrgOnly", { subject })
               : mode === "public"
-                ? `Anyone with the link can now view this ${subject}`
-                : `This ${subject} is now password-protected`,
+                ? t("library.fileShareButton.toastPublic", { subject })
+                : t("library.fileShareButton.toastPassword", { subject }),
           );
         },
         onError: (err) =>
           toast.error(
-            err instanceof Error ? err.message : "Failed to update sharing",
+            err instanceof Error
+              ? err.message
+              : t("library.fileShareButton.failedUpdateSharing"),
           ),
       },
     );
@@ -131,7 +151,7 @@ function ShareControls({
     if (!url) return;
     await navigator.clipboard.writeText(url);
     setCopied(true);
-    toast.success("Link copied to clipboard");
+    toast.success(t("library.fileShareButton.linkCopied"));
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -145,10 +165,10 @@ function ShareControls({
         size="icon"
         className="size-6 shrink-0"
         onClick={handleCopy}
-        aria-label="Copy link"
+        aria-label={t("library.fileShareButton.copyLink")}
       >
         {copied ? (
-          <Check size={12} className="text-green-600" />
+          <Check size={12} className="text-success" />
         ) : (
           <Copy01 size={12} />
         )}
@@ -169,12 +189,12 @@ function ShareControls({
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="text-sm font-medium text-foreground">
-              Shared via a parent folder
+              {t("library.fileShareButton.sharedViaParent")}
             </span>
             <span className="text-xs text-muted-foreground">
-              Anyone with the link can view{" "}
-              {isDir ? "files in this folder" : "this file"}. Manage sharing on
-              the parent folder.
+              {t("library.fileShareButton.inheritedDescription", {
+                target: isDir ? "files in this folder" : "this file",
+              })}
             </span>
           </div>
         </div>
@@ -186,7 +206,7 @@ function ShareControls({
   return (
     <div className="flex w-full min-w-0 flex-col gap-3">
       <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
-        {MODES.map(({ mode, label, Icon }) => (
+        {MODES.map(({ mode, labelKey, Icon }) => (
           <button
             key={mode}
             type="button"
@@ -200,19 +220,23 @@ function ShareControls({
             )}
           >
             <Icon size={15} />
-            {label}
+            {t(labelKey)}
           </button>
         ))}
       </div>
 
       <p className="text-xs text-muted-foreground">
         {activeMode === "private"
-          ? `Only members of your organization can open ${isDir ? "these files" : "this link"}.`
+          ? t("library.fileShareButton.privateDescription", {
+              target: isDir ? "these files" : "this link",
+            })
           : activeMode === "public"
             ? isDir
-              ? "Anyone on the internet can view files in this folder via their link."
-              : "Anyone on the internet with the link can view this file."
-            : `Anyone with the link AND the password can view ${isDir ? "files in this folder" : "this file"}.`}
+              ? t("library.fileShareButton.publicFolderDescription")
+              : t("library.fileShareButton.publicFileDescription")
+            : t("library.fileShareButton.passwordDescription", {
+                target: isDir ? "files in this folder" : "this file",
+              })}
       </p>
 
       {activeMode === "password" && (
@@ -227,7 +251,11 @@ function ShareControls({
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={ownMode === "password" ? "New password" : "Password"}
+            placeholder={t(
+              ownMode === "password"
+                ? "library.fileShareButton.newPasswordPlaceholder"
+                : "library.fileShareButton.passwordPlaceholder",
+            )}
             autoComplete="new-password"
             className="h-8 text-xs"
           />
@@ -237,7 +265,9 @@ function ShareControls({
             className="shrink-0"
             disabled={!password || setShareMode.isPending}
           >
-            {ownMode === "password" ? "Update" : "Set"}
+            {ownMode === "password"
+              ? t("library.fileShareButton.buttonUpdate")
+              : t("library.fileShareButton.buttonSet")}
           </Button>
         </form>
       )}
@@ -261,17 +291,24 @@ export function FileShareButton({
   effectivePublic: boolean;
   url: string;
 }) {
+  const t = useT();
   return (
     <Popover>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Share">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("library.fileShareButton.share")}
+            >
               <Share07 size={14} />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Share</TooltipContent>
+        <TooltipContent side="bottom">
+          {t("library.fileShareButton.share")}
+        </TooltipContent>
       </Tooltip>
       <PopoverContent align="end" className="w-80 p-3">
         <ShareControls
@@ -295,12 +332,15 @@ export function ShareDialog({
   target: ShareTarget | null;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   return (
     <Dialog open={!!target} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            Share {target?.kind === "dir" ? "folder" : "file"}
+            {t("library.fileShareButton.shareDialogTitle", {
+              type: target?.kind === "dir" ? "folder" : "file",
+            })}
           </DialogTitle>
         </DialogHeader>
         {target && <ShareControls {...target} />}

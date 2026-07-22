@@ -230,6 +230,17 @@ describe("page-list", () => {
     expect(hasEditableDecoContent(decofile, meta)).toBe(true);
   });
 
+  it("hasEditableDecoContent is true when only redirects exist", () => {
+    const decofile = {
+      "redirects-old-abc": {
+        __resolveType: "website/loaders/redirect.ts",
+        redirect: { from: "/old", to: "/new", type: "permanent" },
+      },
+    };
+    // No meta needed — redirects are detected without the manifest.
+    expect(hasEditableDecoContent(decofile, null)).toBe(true);
+  });
+
   it("hasEditableDecoContent is false without pages or sections", () => {
     expect(hasEditableDecoContent({}, null)).toBe(false);
     expect(

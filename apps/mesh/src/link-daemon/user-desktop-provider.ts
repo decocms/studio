@@ -486,7 +486,13 @@ export function createDesktopSandboxProvider(
         );
       }
     } catch (err) {
-      console.error(
+      // A config-post timeout is expected under cold-start load, not a real
+      // failure — console.error is wired to error tracking (see
+      // observability/index.ts), so logging it at ERROR here was the #1
+      // chronic error in prod (20k+ hits, issue #3763). Log it at WARN
+      // instead; genuine bring-up failures still hit console.error.
+      const log = isTimeoutLike(err) ? console.warn : console.error;
+      log(
         `[user-desktop] sandbox bring-up failed handle=${input.handle} port=${port ?? "(none)"}${spawned ? " (killing daemon)" : ""}:`,
         err,
       );

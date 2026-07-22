@@ -1,5 +1,5 @@
 /**
- * MCP Mesh API Server
+ * Studio API Server
  *
  * Main Hono application with:
  * - Better Auth integration
@@ -49,6 +49,7 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
+import desktopSessionBridgeRoutes from "./routes/desktop-session-bridge";
 import {
   ADMIN_API_PREFIX,
   createAdminRoutes,
@@ -150,6 +151,8 @@ import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
+import { TaskBoardStorage } from "../storage/task-board";
+import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
@@ -257,7 +260,7 @@ let currentDecopilotCleanup: (() => void | Promise<void>) | null = null;
  * Get project_locator from the Deco Store registry connection.
  * Returns the locator string or null if not found/configured.
  *
- * @param ctx - The mesh context
+ * @param ctx - The studio context
  * @param organizationId - The organization ID to search for the registry connection
  */
 async function getDecoStoreProjectLocator(
@@ -312,6 +315,27 @@ function buildDecoOAuthParams(projectLocator: string | null): URLSearchParams {
 // ============================================================================
 
 /**
+ * Paths exempt from the server-side SSO enforcement middleware: SSO/auth
+ * routes, the OAuth proxy (legacy `/oauth-proxy/...` and canonical
+ * `/api/:org/oauth-proxy/...` — both must stay reachable so a browser
+ * session mid-connect to a downstream MCP isn't 403'd before it can
+ * establish an SSO session), and the instance-level admin surface.
+ */
+export function isSsoExemptPath(path: string): boolean {
+  return (
+    path.startsWith("/api/org-sso/") ||
+    path.startsWith("/api/auth/") ||
+    path.startsWith("/api/tools/management") ||
+    path.startsWith("/oauth-proxy/") ||
+    /^\/api\/[^/]+\/oauth-proxy\//.test(path) ||
+    // Instance-level operator surface — not governed by any single org's SSO
+    // policy. Without this, an admin whose active org enforces SSO gets 403'd
+    // off the whole dashboard, and the UI reads that as "not an admin".
+    path.startsWith(`${ADMIN_API_PREFIX}/`)
+  );
+}
+
+/**
  * Handle OAuth-proxy requests for an MCP connection.
  *
  * On the org-scoped mount (`/api/:org/oauth-proxy/...`) `resolveOrgFromPath`
@@ -355,6 +379,20 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
 
   let originAuthServer: string | undefined;
   const connUrl = new URL(connection.connection_url);
+
+  // RFC 8707 resource indicator forwarded to the downstream authorization
+  // server on the authorize/token legs. Defaults to the connection's MCP
+  // endpoint URL — what most servers validate against (e.g. Supabase requires
+  // the exact endpoint). Some servers only accept the *origin* and reject a
+  // path-bearing resource (e.g. Pipedream returns "Invalid or unauthorized
+  // resource parameter" for ".../v2"). Allow a per-connection override via
+  // `metadata.oauthResource` for those, falling back to the connection URL.
+  const resourceOverride =
+    typeof connection.metadata?.oauthResource === "string" &&
+    connection.metadata.oauthResource.length > 0
+      ? connection.metadata.oauthResource
+      : undefined;
+  const resourceIndicator = resourceOverride ?? connection.connection_url;
 
   if (resourceRes.ok) {
     // Origin has Protected Resource Metadata - use authorization_servers from it
@@ -451,7 +489,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     // Some auth servers (like Supabase) validate that the resource is their actual endpoint,
     // not our proxy. We keep the proxy URL for redirect_uri since that's where we handle the callback.
     if (targetUrl.searchParams.has("resource")) {
-      targetUrl.searchParams.set("resource", connection.connection_url);
+      targetUrl.searchParams.set("resource", resourceIndicator);
     }
 
     // Add smart OAuth params for deco-hosted MCPs to skip org/project selection
@@ -524,7 +562,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
       // Parse form body and rewrite resource if present
       const formData = await c.req.formData();
       if (formData.has("resource")) {
-        formData.set("resource", connection.connection_url);
+        formData.set("resource", resourceIndicator);
       }
       const cidRaw = formData.get("client_id");
       const csRaw = formData.get("client_secret");
@@ -1278,6 +1316,12 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Auth routes (API key management via web UI)
   app.route("/api/auth/custom", authRoutes);
+  // POST /api/auth/desktop/session-from-oauth — mints a real Better Auth
+  // session from a valid MCP OAuth bearer, for the desktop app's
+  // system-browser (Google/GitHub/SAML) login path. Mounted BEFORE the
+  // `/api/auth/*` catchall (`auth.handler`) so it never reaches it. See
+  // `./routes/desktop-session-bridge.ts`'s module doc for why this exists.
+  app.route("/api/auth/desktop", desktopSessionBridgeRoutes);
 
   // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
   // external callers — see fenceRawAdminSurface's doc in routes/admin.ts for
@@ -1476,6 +1520,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // database. Wired before `DBOS.launch()` for the same reason as
   // automations/thread-gate: it only sets a module-level pointer.
   const projectorThreadStorage = new SqlThreadStorage(database.db);
+  const projectorTaskBoard = new TaskBoardStorage(database.db);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
     getJetStreamManager: async () => {
@@ -1517,6 +1562,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       // without this the chip stays "running" until a refetch. `flipped` is
       // null on a no-op (already terminal) → no double-publish.
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
+      if (flipped)
+        await advanceTasksToReviewOnThreadFinish(
+          projectorTaskBoard,
+          runId,
+          orgId,
+        );
       return flipped;
     },
     markRunRequiresAction: async (runId, orgId) => {
@@ -1535,6 +1586,12 @@ export async function createApp(options: CreateAppOptions = {}) {
         kind,
       );
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
+      if (flipped)
+        await advanceTasksToReviewOnThreadFinish(
+          projectorTaskBoard,
+          runId,
+          orgId,
+        );
       return flipped;
     },
     clearSynthesizedError: async (runId, fenceToken) => {
@@ -1607,7 +1664,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     },
   });
 
-  // Background-tool jobs reuse the same mesh-context factory to rebuild the
+  // Background-tool jobs reuse the same studio-context factory to rebuild the
   // org context + re-resolve models on whatever pod runs the job. Wired before
   // DBOS.launch() like the others (module-level pointer, no DBOS API calls).
   setBackgroundToolRuntime({
@@ -1659,7 +1716,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Orphan/crash recovery is owned by the external DBOS Conductor now: it
   // recovers a dead executor's PENDING workflows (incl. the thread-gate
-  // workflows backing decopilot runs) onto a live executor. Mesh no longer
+  // workflows backing decopilot runs) onto a live executor. Studio no longer
   // runs its own boot sweep or pod-death recovery. The reaper (RunRegistry)
   // still force-fails runs with no progress as a zombie backstop.
 
@@ -1725,7 +1782,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           Promise.allSettled(revalidations),
           sleep(REVALIDATION_TIMEOUT_MS),
         ]).catch((err) =>
-          console.error("[mesh] revalidation cleanup error:", err),
+          console.error("[studio] revalidation cleanup error:", err),
         );
       }
     }
@@ -1749,18 +1806,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // who haven't completed the SSO flow. Exempt paths: SSO routes themselves,
   // auth routes, and non-org-scoped endpoints.
   app.use("*", async (c, next) => {
-    const path = c.req.path;
-    // Skip SSO enforcement for SSO routes, auth routes, and public endpoints
-    if (
-      path.startsWith("/api/org-sso/") ||
-      path.startsWith("/api/auth/") ||
-      path.startsWith("/api/tools/management") ||
-      path.startsWith("/oauth-proxy/") ||
-      // Instance-level operator surface — not governed by any single org's SSO
-      // policy. Without this, an admin whose active org enforces SSO gets 403'd
-      // off the whole dashboard, and the UI reads that as "not an admin".
-      path.startsWith(`${ADMIN_API_PREFIX}/`)
-    ) {
+    if (isSsoExemptPath(c.req.path)) {
       return next();
     }
 
@@ -1830,10 +1876,17 @@ export async function createApp(options: CreateAppOptions = {}) {
     // Require either user or API key authentication
     if (!studioContext.auth.user?.id && !studioContext.auth.apiKey?.id) {
       const url = new URL(c.req.url);
+      // Behind a TLS-terminating reverse proxy (e.g. Caddy/nginx) the request
+      // reaches us over http, so `url.origin` would advertise an http://
+      // resource_metadata URL and OAuth-capable clients that require https
+      // (e.g. Claude) reject it. Honor X-Forwarded-Proto so the advertised
+      // URL matches the public scheme.
+      const fwdProto = c.req.header("x-forwarded-proto")?.split(",")[0]?.trim();
+      const origin = fwdProto ? `${fwdProto}://${url.host}` : url.origin;
       return (c.res = new Response(null, {
         status: 401,
         headers: {
-          "WWW-Authenticate": `Bearer realm="mcp",resource_metadata="${url.origin}${url.pathname}/.well-known/oauth-protected-resource"`,
+          "WWW-Authenticate": `Bearer realm="mcp",resource_metadata="${origin}${url.pathname}/.well-known/oauth-protected-resource"`,
         },
       }));
     }
@@ -1949,7 +2002,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs).
+  // Stable file redirect endpoint (resolves studio-storage: URIs to presigned URLs).
   // Resolve the org from the URL before serving so the stable URL cannot drift
   // to the session-active org when the path targets a different org.
   app.use("/api/:org/files/*", resolveOrgFromPath);
@@ -1971,7 +2024,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // OpenAI-compatible LLM API routes
   app.route("/api", openaiCompatRoutes);
 
-  // Trigger callback endpoint (external MCPs → Mesh automations).
+  // Trigger callback endpoint (external MCPs → Studio automations).
   // Legacy mount at /api/trigger-callback with deprecation log; the new
   // /api/:org/trigger-callback mount is wired in a later task.
   const legacyTriggerCallback = new Hono<{

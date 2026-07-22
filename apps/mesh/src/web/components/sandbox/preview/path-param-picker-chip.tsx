@@ -17,6 +17,7 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { fillPathTemplate } from "@/web/components/sections-editor/page-path-utils";
 import { KEYS } from "@/web/lib/query-keys";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   buildPreviewInvokePath,
   type RunBlockSandboxRef,
@@ -39,7 +40,7 @@ const KIND_LABELS: Record<PathParamKind, { noun: string; heading: string }> = {
 };
 
 /**
- * Invoke a loader via the mesh preview-invoke proxy (same-origin,
+ * Invoke a loader via the studio preview-invoke proxy (same-origin,
  * authenticated) — the same route useRunBlock uses. Fetching the preview
  * origin directly would hit CORS: previews don't send
  * `Access-Control-Allow-Origin` for `/deco/invoke`.
@@ -130,6 +131,7 @@ function PickerSourceGroup({
   showHeading: boolean;
   onSelect: (value: string) => void;
 }) {
+  const t = useT();
   const query = useQuery({
     queryKey: pickerInvokeKey(sandboxRef, source, debouncedSearch),
     queryFn: () =>
@@ -148,9 +150,9 @@ function PickerSourceGroup({
     : (query.data ?? []);
 
   const status = query.isLoading
-    ? `Loading ${noun}…`
+    ? t("sandbox.pathParamPickerChip.loading", { noun })
     : query.isError
-      ? "Couldn't load — is the dev server running?"
+      ? t("sandbox.pathParamPickerChip.couldNotLoad")
       : null;
 
   if (!status && options.length === 0) return null;
@@ -216,6 +218,7 @@ export function PathParamPickerChip({
   sandboxRef: RunBlockSandboxRef;
   onCommit: (value: string) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -224,7 +227,9 @@ export function PathParamPickerChip({
   // The `*` catch-all reads badly in the URL bar; show a friendly word instead.
   const paramLabel = paramName === "*" ? "path" : `:${paramName}`;
   const nouns = [...new Set(sources.map((s) => KIND_LABELS[s.kind].noun))];
-  const placeholder = `Search ${nouns.join(" or ")} or enter a value…`;
+  const placeholder = t("sandbox.pathParamPickerChip.searchPlaceholder", {
+    options: nouns.join(" or "),
+  });
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
@@ -259,7 +264,9 @@ export function PathParamPickerChip({
           chip must not let clicks bubble. */}
       <button
         type="button"
-        title={`Value for ${paramLabel} — click to pick`}
+        title={t("sandbox.pathParamPickerChip.buttonTitle", {
+          paramLabel,
+        })}
         className="max-w-64 shrink-0 cursor-pointer truncate rounded-sm bg-violet-500/15 px-1 py-0.5 text-[12px] text-violet-600 hover:bg-violet-500/25 dark:text-violet-400"
         onClick={(e) => {
           e.stopPropagation();
@@ -277,12 +284,16 @@ export function PathParamPickerChip({
           onClick={(e) => e.stopPropagation()}
         >
           <DialogHeader className="sr-only">
-            <DialogTitle>Pick a value for {paramLabel}</DialogTitle>
+            <DialogTitle>
+              {t("sandbox.pathParamPickerChip.pickValueTitle", {
+                paramLabel,
+              })}
+            </DialogTitle>
           </DialogHeader>
           <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
             <SearchSm size={16} className="shrink-0 text-foreground" />
             <span className="text-sm font-medium text-foreground">
-              Pick a value for{" "}
+              {t("sandbox.pathParamPickerChip.pickValueHeading")}{" "}
               <span className="rounded-sm bg-violet-500/15 px-1 py-0.5 font-mono text-[12px] text-violet-600 dark:text-violet-400">
                 {paramLabel}
               </span>
@@ -296,7 +307,9 @@ export function PathParamPickerChip({
               onValueChange={handleSearchChange}
             />
             <CommandList className="max-h-none flex-1">
-              <CommandEmpty>No results.</CommandEmpty>
+              <CommandEmpty>
+                {t("sandbox.pathParamPickerChip.noResults")}
+              </CommandEmpty>
               {rawTerm && (
                 <CommandGroup>
                   <CommandItem
@@ -309,7 +322,10 @@ export function PathParamPickerChip({
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm">
-                        Use &ldquo;{rawTerm}&rdquo; as {paramLabel}
+                        {t("sandbox.pathParamPickerChip.useRawValue", {
+                          rawTerm,
+                          paramLabel,
+                        })}
                       </span>
                       <span className="block truncate text-xs text-muted-foreground">
                         {rawPath}

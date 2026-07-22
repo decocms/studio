@@ -1,17 +1,17 @@
 /**
- * End-to-end smoke test for mesh's MCP proxy.
+ * End-to-end smoke test for studio's MCP proxy.
  *
  * Stands up a tiny test MCP server (../fixtures/test-mcp-server.ts),
- * creates a real connection in mesh that points at it, then exercises the
+ * creates a real connection in studio that points at it, then exercises the
  * proxy mount at /api/:org/mcp/:connectionId. Validates the whole chain:
  *
  *   Playwright APIRequestContext
- *     → /api/:org/mcp/:connectionId (mesh proxy)
+ *     → /api/:org/mcp/:connectionId (studio proxy)
  *       → connection lookup + auth
  *         → outbound HTTP to the test MCP server
  *           → tool handler returns
  *         ← MCP response
- *       ← mesh forwards
+ *       ← studio forwards
  *     ← client gets JSON-RPC tools/call result
  *
  * Also serves as the first runtime use of:
@@ -56,7 +56,7 @@ test.describe("MCP proxy roundtrip", () => {
     const ctx = await newApiContext(playwright);
     const user = await signUpViaApi(ctx);
 
-    // Create a real connection in mesh pointing at the test MCP server.
+    // Create a real connection in studio pointing at the test MCP server.
     // This also exercises `callSelfMcpTool` indirectly via the helper.
     const connection = await createHttpConnection(ctx, user.orgSlug, {
       title: `Test MCP ${Date.now()}`,

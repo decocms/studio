@@ -34,6 +34,7 @@ import {
   RefreshCw01,
 } from "@untitledui/icons";
 import type { ReactNode } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { DeckEditor } from "./use-deck-editor";
 
 export function DeckToolbar({
@@ -49,6 +50,7 @@ export function DeckToolbar({
   /** Host-specific actions appended after the shared ones. */
   trailing?: ReactNode;
 }) {
+  const t = useT();
   const absoluteUrl = new URL(readUrl, window.location.origin).toString();
 
   return (
@@ -60,7 +62,9 @@ export function DeckToolbar({
               variant={editor.railOpen ? "secondary" : "ghost"}
               size="icon"
               aria-label={
-                editor.railOpen ? "Hide slide list" : "Show slide list"
+                editor.railOpen
+                  ? t("deck.deckToolbar.hideSlideList")
+                  : t("deck.deckToolbar.showSlideList")
               }
               onClick={() => editor.setRailOpen(!editor.railOpen)}
             >
@@ -68,7 +72,9 @@ export function DeckToolbar({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {editor.railOpen ? "Hide slide list" : "Show slide list"}
+            {editor.railOpen
+              ? t("deck.deckToolbar.hideSlideList")
+              : t("deck.deckToolbar.showSlideList")}
           </TooltipContent>
         </Tooltip>
       )}
@@ -91,18 +97,19 @@ export function DeckToolbar({
               onClick={editor.reload}
             >
               <RefreshCw01 size={12} />
-              Agent updated — reload
+              {t("deck.deckToolbar.agentUpdatedReload")}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            The agent rewrote this deck while you were editing. Reloading
-            discards unsaved differences.
+            {t("deck.deckToolbar.agentRewriteWarning")}
           </TooltipContent>
         </Tooltip>
       )}
 
       {editor.saving && (
-        <span className="px-1 text-xs text-muted-foreground">Saving…</span>
+        <span className="px-1 text-xs text-muted-foreground">
+          {t("deck.deckToolbar.saving")}
+        </span>
       )}
 
       {editor.deckDetected && editor.writable && (
@@ -111,7 +118,11 @@ export function DeckToolbar({
             <Button
               variant={editor.editMode ? "secondary" : "ghost"}
               size="icon"
-              aria-label={editor.editMode ? "Done editing" : "Edit inline"}
+              aria-label={
+                editor.editMode
+                  ? t("deck.deckToolbar.doneEditing")
+                  : t("deck.deckToolbar.editInline")
+              }
               className={cn(editor.editMode && "text-primary")}
               onClick={() => editor.setEditMode(!editor.editMode)}
             >
@@ -120,8 +131,8 @@ export function DeckToolbar({
           </TooltipTrigger>
           <TooltipContent side="bottom">
             {editor.editMode
-              ? "Done editing"
-              : "Edit inline (text, reorder, delete)"}
+              ? t("deck.deckToolbar.doneEditing")
+              : t("deck.deckToolbar.editInlineTooltip")}
           </TooltipContent>
         </Tooltip>
       )}
@@ -131,7 +142,11 @@ export function DeckToolbar({
         // raw HTML file. Plain pages get the simple download button below.
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Download">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("deck.deckToolbar.download")}
+            >
               <Download01 size={14} />
             </Button>
           </DropdownMenuTrigger>
@@ -142,12 +157,12 @@ export function DeckToolbar({
               }
             >
               <Printer size={14} />
-              Export as PDF
+              {t("deck.deckToolbar.exportAsPdf")}
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <a href={absoluteUrl} download={downloadName}>
                 <File06 size={14} />
-                Download HTML
+                {t("deck.deckToolbar.downloadHtml")}
               </a>
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -155,13 +170,20 @@ export function DeckToolbar({
       ) : (
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Download" asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("deck.deckToolbar.download")}
+              asChild
+            >
               <a href={absoluteUrl} download={downloadName}>
                 <Download01 size={14} />
               </a>
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Download</TooltipContent>
+          <TooltipContent side="bottom">
+            {t("deck.deckToolbar.download")}
+          </TooltipContent>
         </Tooltip>
       )}
 
@@ -170,13 +192,15 @@ export function DeckToolbar({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Open in new tab"
+            aria-label={t("deck.deckToolbar.openInNewTab")}
             onClick={() => window.open(absoluteUrl, "_blank", "noopener")}
           >
             <LinkExternal01 size={14} />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Open in new tab</TooltipContent>
+        <TooltipContent side="bottom">
+          {t("deck.deckToolbar.openInNewTab")}
+        </TooltipContent>
       </Tooltip>
       {trailing}
     </div>

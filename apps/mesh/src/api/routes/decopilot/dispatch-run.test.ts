@@ -124,4 +124,63 @@ describe("buildDurableDispatchInput", () => {
     );
     expect(durable.runMetadata).toEqual({ org_id: "org-xyz", url: "shop.com" });
   });
+
+  test("folds the per-turn system message text into systemContext", () => {
+    const durable = buildDurableDispatchInput(
+      {
+        messages: [
+          {
+            id: "sys-1",
+            role: "system",
+            parts: [
+              { type: "text", text: "### Currently Open File\nhome/x.md" },
+            ],
+          } as ChatMessage,
+          {
+            id: "msg-user",
+            role: "user",
+            parts: [{ type: "text", text: "change the h1" }],
+          } as ChatMessage,
+        ],
+        models: { credentialId: "cred-1", thinking: { id: "model-1" } },
+        agent: { id: "agent-1" },
+        temperature: 0.2,
+        toolApprovalLevel: "auto",
+        mode: "default",
+        organizationId: "org-1",
+        userId: "user-1",
+        taskId: "thread-1",
+      },
+      { messageId: "msg-user", runFenceToken: "fence-1" },
+    );
+    // The raw messages array is still dropped from the durable snapshot…
+    expect("messages" in durable).toBe(false);
+    // …but the ephemeral system context survives it (it isn't persisted as a
+    // thread message, so the durable branch would otherwise lose it).
+    expect(durable.systemContext).toBe("### Currently Open File\nhome/x.md");
+  });
+
+  test("omits systemContext when the turn carries no system message", () => {
+    const durable = buildDurableDispatchInput(
+      {
+        messages: [
+          {
+            id: "msg-user",
+            role: "user",
+            parts: [{ type: "text", text: "hi" }],
+          } as ChatMessage,
+        ],
+        models: { credentialId: "cred-1", thinking: { id: "model-1" } },
+        agent: { id: "agent-1" },
+        temperature: 0.2,
+        toolApprovalLevel: "auto",
+        mode: "default",
+        organizationId: "org-1",
+        userId: "user-1",
+        taskId: "thread-1",
+      },
+      { messageId: "msg-user", runFenceToken: "fence-1" },
+    );
+    expect("systemContext" in durable).toBe(false);
+  });
 });

@@ -14,6 +14,7 @@ import {
   createVirtualClientFrom,
 } from "@/mcp-clients/virtual-mcp";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
+import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
 
 export interface ResolvedSubagent {
   mcpClient: PassthroughClient;
@@ -48,8 +49,13 @@ export async function resolveSubagent(
       throw new Error("Agent is not active");
     }
 
-    const mcpClient = await createVirtualClientFrom(
+    const effectiveVirtualMcp = await resolveEffectiveStudioPackVirtualMcp({
       virtualMcp,
+      organizationId,
+      ctx,
+    });
+    const mcpClient = await createVirtualClientFrom(
+      effectiveVirtualMcp,
       ctx,
       "passthrough",
       superUser,
@@ -60,9 +66,9 @@ export async function resolveSubagent(
       mcpClient,
       targetKind: "virtual-mcp",
       targetRef: {
-        id: virtualMcp.id,
+        id: effectiveVirtualMcp.id,
         instructions: mcpClient.getInstructions(),
-        repo: virtualMcp.metadata?.githubRepo ?? undefined,
+        repo: effectiveVirtualMcp.metadata?.githubRepo ?? undefined,
       },
     };
   }

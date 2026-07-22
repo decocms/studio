@@ -1,6 +1,7 @@
 import { MessageCircle01 } from "@untitledui/icons";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t";
 import type { SidePanelKind } from "@/web/hooks/use-layout-state";
 
 export interface ChatToggleProps {
@@ -24,9 +25,10 @@ export function ChatToggle({
   toggleSidePanel,
   disableActiveSidePanelToggle = false,
 }: ChatToggleProps) {
+  const t = useT();
   return (
     <HeaderTabButton
-      title="Chat"
+      title={t("agentShellLayout.toggleButtons.chat")}
       icon={{ kind: "component", Component: MessageCircle01 }}
       active={sidePanel === "chat"}
       disabled={disableActiveSidePanelToggle && sidePanel === "chat"}

@@ -1,18 +1,18 @@
 /**
  * Built-in TriggerStorage implementations.
  *
- * - StudioKV: Persists to Mesh/Studio's KV API (recommended for production)
+ * - StudioKV: Persists to Studio's KV API (recommended for production)
  * - JsonFileStorage: Persists to a local JSON file (for dev/simple deployments)
  */
 
-import type { TriggerStorage } from "./triggers.ts";
+import type { TriggerState, TriggerStorage } from "./triggers.ts";
 
 // ============================================================================
-// StudioKV — backed by Mesh's /api/kv endpoint
+// StudioKV — backed by Studio's /api/kv endpoint
 // ============================================================================
 
 interface StudioKVOptions {
-  /** Mesh/Studio base URL (e.g., "https://studio.example.com") */
+  /** Studio base URL (e.g., "https://studio.example.com") */
   url: string;
   /** API key created in the Studio org */
   apiKey: string;
@@ -21,7 +21,7 @@ interface StudioKVOptions {
 }
 
 /**
- * TriggerStorage backed by Mesh/Studio's org-scoped KV API.
+ * TriggerStorage backed by Studio's org-scoped KV API.
  *
  * @example
  * ```typescript
@@ -52,7 +52,7 @@ export class StudioKV implements TriggerStorage {
     return `${this.prefix}:${connectionId}`;
   }
 
-  async get(connectionId: string) {
+  async get(connectionId: string): Promise<TriggerState | null> {
     const res = await fetch(
       `${this.baseUrl}/api/kv/${encodeURIComponent(this.key(connectionId))}`,
       {
@@ -67,22 +67,11 @@ export class StudioKV implements TriggerStorage {
       return null;
     }
 
-    const body = (await res.json()) as {
-      value?: {
-        credentials: { callbackUrl: string; callbackToken: string };
-        activeTriggerTypes: string[];
-      };
-    };
+    const body = (await res.json()) as { value?: TriggerState };
     return body.value ?? null;
   }
 
-  async set(
-    connectionId: string,
-    state: {
-      credentials: { callbackUrl: string; callbackToken: string };
-      activeTriggerTypes: string[];
-    },
-  ) {
+  async set(connectionId: string, state: TriggerState): Promise<void> {
     const res = await fetch(
       `${this.baseUrl}/api/kv/${encodeURIComponent(this.key(connectionId))}`,
       {
@@ -143,18 +132,18 @@ interface JsonFileStorageOptions {
  */
 export class JsonFileStorage implements TriggerStorage {
   private path: string;
-  private cache: Map<string, unknown> | null = null;
+  private cache: Map<string, TriggerState> | null = null;
 
   constructor(options: JsonFileStorageOptions) {
     this.path = options.path;
   }
 
-  private async load(): Promise<Map<string, unknown>> {
+  private async load(): Promise<Map<string, TriggerState>> {
     if (this.cache) return this.cache;
     try {
       const fs = await import("node:fs/promises");
       const raw = await fs.readFile(this.path, "utf-8");
-      const data = JSON.parse(raw) as Record<string, unknown>;
+      const data = JSON.parse(raw) as Record<string, TriggerState>;
       this.cache = new Map(Object.entries(data));
     } catch (err: unknown) {
       if (
@@ -176,12 +165,12 @@ export class JsonFileStorage implements TriggerStorage {
     await fs.writeFile(this.path, JSON.stringify(data, null, 2));
   }
 
-  async get(connectionId: string) {
+  async get(connectionId: string): Promise<TriggerState | null> {
     const map = await this.load();
-    return (map.get(connectionId) as any) ?? null;
+    return map.get(connectionId) ?? null;
   }
 
-  async set(connectionId: string, state: unknown) {
+  async set(connectionId: string, state: TriggerState): Promise<void> {
     const map = await this.load();
     map.set(connectionId, state);
     await this.save();

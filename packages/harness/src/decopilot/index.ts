@@ -40,7 +40,7 @@ import type { DecopilotTelemetry } from "./run-stream";
 /** True when the injected context is a full cluster context (it carries
  *  `storage`/`db`, absent from the bare `HarnessContext` the daemon builds).
  *  The cluster's richer `StudioContext` is structurally assignable to
- *  `HarnessContext`; the mesh-side registered builder casts it back. */
+ *  `HarnessContext`; the studio-side registered builder casts it back. */
 function isClusterContext(ctx: HarnessContext): boolean {
   return "storage" in ctx;
 }
@@ -49,7 +49,7 @@ function isClusterContext(ctx: HarnessContext): boolean {
 // The factory looks the cluster deps builder up from a module-scoped registry
 // instead of statically importing the `@/`-coupled cluster assembler
 // (`apps/mesh/src/harnesses/decopilot/harness-deps`). That keeps this package
-// entry free of `@/` imports; the mesh barrel registers the implementation.
+// entry free of `@/` imports; the studio barrel registers the implementation.
 export interface ClusterEnvironmentBuilderArgs {
   ctx: HarnessContext;
   modelRuntime: ModelRuntime;

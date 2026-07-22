@@ -14,6 +14,7 @@ import {
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useState, Suspense } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 import { type AiProviderModel } from "./select-model/shared";
 import { useChatPrefs } from "./context";
 import { ModelSelectorContentFallback } from "./select-model/decopilot";
@@ -61,6 +62,7 @@ export function ModelSelector({
   filterModels,
   agent,
 }: ModelSelectorProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const standalone = onModelChange !== undefined;
   const isMobile = useIsMobile();
@@ -110,7 +112,9 @@ export function ModelSelector({
       <Drawer open={open} onOpenChange={setOpen}>
         <DrawerTrigger asChild>{triggerButton}</DrawerTrigger>
         <DrawerContent className="p-0 flex flex-col max-h-[95vh]">
-          <DrawerTitle className="sr-only">Select model</DrawerTitle>
+          <DrawerTitle className="sr-only">
+            {t("chat.selectModel.selectModel")}
+          </DrawerTitle>
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {selectorContent}
           </div>
@@ -126,7 +130,9 @@ export function ModelSelector({
         className="p-0 gap-0 sm:max-w-fit overflow-hidden h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[85vh] w-full max-w-full sm:max-w-fit rounded-none sm:rounded-xl border-0 sm:border"
         closeButtonClassName="top-3.5 right-3.5 z-20"
       >
-        <DialogTitle className="sr-only">Select model</DialogTitle>
+        <DialogTitle className="sr-only">
+          {t("chat.selectModel.selectModel")}
+        </DialogTitle>
         {selectorContent}
       </DialogContent>
     </Dialog>

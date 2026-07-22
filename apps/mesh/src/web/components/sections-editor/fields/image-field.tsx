@@ -5,6 +5,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   FilePickerDialog,
   LAST_CONFIG_KEY,
@@ -12,23 +13,11 @@ import {
 import { matchSiteSlugConfig } from "@/web/components/file-picker/match-site-slug-config";
 import { useFileConfigsQuery } from "@/web/hooks/use-file-configs";
 import { useFilePickerUpload } from "@/web/hooks/use-file-picker";
+import { ClickToReplaceOverlay } from "./click-to-replace-overlay";
 import { extractUrl } from "./extract-url";
 import type { FieldProps } from "./field-props";
-
-function basename(url: string): string {
-  try {
-    const path = new URL(url).pathname;
-    return decodeURIComponent(path.split("/").pop() ?? url);
-  } catch {
-    return url.split("/").pop() ?? url;
-  }
-}
-
-function extension(filename: string): string {
-  const dot = filename.lastIndexOf(".");
-  if (dot < 0 || dot === filename.length - 1) return "";
-  return filename.slice(dot + 1).toLowerCase();
-}
+import { basename, extension } from "./media-filename";
+import { MediaTransformControls } from "./media-transform-controls";
 
 const ACCEPTED_IMAGE_TYPES = new Set([
   "image/png",
@@ -47,6 +36,7 @@ export function ImageField({
   label,
   sandbox,
 }: FieldProps) {
+  const t = useT();
   const strValue = extractUrl(value);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -101,7 +91,7 @@ export function ImageField({
       ACCEPTED_IMAGE_TYPES.has(f.type || ""),
     );
     if (list.length === 0) {
-      toast.error("Only image files are accepted here.");
+      toast.error(t("sectionsEditor.imageField.onlyImageFilesAccepted"));
       return;
     }
 
@@ -122,11 +112,17 @@ export function ImageField({
       setValue(result.publicUrl);
       if (list.length > 1) {
         toast.info(
-          `Uploaded ${list[0]!.name}; extra files were ignored (single-select field).`,
+          t("sectionsEditor.imageField.uploadedWithExtraFilesIgnored", {
+            fileName: list[0]!.name,
+          }),
         );
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.imageField.uploadFailed"),
+      );
     }
   }
 
@@ -175,7 +171,12 @@ export function ImageField({
       >
         {strValue ? (
           <>
-            <div className="relative h-40 w-full bg-[image:linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%),linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%)] bg-[position:0_0,8px_8px] [background-size:16px_16px]">
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              aria-label={t("sectionsEditor.imageField.replaceImage")}
+              className="relative block h-40 w-full cursor-pointer bg-[image:linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%),linear-gradient(45deg,rgba(0,0,0,0.04)_25%,transparent_25%,transparent_75%,rgba(0,0,0,0.04)_75%)] bg-[position:0_0,8px_8px] [background-size:16px_16px]"
+            >
               {!imageErrored && (
                 <img
                   // Remount whenever the URL changes so onLoad/onError
@@ -195,13 +196,16 @@ export function ImageField({
               {imageErrored && (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-muted-foreground">
                   <Image01 size={20} />
-                  <p className="text-xs">Preview unavailable</p>
+                  <p className="text-xs">
+                    {t("sectionsEditor.imageField.previewUnavailable")}
+                  </p>
                 </div>
               )}
               {!imageLoaded && !imageErrored && (
                 <div className="absolute inset-0 animate-pulse bg-muted/60" />
               )}
-            </div>
+              <ClickToReplaceOverlay />
+            </button>
             <div className="flex items-center gap-2 border-t border-border/60 bg-background/50 px-3 py-2">
               <span className="min-w-0 flex-1 truncate text-xs font-medium">
                 {fileName}
@@ -222,11 +226,11 @@ export function ImageField({
             <Image01 size={20} />
             <span className="text-sm font-medium">
               {upload.isPending
-                ? "Uploading…"
-                : "Drop an image or click to browse"}
+                ? t("sectionsEditor.imageField.uploading")
+                : t("sectionsEditor.imageField.dropImageOrClickToBrowse")}
             </span>
             <span className="text-xs text-muted-foreground">
-              PNG, JPEG, WebP, GIF, SVG, AVIF — up to 100 MB
+              {t("sectionsEditor.imageField.supportedFormatsAndSize")}
             </span>
           </button>
         )}
@@ -234,7 +238,7 @@ export function ImageField({
         {isDragging && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-primary/10 backdrop-blur-[1px]">
             <span className="rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow">
-              Drop to upload
+              {t("sectionsEditor.imageField.dropToUpload")}
             </span>
           </div>
         )}
@@ -246,30 +250,35 @@ export function ImageField({
           type="url"
           value={strValue}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="https://..."
+          placeholder={t("sectionsEditor.imageField.urlPlaceholder")}
           className="h-9 min-w-0 flex-1"
         />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setPickerOpen(true)}
-          className="h-9 shrink-0"
-        >
-          <Upload01 size={14} />
-          {strValue ? "Replace" : "Browse"}
-        </Button>
-        {strValue && (
+        {!strValue && (
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
-            onClick={() => setValue("")}
+            onClick={() => setPickerOpen(true)}
             className="h-9 shrink-0"
-            aria-label="Remove image"
           >
-            <Trash01 size={14} />
+            <Upload01 size={14} />
+            {t("sectionsEditor.imageField.browse")}
           </Button>
+        )}
+        {strValue && (
+          <>
+            <MediaTransformControls value={strValue} onChange={setValue} />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setValue("")}
+              className="h-9 shrink-0"
+              aria-label={t("sectionsEditor.imageField.removeImage")}
+            >
+              <Trash01 size={14} />
+            </Button>
+          </>
         )}
       </div>
 

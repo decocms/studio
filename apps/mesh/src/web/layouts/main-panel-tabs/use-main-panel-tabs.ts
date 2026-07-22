@@ -15,12 +15,16 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement, useSyncExternalStore } from "react";
 import {
+  COMMERCE_DISCOVERY_ICON,
+  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+  getCommerceDiscoveryAgentId,
   getDevConnectionId,
   useConnections,
   useMCPClientOptional,
   useMCPToolsListQuery,
   useProjectContext,
   useVirtualMCP,
+  WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
 import { getUIResourceUri } from "@/mcp-apps/types";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
@@ -57,9 +61,13 @@ import {
   type AutomationTabParsed,
 } from "./tab-id";
 import { resolveTabIcon, type TabIcon, type TabKind } from "./resolve-tab-icon";
-import { getSourceSystemTabs } from "./source-system-tabs";
+import {
+  getSourceSystemTabs,
+  shouldDeepLinkSourceTab,
+} from "./source-system-tabs";
 import { useCapability } from "@/web/hooks/use-capability";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export type AgentTabDef = {
   id: string;
@@ -135,6 +143,7 @@ export function useMainPanelTabs(ctx: {
   virtualMcpId: string;
   taskId: string;
 }): MainPanelTabs {
+  const t = useT();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as {
     main?: string | 0;
@@ -257,8 +266,10 @@ export function useMainPanelTabs(ctx: {
           previewUrl,
         }
       : null;
-  // Subscribe to the same query keys as Preview; only fetch after the dev
-  // server is running, but still re-render when Preview warms the cache.
+  // Subscribe to the same query keys as Preview. The committed `.deco/*.gen.json`
+  // snapshots are read as soon as the daemon is up (before the dev server), so
+  // the Content tab can show without waiting; the live route fetch stays gated
+  // behind `devServerReady` and takes over once the preview warms up.
   const { data: decofile } = useDecofile(decofileFetchParams, {
     fetchEnabled: devServerReady,
   });
@@ -313,24 +324,60 @@ export function useMainPanelTabs(ctx: {
   const leadingSystemTabs: Array<{ id: string; title: string }> = [];
   // Library / Tasks are agent-independent overlays; MainPanelTabsBar folds them
   // into the button row itself, so they are NOT part of this per-agent list.
-  if (effectiveDefaultMainView?.type === "overview") {
-    leadingSystemTabs.push({ id: "overview", title: "Overview" });
+  //
+  // Overview (the Super Agent's home board) is agent-independent — it renders
+  // in place on any shell (see MainPanelContent's `overview` branch). Reports-
+  // only orgs pin it as the first tab on EVERY agent, so the top bar stays a
+  // stable Overview · Preview · Code · Report set regardless of which agent the
+  // thread happens to be on. Clicking it never switches agents.
+  if (effectiveDefaultMainView?.type === "overview" || reportsOnly) {
+    leadingSystemTabs.push({
+      id: "overview",
+      title: t("common.mainPanelTabs.overview"),
+    });
   }
-  leadingSystemTabs.push(...getSourceSystemTabs(hasClonableSource));
+  // Reports-only orgs get a persistent Preview/Code entry point to their
+  // storefront regardless of which agent/screen they're on — visibility is
+  // keyed to the settled org flag, not to whether the current agent happens to
+  // have a mirrored `githubRepo`. Clicking from off the Report Agent deep-links
+  // into it (see setActiveTab).
+  leadingSystemTabs.push(
+    ...getSourceSystemTabs(hasClonableSource || reportsOnly).map((tab) => ({
+      id: tab.id,
+      title:
+        tab.id === "preview"
+          ? t("common.mainPanelTabs.preview")
+          : tab.id === "code"
+            ? t("common.mainPanelTabs.code")
+            : tab.title,
+    })),
+  );
 
   const systemTabs: Array<{ id: string; title: string }> = [];
   if (hasClonableSource && showContentTab) {
-    systemTabs.push({ id: "content", title: "Content" });
+    systemTabs.push({
+      id: "content",
+      title: t("common.mainPanelTabs.content"),
+    });
   }
   if (gitTabVisible) {
-    systemTabs.push({ id: "git", title: "Review changes" });
+    systemTabs.push({
+      id: "git",
+      title: t("common.mainPanelTabs.reviewChanges"),
+    });
   }
   // Commerce (reports-only) orgs get a curated top bar: no Automations, no
   // Settings.
   if (!reportsOnly) {
-    systemTabs.push({ id: "automations", title: "Automations" });
+    systemTabs.push({
+      id: "automations",
+      title: t("common.mainPanelTabs.automations"),
+    });
     if (canManageAgents) {
-      systemTabs.push({ id: "settings", title: "Settings" });
+      systemTabs.push({
+        id: "settings",
+        title: t("common.mainPanelTabs.settings"),
+      });
     }
   }
 
@@ -366,6 +413,29 @@ export function useMainPanelTabs(ctx: {
       iconKey: pv.toolName,
       iconUrl: pv.icon ?? null,
     });
+  }
+
+  // Reports-only orgs surface the Report app on EVERY agent, not just the
+  // Report Agent. It renders in place from the Commerce Discovery connection —
+  // AppViewContent fetches that connection directly, so no aggregation into the
+  // current agent (and no agent switch) is needed. On the Report Agent itself
+  // the loop above already added it with its configured label/icon, so this is
+  // a no-op there (dedup by tab id).
+  if (reportsOnly) {
+    const reportConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
+    const reportTabId = formatPinnedViewTabId(
+      reportConnectionId,
+      COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+    );
+    if (!pinnedTabMap.has(reportTabId)) {
+      pinnedTabMap.set(reportTabId, {
+        id: reportTabId,
+        title: t("common.mainPanelTabs.report"),
+        appId: reportConnectionId,
+        iconKey: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+        iconUrl: COMMERCE_DISCOVERY_ICON,
+      });
+    }
   }
 
   // Ephemeral file-preview tab (`?main=file:<key>`): surfaces as a pill
@@ -489,7 +559,23 @@ export function useMainPanelTabs(ctx: {
     })),
   ];
 
+  const onReportAgent =
+    ctx.virtualMcpId === getCommerceDiscoveryAgentId(org.id);
+
   const setActiveTab = (id: string) => {
+    // On a reports-only org sitting on any shell other than the Report Agent
+    // (e.g. the Super Agent home), the storefront preview lives on the Report
+    // Agent — so deep-link into it with the panel open instead of trying to
+    // preview the current agent, which has no source. On the Report Agent
+    // itself this falls through to the normal tab-toggle below.
+    if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: id })) {
+      navigate({
+        to: "/$org/$taskId",
+        params: { org: org.slug, taskId: crypto.randomUUID() },
+        search: { virtualmcpid: getCommerceDiscoveryAgentId(org.id), main: id },
+      });
+      return;
+    }
     const target = resolveTabClickTarget({
       clickedId: id,
       activeTab,

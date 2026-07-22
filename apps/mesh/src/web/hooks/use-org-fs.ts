@@ -71,18 +71,20 @@ function fsUrl(
   return `/api/${encodeURIComponent(orgSlug)}/fs/${encodeURIComponent(volume)}/${op}${qs ? `?${qs}` : ""}`;
 }
 
-async function fsFetch(url: string, init?: RequestInit): Promise<Response> {
+async function fsFetch(
+  url: string,
+  init?: RequestInit,
+  opts?: { allow404?: boolean },
+): Promise<Response> {
   const res = await fetch(url, init);
-  if (!res.ok) {
-    let detail = "";
-    try {
-      detail = ((await res.json()) as { error?: string }).error ?? "";
-    } catch {
-      // non-JSON body
-    }
-    throw new Error(detail || `HTTP ${res.status}`);
+  if (res.ok || (opts?.allow404 && res.status === 404)) return res;
+  let detail = "";
+  try {
+    detail = ((await res.json()) as { error?: string }).error ?? "";
+  } catch {
+    // non-JSON body
   }
-  return res;
+  throw new Error(detail || `HTTP ${res.status}`);
 }
 
 /** Children of `path` ("" = volume root), dirs first then by name. */
@@ -123,9 +125,12 @@ export function useOrgFsStat(
           query.state.data ? false : (opts.refetchIntervalWhenAbsent ?? false)
       : undefined,
     queryFn: async (): Promise<OrgFsEntry | null> => {
-      const res = await fetch(fsUrl(org.slug, volume ?? "", "stat", { path }));
+      const res = await fsFetch(
+        fsUrl(org.slug, volume ?? "", "stat", { path }),
+        undefined,
+        { allow404: true },
+      );
       if (res.status === 404) return null;
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return ((await res.json()) as { entry: OrgFsEntry }).entry;
     },
   });
@@ -491,19 +496,31 @@ export function useOrgFsMutations(volume: string) {
 
   const upload = useMutation({
     mutationFn: async (input: { dir: string; files: File[] }) => {
-      for (const file of input.files) {
-        const path = input.dir ? `${input.dir}/${file.name}` : file.name;
-        await fsFetch(fsUrl(org.slug, volume, "file", { path }), {
-          method: "PUT",
-          headers: {
-            "content-type": file.type || "application/octet-stream",
-          },
-          body: file,
-        });
-      }
+      // Independent PUTs (distinct paths, server creates parent dirs per
+      // write) — run them concurrently instead of one round trip at a time.
+      // Promise.allSettled (not Promise.all): Promise.all rejects as soon as
+      // the first PUT fails, while the rest are still in flight — that would
+      // invalidate the listing (and resolve the caller's catch) before those
+      // uploads landed, silently dropping them from the refreshed view.
+      const results = await Promise.allSettled(
+        input.files.map((file) => {
+          const path = input.dir ? `${input.dir}/${file.name}` : file.name;
+          return fsFetch(fsUrl(org.slug, volume, "file", { path }), {
+            method: "PUT",
+            headers: {
+              "content-type": file.type || "application/octet-stream",
+            },
+            body: file,
+          });
+        }),
+      );
+      const failure = results.find(
+        (r): r is PromiseRejectedResult => r.status === "rejected",
+      );
+      if (failure) throw failure.reason;
     },
-    // Settled, not success: files upload sequentially, so a mid-batch failure
-    // (quota, size) leaves earlier files written — the listing must refresh.
+    // Settled, not success: one failure (quota, size) doesn't stop the rest
+    // — the listing must still refresh once every upload has landed.
     onSettled: invalidate,
   });
 

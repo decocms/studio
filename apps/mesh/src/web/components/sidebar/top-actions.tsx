@@ -32,7 +32,7 @@ class SilentErrorBoundary extends Component<
 
 function creditColor(balanceDollars: number): string {
   if (balanceDollars <= 1) return "text-destructive";
-  if (balanceDollars <= 5) return "text-amber-500 dark:text-amber-400";
+  if (balanceDollars <= 5) return "text-warning";
   return "text-foreground/70";
 }
 

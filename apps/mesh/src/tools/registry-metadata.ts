@@ -223,6 +223,7 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_LIST",
   "TASK_BOARD_ITEM_UPDATE",
   "TASK_BOARD_ITEM_DELETE",
+  "TASK_BOARD_ITEM_PRS_GET",
 ] as const;
 
 /**
@@ -1036,6 +1037,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
     dangerous: true,
   },
+  {
+    name: "TASK_BOARD_ITEM_PRS_GET",
+    description: "Get a task board item's linked pull requests with live state",
+    category: "Task Board",
+  },
 ];
 
 // ============================================================================
@@ -1132,13 +1138,13 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // the run fence token, same trust boundary as the chat turn itself.
       "THREAD_BACKGROUND_TOOL_START",
       "THREAD_SUBTASK_DELIVER",
-      // Task board — org-scoped, gated behind the org's task_board_enabled
-      // setting (enforced per-handler), but usable by every member once on,
-      // same basic-usage tier as chat threads.
+      // Task board — org-scoped, usable by every member, same basic-usage
+      // tier as chat threads.
       "TASK_BOARD_ITEM_CREATE",
       "TASK_BOARD_ITEM_LIST",
       "TASK_BOARD_ITEM_UPDATE",
       "TASK_BOARD_ITEM_DELETE",
+      "TASK_BOARD_ITEM_PRS_GET",
     ],
   },
   // Organization

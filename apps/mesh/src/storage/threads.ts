@@ -99,8 +99,15 @@ export class OrgScopedThreadStorage {
     return this.inner.requiresActionIfInProgress(id, this.requireOrg());
   }
 
-  forceFailIfInProgress(id: string): Promise<boolean> {
-    return this.inner.forceFailIfInProgress(id, this.requireOrg());
+  forceFailIfInProgress(
+    id: string,
+    expectedFenceToken?: string | null,
+  ): Promise<boolean> {
+    return this.inner.forceFailIfInProgress(
+      id,
+      this.requireOrg(),
+      expectedFenceToken,
+    );
   }
 
   delete(id: string): Promise<void> {
@@ -290,6 +297,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
       updated_at: now,
       created_by: data.created_by,
       updated_by: data.updated_by ?? null,
+      ...(data.message_storage_version !== undefined
+        ? { message_storage_version: data.message_storage_version }
+        : {}),
       ...(data.metadata !== undefined
         ? { metadata: JSON.stringify(data.metadata) }
         : {}),
@@ -486,15 +496,25 @@ export class SqlThreadStorage implements ThreadStoragePort {
   async forceFailIfInProgress(
     id: string,
     organizationId: string,
+    expectedFenceToken?: string | null,
   ): Promise<boolean> {
     const now = new Date().toISOString();
-    const result = await this.db
+    let query = this.db
       .updateTable("threads")
       .set({ status: "failed", updated_at: now })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "=", "in_progress")
-      .executeTakeFirst();
+      .where("status", "=", "in_progress");
+    // Fence-scope the force-fail to the run being cancelled: a follow-up turn
+    // sent while this (cross-pod, fire-and-forget) cancel is still settling
+    // has already minted a NEW fence and re-set the thread `in_progress`, and
+    // must NOT be force-failed by the prior turn's cancel. When no fence is
+    // supplied (legacy callers, or a run that never persisted one) the guard
+    // is skipped, preserving the prior unconditional behavior.
+    if (expectedFenceToken != null) {
+      query = query.where("run_fence_token", "=", expectedFenceToken);
+    }
+    const result = await query.executeTakeFirst();
 
     return (result.numUpdatedRows ?? BigInt(0)) > BigInt(0);
   }
@@ -998,6 +1018,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     run_owner_pod?: string | null;
     run_config?: Record<string, unknown> | null;
     run_started_at?: Date | string | null;
+    last_progress_at?: Date | string | null;
     virtual_mcp_id?: string | null;
     branch?: string | null;
     sandbox_provider_kind?: string | null;
@@ -1040,6 +1061,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
       run_config: row.run_config ?? null,
       run_started_at: row.run_started_at
         ? toIsoString(row.run_started_at)
+        : null,
+      last_progress_at: row.last_progress_at
+        ? toIsoString(row.last_progress_at)
         : null,
       virtual_mcp_id: row.virtual_mcp_id ?? "",
       branch: row.branch ?? null,

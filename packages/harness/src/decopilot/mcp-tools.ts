@@ -144,6 +144,30 @@ export interface ToolCallAnalytics {
   isError: boolean;
 }
 
+/**
+ * A successful `create_pull_request` MCP tool call — carries the result (which
+ * holds the PR URL) and the source connection id, so a consumer can extract the
+ * PR identity and link it to a task. Distinct from `onToolCalled` (analytics,
+ * which deliberately carries no result). Fired only for PR-create tools (coarse
+ * name gate below) so the result is never forwarded for ordinary tool calls.
+ */
+export interface PrOpenedEvent {
+  toolName: string;
+  /** Source connection id (gateway client id), when known. */
+  connectionId?: string;
+  input: Record<string, unknown>;
+  result: CallToolResult;
+}
+
+/** Coarse, cheap pre-filter: does this tool name look like a PR-create tool?
+ *  The consumer applies the precise check — this just keeps `onPrOpened` from
+ *  firing (and forwarding the result) on every ordinary tool call. */
+function looksLikePrCreateTool(name: string): boolean {
+  return (
+    name.includes("create_pull_request") || name.includes("createPullRequest")
+  );
+}
+
 export interface ToolsFromMcpOptions {
   disableOutputTruncation?: boolean;
   isPlanMode?: boolean;
@@ -156,6 +180,7 @@ export interface ToolsFromMcpOptions {
     input: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
   onToolCalled?: (event: ToolCallAnalytics) => void;
+  onPrOpened?: (event: PrOpenedEvent) => void;
 }
 
 export async function toolsFromMCP(
@@ -215,6 +240,21 @@ export async function toolsFromMCP(
               outputBytes = Buffer.byteLength(JSON.stringify(result), "utf8");
             } catch {
               outputBytes = undefined;
+            }
+            // A PR was just opened via the GitHub MCP — hand the result (holds
+            // the PR URL) + source connection to the consumer for linking.
+            if (
+              !isError &&
+              options.onPrOpened &&
+              looksLikePrCreateTool(t.name)
+            ) {
+              options.onPrOpened({
+                toolName: t.name,
+                connectionId: (_meta as { gatewayClientId?: string })
+                  ?.gatewayClientId,
+                input: resolvedInput,
+                result: result as unknown as CallToolResult,
+              });
             }
             return result as unknown as CallToolResult;
           } catch (err) {

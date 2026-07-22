@@ -1,498 +1,556 @@
-import { cn } from "@deco/ui/lib/utils.ts";
-import type React from "react";
 import { useState } from "react";
 import type { CtaProps } from "@/reports/deck-types";
 import Icon from "../icon";
 import { trackConnectCta } from "../onboarding";
 import { useReportCtaHref } from "../use-report-cta-href";
-import { FLOR_PATH } from "./motifs";
+import { useT } from "@/web/i18n/use-t";
+import type { TranslationKey } from "@/web/i18n/use-t";
 import { DECK } from "./tokens";
 
-// Closing pitch copy — sells the full connected report product.
-const HEADLINE_LEAD = "Sua loja tem receita parada.";
-const HEADLINE_ACCENT = "Vamos encontrá-la.";
-const CTA_LABEL = "Conectar minha loja";
+// ── closing pitch (Figma: Product 2, node 9317-17836) ────────────────────────
+// Centered hero over a dark-green card: a count pill, the payoff headline, sub,
+// and CTA; a marquee of every audited dimension (each its own icon); and a
+// report card peeking from the bottom with the scored areas.
 
-// Brand greens from the Figma card (brand-green-dark / brand-green-light).
 const CARD = DECK.forest;
 const LIME = DECK.lime;
-const LIME_INK = DECK.forest;
 
-// God-rays for the unlock burst: lime spokes, masked to a ring band so they
-// radiate around the emblem (never over it).
-const RAYS_BG =
-  "repeating-conic-gradient(from 0deg, rgba(208,236,26,0.55) 0deg 3deg, transparent 3deg 11deg)";
-const RAYS_MASK =
-  "radial-gradient(circle, transparent 26%, #000 44%, #000 60%, transparent 80%)";
-
-type Bullet = { label: string; desc: string; color: string; icon: string };
-
-const BULLETS: Bullet[] = [
+// The audited dimensions — each with its own icon and accent (the marquee).
+type Pill = { labelKey: TranslationKey; icon: string; color: string };
+const PILLS: Pill[] = [
   {
-    label: "Veja onde seus concorrentes estão na frente",
-    desc: "Comparação direta com as marcas que disputam o mesmo cliente",
-    color: "#a595ff",
-    icon: "leaderboard",
-  },
-  {
-    label: "O que corrigir primeiro",
-    desc: "Priorizado por impacto em receita, com esforço estimado",
+    labelKey: "reports.ctaTemplate.pill.seo",
+    icon: "search",
     color: "#ffc116",
-    icon: "checklist",
   },
   {
-    label: "Monitoramento contínuo",
-    desc: "Alertas quando concorrentes se mexem, correções automáticas",
-    color: DECK.lime,
-    icon: "notifications_active",
+    labelKey: "reports.ctaTemplate.pill.aiSearch",
+    icon: "smart_toy",
+    color: "#14b8a6",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.performance",
+    icon: "bolt",
+    color: "#a595ff",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.conversion",
+    icon: "shopping_cart",
+    color: "#ffc116",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.tracking",
+    icon: "monitoring",
+    color: "#6e9fdb",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.accessibility",
+    icon: "accessibility_new",
+    color: "#b7a8ff",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.security",
+    icon: "shield",
+    color: "#f0846b",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.content",
+    icon: "article",
+    color: "#ffc116",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.analytics",
+    icon: "bar_chart",
+    color: "#a3c73a",
   },
 ];
 
-// The data sources the report connects to (Figma: VTEX, Search Console, GA4).
-// SimpleIcons serves each brand's logo in its own colour so the three read as
-// distinct (not three generic Google "G"s).
-const SOURCES = [
-  { label: "VTEX", src: "https://cdn.simpleicons.org/vtex" },
+// The scored areas shown inside the report card (from the attached spec).
+type ReportArea = { labelKey: TranslationKey; score: number; color: string };
+const REPORT_AREAS: ReportArea[] = [
   {
-    label: "Google Search Console",
-    src: "https://cdn.simpleicons.org/googlesearchconsole",
+    labelKey: "reports.ctaTemplate.area.conversion",
+    score: 42,
+    color: "#6e9fdb",
   },
   {
-    label: "Google Analytics 4",
-    src: "https://cdn.simpleicons.org/googleanalytics",
+    labelKey: "reports.ctaTemplate.area.performance",
+    score: 35,
+    color: "#a595ff",
+  },
+  { labelKey: "reports.ctaTemplate.area.seo", score: 54, color: "#f0b613" },
+  {
+    labelKey: "reports.ctaTemplate.area.aiSearchGeo",
+    score: 67,
+    color: "#14b8a6",
+  },
+  {
+    labelKey: "reports.ctaTemplate.area.accessibility",
+    score: 48,
+    color: "#8aa9ff",
+  },
+  {
+    labelKey: "reports.ctaTemplate.area.security",
+    score: 31,
+    color: "#f0846b",
+  },
+  {
+    labelKey: "reports.ctaTemplate.area.analytics",
+    score: 75,
+    color: "#8caa25",
   },
 ];
 
-// Mini report-card pills that fly out of the box — representing real outputs
-// from the full report: the action plan, the SEO gap, and autofix agents.
-const REPORT_CARDS: { label: string; color: string; rotate: number }[] = [
-  { label: "47 passos", color: "#ffc116", rotate: -8 },
-  { label: "SEO −38pts", color: "#a595ff", rotate: 3 },
-  { label: "Autofix 3×", color: "#67e8f9", rotate: 9 },
+const SEGMENTS = 14;
+
+// Fixes queued from the findings — the falling backlog on the left.
+type FixTask = {
+  titleKey: TranslationKey;
+  levelKey: TranslationKey;
+  color: string;
+};
+const FIX_TASKS: FixTask[] = [
+  {
+    titleKey: "reports.ctaTemplate.fixTask.lcpHome",
+    levelKey: "reports.ctaTemplate.level.high",
+    color: "#d43d3d",
+  },
+  {
+    titleKey: "reports.ctaTemplate.fixTask.canonical",
+    levelKey: "reports.ctaTemplate.level.high",
+    color: "#d43d3d",
+  },
+  {
+    titleKey: "reports.ctaTemplate.fixTask.gptBot",
+    levelKey: "reports.ctaTemplate.level.medium",
+    color: "#f0b613",
+  },
+  {
+    titleKey: "reports.ctaTemplate.fixTask.ga4",
+    levelKey: "reports.ctaTemplate.level.high",
+    color: "#d43d3d",
+  },
+  {
+    titleKey: "reports.ctaTemplate.fixTask.altImages",
+    levelKey: "reports.ctaTemplate.level.medium",
+    color: "#f0b613",
+  },
+  {
+    titleKey: "reports.ctaTemplate.fixTask.checkout",
+    levelKey: "reports.ctaTemplate.level.high",
+    color: "#d43d3d",
+  },
+  {
+    titleKey: "reports.ctaTemplate.fixTask.hstsCsp",
+    levelKey: "reports.ctaTemplate.level.medium",
+    color: "#f0b613",
+  },
 ];
 
-// ── 3-D gift box ─────────────────────────────────────────────────────────────
-
-const FACE: React.CSSProperties = { position: "absolute" };
-
-/** Proper CSS preserve-3d box. W=D=130 (cube), H=96 → half-W/D=65. */
-function BoxVisual() {
-  // Side faces: W×H = 130×96, centred vertically in the 130px cube (top:17)
-  const side: React.CSSProperties = {
-    ...FACE,
-    width: 130,
-    height: 96,
-    top: 17,
-    left: 0,
-  };
-  // Top/bottom faces: W×D = 130×130
-  const flat: React.CSSProperties = {
-    ...FACE,
-    width: 130,
-    height: 130,
-    inset: 0,
-  };
-
-  return (
-    <div
-      className="unlock-box"
-      style={{ width: 150, height: 150, perspective: "700px", flexShrink: 0 }}
-    >
-      <div
-        style={{
-          width: 130,
-          height: 130,
-          margin: 10,
-          position: "relative",
-          transformStyle: "preserve-3d",
-          transform: "rotateX(-12deg) rotateY(-25deg)",
-        }}
-      >
-        {/* Front face — lime fill, dark stroke, flor tile */}
-        <div
-          style={{
-            ...side,
-            background: LIME,
-            border: `2px solid ${CARD}`,
-            transform: "translateZ(65px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <svg
-            aria-hidden
-            viewBox="0 0 120 120"
-            style={{ width: 40, height: 40, opacity: 0.55, flexShrink: 0 }}
-            fill={CARD}
-          >
-            <path d={FLOR_PATH} fillRule="evenodd" clipRule="evenodd" />
-          </svg>
-        </div>
-
-        {/* Right face — slightly darker lime */}
-        <div
-          style={{
-            ...side,
-            background: "rgba(160,194,16,0.92)",
-            border: `1.5px solid ${CARD}`,
-            transform: "rotateY(90deg) translateZ(65px)",
-          }}
-        />
-
-        {/* Left face — same shade as right */}
-        <div
-          style={{
-            ...side,
-            background: "rgba(160,194,16,0.92)",
-            border: `1.5px solid ${CARD}`,
-            transform: "rotateY(-90deg) translateZ(65px)",
-          }}
-        />
-
-        {/* Back face — dark inside wall, visible when lid opens */}
-        <div
-          style={{
-            ...side,
-            background: CARD,
-            border: `1.5px solid rgba(255,255,255,0.06)`,
-            transform: "translateZ(-65px)",
-          }}
-        />
-
-        {/* Inside floor — dark with lime glow visible when lid opens */}
-        <div
-          className="unlock-box-glow"
-          style={{
-            ...flat,
-            background:
-              "radial-gradient(ellipse at 50% 55%, rgba(208,236,26,0.55) 0%, #093d1a 62%)",
-            transform: "rotateX(90deg) translateZ(-45px)",
-          }}
-        />
-
-        {/* Lid wrapper — hinge at back edge (local Y=0 in lid-wrapper space) */}
-        <div
-          style={{
-            ...flat,
-            transformStyle: "preserve-3d",
-            transform: "rotateX(90deg) translateZ(48px)",
-          }}
-        >
-          <div
-            className="unlock-box-lid-face"
-            style={{
-              ...flat,
-              background: `linear-gradient(175deg, ${LIME} 0%, rgba(190,228,14,0.95) 100%)`,
-              border: `2px solid ${CARD}`,
-              transformOrigin: "50% 0%",
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  );
+// Delivery cadence heatmap (7 rows × 16 weeks), deterministic so it's stable.
+const HEAT_ROWS = 7;
+const HEAT_COLS = 16;
+const HEAT_PALETTE = ["#8caa2510", "#cfe8b8", "#9fd07f", "#5fa843", "#0c5122"];
+function heatLevel(row: number, col: number): number {
+  return (row * 3 + col * 5 + ((row * col) % 4)) % 5;
 }
 
-// ── source tile ───────────────────────────────────────────────────────────────
+type CadenceMetric = { labelKey: TranslationKey; valueKey: TranslationKey };
+const CADENCE_METRICS: CadenceMetric[] = [
+  {
+    labelKey: "reports.ctaTemplate.cadence.avgFixTime",
+    valueKey: "reports.ctaTemplate.cadence.avgFixTimeValue",
+  },
+  {
+    labelKey: "reports.ctaTemplate.cadence.fixesThisWeek",
+    valueKey: "reports.ctaTemplate.cadence.fixesThisWeekValue",
+  },
+  {
+    labelKey: "reports.ctaTemplate.cadence.inReview",
+    valueKey: "reports.ctaTemplate.cadence.inReviewValue",
+  },
+];
 
-function SourceTile({
-  label,
-  src,
-  small,
-}: {
-  label: string;
-  src: string;
-  small?: boolean;
-}) {
-  const [failed, setFailed] = useState(false);
+// ── marquee pill ──────────────────────────────────────────────────────────────
+
+function DimensionPill({ labelKey, icon, color }: Pill) {
+  const t = useT();
   return (
     <span
-      className={cn(
-        "grid place-items-center overflow-hidden bg-white",
-        small ? "size-9 rounded-xl" : "size-14 rounded-2xl",
-      )}
-      style={{
-        border: "1.5px solid rgba(120,113,108,0.1)",
-        boxShadow: small
-          ? "0 3px 10px rgba(0,0,0,0.22)"
-          : "0 8px 24px rgba(0,0,0,0.28),0 2px 6px rgba(0,0,0,0.12)",
-      }}
-      title={label}
+      className="flex shrink-0 items-center gap-2.5 rounded-full py-2 pl-3 pr-5"
+      style={{ border: "1px solid rgba(255,255,255,0.25)" }}
     >
-      {failed ? (
-        <span
-          className={cn("font-medium", small ? "text-[10px]" : "text-sm")}
-          style={{ color: CARD }}
-        >
-          {label[0]}
-        </span>
-      ) : (
-        <img
-          src={src}
-          alt={label}
-          className={cn("object-contain", small ? "size-5" : "size-9")}
-          onError={() => setFailed(true)}
-        />
-      )}
+      <span style={{ color }}>
+        <Icon name={icon} size="xl" />
+      </span>
+      <span
+        className="whitespace-nowrap text-[15px]"
+        style={{ color: "#ffffff" }}
+      >
+        {t(labelKey)}
+      </span>
     </span>
   );
 }
 
-/** Pill card representing a report output — flies out of the box. */
-function ReportCard({ label, color }: { label: string; color: string }) {
+// ── report card (peeks from the bottom) ───────────────────────────────────────
+
+function SegmentBar({ score, color }: { score: number; color: string }) {
+  const filled = Math.round((score / 100) * SEGMENTS);
+  return (
+    <span className="flex flex-1 items-center gap-[3px]">
+      {Array.from({ length: SEGMENTS }, (_, i) => (
+        <span
+          key={i}
+          className="h-2.5 flex-1 rounded-[3px]"
+          style={{ background: i < filled ? color : "rgba(40,37,36,0.08)" }}
+        />
+      ))}
+    </span>
+  );
+}
+
+function ReportCard({
+  domain,
+  faviconUrl,
+  initial,
+}: {
+  domain: string;
+  faviconUrl: string;
+  initial: string;
+}) {
+  const t = useT();
+  const [faviconFailed, setFaviconFailed] = useState(false);
   return (
     <div
+      className="w-[min(92vw,600px)] rounded-t-2xl bg-white p-6 sm:p-7"
+      style={{ boxShadow: "0 -20px 60px rgba(3,32,14,0.35)" }}
+    >
+      {/* header */}
+      <div className="flex items-center gap-2.5">
+        <span
+          className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-md"
+          style={{ border: `1px solid ${DECK.border}` }}
+        >
+          {faviconFailed ? (
+            <span
+              className="text-[11px] font-semibold"
+              style={{ color: DECK.forest }}
+            >
+              {initial}
+            </span>
+          ) : (
+            <img
+              src={faviconUrl}
+              alt=""
+              className="size-4 object-contain"
+              onError={() => setFaviconFailed(true)}
+            />
+          )}
+        </span>
+        <span
+          className="min-w-0 flex-1 truncate text-[15px] font-medium"
+          style={{ color: DECK.ink }}
+        >
+          {domain}
+        </span>
+        <span
+          className="text-[12px] font-semibold uppercase tracking-wide"
+          style={{ color: DECK.soft }}
+        >
+          {t("reports.ctaTemplate.reportCard.diagnostic")}
+        </span>
+      </div>
+
+      {/* scored areas */}
+      <ul className="mt-5 flex flex-col gap-4">
+        {REPORT_AREAS.map((area) => (
+          <li key={area.labelKey} className="flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between">
+              <span
+                className="text-[11px] font-semibold uppercase tracking-wide"
+                style={{ color: DECK.ink }}
+              >
+                {t(area.labelKey)}
+              </span>
+              <span
+                className="text-[15px] font-semibold tabular-nums"
+                style={{ color: DECK.ink }}
+              >
+                {area.score}
+                <span
+                  className="text-[11px] font-normal"
+                  style={{ color: DECK.faint }}
+                >
+                  /100
+                </span>
+              </span>
+            </div>
+            <SegmentBar score={area.score} color={area.color} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ── falling task backlog (left, decorative) ──────────────────────────────────
+
+function TaskCard({ titleKey, levelKey, color }: FixTask) {
+  const t = useT();
+  return (
+    <div
+      className="rounded-xl bg-white p-3"
       style={{
-        background: "rgba(255,255,255,0.97)",
-        borderRadius: 20,
-        padding: "7px 13px",
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        boxShadow: "0 4px 16px rgba(0,0,0,0.26), 0 1px 3px rgba(0,0,0,0.1)",
-        whiteSpace: "nowrap",
+        border: `1px solid ${DECK.border}`,
+        boxShadow: "0 6px 20px rgba(3,32,14,0.12)",
       }}
     >
+      <div className="flex items-start gap-2">
+        <span
+          className="mt-0.5 size-3.5 shrink-0 rounded-full"
+          style={{ border: `1.5px solid ${DECK.faint}` }}
+        />
+        <span
+          className="text-[12.5px] font-medium leading-snug"
+          style={{ color: DECK.ink }}
+        >
+          {t(titleKey)}
+        </span>
+      </div>
       <span
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: 8,
-          background: color,
-          flexShrink: 0,
-          display: "block",
-        }}
-      />
-      <span
-        style={{ fontSize: 13, fontWeight: 500, color: CARD, lineHeight: 1 }}
+        className="mt-2 ml-5 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px]"
+        style={{ background: "rgba(40,37,36,0.04)", color: DECK.muted }}
       >
-        {label}
+        <span className="size-1.5 rounded-full" style={{ background: color }} />
+        {t(levelKey)}
       </span>
     </div>
   );
 }
 
-/**
- * The unlock reveal. The box is the hero: it slides in, the lid flips open,
- * god-rays burst from the opening, and the integration icons fly out.
- */
-function UnlockVisual({ active }: { active: boolean }) {
-  // Replay the animation each time the slide re-enters — render-phase "state
-  // from props" adjustment (no effect).
-  const [prevActive, setPrevActive] = useState(active);
-  const [playKey, setPlayKey] = useState(0);
-  if (active !== prevActive) {
-    setPrevActive(active);
-    if (active) setPlayKey((k) => k + 1);
-  }
-
+function TaskStream() {
   return (
-    <div className="relative z-10 flex w-full shrink-0 items-center justify-center py-[min(0.5rem,0.8svh)] sm:py-4 lg:h-full lg:flex-1 lg:py-0">
-      {/* Desktop: large flor tile bleeds off the right edge as brand texture */}
-      <div className="pointer-events-none absolute inset-0 hidden overflow-visible lg:block">
-        <div className="absolute left-[-5%] top-1/2 aspect-square h-[130%] -translate-y-1/2">
-          <svg
-            aria-hidden
-            viewBox="0 0 120 120"
-            className="h-full w-full"
-            fill="#0c5122"
-          >
-            <path d={FLOR_PATH} fillRule="evenodd" clipRule="evenodd" />
-          </svg>
-        </div>
-      </div>
-
-      <div
-        key={playKey}
-        data-play={active && playKey > 0 ? "true" : "false"}
-        className="relative z-10 flex flex-col items-center gap-2 lg:scale-[2] lg:origin-center [@media(max-height:780px)]:lg:scale-[1.4]"
-      >
-        {/*
-         * Box + icons + rays all in a single relative container so every
-         * absolute position is relative to the same 160×148 bounding box —
-         * no drift on desktop where the outer flex container is wider.
-         * DOM order: rays → halo → box → icons (later = paints on top).
-         */}
-        {/* height compresses on short viewports; the box is bottom-anchored and
-            the flying cards sit above it, so everything stays inside. */}
-        <div className="relative h-[min(240px,26svh)] w-[260px] sm:h-[240px]">
-          {/* rays + halo: behind everything, anchored to box opening */}
-          <div
-            className="unlock-rays pointer-events-none absolute size-[360px] sm:size-[460px]"
-            style={{
-              bottom: 116,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: RAYS_BG,
-              maskImage: RAYS_MASK,
-              WebkitMaskImage: RAYS_MASK,
-            }}
-          />
-          <div
-            className="unlock-halo pointer-events-none absolute size-[300px] rounded-full sm:size-[380px]"
-            style={{
-              bottom: 128,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background:
-                "radial-gradient(circle, rgba(208,236,26,0.38), transparent 70%)",
-            }}
-          />
-
-          {/* box anchored to bottom-center */}
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2">
-            <BoxVisual />
-          </div>
-
-          {/* source icons — static, appear with the box at the base */}
-          <div
-            className="unlock-box-sources absolute left-1/2 -translate-x-1/2 flex items-center gap-2"
-            style={{ bottom: 6 }}
-          >
-            {SOURCES.map((s) => (
-              <SourceTile key={s.label} {...s} small />
-            ))}
-          </div>
-
-          {/* report cards — fly out of the box, each at a natural angle */}
-          <div
-            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-3"
-            style={{ bottom: 128 }}
-          >
-            {REPORT_CARDS.map((card, i) => (
-              <div
-                key={card.label}
-                style={{ transform: `rotate(${card.rotate}deg)` }}
-              >
-                <div
-                  className="unlock-box-icon"
-                  style={
-                    {
-                      animationDelay: `${1280 + i * 130}ms`,
-                      "--icon-dx": ["-10px", "0px", "10px"][i],
-                    } as React.CSSProperties
-                  }
-                >
-                  <ReportCard label={card.label} color={card.color} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+    <div
+      className="h-[400px] w-[248px] overflow-hidden"
+      style={{
+        maskImage:
+          "linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent)",
+        WebkitMaskImage:
+          "linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent)",
+      }}
+    >
+      <div className="report-task-track gap-3">
+        {[...FIX_TASKS, ...FIX_TASKS].map((t, i) => (
+          <TaskCard key={`${t.titleKey}-${i}`} {...t} />
+        ))}
       </div>
     </div>
   );
 }
 
+// ── delivery cadence card (right, decorative) ─────────────────────────────────
+
+function CadenceCard() {
+  const t = useT();
+  return (
+    <div
+      className="w-[320px] rounded-2xl bg-white p-5"
+      style={{ boxShadow: "0 20px 50px rgba(3,32,14,0.22)" }}
+    >
+      <span
+        className="text-[11px] font-semibold uppercase tracking-wide"
+        style={{ color: DECK.soft }}
+      >
+        {t("reports.ctaTemplate.cadence.title")}
+      </span>
+      <div
+        className="mt-4 grid gap-[3px]"
+        style={{ gridTemplateColumns: `repeat(${HEAT_COLS}, 1fr)` }}
+      >
+        {Array.from({ length: HEAT_ROWS * HEAT_COLS }, (_, i) => {
+          const row = Math.floor(i / HEAT_COLS);
+          const col = i % HEAT_COLS;
+          return (
+            <span
+              key={i}
+              className="aspect-square rounded-[3px]"
+              style={{ background: HEAT_PALETTE[heatLevel(row, col)] }}
+            />
+          );
+        })}
+      </div>
+      <ul className="mt-4 flex flex-col">
+        {CADENCE_METRICS.map((m) => (
+          <li
+            key={m.labelKey}
+            className="flex items-center justify-between py-2.5 text-[13px]"
+            style={{ borderTop: `1px solid ${DECK.border}` }}
+          >
+            <span style={{ color: DECK.muted }}>{t(m.labelKey)}</span>
+            <span className="font-semibold" style={{ color: DECK.ink }}>
+              {t(m.valueKey)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ── slide ─────────────────────────────────────────────────────────────────────
+
 /**
- * Closing CTA slide (always last). A dark-green card: the payoff headline +
- * benefit bullets on the left, the unlock reveal (brand-seal emblem + the data
- * sources we connect) on the right. Mobile-first — the card stacks with the
- * emblem on top; from `lg` it splits into two columns. The primary action lives
- * in the slide on desktop; on mobile the deck footer carries it.
+ * Closing CTA slide (always last). Centered hero on a dark-green card, a marquee
+ * of the audited dimensions, and a report card peeking from the bottom with the
+ * scored areas. The primary action lives in the slide on desktop; on mobile the
+ * deck footer carries it too.
  */
-export default function CtaTemplate({ domain, active = false }: CtaProps) {
+export default function CtaTemplate({
+  domain,
+  faviconUrl,
+  initial,
+  checksProbed,
+  checksTotal,
+  active = false,
+}: CtaProps) {
+  const t = useT();
   const show = active ? "true" : "false";
   const ctaHref = useReportCtaHref(domain);
+  const hasCoverage =
+    typeof checksProbed === "number" && typeof checksTotal === "number";
   return (
     <div className="h-full w-full sm:px-6 lg:px-10 sm:pb-2">
       <div
-        className="relative flex h-full w-full flex-col gap-[min(1.75rem,2.8svh)] overflow-y-auto overflow-x-hidden rounded-none px-6 py-[min(1.5rem,2.2svh)] [justify-content:safe_center] sm:gap-0 sm:justify-start sm:overflow-hidden sm:rounded-3xl sm:p-8 lg:flex-row-reverse lg:items-stretch lg:p-12 [@media(max-height:780px)]:lg:p-8"
+        className="relative flex h-full w-full flex-col items-center gap-8 overflow-hidden rounded-none px-6 pb-0 pt-8 sm:rounded-3xl sm:px-8 sm:pt-10 lg:gap-10 lg:pt-14 [@media(max-height:780px)]:lg:gap-6 [@media(max-height:780px)]:lg:pt-10"
         style={{ background: CARD }}
       >
-        {/* Mobile only: a LARGE `flor` backdrop across the top of the card that
-            fades out before the headline. (Desktop uses the in-column tile in
-            UnlockVisual instead.) */}
+        {/* soft glow behind the composition */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[58%] overflow-hidden [mask-image:linear-gradient(to_bottom,#000_28%,transparent_92%)] [-webkit-mask-image:linear-gradient(to_bottom,#000_28%,transparent_92%)] lg:hidden"
-        >
-          <svg
-            viewBox="0 0 120 120"
-            preserveAspectRatio="xMidYMid slice"
-            className="absolute left-1/2 top-1/2 h-[135%] w-[135%] -translate-x-1/2 -translate-y-1/2"
-            fill="#0c5122"
-          >
-            <path d={FLOR_PATH} fillRule="evenodd" clipRule="evenodd" />
-          </svg>
-        </div>
+          className="pointer-events-none absolute left-1/2 top-[52%] size-[900px] -translate-x-1/2 rounded-full"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(208,236,26,0.08), transparent 62%)",
+          }}
+        />
 
-        {/* ── unlock visual (top on mobile, right on desktop) ── */}
-        <UnlockVisual active={active} />
+        {/* hero */}
+        <div className="relative z-10 flex max-w-[820px] flex-col items-center gap-5 text-center">
+          {hasCoverage ? (
+            <span
+              className="reveal rounded-full px-4 py-1.5 text-[15px]"
+              data-show={show}
+              style={{ border: "1px solid rgba(255,255,255,0.25)" }}
+            >
+              <span style={{ color: "rgba(255,255,255,0.5)" }}>
+                {checksProbed}/
+              </span>
+              <span style={{ color: "#ffffff" }}>{checksTotal}</span>
+            </span>
+          ) : null}
 
-        {/* ── content (bottom on mobile, left on desktop) ── */}
-        <div className="relative z-10 flex flex-col justify-center gap-[min(1rem,1.8svh)] sm:gap-5 lg:flex-1 lg:gap-10 lg:pr-8 [@media(max-height:780px)]:lg:gap-5">
           <h2
-            className="reveal text-balance text-center font-normal leading-[1.08] tracking-[-0.02em] text-[min(clamp(1.6rem,4.4vw,2.75rem),3.4svh)] min-[390px]:text-[min(clamp(1.9rem,5vw,2.75rem),3.4svh)] sm:text-[clamp(1.9rem,5vw,2.75rem)] lg:text-left"
+            className="reveal text-balance font-normal leading-[1.15] tracking-[-0.015em] text-[clamp(1.5rem,6vw,2.75rem)]"
             data-show={show}
             style={{
               color: "#ffffff",
-              transitionDelay: active ? "40ms" : "0ms",
+              transitionDelay: active ? "60ms" : "0ms",
             }}
           >
-            {HEADLINE_LEAD}{" "}
-            <span style={{ color: LIME }}>{HEADLINE_ACCENT}</span>
+            {t("reports.ctaTemplate.headline.part1")}
+            <br className="hidden sm:block" />{" "}
+            {t("reports.ctaTemplate.headline.part2")}
           </h2>
 
-          <ul className="flex flex-col gap-1.5 min-[390px]:gap-3 sm:gap-5 lg:gap-6 [@media(max-height:780px)]:lg:gap-3">
-            {BULLETS.map((bullet, i) => (
-              <li
-                key={bullet.label}
-                className="reveal flex items-start gap-3.5"
-                data-show={show}
-                style={{
-                  transitionDelay: active ? `${190 + i * 70}ms` : "0ms",
-                }}
-              >
-                <span
-                  className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg [@media(max-height:780px)]:lg:size-7 [@media(max-height:780px)]:lg:rounded-md"
-                  style={{ background: bullet.color, color: CARD }}
-                >
-                  <Icon name={bullet.icon} size="large" />
-                </span>
-                <span className="flex min-w-0 flex-col">
-                  <span
-                    className="text-base min-[390px]:text-[17px] font-medium leading-snug [@media(max-height:780px)]:lg:text-[15px]"
-                    style={{ color: "#ffffff" }}
-                  >
-                    {bullet.label}
-                  </span>
-                  {/* short viewports: clamp to one line so the bullets + the
-                      visual + headline fit without scrolling */}
-                  <span
-                    className="text-[14px] min-[390px]:text-[15px] leading-snug [@media(max-height:820px)]:line-clamp-1"
-                    style={{ color: "rgba(255,255,255,0.6)" }}
-                  >
-                    {bullet.desc}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
+          <p
+            className="reveal max-w-[520px] text-[15px] leading-relaxed sm:text-base"
+            data-show={show}
+            style={{
+              color: "rgba(255,255,255,0.75)",
+              transitionDelay: active ? "130ms" : "0ms",
+            }}
+          >
+            {t("reports.ctaTemplate.subheading.part1")}
+            <br className="hidden sm:block" />{" "}
+            {t("reports.ctaTemplate.subheading.part2")}
+          </p>
 
-          {/* Desktop: primary action lives in the slide (the footer CTA is
-              mobile-only), so the card stays self-contained. */}
           <a
             href={ctaHref}
             onClick={(e) =>
               trackConnectCta(e, {
                 domain,
-                placement: "cta_slide_desktop",
+                placement: "cta_slide",
                 slideKey: "cta",
               })
             }
-            className="reveal mt-1 hidden h-12 shrink-0 items-center gap-2 self-start whitespace-nowrap rounded-full px-7 text-base font-medium transition-transform hover:scale-[1.02] lg:mt-3 lg:inline-flex"
+            className="reveal mt-1 inline-flex h-12 items-center gap-2 whitespace-nowrap rounded-full px-8 text-base font-medium transition-transform duration-300 ease-out hover:scale-105"
             data-show={show}
             style={{
               background: LIME,
-              color: LIME_INK,
-              transitionDelay: active ? "480ms" : "0ms",
+              color: DECK.forest,
+              transitionDelay: active ? "220ms" : "0ms",
             }}
           >
-            <span>{CTA_LABEL}</span>
+            <span>{t("reports.ctaTemplate.cta.label")}</span>
             <Icon name="arrow_forward" size="medium" />
           </a>
+        </div>
+
+        {/* dimension marquee — bleeds past the card edges, fades at the sides */}
+        <div
+          className="reveal relative z-10 w-[calc(100%+4rem)] shrink-0 overflow-hidden sm:w-[calc(100%+8rem)]"
+          data-show={show}
+          style={{
+            transitionDelay: active ? "300ms" : "0ms",
+            maskImage:
+              "linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent)",
+            WebkitMaskImage:
+              "linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent)",
+          }}
+        >
+          <div className="report-marquee-track gap-2">
+            {[...PILLS, ...PILLS].map((p, i) => (
+              <DimensionPill key={`${p.labelKey}-${i}`} {...p} />
+            ))}
+          </div>
+        </div>
+
+        {/* bottom stage: report card center, backlog left, cadence right.
+            All top-aligned so tops stay visible and bottoms peek off-slide;
+            side cards tuck behind the report card via negative margins. */}
+        <div className="relative z-10 flex w-full flex-1 items-start justify-center overflow-hidden">
+          {/* left: falling backlog of fixes (behind, decorative) */}
+          <div
+            className="reveal pointer-events-none relative z-0 -mr-24 mt-3 hidden shrink-0 -rotate-[5deg] xl:block"
+            data-show={show}
+            style={{ transitionDelay: active ? "460ms" : "0ms" }}
+          >
+            <TaskStream />
+          </div>
+
+          {/* center: the diagnostic report card */}
+          <div
+            className="reveal relative z-20 shrink-0"
+            data-show={show}
+            style={{ transitionDelay: active ? "380ms" : "0ms" }}
+          >
+            <ReportCard
+              domain={domain}
+              faviconUrl={faviconUrl}
+              initial={initial}
+            />
+          </div>
+
+          {/* right: delivery cadence card (behind, tilted) */}
+          <div
+            className="reveal pointer-events-none relative z-0 -ml-24 mt-3 hidden shrink-0 rotate-[6deg] xl:block"
+            data-show={show}
+            style={{ transitionDelay: active ? "440ms" : "0ms" }}
+          >
+            <CadenceCard />
+          </div>
         </div>
       </div>
     </div>

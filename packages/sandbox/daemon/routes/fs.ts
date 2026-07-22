@@ -8,7 +8,7 @@ import { parseJsonBody, jsonResponse } from "./body-parser";
 
 /**
  * Wall-clock cap for fetches in write_from_url / upload_to_url.
- * Both endpoints only ever talk to mesh-minted presigned S3/R2 URLs,
+ * Both endpoints only ever talk to studio-minted presigned S3/R2 URLs,
  * so the model has no path to influence the destination — the cap is
  * just defense against a hung S3 endpoint tying up a request slot.
  */
@@ -397,6 +397,7 @@ export function makeGrepHandler(deps: FsDeps) {
       path?: string;
       output_mode?: "files" | "count" | "content";
       ignore_case?: boolean;
+      fixed_strings?: boolean;
       context?: number;
       glob?: string;
       limit?: number;
@@ -419,12 +420,23 @@ export function makeGrepHandler(deps: FsDeps) {
     else if (mode === "count") args.push("--count");
     else args.push("--line-number");
     if (body.ignore_case) args.push("-i");
+    if (body.fixed_strings) args.push("-F");
     if (body.context && mode === "content")
       args.push("-C", String(body.context));
     if (body.glob) args.push("--glob", body.glob);
     args.push("--", body.pattern, searchPath);
 
-    const limit = body.limit ?? 250;
+    const limit = resolveGrepResultLimit(body.limit);
+    // rg prints paths prefixed with the (absolute) search path argument. Strip
+    // that back to a repo-relative path so grep matches glob's wire contract
+    // (agents/tools glob+grep over repo-relative, POSIX-style paths). Every
+    // mode's path is a literal prefix of the line — "files" mode emits a bare
+    // path, "content"/"count" emit `path:rest`, and `-C` context rows emit
+    // `path-rest` — so strip the known absolute prefix directly rather than
+    // splitting on ":" (which misparses context rows' "-" separator and any
+    // path that itself contains a colon).
+    const relativizeGrepLine = (line: string): string =>
+      toRepoRelativePath(line, searchPath, deps.repoDir);
     const child = spawn(
       "rg",
       args,
@@ -436,19 +448,26 @@ export function makeGrepHandler(deps: FsDeps) {
     let stdout = "";
     let lineCount = 0;
     let truncated = false;
+    // rg's stdout arrives in arbitrary chunk boundaries, which don't align
+    // with line boundaries — buffer the trailing partial line across `data`
+    // events instead of treating every chunk as whole lines (that would
+    // corrupt/drop a match line split across two chunks).
+    let pendingLine = "";
     child.stdout!.on("data", (chunk: Buffer) => {
       if (truncated) return;
-      const lines = chunk.toString("utf-8").split("\n");
-      for (const line of lines) {
+      const pieces = (pendingLine + chunk.toString("utf-8")).split("\n");
+      pendingLine = pieces.pop() ?? "";
+      for (const line of pieces) {
         if (lineCount >= limit) {
           truncated = true;
+          pendingLine = "";
           try {
             child.kill("SIGTERM");
           } catch {}
           break;
         }
         if (line) {
-          stdout += (stdout ? "\n" : "") + line;
+          stdout += (stdout ? "\n" : "") + relativizeGrepLine(line);
           lineCount++;
         }
       }
@@ -478,14 +497,20 @@ export function makeGrepHandler(deps: FsDeps) {
         { error: stderr || `rg failed with code ${code}` },
         500,
       );
+    // Flush a final line left in the buffer with no trailing newline (rg was
+    // killed or exited before emitting one).
+    if (!truncated && pendingLine && lineCount < limit) {
+      stdout += (stdout ? "\n" : "") + relativizeGrepLine(pendingLine);
+      lineCount++;
+    }
     return jsonResponse({ results: stdout, matchCount: lineCount });
   };
 }
 
 /**
  * GET a remote URL (typically a presigned S3 URL) and stream the bytes to
- * a path on the sandbox FS. Mesh mints the URL and asks the daemon to
- * fetch it directly so bytes never round-trip through mesh.
+ * a path on the sandbox FS. Studio mints the URL and asks the daemon to
+ * fetch it directly so bytes never round-trip through studio.
  *
  * Body: { path: string; url: string }
  */
@@ -503,7 +528,7 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
     const filePath = safePath(deps.appRoot, deps.repoDir, body.path ?? "");
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
 
-    // The URL here is mesh-minted (presigned GET to S3/R2) — the model
+    // The URL here is studio-minted (presigned GET to S3/R2) — the model
     // can't supply arbitrary URLs through copy_to_sandbox, so SSRF +
     // DNS-rebinding defenses aren't needed. Plain fetch with a wall-
     // clock deadline is enough.
@@ -589,8 +614,8 @@ export function makeWriteFromUrlHandler(deps: FsDeps) {
 
 /**
  * Read a file from the sandbox FS and PUT it to a remote URL (typically
- * a presigned S3 URL). Mesh mints the URL and asks the daemon to upload
- * directly so bytes never round-trip through mesh.
+ * a presigned S3 URL). Studio mints the URL and asks the daemon to upload
+ * directly so bytes never round-trip through studio.
  *
  * Body: { path: string; url: string; contentType?: string }
  */
@@ -651,7 +676,7 @@ export function makeUploadToUrlHandler(deps: FsDeps) {
         body: Bun.file(filePath).stream(),
         headers,
         signal: abortController.signal,
-        // No SSRF revalidation here — the URL is mesh-minted (presigned
+        // No SSRF revalidation here — the URL is studio-minted (presigned
         // PUT to S3/R2), so the model can't influence where bytes go.
         // upload PUTs don't redirect under S3/R2 semantics anyway.
       });
@@ -715,6 +740,19 @@ export function registerGlobAncestorDirectories(
   for (let i = 1; i <= Math.min(dirParts.length, maxDepth); i++) {
     directoryPaths.add(dirParts.slice(0, i).join("/"));
   }
+}
+
+/** Default cap for agent grep calls. */
+export const GREP_RESULT_LIMIT = 250;
+/** Hard ceiling when callers pass an explicit `limit` (file explorer). */
+export const GREP_MAX_RESULT_LIMIT = 10_000;
+
+/** Same shape as `resolveGlobResultLimit`, just a lower default (grep rows are wider than glob paths). */
+export function resolveGrepResultLimit(limit: unknown): number {
+  if (limit === undefined || limit === null) return GREP_RESULT_LIMIT;
+  const n = typeof limit === "number" ? limit : Number(limit);
+  if (!Number.isFinite(n) || n < 1) return GREP_RESULT_LIMIT;
+  return Math.min(Math.floor(n), GREP_MAX_RESULT_LIMIT);
 }
 
 export function resolveGlobResultLimit(limit: unknown): number {

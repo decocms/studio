@@ -57,7 +57,7 @@ const WEB_SEARCH_INSTRUCTION_PROMPT =
   "Pick the right tool for the task: use `web_search` for quick, up-to-date lookups and " +
   "fact-checking where a fast answer suffices; use `deep_research` for in-depth, " +
   "multi-source reports where thoroughness matters more than latency.\n\n" +
-  "For large results, the tool result contains a `uri` (mesh-storage:…) instead of " +
+  "For large results, the tool result contains a `uri` (studio-storage:…) instead of " +
   "inline content. To re-access the full research in a later turn, call " +
   "`read_resource` with that URI.\n" +
   "</web-search>";

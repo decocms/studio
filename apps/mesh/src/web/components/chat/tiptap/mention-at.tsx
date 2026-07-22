@@ -20,10 +20,13 @@ import { toast } from "sonner";
 import { BaseItem, insertMention, OnSelectProps, Suggestion } from "./mention";
 import { track } from "@/web/lib/posthog-client";
 import { getDevAgentIds } from "@/web/lib/agent-capabilities";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface AtMentionProps {
   editor: Editor;
   virtualMcpId: string | null;
+  /** Set to true while this dropdown is open — see TiptapProviderProps. */
+  suggestionOpenRef?: { current: boolean };
 }
 
 type AtMode = "categories" | "agents" | "resources";
@@ -37,24 +40,12 @@ interface AtItem extends BaseItem {
   uri?: string;
 }
 
-const CATEGORY_ITEMS: AtItem[] = [
-  {
-    name: "agents",
-    title: "Agents",
-    description: "Mention an agent to hand off work",
-    kind: "category",
-    drillable: true,
-  },
-  {
-    name: "resources",
-    title: "Resources",
-    description: "Attach a resource as context",
-    kind: "category",
-    drillable: true,
-  },
-];
-
-export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
+export const AtMention = ({
+  editor,
+  virtualMcpId,
+  suggestionOpenRef,
+}: AtMentionProps) => {
+  const t = useT();
   const queryClient = useQueryClient();
   const { org } = useProjectContext();
   const agents = useVirtualMCPs();
@@ -78,6 +69,24 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
 
   // Reset mode when menu closes/opens (query key changes signal re-render)
   const queryKey = ["at-mention", org.id, virtualMcpId ?? "default", mode];
+
+  // Translate category items on render
+  const categoryItems = [
+    {
+      name: "agents",
+      title: t("chat.mentionAt.agentsTitle"),
+      description: t("chat.mentionAt.agentsDescription"),
+      kind: "category" as const,
+      drillable: true,
+    },
+    {
+      name: "resources",
+      title: t("chat.mentionAt.resourcesTitle"),
+      description: t("chat.mentionAt.resourcesDescription"),
+      kind: "category" as const,
+      drillable: true,
+    },
+  ];
 
   const handleItemSelect = async ({
     item,
@@ -121,7 +130,7 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
         });
       } catch (error) {
         console.error("[at-mention] Failed to fetch resource:", error);
-        toast.error("Failed to load resource. Please try again.");
+        toast.error(t("chat.mentionAt.failedToLoadResource"));
       }
       setMode("categories");
       return;
@@ -133,7 +142,7 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
     const currentMode = modeRef.current;
 
     if (currentMode === "categories") {
-      if (!query.trim()) return CATEGORY_ITEMS;
+      if (!query.trim()) return categoryItems;
 
       // When typing at the top level, search across both agents and resources
       const lq = query.toLowerCase();
@@ -255,6 +264,7 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
   };
 
   const handleOpenChange = (open: boolean) => {
+    if (suggestionOpenRef) suggestionOpenRef.current = open;
     if (open) {
       // Fires when the @ picker dropdown actually renders (TipTap's onStart).
       // NOT when a literal "@" is typed — e.g. inside an email address the

@@ -69,6 +69,8 @@ import {
 } from "@/web/components/chat/context.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { MonacoCodeEditor } from "../monaco-editor";
+import type { ToolInputProperty } from "@/web/components/tool-input-form";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface ToolDetailsViewProps {
   itemId: string;
@@ -96,6 +98,7 @@ function ToolDetailsContent({
   onSelectInstance: (id: string) => void;
   onBack: () => void;
 }) {
+  const t = useT();
   const authStatus = useMCPAuthStatus({
     connectionId: connectionId,
   });
@@ -106,7 +109,7 @@ function ToolDetailsContent({
         {authStatus.supportsOAuth ? (
           <OAuthAuthenticationState
             onAuthenticate={() => onBack()}
-            buttonText="Go back to authenticate"
+            buttonText={t("details.tool.goBackToAuthenticate")}
           />
         ) : (
           <ManualAuthRequiredState hasReadme={false} />
@@ -137,6 +140,7 @@ function ToolDetailsAuthenticated({
   siblings: ConnectionEntity[];
   onSelectInstance: (id: string) => void;
 }) {
+  const t = useT();
   // Read replayId from search params to check for prefilled input
   const { replayId } = useSearch({ strict: false }) as { replayId?: string };
 
@@ -281,33 +285,32 @@ function ToolDetailsAuthenticated({
           })();
 
       if (hasToolProperties && tool?.inputSchema?.properties) {
-        Object.entries(tool.inputSchema.properties).forEach(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ([key, prop]: [string, any]) => {
-            if (
-              (prop.type === "object" || prop.type === "array") &&
-              typeof args[key] === "string"
-            ) {
-              try {
-                args[key] = JSON.parse(args[key]);
-              } catch {
-                // Parsing failed, send as string (will likely fail validation but let server handle it)
-              }
-            } else if (
-              (prop.type === "number" || prop.type === "integer") &&
-              typeof args[key] === "string" &&
-              args[key] !== ""
-            ) {
-              // Text inputs yield strings; coerce numeric fields so the tool's
-              // schema (e.g. z.number()) doesn't reject "7776000". Leave
-              // non-numeric strings untouched for the server to reject.
-              const n = Number(args[key]);
-              if (!Number.isNaN(n)) {
-                args[key] = n;
-              }
+        Object.entries(
+          tool.inputSchema.properties as Record<string, ToolInputProperty>,
+        ).forEach(([key, prop]) => {
+          if (
+            (prop.type === "object" || prop.type === "array") &&
+            typeof args[key] === "string"
+          ) {
+            try {
+              args[key] = JSON.parse(args[key]);
+            } catch {
+              // Parsing failed, send as string (will likely fail validation but let server handle it)
             }
-          },
-        );
+          } else if (
+            (prop.type === "number" || prop.type === "integer") &&
+            typeof args[key] === "string" &&
+            args[key] !== ""
+          ) {
+            // Text inputs yield strings; coerce numeric fields so the tool's
+            // schema (e.g. z.number()) doesn't reject "7776000". Leave
+            // non-numeric strings untouched for the server to reject.
+            const n = Number(args[key]);
+            if (!Number.isNaN(n)) {
+              args[key] = n;
+            }
+          }
+        });
       }
 
       const result = (await client.callTool({
@@ -369,7 +372,7 @@ function ToolDetailsAuthenticated({
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
             <Link to="/$org/settings/connections" params={{ org: org.slug }}>
-              Connections
+              {t("details.tool.connections")}
             </Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
@@ -427,93 +430,97 @@ function ToolDetailsAuthenticated({
     <div className="flex flex-col p-6 gap-4 overflow-auto">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
-          Parameters
+          {t("details.tool.parameters")}
         </h2>
         {tool?.inputSchema?.required &&
           tool.inputSchema.required.length > 0 && (
             <span className="text-xs text-muted-foreground">
-              <span className="text-red-500">*</span> Required
+              <span className="text-destructive">*</span>{" "}
+              {t("details.tool.required")}
             </span>
           )}
       </div>
 
       <div className="space-y-4">
         {hasToolProperties && tool?.inputSchema?.properties ? (
-          Object.entries(tool.inputSchema.properties).map(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ([key, prop]: [string, any]) => (
-              <div key={key} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium leading-none flex items-center gap-1.5">
-                    {key}
-                    {tool.inputSchema?.required?.includes(key) && (
-                      <span className="text-red-500 text-xs">*</span>
-                    )}
-                  </label>
-                  <span className="text-xs text-muted-foreground font-mono">
-                    {prop.type}
-                  </span>
-                </div>
-                {prop.description && (
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    {prop.description}
-                  </p>
-                )}
-                {prop.type === "object" || prop.type === "array" ? (
-                  <Textarea
-                    className="font-mono text-xs"
-                    value={
-                      hasEditedKey(key)
-                        ? ((editedParams[key] as string) ?? "")
-                        : ((defaultParams[key] as string) ?? "")
-                    }
-                    onChange={(e) => handleInputChange(key, e.target.value)}
-                    placeholder={`Enter ${key} as JSON...`}
-                    rows={3}
-                  />
-                ) : prop.type === "boolean" ? (
-                  <Select
-                    value={
-                      hasEditedKey(key) ? String(editedParams[key] ?? "") : ""
-                    }
-                    onValueChange={(v) => handleInputChange(key, v === "true")}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select true or false..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="true">true</SelectItem>
-                      <SelectItem value="false">false</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    value={
-                      hasEditedKey(key)
-                        ? ((editedParams[key] as string) ?? "")
-                        : ((defaultParams[key] as string) ?? "")
-                    }
-                    onChange={(e) => handleInputChange(key, e.target.value)}
-                    placeholder={`Enter ${key}...`}
-                  />
-                )}
+          Object.entries(
+            tool.inputSchema.properties as Record<string, ToolInputProperty>,
+          ).map(([key, prop]) => (
+            <div key={key} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium leading-none flex items-center gap-1.5">
+                  {key}
+                  {tool.inputSchema?.required?.includes(key) && (
+                    <span className="text-destructive text-xs">*</span>
+                  )}
+                </label>
+                <span className="text-xs text-muted-foreground font-mono">
+                  {prop.type}
+                </span>
               </div>
-            ),
-          )
+              {prop.description && (
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {prop.description}
+                </p>
+              )}
+              {prop.type === "object" || prop.type === "array" ? (
+                <Textarea
+                  className="font-mono text-xs"
+                  value={
+                    hasEditedKey(key)
+                      ? ((editedParams[key] as string) ?? "")
+                      : ((defaultParams[key] as string) ?? "")
+                  }
+                  onChange={(e) => handleInputChange(key, e.target.value)}
+                  placeholder={t("details.tool.enterAsJson", { key })}
+                  rows={3}
+                />
+              ) : prop.type === "boolean" ? (
+                <Select
+                  value={
+                    hasEditedKey(key) ? String(editedParams[key] ?? "") : ""
+                  }
+                  onValueChange={(v) => handleInputChange(key, v === "true")}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={t("details.tool.selectTrueOrFalse")}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">true</SelectItem>
+                    <SelectItem value="false">false</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={
+                    hasEditedKey(key)
+                      ? ((editedParams[key] as string) ?? "")
+                      : ((defaultParams[key] as string) ?? "")
+                  }
+                  onChange={(e) => handleInputChange(key, e.target.value)}
+                  placeholder={t("details.tool.enter", { key })}
+                />
+              )}
+            </div>
+          ))
         ) : tool?.inputSchema && !hasToolProperties ? (
           <div className="space-y-2">
-            <label className="text-sm font-medium">Raw JSON Input</label>
+            <label className="text-sm font-medium">
+              {t("details.tool.rawJsonInput")}
+            </label>
             <Textarea
               className="font-mono text-xs min-h-[120px]"
               value={rawJsonText}
               onChange={(e) => setRawJsonText(e.target.value)}
-              placeholder='e.g. { "foo": "bar" }'
+              placeholder={t("details.tool.rawJsonExample")}
             />
           </div>
         ) : (
           <div className="flex items-center justify-center p-8 bg-muted/30 rounded-lg border border-dashed border-border">
             <p className="text-sm text-muted-foreground">
-              No parameters required
+              {t("details.tool.noParametersRequired")}
             </p>
           </div>
         )}
@@ -529,7 +536,7 @@ function ToolDetailsAuthenticated({
             onClick={handleClear}
           >
             <StopCircle className="h-3.5 w-3.5" />
-            Cancel
+            {t("details.tool.cancel")}
           </Button>
         ) : (
           <Button
@@ -539,7 +546,7 @@ function ToolDetailsAuthenticated({
             onClick={handleExecute}
           >
             <Play className="h-3.5 w-3.5 fill-current" />
-            Execute Tool
+            {t("details.tool.executeTool")}
           </Button>
         )}
       </div>
@@ -551,7 +558,7 @@ function ToolDetailsAuthenticated({
       {/* Results Header */}
       <div className="flex items-center justify-between px-4 h-14 border-b border-border bg-background">
         <h2 className="text-sm font-medium text-foreground uppercase tracking-wide">
-          Result
+          {t("details.tool.result")}
         </h2>
 
         <div className="flex items-center gap-3">
@@ -604,7 +611,9 @@ function ToolDetailsAuthenticated({
                       <LayersTwo01 size={14} />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Interactive view</TooltipContent>
+                  <TooltipContent>
+                    {t("details.tool.interactiveView")}
+                  </TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -617,7 +626,7 @@ function ToolDetailsAuthenticated({
                       <Code01 size={14} />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>JSON view</TooltipContent>
+                  <TooltipContent>{t("details.tool.jsonView")}</TooltipContent>
                 </Tooltip>
               </div>
             </TooltipProvider>
@@ -632,7 +641,9 @@ function ToolDetailsAuthenticated({
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <AlertCircle className="h-4 w-4" />
-                <AlertTitle className="mb-0">Execution Failed</AlertTitle>
+                <AlertTitle className="mb-0">
+                  {t("details.tool.executionFailed")}
+                </AlertTitle>
               </div>
               <AlertDescription className="text-xs text-destructive">
                 {executionError}
@@ -650,7 +661,9 @@ function ToolDetailsAuthenticated({
               <div className="flex items-center justify-center h-48">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  <span className="text-sm">Loading app...</span>
+                  <span className="text-sm">
+                    {t("details.tool.loadingApp")}
+                  </span>
                 </div>
               </div>
             }
@@ -694,7 +707,7 @@ function ToolDetailsAuthenticated({
                 navigator.clipboard.writeText(
                   JSON.stringify(executionResult, null, 2),
                 );
-                toast.success("Copied to clipboard");
+                toast.success(t("details.tool.copiedToClipboard"));
               }}
             >
               <Copy01 className="h-3.5 w-3.5" />
@@ -703,7 +716,7 @@ function ToolDetailsAuthenticated({
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
             <Code01 className="h-12 w-12 mb-3 opacity-40" />
-            <p className="text-sm">Run the tool to see results</p>
+            <p className="text-sm">{t("details.tool.runToolToSeeResults")}</p>
           </div>
         )}
       </div>
@@ -729,14 +742,14 @@ function ToolDetailsAuthenticated({
             {/* MCP Status */}
             <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
               {toolsQuery.isSuccess ? (
-                <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
+                <div className="h-1.5 w-1.5 rounded-full bg-success animate-pulse shrink-0" />
               ) : toolsQuery.isLoading ? (
                 <Loading01
                   size={10}
-                  className="animate-spin text-yellow-500 shrink-0"
+                  className="animate-spin text-warning shrink-0"
                 />
               ) : (
-                <div className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
+                <div className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
               )}
               <span className="font-mono text-xs capitalize text-muted-foreground leading-none">
                 {toolsQuery.isSuccess
@@ -765,7 +778,7 @@ function ToolDetailsAuthenticated({
         {siblings.length > 1 && (
           <div className="flex @3xl:hidden items-center gap-3 px-8 py-3 border-b border-border">
             <span className="text-xs font-medium text-muted-foreground shrink-0">
-              Instance
+              {t("details.tool.instance")}
             </span>
             {instanceSelector}
           </div>
@@ -792,6 +805,7 @@ export function ToolDetailsView({
   siblings,
   onBack,
 }: ToolDetailsViewProps) {
+  const t = useT();
   const [selectedConnectionId, setSelectedConnectionId] = useState(
     siblings[0]?.id ?? "",
   );
@@ -807,9 +821,11 @@ export function ToolDetailsView({
     return (
       <div className="flex h-full items-center justify-center">
         <div className="flex flex-col items-center gap-2 text-center">
-          <h3 className="text-lg font-semibold">Connection not found</h3>
+          <h3 className="text-lg font-semibold">
+            {t("details.tool.connectionNotFound")}
+          </h3>
           <p className="text-sm text-muted-foreground">
-            This connection may have been deleted or you may not have access.
+            {t("details.tool.connectionNotFoundMessage")}
           </p>
         </div>
       </div>

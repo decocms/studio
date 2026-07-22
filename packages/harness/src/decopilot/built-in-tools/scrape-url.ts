@@ -5,7 +5,7 @@
  * using Browserless v2 cloud API. Requires the BROWSERLESS_TOKEN env var.
  *
  * Small results are returned inline. Large results (> 8k tokens) are
- * offloaded to blob storage and a preview + mesh-storage: URI is returned.
+ * offloaded to blob storage and a preview + studio-storage: URI is returned.
  * The model can re-access the full content via read_tool_output or
  * read_resource.
  */
@@ -14,7 +14,7 @@ import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { ObjectStorageHooks } from "../../harness-deps";
 import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
-import { toMeshStorageUri } from "../mesh-storage-uri";
+import { toStudioStorageUri } from "../studio-storage-uri";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
 
 const ScrapeUrlInputSchema = z.object({
@@ -86,7 +86,7 @@ export function createScrapeUrlTool(
             const preview = createOutputPreview(htmlText);
             return {
               success: true,
-              uri: toMeshStorageUri(key),
+              uri: toStudioStorageUri(key),
               preview,
               url: input.url,
               tokenCount,

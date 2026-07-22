@@ -15,11 +15,13 @@ import {
 import { toast } from "sonner";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/section-types";
 import { useSaveBlock } from "@/web/components/sections-editor/use-save-block";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
-import { EmptyMessage, ItemRow } from "./content-browser";
+import { ItemRow } from "./item-row";
+import { EmptyMessage } from "./empty-message";
 import {
   RunnableBlockEditor,
   type RunnableTarget,
@@ -109,6 +111,7 @@ export function RunnableBlocksBrowser({
   decofile: Record<string, unknown>;
   kind: RunnableKind;
 }) {
+  const t = useT();
   const [path, setPath] = useState<string[]>([]);
   const [selection, setSelection] = useState<RunnableSelection>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -232,7 +235,9 @@ export function RunnableBlocksBrowser({
     data: Record<string, unknown>,
   ) => {
     await saveBlock.mutateAsync({ blockKey: blockId, data });
-    toast.success(`Saved ${singular} "${blockId}"`);
+    toast.success(
+      t("sandbox.runnableBlocksBrowser.savedBlockToast", { singular, blockId }),
+    );
     setSelection({ mode: "saved", key: blockId });
   };
 
@@ -264,7 +269,7 @@ export function RunnableBlocksBrowser({
       {/* Breadcrumb + search header. */}
       <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <nav
-          aria-label="Folder breadcrumb"
+          aria-label={t("sandbox.runnableBlocksBrowser.folderBreadcrumb")}
           className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
         >
           <button
@@ -313,8 +318,12 @@ export function RunnableBlocksBrowser({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={`Search all ${kind}…`}
-            aria-label={`Search all ${kind}`}
+            placeholder={t("sandbox.runnableBlocksBrowser.searchPlaceholder", {
+              kind,
+            })}
+            aria-label={t("sandbox.runnableBlocksBrowser.searchAriaLabel", {
+              kind,
+            })}
             className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
         </div>
@@ -325,8 +334,13 @@ export function RunnableBlocksBrowser({
           {searching ? (
             searchResults.length === 0 ? (
               <EmptyMessage
-                title={`No ${kind} match "${searchQuery.trim()}"`}
-                description="Search covers every folder — try a different term."
+                title={t("sandbox.runnableBlocksBrowser.noSearchResults", {
+                  kind,
+                  query: searchQuery.trim(),
+                })}
+                description={t(
+                  "sandbox.runnableBlocksBrowser.noSearchResultsDescription",
+                )}
               />
             ) : (
               <div className="flex flex-col gap-1">
@@ -347,11 +361,13 @@ export function RunnableBlocksBrowser({
             items.length === 0 &&
             orphanSaved.length === 0 ? (
             <EmptyMessage
-              title={`No ${kind} here`}
+              title={t("sandbox.runnableBlocksBrowser.emptyFolderTitle", {
+                kind,
+              })}
               description={
                 path.length === 0
-                  ? "Start the preview dev server so its manifest loads."
-                  : "This folder is empty."
+                  ? t("sandbox.runnableBlocksBrowser.emptyFolderNoManifest")
+                  : t("sandbox.runnableBlocksBrowser.emptyFolder")
               }
             />
           ) : (
@@ -379,7 +395,14 @@ export function RunnableBlocksBrowser({
                             {folder.count}{" "}
                             {folder.count === 1 ? singular : kind}
                             {folder.savedCount > 0 && (
-                              <> · {folder.savedCount} saved</>
+                              <>
+                                {" "}
+                                ·{" "}
+                                {t(
+                                  "sandbox.runnableBlocksBrowser.savedCountLabel",
+                                  { count: folder.savedCount },
+                                )}
+                              </>
                             )}
                           </span>
                         </span>
@@ -422,8 +445,12 @@ export function RunnableBlocksBrowser({
                               ) : (
                                 <ChevronRight size={12} className="shrink-0" />
                               )}
-                              {savedOpen ? "Hide saved" : "See saved"} (
-                              {saved.length})
+                              {savedOpen
+                                ? t("sandbox.runnableBlocksBrowser.hideSaved")
+                                : t(
+                                    "sandbox.runnableBlocksBrowser.seeSaved",
+                                  )}{" "}
+                              ({saved.length})
                             </button>
                             {savedOpen && (
                               <div className="ml-11 flex flex-col gap-1 pb-1">

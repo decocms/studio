@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { readUIMessageStream, type UIMessage, type UIMessageChunk } from "ai";
+import { guardToolInvariant } from "../../../store/tool-invariant-guard";
 
 /** Parse an SSE byte stream into the `UIMessageChunk`s the AI SDK reader folds. */
 function sseToChunkStream(
@@ -74,8 +75,11 @@ export function useSubtaskStream(args: {
           },
         );
         if (!resp.ok || !resp.body) return;
+        // Same tool-invocation guard as the main thread reader: a reconstructed
+        // subtask stream can deliver a tool's output without its input part,
+        // which would otherwise throw and silently truncate the subtask view.
         for await (const msg of readUIMessageStream({
-          stream: sseToChunkStream(resp.body),
+          stream: guardToolInvariant(sseToChunkStream(resp.body), undefined),
         })) {
           if (abort.signal.aborted) return;
           setMessages([msg]);

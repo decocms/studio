@@ -1,13 +1,13 @@
 /**
  * Standalone mock of the commerce-skills internal upgrade API.
  *
- * Launched as a Playwright `webServer` so the mesh server can complete
+ * Launched as a Playwright `webServer` so the studio server can complete
  * `COMMERCE_DISCOVERY_SETUP` end-to-end without reaching the real production
- * reports service (https://reports.decocms.com). The mesh server is
+ * reports service (https://reports.decocms.com). The studio server is
  * pointed here via `COMMERCE_DISCOVERY_INTERNAL_API_URL` in the Playwright
  * config.
  *
- * Black-box: the mesh server reaches this over HTTP only — no app imports.
+ * Black-box: the studio server reaches this over HTTP only — no app imports.
  * Uses `node:http` (NOT `Bun.serve`) so it typechecks under the suite's Node
  * types and runs under either node or bun.
  *

@@ -32,7 +32,7 @@ const stdioPool = createClientPool();
  * Create an MCP client for outbound connections (STDIO, HTTP, Websocket, SSE)
  *
  * @param connection - Connection entity from database
- * @param ctx - Mesh context for creating clients
+ * @param ctx - Studio context for creating clients
  * @param superUser - Whether to use superuser mode for background processes
  * @returns Client instance connected to the downstream MCP server
  */

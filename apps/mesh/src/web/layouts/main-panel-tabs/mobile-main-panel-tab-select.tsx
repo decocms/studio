@@ -6,11 +6,17 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@deco/ui/components/select.tsx";
-import { useTaskBoardEnabled } from "@/web/hooks/use-organization-settings";
+import {
+  getCommerceDiscoveryAgentId,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
+import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
+import { shouldDeepLinkSourceTab } from "./source-system-tabs";
 import type { TabIcon } from "./resolve-tab-icon";
 import { TabIconGlyph } from "./tab-icon-glyph";
 import { track } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const MOBILE_SELECT_SENTINEL = "__mobile-main-panel-tab-select__";
 
@@ -18,14 +24,17 @@ export function resolveMobileMainPanelTabSelectLabel({
   tabs,
   activeTab,
   mainOpen,
+  t,
 }: {
   tabs: Array<{ id: string; title: string }>;
   activeTab: string;
   mainOpen: boolean;
+  t: ReturnType<typeof useT>;
 }): string {
   const active = tabs.find((tab) => tab.id === activeTab);
-  if (mainOpen) return active?.title ?? "Main view";
-  return active?.title ?? tabs[0]?.title ?? "Main view";
+  const defaultLabel = t("mainPanelTabs.mobileMainPanelTabSelect.mainView");
+  if (mainOpen) return active?.title ?? defaultLabel;
+  return active?.title ?? tabs[0]?.title ?? defaultLabel;
 }
 
 type ViewOption = { value: string; title: string; icon: TabIcon };
@@ -49,6 +58,7 @@ export function MobileMainPanelTabSelect({
   virtualMcpId: string;
   taskId: string;
 }) {
+  const t = useT();
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as {
     org?: string;
@@ -58,24 +68,42 @@ export function MobileMainPanelTabSelect({
     virtualMcpId,
     taskId,
   });
-  const taskBoardEnabled = useTaskBoardEnabled();
+  const { org } = useProjectContext();
+  const reportsOnly = useReportsOnly();
+  const onReportAgent = virtualMcpId === getCommerceDiscoveryAgentId(org.id);
 
   // Tasks / Library are toggled via `?main=board|files`; they need a task route
   // to act on (same gate as the desktop toggles).
   const overlayEnabled = !!(params.org && params.taskId);
 
   const options: ViewOption[] = [
-    { value: "chat", title: "Chat", icon: CHAT_ICON },
+    {
+      value: "chat",
+      title: t("mainPanelTabs.mobileMainPanelTabSelect.chat"),
+      icon: CHAT_ICON,
+    },
     ...tabs.map((tab) => ({
       value: tab.id,
       title: tab.title,
       icon: tab.icon,
     })),
-    ...(taskBoardEnabled && overlayEnabled
-      ? [{ value: "board", title: "Tasks", icon: TASKS_ICON }]
+    ...(overlayEnabled
+      ? [
+          {
+            value: "board",
+            title: t("mainPanelTabs.mobileMainPanelTabSelect.tasks"),
+            icon: TASKS_ICON,
+          },
+        ]
       : []),
     ...(overlayEnabled
-      ? [{ value: "files", title: "Library", icon: LIBRARY_ICON }]
+      ? [
+          {
+            value: "files",
+            title: t("mainPanelTabs.mobileMainPanelTabSelect.library"),
+            icon: LIBRARY_ICON,
+          },
+        ]
       : []),
   ];
 
@@ -87,7 +115,7 @@ export function MobileMainPanelTabSelect({
   const selected = options.find((o) => o.value === currentValue);
   const label =
     selected?.title ??
-    resolveMobileMainPanelTabSelectLabel({ tabs, activeTab, mainOpen });
+    resolveMobileMainPanelTabSelectLabel({ tabs, activeTab, mainOpen, t });
 
   const handleSelect = (value: string) => {
     if (value === MOBILE_SELECT_SENTINEL) return;
@@ -96,6 +124,20 @@ export function MobileMainPanelTabSelect({
       tab_id: value,
       source: "mobile_select",
     });
+    // Reports-only: the storefront Preview/Code live on the Report Agent, so
+    // from any other shell deep-link into it instead of opening a source-less
+    // panel on the current agent (mirrors setActiveTab in useMainPanelTabs).
+    if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: value })) {
+      navigate({
+        to: "/$org/$taskId",
+        params: { org: org.slug, taskId: crypto.randomUUID() },
+        search: {
+          virtualmcpid: getCommerceDiscoveryAgentId(org.id),
+          main: value,
+        },
+      });
+      return;
+    }
     navigate({
       to: ".",
       search: (prev: Record<string, unknown>) =>
@@ -115,7 +157,7 @@ export function MobileMainPanelTabSelect({
         of `card-shadow-none`, which is not a real utility.
       */}
       <SelectTrigger
-        aria-label="View"
+        aria-label={t("mainPanelTabs.mobileMainPanelTabSelect.view")}
         className="h-10! w-full min-w-0 max-w-[7.5rem] rounded-md border-0 bg-transparent px-1.5 text-xs shadow-none [--card-shadow:none]"
       >
         <span className="flex min-w-0 items-center gap-1.5">

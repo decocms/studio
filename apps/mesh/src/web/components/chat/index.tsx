@@ -7,6 +7,7 @@ import {
   type PropsWithChildren,
   type RefObject,
 } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
   ActiveTaskProvider,
@@ -23,6 +24,7 @@ import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
 import { selectHiddenFromBody } from "./queue-items.ts";
 import { useMessageQueue } from "./use-message-queue.ts";
+import { useOpenPreviewOnRepoLoad } from "./use-open-preview-on-repo-load.ts";
 import { SubtaskRunsProvider } from "./subtask-runs-context.tsx";
 import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
 import { CreditsEmptyState } from "./credits-empty-state";
@@ -128,6 +130,7 @@ function ChatEmptyState({ children }: PropsWithChildren) {
 }
 
 function ChatMessages() {
+  const t = useT();
   const {
     messages,
     status,
@@ -136,6 +139,10 @@ function ChatMessages() {
     fetchOlderMessages,
   } = useChatStream();
   const { taskId } = useChatTask();
+
+  // Open Preview the moment load_repo succeeds — durable across background/
+  // reopened runs the transient stream chunk never reaches.
+  useOpenPreviewOnRepoLoad();
 
   // Queued turns render tray-side only (see queue-items.ts / the message
   // queue tray) — filter them out of the body BEFORE pairing so a queued
@@ -246,7 +253,7 @@ function ChatMessages() {
               <div ref={sentinelRef} aria-hidden className="h-px" />
               {isFetchingOlder && (
                 <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
-                  Loading older messages…
+                  {t("chat.chat.loadingOlderMessages")}
                 </div>
               )}
               {messagePairs.slice(0, -1).map((pair, index) => (
@@ -288,7 +295,7 @@ function ChatMessages() {
             // while bg-primary reads as a white blob in dark mode.
             variant="outline"
             size="icon-sm"
-            aria-label="Jump to latest"
+            aria-label={t("chat.chat.jumpToLatest")}
             className="absolute left-1/2 z-50 -translate-x-1/2 rounded-full shadow-md animate-in fade-in duration-200 dark:bg-background dark:hover:bg-accent"
             style={{ bottom: paddingBottom + 8 }}
             onClick={() => void stick.scrollToBottom()}

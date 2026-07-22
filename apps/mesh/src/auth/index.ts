@@ -437,7 +437,7 @@ export const auth = betterAuth({
   secret: settings.betterAuthSecret || "deco-default-secret-k7x9m2p4q8w3n5v6",
 
   // customAPIKeyGetter probes every `Authorization: Bearer …` as an API key,
-  // so OAuth tokens, mesh JWTs and stale keys routinely miss and Better Auth
+  // so OAuth tokens, studio JWTs and stale keys routinely miss and Better Auth
   // logs an ERROR + full source-mapped stack on each one — flooding prod logs.
   // Drop only that expected 401; forward everything else with the same format.
   logger: {

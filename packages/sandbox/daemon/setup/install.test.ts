@@ -103,7 +103,7 @@ describe("depsCacheEnv", () => {
   });
 
   it("is stable across git token refresh (github x-access-token form)", () => {
-    // Mesh embeds a short-lived OAuth token in the cloneUrl userinfo
+    // Studio embeds a short-lived OAuth token in the cloneUrl userinfo
     // (github-clone-info.ts: https://x-access-token:<token>@github.com/...)
     // and rotates it via git-credential-refresh. The cache key must not
     // move when the token does, or every refresh orphans the cache.

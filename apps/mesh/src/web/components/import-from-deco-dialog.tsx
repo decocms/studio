@@ -33,6 +33,7 @@ import { generateSlug } from "@/web/lib/slug";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { track } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface DecoSite {
   name: string;
@@ -45,13 +46,25 @@ interface DecoSitesResponse {
   sites: DecoSite[];
 }
 
-async function loadDecoSites(orgSlug: string): Promise<DecoSitesResponse> {
-  const res = await fetch(`/api/${orgSlug}/deco-sites`);
+async function fetchJson<T>(
+  url: string,
+  init: RequestInit | undefined,
+  fallbackMessage: string,
+): Promise<T> {
+  const res = await fetch(url, init);
+  const body = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? `Failed to load sites (${res.status})`);
+    throw new Error(body.error ?? `${fallbackMessage} (${res.status})`);
   }
-  return res.json() as Promise<DecoSitesResponse>;
+  return body;
+}
+
+function loadDecoSites(orgSlug: string): Promise<DecoSitesResponse> {
+  return fetchJson<DecoSitesResponse>(
+    `/api/${orgSlug}/deco-sites`,
+    undefined,
+    "Failed to load sites",
+  );
 }
 
 interface ImportFromDecoDialogProps {
@@ -77,6 +90,7 @@ export function ImportFromDecoDialog({
   onOpenChange,
   onBack,
 }: ImportFromDecoDialogProps) {
+  const t = useT();
   const { org } = useProjectContext();
   const navigateToAgent = useNavigateToAgent();
   const queryClient = useQueryClient();
@@ -153,9 +167,7 @@ export function ImportFromDecoDialog({
   const importMutation = useMutation({
     mutationFn: async (siteName: string) => {
       if (!effectiveGithubConnection) {
-        throw new Error(
-          "GitHub is not connected. Complete GitHub setup and try again.",
-        );
+        throw new Error(t("common.importFromDecoDialog.githubNotConnected"));
       }
 
       track("deco_site_import_started", { site_name: siteName });
@@ -166,7 +178,7 @@ export function ImportFromDecoDialog({
       );
       const site = sites.find((s) => s.name === siteName);
       if (!site) {
-        throw new Error("Selected site is no longer available");
+        throw new Error(t("common.importFromDecoDialog.siteNoLongerAvailable"));
       }
 
       const githubRepo = resolveDecoSiteGithubRepo(siteName, site.metadata);
@@ -180,7 +192,10 @@ export function ImportFromDecoDialog({
           ? `https://github.com/apps/${appSlug}/installations/new`
           : "https://github.com/settings/installations";
         throw new Error(
-          `Install the GitHub App on the "${githubRepo.owner}" organization to import this site. ${installUrl}`,
+          t("common.importFromDecoDialog.installGithubApp", {
+            owner: githubRepo.owner,
+            installUrl,
+          }),
         );
       }
       let decoConnId: string | null = null;
@@ -217,25 +232,22 @@ export function ImportFromDecoDialog({
       try {
         // 1. Create the connection server-side so the deco.cx API key never
         //    reaches the browser — the backend fetches and encrypts it directly.
-        const connRes = await fetch(`/api/${org.slug}/deco-sites/connection`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ siteName }),
-        });
-        const connBody = (await connRes.json().catch(() => ({}))) as {
+        const connBody = await fetchJson<{
           connId?: string;
           icon?: string | null;
-          error?: string;
-        };
-        if (!connRes.ok) {
-          throw new Error(
-            connBody.error ?? `Failed to create connection (${connRes.status})`,
-          );
-        }
+        }>(
+          `/api/${org.slug}/deco-sites/connection`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ siteName }),
+          },
+          t("common.importFromDecoDialog.failedToCreateConnection"),
+        );
 
         const connId = connBody.connId;
         if (!connId) {
-          throw new Error("Server did not return a connection ID");
+          throw new Error(t("common.importFromDecoDialog.noConnectionId"));
         }
         decoConnId = connId;
 
@@ -317,7 +329,7 @@ export function ImportFromDecoDialog({
           result) as VirtualMCPCreateOutput;
 
         if (!payload.item?.id) {
-          throw new Error("Failed to create the imported agent");
+          throw new Error(t("common.importFromDecoDialog.failedToCreateAgent"));
         }
         createdAgentId = payload.item.id;
 
@@ -360,7 +372,7 @@ export function ImportFromDecoDialog({
       });
       // Also invalidate the legacy projects key for any other consumers.
       queryClient.invalidateQueries({ queryKey: KEYS.projects(org.id) });
-      toast.success(`Imported ${slug} from deco.cx`);
+      toast.success(t("common.importFromDecoDialog.importSuccess", { slug }));
       handleClose(false);
       localStorage.setItem("mesh:sidebar-open", JSON.stringify(false));
       navigateToAgent(virtualMcpId);
@@ -370,8 +382,12 @@ export function ImportFromDecoDialog({
         error: err instanceof Error ? err.message : "Unknown error",
       });
       toast.error(
-        "Import failed: " +
-          (err instanceof Error ? err.message : "Unknown error"),
+        t("common.importFromDecoDialog.importFailed", {
+          error:
+            (err instanceof Error
+              ? err.message
+              : t("common.importFromDecoDialog.unknownError")) ?? "",
+        }),
       );
     },
   });
@@ -380,7 +396,7 @@ export function ImportFromDecoDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[900px] p-0 gap-0 overflow-hidden">
         <DialogHeader className="sr-only">
-          <DialogTitle>Import from deco.cx</DialogTitle>
+          <DialogTitle>{t("common.importFromDecoDialog.title")}</DialogTitle>
         </DialogHeader>
 
         <div className="flex items-center h-12 border-b border-border px-4 gap-3">
@@ -389,13 +405,13 @@ export function ImportFromDecoDialog({
               type="button"
               onClick={onBack}
               className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Go back"
+              aria-label={t("common.importFromDecoDialog.goBack")}
             >
               <ArrowLeft size={18} />
             </button>
           )}
           <span className="text-sm font-medium text-foreground">
-            Import from deco.cx
+            {t("common.importFromDecoDialog.title")}
           </span>
         </div>
 
@@ -403,7 +419,7 @@ export function ImportFromDecoDialog({
           <CollectionSearch
             value={search}
             onChange={setSearch}
-            placeholder="Search sites..."
+            placeholder={t("common.importFromDecoDialog.searchPlaceholder")}
             onKeyDown={(e) => {
               if (e.key === "Escape") setSearch("");
             }}
@@ -414,17 +430,18 @@ export function ImportFromDecoDialog({
           {autoInstall.status === "error" && (
             <div className="flex flex-col items-center justify-center gap-3 h-48 px-8 text-center">
               <p className="text-sm text-destructive">
-                {autoInstall.error ?? "Failed to connect GitHub"}
+                {autoInstall.error ??
+                  t("common.importFromDecoDialog.failedToConnectGithub")}
               </p>
               <Button variant="outline" size="sm" onClick={autoInstall.retry}>
-                Retry GitHub setup
+                {t("common.importFromDecoDialog.retryGithubSetup")}
               </Button>
             </div>
           )}
 
           {githubSetupPending && autoInstall.status !== "error" && (
             <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
-              Setting up GitHub connection...
+              {t("common.importFromDecoDialog.settingUpGithub")}
             </div>
           )}
 
@@ -434,7 +451,7 @@ export function ImportFromDecoDialog({
               <div className="flex flex-col py-2">
                 <div className="px-8 py-2">
                   <p className="text-xs font-medium text-muted-foreground">
-                    Select a GitHub connection
+                    {t("common.importFromDecoDialog.selectGithubConnection")}
                   </p>
                 </div>
                 {orgGithubConnections.map((conn) => (
@@ -465,7 +482,7 @@ export function ImportFromDecoDialog({
             !githubSetupPending &&
             autoInstall.status !== "error" && (
               <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
-                Loading sites...
+                {t("common.importFromDecoDialog.loadingSites")}
               </div>
             )}
 
@@ -476,7 +493,7 @@ export function ImportFromDecoDialog({
             !sitesError &&
             sites.length === 0 && (
               <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
-                No sites found for this account.
+                {t("common.importFromDecoDialog.noSitesFound")}
               </div>
             )}
 
@@ -488,7 +505,7 @@ export function ImportFromDecoDialog({
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[420px] overflow-y-auto py-4 px-8 [scrollbar-gutter:stable]">
                 {filteredSites.length === 0 && (
                   <p className="col-span-3 text-sm text-muted-foreground text-center py-8">
-                    No sites match &ldquo;{search}&rdquo;
+                    {t("common.importFromDecoDialog.noSitesMatch", { search })}
                   </p>
                 )}
                 {filteredSites.map((site) => {
@@ -545,7 +562,7 @@ export function ImportFromDecoDialog({
             onClick={() => handleClose(false)}
             disabled={importMutation.isPending}
           >
-            Cancel
+            {t("common.importFromDecoDialog.cancel")}
           </Button>
           <Button
             disabled={
@@ -560,7 +577,9 @@ export function ImportFromDecoDialog({
             }
             onClick={() => selectedSite && importMutation.mutate(selectedSite)}
           >
-            {importMutation.isPending ? "Importing..." : "Import"}
+            {importMutation.isPending
+              ? t("common.importFromDecoDialog.importing")
+              : t("common.importFromDecoDialog.import")}
           </Button>
         </DialogFooter>
       </DialogContent>

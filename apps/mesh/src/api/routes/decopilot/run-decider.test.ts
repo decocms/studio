@@ -210,6 +210,32 @@ describe("FORCE_FAIL", () => {
       taskId: "t1",
       orgId: "org1",
       reason: "ghost",
+      // No fence supplied → null (unconditional force-fail; legacy behavior).
+      expectedFenceToken: null,
+    });
+  });
+
+  it("ghost carries expectedFenceToken through to the RUN_FAILED event", () => {
+    const events = decide(
+      {
+        type: "FORCE_FAIL",
+        taskId: "t1",
+        reason: "ghost",
+        orgId: "org1",
+        expectedFenceToken: "fence-A",
+      },
+      makeRunningState({ orgId: "org1" }),
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual({
+      type: "RUN_FAILED",
+      taskId: "t1",
+      orgId: "org1",
+      reason: "ghost",
+      // Scopes the reactor's force-fail to the turn being cancelled, so a
+      // follow-up turn under a fresh fence is not clobbered.
+      expectedFenceToken: "fence-A",
     });
   });
 
@@ -240,6 +266,7 @@ describe("FORCE_FAIL", () => {
       taskId: "t1",
       orgId: "org1",
       reason: "ghost",
+      expectedFenceToken: null,
     });
   });
 

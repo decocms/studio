@@ -2,7 +2,7 @@
  * Agent-sandbox runner.
  *
  * Provisions one SandboxClaim per (user, projectRef) against the
- * kubernetes-sigs/agent-sandbox operator. Mesh runs outside the cluster
+ * kubernetes-sigs/agent-sandbox operator. Studio runs outside the cluster
  * (Stage 1 / local-dev via kind), so traffic reaches the pod via a single
  * lazily-opened 127.0.0.1 TCP listener that tunnels each inbound connection
  * to the daemon container port through the apiserver as a fresh WebSocket.
@@ -110,7 +110,7 @@ function errMsg(err: unknown): string {
 /**
  * Response-header marker on the preview-proxy's "sandbox not ready" envelopes
  * (404 "sandbox not found" in dev, 502 "sandbox daemon unreachable" in prod).
- * The mesh edge (`apps/mesh/src/sandbox/preview-proxy.ts`) swaps these for an
+ * The studio edge (`apps/mesh/src/sandbox/preview-proxy.ts`) swaps these for an
  * auto-reloading "connecting" page on top-level document navigations.
  */
 export const PREVIEW_NOT_READY_HEADER = "x-sandbox-preview-not-ready";
@@ -121,7 +121,7 @@ const DEFAULT_NAMESPACE = "agent-sandbox-system";
 const DEFAULT_TEMPLATE_NAME = "studio-sandbox";
 
 const DAEMON_CONTAINER_PORT = 9000;
-// In-pod port the daemon's reverse proxy targets. Mesh never connects here
+// In-pod port the daemon's reverse proxy targets. Studio never connects here
 // directly — everything funnels through the daemon container port — but the
 // value is propagated to the daemon via DEV_PORT so it knows where the dev
 // server will bind.
@@ -132,7 +132,7 @@ const DEFAULT_WORKDIR = "/app";
 const DAEMON_TOKEN_BYTES = 32;
 
 /**
- * Env keys mesh owns and a caller's `opts.env` MUST NOT shadow. DAEMON_TOKEN
+ * Env keys studio owns and a caller's `opts.env` MUST NOT shadow. DAEMON_TOKEN
  * is the secrecy boundary; the rest configure the daemon's bootstrap (paths
  * + ports) — silently overriding any of them would break daemon startup.
  *
@@ -203,8 +203,8 @@ const PREVIEW_STRIP_RESPONSE_HEADERS = [
 ];
 
 // Deterministic local-port range for port-forward listeners. Same
-// (handle, containerPort) pair → same host port across mesh restarts, so
-// `previewUrl` cached in the thread's sandboxMap stays valid when the mesh
+// (handle, containerPort) pair → same host port across studio restarts, so
+// `previewUrl` cached in the thread's sandboxMap stays valid when the studio
 // process recycles. Birthday-collision probability stays <1% up to ~140
 // concurrent forwarders. EADDRINUSE walks the range forward until bind.
 const PORT_RANGE_START = 40000;
@@ -241,7 +241,7 @@ interface K8sRecord {
    * `claim.status.sandbox.name`. Equals `handle` on cold-start (operator
    * names cold Sandboxes after the claim) but diverges on warm-pool
    * adoption — pool sandboxes carry their generated names like
-   * `studio-sandbox-kind-abcde`. Mesh routes preview traffic via the
+   * `studio-sandbox-kind-abcde`. Studio routes preview traffic via the
    * Service named after this (the operator-managed Service that targets
    * the *actually-bound* pod), not via the same-named cold-path
    * duplicate the v0.4.x adoption race occasionally leaves behind.
@@ -255,10 +255,10 @@ interface K8sRecord {
   daemonForward: PortForwarder;
   workload: Workload | null;
   /**
-   * Per-boot UUID the daemon reports on /health. Generated mesh-side and
+   * Per-boot UUID the daemon reports on /health. Generated studio-side and
    * injected via env; re-read from /health on rehydrate so we pick up
    * pod restarts (the daemon's orchestrator handles resume-on-restart
-   * itself, this is purely informational on the mesh side).
+   * itself, this is purely informational on the studio side).
    */
   daemonBootId: string;
   /**
@@ -314,7 +314,7 @@ export interface AgentSandboxProviderOptions {
    * warm-pool mode:
    *   - claims are created with `warmpool: "default"` and `spec.env: []`
    *     (the operator rejects per-claim env when warmpool != "none"),
-   *   - mesh's first contact with the daemon authenticates with the
+   *   - studio's first contact with the daemon authenticates with the
    *     sentinel and rotates to a per-claim token via
    *     `auth.rotateToken` on POST /_sandbox/config,
    *   - subsequent calls use the per-claim token (persisted in
@@ -327,7 +327,7 @@ export interface AgentSandboxProviderOptions {
    * Trust window: between pod boot and the first rotation call, the
    * sentinel is the only auth on the daemon. NetworkPolicy is the
    * secrecy boundary in that window — same boundary that gates every
-   * other mesh→daemon request.
+   * other studio→daemon request.
    */
   sentinelToken?: string;
   /**
@@ -352,7 +352,7 @@ export interface AgentSandboxProviderOptions {
    * OpenTelemetry meter for runner-level metrics (active gauge, ensure
    * outcome counter, proxy duration histogram). Optional — when absent,
    * runner is fully functional but emits no metrics. Tests typically pass
-   * undefined; mesh wires `metrics.getMeter("mesh", "1.0.0")`.
+   * undefined; studio wires `metrics.getMeter("mesh", "1.0.0")`.
    */
   meter?: Meter;
   /**
@@ -371,9 +371,9 @@ export interface AgentSandboxProviderOptions {
    *
    * When unset (or `previewUrlPattern` unset), the runner does NOT touch
    * HTTPRoute resources. Preview traffic still works in that mode through
-   * mesh's in-process proxy (the previous design), provided someone else
+   * studio's in-process proxy (the previous design), provided someone else
    * (the chart, an operator, hand-rolled YAML) has wired a wildcard
-   * HTTPRoute backed by mesh.
+   * HTTPRoute backed by studio.
    */
   previewGateway?: {
     name: string;
@@ -430,7 +430,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   /**
    * Non-null = warm-pool mode (see `AgentSandboxProviderOptions.sentinelToken`).
    * Treated as the bearer token for the *first* daemon contact only;
-   * mesh rotates to a per-claim token via `auth.rotateToken` immediately
+   * studio rotates to a per-claim token via `auth.rotateToken` immediately
    * after, and persists the new token. Empty/whitespace strings are
    * collapsed to null at construction so a misconfigured env var doesn't
    * silently flip modes with an unusable token.
@@ -554,7 +554,7 @@ export class AgentSandboxProvider implements SandboxProvider {
 
   /**
    * Stream of phase transitions for a SandboxClaim's pre-Ready lifecycle.
-   * Used by mesh's lifecycle SSE route to surface what's happening between
+   * Used by studio's lifecycle SSE route to surface what's happening between
    * `SANDBOX_START` posting a claim and the daemon SSE coming online.
    *
    * Generator closes on terminal phase (`ready`/`failed`) or on
@@ -689,8 +689,8 @@ export class AgentSandboxProvider implements SandboxProvider {
   }
 
   /**
-   * Repopulate mesh's records cache from a SandboxClaim that already exists
-   * in the cluster. Preview gateway traffic can keep serving while mesh's
+   * Repopulate studio's records cache from a SandboxClaim that already exists
+   * in the cluster. Preview gateway traffic can keep serving while studio's
    * daemon/git proxy still holds a cold cache or missing state-store row.
    */
   async adoptLiveClaim(id: SandboxId, handle: string): Promise<boolean> {
@@ -729,18 +729,18 @@ export class AgentSandboxProvider implements SandboxProvider {
 
   /**
    * Resolves the HTTP base URL for a sandbox's daemon. Used by the preview
-   * reverse-proxy at the mesh edge.
+   * reverse-proxy at the studio edge.
    *
    * Two modes:
-   * 1. `previewUrlPattern` set (Stage 3 / in-cluster mesh): synthesize the
+   * 1. `previewUrlPattern` set (Stage 3 / in-cluster studio): synthesize the
    *    in-cluster Service URL straight from the handle. No record lookup, no
    *    port-forward, no health probe — the cluster DNS + downstream fetch
-   *    are the source of truth. Crucially this means a cold mesh pod (or one
+   *    are the source of truth. Crucially this means a cold studio pod (or one
    *    that just restarted with an empty records map) still serves preview
    *    traffic without first having to rehydrate every claim. If the Service
    *    doesn't exist for that handle, the downstream fetch fails and the
    *    caller surfaces a 502.
-   * 2. `previewUrlPattern` unset (dev / mesh-outside-cluster): fall back to
+   * 2. `previewUrlPattern` unset (dev / studio-outside-cluster): fall back to
    *    the 127.0.0.1 port-forwarder opened by `getRecord`. Returns null when
    *    the record can't be found or rehydrated — the caller surfaces 404.
    *
@@ -756,7 +756,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       // on warm-pool adoption this is the pool pod's Service (e.g.
       // `studio-sandbox-kind-abcde`), NOT the same-named cold-path
       // orphan the v0.4.x adoption race occasionally leaves alongside.
-      // Records cache hit is O(1); cache miss (cold mesh) falls through to
+      // Records cache hit is O(1); cache miss (cold studio) falls through to
       // a single state-store row read, then to `handle` as a last resort.
       // We deliberately don't pre-validate that the claim is still alive
       // — every preview request would pay a K8s API call. When the
@@ -784,7 +784,7 @@ export class AgentSandboxProvider implements SandboxProvider {
    * Cache layers, cheapest first: in-memory records map, then state-store
    * (one DB row), then a `handle` fallback. Falling back to `handle` is
    * wrong for a warm-pool sandbox (it points at the cold-path duplicate's
-   * Service), but the only path that lands here is "mesh just restarted
+   * Service), but the only path that lands here is "studio just restarted
    * AND state-store doesn't have the row" — at which point the downstream
    * fetch will fail and `proxyPreviewRequest`'s catch arm runs the
    * resurrection flow, which repopulates records with the right name.
@@ -820,7 +820,7 @@ export class AgentSandboxProvider implements SandboxProvider {
    *   - **Non-GET** (POST/PUT/DELETE/etc) is rejected as defense-in-depth.
    *     The daemon enforces bearer auth on the mutating endpoints
    *     (read/write/edit/grep/glob/bash/exec/kill), but the only legitimate
-   *     caller for those is mesh itself via the internal port-forward; the
+   *     caller for those is studio itself via the internal port-forward; the
    *     preview surface should never see them.
    */
   async proxyPreviewRequest(
@@ -830,7 +830,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     const start = performance.now();
     // In-memory cache only — preview is the hot path; a state-store hit per
     // request would dominate latency. Tenant attribution is best-effort: when
-    // the records map is cold (mesh just restarted) the metric still records
+    // the records map is cold (studio just restarted) the metric still records
     // duration with empty tenant attrs. cAdvisor on the pod side covers
     // bandwidth attribution authoritatively via pod labels.
     const cachedRec = this.records.get(handle) ?? null;
@@ -876,7 +876,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       } catch (err) {
         // Truncate to host+pathname — query strings can carry secrets
         // (magic-link tokens, signed URLs) and would otherwise end up in
-        // mesh stdout → kubectl logs → log aggregator.
+        // studio stdout → kubectl logs → log aggregator.
         const safeTarget = `${upstreamBase}${reqUrl.pathname}`;
         console.warn(
           `[${LOG_LABEL}] preview fetch to ${safeTarget} failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -1101,7 +1101,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       this.metrics.ensureOutcome.add(1, { ...attrs, outcome });
       // Only increment the active gauge on first observation to avoid
       // double-counting when the same handle is rehydrated multiple times
-      // (mesh-process internal cache hit; ensureLocked is invoked again).
+      // (studio-process internal cache hit; ensureLocked is invoked again).
       if (!wasCached) this.metrics.active.add(1, attrs);
     }
     return this.toSandbox(rec);
@@ -1138,7 +1138,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     boot: { token: string; daemonBootId: string; workdir: string },
   ): SandboxClaim {
     // Warm-pool mode: the operator rejects claim.spec.env outright when
-    // warmpool != "none". Mesh delivers the per-claim secret post-bind via
+    // warmpool != "none". Studio delivers the per-claim secret post-bind via
     // POST /_sandbox/config + auth.rotateToken instead.
     const warmPoolMode = this.sentinelToken !== null;
     const envEntries = warmPoolMode
@@ -1213,7 +1213,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     } catch (err) {
       // ensureLocked already waits for a known-terminating prior claim before
       // falling through here. This catch covers the residual races: a
-      // concurrent ensure() from another mesh replica raced ours to create,
+      // concurrent ensure() from another studio replica raced ours to create,
       // or an external delete (operator TTL, kubectl) finished after we
       // checked but before our POST landed. Wait for the resource to fully
       // disappear and retry exactly once — re-raising AlreadyExists straight
@@ -1301,7 +1301,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     const daemonUrl = `http://127.0.0.1:${daemonForward.localPort}`;
     const configPayload = this.workloadConfigPayload(opts);
     // Warm-pool path: pod boots with the SandboxTemplate's sentinel token;
-    // mesh authenticates the first /config call with the sentinel and
+    // studio authenticates the first /config call with the sentinel and
     // rotates to `token` (per-claim) atomically with the workload patch.
     // After this call returns, only `token` is accepted on the daemon.
     //
@@ -1550,7 +1550,7 @@ export class AgentSandboxProvider implements SandboxProvider {
    * for the *adopted* Sandbox. The agent-sandbox operator (v0.4.x) ships
    * Services with empty `spec.ports`, which makes Istio refuse to register
    * an upstream cluster — `ensureServicePort` doc has the full rationale.
-   * Idempotent: once mesh owns `spec.ports[name=daemon]` (first SSA),
+   * Idempotent: once studio owns `spec.ports[name=daemon]` (first SSA),
    * subsequent calls with the same body are recorded as no-ops by the API
    * server.
    *
@@ -1766,7 +1766,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     // When the state-store is wiped (the trigger that brings us into
     // adopt), there's no way to retrieve it. Returning null falls through
     // to delete + reprovision; the pool releases the pod, the operator
-    // allocates a fresh one, and mesh rotates a new token onto it.
+    // allocates a fresh one, and studio rotates a new token onto it.
     if (this.sentinelToken !== null) return null;
     const token = readClaimDaemonToken(claim);
     if (!token) return null;
@@ -1820,7 +1820,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       // sandboxes when this code rolls out).
       tenant,
       // Adopt happens when the state-store is empty but a claim with our
-      // deterministic name still exists in the cluster (e.g. mesh restart
+      // deterministic name still exists in the cluster (e.g. studio restart
       // without state-store, or state-store wipe). The original opts aren't
       // recoverable from the claim alone, so resurrection on this record
       // can't autonomously re-provision; falls back to the caller's
@@ -2148,17 +2148,17 @@ function buildRunnerMetrics(meter: Meter): RunnerMetrics {
   return {
     active: meter.createUpDownCounter("studio.sandbox.active", {
       description:
-        "Active sandbox count, by runner kind and owning org. Cross-checks the cAdvisor-derived count from the cluster — divergence between the two indicates orphaned claims (mesh deleted but K8s didn't reap) or unattributed pods.",
+        "Active sandbox count, by runner kind and owning org. Cross-checks the cAdvisor-derived count from the cluster — divergence between the two indicates orphaned claims (studio deleted but K8s didn't reap) or unattributed pods.",
       unit: "{sandbox}",
     }),
     ensureOutcome: meter.createCounter("studio.sandbox.ensure.outcome", {
       description:
-        "Outcome of each ensure() call: fresh provision, resume from state-store after restart, or adopt of a cluster-side claim mesh didn't know about. Cold-start ratio is the primary input for warm-pool sizing.",
+        "Outcome of each ensure() call: fresh provision, resume from state-store after restart, or adopt of a cluster-side claim studio didn't know about. Cold-start ratio is the primary input for warm-pool sizing.",
       unit: "{call}",
     }),
     proxyDurationMs: meter.createHistogram("studio.sandbox.proxy.duration_ms", {
       description:
-        "Wall-clock latency of mesh-mediated requests to the sandbox daemon: tool exec proxies (source=daemon) and preview iframe traffic (source=preview).",
+        "Wall-clock latency of studio-mediated requests to the sandbox daemon: tool exec proxies (source=daemon) and preview iframe traffic (source=preview).",
       unit: "ms",
     }),
   };
@@ -2211,7 +2211,7 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-// K8s label keys mesh attaches. Centralized so writers (buildTenantLabels)
+// K8s label keys studio attaches. Centralized so writers (buildTenantLabels)
 // and the reader (readClaimTenant) can't drift.
 const LABEL_KEYS = {
   role: "studio.decocms.com/role",
@@ -2237,7 +2237,7 @@ const ANNOTATION_KEYS = {
 } as const;
 
 // K8s label values: ≤63 chars, must match `(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?`.
-// Org/user IDs are UUIDs in mesh and pass through unchanged; the regex check
+// Org/user IDs are UUIDs in studio and pass through unchanged; the regex check
 // + truncation is defensive against future ID-shape changes (the operator will
 // reject the claim outright if a label value is invalid).
 const LABEL_VALUE_RE = /^([A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?)?$/;
@@ -2259,7 +2259,7 @@ function normalizeEnvName(raw: string | undefined): string | null {
   if (trimmed === "") return null;
   if (!ENV_NAME_RE.test(trimmed)) {
     throw new Error(
-      `AgentSandboxProvider: envName=${JSON.stringify(trimmed)} is not a valid DNS-label-safe environment name (lowercase alphanumeric or '-', starts with a letter, ends alphanumeric, ≤32 chars). Mesh sets this from STUDIO_ENV; check the studio chart's configMap.`,
+      `AgentSandboxProvider: envName=${JSON.stringify(trimmed)} is not a valid DNS-label-safe environment name (lowercase alphanumeric or '-', starts with a letter, ends alphanumeric, ≤32 chars). Studio sets this from STUDIO_ENV; check the studio chart's configMap.`,
     );
   }
   return trimmed;

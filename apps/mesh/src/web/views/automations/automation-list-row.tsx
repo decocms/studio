@@ -20,6 +20,7 @@ import {
 import { Clock, DotsVertical, Trash01, Zap } from "@untitledui/icons";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { AgentAvatar } from "@/web/components/agent-icon";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   useAutomationActions,
   type AutomationListItem,
@@ -34,6 +35,7 @@ export function AutomationListRow({
   showAgent?: boolean;
   onClick: () => void;
 }) {
+  const t = useT();
   const { remove } = useAutomationActions();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const agent = useVirtualMCP(
@@ -66,16 +68,16 @@ export function AutomationListRow({
           className={cn(
             "inline-block size-2 rounded-full shrink-0",
             automation.active && automation.trigger_count > 0
-              ? "bg-emerald-500"
+              ? "bg-success"
               : "bg-muted-foreground/40",
           )}
-          aria-label={
+          aria-label={t(
             automation.active && automation.trigger_count > 0
-              ? "Active"
+              ? "automations.automationListRow.ariaActive"
               : !automation.active
-                ? "Paused"
-                : "No triggers configured"
-          }
+                ? "automations.automationListRow.ariaPaused"
+                : "automations.automationListRow.ariaNoTriggers",
+          )}
         />
 
         {showAgent && (
@@ -129,7 +131,7 @@ export function AutomationListRow({
                 }}
               >
                 <Trash01 size={16} />
-                Delete
+                {t("automations.automationListRow.delete")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -139,23 +141,25 @@ export function AutomationListRow({
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete automation?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("automations.automationListRow.deleteTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This removes{" "}
-              <span className="font-medium text-foreground">
-                {automation.name}
-              </span>{" "}
-              and all of its triggers. This action cannot be undone.
+              {t("automations.automationListRow.deleteDescription", {
+                name: automation.name,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("automations.automationListRow.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={remove.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("automations.automationListRow.deleteButton")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -171,10 +175,11 @@ function TriggerSummary({
   triggerCount: number;
   nextRunAt: string | null;
 }) {
+  const t = useT();
   if (triggerCount === 0) {
     return (
       <span className="text-xs text-muted-foreground">
-        No triggers configured
+        {t("automations.automationListRow.noTriggers")}
       </span>
     );
   }
@@ -184,14 +189,18 @@ function TriggerSummary({
         <>
           <Clock size={12} className="shrink-0" />
           <span className="truncate">
-            Next run {new Date(nextRunAt).toLocaleString()}
+            {t("automations.automationListRow.nextRun", {
+              date: new Date(nextRunAt).toLocaleString(),
+            })}
           </span>
         </>
       ) : (
         <>
           <Zap size={12} className="shrink-0" />
           <span className="truncate">
-            {triggerCount} trigger{triggerCount === 1 ? "" : "s"}
+            {t("automations.automationListRow.triggers", {
+              count: triggerCount,
+            })}
           </span>
         </>
       )}

@@ -1,4 +1,5 @@
 import { StudioPackAgentId, isStudioPackAgent } from "@decocms/mesh-sdk";
+import { STUDIO_PACK_AGENT_NAMES } from "./agent-names";
 import type { ResolveRuntime, StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS_BOOTSTRAP = `<role>
@@ -47,7 +48,7 @@ You are the Agent Manager. You create, configure, and maintain agents (Virtual M
 - When adding connections to an agent, verify the connection exists by listing or getting it first.
 - Do not broaden an agent's scope unless the user explicitly requests it.
 - Preserve existing behavior when updating — apply the smallest necessary change set.
-- Never modify or delete the Studio Pack agents (Agent Manager, API Key Manager, Automation Manager, Connection Manager, Store Manager, Brand Manager, Usage Manager). They are system-managed.
+- Never modify or delete the Studio Pack agents (${STUDIO_PACK_AGENT_NAMES}). They are system-managed.
 - Never repeat tool result data in your reply. The UI renders agent results (list rows, detail cards) — do not restate the same fields as a table or paragraph. Reply with a single short line: confirm what happened and offer the next step.
 </constraints>
 
@@ -83,7 +84,7 @@ You are the Agent Manager. You create, configure, and maintain agents (Virtual M
    f. Re-read with COLLECTION_VIRTUAL_MCP_GET to verify the stored result.
 
 5. Auditing and optimizing existing agents:
-   a. List all agents with COLLECTION_VIRTUAL_MCP_LIST. Ignore the Studio Pack agents (Agent Manager, API Key Manager, Automation Manager, Connection Manager, Store Manager, Brand Manager, Usage Manager) — those are system-managed.
+   a. List all agents with COLLECTION_VIRTUAL_MCP_LIST. Ignore the Studio Pack agents (${STUDIO_PACK_AGENT_NAMES}) — those are system-managed.
    b. For each candidate, fetch details with COLLECTION_VIRTUAL_MCP_GET.
    c. Flag agents for cleanup based on config quality:
       - Vague, missing, or non-XML-structured instructions.

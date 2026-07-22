@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 import { BrokenMCPList } from "./broken-mcp-list";
 import { MonitorConfiguration } from "./monitor-configuration";
 import { MonitorConnectionsPanel } from "./monitor-connections-panel";
@@ -15,6 +16,7 @@ import {
 type MonitorSubTab = "tests" | "configuration" | "connections";
 
 export default function RegistryMonitorPage() {
+  const t = useT();
   const [activeRunId, setActiveRunId] = useState<string | undefined>(undefined);
   const [activeSubTab, setActiveSubTab] = useState<MonitorSubTab>("tests");
   const runQuery = useMonitorRun(activeRunId);
@@ -27,13 +29,20 @@ export default function RegistryMonitorPage() {
   return (
     <div className="h-full overflow-auto px-4 md:px-6 py-4 space-y-6">
       <nav className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-        {(
-          [
-            { id: "tests", label: "Tests" },
-            { id: "configuration", label: "Configuration" },
-            { id: "connections", label: "Connections" },
-          ] as const
-        ).map((item) => {
+        {[
+          {
+            id: "tests" as const,
+            labelKey: "registry.registryMonitorPage.tabTests" as const,
+          },
+          {
+            id: "configuration" as const,
+            labelKey: "registry.registryMonitorPage.tabConfiguration" as const,
+          },
+          {
+            id: "connections" as const,
+            labelKey: "registry.registryMonitorPage.tabConnections" as const,
+          },
+        ].map((item) => {
           const isActive = activeSubTab === item.id;
           return (
             <button
@@ -47,7 +56,7 @@ export default function RegistryMonitorPage() {
               )}
               onClick={() => setActiveSubTab(item.id)}
             >
-              <span>{item.label}</span>
+              <span>{t(item.labelKey)}</span>
             </button>
           );
         })}
@@ -70,7 +79,7 @@ export default function RegistryMonitorPage() {
             </div>
             <div className="xl:col-span-4 space-y-2 min-w-0">
               <h3 className="text-sm font-semibold">
-                Broken MCPs{" "}
+                {t("registry.registryMonitorPage.brokenMcps")}{" "}
                 {failedResults.length > 0 && (
                   <Badge variant="destructive" className="text-[10px] ml-1">
                     {failedResults.length}

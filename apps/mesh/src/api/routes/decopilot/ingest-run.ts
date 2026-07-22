@@ -1,7 +1,7 @@
 /**
  * The ONE shared ingest unit (spec §unified-pipeline / Phase B).
  *
- * Both execution paths — agent-sandbox (in-mesh) and user-desktop (relay) —
+ * Both execution paths — agent-sandbox (in-studio) and user-desktop (relay) —
  * route through `ingestRun`. It does two things, in lockstep, per chunk:
  *
  *  1. **Publish** the raw chunk to `DECOPILOT_STREAMS` with a seq-keyed

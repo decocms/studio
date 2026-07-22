@@ -12,7 +12,7 @@ export { generateMessageId } from "@decocms/harness/message-id";
  * mount points. The home folder mounts at the fixed `org/home/` (same path for
  * every org), so this block is identical across orgs and fully cache-stable.
  *
- * Portable pure function kept mesh-side (consumed by the cluster
+ * Portable pure function kept studio-side (consumed by the cluster
  * `build-agent-system-prompt`). org-fs is mounted into every sandbox now, so it
  * is emitted unconditionally.
  */

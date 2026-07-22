@@ -4,7 +4,7 @@ import { buildInvokeRunUrl, buildPreviewInvokePath } from "./use-run-block";
 const NOW_MS = 1_751_500_000_000;
 
 describe("buildPreviewInvokePath", () => {
-  it("builds the org-scoped mesh proxy path", () => {
+  it("builds the org-scoped studio proxy path", () => {
     expect(
       buildPreviewInvokePath({
         orgSlug: "acme",

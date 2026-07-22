@@ -7,7 +7,7 @@ export type FetchLike = (
 ) => Promise<Response>;
 
 export interface OrgFsClientOptions {
-  /** Mesh base URL, e.g. https://cluster.deco.host (no trailing slash needed). */
+  /** Studio base URL, e.g. https://cluster.deco.host (no trailing slash needed). */
   baseUrl: string;
   /** Immutable org slug (the `:org` path segment). */
   orgSlug: string;
@@ -51,7 +51,7 @@ export interface OrgFsChangePage {
 }
 
 /**
- * Daemon-side client for the mesh org-fs HTTP contract. One instance per
+ * Daemon-side client for the studio org-fs HTTP contract. One instance per
  * (org, volume). Used by the WebDAV serve layer; never touches the DB.
  */
 export class OrgFsClient implements OrgFsApi {
@@ -121,14 +121,14 @@ export class OrgFsClient implements OrgFsApi {
     // Dev storage presigns to inline `data:` URLs (the full base64 payload) —
     // no push-down win there; the buffered path is strictly cheaper.
     if (!/^https?:/i.test(url)) return null;
-    // Global fetch on purpose: the presigned URL is external to the mesh (the
-    // injected fetch only routes the mesh contract).
+    // Global fetch on purpose: the presigned URL is external to the studio (the
+    // injected fetch only routes the studio contract).
     let res: Response;
     try {
       res = await fetch(url, range ? { headers: { range } } : undefined);
     } catch {
       // Presigned host unreachable from THIS network (e.g. a cluster pod or
-      // remote desktop vs a localhost MinIO endpoint) — the mesh can still
+      // remote desktop vs a localhost MinIO endpoint) — the studio can still
       // reach it, so fall back to the buffered read instead of erroring.
       return null;
     }

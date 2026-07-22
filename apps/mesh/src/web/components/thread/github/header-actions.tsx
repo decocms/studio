@@ -36,11 +36,14 @@ import { usePublishGate } from "@/web/components/sandbox/hooks/use-publish-gate.
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 import type { PublishGate } from "./sandbox-git-api.ts";
+import { useT, type TFunction } from "@/web/i18n/use-t";
 
 interface Props {
   virtualMcpId: string;
 }
 
+// Note: LOADING_BRANCH_BUTTON is module-scope and not component-rendered text directly;
+// will be replaced with i18n in HeaderActions component
 const LOADING_BRANCH_BUTTON: HeaderButton = {
   label: "Loading branch…",
   disabled: true,
@@ -61,6 +64,7 @@ const LOADING_BRANCH_BUTTON: HeaderButton = {
  * detached it renders a reconnect pill rather than nothing.
  */
 export function HeaderActions({ virtualMcpId }: Props) {
+  const t = useT();
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
@@ -172,9 +176,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // (a stale/mid-mutation aggregation must never leave the header blank).
   if (attachment.status === "detached") {
     return (
-      <WithTooltip label="GitHub connection was removed — relink the repository in Settings to save changes">
+      <WithTooltip label={t("thread.headerActions.githubConnectionRemoved")}>
         <Button size="sm" variant="outline" disabled>
-          Reconnect GitHub
+          {t("thread.headerActions.reconnectGithub")}
         </Button>
       </WithTooltip>
     );
@@ -276,12 +280,16 @@ export function HeaderActions({ virtualMcpId }: Props) {
         pullNumber,
         coAuthor,
       });
-      toast.success(`Published PR #${pullNumber}`);
+      toast.success(
+        t("thread.headerActions.publishedPr", { prNumber: String(pullNumber) }),
+      );
       await refreshPrState();
       await switchToFreshBranch();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to merge pull request",
+        err instanceof Error
+          ? err.message
+          : t("thread.headerActions.failedToMergePullRequest"),
       );
     } finally {
       setGithubActionPending(false);
@@ -342,6 +350,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   return (
     <>
       <HeaderButtonRenderer
+        t={t}
         button={button}
         actionBusy={actionBusy}
         githubActionPending={githubActionPending}
@@ -396,6 +405,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 }
 
 function HeaderButtonRenderer(props: {
+  t: TFunction;
   button: HeaderButton;
   actionBusy: boolean;
   githubActionPending: boolean;
@@ -408,7 +418,7 @@ function HeaderButtonRenderer(props: {
   onSquashMerge: (pullNumber: number) => void | Promise<void>;
   onReview?: () => void;
 }) {
-  const { button, actionBusy, githubActionPending } = props;
+  const { t, button, actionBusy, githubActionPending } = props;
   const chatBlocksAction =
     actionBusy &&
     button.action !== "create-pr" &&
@@ -421,7 +431,7 @@ function HeaderButtonRenderer(props: {
     Boolean(button.loading) ||
     (githubActionPending && button.action === "merge-split");
   const tooltipLabel = chatBlocksAction
-    ? "Chat is running"
+    ? t("thread.headerActions.chatIsRunning")
     : (button.tooltip ?? null);
 
   if (
@@ -460,7 +470,8 @@ function HeaderButtonRenderer(props: {
       {props.showPublishSide ? (
         <WithTooltip
           label={
-            props.publishGate.reason ?? "Publish directly, skipping review"
+            props.publishGate.reason ??
+            t("thread.headerActions.publishDirectlySkipReview")
           }
         >
           <Button
@@ -469,7 +480,7 @@ function HeaderButtonRenderer(props: {
             disabled={props.githubActionPending || !props.publishGate.allowed}
             onClick={props.onPublishSide}
           >
-            Publish
+            {t("thread.headerActions.publish")}
           </Button>
         </WithTooltip>
       ) : null}

@@ -23,6 +23,7 @@ import {
   Download01,
   Upload01,
 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import type {
   RegistryBulkCreateResult,
   RegistryCreateInput,
@@ -112,7 +113,7 @@ function parseCsvToItems(csvContent: string): ParseResult {
       warnings: [
         {
           line: 0,
-          message: "CSV must have a header row and at least one data row",
+          message: "CSV must have a header row and at least one data row", // ponytail: non-translatable parser error, logged internally
         },
       ],
       skipped: 0,
@@ -133,7 +134,7 @@ function parseCsvToItems(csvContent: string): ParseResult {
   // Check required columns
   for (const col of REQUIRED_COLUMNS) {
     if (!headerIndex.has(col)) {
-      warnings.push({ line: 1, message: `Missing required column: "${col}"` });
+      warnings.push({ line: 1, message: `Missing required column: "${col}"` }); // ponytail: non-translatable parser error, logged internally
     }
   }
 
@@ -143,7 +144,7 @@ function parseCsvToItems(csvContent: string): ParseResult {
     if (normalized && !KNOWN_COLUMNS.includes(normalized)) {
       warnings.push({
         line: 1,
-        message: `Unknown column "${col}" will be ignored`,
+        message: `Unknown column "${col}" will be ignored`, // ponytail: non-translatable parser error, logged internally
       });
     }
   }
@@ -167,14 +168,14 @@ function parseCsvToItems(csvContent: string): ParseResult {
     const title = getValue(cells, "title").trim();
 
     if (!id) {
-      warnings.push({ line: index + 1, message: "Missing id — row skipped" });
+      warnings.push({ line: index + 1, message: "Missing id — row skipped" }); // ponytail: non-translatable parser error, logged internally
       skipped += 1;
       continue;
     }
     if (!title) {
       warnings.push({
         line: index + 1,
-        message: `Missing title for id="${id}" — row skipped`,
+        message: `Missing title for id="${id}" — row skipped`, // ponytail: non-translatable parser error, logged internally
       });
       skipped += 1;
       continue;
@@ -182,7 +183,7 @@ function parseCsvToItems(csvContent: string): ParseResult {
     if (seenIds.has(id)) {
       warnings.push({
         line: index + 1,
-        message: `Duplicate id="${id}" — row skipped`,
+        message: `Duplicate id="${id}" — row skipped`, // ponytail: non-translatable parser error, logged internally
       });
       skipped += 1;
       continue;
@@ -246,6 +247,7 @@ export function CsvImportDialog({
   isImporting = false,
   onImport,
 }: CsvImportDialogProps) {
+  const t = useT();
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [importResult, setImportResult] =
     useState<RegistryBulkCreateResult | null>(null);
@@ -289,9 +291,9 @@ export function CsvImportDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Import MCP Servers from CSV</DialogTitle>
+          <DialogTitle>{t("registry.csvImportDialog.title")}</DialogTitle>
           <DialogDescription>
-            Upload a CSV file to bulk-import MCP servers into the registry.
+            {t("registry.csvImportDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -306,7 +308,9 @@ export function CsvImportDialog({
               disabled={isImporting}
             >
               <Upload01 size={14} />
-              {fileName ? "Change file" : "Choose CSV file"}
+              {fileName
+                ? t("registry.csvImportDialog.changeFile")
+                : t("registry.csvImportDialog.chooseCsvFile")}
             </Button>
             <input
               ref={fileInputRef}
@@ -328,23 +332,25 @@ export function CsvImportDialog({
               onClick={downloadTemplate}
             >
               <Download01 size={14} />
-              Download template
+              {t("registry.csvImportDialog.downloadTemplate")}
             </Button>
           </div>
 
           {/* Warnings */}
           {warnings.length > 0 && (
-            <div className="rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/30 p-3 grid gap-1">
+            <div className="rounded-lg border border-warning/20 bg-warning/10 p-3 grid gap-1">
               {warnings.map((w, i) => (
                 <p
                   key={`${w.line}-${i}`}
-                  className="text-xs text-yellow-700 dark:text-yellow-400 flex items-start gap-1.5"
+                  className="text-xs text-warning flex items-start gap-1.5"
                 >
                   <AlertCircle size={12} className="shrink-0 mt-0.5" />
                   <span>
                     {w.line > 0 && (
                       <span className="font-mono text-[10px] mr-1">
-                        Line {w.line}:
+                        {t("registry.csvImportDialog.linePrefix", {
+                          line: w.line,
+                        })}
                       </span>
                     )}
                     {w.message}
@@ -358,11 +364,19 @@ export function CsvImportDialog({
           {items.length > 0 && (
             <>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Preview</span>
-                <Badge variant="secondary">{items.length} items</Badge>
+                <span className="text-sm font-medium">
+                  {t("registry.csvImportDialog.preview")}
+                </span>
+                <Badge variant="secondary">
+                  {t("registry.csvImportDialog.itemsCount", {
+                    count: items.length,
+                  })}
+                </Badge>
                 {parseResult?.skipped ? (
-                  <Badge variant="outline" className="text-yellow-600">
-                    {parseResult.skipped} skipped
+                  <Badge variant="outline" className="text-warning">
+                    {t("registry.csvImportDialog.skippedCount", {
+                      count: parseResult.skipped,
+                    })}
                   </Badge>
                 ) : null}
               </div>
@@ -371,13 +385,21 @@ export function CsvImportDialog({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[140px]">ID</TableHead>
-                        <TableHead>Title</TableHead>
-                        <TableHead>Remote URL</TableHead>
-                        <TableHead className="w-[80px] text-center">
-                          Public
+                        <TableHead className="w-[140px]">
+                          {t("registry.csvImportDialog.tableIdHeader")}
                         </TableHead>
-                        <TableHead>Tags</TableHead>
+                        <TableHead>
+                          {t("registry.csvImportDialog.tableTitleHeader")}
+                        </TableHead>
+                        <TableHead>
+                          {t("registry.csvImportDialog.tableUrlHeader")}
+                        </TableHead>
+                        <TableHead className="w-[80px] text-center">
+                          {t("registry.csvImportDialog.tablePublicHeader")}
+                        </TableHead>
+                        <TableHead>
+                          {t("registry.csvImportDialog.tableTagsHeader")}
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -391,20 +413,22 @@ export function CsvImportDialog({
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
                             {item.server.remotes?.[0]?.url ?? (
-                              <span className="italic">none</span>
+                              <span className="italic">
+                                {t("registry.csvImportDialog.tableNoneValue")}
+                              </span>
                             )}
                           </TableCell>
                           <TableCell className="text-center">
                             {item.is_public ? (
                               <Badge
                                 variant="secondary"
-                                className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
+                                className="text-[10px] bg-success/10 text-success"
                               >
-                                Yes
+                                {t("registry.csvImportDialog.tableYesValue")}
                               </Badge>
                             ) : (
                               <span className="text-xs text-muted-foreground">
-                                No
+                                {t("registry.csvImportDialog.tableNoValue")}
                               </span>
                             )}
                           </TableCell>
@@ -426,8 +450,10 @@ export function CsvImportDialog({
           {importResult && (
             <div className="rounded-lg border p-3 grid gap-1.5">
               <div className="flex items-center gap-2 text-sm font-medium">
-                <CheckCircle size={16} className="text-emerald-600" />
-                Imported {importResult.created} item(s) successfully
+                <CheckCircle size={16} className="text-success" />
+                {t("registry.csvImportDialog.importedCount", {
+                  count: importResult.created,
+                })}
               </div>
               {importResult.errors.length > 0 && (
                 <div className="grid gap-1 mt-1">
@@ -452,15 +478,17 @@ export function CsvImportDialog({
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Upload01 size={32} className="text-muted-foreground/40 mb-3" />
               <p className="text-sm text-muted-foreground">
-                Choose a CSV file or download the template to get started.
+                {t("registry.csvImportDialog.emptyStateHint")}
               </p>
               <p className="text-xs text-muted-foreground/70 mt-1">
+                {/* TODO(i18n): rich text with <code> tags mid-sentence */}
                 Required columns: <code>id</code>, <code>title</code>. Optional:{" "}
                 <code>description</code>, <code>remote_url</code>,{" "}
                 <code>remote_type</code>, <code>tags</code>,{" "}
                 <code>categories</code>, <code>is_public</code>.
               </p>
               <p className="text-xs text-muted-foreground/70 mt-1">
+                {/* TODO(i18n): rich text with <code> tags mid-sentence */}
                 Use <code>|</code> or <code>;</code> to separate multiple
                 tags/categories within a cell.
               </p>
@@ -470,14 +498,20 @@ export function CsvImportDialog({
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            {imported ? "Done" : "Cancel"}
+            {imported
+              ? t("registry.csvImportDialog.doneButton")
+              : t("registry.csvImportDialog.cancelButton")}
           </Button>
           {!imported && (
             <Button
               onClick={handleImport}
               disabled={isImporting || items.length === 0 || hasErrors}
             >
-              {isImporting ? "Importing..." : `Import ${items.length} item(s)`}
+              {isImporting
+                ? t("registry.csvImportDialog.importingButton")
+                : t("registry.csvImportDialog.importButton", {
+                    count: items.length,
+                  })}
             </Button>
           )}
         </DialogFooter>

@@ -29,6 +29,7 @@
 import { describe, expect, test } from "bun:test";
 import { readUIMessageStream } from "ai";
 import type { UIMessage, UIMessageChunk } from "ai";
+import { guardToolInvariant } from "./tool-invariant-guard";
 
 const TOOL_CALL_ID = "tc_replay_test";
 const MESSAGE_ID = "msg_replay_test";
@@ -189,6 +190,46 @@ describe("UI message stream replay (web_search)", () => {
       "No tool invocation found",
     );
     expect(String(combined?.message ?? "")).toContain(TOOL_CALL_ID);
+  });
+
+  test("guarded: orphan tool-output (no seed, no input) folds cleanly instead of throwing", async () => {
+    // Same post-purge / ghost-run shape as the test above — a
+    // tool-output-available with no preceding tool-input and no DB seed — but
+    // routed through `guardToolInvariant`, which synthesizes the missing input
+    // so the chat survives an abnormally-terminated run.
+    const postPurgeChunks: UIMessageChunk[] = [
+      {
+        type: "tool-output-available",
+        toolCallId: TOOL_CALL_ID,
+        output: { success: true, content: REPORT, query: QUERY },
+      },
+      { type: "finish-step" },
+      { type: "finish" },
+    ];
+
+    const errors: unknown[] = [];
+    const iter = readUIMessageStream({
+      stream: guardToolInvariant(streamOf(postPurgeChunks), undefined),
+      onError: (e) => errors.push(e),
+    });
+
+    const { messages, error } = await drain(iter);
+    expect(error).toBeNull();
+    expect(errors).toEqual([]);
+
+    const final = messages.at(-1);
+    expect(final).toBeDefined();
+    // A synthesized tool-unknown part carries the recovered output.
+    const toolPart = final!.parts.find(
+      (p) =>
+        typeof p === "object" &&
+        p !== null &&
+        "type" in p &&
+        (p as { type: string }).type === "tool-unknown",
+    ) as { state: string; output?: { content?: string } } | undefined;
+    expect(toolPart).toBeDefined();
+    expect(toolPart!.state).toBe("output-available");
+    expect(toolPart!.output?.content).toBe(REPORT);
   });
 
   test("reattach mid-research with stub seed: web_search completes and follow-up steps fold cleanly", async () => {

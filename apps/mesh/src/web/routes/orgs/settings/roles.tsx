@@ -4,8 +4,10 @@ import {
   useOrganizationRoles,
 } from "@/web/hooks/use-organization-roles";
 import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
+import { useT } from "@/web/i18n/use-t.ts";
 import { KEYS } from "@/web/lib/query-keys";
 import { track } from "@/web/lib/posthog-client";
+import { getRoleDotColor } from "@/web/lib/role-color";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -49,58 +51,11 @@ import {
 } from "@/web/views/settings/org-role-detail.tsx";
 import { RequirePrivileged } from "@/web/components/require-privileged";
 
-// ============================================================================
-// Role color helpers
-// ============================================================================
-
-const BUILTIN_ROLES = [
-  { role: "owner", label: "Owner", color: "bg-red-500" },
-  { role: "admin", label: "Admin", color: "bg-blue-500" },
-  { role: "user", label: "User", color: "bg-green-500" },
+const BUILTIN_ROLE_KEYS = [
+  { role: "owner", labelKey: "settings.roles.roleOwner" },
+  { role: "admin", labelKey: "settings.roles.roleAdmin" },
+  { role: "user", labelKey: "settings.roles.roleUser" },
 ] as const;
-
-const ROLE_COLORS = [
-  "bg-red-500",
-  "bg-orange-500",
-  "bg-amber-500",
-  "bg-yellow-500",
-  "bg-lime-500",
-  "bg-green-500",
-  "bg-emerald-500",
-  "bg-teal-500",
-  "bg-cyan-500",
-  "bg-sky-500",
-  "bg-blue-500",
-  "bg-indigo-500",
-  "bg-violet-500",
-  "bg-purple-500",
-  "bg-fuchsia-500",
-  "bg-pink-500",
-  "bg-rose-500",
-] as const;
-
-function getRoleColor(roleName: string): string {
-  if (!roleName) return "bg-neutral-400";
-  let hash = 0;
-  for (let i = 0; i < roleName.length; i++) {
-    const char = roleName.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  const index = Math.abs(hash) % ROLE_COLORS.length;
-  return ROLE_COLORS[index] ?? ROLE_COLORS[0];
-}
-
-const BUILTIN_ROLE_COLORS: Record<string, string> = {
-  owner: "bg-red-500",
-  admin: "bg-blue-500",
-  user: "bg-green-500",
-};
-
-function getRoleDotColor(role: string, isBuiltin: boolean): string {
-  if (isBuiltin) return BUILTIN_ROLE_COLORS[role] ?? "bg-neutral-400";
-  return getRoleColor(role);
-}
 
 // ============================================================================
 // Roles Table (main page content)
@@ -109,11 +64,15 @@ function getRoleDotColor(role: string, isBuiltin: boolean): string {
 type RoleRow =
   | {
       kind: "builtin";
-      role: (typeof BUILTIN_ROLES)[number] & { memberCount: number };
+      role: (typeof BUILTIN_ROLE_KEYS)[number] & {
+        memberCount: number;
+        label: string;
+      };
     }
   | { kind: "custom"; role: OrganizationRole & { memberCount: number } };
 
 function RolesPageContent() {
+  const t = useT();
   const [search, setSearch] = useState("");
   const [roleToDelete, setRoleToDelete] = useState<{
     id: string;
@@ -157,9 +116,9 @@ function RolesPageContent() {
   const getMemberCount = (roleSlug: string) =>
     members.filter((m: Member) => m.role === roleSlug).length;
 
-  const builtinRows: RoleRow[] = BUILTIN_ROLES.map((r) => ({
+  const builtinRows: RoleRow[] = BUILTIN_ROLE_KEYS.map((r) => ({
     kind: "builtin" as const,
-    role: { ...r, memberCount: getMemberCount(r.role) },
+    role: { ...r, memberCount: getMemberCount(r.role), label: t(r.labelKey) },
   }));
 
   const customRows: RoleRow[] = customRoles.map((r) => ({
@@ -186,7 +145,7 @@ function RolesPageContent() {
       queryClient.invalidateQueries({
         queryKey: KEYS.organizationRoles(locator),
       });
-      toast.success("Role deleted successfully!");
+      toast.success(t("settings.roles.deletedSuccessfully"));
       refetchRoles();
       if (activeTarget?.kind === "custom" && activeTarget.role.id === roleId) {
         setActiveRole(undefined);
@@ -206,7 +165,7 @@ function RolesPageContent() {
   const columns: TableColumn<RoleRow>[] = [
     {
       id: "role",
-      header: "Role",
+      header: t("settings.roles.columnRole"),
       render: (row) => (
         <div className="flex items-center gap-3">
           <div
@@ -228,52 +187,60 @@ function RolesPageContent() {
     },
     {
       id: "type",
-      header: "Type",
+      header: t("settings.roles.columnType"),
       render: (row) =>
         row.kind === "builtin" ? (
           <Badge variant="secondary" className="text-xs">
-            Built-in
+            {t("settings.roles.builtIn")}
           </Badge>
         ) : (
           <Badge variant="outline" className="text-xs">
-            Custom
+            {t("settings.roles.custom")}
           </Badge>
         ),
       cellClassName: "w-28 shrink-0",
     },
     {
       id: "permissions",
-      header: "Permissions",
+      header: t("settings.roles.columnPermissions"),
       render: (row) => {
         if (row.kind === "builtin") {
           if (row.role.role === "owner" || row.role.role === "admin") {
             return (
-              <span className="text-sm text-muted-foreground">Full access</span>
+              <span className="text-sm text-muted-foreground">
+                {t("settings.roles.fullAccess")}
+              </span>
             );
           }
           return (
-            <span className="text-sm text-muted-foreground">Basic access</span>
+            <span className="text-sm text-muted-foreground">
+              {t("settings.roles.basicAccess")}
+            </span>
           );
         }
-        const r = row.role as OrganizationRole;
+        const r = row.role;
         const parts: string[] = [];
         if (r.allowsAllStaticPermissions) {
-          parts.push("Full org access");
+          parts.push(t("settings.roles.fullOrgAccess"));
         } else if (r.staticPermissionCount && r.staticPermissionCount > 0) {
           parts.push(
-            `${r.staticPermissionCount} org perm${r.staticPermissionCount !== 1 ? "s" : ""}`,
+            t("settings.roles.orgPermsCount", {
+              count: r.staticPermissionCount,
+            }),
           );
         }
         if (r.allowsAllConnections) {
-          parts.push("All connections");
+          parts.push(t("settings.roles.allConnections"));
         } else if (r.connectionCount && r.connectionCount > 0) {
           parts.push(
-            `${r.connectionCount} connection${r.connectionCount !== 1 ? "s" : ""}`,
+            t("settings.roles.connectionCount", { count: r.connectionCount }),
           );
         }
         return (
           <span className="text-sm text-muted-foreground truncate">
-            {parts.length > 0 ? parts.join(", ") : "No permissions"}
+            {parts.length > 0
+              ? parts.join(", ")
+              : t("settings.roles.noPermissions")}
           </span>
         );
       },
@@ -281,7 +248,7 @@ function RolesPageContent() {
     },
     {
       id: "members",
-      header: "Members",
+      header: t("settings.roles.columnMembers"),
       render: (row) => (
         <span className="text-sm text-foreground">{row.role.memberCount}</span>
       ),
@@ -311,12 +278,12 @@ function RolesPageContent() {
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => {
-                  const r = row.role as OrganizationRole;
+                  const r = row.role;
                   if (r.id) setRoleToDelete({ id: r.id, label: r.label });
                 }}
               >
                 <Trash01 size={16} />
-                Delete
+                {t("settings.roles.delete")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -330,7 +297,7 @@ function RolesPageContent() {
     if (row.kind === "builtin") {
       setActiveRole(`builtin-${row.role.role}`);
     } else {
-      const r = row.role as OrganizationRole;
+      const r = row.role;
       setActiveRole(r.id);
     }
   };
@@ -354,12 +321,12 @@ function RolesPageContent() {
       <Page.Content>
         <Page.Body>
           <div className="flex flex-col gap-6">
-            <Page.Title>Roles</Page.Title>
+            <Page.Title>{t("settings.roles.pageTitle")}</Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <SearchInput
                 value={search}
                 onChange={setSearch}
-                placeholder="Search roles..."
+                placeholder={t("settings.roles.searchPlaceholder")}
                 className="w-full md:w-[375px]"
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
@@ -370,7 +337,7 @@ function RolesPageContent() {
               />
               <Button onClick={() => setActiveRole("new")}>
                 <Plus size={16} />
-                Create Role
+                {t("settings.roles.createRole")}
               </Button>
             </div>
             <CollectionTableWrapper
@@ -381,13 +348,15 @@ function RolesPageContent() {
               emptyState={
                 search ? (
                   <EmptyState
-                    title="No roles found"
-                    description={`No roles match "${search}"`}
+                    title={t("settings.roles.noRolesFound")}
+                    description={t("settings.roles.noRolesMatchSearch", {
+                      search,
+                    })}
                   />
                 ) : (
                   <EmptyState
-                    title="No roles"
-                    description="Create a role to get started."
+                    title={t("settings.roles.noRoles")}
+                    description={t("settings.roles.createRoleGetStarted")}
                   />
                 )
               }
@@ -402,14 +371,17 @@ function RolesPageContent() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Role</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("settings.roles.deleteRoleTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the "{roleToDelete?.label}" role?
-              This action cannot be undone.
+              {t("settings.roles.deleteRoleConfirm", {
+                role: roleToDelete?.label ?? "",
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("settings.roles.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (roleToDelete?.id)
@@ -418,7 +390,7 @@ function RolesPageContent() {
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("settings.roles.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -428,13 +400,14 @@ function RolesPageContent() {
 }
 
 function RolesPage() {
+  const t = useT();
   return (
     <ErrorBoundary
       fallback={
         <Page>
           <div className="flex items-center justify-center h-full">
             <div className="text-sm text-muted-foreground">
-              Failed to load roles
+              {t("settings.roles.failedToLoad")}
             </div>
           </div>
         </Page>

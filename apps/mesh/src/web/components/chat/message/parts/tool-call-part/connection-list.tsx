@@ -14,6 +14,7 @@ import {
   MAX_VISIBLE,
 } from "./common.tsx";
 import { getEffectiveState, unwrapResult } from "./utils.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ConnectionListPartProps {
   part: ToolUIPart;
@@ -21,7 +22,7 @@ interface ConnectionListPartProps {
 }
 
 const STATUS_DOT: Record<ConnectionEntity["status"], string> = {
-  active: "bg-emerald-500",
+  active: "bg-success",
   inactive: "bg-muted-foreground",
   error: "bg-destructive",
 };
@@ -73,6 +74,7 @@ function ConnectionRow({ connection }: { connection: ConnectionEntity }) {
 }
 
 export function ConnectionListPart({ part, latency }: ConnectionListPartProps) {
+  const t = useT();
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const state = getEffectiveState(part.state);
@@ -86,7 +88,7 @@ export function ConnectionListPart({ part, latency }: ConnectionListPartProps) {
     return (
       <ToolCallShell
         icon={<Link01 className="animate-pulse" />}
-        title="Loading connections"
+        title={t("chat.connectionList.loadingTitle")}
         state="loading"
       />
     );
@@ -98,8 +100,8 @@ export function ConnectionListPart({ part, latency }: ConnectionListPartProps) {
         icon={<Link01 />}
         title={
           part.state === "output-denied"
-            ? "Connection list unavailable"
-            : "Couldn't load connections"
+            ? t("chat.connectionList.unavailableTitle")
+            : t("chat.connectionList.errorTitle")
         }
         state="error"
         trailing={<LatencyLabel latency={latency} />}
@@ -111,8 +113,8 @@ export function ConnectionListPart({ part, latency }: ConnectionListPartProps) {
     return (
       <ToolCallShell
         icon={<Link01 />}
-        title="No connections yet"
-        summary="This organization hasn't connected any MCPs."
+        title={t("chat.connectionList.emptyTitle")}
+        summary={t("chat.connectionList.emptySummary")}
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
       />
@@ -125,9 +127,13 @@ export function ConnectionListPart({ part, latency }: ConnectionListPartProps) {
   return (
     <>
       <ToolCallShell
-        icon={<Link01 className="text-emerald-500" />}
+        icon={<Link01 className="text-success" />}
         title={
-          items.length === 1 ? "1 connection" : `${items.length} connections`
+          items.length === 1
+            ? t("chat.connectionList.singleConnection")
+            : t("chat.connectionList.multipleConnections", {
+                count: items.length,
+              })
         }
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
@@ -139,7 +145,7 @@ export function ConnectionListPart({ part, latency }: ConnectionListPartProps) {
         {hiddenCount > 0 && (
           <SeeAllRow
             count={items.length}
-            noun="connections"
+            noun={t("chat.connectionList.connectionNoun")}
             onClick={() =>
               navigate({
                 to: "/$org/settings/connections",

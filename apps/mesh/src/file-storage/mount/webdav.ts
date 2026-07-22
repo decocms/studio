@@ -199,7 +199,7 @@ export function createWebdavHandler(
           }
           // Push the read down to the byte store when the backend can stream
           // it: presigned URL + Range forwarded, so rclone's chunked reads of
-          // big files don't buffer whole objects through the mesh (or here).
+          // big files don't buffer whole objects through the studio (or here).
           if (api.readResponse) {
             const upstream = await api.readResponse(
               path,

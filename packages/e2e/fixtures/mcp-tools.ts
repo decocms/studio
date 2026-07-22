@@ -1,7 +1,7 @@
 /**
  * Call management MCP tools from a Playwright test via JSON-RPC.
  *
- * Mesh exposes built-in tools (CONNECTION_*, PROJECT_*, etc.) over the
+ * Studio exposes built-in tools (CONNECTION_*, PROJECT_*, etc.) over the
  * MCP protocol at `/api/:org/mcp/self`. From a spec, we sometimes need to
  * exercise them as setup — e.g., create a connection that points at a
  * test MCP server (see `test-mcp-server.ts`). This module wraps the
@@ -49,7 +49,7 @@ export async function callSelfMcpTool<T = unknown>(
     // MCP's Streamable HTTP transport requires advertising both response
     // types per spec — the server picks JSON for self-contained calls,
     // SSE for streams. Without both, the transport responds 406 Not
-    // Acceptable. (See mesh's self.ts enableJsonResponse check.)
+    // Acceptable. (See studio's self.ts enableJsonResponse check.)
     headers: { Accept: "application/json, text/event-stream" },
   });
   if (!res.ok()) {

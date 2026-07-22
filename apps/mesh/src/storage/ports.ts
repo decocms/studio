@@ -71,7 +71,11 @@ export interface ThreadStoragePort {
    * Returns true if the row was updated, false if it was already in a
    * terminal state (no-op).
    */
-  forceFailIfInProgress(id: string, organizationId: string): Promise<boolean>;
+  forceFailIfInProgress(
+    id: string,
+    organizationId: string,
+    expectedFenceToken?: string | null,
+  ): Promise<boolean>;
   delete(id: string, organizationId: string): Promise<void>;
   list(
     organizationId: string,
@@ -301,7 +305,6 @@ export interface OrganizationSettingsStoragePort {
         | "simple_mode"
         | "default_home_agents"
         | "reports_only"
-        | "task_board_enabled"
       >
     >,
   ): Promise<OrganizationSettings>;

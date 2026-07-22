@@ -4,7 +4,7 @@
  *
  * The Docker sandbox provider has been removed. Any persisted `local-docker`
  * rows/cells are orphaned pointers to containers that no longer exist (and
- * don't survive a mesh restart), and the strict readers
+ * don't survive a studio restart), and the strict readers
  * (`parseBranchMap` / `parseSandboxRecord`) no longer accept the kind — Zod
  * skips/throws on it. Two idempotent steps:
  *

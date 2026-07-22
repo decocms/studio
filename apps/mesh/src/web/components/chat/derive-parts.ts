@@ -238,6 +238,26 @@ export function derivePartsFromTiptapDoc(
       const char = (node.attrs.char as string | undefined) ?? "/";
       const mentionName = `${char}${node.attrs.name}`;
 
+      if (node.attrs.kind === "task") {
+        // Task ref chip: expand to the task's title + description as its own
+        // text part. Kept out of `inlineText` so the user's own words (if any)
+        // read as the message and the task is context alongside them.
+        const meta = node.attrs.metadata as {
+          title?: string;
+          description?: string | null;
+          // Prebuilt at chat-start (buildTaskChatContext): title + description
+          // plus the task's linked PRs and other chats. Older drafts lack it,
+          // so fall back to title + description.
+          context?: string;
+        } | null;
+        const title = meta?.title ?? (node.attrs.name as string) ?? "";
+        const body =
+          meta?.context?.trim() ||
+          [title, meta?.description?.trim()].filter(Boolean).join("\n\n");
+        if (body) parts.push({ type: "text", text: body });
+        return;
+      }
+
       // Add label to inline text
       inlineText += mentionName;
 

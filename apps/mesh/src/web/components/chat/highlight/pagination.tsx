@@ -7,6 +7,7 @@
 
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowLeft, ArrowRight } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface PaginationProps {
   current: number;
@@ -21,6 +22,7 @@ export function Pagination({
   onPrev,
   onNext,
 }: PaginationProps) {
+  const t = useT();
   if (total <= 1) return null;
   return (
     <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -34,12 +36,12 @@ export function Pagination({
             ? "opacity-30 cursor-not-allowed"
             : "hover:text-foreground cursor-pointer",
         )}
-        aria-label="Previous question"
+        aria-label={t("chat.pagination.previousLabel")}
       >
         <ArrowLeft size={14} />
       </button>
       <span className="tabular-nums text-xs">
-        {current + 1} of {total}
+        {t("chat.pagination.counter", { current: current + 1, total })}
       </span>
       <button
         type="button"
@@ -51,7 +53,7 @@ export function Pagination({
             ? "opacity-30 cursor-not-allowed"
             : "hover:text-foreground cursor-pointer",
         )}
-        aria-label="Next question"
+        aria-label={t("chat.pagination.nextLabel")}
       >
         <ArrowRight size={14} />
       </button>

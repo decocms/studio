@@ -21,6 +21,8 @@ import {
   type ToolApprovalLevel,
 } from "@/web/hooks/use-preferences.ts";
 import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { Locale } from "@/web/i18n/locale.ts";
 import { playSound } from "@deco/ui/lib/sound-engine.ts";
 import { question004Sound } from "@deco/ui/lib/question-004.ts";
 import { toast } from "@deco/ui/components/sonner.js";
@@ -36,7 +38,14 @@ interface ProfileFormValues {
   name: string;
 }
 
+// Language names stay in their own language on purpose — never translated.
+const LANGUAGE_OPTIONS: { value: Locale; label: string }[] = [
+  { value: "en", label: "English" },
+  { value: "pt-BR", label: "Português (Brasil)" },
+];
+
 function ProfileSection() {
+  const t = useT();
   const { data: session, isPending } = authClient.useSession();
   const user = session?.user;
   const userImage = (user as { image?: string } | undefined)?.image;
@@ -67,10 +76,10 @@ function ProfileSection() {
       try {
         await authClient.updateUser({ name: values.name });
         track("profile_updated", { fields: ["name"] });
-        toast.success("Profile updated successfully");
+        toast.success(t("settings.profile.updateSuccess"));
       } catch {
         form.reset(previousDefaults, { keepValues: true });
-        toast.error("Failed to update profile");
+        toast.error(t("settings.profile.updateError"));
       }
     },
   });
@@ -81,7 +90,7 @@ function ProfileSection() {
     <SettingsSection>
       <SettingsCard>
         <SettingsCardItem
-          title="Avatar"
+          title={t("settings.profile.avatar")}
           action={
             <Avatar
               url={userImage}
@@ -92,7 +101,7 @@ function ProfileSection() {
           }
         />
         <SettingsCardItem
-          title="Display name"
+          title={t("settings.profile.displayName")}
           action={
             <Controller
               control={form.control}
@@ -112,7 +121,7 @@ function ProfileSection() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") void flushAndSave();
                   }}
-                  placeholder="Your name"
+                  placeholder={t("settings.profile.displayNamePlaceholder")}
                   className="w-[280px]"
                 />
               )}
@@ -120,7 +129,7 @@ function ProfileSection() {
           }
         />
         <SettingsCardItem
-          title="Email"
+          title={t("settings.profile.email")}
           action={
             <span className="text-sm text-muted-foreground">{user?.email}</span>
           }
@@ -131,6 +140,7 @@ function ProfileSection() {
 }
 
 function PreferencesSection() {
+  const t = useT();
   const [preferences, setPreferences] = usePreferences();
 
   const handleNotificationsChange = async (checked: boolean) => {
@@ -138,9 +148,7 @@ function PreferencesSection() {
       const result = await Notification.requestPermission();
       if (result !== "granted") {
         track("preferences_notifications_permission_denied");
-        toast.error(
-          "Notifications denied. Please enable them in your browser settings.",
-        );
+        toast.error(t("settings.preferences.notificationsDenied"));
         setPreferences((prev) => ({ ...prev, enableNotifications: false }));
         return;
       }
@@ -150,11 +158,11 @@ function PreferencesSection() {
   };
 
   return (
-    <SettingsSection title="Preferences">
+    <SettingsSection title={t("settings.preferences.title")}>
       <SettingsCard>
         <SettingsCardItem
-          title="Theme"
-          description="Your preferred color scheme."
+          title={t("settings.preferences.theme")}
+          description={t("settings.preferences.themeDescription")}
           action={
             <ToggleGroup
               type="single"
@@ -171,21 +179,67 @@ function PreferencesSection() {
                 }
               }}
             >
-              <ToggleGroupItem value="light" aria-label="Light theme">
+              <ToggleGroupItem
+                value="light"
+                aria-label={t("settings.preferences.themeLight")}
+              >
                 <Sun size={14} />
               </ToggleGroupItem>
-              <ToggleGroupItem value="dark" aria-label="Dark theme">
+              <ToggleGroupItem
+                value="dark"
+                aria-label={t("settings.preferences.themeDark")}
+              >
                 <Moon01 size={14} />
               </ToggleGroupItem>
-              <ToggleGroupItem value="system" aria-label="System theme">
+              <ToggleGroupItem
+                value="system"
+                aria-label={t("settings.preferences.themeSystem")}
+              >
                 <Monitor01 size={14} />
               </ToggleGroupItem>
             </ToggleGroup>
           }
         />
         <SettingsCardItem
-          title="Notifications"
-          description="Receive browser notifications for important events."
+          title={t("settings.preferences.language")}
+          description={t("settings.preferences.languageDescription")}
+          action={
+            <Select
+              value={preferences.language}
+              onValueChange={(value) => {
+                track("preferences_language_changed", { to_value: value });
+                setPreferences((prev) => ({
+                  ...prev,
+                  language: value as Locale,
+                }));
+              }}
+            >
+              <SelectTrigger className="w-44 h-7 text-xs">
+                <span>
+                  {
+                    LANGUAGE_OPTIONS.find(
+                      (option) => option.value === preferences.language,
+                    )?.label
+                  }
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    textValue={option.label}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          }
+        />
+        <SettingsCardItem
+          title={t("settings.preferences.notifications")}
+          description={t("settings.preferences.notificationsDescription")}
           onClick={
             typeof Notification !== "undefined"
               ? () =>
@@ -201,8 +255,8 @@ function PreferencesSection() {
           }
         />
         <SettingsCardItem
-          title="Sounds"
-          description="Play sounds for agent actions and notifications."
+          title={t("settings.preferences.sounds")}
+          description={t("settings.preferences.soundsDescription")}
           onClick={() => {
             track("preferences_sounds_toggled", {
               enabled: !preferences.enableSounds,
@@ -216,7 +270,7 @@ function PreferencesSection() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                aria-label="Preview notification sound"
+                aria-label={t("settings.preferences.soundsPreview")}
                 onClick={() => {
                   track("preferences_sounds_previewed");
                   playSound(question004Sound.dataUri).catch(() => {});
@@ -239,8 +293,8 @@ function PreferencesSection() {
           }
         />
         <SettingsCardItem
-          title="Tool Approval"
-          description="Control how tools are approved before execution."
+          title={t("settings.preferences.toolApproval")}
+          description={t("settings.preferences.toolApprovalDescription")}
           action={
             <Select
               value={preferences.toolApprovalLevel}
@@ -257,25 +311,36 @@ function PreferencesSection() {
               <SelectTrigger className="w-36 h-7 text-xs">
                 <span>
                   {{
-                    readonly: "Ask before edit",
-                    auto: "Auto approve",
-                  }[preferences.toolApprovalLevel] ?? "Ask before edit"}
+                    readonly: t("settings.preferences.toolApprovalAsk"),
+                    auto: t("settings.preferences.toolApprovalAuto"),
+                  }[preferences.toolApprovalLevel] ??
+                    t("settings.preferences.toolApprovalAsk")}
                 </span>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="readonly" textValue="Ask before edit">
+                <SelectItem
+                  value="readonly"
+                  textValue={t("settings.preferences.toolApprovalAsk")}
+                >
                   <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">Ask before edit</span>
+                    <span className="font-medium">
+                      {t("settings.preferences.toolApprovalAsk")}
+                    </span>
                     <span className="text-xs text-muted-foreground">
-                      Auto-approve read-only tools
+                      {t("settings.preferences.toolApprovalAskDescription")}
                     </span>
                   </div>
                 </SelectItem>
-                <SelectItem value="auto" textValue="Auto approve">
+                <SelectItem
+                  value="auto"
+                  textValue={t("settings.preferences.toolApprovalAuto")}
+                >
                   <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">Auto approve</span>
+                    <span className="font-medium">
+                      {t("settings.preferences.toolApprovalAuto")}
+                    </span>
                     <span className="text-xs text-muted-foreground">
-                      Execute all without approval
+                      {t("settings.preferences.toolApprovalAutoDescription")}
                     </span>
                   </div>
                 </SelectItem>
@@ -289,12 +354,13 @@ function PreferencesSection() {
 }
 
 export function ProfilePreferencesPage() {
+  const t = useT();
   return (
     <Page>
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>Profile & Preferences</Page.Title>
+            <Page.Title>{t("settings.title")}</Page.Title>
             <ProfileSection />
             <PreferencesSection />
           </SettingsPage>
