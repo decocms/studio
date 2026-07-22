@@ -54,7 +54,7 @@ import { z } from "zod";
 import { SearchInput } from "@deco/ui/components/search-input.tsx";
 import { Page } from "@/web/components/page";
 import { IntegrationIcon } from "@/web/components/integration-icon";
-import { useT } from "@/web/i18n/use-t.ts";
+import { type TFunction, useT } from "@/web/i18n/use-t.ts";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -112,8 +112,12 @@ interface OrgPermissionsTabProps {
   searchQuery: string;
 }
 
-function makeToggle(checked: boolean, readOnly: boolean, onToggle: () => void) {
-  const t = useT();
+function makeToggle(
+  t: TFunction,
+  checked: boolean,
+  readOnly: boolean,
+  onToggle: () => void,
+) {
   const sw = (
     <Switch checked={checked} disabled={readOnly} onCheckedChange={onToggle} />
   );
@@ -187,7 +191,7 @@ function OrgPermissionsTab({
               description={t(
                 "settings.orgRoleDetail.grantFullAccessToAllFeaturesBelow",
               )}
-              action={makeToggle(allowAllStaticPermissions, readOnly, () => {
+              action={makeToggle(t, allowAllStaticPermissions, readOnly, () => {
                 onAllowAllChange(!allowAllStaticPermissions);
                 onPermissionsChange([]);
               })}
@@ -232,7 +236,7 @@ function OrgPermissionsTab({
                         </span>
                       }
                       description={cap.description}
-                      action={makeToggle(enabled, readOnly, () =>
+                      action={makeToggle(t, enabled, readOnly, () =>
                         toggleCapability(cap, enabled),
                       )}
                       onClick={

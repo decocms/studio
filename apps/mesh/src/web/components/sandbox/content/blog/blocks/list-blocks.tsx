@@ -284,7 +284,6 @@ export function ComparisonBlock({
     });
 
   const renderCol = (side: "left" | "right", col: Col, accent: string) => {
-    const t = useT();
     const itemsList = col.items ?? [];
     return (
       <div className="space-y-2 rounded-lg border p-4">
