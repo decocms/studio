@@ -147,6 +147,8 @@ export const registry = {
     "Hide from public store",
   "registry.monitorConnectionsPanel.loadFailed":
     "Failed to load QA connections.",
+  "registry.monitorConnectionsPanel.loadingConnections":
+    "Loading QA connections...",
   "registry.monitorConnectionsPanel.needsAuth": "Needs Auth",
   "registry.monitorConnectionsPanel.noConnectionsForFilter":
     'No QA connections for this filter. Click "Sync" to create mappings from store items and pending requests.',
