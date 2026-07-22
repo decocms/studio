@@ -440,4 +440,5 @@ export const chat = {
   "chat.webSearch.showLess": "show less",
   "chat.webSearch.showMore": "+{count} more",
   "chat.webSearch.title": "Web search",
+  "chat.mention.editPrompt": "Edit {name} prompt arguments",
 } as const;

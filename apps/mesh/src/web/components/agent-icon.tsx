@@ -280,6 +280,11 @@ const SIZES = {
 
 export type AgentAvatarSize = keyof typeof SIZES;
 
+/** Corner radius class for a given avatar size — kept in sync with `SIZES`. */
+export function getSizeRadius(size: AgentAvatarSize): string {
+  return SIZES[size].radius;
+}
+
 // ---------------------------------------------------------------------------
 // AgentAvatar
 // ---------------------------------------------------------------------------

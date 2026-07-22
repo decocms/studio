@@ -1,4 +1,5 @@
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { JSONContent, mergeAttributes, Node } from "@tiptap/core";
 import {
@@ -93,6 +94,7 @@ export function createMentionDoc<T>(attrs: MentionAttrs<T>): JSONContent {
 function MentionNodeView(props: NodeViewProps) {
   const { node, selected, view, editor, getPos } = props;
   const { name, char, kind, id, args } = node.attrs as MentionAttrs;
+  const t = useT();
 
   const isSelected = selected && view.editable;
   const isTask = kind === "task";
@@ -103,16 +105,13 @@ function MentionNodeView(props: NodeViewProps) {
   const isClickable =
     view.editable && char === "/" && (kind === "prompt" || kind == null);
 
-  const handleClick = (e: React.MouseEvent) => {
-    if (!isClickable) return;
+  const triggerEdit = () => {
     const storage = getMentionStorage(editor);
     const onEdit = storage?.onEditChip;
     if (!onEdit) return;
     if (typeof getPos !== "function") return;
     const pos = getPos();
     if (typeof pos !== "number") return;
-    e.preventDefault();
-    e.stopPropagation();
     onEdit({
       promptId: id,
       promptName: name,
@@ -121,9 +120,32 @@ function MentionNodeView(props: NodeViewProps) {
     });
   };
 
+  const handleClick = (e: React.MouseEvent) => {
+    if (!isClickable) return;
+    e.preventDefault();
+    e.stopPropagation();
+    triggerEdit();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isClickable) return;
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    e.stopPropagation();
+    triggerEdit();
+  };
+
   return (
     <NodeViewWrapper
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      role={isClickable ? "button" : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      aria-label={
+        isClickable
+          ? t("chat.mention.editPrompt", { name: name ?? "" })
+          : undefined
+      }
       className={cn(
         "px-1 py-1 rounded",
         "inline-flex items-center gap-1",
