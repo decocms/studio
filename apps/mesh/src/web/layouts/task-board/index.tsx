@@ -16,7 +16,13 @@ import {
   List,
   Loading01,
   Plus,
+  UserPlus01,
 } from "@untitledui/icons";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@deco/ui/components/popover.tsx";
 import { SuperAgentIcon } from "@/web/components/super-agent-icon";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import {
@@ -53,6 +59,7 @@ import {
   type Member,
 } from "./config";
 import { TaskBoardItemDialog } from "./task-dialog";
+import { AssigneePickerContent } from "./assignee-picker";
 import { buildTaskChatContext } from "./build-task-chat-context";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import {
@@ -152,11 +159,17 @@ function AssigneeDisplay({
   item,
   assignee,
   assignedBy,
+  members,
+  onAssign,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
+  members?: Member[];
+  onAssign?: (userId: string | null) => void;
 }) {
+  const [open, setOpen] = useState(false);
+
   if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
     return (
       <span
@@ -172,11 +185,11 @@ function AssigneeDisplay({
             url={assignedBy.user?.image ?? undefined}
             fallback={getInitials(assignedBy.user?.name)}
             shape="circle"
-            size="2xs"
-            className="-mr-1.5 ring-2 ring-background"
+            size="xs"
+            className="-mr-2 ring-2 ring-background"
           />
         )}
-        <SuperAgentIcon size={16} className="ring-2 ring-background" />
+        <SuperAgentIcon size={20} className="ring-2 ring-background" />
       </span>
     );
   }
@@ -186,11 +199,42 @@ function AssigneeDisplay({
         url={assignee.user?.image ?? undefined}
         fallback={getInitials(assignee.user?.name)}
         shape="circle"
-        size="2xs"
+        size="xs"
       />
     );
   }
-  return null;
+  if (!onAssign || !members?.length) return null;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title="Assign"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(true);
+          }}
+          className="flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 transition-colors hover:border-muted-foreground hover:text-muted-foreground"
+        >
+          <UserPlus01 size={13} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-56 p-0"
+        align="end"
+        side="bottom"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <AssigneePickerContent
+          members={members}
+          onSelect={(userId) => {
+            onAssign(userId);
+            setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export function TaskBoardPage() {
@@ -419,10 +463,14 @@ export function TaskBoardPage() {
       ) : layout === "board" ? (
         <Lanes
           items={visibleItems}
+          members={members}
           memberByUserId={memberByUserId}
           onOpen={openTask}
           onCreate={openCreateInLane}
           onMove={(id, status) => actions.update.mutate({ id, status })}
+          onAssign={(id, userId) =>
+            actions.update.mutate({ id, assigneeId: userId ?? undefined })
+          }
           onAutoFix={
             reportsOnly
               ? (item) => {
@@ -586,18 +634,22 @@ function LayoutToggle({
 
 function Lanes({
   items,
+  members,
   memberByUserId,
   onOpen,
   onCreate,
   onMove,
   onAutoFix,
+  onAssign,
 }: {
   items: TaskBoardItem[];
+  members: Member[];
   memberByUserId: Map<string, Member>;
   onOpen: (item: TaskBoardItem) => void;
   onCreate: (status: TaskBoardItemStatus) => void;
   onMove: (id: string, status: TaskBoardItemStatus) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
+  onAssign?: (id: string, userId: string | null) => void;
 }) {
   const [overLane, setOverLane] = useState<TaskBoardItemStatus | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -683,8 +735,14 @@ function Lanes({
                         ? memberByUserId.get(item.assignedBy)
                         : undefined
                     }
+                    members={members}
                     onOpen={() => onOpen(item)}
                     onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
+                    onAssign={
+                      onAssign
+                        ? (userId) => onAssign(item.id, userId)
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -700,14 +758,18 @@ function TaskCard({
   item,
   assignee,
   assignedBy,
+  members,
   onOpen,
   onAutoFix,
+  onAssign,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
+  members?: Member[];
   onOpen: () => void;
   onAutoFix?: () => void;
+  onAssign?: (userId: string | null) => void;
 }) {
   const statusConfig = STATUS_CONFIG[item.status];
   const StatusIcon = statusConfig.icon;
@@ -743,6 +805,8 @@ function TaskCard({
           item={item}
           assignee={assignee}
           assignedBy={assignedBy}
+          members={members}
+          onAssign={onAssign}
         />
       </div>
 

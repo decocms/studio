@@ -15,14 +15,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@deco/ui/components/command.tsx";
 import { Calendar as DayPickerCalendar } from "@deco/ui/components/calendar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
@@ -44,7 +36,6 @@ import {
   Loading02,
   Plus,
   Trash03,
-  User01,
   UserPlus01,
   X,
 } from "@untitledui/icons";
@@ -66,6 +57,7 @@ import {
   type TaskBoardItemThread,
 } from "./config";
 import { useTaskBoardItemPrs } from "@/web/hooks/use-task-board-item-prs";
+import { AssigneePickerContent } from "./assignee-picker";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -457,62 +449,13 @@ export function TaskBoardItemDialog({
                     </button>
                   </PopoverTrigger>
                   <PopoverContent align="start" className="w-56 p-0">
-                    <Command>
-                      <CommandInput placeholder="Assign to…" className="h-9" />
-                      <CommandList>
-                        <CommandEmpty>No members found.</CommandEmpty>
-                        <CommandGroup>
-                          <CommandItem
-                            value="Super Agent"
-                            onSelect={() => {
-                              setAssigneeId(SUPER_AGENT_ASSIGNEE_ID);
-                              setAssigneeOpen(false);
-                            }}
-                            className="gap-2"
-                          >
-                            <SuperAgentIcon size={16} />
-                            <span className="truncate">Super Agent</span>
-                          </CommandItem>
-                          <CommandItem
-                            value="Unassigned"
-                            onSelect={() => {
-                              setAssigneeId(null);
-                              setAssigneeOpen(false);
-                            }}
-                            className="gap-2"
-                          >
-                            <User01
-                              size={16}
-                              className="text-muted-foreground"
-                            />
-                            <span className="truncate">Unassigned</span>
-                          </CommandItem>
-                        </CommandGroup>
-                        <CommandGroup heading="Members">
-                          {members.map((m) => (
-                            <CommandItem
-                              key={m.userId}
-                              value={m.user?.name ?? m.userId}
-                              onSelect={() => {
-                                setAssigneeId(m.userId);
-                                setAssigneeOpen(false);
-                              }}
-                              className="gap-2"
-                            >
-                              <Avatar
-                                url={m.user?.image ?? undefined}
-                                fallback={getInitials(m.user?.name)}
-                                shape="circle"
-                                size="2xs"
-                              />
-                              <span className="truncate">
-                                {m.user?.name ?? m.userId}
-                              </span>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
+                    <AssigneePickerContent
+                      members={members}
+                      onSelect={(userId) => {
+                        setAssigneeId(userId);
+                        setAssigneeOpen(false);
+                      }}
+                    />
                   </PopoverContent>
                 </Popover>
 
