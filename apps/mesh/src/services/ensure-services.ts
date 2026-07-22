@@ -1249,7 +1249,7 @@ async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
       cwd: inputs.repoRoot,
       env: {
         ...process.env,
-        MESH_CLUSTER_URL: inputs.clusterUrl,
+        STUDIO_CLUSTER_URL: inputs.clusterUrl,
         DATA_DIR: inputs.linkDataDir,
         DECOCMS_HOME: inputs.linkDataDir,
         // Suppress the plain banner — the parent dev/serve already shows one.

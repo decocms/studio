@@ -322,8 +322,10 @@ function EnvVarsBlock({
 }) {
   const [copied, setCopied] = useState(false);
   const meshUrl = window.location.origin;
-  const keyLine = apiKey ? `MESH_API_KEY=${apiKey}` : `MESH_API_KEY=<api-key>`;
-  const urlLine = `MESH_BASE_URL=${meshUrl}`;
+  const keyLine = apiKey
+    ? `STUDIO_API_KEY=${apiKey}`
+    : `STUDIO_API_KEY=<api-key>`;
+  const urlLine = `STUDIO_BASE_URL=${meshUrl}`;
   const envBlock = `${keyLine}\n${urlLine}`;
 
   const handleCopy = async () => {
@@ -410,10 +412,10 @@ function ChatBridgeSectionInner({
   const baseUrl = window.location.origin;
 
   const envBlock = [
-    `MESH_BASE_URL=${baseUrl}`,
-    `MESH_ORG=${org.slug}`,
-    `MESH_AGENT_ID=${mcpId}`,
-    `MESH_API_KEY=${apiKey ?? "<api-key>"}`,
+    `STUDIO_BASE_URL=${baseUrl}`,
+    `STUDIO_ORG=${org.slug}`,
+    `STUDIO_AGENT_ID=${mcpId}`,
+    `STUDIO_API_KEY=${apiKey ?? "<api-key>"}`,
   ].join("\n");
 
   const handleGenerateKey = async () => {

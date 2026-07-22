@@ -279,7 +279,7 @@ if (command === "link") {
   const { runLinkCommand } = await import("./cli/commands/link");
   // Optional positional: the studio to link against (auth target + cluster
   // websocket), e.g. https://studio-stg.decocms.com. When omitted, falls back
-  // to MESH_CLUSTER_URL / https://studio.decocms.com (resolved in runLinkCommand).
+  // to STUDIO_CLUSTER_URL / https://studio.decocms.com (resolved in runLinkCommand).
   const studioArg = positionals[1];
   let studioUrl: string | undefined;
   if (studioArg !== undefined) {

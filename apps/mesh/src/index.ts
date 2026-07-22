@@ -53,7 +53,7 @@ function withSslmode(url: string, ssl: boolean): string {
   return u.toString();
 }
 // ── Pod dispatch role (horizontal split) ────────────────────────────────────
-// `settings.dispatchRole` (from `MESH_DISPATCH_ROLE`, resolved in
+// `settings.dispatchRole` (from `STUDIO_DISPATCH_ROLE`, resolved in
 // resolve-config) selects which DBOS queues this pod DEQUEUES (via the SDK's
 // `listenQueues` filter). It lets you run two Deployments off the SAME
 // image/DB/auth and scale them independently:

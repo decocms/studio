@@ -46,7 +46,7 @@ const client = await createMCPClient({
   meshUrl: "https://mesh.your-company.com",  // Your Mesh server URL
   connectionId: "self",                       // "self" for management API
   orgId: "org_xxxxx",                         // Your organization ID
-  token: process.env.MESH_API_KEY,            // API key from environment
+  token: process.env.STUDIO_API_KEY,            // API key from environment
 });
 
 // List connections
@@ -88,16 +88,16 @@ import { createMCPClient } from "@decocms/mesh-sdk";
 
 const app = new Hono();
 
-const MESH_URL = process.env.MESH_URL!;
-const ORG_ID = process.env.MESH_ORG_ID!;
-const API_KEY = process.env.MESH_API_KEY!;
+const STUDIO_URL = process.env.STUDIO_URL!;
+const ORG_ID = process.env.STUDIO_ORG_ID!;
+const API_KEY = process.env.STUDIO_API_KEY!;
 
 let meshClient: Awaited<ReturnType<typeof createMCPClient>> | null = null;
 
 async function getMeshClient() {
   if (!meshClient) {
     meshClient = await createMCPClient({
-      meshUrl: MESH_URL,
+      meshUrl: STUDIO_URL,
       connectionId: "self",
       orgId: ORG_ID,
       token: API_KEY,
@@ -175,7 +175,7 @@ const client = await createMCPClient({
   meshUrl: "https://mesh.your-company.com",
   connectionId: "self",
   orgId: process.env.ORG_ID!,
-  token: process.env.MESH_API_KEY!,
+  token: process.env.STUDIO_API_KEY!,
 });
 
 // List Virtual MCPs (agents)
@@ -200,7 +200,7 @@ const specificClient = await createMCPClient({
   meshUrl: "https://mesh.your-company.com",
   connectionId: "conn_xxx",  // Target connection ID
   orgId: process.env.ORG_ID!,
-  token: process.env.MESH_API_KEY!,
+  token: process.env.STUDIO_API_KEY!,
 });
 
 const result = await specificClient.callTool({
@@ -221,7 +221,7 @@ const client = await createMCPClient({
   meshUrl: "https://studio.example.com",  // Required for external apps
   connectionId: "self",                  // "self" for management API, or connection ID
   orgId: "org_xxx",                      // Organization ID
-  token: process.env.MESH_API_KEY,       // API key from environment
+  token: process.env.STUDIO_API_KEY,       // API key from environment
 });
 ```
 

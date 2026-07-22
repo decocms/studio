@@ -216,7 +216,7 @@ export function makeCreateAgent(
 ): (input: CreateAgentInput) => Promise<CreateAgentResult> {
   return async (input) => {
     if (!meshUrl) {
-      throw new Error("createAgent: missing meshUrl in MESH_REQUEST_CONTEXT");
+      throw new Error("createAgent: missing meshUrl in STUDIO_REQUEST_CONTEXT");
     }
     const self = createMeshSelfClient(meshUrl, token);
 

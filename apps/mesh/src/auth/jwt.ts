@@ -5,7 +5,8 @@
  * - Decoded directly by downstream services to read payload
  * - Verified by downstream services using the shared secret
  *
- * The secret is loaded from MESH_JWT_SECRET environment variable.
+ * The secret is loaded from the STUDIO_JWT_SECRET environment variable
+ * (legacy MESH_JWT_SECRET still honored).
  * If not set, a random secret is generated (not persistent across restarts).
  */
 
@@ -25,13 +26,13 @@ function getSecret(): Uint8Array {
   }
 
   const settings = getSettings();
-  const envSecret = settings.meshJwtSecret ?? settings.betterAuthSecret;
+  const envSecret = settings.studioJwtSecret ?? settings.betterAuthSecret;
   if (envSecret) {
     jwtSecret = new TextEncoder().encode(envSecret);
   } else {
     // Generate a random secret - note: not persistent across restarts
     console.warn(
-      "MESH_JWT_SECRET not set - generating random secret (not persistent)",
+      "STUDIO_JWT_SECRET not set - generating random secret (not persistent)",
     );
     jwtSecret = new Uint8Array(randomBytes(32));
   }
@@ -114,7 +115,7 @@ export async function verifyMeshToken(
 /**
  * Mint a gateway-compatible Studio JWT for the given user.
  *
- * Uses the same MESH_JWT_SECRET and payload shape that the AI Gateway's
+ * Uses the same STUDIO_JWT_SECRET and payload shape that the AI Gateway's
  * verifyMeshJwt() expects: { iss: "mesh", sub: userId }.
  * This is intentionally simpler than issueMeshToken — downstream services
  * only need the user identity, not the full proxy-token metadata.
@@ -129,10 +130,10 @@ export async function mintGatewayJwt(
   expiresIn = 3600,
 ): Promise<string> {
   const settings = getSettings();
-  const gwSecret = settings.meshJwtSecret ?? settings.betterAuthSecret;
+  const gwSecret = settings.studioJwtSecret ?? settings.betterAuthSecret;
   if (!gwSecret) {
     throw new Error(
-      "A deterministic JWT secret is required to mint gateway JWTs — set MESH_JWT_SECRET or BETTER_AUTH_SECRET",
+      "A deterministic JWT secret is required to mint gateway JWTs — set STUDIO_JWT_SECRET or BETTER_AUTH_SECRET",
     );
   }
   const secret = new TextEncoder().encode(gwSecret);

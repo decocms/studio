@@ -259,6 +259,19 @@ describe("createTriggers", () => {
       }),
     ).rejects.toThrow("Connection ID not available");
   });
+
+  it("TRIGGER_CONFIGURE reads connectionId from STUDIO_REQUEST_CONTEXT", async () => {
+    const configureTool = triggers.tools()[1];
+    const result = (await configureTool.execute({
+      context: { type: "github.push", params: {}, enabled: false },
+      runtimeContext: {
+        env: { STUDIO_REQUEST_CONTEXT: { connectionId: "conn-studio" } },
+        ctx: { waitUntil: () => {} },
+        // biome-ignore lint: test mocks don't need full type compliance
+      } as any,
+    })) as { success: boolean };
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("createTriggers with storage", () => {

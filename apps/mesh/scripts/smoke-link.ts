@@ -8,18 +8,22 @@
  * Run with: `bun run smoke:link` from `apps/mesh/`.
  *
  * Required env:
- *   MESH_TEST_SESSION  Bearer token for an authenticated session
+ *   STUDIO_TEST_SESSION  Bearer token for an authenticated session
  *
  * Optional env:
- *   MESH_BASE_URL      Cluster base URL (default http://localhost:4000)
+ *   STUDIO_BASE_URL      Cluster base URL (default http://localhost:4000)
  */
 
 async function main(): Promise<void> {
-  const baseUrl = process.env.MESH_BASE_URL ?? "http://localhost:4000";
-  const token = process.env.MESH_TEST_SESSION ?? "";
+  const baseUrl =
+    process.env.STUDIO_BASE_URL ??
+    process.env.MESH_BASE_URL ??
+    "http://localhost:4000";
+  const token =
+    process.env.STUDIO_TEST_SESSION ?? process.env.MESH_TEST_SESSION ?? "";
   if (!token) {
     console.error(
-      "smoke: MESH_TEST_SESSION is not set — pass a bearer token for an authenticated session.",
+      "smoke: STUDIO_TEST_SESSION is not set — pass a bearer token for an authenticated session.",
     );
     process.exit(2);
   }

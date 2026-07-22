@@ -16,7 +16,7 @@
  *
  * Idempotent — exits early if the session file already exists.
  *
- * Only runs when `MESH_ALLOW_LOCALHOST_LINKS=1` is set, which we
+ * Only runs when `STUDIO_ALLOW_LOCALHOST_LINKS=1` is set, which we
  * default to in `bun run dev`. Production never sets that flag.
  */
 
