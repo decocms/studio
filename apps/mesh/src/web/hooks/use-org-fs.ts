@@ -498,7 +498,11 @@ export function useOrgFsMutations(volume: string) {
     mutationFn: async (input: { dir: string; files: File[] }) => {
       // Independent PUTs (distinct paths, server creates parent dirs per
       // write) — run them concurrently instead of one round trip at a time.
-      await Promise.all(
+      // Promise.allSettled (not Promise.all): Promise.all rejects as soon as
+      // the first PUT fails, while the rest are still in flight — that would
+      // invalidate the listing (and resolve the caller's catch) before those
+      // uploads landed, silently dropping them from the refreshed view.
+      const results = await Promise.allSettled(
         input.files.map((file) => {
           const path = input.dir ? `${input.dir}/${file.name}` : file.name;
           return fsFetch(fsUrl(org.slug, volume, "file", { path }), {
@@ -510,9 +514,13 @@ export function useOrgFsMutations(volume: string) {
           });
         }),
       );
+      const failure = results.find(
+        (r): r is PromiseRejectedResult => r.status === "rejected",
+      );
+      if (failure) throw failure.reason;
     },
-    // Settled, not success: uploads run independently, so one failure
-    // (quota, size) doesn't stop the rest — the listing must still refresh.
+    // Settled, not success: one failure (quota, size) doesn't stop the rest
+    // — the listing must still refresh once every upload has landed.
     onSettled: invalidate,
   });
 
