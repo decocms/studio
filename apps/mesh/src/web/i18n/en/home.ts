@@ -22,10 +22,10 @@ export const home = {
   "home.addTileDrawer.promptCountLabel": "{count} prompt(s)",
   "home.addTileDrawer.promptsOffLabel": "prompts off",
   "home.addTileDrawer.quickAccess": "Quick access",
+  "home.addTileDrawer.removeAgentFromHome": "Remove {name} from home",
   "home.addTileDrawer.removeError":
     "Couldn't remove from home \u2014 please try again.",
   "home.addTileDrawer.removeFromHome": "Remove from home",
-  "home.addTileDrawer.removeFromHomeTitle": "Remove from home",
   "home.addTileDrawer.reorderError":
     "Couldn't reorder home \u2014 please try again.",
   "home.addTileDrawer.save": "Save",
