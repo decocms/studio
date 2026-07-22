@@ -222,6 +222,16 @@ function withDeviceHint(url: string, device: PreviewDeviceSize): string {
   return parsed.href;
 }
 
+/** Origin of the preview iframe's own site, or `null` if `previewUrl` is unset/invalid. */
+function previewOrigin(previewUrl: string | null): string | null {
+  if (!previewUrl) return null;
+  try {
+    return new URL(previewUrl, window.location.href).origin;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Reload the iframe in place; falls back to reassigning `src` when the
  * iframe's live location is cross-origin (sandbox preview domain) and
@@ -607,13 +617,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
   useEffect(() => {
-    if (!previewUrl) return;
-    let allowedOrigin: string;
-    try {
-      allowedOrigin = new URL(previewUrl, window.location.href).origin;
-    } catch {
-      return;
-    }
+    const allowedOrigin = previewOrigin(previewUrl);
+    if (!allowedOrigin) return;
     const handler = (e: MessageEvent) => {
       if (e.origin !== allowedOrigin) return;
       if (e.data?.type === "visual-editor::element-clicked") {
@@ -643,27 +648,33 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     return () => document.removeEventListener("pointerdown", handler);
   }, [pagesOpen]);
 
+  // Target origin is pinned to the preview site itself: with "*" the parent
+  // would still hand the editor script and page-structure metadata to
+  // whatever origin currently occupies the iframe if it cross-navigated away.
   const injectVisualEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    if (!win) return;
+    const origin = previewOrigin(previewUrl);
+    if (!win || !origin) return;
     win.postMessage(
       { type: "visual-editor::activate", script: VISUAL_EDITOR_SCRIPT },
-      "*",
+      origin,
     );
   };
 
   const deactivateVisualEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    if (!win) return;
-    win.postMessage({ type: "visual-editor::deactivate" }, "*");
+    const origin = previewOrigin(previewUrl);
+    if (!win || !origin) return;
+    win.postMessage({ type: "visual-editor::deactivate" }, origin);
   };
 
   const injectCmsEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    if (!win) return;
+    const origin = previewOrigin(previewUrl);
+    if (!win || !origin) return;
     win.postMessage(
       { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
-      "*",
+      origin,
     );
     // Ordered after activate, so the script's listener is registered by the
     // time this arrives. Re-sent on every (re)injection (mode switch, page
@@ -675,14 +686,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         kinds: cmsSectionKinds,
         keys: cmsSectionKeys,
       },
-      "*",
+      origin,
     );
   };
 
   const deactivateCmsEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    if (!win) return;
-    win.postMessage({ type: "cms-editor::deactivate" }, "*");
+    const origin = previewOrigin(previewUrl);
+    if (!win || !origin) return;
+    win.postMessage({ type: "cms-editor::deactivate" }, origin);
   };
 
   const activateEditingMode = (mode: PreviewEditingMode) => {
