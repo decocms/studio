@@ -12,6 +12,7 @@ import {
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
+import { toast } from "sonner";
 import {
   useRegistryMonitorConfig,
   useMonitorResults,
@@ -367,11 +368,17 @@ export function MonitorDashboard({
     }
     lastStartRef.current = now;
     const effectiveMode = modeOverride ?? settings.monitorMode;
-    const created = await runStartMutation.mutateAsync({
-      ...settings,
-      monitorMode: effectiveMode,
-    });
-    onRunChange(created.run.id);
+    try {
+      const created = await runStartMutation.mutateAsync({
+        ...settings,
+        monitorMode: effectiveMode,
+      });
+      onRunChange(created.run.id);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to start QA run",
+      );
+    }
   };
 
   const onStart = async () => {
@@ -388,7 +395,13 @@ export function MonitorDashboard({
 
   const onCancel = async () => {
     if (!activeRunId) return;
-    await runCancelMutation.mutateAsync(activeRunId);
+    try {
+      await runCancelMutation.mutateAsync(activeRunId);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to cancel QA run",
+      );
+    }
   };
 
   const isRunning = run?.status === "running";
