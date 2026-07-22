@@ -284,6 +284,10 @@ export const sandbox = {
     "Value for {paramLabel} — click to pick",
   "sandbox.pathParamPickerChip.couldNotLoad":
     "Couldn't load — is the dev server running?",
+  "sandbox.pathParamPickerChip.kindCategoryHeading": "Categories",
+  "sandbox.pathParamPickerChip.kindCategoryNoun": "category",
+  "sandbox.pathParamPickerChip.kindProductHeading": "Products",
+  "sandbox.pathParamPickerChip.kindProductNoun": "product",
   "sandbox.pathParamPickerChip.loading": "Loading {noun}…",
   "sandbox.pathParamPickerChip.noResults": "No results.",
   "sandbox.pathParamPickerChip.pickValueHeading": "Pick a value for",
