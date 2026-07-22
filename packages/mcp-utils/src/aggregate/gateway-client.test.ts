@@ -494,6 +494,26 @@ describe("GatewayClient", () => {
       const gw = new GatewayClient({});
       await expect(gw.getResolvedClient("x")).rejects.toThrow();
     });
+
+    it("rejects (does not throw synchronously) when the factory throws synchronously", async () => {
+      const gw = new GatewayClient({
+        broken: {
+          client: () => {
+            throw new Error("Unauthorized: Authentication required");
+          },
+        },
+      });
+
+      // Must not throw here — resolveClient's Promise<IClient> contract
+      // requires a rejected promise, not a synchronous exception.
+      let result: Promise<IClient> | undefined;
+      expect(() => {
+        result = gw.getResolvedClient("broken");
+      }).not.toThrow();
+      await expect(result).rejects.toThrow(
+        "Unauthorized: Authentication required",
+      );
+    });
   });
 
   describe("refresh()", () => {
