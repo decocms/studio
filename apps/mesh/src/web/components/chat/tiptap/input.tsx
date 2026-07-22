@@ -251,7 +251,7 @@ export function TiptapInput({
       </Suspense>
 
       {/* Render file upload handler */}
-      {showFileUploader && selectedModel ? (
+      {showFileUploader && selectedModel && !disabled ? (
         <FileUploader
           editor={editor}
           selectedModel={selectedModel}

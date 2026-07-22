@@ -93,6 +93,7 @@ function ChatInputDisabledState({ message }: { message: string }) {
 function useWindowFileDrop(
   selectedModel: AiProviderModel | null | undefined,
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void,
+  disabled?: boolean,
 ) {
   const { editor } = useCurrentEditor();
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -124,7 +125,12 @@ function useWindowFileDrop(
       dragCounterRef.current = 0;
       setIsDraggingOver(false);
 
-      if (!editor || !selectedModel || !modelSupportsFiles(selectedModel))
+      if (
+        disabled ||
+        !editor ||
+        !selectedModel ||
+        !modelSupportsFiles(selectedModel)
+      )
         return;
 
       const files = e.dataTransfer?.files;
@@ -146,7 +152,7 @@ function useWindowFileDrop(
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
     };
-  }, [editor, selectedModel, onUnsupportedFile]);
+  }, [editor, selectedModel, onUnsupportedFile, disabled]);
 
   return isDraggingOver;
 }
@@ -158,11 +164,17 @@ function useWindowFileDrop(
 function FileDropZone({
   selectedModel,
   onUnsupportedFile,
+  disabled,
 }: {
   selectedModel: AiProviderModel | null | undefined;
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
+  disabled?: boolean;
 }) {
-  const isDraggingOver = useWindowFileDrop(selectedModel, onUnsupportedFile);
+  const isDraggingOver = useWindowFileDrop(
+    selectedModel,
+    onUnsupportedFile,
+    disabled,
+  );
   const supportsFiles = modelSupportsFiles(selectedModel);
 
   return (
@@ -496,6 +508,7 @@ export function ChatInput({
               <FileDropZone
                 selectedModel={selectedModel}
                 onUnsupportedFile={onUnsupportedFile}
+                disabled={voice.status === "recording"}
               />
 
               <div className="group/input relative flex flex-col gap-2 flex-1">
