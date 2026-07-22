@@ -139,6 +139,22 @@ function Table(props: React.HTMLAttributes<HTMLTableElement>) {
   );
 }
 
+function MarkdownImage(props: React.ImgHTMLAttributes<HTMLImageElement>) {
+  const t = useT();
+  const { src, alt, ...rest } = props;
+  if (!src) return <img {...props} />;
+  return (
+    <ImageLightbox src={src} alt={alt ?? t("chat.markdown.image")}>
+      <img
+        {...rest}
+        src={src}
+        alt={alt}
+        className="max-w-full rounded-lg border border-border hover:border-foreground/20 transition-colors"
+      />
+    </ImageLightbox>
+  );
+}
+
 // Memoize the plugins arrays to prevent re-creating them on every render
 const remarkPluginsMemo = [remarkGfm];
 const rehypePluginsMemo = [rehypeRaw];
@@ -152,21 +168,9 @@ const markdownComponents = {
   table: (props: React.HTMLAttributes<HTMLTableElement>) => (
     <Table {...props} />
   ),
-  img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => {
-    const { src, alt, ...rest } = props;
-    if (!src) return <img {...props} />;
-    const t = useT();
-    return (
-      <ImageLightbox src={src} alt={alt ?? t("chat.markdown.image")}>
-        <img
-          {...rest}
-          src={src}
-          alt={alt}
-          className="max-w-full rounded-lg border border-border hover:border-foreground/20 transition-colors"
-        />
-      </ImageLightbox>
-    );
-  },
+  img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
+    <MarkdownImage {...props} />
+  ),
 } as typeof sharedMarkdownComponents;
 
 // ── Streaming word fade-in ───────────────────────────────────────────────────

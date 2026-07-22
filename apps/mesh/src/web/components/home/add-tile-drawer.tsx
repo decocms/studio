@@ -635,6 +635,7 @@ function AgentToolList({
   connectionIds: string[];
   pinnedTiles: VirtualMcpHomeTile[];
 }) {
+  const t = useT();
   const studio = useStudioTools();
 
   const { data, isLoading } = useQuery({
@@ -720,8 +721,6 @@ function AgentToolList({
   };
 
   const hasPinned = pinnedTiles.some((tile) => !!resolveToolForTile(tile));
-
-  const t = useT();
 
   return (
     <div className="flex flex-col gap-2">
