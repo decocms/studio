@@ -398,11 +398,11 @@ describe("cancelActiveThreadRun (T7: stop cancels the detached hosted child)", (
 
   test("only cancels the child when a live fence exists — desktop runs (no hosted child) and threads that never dispatched are a no-op", () => {
     const fenceReadIdx = body.indexOf(
-      "const fenceToken = await ctx.storage.threads.getRunFence(taskId);",
+      "cancelFenceToken = await ctx.storage.threads.getRunFence(taskId);",
     );
-    const guardIdx = body.indexOf("if (fenceToken) {", fenceReadIdx);
+    const guardIdx = body.indexOf("if (cancelFenceToken) {", fenceReadIdx);
     const cancelCallIdx = body.indexOf(
-      "await cancelHostedHarness(taskId, fenceToken);",
+      "await cancelHostedHarness(taskId, cancelFenceToken);",
       guardIdx,
     );
     expect(fenceReadIdx).toBeGreaterThan(-1);
@@ -412,7 +412,7 @@ describe("cancelActiveThreadRun (T7: stop cancels the detached hosted child)", (
 
   test("best-effort: the DBOS cancel is wrapped in try/catch so an unknown/already-terminal child (or any DBOS hiccup) can never fail the user-facing Stop", () => {
     const fenceReadIdx = body.indexOf(
-      "const fenceToken = await ctx.storage.threads.getRunFence(taskId);",
+      "cancelFenceToken = await ctx.storage.threads.getRunFence(taskId);",
     );
     const tryIdx = body.lastIndexOf("try {", fenceReadIdx);
     const catchIdx = body.indexOf("} catch (err) {", fenceReadIdx);

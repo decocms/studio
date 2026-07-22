@@ -867,10 +867,15 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     // current fence from the thread row. Best-effort: cancelling an
     // already-finished/unknown workflow (e.g. desktop runs, which have no
     // hosted child) must not fail the cancel.
+    // The fence current when this cancel was issued — identifies the exact turn
+    // being stopped. Reused below to scope the ghost force-fail so it can't
+    // clobber a follow-up turn (fresh fence) that starts while this cancel is
+    // still settling.
+    let cancelFenceToken: string | null = null;
     try {
-      const fenceToken = await ctx.storage.threads.getRunFence(taskId);
-      if (fenceToken) {
-        await cancelHostedHarness(taskId, fenceToken);
+      cancelFenceToken = await ctx.storage.threads.getRunFence(taskId);
+      if (cancelFenceToken) {
+        await cancelHostedHarness(taskId, cancelFenceToken);
       }
     } catch (err) {
       console.error("[decopilot:cancel] failed to cancel hosted harness", {
@@ -914,6 +919,14 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           taskId,
           reason: "ghost",
           orgId: organization.id,
+          // Scope to the turn being cancelled. This teardown is fire-and-forget
+          // (the cancel returns 202 immediately) and, in a multi-pod cluster,
+          // usually runs on a pod that does NOT own the run — so a follow-up
+          // turn sent right after "stop" can start (fresh fence, thread back to
+          // `in_progress`) BEFORE this force-fail lands. Without the fence guard
+          // the stale snapshot would flip that follow-up to `failed`, and the
+          // user's next message "never returns".
+          expectedFenceToken: cancelFenceToken,
         })
         .catch((err) => {
           console.error(
