@@ -77,6 +77,7 @@ import { VisualEditorPrompt } from "./visual-editor-prompt";
 import {
   useSandboxEvents,
   useSandboxReloadHandler,
+  useSandboxReloadStartHandler,
 } from "../hooks/use-sandbox-events";
 import { SandboxStateCard } from "./state-card";
 import {
@@ -226,6 +227,32 @@ function withDeviceHint(url: string, device: PreviewDeviceSize): string {
   return parsed.href;
 }
 
+/** Origin of the preview iframe's own site, or `null` if `previewUrl` is unset/invalid. */
+function previewOrigin(previewUrl: string | null): string | null {
+  if (!previewUrl) return null;
+  try {
+    return new URL(previewUrl, window.location.href).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reload the iframe in place; falls back to reassigning `src` when the
+ * iframe's live location is cross-origin (sandbox preview domain) and
+ * `.reload()` throws.
+ */
+function reloadIframeOrFallback(
+  iframe: HTMLIFrameElement,
+  fallbackSrc: string | null,
+) {
+  try {
+    iframe.contentWindow?.location.reload();
+  } catch {
+    if (fallbackSrc) iframe.src = fallbackSrc;
+  }
+}
+
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const isMobile = useIsMobile();
@@ -319,9 +346,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // agent-sandbox, whose daemon reports a container-internal path ("/app/repo").
   const repoDir = isDesktopSandbox ? rawRepoDir : null;
 
-  // Decofile pages for the URL bar dropdown — fetch only after dev server is up.
+  // Decofile pages/global sections for the URL bar dropdown. Not gated on the
+  // dev server: when it's down we read the committed `.deco/*.gen.json` snapshot
+  // so the dropdown still lists pages; the live routes take over once it's up.
+  // (The inline CMS overlay still needs the dev server — it edits the page
+  // rendered inside the iframe, which the dev server serves.)
   const decofileParams =
-    virtualMcpId && branch && devServerReady
+    virtualMcpId && branch
       ? { orgSlug: org.slug, virtualMcpId, branch, previewUrl }
       : null;
   const { data: decofile } = useDecofile(decofileParams, {
@@ -423,14 +454,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const iframeSrcRef = useRef<string | null>(null);
   /** Path we navigated to programmatically; ignore stale iframe onLoad events. */
   const intendedPathRef = useRef<string | null>(null);
-
-  // "reload" fires on config edits framework HMR won't catch (.ts/.tsx use HMR).
-  useSandboxReloadHandler(() => {
-    const iframe = previewIframeRef.current;
-    const src = iframeSrcRef.current;
-    if (!iframe || !src) return;
-    iframe.src = src;
-  });
 
   // Only the user-pause state routes to the suspended overlay (resume
   // affordance). The daemon's `error` state means the dev script crashed
@@ -596,13 +619,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
   useEffect(() => {
-    if (!previewUrl) return;
-    let allowedOrigin: string;
-    try {
-      allowedOrigin = new URL(previewUrl, window.location.href).origin;
-    } catch {
-      return;
-    }
+    const allowedOrigin = previewOrigin(previewUrl);
+    if (!allowedOrigin) return;
     const handler = (e: MessageEvent) => {
       if (e.origin !== allowedOrigin) return;
       if (e.data?.type === "visual-editor::element-clicked") {
@@ -632,27 +650,33 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     return () => document.removeEventListener("pointerdown", handler);
   }, [pagesOpen]);
 
+  // Target origin is pinned to the preview site itself: with "*" the parent
+  // would still hand the editor script and page-structure metadata to
+  // whatever origin currently occupies the iframe if it cross-navigated away.
   const injectVisualEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    if (!win) return;
+    const origin = previewOrigin(previewUrl);
+    if (!win || !origin) return;
     win.postMessage(
       { type: "visual-editor::activate", script: VISUAL_EDITOR_SCRIPT },
-      "*",
+      origin,
     );
   };
 
   const deactivateVisualEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    if (!win) return;
-    win.postMessage({ type: "visual-editor::deactivate" }, "*");
+    const origin = previewOrigin(previewUrl);
+    if (!win || !origin) return;
+    win.postMessage({ type: "visual-editor::deactivate" }, origin);
   };
 
   const injectCmsEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    if (!win) return;
+    const origin = previewOrigin(previewUrl);
+    if (!win || !origin) return;
     win.postMessage(
       { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
-      "*",
+      origin,
     );
     // Ordered after activate, so the script's listener is registered by the
     // time this arrives. Re-sent on every (re)injection (mode switch, page
@@ -664,14 +688,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         kinds: cmsSectionKinds,
         keys: cmsSectionKeys,
       },
-      "*",
+      origin,
     );
   };
 
   const deactivateCmsEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
-    if (!win) return;
-    win.postMessage({ type: "cms-editor::deactivate" }, "*");
+    const origin = previewOrigin(previewUrl);
+    if (!win || !origin) return;
+    win.postMessage({ type: "cms-editor::deactivate" }, origin);
   };
 
   const activateEditingMode = (mode: PreviewEditingMode) => {
@@ -701,21 +726,23 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     iframe.src = iframeSrc;
   };
 
-  // Reload the preview after a Blocks save without moving keyboard focus.
+  // Reload the preview without moving keyboard focus. Used both for the daemon
+  // "reload" event (config edits HMR won't catch) and, via the debounced
+  // `.deco/` file-changed signal, after a Blocks save once the dev server has
+  // rebuilt (see sandbox-events-context).
   const reloadPreviewPreservingScroll = () => {
     const iframe = previewIframeRef.current;
     if (!iframe) return;
+    // Show the same loading overlay as page navigation while the reloaded page
+    // fetches; the iframe's onLoad clears it (with beginNavigation's safety net
+    // as a fallback if onLoad never fires).
+    beginNavigation();
     const focused = document.activeElement as HTMLElement | null;
     const prevTabIndex = iframe.tabIndex;
     iframe.tabIndex = -1;
     iframe.style.pointerEvents = "none";
     iframe.blur();
-    try {
-      iframe.contentWindow?.location.reload();
-    } catch {
-      const src = iframeSrcRef.current;
-      if (src) iframe.src = src;
-    }
+    reloadIframeOrFallback(iframe, iframeSrcRef.current);
     let fallbackTimer: ReturnType<typeof setTimeout>;
     const restore = () => {
       clearTimeout(fallbackTimer);
@@ -730,15 +757,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     fallbackTimer = setTimeout(restore, 3000);
   };
 
-  const [handledPreviewRevision, setHandledPreviewRevision] = useState(
-    workspace.state.previewRevision,
-  );
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- synchronizes persisted Blocks saves with the mounted preview iframe
-  useEffect(() => {
-    if (handledPreviewRevision === workspace.state.previewRevision) return;
-    setHandledPreviewRevision(workspace.state.previewRevision);
+  // Fires on the daemon "reload" event and on debounced `.deco/` file changes
+  // (Blocks saves, external/agent decofile writes) — the only refresh path for
+  // decofile edits, which the framework's HMR doesn't cover.
+  useSandboxReloadHandler(() => {
     reloadPreviewPreservingScroll();
-  }, [handledPreviewRevision, workspace.state.previewRevision]);
+  });
+  // Show the loading overlay the instant a `.deco/` change is detected, ahead of
+  // the debounced reload above, so the pending refresh feels immediate.
+  useSandboxReloadStartHandler(() => {
+    beginNavigation();
+  });
 
   const handleHardReload = () => {
     if (!previewIframeRef.current || !iframeSrc) return;
@@ -1542,12 +1571,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               setTimeout(() => {
                 const iframe = previewIframeRef.current;
                 if (!iframe) return;
-                try {
-                  iframe.contentWindow?.location.reload();
-                } catch {
-                  const src = iframeSrcRef.current;
-                  if (src) iframe.src = src;
-                }
+                reloadIframeOrFallback(iframe, iframeSrcRef.current);
               }, DEV_SERVER_SETTLE_MS);
             }}
             target={{ kind: "site" }}

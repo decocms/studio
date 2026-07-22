@@ -314,6 +314,8 @@ export const settings = {
   "settings.domainSettings.verified": "Verificado",
   "settings.domainSettings.verify": "Verificar",
   "settings.editProviderDialog.apiKey": "Chave de API",
+  "settings.editProviderDialog.apiKeyRequiredForBaseUrlChange":
+    "Informe a chave de API novamente para confirmar a mudança da URL base",
   "settings.editProviderDialog.baseUrl": "URL base",
   "settings.editProviderDialog.baseUrlPlaceholder": "http://localhost:4000/v1",
   "settings.editProviderDialog.cancel": "Cancelar",
@@ -412,6 +414,7 @@ export const settings = {
   "settings.orgRoleDetail.owner": "Propriet\u00e1rio",
   "settings.orgRoleDetail.ownerMembershipCannotBeChanged":
     "A associa\u00e7\u00e3o de propriet\u00e1rio n\u00e3o pode ser alterada",
+  "settings.orgRoleDetail.removeMember": "Remover {name} do papel",
   "settings.orgRoleDetail.roleCreatedSuccessfully": "Papel criado com sucesso!",
   "settings.orgRoleDetail.roleName": "Nome do papel",
   "settings.orgRoleDetail.roleNameIsRequired":
@@ -541,8 +544,6 @@ export const settings = {
   "settings.providerKeyRow.cancel": "Cancelar",
   "settings.providerKeyRow.delete": "Excluir",
   "settings.providerKeyRow.deleteApiKey": "Excluir chave de API",
-  "settings.providerKeyRow.deleteApiKeyWarning":
-    "Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita. Isso excluir\u00e1 permanentemente {label}.",
   "settings.providerKeyRow.deleteProviderKey": "Excluir chave do provedor",
   "settings.providerKeyRow.editProviderKey": "Editar chave do provedor",
   "settings.providerKeyRow.failedToDeleteKey":

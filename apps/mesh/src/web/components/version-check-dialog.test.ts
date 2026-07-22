@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { nextDrift } from "./version-check-dialog";
+import {
+  nextDrift,
+  shouldShowVersionAnnouncement,
+} from "./version-check-dialog";
 
 const NONE = { version: null, count: 0 };
 
@@ -37,5 +40,28 @@ describe("nextDrift", () => {
       version: "4.2.0",
       count: 1,
     });
+  });
+});
+
+describe("shouldShowVersionAnnouncement", () => {
+  test("stays hidden until the drift is confirmed", () => {
+    expect(
+      shouldShowVersionAnnouncement({ version: "4.1.0", count: 1 }, null),
+    ).toBe(false);
+  });
+
+  test("shows a confirmed version that has not been dismissed", () => {
+    expect(
+      shouldShowVersionAnnouncement({ version: "4.1.0", count: 2 }, null),
+    ).toBe(true);
+  });
+
+  test("stays dismissed only for the version the user dismissed", () => {
+    expect(
+      shouldShowVersionAnnouncement({ version: "4.1.0", count: 2 }, "4.1.0"),
+    ).toBe(false);
+    expect(
+      shouldShowVersionAnnouncement({ version: "4.2.0", count: 2 }, "4.1.0"),
+    ).toBe(true);
   });
 });

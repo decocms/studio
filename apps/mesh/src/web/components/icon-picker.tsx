@@ -23,6 +23,7 @@ import {
   AgentAvatar,
   buildIconString,
   buildImageIconString,
+  filterIconNames,
   getIconColor,
   getIconComponent,
   getIconNames,
@@ -126,6 +127,7 @@ export function IconPicker({
         <button
           type="button"
           data-testid="icon-picker-trigger"
+          aria-label="Change icon"
           disabled={disabled}
           className={cn(
             "relative group overflow-hidden",
@@ -159,9 +161,25 @@ export function IconPicker({
           </div>
 
           {/* Tab bar */}
-          <div className="flex items-center border-b border-border px-3">
+          <div
+            role="tablist"
+            aria-label="Icon source"
+            className="flex items-center border-b border-border px-3"
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              e.preventDefault();
+              const nextTab = tab === "icons" ? "upload" : "icons";
+              setTab(nextTab);
+              document.getElementById(`icon-picker-tab-${nextTab}`)?.focus();
+            }}
+          >
             <button
+              id="icon-picker-tab-icons"
               type="button"
+              role="tab"
+              aria-selected={tab === "icons"}
+              aria-controls="icon-picker-panel-icons"
+              tabIndex={tab === "icons" ? 0 : -1}
               onClick={() => setTab("icons")}
               className={cn(
                 "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
@@ -173,7 +191,12 @@ export function IconPicker({
               {t("common.iconPicker.iconsTab")}
             </button>
             <button
+              id="icon-picker-tab-upload"
               type="button"
+              role="tab"
+              aria-selected={tab === "upload"}
+              aria-controls="icon-picker-panel-upload"
+              tabIndex={tab === "upload" ? 0 : -1}
               onClick={() => setTab("upload")}
               className={cn(
                 "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
@@ -189,19 +212,31 @@ export function IconPicker({
 
           {/* Tab content */}
           {tab === "icons" ? (
-            <IconsTab
-              search={search}
-              onSearchChange={setSearch}
-              selectedColor={selectedColor}
-              onColorChange={handleColorChange}
-              onSelectIcon={handleSelectIcon}
-              onRandom={handleRandomIcon}
-              currentIconName={
-                parsedValue.type === "icon" ? parsedValue.name : null
-              }
-            />
+            <div
+              id="icon-picker-panel-icons"
+              role="tabpanel"
+              aria-labelledby="icon-picker-tab-icons"
+            >
+              <IconsTab
+                search={search}
+                onSearchChange={setSearch}
+                selectedColor={selectedColor}
+                onColorChange={handleColorChange}
+                onSelectIcon={handleSelectIcon}
+                onRandom={handleRandomIcon}
+                currentIconName={
+                  parsedValue.type === "icon" ? parsedValue.name : null
+                }
+              />
+            </div>
           ) : (
-            <UploadTab onUpload={handleUpload} />
+            <div
+              id="icon-picker-panel-upload"
+              role="tabpanel"
+              aria-labelledby="icon-picker-tab-upload"
+            >
+              <UploadTab onUpload={handleUpload} />
+            </div>
           )}
         </div>
       </PopoverContent>
@@ -235,6 +270,7 @@ function ColorPickerDropdown({
             "ring-foreground/20",
           )}
           title={t("common.iconPicker.changeColor")}
+          aria-label={t("common.iconPicker.changeColor")}
         />
       </PopoverTrigger>
       <PopoverContent
@@ -261,6 +297,7 @@ function ColorPickerDropdown({
                   : "hover:scale-110",
               )}
               title={c.name}
+              aria-label={c.name}
             />
           ))}
         </div>
@@ -289,17 +326,7 @@ function IconsTab({
   const t = useT();
   const allNames = getIconNames();
   const color = getIconColor(selectedColor);
-
-  const filteredNames = search.trim()
-    ? allNames.filter((name) => {
-        const humanized = humanizeIconName(name);
-        const searchLower = search.toLowerCase();
-        return (
-          humanized.includes(searchLower) ||
-          name.toLowerCase().includes(searchLower)
-        );
-      })
-    : allNames;
+  const filteredNames = filterIconNames(allNames, search);
 
   return (
     <div className="flex flex-col">
@@ -322,6 +349,7 @@ function IconsTab({
           onClick={onRandom}
           className="h-8 w-8 flex items-center justify-center rounded-md border border-border hover:bg-accent transition-colors shrink-0"
           title={t("common.iconPicker.randomIcon")}
+          aria-label={t("common.iconPicker.randomIcon")}
         >
           <Shuffle01 size={14} className="text-muted-foreground" />
         </button>
@@ -350,6 +378,7 @@ function IconsTab({
                     : cn(color.text, "hover:bg-accent"),
                 )}
                 title={iconName}
+                aria-label={humanizeIconName(iconName)}
               >
                 <IconComp size={18} />
               </button>

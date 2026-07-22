@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { toast } from "sonner";
+import { Button } from "@deco/ui/components/button.tsx";
+import { RefreshCw01 } from "@untitledui/icons";
 import type { PublicConfig } from "@/api/routes/public-config";
-import { KEYS } from "@/web/lib/query-keys";
+import { AnnouncementCard } from "@/web/components/announcement-card";
 import { useT } from "@/web/i18n/use-t.ts";
+import { KEYS } from "@/web/lib/query-keys";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
-const TOAST_ID = "version-check";
 
 // A rolling deploy always has old and new pods answering simultaneously for a
 // stretch (inherent to maxSurge/maxUnavailable, not fully eliminable by the
@@ -31,6 +32,17 @@ export function nextDrift(
   return prev.version === serverVersion
     ? { version: serverVersion, count: prev.count + 1 }
     : { version: serverVersion, count: 1 };
+}
+
+export function shouldShowVersionAnnouncement(
+  drift: Drift,
+  dismissedVersion: string | null,
+): boolean {
+  return (
+    drift.count >= CONFIRMATIONS_REQUIRED &&
+    drift.version !== null &&
+    drift.version !== dismissedVersion
+  );
 }
 
 /**
@@ -67,23 +79,29 @@ export function VersionCheckDialog() {
     setDrift((prev) => nextDrift(prev, serverVersion, __MESH_VERSION__));
   }
 
-  const isStale = drift.count >= CONFIRMATIONS_REQUIRED;
+  const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
 
-  // Fire once on the false -> true transition, not every render — the toast
-  // is non-blocking, so unlike the old dialog it never needs to re-open.
-  const [notified, setNotified] = useState(false);
-  if (isStale && !notified) {
-    setNotified(true);
-    toast(t("common.versionCheckDialog.available"), {
-      id: TOAST_ID,
-      description: t("common.versionCheckDialog.outdatedVersion"),
-      duration: Infinity,
-      action: {
-        label: t("common.versionCheckDialog.refresh"),
-        onClick: () => window.location.reload(),
-      },
-    });
-  }
+  if (!shouldShowVersionAnnouncement(drift, dismissedVersion)) return null;
 
-  return null;
+  return (
+    <AnnouncementCard
+      ariaLabel={t("announcements.version.ariaLabel")}
+      dismissLabel={t("announcements.version.dismiss")}
+      eyebrow={t("announcements.version.eyebrow")}
+      title={t("announcements.version.title")}
+      description={t("announcements.version.description")}
+      icon={<RefreshCw01 size={16} />}
+      tone="system"
+      onDismiss={() => setDismissedVersion(drift.version)}
+      footerLeading={t("announcements.version.currentSession", {
+        version: __MESH_VERSION__,
+      })}
+      actions={
+        <Button size="sm" onClick={() => window.location.reload()}>
+          {t("announcements.version.refresh")}
+          <RefreshCw01 size={14} />
+        </Button>
+      }
+    />
+  );
 }

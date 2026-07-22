@@ -51,3 +51,23 @@ export function useSandboxReloadHandler(handler: ReloadHandler | null) {
     return unsubscribe;
   }, [subscribeReload]);
 }
+
+/**
+ * Fires the instant a `.deco/*` change is detected (before the debounced
+ * reload), so the caller can show a loading indicator immediately.
+ */
+export function useSandboxReloadStartHandler(handler: ReloadHandler | null) {
+  const { subscribeReloadStart } = useSandboxEvents();
+  const handlerRef = useRef(handler);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
+  handlerRef.current = handler;
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — subscription lifecycle bound to the component mount; uses ref for stable identity
+  useEffect(() => {
+    const fn: ReloadHandler = () => {
+      handlerRef.current?.();
+    };
+    const unsubscribe = subscribeReloadStart(fn);
+    return unsubscribe;
+  }, [subscribeReloadStart]);
+}

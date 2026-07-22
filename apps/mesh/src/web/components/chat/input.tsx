@@ -94,6 +94,7 @@ function ChatInputDisabledState({ message }: { message: string }) {
 function useWindowFileDrop(
   selectedModel: AiProviderModel | null | undefined,
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void,
+  disabled?: boolean,
 ) {
   const { editor } = useCurrentEditor();
   const t = useT();
@@ -126,7 +127,12 @@ function useWindowFileDrop(
       dragCounterRef.current = 0;
       setIsDraggingOver(false);
 
-      if (!editor || !selectedModel || !modelSupportsFiles(selectedModel))
+      if (
+        disabled ||
+        !editor ||
+        !selectedModel ||
+        !modelSupportsFiles(selectedModel)
+      )
         return;
 
       const files = e.dataTransfer?.files;
@@ -155,7 +161,7 @@ function useWindowFileDrop(
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
     };
-  }, [editor, selectedModel, onUnsupportedFile, t]);
+  }, [editor, selectedModel, onUnsupportedFile, t, disabled]);
 
   return isDraggingOver;
 }
@@ -202,11 +208,17 @@ function FileDropZoneUnsupported() {
 function FileDropZone({
   selectedModel,
   onUnsupportedFile,
+  disabled,
 }: {
   selectedModel: AiProviderModel | null | undefined;
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
+  disabled?: boolean;
 }) {
-  const isDraggingOver = useWindowFileDrop(selectedModel, onUnsupportedFile);
+  const isDraggingOver = useWindowFileDrop(
+    selectedModel,
+    onUnsupportedFile,
+    disabled,
+  );
   const supportsFiles = modelSupportsFiles(selectedModel);
 
   return (
@@ -321,17 +333,16 @@ export function ChatInput({
 
   const handleVoiceStart = async () => {
     voiceBaselineDocRef.current = tiptapDoc;
-    await voice.startRecording();
-    // Fire with the real outcome — voice.status is set inside startRecording
-    // before the promise resolves ("recording" on success, "unsupported" or
-    // "permission-denied" on failure). Button click on its own doesn't tell
-    // us if the mic actually started.
+    // Fire with the real outcome returned by startRecording — reading
+    // voice.status here instead would be a stale closure over the status
+    // from before the click, since setState doesn't mutate it in place.
+    const finalStatus = await voice.startRecording();
     const outcome =
-      voice.status === "recording"
+      finalStatus === "recording"
         ? "started"
-        : voice.status === "unsupported"
+        : finalStatus === "unsupported"
           ? "unsupported"
-          : voice.status === "permission-denied"
+          : finalStatus === "permission-denied"
             ? "permission_denied"
             : "unknown";
     track("chat_voice_started", { thread_id: taskId, outcome });
@@ -516,7 +527,7 @@ export function ChatInput({
             key={taskId}
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
-            disabled={false}
+            disabled={voice.status === "recording"}
             enterToSubmit={true}
             placeholder={t("chat.input.placeholder")}
             onSubmit={handleSubmit}
@@ -530,6 +541,7 @@ export function ChatInput({
               <FileDropZone
                 selectedModel={selectedModel}
                 onUnsupportedFile={onUnsupportedFile}
+                disabled={voice.status === "recording"}
               />
 
               <div className="group/input relative flex flex-col gap-2 flex-1">

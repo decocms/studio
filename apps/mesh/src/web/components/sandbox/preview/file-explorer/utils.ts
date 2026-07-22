@@ -232,6 +232,19 @@ export function buildFileTree(
     children: [],
   };
 
+  // Name -> child lookup per directory, keyed by the directory's path. Avoids
+  // an O(children) linear scan per inserted entry (O(n^2) for a directory with
+  // many siblings, e.g. up to EXPLORER_GLOB_LIMIT files in one folder).
+  const childByName = new Map<string, Map<string, TreeNode>>();
+  const getChildMap = (node: TreeNode) => {
+    let map = childByName.get(node.path);
+    if (!map) {
+      map = new Map();
+      childByName.set(node.path, map);
+    }
+    return map;
+  };
+
   const ensureDirectory = (dirPath: string) => {
     const normalized = normalizePath(dirPath);
     const parts = normalized.split("/").filter(Boolean);
@@ -240,7 +253,8 @@ export function buildFileTree(
 
     for (const part of parts) {
       currentPath += `/${part}`;
-      let child = current.children.find((entry) => entry.name === part);
+      const map = getChildMap(current);
+      let child = map.get(part);
       if (!child) {
         child = {
           name: part,
@@ -249,6 +263,7 @@ export function buildFileTree(
           children: [],
         };
         current.children.push(child);
+        map.set(part, child);
       } else if (child.kind === "file") {
         child.kind = "directory";
       }
@@ -265,7 +280,8 @@ export function buildFileTree(
     parts.forEach((part, index) => {
       currentPath += `/${part}`;
       const isFile = index === parts.length - 1;
-      let child = current.children.find((entry) => entry.name === part);
+      const map = getChildMap(current);
+      let child = map.get(part);
 
       if (!child) {
         child = {
@@ -275,6 +291,7 @@ export function buildFileTree(
           children: [],
         };
         current.children.push(child);
+        map.set(part, child);
       }
 
       current = child;
@@ -482,13 +499,16 @@ export function groupGrepMatches(
 /**
  * Strip the line-number prefix from the daemon's read endpoint.
  * The daemon returns content in `"1\tcontent\n2\tcontent"` format.
+ *
+ * Uses `replace` rather than a `(.*)` capture: `.` does not match `\r`,
+ * \u2028, or \u2029, so a capture group would truncate any line containing
+ * one of those (e.g. a JSON string value with an embedded line separator),
+ * silently corrupting large files. `replace` drops only the `<n>\t` prefix
+ * and keeps the rest of the line verbatim.
  */
 export function stripLineNumbers(content: string): string {
   return content
     .split("\n")
-    .map((line) => {
-      const match = line.match(/^\d+\t(.*)/);
-      return match ? match[1] : line;
-    })
+    .map((line) => line.replace(/^\d+\t/, ""))
     .join("\n");
 }

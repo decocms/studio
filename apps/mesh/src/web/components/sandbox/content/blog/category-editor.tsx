@@ -31,6 +31,7 @@ import {
   stampPostModified,
 } from "./blog-data";
 import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
+import { usePackagePath } from "@/web/components/sections-editor/use-package-path";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -80,7 +81,12 @@ export function CategoryEditor({
   previewBaseUrl?: string | null;
 }) {
   const t = useT();
-  const save = useSaveBlogBlock({ orgSlug, virtualMcpId, branch });
+  const save = useSaveBlogBlock({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    packagePath: usePackagePath(virtualMcpId),
+  });
   const initial = getBlogPayload(block, "categories");
 
   const [category, setCategory, syncCategory] = useAutosave(initial, (next) => {

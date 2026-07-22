@@ -17,6 +17,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { StudioContext } from "../../core/studio-context";
 import { getSettings } from "../../settings";
+import { safeEqual } from "./credential-vault";
 
 // Base directory for dev assets (relative to cwd)
 const DEV_ASSETS_BASE_DIR = "./data/assets";
@@ -55,7 +56,7 @@ function getFilePath(orgId: string, key: string): string {
 /**
  * Verify a presigned URL signature
  */
-function verifySignature(
+export function verifySignature(
   orgId: string,
   key: string,
   expires: number,
@@ -67,7 +68,10 @@ function verifySignature(
   const expectedSignature = createHmac("sha256", secret)
     .update(data)
     .digest("hex");
-  return signature === expectedSignature;
+  // Constant-time compare — a plain `===` leaks timing info an attacker can
+  // use to forge a valid signature byte-by-byte, same class of bug the vault
+  // service token guards against (see credential-vault.ts's `safeEqual`).
+  return safeEqual(signature, expectedSignature);
 }
 
 /**

@@ -410,6 +410,7 @@ function HomeAgentRow({
   } = useSortable({ id: agent.id });
   const subtitle =
     useAgentSubtitle(agent) || t("home.addTileDrawer.quickAccess");
+  const expansionId = `home-agent-expansion-${agent.id}`;
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -444,6 +445,7 @@ function HomeAgentRow({
           onClick={() => setExpanded((v) => !v)}
           className="flex min-w-0 flex-1 items-center gap-2.5 text-left outline-none"
           aria-expanded={expanded}
+          aria-controls={expansionId}
         >
           <AgentAvatar
             icon={agent.icon}
@@ -482,7 +484,9 @@ function HomeAgentRow({
           <X size={14} />
         </button>
       </div>
-      {expanded && <AgentExpansion agent={agent} home={home} />}
+      {expanded && (
+        <AgentExpansion id={expansionId} agent={agent} home={home} />
+      )}
     </div>
   );
 }
@@ -498,6 +502,7 @@ function AvailableAgentRow({
   const [adding, setAdding] = useState(false);
   const subtitle = useAgentSubtitle(agent);
   const t = useT();
+  const expansionId = `available-agent-expansion-${agent.id}`;
 
   const handleAdd = async () => {
     if (home.atLimit) return;
@@ -519,6 +524,7 @@ function AvailableAgentRow({
           onClick={() => setExpanded((v) => !v)}
           className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none"
           aria-expanded={expanded}
+          aria-controls={expansionId}
         >
           <AgentAvatar
             icon={agent.icon}
@@ -562,7 +568,9 @@ function AvailableAgentRow({
           )}
         </button>
       </div>
-      {expanded && <AgentExpansion agent={agent} home={home} />}
+      {expanded && (
+        <AgentExpansion id={expansionId} agent={agent} home={home} />
+      )}
     </div>
   );
 }
@@ -571,9 +579,11 @@ function AvailableAgentRow({
  * Toggling any of these also pulls the agent onto the home (via the home
  * board's saveAgentMetadata). */
 function AgentExpansion({
+  id,
   agent,
   home,
 }: {
+  id: string;
   agent: VirtualMCPEntity;
   home: HomeBoard;
 }) {
@@ -584,7 +594,10 @@ function AgentExpansion({
   const curatedPrompts = agent.metadata?.ui?.homePrompts;
 
   return (
-    <div className="border-t border-border px-3 py-2 flex flex-col gap-3">
+    <div
+      id={id}
+      className="border-t border-border px-3 py-2 flex flex-col gap-3"
+    >
       <AgentToolList
         agent={agent}
         home={home}

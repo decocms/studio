@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import { decoBlockFilePath } from "./deco-block-key";
+import { decoRepoPath } from "./deco-repo-path";
 
 interface UseDeleteBlockParams {
   orgSlug: string;
@@ -20,10 +22,14 @@ export function useDeleteBlock({
   branch,
 }: UseDeleteBlockParams) {
   const queryClient = useQueryClient();
+  // Under the project's package path (`metadata.runtime.path`) when the project
+  // isn't at the repo root — the daemon resolves against the repo root.
+  const packagePath =
+    useVirtualMCP(virtualMcpId)?.metadata?.runtime?.path ?? null;
 
   return useMutation({
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
-      const path = decoBlockFilePath(blockKey);
+      const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
       const res = await fetch(
         `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/unlink`,
         {

@@ -2,21 +2,25 @@ import { useRef, useState } from "react";
 
 const WAVEFORM_BARS = 48;
 
+export type VoiceInputStatus =
+  | "idle"
+  | "recording"
+  | "unsupported"
+  | "permission-denied";
+
 export interface UseVoiceInputReturn {
-  status: "idle" | "recording" | "unsupported" | "permission-denied";
+  status: VoiceInputStatus;
   transcript: string;
   interimTranscript: string;
   waveformData: number[];
   isSupported: boolean;
-  startRecording: () => Promise<void>;
+  startRecording: () => Promise<VoiceInputStatus>;
   stopRecording: () => string;
   cancelRecording: () => void;
 }
 
 export function useVoiceInput(): UseVoiceInputReturn {
-  const [status, setStatus] = useState<
-    "idle" | "recording" | "unsupported" | "permission-denied"
-  >("idle");
+  const [status, setStatus] = useState<VoiceInputStatus>("idle");
   const [transcript, setTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [waveformData, setWaveformData] = useState<number[]>(() =>
@@ -82,14 +86,14 @@ export function useVoiceInput(): UseVoiceInputReturn {
     tick();
   };
 
-  const startRecording = async () => {
+  const startRecording = async (): Promise<VoiceInputStatus> => {
     const SpeechRecognitionCtor =
       (window as unknown as Record<string, unknown>).SpeechRecognition ||
       (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
 
     if (!SpeechRecognitionCtor) {
       setStatus("unsupported");
-      return;
+      return "unsupported";
     }
 
     // Request microphone permission first — this triggers the browser prompt
@@ -98,7 +102,7 @@ export function useVoiceInput(): UseVoiceInputReturn {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       setStatus("permission-denied");
-      return;
+      return "permission-denied";
     }
 
     setTranscript("");
@@ -151,8 +155,13 @@ export function useVoiceInput(): UseVoiceInputReturn {
     try {
       recognition.start();
     } catch {
+      isRecordingRef.current = false;
+      recognitionRef.current = null;
+      stopVisualizer();
       setStatus("idle");
+      return "idle";
     }
+    return "recording";
   };
 
   const stopRecording = (): string => {

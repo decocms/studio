@@ -47,6 +47,28 @@ const createEditFormSchema = (t: TFunction) =>
 
 type EditFormData = z.infer<ReturnType<typeof createEditFormSchema>>;
 
+/**
+ * The stored apiKey blob for openai-compatible keys encodes {baseUrl, apiKey}
+ * together. If the base URL changes without a freshly typed apiKey, the
+ * previous plaintext key isn't available client-side (only a masked preview
+ * is) to re-encode — so submitting would silently wipe the stored credential.
+ */
+export function needsApiKeyForBaseUrlChange({
+  isOpenAICompatible,
+  baseUrl,
+  currentBaseUrl,
+  apiKey,
+}: {
+  isOpenAICompatible: boolean;
+  baseUrl?: string;
+  currentBaseUrl?: string;
+  apiKey?: string;
+}): boolean {
+  return (
+    isOpenAICompatible && !!baseUrl && baseUrl !== currentBaseUrl && !apiKey
+  );
+}
+
 interface EditFormProps {
   providerKey: AiProviderKey;
   provider: AiProviderInfo;
@@ -83,6 +105,7 @@ function EditForm({
     register,
     handleSubmit,
     watch,
+    setError,
     formState: { errors },
   } = useForm<EditFormData>({
     resolver: zodResolver(editFormSchema),
@@ -108,17 +131,6 @@ function EditForm({
         } else {
           apiKeyValue = data.apiKey;
         }
-      } else if (
-        isOpenAICompatible &&
-        data.baseUrl &&
-        data.baseUrl !== currentBaseUrl
-      ) {
-        // Base URL changed but no new API key — re-encode with existing masked key not possible.
-        // We encode the new baseUrl with empty apiKey so the connection still works.
-        apiKeyValue = JSON.stringify({
-          baseUrl: data.baseUrl,
-          apiKey: "",
-        });
       }
 
       await studio.call("AI_PROVIDER_KEY_UPDATE", {
@@ -140,7 +152,27 @@ function EditForm({
   });
 
   return (
-    <form onSubmit={handleSubmit((data) => save(data))} className="space-y-3">
+    <form
+      onSubmit={handleSubmit((data) => {
+        if (
+          needsApiKeyForBaseUrlChange({
+            isOpenAICompatible,
+            baseUrl: data.baseUrl,
+            currentBaseUrl,
+            apiKey: data.apiKey,
+          })
+        ) {
+          setError("apiKey", {
+            message: t(
+              "settings.editProviderDialog.apiKeyRequiredForBaseUrlChange",
+            ),
+          });
+          return;
+        }
+        save(data);
+      })}
+      className="space-y-3"
+    >
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
           {t("settings.editProviderDialog.label")}
@@ -202,6 +234,9 @@ function EditForm({
               </button>
             )}
           </div>
+          {errors.apiKey && (
+            <p className="text-xs text-destructive">{errors.apiKey.message}</p>
+          )}
         </div>
       )}
 

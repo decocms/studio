@@ -1,6 +1,5 @@
 import { Button } from "@deco/ui/components/button.tsx";
-import { XClose } from "@untitledui/icons";
-import { ReleaseCard } from "@/web/components/release-channel/release-card";
+import { AnnouncementCard } from "@/web/components/announcement-card";
 import { useReleaseSeenState } from "@/web/hooks/use-release-seen-state";
 import { useT } from "@/web/i18n/use-t.ts";
 import { authClient } from "@/web/lib/auth-client";
@@ -56,27 +55,49 @@ export function FloatingReleaseCard() {
   if (isSeen(candidate.id)) return null;
 
   return (
-    <div
-      role="dialog"
-      aria-label={t("releaseChannel.floatingReleaseCard.releaseAnnouncement")}
-      className="fixed bottom-6 right-6 z-50 w-[min(360px,calc(100vw-3rem))] rounded-lg border border-border bg-background p-4 shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300"
+    <AnnouncementCard
+      ariaLabel={t("announcements.release.ariaLabel")}
+      dismissLabel={t("announcements.release.dismiss")}
+      eyebrow={candidate.eyebrow}
+      title={candidate.title}
+      onDismiss={() => markSeen(candidate.id)}
+      footerLeading={
+        candidate.learnMoreHref ? (
+          <a
+            href={candidate.learnMoreHref}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => markSeen(candidate.id)}
+            className="underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {t("announcements.release.learnMore")}
+          </a>
+        ) : null
+      }
+      actions={
+        candidate.cta ? (
+          <Button asChild size="sm" onClick={() => markSeen(candidate.id)}>
+            <a href={candidate.cta.href}>{candidate.cta.label}</a>
+          </Button>
+        ) : null
+      }
     >
-      <Button
-        size="icon"
-        variant="ghost"
-        aria-label={t(
-          "releaseChannel.floatingReleaseCard.dismissReleaseAnnouncement",
-        )}
-        className="absolute right-2 top-2 size-7 text-muted-foreground"
-        onClick={() => markSeen(candidate.id)}
-      >
-        <XClose size={14} />
-      </Button>
-      <ReleaseCard
-        release={candidate}
-        onCtaClick={() => markSeen(candidate.id)}
-        onLearnMoreClick={() => markSeen(candidate.id)}
-      />
-    </div>
+      <ul className="flex flex-col gap-3">
+        {candidate.bullets.map((bullet, idx) => (
+          <li key={idx} className="flex items-start gap-3">
+            <bullet.icon
+              size={20}
+              className="mt-0.5 shrink-0 text-muted-foreground"
+            />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {bullet.title}
+              </p>
+              <p className="text-xs text-muted-foreground">{bullet.body}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </AnnouncementCard>
   );
 }

@@ -454,9 +454,12 @@ function PinAgentPopoverContent({
           />
         )}
 
-        {/* Agents */}
-        {plainAgents.length > 0 && <SectionLabelAgents />}
-        {plainAgents.map((agent) => (
+        {/* Code Agents — repo-backed. The Import button is always available
+            when not filtering, so a repo can be imported even with none yet. */}
+        {(codeAgents.length > 0 || !search) && (
+          <SectionLabelCodeAgents onImportFromGithub={onImportFromGithub} />
+        )}
+        {codeAgents.map((agent) => (
           <AgentRow
             key={agent.id}
             agent={agent}
@@ -465,12 +468,9 @@ function PinAgentPopoverContent({
           />
         ))}
 
-        {/* Code Agents — repo-backed. The Import button is always available
-            when not filtering, so a repo can be imported even with none yet. */}
-        {(codeAgents.length > 0 || !search) && (
-          <SectionLabelCodeAgents onImportFromGithub={onImportFromGithub} />
-        )}
-        {codeAgents.map((agent) => (
+        {/* Agents */}
+        {plainAgents.length > 0 && <SectionLabelAgents />}
+        {plainAgents.map((agent) => (
           <AgentRow
             key={agent.id}
             agent={agent}

@@ -315,6 +315,27 @@ function buildDecoOAuthParams(projectLocator: string | null): URLSearchParams {
 // ============================================================================
 
 /**
+ * Paths exempt from the server-side SSO enforcement middleware: SSO/auth
+ * routes, the OAuth proxy (legacy `/oauth-proxy/...` and canonical
+ * `/api/:org/oauth-proxy/...` — both must stay reachable so a browser
+ * session mid-connect to a downstream MCP isn't 403'd before it can
+ * establish an SSO session), and the instance-level admin surface.
+ */
+export function isSsoExemptPath(path: string): boolean {
+  return (
+    path.startsWith("/api/org-sso/") ||
+    path.startsWith("/api/auth/") ||
+    path.startsWith("/api/tools/management") ||
+    path.startsWith("/oauth-proxy/") ||
+    /^\/api\/[^/]+\/oauth-proxy\//.test(path) ||
+    // Instance-level operator surface — not governed by any single org's SSO
+    // policy. Without this, an admin whose active org enforces SSO gets 403'd
+    // off the whole dashboard, and the UI reads that as "not an admin".
+    path.startsWith(`${ADMIN_API_PREFIX}/`)
+  );
+}
+
+/**
  * Handle OAuth-proxy requests for an MCP connection.
  *
  * On the org-scoped mount (`/api/:org/oauth-proxy/...`) `resolveOrgFromPath`
@@ -1771,18 +1792,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // who haven't completed the SSO flow. Exempt paths: SSO routes themselves,
   // auth routes, and non-org-scoped endpoints.
   app.use("*", async (c, next) => {
-    const path = c.req.path;
-    // Skip SSO enforcement for SSO routes, auth routes, and public endpoints
-    if (
-      path.startsWith("/api/org-sso/") ||
-      path.startsWith("/api/auth/") ||
-      path.startsWith("/api/tools/management") ||
-      path.startsWith("/oauth-proxy/") ||
-      // Instance-level operator surface — not governed by any single org's SSO
-      // policy. Without this, an admin whose active org enforces SSO gets 403'd
-      // off the whole dashboard, and the UI reads that as "not an admin".
-      path.startsWith(`${ADMIN_API_PREFIX}/`)
-    ) {
+    if (isSsoExemptPath(c.req.path)) {
       return next();
     }
 

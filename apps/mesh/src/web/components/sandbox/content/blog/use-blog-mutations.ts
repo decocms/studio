@@ -7,12 +7,19 @@
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
+import { decoRepoPath } from "@/web/components/sections-editor/deco-repo-path";
 import { blogBlockFilePath } from "./blog-data";
 
 interface BlogMutationParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  /**
+   * Project package path (`metadata.runtime.path`) to prefix onto the daemon
+   * write path — the daemon resolves against the repo root. Resolve via
+   * `usePackagePath` at the call site (keeps this hook free of ProjectContext).
+   */
+  packagePath?: string | null;
 }
 
 function decofileQueryKey({
@@ -68,7 +75,7 @@ export function useSaveBlogBlock(params: BlogMutationParams) {
         params,
         "write",
         {
-          path: blogBlockFilePath(blockKey),
+          path: decoRepoPath(params.packagePath, blogBlockFilePath(blockKey)),
           content: JSON.stringify(data, null, 2),
         },
         "Write failed",
@@ -103,7 +110,7 @@ export function useDeleteBlogBlock(params: BlogMutationParams) {
       postToSandbox(
         params,
         "unlink",
-        { path: blogBlockFilePath(blockKey) },
+        { path: decoRepoPath(params.packagePath, blogBlockFilePath(blockKey)) },
         "Delete failed",
       ) as Promise<{ ok: true; existed: boolean }>,
     onMutate: async ({ blockKey }) => {

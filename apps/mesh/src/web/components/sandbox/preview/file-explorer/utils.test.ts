@@ -15,6 +15,7 @@ import {
   mergeGlobLists,
   parseGrepContent,
   pathExistsInFileList,
+  stripLineNumbers,
   toDaemonPath,
   toTreePath,
   validateExplorerEntryName,
@@ -280,5 +281,33 @@ describe("file-explorer utils", () => {
       },
       { path: "/a.ts", matches: [{ path: "/a.ts", line: 2, text: "b" }] },
     ]);
+  });
+});
+
+describe("stripLineNumbers", () => {
+  it("strips the <n>\\t prefix from a single line", () => {
+    expect(stripLineNumbers("1\thello")).toBe("hello");
+  });
+
+  it("strips the prefix from every line", () => {
+    expect(stripLineNumbers('1\t{\n2\t  "a": 1\n3\t}')).toBe('{\n  "a": 1\n}');
+  });
+
+  it("preserves a line containing a carriage return verbatim", () => {
+    // A `(.*)` capture would stop at \r and truncate the rest; `replace` keeps it.
+    expect(stripLineNumbers("1\tvalue\rmore")).toBe("value\rmore");
+  });
+
+  it("preserves U+2028 / U+2029 line separators (the regression this fixes)", () => {
+    // These aren't `\n`, so `.split("\n")` keeps them within one line; the old
+    // `(.*)` capture stopped at them and truncated the tail. `replace` keeps it.
+    expect(stripLineNumbers("1\ta b")).toBe("a b");
+    expect(stripLineNumbers("1\tx y")).toBe("x y");
+  });
+
+  it("leaves a line without a numeric-tab prefix untouched", () => {
+    expect(stripLineNumbers("no prefix here")).toBe("no prefix here");
+    // Only a leading <digits>\t is stripped, not an interior tab.
+    expect(stripLineNumbers("1\tkey\tvalue")).toBe("key\tvalue");
   });
 });

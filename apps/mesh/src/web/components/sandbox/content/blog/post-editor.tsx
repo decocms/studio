@@ -32,6 +32,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
+import { usePackagePath } from "@/web/components/sections-editor/use-package-path";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -81,7 +82,12 @@ export function PostEditor({
   previewBaseUrl?: string | null;
 }) {
   const t = useT();
-  const save = useSaveBlogBlock({ orgSlug, virtualMcpId, branch });
+  const save = useSaveBlogBlock({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    packagePath: usePackagePath(virtualMcpId),
+  });
   const initial = getBlogPayload(block, "posts");
 
   const [post, setPost] = useAutosave(initial, (next) => {

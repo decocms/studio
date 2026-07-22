@@ -63,6 +63,34 @@ function authBadgeLabel(
   }
 }
 
+export function ConnectionIcon({
+  icon,
+  title,
+}: {
+  icon: string | null;
+  title: string;
+}) {
+  const [iconFailed, setIconFailed] = useState(false);
+
+  return (
+    <div className="size-10 rounded-lg border border-border bg-muted/20 overflow-hidden shrink-0 flex items-center justify-center">
+      {icon && !iconFailed ? (
+        <img
+          src={icon}
+          alt={title}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={() => setIconFailed(true)}
+        />
+      ) : (
+        <span className="text-xs font-semibold text-muted-foreground">
+          {title.charAt(0).toUpperCase()}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ConnectionRow({
   entry,
   onAuthChanged,
@@ -92,7 +120,7 @@ function ConnectionRow({
   const isUnlisted = entry.item?.is_unlisted ?? false;
   const isRequestSource = entry.source === "request";
   const probeQuery = useQuery({
-    queryKey: KEYS.monitorConnectionAuthProbe(connectionId),
+    queryKey: KEYS.monitorConnectionAuthProbe(org.id, connectionId),
     queryFn: async () =>
       isConnectionAuthenticated({
         url: `/api/${org.slug}/mcp/${connectionId}`,
@@ -127,7 +155,18 @@ function ConnectionRow({
     updateAuth.mutate(
       { connectionId, authStatus: "authenticated" },
       {
-        onSuccess: () => onAuthChanged(),
+        onSuccess: () => {
+          onAuthChanged();
+          // Auth changed → upstream may return different content; drop cached
+          // UI HTML for this connection (IDB + in-memory query) so it re-reads
+          // fresh, regardless of whether auth happened via OAuth or a token.
+          void clearHtmlResourceCacheForConnection(connectionId);
+          queryClient.invalidateQueries({
+            predicate: (query) =>
+              query.queryKey[1] === UI_RESOURCE_HTML_KEY &&
+              query.queryKey[3] === connectionId,
+          });
+        },
         onError: (err) =>
           toast.error(
             t("registry.monitorConnectionsPanel.failedToSaveAuthStatus", {
@@ -277,14 +316,6 @@ function ConnectionRow({
       setIsReplacingToken(false);
       setTokenValue("");
       markAuthenticated();
-      // Auth changed → upstream may return different content; drop cached UI
-      // HTML for this connection (IDB + in-memory query) so it re-reads fresh.
-      void clearHtmlResourceCacheForConnection(connectionId);
-      queryClient.invalidateQueries({
-        predicate: (query) =>
-          query.queryKey[1] === UI_RESOURCE_HTML_KEY &&
-          query.queryKey[3] === connectionId,
-      });
       await probeQuery.refetch();
     } catch (err) {
       toast.error(
@@ -340,20 +371,9 @@ function ConnectionRow({
     <Card className="p-3 space-y-3 h-full">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
-          <div className="size-10 rounded-lg border border-border bg-muted/20 overflow-hidden shrink-0 flex items-center justify-center">
-            {icon ? (
-              <img
-                src={icon}
-                alt={title}
-                className="h-full w-full object-cover"
-                loading="lazy"
-              />
-            ) : (
-              <span className="text-xs font-semibold text-muted-foreground">
-                {title.charAt(0).toUpperCase()}
-              </span>
-            )}
-          </div>
+          {/* Remount on icon URL change so a prior load failure doesn't stick
+              around as a permanent fallback once a new icon is synced in. */}
+          <ConnectionIcon key={icon ?? title} icon={icon} title={title} />
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">{title}</p>
             <p className="text-xs text-muted-foreground break-all">

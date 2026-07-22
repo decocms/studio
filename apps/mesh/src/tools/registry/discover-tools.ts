@@ -14,6 +14,10 @@ function isPrivateIPv4Octets(a: number, b: number | undefined): boolean {
   if (a === 127) return true;
   if (a === 169 && b === 254) return true;
   if (a === 0) return true;
+  // RFC 6598 Shared Address Space (100.64.0.0/10) — CGNAT range also used by
+  // cloud providers for internal service/metadata endpoints (e.g. Alibaba
+  // Cloud's 100.100.100.200 metadata server).
+  if (a === 100 && b !== undefined && b >= 64 && b <= 127) return true;
   return false;
 }
 
@@ -41,6 +45,15 @@ function isPrivateEmbeddedIPv4(ipv6: string): boolean {
   // second-to-last word (well-known /96 prefix, IPv4 in the last 32 bits).
   if (ipv6.startsWith("64:ff9b::") && groups.length >= 4) {
     const [a, b] = hexWordToIPv4(groups[groups.length - 2]!);
+    if (isPrivateIPv4Octets(a, b)) return true;
+  }
+
+  // IPv4-compatible IPv6 (deprecated, RFC 4291): dotted ::a.b.c.d input is
+  // always normalized by `new URL()` into compressed hex (e.g. ::127.0.0.1
+  // becomes ::7f00:1) before we ever see the hostname, so it collapses to
+  // exactly "::" + 2 hex words — same shape as the 6to4 case above.
+  if (ipv6.startsWith("::") && groups.length === 2) {
+    const [a, b] = hexWordToIPv4(groups[0]!);
     if (isPrivateIPv4Octets(a, b)) return true;
   }
 
@@ -77,12 +90,6 @@ export function isPrivateUrl(url: string): boolean {
       if (ipv6.startsWith("100:")) return true;
       if (ipv6.startsWith("::1")) return true;
       if (isPrivateEmbeddedIPv4(ipv6)) return true;
-
-      const v4compat = ipv6.match(/^::(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-      if (v4compat) {
-        const [, a] = v4compat.map(Number);
-        if (a === 127 || a === 10 || a === 0) return true;
-      }
     }
 
     return false;
@@ -132,6 +139,11 @@ interface DiscoverTool {
   description?: string | null;
 }
 
+const RawDiscoverToolSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable().optional(),
+});
+
 function isAuthRequiredError(message: string): boolean {
   const lower = message.toLowerCase();
   return (
@@ -141,6 +153,60 @@ function isAuthRequiredError(message: string): boolean {
     lower.includes("403") ||
     lower.includes('"code":-32000')
   );
+}
+
+/**
+ * Parse a raw `tools/list` JSON-RPC response body (plain JSON or SSE-framed)
+ * into a validated tool list. Unlike the MCP SDK client path, this fallback
+ * talks to the server over a bare `fetch`, so nothing validates the shape of
+ * the remote server's response until this function does — a malformed or
+ * malicious `name`/`description` here would otherwise flow straight into the
+ * UI (rendered as a React child, used as a list key).
+ */
+export function parseToolsListResponse(text: string): DiscoverTool[] | null {
+  let json: Record<string, unknown> | null = null;
+
+  try {
+    if (text.includes("event:") || text.includes("data:")) {
+      const dataLine = text.split("\n").find((l) => l.startsWith("data:"));
+      if (dataLine) {
+        json = JSON.parse(dataLine.slice(5).trim());
+      }
+    } else {
+      json = JSON.parse(text);
+    }
+  } catch {
+    return null;
+  }
+
+  if (!json) return null;
+
+  const result = (json.result as Record<string, unknown>) ?? json;
+  const parsed = z.array(RawDiscoverToolSchema).safeParse(result?.tools);
+  if (!parsed.success) return null;
+
+  return parsed.data.map((t) => ({
+    name: t.name,
+    description: t.description ?? null,
+  }));
+}
+
+/**
+ * Race a promise against a timeout, clearing the timer either way. A bare
+ * `Promise.race([p, new Promise((_, reject) => setTimeout(reject, ms))])`
+ * leaves that setTimeout running after `p` wins the race — it fires later
+ * as an unhandled rejection (nothing is still awaiting it).
+ */
+export function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function tryRawToolsList(
@@ -163,33 +229,18 @@ async function tryRawToolsList(
         method: "tools/list",
         params: {},
       }),
+      // `isPrivateUrl` only vets the URL we're about to fetch — a remote
+      // server could otherwise 3xx-redirect this request to an internal
+      // address (e.g. the cloud metadata endpoint) and bypass that check
+      // entirely, since fetch follows redirects by default.
+      redirect: "manual",
       signal: controller.signal,
     });
 
     if (!res.ok) return null;
 
     const text = await res.text();
-    let json: Record<string, unknown> | null = null;
-
-    if (text.includes("event:") || text.includes("data:")) {
-      const dataLine = text.split("\n").find((l) => l.startsWith("data:"));
-      if (dataLine) {
-        json = JSON.parse(dataLine.slice(5).trim());
-      }
-    } else {
-      json = JSON.parse(text);
-    }
-
-    if (!json) return null;
-
-    const result = (json.result as Record<string, unknown>) ?? json;
-    const tools = result?.tools as DiscoverTool[] | undefined;
-    if (!Array.isArray(tools)) return null;
-
-    return tools.map((t) => ({
-      name: t.name,
-      description: t.description ?? null,
-    }));
+    return parseToolsListResponse(text);
   } catch {
     return null;
   } finally {
@@ -226,13 +277,6 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
     };
 
     const timeoutMs = 10_000;
-    const makeTimeout = () =>
-      new Promise<never>((_, reject) => {
-        setTimeout(
-          () => reject(new Error("Connection timeout (10s)")),
-          timeoutMs,
-        );
-      });
 
     const urlVariants = getUrlVariants(url);
     const transportTypes: TransportType[] =
@@ -265,8 +309,16 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
                 requestInit: { headers },
               });
 
-        await Promise.race([client.connect(transport), makeTimeout()]);
-        const result = await Promise.race([client.listTools(), makeTimeout()]);
+        await withTimeout(
+          client.connect(transport),
+          timeoutMs,
+          "Connection timeout (10s)",
+        );
+        const result = await withTimeout(
+          client.listTools(),
+          timeoutMs,
+          "Connection timeout (10s)",
+        );
 
         const tools = (result.tools || []).map(
           (t: { name: string; description?: string | null }) => ({

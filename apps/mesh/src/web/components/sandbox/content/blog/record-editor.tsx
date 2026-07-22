@@ -13,6 +13,7 @@ import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import { ImageField } from "@/web/components/sections-editor/fields/image-field";
 import { buildBlogBlock, getBlogPayload, type BlogKind } from "./blog-data";
 import { str } from "./blocks/primitives";
+import { usePackagePath } from "@/web/components/sections-editor/use-package-path";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -87,7 +88,12 @@ export function RecordEditor({
   block: Record<string, unknown> | undefined;
 }) {
   const t = useT();
-  const save = useSaveBlogBlock({ orgSlug, virtualMcpId, branch });
+  const save = useSaveBlogBlock({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    packagePath: usePackagePath(virtualMcpId),
+  });
   const initial = getBlogPayload(block, kind);
 
   const [payload, setPayload] = useAutosave(initial, (next) => {

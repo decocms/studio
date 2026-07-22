@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessage } from "ai";
-import { deriveHighlightFlags } from "./use-highlight-count";
+import {
+  deriveHighlightFlags,
+  type HighlightFlags,
+} from "./use-highlight-count";
 
-const noFlags = {
+const noFlags: HighlightFlags = {
   isCreditExhausted: false,
   hasTodos: false,
   showError: false,
@@ -10,7 +13,8 @@ const noFlags = {
   hasApprovals: false,
   hasPlans: false,
   isWaitingForUserInput: false,
-} as const;
+  todos: [],
+};
 
 const baseInput = {
   messages: [] as UIMessage[],
@@ -97,7 +101,14 @@ describe("deriveHighlightFlags", () => {
     ).toEqual({ ...noFlags, isWaitingForUserInput: true });
   });
 
-  test("todos present → hasTodos true", () => {
+  test("todos present → hasTodos true, todos exposed for reuse", () => {
+    const todos = [
+      {
+        content: "A",
+        activeForm: "Doing A",
+        status: "pending" as const,
+      },
+    ];
     const messages: UIMessage[] = [
       {
         id: "a1",
@@ -107,15 +118,7 @@ describe("deriveHighlightFlags", () => {
             type: "tool-todo_write",
             toolCallId: "c1",
             state: "input-available",
-            input: {
-              todos: [
-                {
-                  content: "A",
-                  activeForm: "Doing A",
-                  status: "pending" as const,
-                },
-              ],
-            },
+            input: { todos },
           },
         ],
       } as unknown as UIMessage,
@@ -123,6 +126,7 @@ describe("deriveHighlightFlags", () => {
     expect(deriveHighlightFlags({ ...baseInput, messages })).toEqual({
       ...noFlags,
       hasTodos: true,
+      todos,
     });
   });
 

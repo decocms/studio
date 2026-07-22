@@ -5,7 +5,6 @@ export type BlocksTarget =
 export interface BlocksPreviewWorkspaceState {
   target: BlocksTarget | null;
   editSeoPageKey: string | null;
-  previewRevision: number;
   /**
    * `x-deco-matchers-override` params published by the Blocks panel so the
    * (independent) Preview iframe renders the variant currently selected in the
@@ -21,13 +20,11 @@ export type BlocksPreviewWorkspaceAction =
       target: Extract<BlocksTarget, { kind: "page" }>;
     }
   | { type: "consume-edit-seo" }
-  | { type: "saved" }
   | { type: "variant-override"; params: string[] | null };
 
 export const INITIAL_BLOCKS_PREVIEW_WORKSPACE: BlocksPreviewWorkspaceState = {
   target: null,
   editSeoPageKey: null,
-  previewRevision: 0,
   variantOverride: null,
 };
 
@@ -48,8 +45,6 @@ export function blocksPreviewWorkspaceReducer(
       };
     case "consume-edit-seo":
       return { ...state, editSeoPageKey: null };
-    case "saved":
-      return { ...state, previewRevision: state.previewRevision + 1 };
     case "variant-override":
       return { ...state, variantOverride: action.params };
   }

@@ -17,6 +17,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { LayoutLeft, SearchMd } from "@untitledui/icons";
 import { useState } from "react";
 import {
+  filterIconNames,
   getIconComponent,
   getIconNames,
   humanizeIconName,
@@ -56,15 +57,7 @@ export function SimpleIconPicker({
   const currentIconName = parsed.type === "icon" ? parsed.name : null;
 
   const allNames = getIconNames();
-  const filteredNames = search.trim()
-    ? allNames.filter((n) => {
-        const searchLower = search.toLowerCase();
-        return (
-          humanizeIconName(n).includes(searchLower) ||
-          n.toLowerCase().includes(searchLower)
-        );
-      })
-    : allNames;
+  const filteredNames = filterIconNames(allNames, search);
 
   return (
     <Popover open={disabled ? false : open} onOpenChange={setOpen}>
@@ -72,6 +65,7 @@ export function SimpleIconPicker({
         <button
           type="button"
           disabled={disabled}
+          aria-label="Change icon"
           className={cn(
             "size-7 shrink-0 rounded-md transition-colors flex items-center justify-center",
             disabled
@@ -123,6 +117,7 @@ export function SimpleIconPicker({
                         : "text-muted-foreground hover:bg-accent hover:text-foreground",
                     )}
                     title={humanizeIconName(iconName)}
+                    aria-label={humanizeIconName(iconName)}
                   >
                     <IconComp size={16} />
                   </button>

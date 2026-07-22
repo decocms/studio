@@ -99,9 +99,12 @@ describe("FloatingReleaseCard", () => {
       { wrapper },
     );
     expect(getByText("Fresh Release")).toBeInTheDocument();
-    expect(getByRole("dialog", { name: "Release announcement" })).toHaveClass(
-      "fixed",
-    );
+    expect(
+      getByRole("dialog", { name: "Release announcement" }),
+    ).toHaveAttribute("data-slot", "announcement-card");
+    expect(
+      getByRole("dialog", { name: "Release announcement" }),
+    ).not.toHaveClass("fixed");
     expect(
       queryByRole("region", { name: "Release announcement" }),
     ).not.toBeInTheDocument();

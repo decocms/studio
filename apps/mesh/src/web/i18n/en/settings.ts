@@ -304,6 +304,8 @@ export const settings = {
   "settings.domainSettings.verified": "Verified",
   "settings.domainSettings.verify": "Verify",
   "settings.editProviderDialog.apiKey": "API key",
+  "settings.editProviderDialog.apiKeyRequiredForBaseUrlChange":
+    "Enter the API key again to confirm changing the base URL",
   "settings.editProviderDialog.baseUrl": "Base URL",
   "settings.editProviderDialog.baseUrlPlaceholder": "http://localhost:4000/v1",
   "settings.editProviderDialog.cancel": "Cancel",
@@ -394,6 +396,7 @@ export const settings = {
   "settings.orgRoleDetail.owner": "Owner",
   "settings.orgRoleDetail.ownerMembershipCannotBeChanged":
     "Owner membership cannot be changed",
+  "settings.orgRoleDetail.removeMember": "Remove {name} from role",
   "settings.orgRoleDetail.roleCreatedSuccessfully":
     "Role created successfully!",
   "settings.orgRoleDetail.roleName": "Role name",
@@ -511,8 +514,6 @@ export const settings = {
   "settings.providerKeyRow.cancel": "Cancel",
   "settings.providerKeyRow.delete": "Delete",
   "settings.providerKeyRow.deleteApiKey": "Delete API key",
-  "settings.providerKeyRow.deleteApiKeyWarning":
-    "This action cannot be undone. This will permanently delete {label}.",
   "settings.providerKeyRow.deleteProviderKey": "Delete provider key",
   "settings.providerKeyRow.editProviderKey": "Edit provider key",
   "settings.providerKeyRow.failedToDeleteKey": "Failed to delete key: {error}",

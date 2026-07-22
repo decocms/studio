@@ -8,11 +8,7 @@
  */
 
 import { z } from "zod";
-import type { Binder } from "../core/binder";
-import {
-  BaseCollectionEntitySchema,
-  createCollectionBindings,
-} from "./collections";
+import { BaseCollectionEntitySchema } from "./collections";
 
 /**
  * Schema for prompt arguments that can be passed when getting a prompt
@@ -81,30 +77,3 @@ export const PromptSchema = BaseCollectionEntitySchema.extend({
   messages: z.array(PromptMessageSchema).describe("Prompt messages template"),
 });
 export type Prompt = z.infer<typeof PromptSchema>;
-
-/**
- * PROMPT Collection Binding
- *
- * Collection bindings for prompts.
- * Provides full CRUD operations (LIST, GET, CREATE, UPDATE, DELETE) for prompts.
- */
-export const PROMPTS_COLLECTION_BINDING = createCollectionBindings(
-  "prompt",
-  PromptSchema,
-);
-
-/**
- * PROMPTS Binding
- *
- * Required tools:
- * - COLLECTION_PROMPT_LIST
- * - COLLECTION_PROMPT_GET
- *
- * Optional tools:
- * - COLLECTION_PROMPT_CREATE
- * - COLLECTION_PROMPT_UPDATE
- * - COLLECTION_PROMPT_DELETE
- */
-export const PROMPTS_BINDING = [
-  ...PROMPTS_COLLECTION_BINDING,
-] as const satisfies Binder;
