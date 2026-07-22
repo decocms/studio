@@ -191,6 +191,24 @@ export function parseToolsListResponse(text: string): DiscoverTool[] | null {
   }));
 }
 
+/**
+ * Race a promise against a timeout, clearing the timer either way. A bare
+ * `Promise.race([p, new Promise((_, reject) => setTimeout(reject, ms))])`
+ * leaves that setTimeout running after `p` wins the race — it fires later
+ * as an unhandled rejection (nothing is still awaiting it).
+ */
+export function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function tryRawToolsList(
   url: string,
   timeoutMs: number,
@@ -259,13 +277,6 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
     };
 
     const timeoutMs = 10_000;
-    const makeTimeout = () =>
-      new Promise<never>((_, reject) => {
-        setTimeout(
-          () => reject(new Error("Connection timeout (10s)")),
-          timeoutMs,
-        );
-      });
 
     const urlVariants = getUrlVariants(url);
     const transportTypes: TransportType[] =
@@ -298,8 +309,16 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
                 requestInit: { headers },
               });
 
-        await Promise.race([client.connect(transport), makeTimeout()]);
-        const result = await Promise.race([client.listTools(), makeTimeout()]);
+        await withTimeout(
+          client.connect(transport),
+          timeoutMs,
+          "Connection timeout (10s)",
+        );
+        const result = await withTimeout(
+          client.listTools(),
+          timeoutMs,
+          "Connection timeout (10s)",
+        );
 
         const tools = (result.tools || []).map(
           (t: { name: string; description?: string | null }) => ({

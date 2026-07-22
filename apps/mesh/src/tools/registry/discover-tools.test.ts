@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { isPrivateUrl, parseToolsListResponse } from "./discover-tools";
+import {
+  isPrivateUrl,
+  parseToolsListResponse,
+  withTimeout,
+} from "./discover-tools";
 
 describe("isPrivateUrl", () => {
   it("blocks plain private/loopback/link-local IPv4", () => {
@@ -56,6 +60,32 @@ describe("isPrivateUrl", () => {
     expect(isPrivateUrl("https://example.com/mcp")).toBe(false);
     expect(isPrivateUrl("http://8.8.8.8/")).toBe(false);
     expect(isPrivateUrl("http://[::8.8.8.8]/")).toBe(false);
+  });
+});
+
+describe("withTimeout", () => {
+  it("clears its timer once the wrapped promise wins, instead of firing an unhandled rejection later", async () => {
+    let rejection: unknown;
+    const onUnhandledRejection = (reason: unknown) => {
+      rejection = reason;
+    };
+    process.on("unhandledRejection", onUnhandledRejection);
+
+    try {
+      await withTimeout(Promise.resolve("fast"), 10, "should not fire");
+      // Give the (leaked, if the bug regresses) timer a chance to fire.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(rejection).toBeUndefined();
+    } finally {
+      process.off("unhandledRejection", onUnhandledRejection);
+    }
+  });
+
+  it("still rejects with the timeout message when the wrapped promise is too slow", async () => {
+    const never = new Promise<never>(() => {});
+    await expect(withTimeout(never, 10, "too slow")).rejects.toThrow(
+      "too slow",
+    );
   });
 });
 
