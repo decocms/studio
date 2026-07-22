@@ -136,6 +136,18 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     deps.betterAuthProtectedResourceHandler,
   );
 
+  // Aggregate (Decopilot) MCP endpoint at `/api/:org/mcp` has no connectionId,
+  // so its OAuth resource is Studio itself — the Better Auth MCP authorization
+  // server (with Dynamic Client Registration). This lets external MCP clients
+  // (e.g. Claude Desktop) register their own redirect_uri and log in against
+  // Studio, instead of the connection `oauth-proxy` which only accepts Studio's
+  // own origin. Mounted BEFORE the proxy catch-all so the well-known suffix is
+  // not swallowed as a `:connectionId`.
+  app.get(
+    "/mcp/.well-known/oauth-protected-resource",
+    deps.betterAuthProtectedResourceHandler,
+  );
+
   app.route("/mcp", createVirtualMcpRoutes());
   app.route("/mcp/self", createSelfRoutes());
   app.route("/mcp", createProxyRoutes());

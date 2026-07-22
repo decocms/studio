@@ -22,6 +22,39 @@ function isPublicSharePath(c: Context): boolean {
 }
 
 /**
+ * Return the organization bound into an API key's metadata, if present.
+ * Keys created for org-scoped access carry `metadata.organization.id`.
+ * Legacy/internal keys without that field are left to their existing route
+ * authorization rules; a malformed explicit organization binding fails closed.
+ */
+function getApiKeyOrganizationBinding(ctx: StudioContext): {
+  present: boolean;
+  id?: string;
+} {
+  const metadata = ctx.auth?.apiKey?.metadata;
+  if (
+    !metadata ||
+    typeof metadata !== "object" ||
+    Array.isArray(metadata) ||
+    !("organization" in metadata)
+  ) {
+    return { present: false };
+  }
+
+  const organization = metadata.organization;
+  if (
+    !organization ||
+    typeof organization !== "object" ||
+    Array.isArray(organization)
+  ) {
+    return { present: true };
+  }
+
+  const id = (organization as Record<string, unknown>).id;
+  return { present: true, id: typeof id === "string" ? id : undefined };
+}
+
+/**
  * The exhaustive list of service-token routes that resolve the org by ID —
  * their machine caller (commerce-discovery) holds the org id, not the slug.
  * One entry per route, as the path segments AFTER `/api/:org` (`"*"` matches
@@ -87,6 +120,31 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       return c.redirect(`/${encodeURIComponent(slug)}`, 302);
     }
     return c.json({ error: `organization "${slug}" not found` }, 404);
+  }
+
+  // API keys are capabilities bound to the organization that minted them.
+  // Do this check before membership/rebinding so a valid key from org B cannot
+  // be reused against org A merely because its owner is also an A member.
+  const apiKeyBinding = getApiKeyOrganizationBinding(ctx);
+  if (
+    ctx.auth?.apiKey?.id &&
+    apiKeyBinding.present &&
+    apiKeyBinding.id !== org.id
+  ) {
+    return c.json(
+      { error: "forbidden: API key is scoped to another organization" },
+      403,
+    );
+  }
+
+  if (
+    ctx.auth?.tokenOrganizationId &&
+    ctx.auth.tokenOrganizationId !== org.id
+  ) {
+    return c.json(
+      { error: "forbidden: token is scoped to another organization" },
+      403,
+    );
   }
 
   // Archived (soft-deleted) orgs are invisible to the API. Treat them exactly
