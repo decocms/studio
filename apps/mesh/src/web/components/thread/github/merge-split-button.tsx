@@ -31,7 +31,7 @@ export function MergeSplitButton({
   onReview,
 }: Props) {
   const t = useT();
-  const publishLabel = publishToBaseLabel(baseBranch);
+  const publishLabel = publishToBaseLabel(baseBranch, t);
   return (
     <div className="inline-flex items-stretch rounded-md">
       <Button

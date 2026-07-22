@@ -1,18 +1,30 @@
 import { describe, expect, test } from "bun:test";
 import { publishToBaseLabel } from "./publish-label.ts";
 
+const mockT = (key: string) => key;
+
 describe("publishToBaseLabel", () => {
-  test("main → Publish to production", () => {
-    expect(publishToBaseLabel("main")).toBe("Publish to production");
-    expect(publishToBaseLabel("Main")).toBe("Publish to production");
+  test("main → publishToProduction key", () => {
+    expect(publishToBaseLabel("main", mockT as never)).toBe(
+      "thread.headerActions.publishToProduction",
+    );
+    expect(publishToBaseLabel("Main", mockT as never)).toBe(
+      "thread.headerActions.publishToProduction",
+    );
   });
 
-  test("master → Publish to production", () => {
-    expect(publishToBaseLabel("master")).toBe("Publish to production");
+  test("master → publishToProduction key", () => {
+    expect(publishToBaseLabel("master", mockT as never)).toBe(
+      "thread.headerActions.publishToProduction",
+    );
   });
 
-  test("other bases → Publish", () => {
-    expect(publishToBaseLabel("develop")).toBe("Publish");
-    expect(publishToBaseLabel("staging")).toBe("Publish");
+  test("other bases → publish key", () => {
+    expect(publishToBaseLabel("develop", mockT as never)).toBe(
+      "thread.headerActions.publish",
+    );
+    expect(publishToBaseLabel("staging", mockT as never)).toBe(
+      "thread.headerActions.publish",
+    );
   });
 });

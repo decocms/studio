@@ -42,16 +42,68 @@ export const thread = {
   "thread.gitTab.pickBranchForPrStatus":
     "Pick a branch from the header to see PR status.",
   "thread.gitTab.prNumber": "PR #{number}",
+  "thread.headerActions.addressFeedback": "Address feedback",
+  "thread.headerActions.awaitingReview": "Awaiting review",
+  "thread.headerActions.branchInSyncTooltip": "Branch is in sync with {base}",
   "thread.headerActions.chatIsRunning": "Chat is running",
+  "thread.headerActions.checkingOutTooltip": "Checking out {branch}",
+  "thread.headerActions.cloneFailed": "Clone failed",
+  "thread.headerActions.cloneFailedDefaultTooltip":
+    "git clone failed — see setup logs",
+  "thread.headerActions.cloningRepo": "Cloning repo…",
+  "thread.headerActions.cloningRepoTooltip": "Cloning the project repository",
+  "thread.headerActions.continue": "Continue",
   "thread.headerActions.failedToMergePullRequest":
     "Failed to merge pull request",
+  "thread.headerActions.failingChecksTooltip": "Failing: {checks}",
+  "thread.headerActions.fixTests": "Fix tests",
   "thread.headerActions.githubConnectionRemoved":
     "GitHub connection was removed — relink the repository in Settings to save changes",
+  "thread.headerActions.loading": "Loading…",
+  "thread.headerActions.loadingBranch": "Loading branch…",
+  "thread.headerActions.loadingBranchTooltip":
+    "Loading branch and pull request status",
+  "thread.headerActions.markReady": "Mark ready",
+  "thread.headerActions.markDraftReadyTooltip":
+    "Mark draft PR ready for review",
+  "thread.headerActions.openNewPrTooltip":
+    "Open a new PR with the latest commits",
+  "thread.headerActions.openPrForBranchTooltip":
+    "Open a PR for {branch} → {base}",
+  "thread.headerActions.prMergedTooltip": "PR #{prNumber} merged into {base}",
   "thread.headerActions.publish": "Publish",
   "thread.headerActions.publishDirectlySkipReview":
     "Publish directly, skipping review",
   "thread.headerActions.publishedPr": "Published PR #{prNumber}",
+  "thread.headerActions.published": "Published",
+  "thread.headerActions.publishToProduction": "Publish to production",
+  "thread.headerActions.pushAndOpenPrTooltip":
+    "Push and open a PR for {branch} → {base}",
+  "thread.headerActions.pushLocalCommitsTooltip":
+    "Push local commits to PR #{prNumber}",
   "thread.headerActions.reconnectGithub": "Reconnect GitHub",
+  "thread.headerActions.reopen": "Reopen",
+  "thread.headerActions.reopenPrTooltip": "Reopen PR #{prNumber}",
+  "thread.headerActions.resolveConflictsTooltip":
+    "Resolve conflicts with {base} before merging",
+  "thread.headerActions.runningTests": "Running tests…",
+  "thread.headerActions.startingSandbox": "Starting sandbox…",
+  "thread.headerActions.submitForReview": "Submit for review",
+  "thread.headerActions.switchingTo": "Switching to {branch}…",
+  "thread.headerActions.syncWith": "Sync with {base}",
+  "thread.headerActions.unresolvedConversationsTooltip":
+    "{count} unresolved conversation(s)",
+  "thread.headerActions.upToDate": "Up to date",
+  "thread.headerActions.waitingForApprovalsTooltip":
+    "Waiting for required approvals",
+  "thread.headerActions.waitingForBranchTooltip":
+    "Waiting for branch metadata from the sandbox daemon",
+  "thread.headerActions.waitingForDaemonTooltip":
+    "Waiting for the sandbox daemon to come online",
+  "thread.headerActions.waitingForSandboxBranchTooltip":
+    "Waiting for sandbox branch",
+  "thread.headerActions.waitingOnChecksTooltip":
+    "Waiting on {count} check(s) to finish",
   "thread.mergeSplitButton.moreActionsAriaLabel": "More actions",
   "thread.mergeSplitButton.review": "Review",
   "thread.openInBoardButton.openTaskAriaLabel": "Open task in board",

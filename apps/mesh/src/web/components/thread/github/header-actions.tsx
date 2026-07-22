@@ -42,15 +42,17 @@ interface Props {
   virtualMcpId: string;
 }
 
-// Note: LOADING_BRANCH_BUTTON is module-scope and not component-rendered text directly;
-// will be replaced with i18n in HeaderActions component
-const LOADING_BRANCH_BUTTON: HeaderButton = {
-  label: "Loading branch…",
-  disabled: true,
-  loading: true,
-  variant: "outline",
-  tooltip: "Waiting for sandbox branch",
-};
+// Sentinel for the branch-not-yet-selected state; labels are filled in
+// at render time using the translated versions from the component.
+function makeBranchLoadingButton(t: TFunction): HeaderButton {
+  return {
+    label: t("thread.headerActions.loadingBranch"),
+    disabled: true,
+    loading: true,
+    variant: "outline",
+    tooltip: t("thread.headerActions.waitingForSandboxBranchTooltip"),
+  };
+}
 
 /**
  * HeaderActions renders the next-action button for the current branch + PR
@@ -204,8 +206,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
         checks: checksQuery.data ?? [],
         reviews: reviewsQuery.data ?? null,
         loading: isPrStateActivelyLoading(prQuery),
+        t,
       })
-    : LOADING_BRANCH_BUTTON;
+    : makeBranchLoadingButton(t);
 
   const debugKey = JSON.stringify({
     label: button.label,

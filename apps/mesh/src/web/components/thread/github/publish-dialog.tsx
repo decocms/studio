@@ -270,7 +270,7 @@ function PublishDialogBody({
   }
 
   const githubHeadBranch = readGitHeadBranch(gitStatus) ?? branch;
-  const publishLabel = publishToBaseLabel(baseBranch);
+  const publishLabel = publishToBaseLabel(baseBranch, t);
 
   const regenerateSuggestion = () => {
     if (!gitStatus || !gitDiff) return;
