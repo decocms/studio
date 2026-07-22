@@ -312,6 +312,8 @@ export const settings = {
   "settings.domainSettings.verified": "Verificado",
   "settings.domainSettings.verify": "Verificar",
   "settings.editProviderDialog.apiKey": "Chave de API",
+  "settings.editProviderDialog.apiKeyRequiredForBaseUrlChange":
+    "Informe a chave de API novamente para confirmar a mudança da URL base",
   "settings.editProviderDialog.baseUrl": "URL base",
   "settings.editProviderDialog.baseUrlPlaceholder": "http://localhost:4000/v1",
   "settings.editProviderDialog.cancel": "Cancelar",
