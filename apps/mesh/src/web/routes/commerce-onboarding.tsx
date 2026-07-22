@@ -16,6 +16,7 @@ import {
 import { isPostHogInitialized, track } from "@/web/lib/posthog-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { useT } from "@/web/i18n/use-t.ts";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import {
@@ -85,9 +86,30 @@ const useCommerceSiteHost = () => useContext(CommerceSiteHostContext);
 
 type CommerceOnboardingLayoutProps = ComponentProps<typeof AuthSplitLayout>;
 
+function LanguageSwitcher() {
+  const [preferences, setPreferences] = usePreferences();
+  const isPortuguese = preferences.language === "pt-BR";
+
+  return (
+    <button
+      onClick={() => {
+        setPreferences((prev) => ({
+          ...prev,
+          language: isPortuguese ? "en" : "pt-BR",
+        }));
+      }}
+      className="text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
+      type="button"
+    >
+      {isPortuguese ? "English" : "Português"}
+    </button>
+  );
+}
+
 function CommerceOnboardingLayout({
   visual,
-  ...props
+  children,
+  ...rest
 }: CommerceOnboardingLayoutProps) {
   const search = useSearch({ from: "/commerce-onboarding" });
   const { data: session } = authClient.useSession();
@@ -98,9 +120,15 @@ function CommerceOnboardingLayout({
 
   return (
     <AuthSplitLayout
-      {...props}
+      {...rest}
       visual={visual ?? <ScheduleMeetingVisual href={meetingUrl} />}
-    />
+    >
+      <div className="flex justify-between items-start mb-8">
+        <div />
+        <LanguageSwitcher />
+      </div>
+      {children}
+    </AuthSplitLayout>
   );
 }
 
