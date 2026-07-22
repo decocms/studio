@@ -27,7 +27,7 @@ export async function getRegistryPluginSettings(
   ctx: StudioContext,
   organizationId: string,
 ): Promise<PrivateRegistryPluginSettings> {
-  const rows = await (ctx.db as any)
+  const rows = await ctx.db
     .selectFrom("virtual_mcp_plugin_configs")
     .innerJoin(
       "connections",
@@ -39,9 +39,7 @@ export async function getRegistryPluginSettings(
     .where("virtual_mcp_plugin_configs.plugin_id", "=", PLUGIN_ID)
     .execute();
 
-  const parsedSettings = (rows as Array<{ settings: unknown }>).map((row) =>
-    parsePluginSettings(row.settings),
-  );
+  const parsedSettings = rows.map((row) => parsePluginSettings(row.settings));
 
   // Plugin settings are persisted per-project. For org-wide Store behavior, we
   // treat booleans as enabled when any project has them enabled.
