@@ -46,7 +46,17 @@ const COLOR_LABELS: Record<keyof BrandColors, string> = {
 };
 
 function domainHref(domain: string): string {
-  return domain.startsWith("http") ? domain : `https://${domain}`;
+  try {
+    const url = new URL(
+      domain.startsWith("http") ? domain : `https://${domain}`,
+    );
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return "about:blank";
+    }
+    return url.href;
+  } catch {
+    return "about:blank";
+  }
 }
 
 function getColorEntries(
