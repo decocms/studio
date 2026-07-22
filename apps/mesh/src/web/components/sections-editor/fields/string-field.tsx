@@ -72,15 +72,30 @@ function DatePickerInput({
 }) {
   const [open, setOpen] = useState(false);
 
-  const inputValue = withTime
-    ? isoToDateTimeInput(value)
-    : isoToDateInput(value);
+  const toInput = (iso: string) =>
+    withTime ? isoToDateTimeInput(iso) : isoToDateInput(iso);
+  const toIso = (input: string) =>
+    withTime ? dateTimeInputToIso(input) : dateInputToIso(input);
+
+  // Buffer the native input's string locally so a parent re-render (autosave,
+  // decofile refetch) mid-edit doesn't reassign the controlled <input>.value and
+  // yank focus/caret off the field — a Chrome quirk on date/datetime-local inputs
+  // that's most visible while typing the time segment of a datetime. Same
+  // local-state-with-external-resync pattern as PageHeaderInputs.
+  const [inputValue, setInputValue] = useState(() => toInput(value));
+  const [prevValue, setPrevValue] = useState(value);
+  // Resync only on genuine external value changes (calendar pick, section/item
+  // switch), never on our own edits echoing back — those round-trip to the same
+  // string, so the buffer already matches and we leave the in-progress edit alone.
+  if (value !== prevValue) {
+    setPrevValue(value);
+    const next = toInput(value);
+    if (next !== inputValue) setInputValue(next);
+  }
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(
-      withTime
-        ? dateTimeInputToIso(e.target.value)
-        : dateInputToIso(e.target.value),
-    );
+    setInputValue(e.target.value);
+    onChange(toIso(e.target.value));
   };
 
   const parsed = value ? new Date(value) : null;
@@ -98,7 +113,12 @@ function DatePickerInput({
     } else {
       next.setHours(0, 0, 0, 0);
     }
-    onChange(next.toISOString());
+    const iso = next.toISOString();
+    // Keep the local buffer and resync guard in step so the committed pick shows
+    // immediately and the value echoing back doesn't re-trigger a resync.
+    setInputValue(toInput(iso));
+    setPrevValue(iso);
+    onChange(iso);
     setOpen(false);
   };
 
@@ -111,6 +131,7 @@ function DatePickerInput({
         max={withTime ? DATETIME_MAX : DATE_MAX}
         value={inputValue}
         onChange={handleInputChange}
+        onBlur={() => setInputValue(toInput(value))}
         className="h-10 flex-1 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:opacity-0"
       />
       <Popover open={open} onOpenChange={setOpen}>

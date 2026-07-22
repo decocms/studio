@@ -743,7 +743,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       clearTimeout(fallbackTimer);
       iframe.tabIndex = prevTabIndex;
       iframe.style.pointerEvents = "";
-      focused?.focus();
+      // Only restore focus if the reload itself stole it (focus was on/inside the
+      // iframe, so blurring it dropped focus to <body>). If the user has since
+      // moved to another element — e.g. tabbed from a date field to a text input
+      // in the Blocks form while the debounced save-reload was in flight — leave
+      // it there; re-focusing `focused` would yank them back to the stale field.
+      const active = document.activeElement;
+      if (!active || active === document.body || active === iframe) {
+        focused?.focus();
+      }
       iframe.removeEventListener("load", restore);
     };
     iframe.addEventListener("load", restore);
