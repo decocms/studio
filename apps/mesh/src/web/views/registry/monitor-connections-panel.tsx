@@ -115,7 +115,7 @@ function ConnectionRow({
   const isUnlisted = entry.item?.is_unlisted ?? false;
   const isRequestSource = entry.source === "request";
   const probeQuery = useQuery({
-    queryKey: KEYS.monitorConnectionAuthProbe(connectionId),
+    queryKey: KEYS.monitorConnectionAuthProbe(org.id, connectionId),
     queryFn: async () =>
       isConnectionAuthenticated({
         url: `/api/${org.slug}/mcp/${connectionId}`,

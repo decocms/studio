@@ -48,20 +48,22 @@ export const KEYS = {
   publishRequestsCountByOrg: (orgId: string) =>
     [...KEYS.publishRequestsByOrg(orgId), "count"] as const,
   publishApiKeys: () => [...KEYS.all, "publish-api-keys"] as const,
-  monitor: () => [...KEYS.all, "monitor"] as const,
-  monitorRuns: () => [...KEYS.monitor(), "runs"] as const,
-  monitorRunsList: (status?: string) =>
-    [...KEYS.monitorRuns(), "list", { status: status ?? "all" }] as const,
-  monitorRun: (runId?: string) =>
-    [...KEYS.monitorRuns(), "run", runId ?? "none"] as const,
-  monitorResults: () => [...KEYS.monitor(), "results"] as const,
-  monitorResultsList: (runId?: string, status?: string) =>
+  monitor: (orgId: string) => [...KEYS.all, "monitor", orgId] as const,
+  monitorRuns: (orgId: string) => [...KEYS.monitor(orgId), "runs"] as const,
+  monitorRunsList: (orgId: string, status?: string) =>
+    [...KEYS.monitorRuns(orgId), "list", { status: status ?? "all" }] as const,
+  monitorRun: (orgId: string, runId?: string) =>
+    [...KEYS.monitorRuns(orgId), "run", runId ?? "none"] as const,
+  monitorResults: (orgId: string) =>
+    [...KEYS.monitor(orgId), "results"] as const,
+  monitorResultsList: (orgId: string, runId?: string, status?: string) =>
     [
-      ...KEYS.monitorResults(),
+      ...KEYS.monitorResults(orgId),
       "list",
       { runId: runId ?? "none", status: status ?? "all" },
     ] as const,
-  monitorConnections: () => [...KEYS.monitor(), "connections"] as const,
-  monitorConnectionAuthProbe: (connectionId: string) =>
-    [...KEYS.monitorConnections(), "auth-probe", connectionId] as const,
+  monitorConnections: (orgId: string) =>
+    [...KEYS.monitor(orgId), "connections"] as const,
+  monitorConnectionAuthProbe: (orgId: string, connectionId: string) =>
+    [...KEYS.monitorConnections(orgId), "auth-probe", connectionId] as const,
 };
