@@ -125,7 +125,11 @@ function DatePickerInput({
             <CalendarIcon className="h-4 w-4" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="end">
+        <PopoverContent
+          className="w-auto p-0"
+          align="end"
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
           <Calendar
             mode="single"
             selected={selected ?? undefined}
