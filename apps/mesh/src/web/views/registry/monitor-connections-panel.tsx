@@ -137,19 +137,25 @@ function ConnectionRow({
   const hasOAuthToken = probeResult?.hasOAuthToken ?? false;
   const isServerError = probeResult?.isServerError ?? false;
   const probeIsAuthenticated = probeResult?.isAuthenticated ?? false;
+  // A non-server-error `error` means the probe request itself failed (network,
+  // DNS, CORS) — distinct from "not authenticated yet", which otherwise falls
+  // through to the misleading "token required" flavor below.
+  const probeError = !isServerError ? probeResult?.error : undefined;
   const authFlavor = isProbeLoading
     ? "checking"
     : isServerError
       ? "server_error"
-      : supportsOAuth
-        ? probeIsAuthenticated
-          ? hasOAuthToken
-            ? "oauth_connected"
-            : "connected"
-          : "oauth_available"
-        : probeIsAuthenticated
-          ? "connected"
-          : "token_required";
+      : probeError
+        ? "unreachable"
+        : supportsOAuth
+          ? probeIsAuthenticated
+            ? hasOAuthToken
+              ? "oauth_connected"
+              : "connected"
+            : "oauth_available"
+          : probeIsAuthenticated
+            ? "connected"
+            : "token_required";
 
   const markAuthenticated = () => {
     updateAuth.mutate(
@@ -204,6 +210,16 @@ function ConnectionRow({
         toast.error(
           t("registry.monitorConnectionsPanel.serverErrorConnection", {
             title,
+          }),
+        );
+        return;
+      }
+
+      if (status.error) {
+        toast.error(
+          t("registry.monitorConnectionsPanel.connectionUnreachable", {
+            title,
+            error: status.error,
           }),
         );
         return;
@@ -403,7 +419,7 @@ function ConnectionRow({
                 variant="outline"
                 className={cn(
                   "text-[10px]",
-                  authFlavor === "server_error"
+                  authFlavor === "server_error" || authFlavor === "unreachable"
                     ? "border-destructive/40 text-destructive"
                     : authFlavor === "oauth_connected"
                       ? "border-success/30 text-success"
@@ -418,6 +434,8 @@ function ConnectionRow({
                   t("registry.monitorConnectionsPanel.checkingAuth")}
                 {authFlavor === "server_error" &&
                   t("registry.monitorConnectionsPanel.serverError")}
+                {authFlavor === "unreachable" &&
+                  t("registry.monitorConnectionsPanel.unreachable")}
                 {authFlavor === "oauth_connected" &&
                   t("registry.monitorConnectionsPanel.oauthConnected")}
                 {authFlavor === "oauth_available" &&

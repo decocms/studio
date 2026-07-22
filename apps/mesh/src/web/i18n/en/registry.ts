@@ -118,6 +118,8 @@ export const registry = {
     '"{title}" is reachable. You can re-authenticate if needed.',
   "registry.monitorConnectionsPanel.connectionsSynced":
     "Connections synced (store + pending requests)",
+  "registry.monitorConnectionsPanel.connectionUnreachable":
+    '"{title}" could not be reached: {error}',
   "registry.monitorConnectionsPanel.couldNotReachConnection":
     'Could not reach "{title}". The remote MCP may be down.',
   "registry.monitorConnectionsPanel.description1":
@@ -191,6 +193,7 @@ export const registry = {
   "registry.monitorConnectionsPanel.tokenManualAuth": "Token/manual auth",
   "registry.monitorConnectionsPanel.tokenSaved": 'Token saved for "{title}"!',
   "registry.monitorConnectionsPanel.unknownError": "Unknown error",
+  "registry.monitorConnectionsPanel.unreachable": "Unreachable",
   "registry.monitorConnectionsPanel.visibilityOnlyForStore":
     "Visibility controls are available only for store items.",
   "registry.monitorConnectionsPanel.visibilityUpdated": "Visibility updated",
