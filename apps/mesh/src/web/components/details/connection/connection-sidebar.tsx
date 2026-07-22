@@ -406,6 +406,9 @@ export function ConnectionFields({
                     onClick={() => field.onChange("")}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                     title={t("details.connectionSidebar.clearAndReplaceToken")}
+                    aria-label={t(
+                      "details.connectionSidebar.clearAndReplaceToken",
+                    )}
                   >
                     <XClose size={14} className="text-muted-foreground" />
                   </button>

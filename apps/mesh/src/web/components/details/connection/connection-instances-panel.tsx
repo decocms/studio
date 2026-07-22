@@ -107,6 +107,7 @@ function InstanceItem({
             className="h-7 w-7 text-muted-foreground"
             onClick={() => onToggleStatus(instance, "inactive")}
             title={t("details.connectionInstancesPanel.disable")}
+            aria-label={t("details.connectionInstancesPanel.disable")}
           >
             <SlashCircle01 size={13} />
           </Button>
@@ -117,6 +118,7 @@ function InstanceItem({
           className="h-7 w-7"
           onClick={() => onConfigure(instance)}
           title={t("details.connectionInstancesPanel.configure")}
+          aria-label={t("details.connectionInstancesPanel.configure")}
         >
           <Settings02 size={13} />
         </Button>
@@ -126,6 +128,7 @@ function InstanceItem({
           className="h-7 w-7 text-muted-foreground hover:text-destructive"
           onClick={() => onDelete(instance)}
           title={t("details.connectionInstancesPanel.delete")}
+          aria-label={t("details.connectionInstancesPanel.delete")}
         >
           <Trash01 size={13} />
         </Button>
@@ -160,6 +163,7 @@ function InstanceItemFallback({
           className="h-7 w-7"
           onClick={() => onConfigure(instance)}
           title={t("details.connectionInstancesPanel.configure")}
+          aria-label={t("details.connectionInstancesPanel.configure")}
         >
           <Settings02 size={13} />
         </Button>
