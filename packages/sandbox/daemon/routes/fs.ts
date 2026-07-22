@@ -4,6 +4,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 import { safePath } from "../paths";
+import { invalidDecofileBlockJson } from "../decofile-json";
 import { parseJsonBody, jsonResponse } from "./body-parser";
 
 /**
@@ -184,39 +185,6 @@ export function makeReadHandler(deps: FsDeps) {
   };
 }
 
-/**
- * Decofile block files (`.deco/blocks/*.json`) are machine-managed pure JSON —
- * never JSONC — and a single malformed one breaks the entire site render (the
- * runtime can't parse it). The section editor's save path builds a whole object
- * and `JSON.stringify`s it, so it can never emit invalid JSON. But the text
- * write/edit endpoints (`/write`, `/edit`) mutate file *bytes* directly — an
- * imprecise `edit` (e.g. dropping a wrapper object while leaving a `"rule": {…}`
- * sibling dangling inside an array, plus an unbalanced brace) produces
- * syntactically invalid JSON that then gets committed verbatim. Reject the write
- * when the *resulting* content wouldn't parse, so corruption can never reach disk.
- *
- * Scoped to `.deco/blocks/*.json` on purpose: those are small, pure JSON, and
- * the exact corruption surface. It deliberately does NOT touch JSONC configs
- * (`tsconfig.json` allows comments) or the multi-MB `.deco/*.gen.json` artifacts
- * (parsing those synchronously would risk the daemon's event loop).
- *
- * Returns an error string when the content is invalid, or null when the path is
- * out of scope or the JSON is well-formed.
- */
-export function invalidDecofileBlockJson(
-  relPath: string,
-  content: string,
-): string | null {
-  const normalized = relPath.replace(/\\/g, "/");
-  if (!/(^|\/)\.deco\/blocks\/.+\.json$/.test(normalized)) return null;
-  try {
-    JSON.parse(content);
-    return null;
-  } catch (e) {
-    return `Refusing to write invalid JSON to decofile block "${normalized}": ${(e as Error).message}`;
-  }
-}
-
 export function makeWriteHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { path?: string; content?: string };
@@ -230,7 +198,8 @@ export function makeWriteHandler(deps: FsDeps) {
     const filePath = safePath(deps.appRoot, deps.repoDir, body.path ?? "");
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
     const jsonError = invalidDecofileBlockJson(body.path ?? "", body.content);
-    if (jsonError) return jsonResponse({ error: jsonError }, 400);
+    if (jsonError)
+      return jsonResponse({ error: `Refusing to write ${jsonError}` }, 400);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, body.content, "utf-8");
     deps.onWorkingTreeWrite?.(body.path ?? "");
@@ -416,7 +385,8 @@ export function makeEditHandler(deps: FsDeps) {
       ? content.replaceAll(body.old_string, body.new_string)
       : content.replace(body.old_string, body.new_string);
     const jsonError = invalidDecofileBlockJson(body.path ?? "", updated);
-    if (jsonError) return jsonResponse({ error: jsonError }, 400);
+    if (jsonError)
+      return jsonResponse({ error: `Refusing to write ${jsonError}` }, 400);
     fs.writeFileSync(filePath, updated, "utf-8");
     deps.onWorkingTreeWrite?.(body.path ?? "");
     return jsonResponse({

@@ -15,6 +15,10 @@ import {
   InvalidRemoteBranchNameError,
 } from "../git/ref-name";
 import { safePath } from "../paths";
+import {
+  isDecofileBlockPath,
+  invalidDecofileBlockJson,
+} from "../decofile-json";
 import type { OperatorIdentity } from "../types";
 import { git } from "../setup/git";
 import { gitAsync } from "../git/git-async";
@@ -512,6 +516,24 @@ export function publish(deps: GitDeps, message: string): { pushed: boolean } {
 
   const status = computeWorkingTreeStatus(repoDir);
   const paths = changedPathsFromStatus(status);
+  // Last-resort net: never let a syntactically invalid decofile block reach the
+  // branch. The /write and /edit handlers already reject invalid blocks, but a
+  // mutation that bypassed them (or a future one) would otherwise be committed
+  // verbatim by publish() — which is also the shutdown-sync path — and break the
+  // whole site render. Refuse the publish with a clear, file-pointed error.
+  for (const rel of paths) {
+    if (!isDecofileBlockPath(rel)) continue;
+    let content: string;
+    try {
+      content = fs.readFileSync(path.join(repoDir, rel), "utf-8");
+    } catch {
+      continue; // deleted or unreadable — nothing to validate
+    }
+    const jsonError = invalidDecofileBlockJson(rel, content);
+    if (jsonError) {
+      throw new Error(`Refusing to publish: ${jsonError}`);
+    }
+  }
   if (paths.length > 0) {
     runGit(repoDir, ["add", "--", ...paths]);
   }

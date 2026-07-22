@@ -29,8 +29,8 @@ import {
   GREP_MAX_RESULT_LIMIT,
   resolveGrepResultLimit,
   toRepoRelativePath,
-  invalidDecofileBlockJson,
 } from "./fs";
+import { invalidDecofileBlockJson } from "../decofile-json";
 
 const hasRg = spawnSync("which", ["rg"]).status === 0;
 

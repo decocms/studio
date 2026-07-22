@@ -414,6 +414,63 @@ describe("git routes", () => {
     expect(files).not.toContain("org/");
   });
 
+  it("publish() refuses to commit an invalid decofile block and leaves HEAD untouched", () => {
+    const { appRoot, repoDir } = initRepo();
+    onFeatureBranch(repoDir);
+    // The block already exists and is tracked (git reports edits to individual
+    // tracked files) — mirrors the real corruption, which mutated an existing
+    // page block already in the working tree.
+    mkdirSync(join(repoDir, ".deco", "blocks"), { recursive: true });
+    const block = join(repoDir, ".deco", "blocks", "pages-home.json");
+    writeFileSync(block, '{ "__resolveType": "site/pages/Home.tsx" }');
+    gitSync(["add", "--", ".deco/blocks/pages-home.json"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    gitSync(["commit", "-m", "add block"], { cwd: repoDir, asUser: false });
+    const headBefore = gitSync(["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    // now corrupt it: the exact shape — a dangling key inside an array + brace
+    writeFileSync(
+      block,
+      '{ "benefits": [ { "label": "x" }, "rule": { "a": 1 } } ]',
+    );
+    // a valid tracked change too — publish must block the WHOLE commit, not just
+    // skip the bad file
+    writeFileSync(join(repoDir, "README.md"), "changed\n");
+
+    expect(() => publish({ appRoot, repoDir }, "shutdown sync")).toThrow(
+      /Refusing to publish.*invalid JSON.*pages-home\.json/,
+    );
+    // nothing committed — HEAD is exactly where it was
+    expect(
+      gitSync(["rev-parse", "HEAD"], { cwd: repoDir, asUser: false }),
+    ).toBe(headBefore);
+  });
+
+  it("publish() commits a valid decofile block", () => {
+    const { appRoot, repoDir } = initRepo();
+    onFeatureBranch(repoDir);
+    mkdirSync(join(repoDir, ".deco", "blocks"), { recursive: true });
+    writeFileSync(
+      join(repoDir, ".deco", "blocks", "pages-home.json"),
+      '{\n  "__resolveType": "site/pages/Home.tsx"\n}',
+    );
+    // No remote configured → the push throws, but the commit lands first.
+    try {
+      publish({ appRoot, repoDir }, "shutdown sync");
+    } catch {
+      // expected: push fails without a remote
+    }
+    const files = gitSync(["show", "--name-only", "--pretty=", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    expect(files).toContain(".deco/blocks/pages-home.json");
+  });
+
   it("publish() rejects a tokenless github origin with a clear error", () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);
