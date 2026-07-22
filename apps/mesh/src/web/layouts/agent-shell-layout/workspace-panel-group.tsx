@@ -100,42 +100,61 @@ function MainControls({
 }
 
 /**
- * Breakpoints that drive the main header's responsive degradation.
+ * Space budget (px) that drives the main header's responsive degradation.
  *
- * Priority as space shrinks (least essential drops first): the page selector
- * goes first, then the 3rd tab, then the 2nd — the right-side actions (Edit /
- * publish) always survive. Two independent measured signals drive this, so it
- * adapts to whatever the right actions actually take (branch selector present
- * or not, i18n label lengths, …) instead of guessing off the whole header:
+ * The header lays out as: [left group: chat + view tabs + tab-overflow] · [center:
+ * Preview's page selector] · [right actions: Edit / branch / ⋯ / publish]. As the
+ * panel narrows, controls drop in this exact order — 3rd tab, then 2nd tab, then
+ * the whole center — and NEVER reappear (see `headerLayout`). The right actions
+ * always survive.
  *
- *  - `pageSelectorMin` is checked against the *measured free gap* the selector
- *    sits in, so it hides (display:none) the instant that gap can't hold a
- *    usable selector, instead of squishing to a chevron with no label.
- *  - `threeTabs` / `twoTabs` are checked against the *space left of the right
- *    actions* (`headerWidth - rightWidth`), i.e. the room the tab group + gap
- *    actually get. A CSS safety net (the left group is `min-w-0`/overflow-hidden
- *    and shrinks) guarantees the right actions are never clipped even if these
- *    estimates run slightly optimistic — the tab group yields first.
+ * Both decisions are computed from ONE pair of stable measurements — the header
+ * width and the right-actions width — so nothing depends on the center gap (which
+ * grows when a tab folds and previously made the selector flicker back). `avail =
+ * headerWidth - rightWidth` is the room the left group + center actually share.
  */
 const HEADER_W = {
-  pageSelectorMin: 140,
-  /** Space left of the right actions to keep 3 labelled tabs before folding. */
-  threeTabs: 475,
-  /** Space left of the right actions to keep 2 labelled tabs before folding. */
-  twoTabs: 340,
+  /** Left prefix that's always there: chat toggle + tab-overflow menu + gaps. */
+  lead: 70,
+  /** One labelled view tab. */
+  tab: 132,
+  /**
+   * Room the center (Preview's page selector) needs before it's shown at all —
+   * generous enough that when it DOES show it reads its page name instead of
+   * squishing to a bare chevron. Below this it's hidden (display:none), not
+   * shrunk.
+   */
+  middle: 232,
 } as const;
 
 /**
- * How many view tabs to show given the space to the LEFT of the right actions.
- * `headerWidth`/`rightWidth` are `-1` until measured — treat that as roomy so
- * the header opens fully and only tightens once real measurements land.
+ * Given the header width and the measured right-actions width, decide how many
+ * view tabs to show (rest fold into the ⋯ menu) and whether the center page
+ * selector shows. Both are a monotonic function of `avail = headerWidth -
+ * rightWidth`, so shrinking only ever drops controls (never brings one back).
+ * Widths are `-1` until measured — treat that as roomy so the header opens fully
+ * and only tightens once real measurements land.
+ *
+ * A CSS safety net (the left group is `min-w-0`/overflow-hidden and shrinks)
+ * guarantees the right actions are never clipped even if these estimates run
+ * slightly optimistic — the tab group yields first.
  */
-function maxTabsForSpace(headerWidth: number, rightWidth: number): number {
-  if (headerWidth < 0 || rightWidth < 0) return 3;
-  const leftSpace = headerWidth - rightWidth;
-  if (leftSpace >= HEADER_W.threeTabs) return 3;
-  if (leftSpace >= HEADER_W.twoTabs) return 2;
-  return 1;
+function headerLayout(
+  headerWidth: number,
+  rightWidth: number,
+): { maxTabs: number; showPageSelector: boolean } {
+  if (headerWidth < 0 || rightWidth < 0) {
+    return { maxTabs: 3, showPageSelector: true };
+  }
+  const avail = headerWidth - rightWidth;
+  const { lead, tab, middle } = HEADER_W;
+  if (avail >= lead + 3 * tab + middle)
+    return { maxTabs: 3, showPageSelector: true };
+  if (avail >= lead + 2 * tab + middle)
+    return { maxTabs: 2, showPageSelector: true };
+  if (avail >= lead + 1 * tab + middle)
+    return { maxTabs: 1, showPageSelector: true };
+  return { maxTabs: 1, showPageSelector: false };
 }
 
 export interface WorkspacePanelGroupProps extends WorkspaceVisibility {
@@ -169,16 +188,14 @@ export function WorkspacePanelGroup({
   const mainControlsInChat = chatOpen && !mainOpen;
 
   // Responsive header: measure the whole header (== panel width) and the right
-  // actions cluster, so the tab count adapts to the room actually left for it
-  // (`headerWidth - rightWidth`), and measure the centered page-selector gap so
-  // the selector hides the moment it can't fit — never squished. All three read
-  // `-1` until measured, treated as "roomy" so the header opens fully first.
+  // actions cluster. `headerLayout` derives BOTH the tab count and whether the
+  // center page selector shows from that single stable pair — never from the
+  // center gap, which grows when a tab folds and used to flicker the selector
+  // back. Widths read `-1` until measured, treated as "roomy" so the header
+  // opens fully first.
   const [headerWidth, headerRef] = useElementWidth();
   const [rightWidth, rightRef] = useElementWidth();
-  const maxTabs = maxTabsForSpace(headerWidth, rightWidth);
-  const [pageSelectorSpace, pageSelectorRef] = useElementWidth();
-  const showPageSelector =
-    pageSelectorSpace < 0 || pageSelectorSpace >= HEADER_W.pageSelectorMin;
+  const { maxTabs, showPageSelector } = headerLayout(headerWidth, rightWidth);
 
   // The agent switcher + new-chat action live in the nav sidebar while it's
   // expanded. When the sidebar is collapsed it has no room for them, so we
@@ -253,16 +270,12 @@ export function WorkspacePanelGroup({
         />
       </div>
       {/* The page selector centers between the two side groups in this flex-1
-          gap. We measure the gap (not the header) and, once it's too tight for
-          a usable selector, hide the slot (display:none) rather than let it
-          squish. The measured wrapper stays flex-1 so hiding the slot doesn't
-          collapse the measurement (no feedback loop); the portal target stays
-          mounted so Preview keeps rendering into it instead of falling back to
-          its inline toolbar. */}
-      <div
-        ref={pageSelectorRef}
-        className="flex min-w-0 flex-1 items-center justify-center"
-      >
+          gap. `headerLayout` decides its visibility from the header/right widths
+          (not this gap), so it never flickers back when a tab folds; below the
+          threshold the slot is hidden (display:none) rather than squished. The
+          portal target stays mounted so Preview keeps rendering into it instead
+          of falling back to its inline toolbar. */}
+      <div className="flex min-w-0 flex-1 items-center justify-center">
         <MainPanelHeaderSlot className={cn(!showPageSelector && "hidden")} />
       </div>
       {/* shrink-0: the right actions (Edit / Submit / Publish / ⋯) are the
