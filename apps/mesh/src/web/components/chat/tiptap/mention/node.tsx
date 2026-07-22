@@ -143,7 +143,9 @@ function MentionNodeView(props: NodeViewProps) {
       tabIndex={isClickable ? 0 : undefined}
       aria-label={
         isClickable
-          ? t("chat.mention.editPrompt", { name: name ?? "" })
+          ? t("chat.mention.editPrompt", {
+              name: name ? toTitleCase(name) : "",
+            })
           : undefined
       }
       className={cn(
