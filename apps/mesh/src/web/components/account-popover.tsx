@@ -45,6 +45,7 @@ import { clearPersistedQueryCache } from "@/web/lib/query-persist";
 import { usePreferences, type ThemeMode } from "@/web/hooks/use-preferences.ts";
 import { useDeploymentAdmin } from "@/web/hooks/use-deployment-admin";
 import { toast } from "@deco/ui/components/sonner.js";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface MenuItem {
   key: string;
@@ -100,9 +101,10 @@ function MenuItemButton({
 }
 
 function ImpersonatingPill() {
+  const t = useT();
   return (
     <span className="shrink-0 inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
-      Impersonating
+      {t("common.accountPopover.impersonating")}
     </span>
   );
 }
@@ -118,6 +120,7 @@ function UserInfoHeader({
   isImpersonating: boolean;
   isMobile: boolean;
 }) {
+  const t = useT();
   return (
     <div
       className={cn(
@@ -134,7 +137,9 @@ function UserInfoHeader({
       />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-medium truncate">{user?.name ?? "User"}</p>
+          <p className="text-sm font-medium truncate">
+            {user?.name ?? t("common.accountPopover.defaultUserName")}
+          </p>
           {isImpersonating && <ImpersonatingPill />}
         </div>
         <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
@@ -148,7 +153,7 @@ function UserInfoHeader({
               onClick={() => {
                 if (!user?.id) return;
                 navigator.clipboard.writeText(user.id).then(() => {
-                  toast.success("User ID copied");
+                  toast.success(t("common.accountPopover.userIdCopied"));
                 });
               }}
               className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
@@ -157,7 +162,7 @@ function UserInfoHeader({
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">
-            <p className="text-xs">Copy user ID</p>
+            <p className="text-xs">{t("common.accountPopover.copyUserId")}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -176,6 +181,7 @@ function ThemeSoundVersionBar({
   setPreferences: ReturnType<typeof usePreferences>[1];
   isMobile: boolean;
 }) {
+  const t = useT();
   const buttonSize = isMobile ? "size-8" : "size-7";
 
   return (
@@ -210,7 +216,9 @@ function ThemeSoundVersionBar({
         <button
           type="button"
           aria-label={
-            preferences.enableSounds ? "Disable sounds" : "Enable sounds"
+            preferences.enableSounds
+              ? t("common.accountPopover.disableSounds")
+              : t("common.accountPopover.enableSounds")
           }
           onClick={() =>
             setPreferences((prev) => ({
@@ -335,6 +343,7 @@ function AccountPopoverContent({
 }
 
 export function AccountPopover() {
+  const t = useT();
   const { data: session } = authClient.useSession();
   // Org context is still read for the "Add to Home Screen" (per-org install) and
   // Preferences deep-links — but org *switching* now lives in the toolbar
@@ -360,7 +369,7 @@ export function AccountPopover() {
   const menuItems: MenuItem[] = [
     {
       key: "preferences",
-      label: "Preferences",
+      label: t("common.accountPopover.preferences"),
       icon: <Settings02 size={16} />,
       onClick: () => {
         navigate({
@@ -377,7 +386,7 @@ export function AccountPopover() {
       ? [
           {
             key: "install-app",
-            label: "Add to Home Screen",
+            label: t("common.accountPopover.addToHomeScreen"),
             icon: <Download01 size={16} />,
             onClick: () => {
               navigate({
@@ -404,35 +413,35 @@ export function AccountPopover() {
       : []),
     {
       key: "terms",
-      label: "Terms of Use",
+      label: t("common.accountPopover.termsOfUse"),
       icon: <File06 size={16} />,
       href: "https://www.decocms.com/terms-of-use",
       external: true,
     },
     {
       key: "privacy",
-      label: "Privacy Policy",
+      label: t("common.accountPopover.privacyPolicy"),
       icon: <Shield01 size={16} />,
       href: "https://www.decocms.com/privacy-policy",
       external: true,
     },
     {
       key: "github",
-      label: "decocms/studio",
+      label: t("common.accountPopover.githubRepo"),
       icon: <GitHubIcon className="w-4 h-4" />,
       href: "https://github.com/decocms/studio",
       external: true,
     },
     {
       key: "community",
-      label: "Community",
+      label: t("common.accountPopover.community"),
       icon: <Users03 size={16} />,
       href: "https://decocms.com/discord",
       external: true,
     },
     {
       key: "homepage",
-      label: "Homepage",
+      label: t("common.accountPopover.homepage"),
       icon: <Globe01 size={16} />,
       href: "https://decocms.com",
       external: true,
@@ -441,7 +450,7 @@ export function AccountPopover() {
       ? [
           {
             key: "admin-dashboard",
-            label: "Admin Dashboard",
+            label: t("common.accountPopover.adminDashboard"),
             icon: <ShieldTick size={16} />,
             onClick: () => navigate({ to: "/_admin" }),
             className: "text-warning",
@@ -452,7 +461,7 @@ export function AccountPopover() {
 
   const signOutItem: MenuItem = {
     key: "logout",
-    label: "Sign out",
+    label: t("common.accountPopover.signOut"),
     icon: <LogOut01 size={16} />,
     onClick: () => {
       track("signed_out", { source: "account_popover" });
@@ -470,12 +479,15 @@ export function AccountPopover() {
   const stopImpersonatingItem: MenuItem | null = isImpersonating
     ? {
         key: "stop-impersonating",
-        label: "Stop impersonation",
+        label: t("common.accountPopover.stopImpersonation"),
         icon: <LogOut01 size={16} />,
         onClick: async () => {
           const { error } = await authClient.admin.stopImpersonating();
           if (error) {
-            toast.error(error.message || "Failed to stop impersonation");
+            toast.error(
+              error.message ||
+                t("common.accountPopover.failedToStopImpersonation"),
+            );
             return;
           }
           window.location.href = "/";
@@ -489,9 +501,21 @@ export function AccountPopover() {
     icon: React.ReactNode;
     label: string;
   }[] = [
-    { value: "light", icon: <Sun size={14} />, label: "Light theme" },
-    { value: "dark", icon: <Moon01 size={14} />, label: "Dark theme" },
-    { value: "system", icon: <Monitor01 size={14} />, label: "System theme" },
+    {
+      value: "light",
+      icon: <Sun size={14} />,
+      label: t("common.accountPopover.lightTheme"),
+    },
+    {
+      value: "dark",
+      icon: <Moon01 size={14} />,
+      label: t("common.accountPopover.darkTheme"),
+    },
+    {
+      value: "system",
+      icon: <Monitor01 size={14} />,
+      label: t("common.accountPopover.systemTheme"),
+    },
   ];
 
   const sharedProps = {
@@ -527,10 +551,14 @@ export function AccountPopover() {
               size="2xs"
               className="shrink-0"
             />
-            <span className="truncate">{user?.name ?? "Account"}</span>
+            <span className="truncate">
+              {user?.name ?? t("common.accountPopover.defaultAccountLabel")}
+            </span>
           </button>
           <DrawerContent className="h-[80dvh] p-0">
-            <DrawerTitle className="sr-only">Account</DrawerTitle>
+            <DrawerTitle className="sr-only">
+              {t("common.accountPopover.account")}
+            </DrawerTitle>
             <AccountPopoverContent {...sharedProps} />
           </DrawerContent>
         </Drawer>
@@ -538,7 +566,9 @@ export function AccountPopover() {
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <SidebarMenuButton
-              tooltip={user?.name ?? "Account"}
+              tooltip={
+                user?.name ?? t("common.accountPopover.defaultAccountLabel")
+              }
               className={cn(
                 "rounded-md",
                 isImpersonating && "border-2 border-dashed border-warning",
@@ -551,7 +581,9 @@ export function AccountPopover() {
                 size="xs"
                 className="shrink-0"
               />
-              <span className="truncate">{user?.name ?? "Account"}</span>
+              <span className="truncate">
+                {user?.name ?? t("common.accountPopover.defaultAccountLabel")}
+              </span>
             </SidebarMenuButton>
           </PopoverTrigger>
 

@@ -17,6 +17,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { Edit05, SearchMd, Shuffle01, Upload01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   AGENT_ICON_COLORS,
   AgentAvatar,
@@ -69,6 +70,7 @@ export function IconPicker({
   showHoverOverlay = true,
   disabled = false,
 }: IconPickerProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<PickerTab>("icons");
   const [search, setSearch] = useState("");
@@ -178,7 +180,7 @@ export function IconPicker({
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              Icons
+              {t("common.iconPicker.iconsTab")}
             </button>
             <button
               id="icon-picker-tab-upload"
@@ -195,7 +197,7 @@ export function IconPicker({
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              Upload
+              {t("common.iconPicker.uploadTab")}
             </button>
             <div className="flex-1" />
           </div>
@@ -245,6 +247,7 @@ function ColorPickerDropdown({
   selectedColor: string;
   onColorChange: (color: string) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const color = getIconColor(selectedColor);
 
@@ -258,8 +261,8 @@ function ColorPickerDropdown({
             color.dot,
             "ring-foreground/20",
           )}
-          title="Change color"
-          aria-label="Change color"
+          title={t("common.iconPicker.changeColor")}
+          aria-label={t("common.iconPicker.changeColor")}
         />
       </PopoverTrigger>
       <PopoverContent
@@ -312,6 +315,7 @@ function IconsTab({
   onRandom: () => void;
   currentIconName: string | null;
 }) {
+  const t = useT();
   const allNames = getIconNames();
   const color = getIconColor(selectedColor);
   const filteredNames = filterIconNames(allNames, search);
@@ -328,7 +332,7 @@ function IconsTab({
           <Input
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Filter..."
+            placeholder={t("common.iconPicker.filterPlaceholder")}
             className="h-8 text-xs pl-7"
           />
         </div>
@@ -336,8 +340,8 @@ function IconsTab({
           type="button"
           onClick={onRandom}
           className="h-8 w-8 flex items-center justify-center rounded-md border border-border hover:bg-accent transition-colors shrink-0"
-          title="Random icon"
-          aria-label="Random icon"
+          title={t("common.iconPicker.randomIcon")}
+          aria-label={t("common.iconPicker.randomIcon")}
         >
           <Shuffle01 size={14} className="text-muted-foreground" />
         </button>
@@ -375,7 +379,7 @@ function IconsTab({
         </div>
         {filteredNames.length === 0 && (
           <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-            No icons found
+            {t("common.iconPicker.noIconsFound")}
           </div>
         )}
       </ScrollArea>
@@ -388,6 +392,7 @@ function IconsTab({
 // ---------------------------------------------------------------------------
 
 function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
+  const t = useT();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -395,14 +400,14 @@ function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("Image must be smaller than 2MB");
+      toast.error(t("common.iconPicker.imageTooLarge"));
       event.target.value = "";
       return;
     }
 
     const reader = new FileReader();
     reader.onerror = () => {
-      toast.error("Failed to read image file");
+      toast.error(t("common.iconPicker.failedToReadImage"));
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
     reader.onloadend = () => {
@@ -440,11 +445,13 @@ function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
         className="h-24 rounded-lg border-2 border-dashed border-border hover:border-foreground/50 hover:bg-accent/50 transition-colors flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground"
       >
         <Upload01 size={20} />
-        <span className="text-xs">Click to upload an image (max 2MB)</span>
+        <span className="text-xs">{t("common.iconPicker.uploadHint")}</span>
       </button>
 
       <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">or</span>
+        <span className="text-xs text-muted-foreground">
+          {t("common.iconPicker.or")}
+        </span>
         <div className="flex-1 h-px bg-border" />
       </div>
 
@@ -452,7 +459,7 @@ function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
         <Input
           value={pasteUrl}
           onChange={(e) => setPasteUrl(e.target.value)}
-          placeholder="Paste image URL..."
+          placeholder={t("common.iconPicker.pasteUrlPlaceholder")}
           className="h-8 text-xs flex-1"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -468,7 +475,7 @@ function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
           onClick={handleApplyUrl}
           disabled={!pasteUrl.trim()}
         >
-          Apply
+          {t("common.iconPicker.apply")}
         </Button>
       </div>
     </div>

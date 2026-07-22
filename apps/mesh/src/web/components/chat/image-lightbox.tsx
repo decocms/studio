@@ -10,6 +10,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Download01, ZoomIn, ZoomOut } from "@untitledui/icons";
 import { useRef, useState } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ImageLightboxProps {
   src: string;
@@ -48,6 +49,7 @@ export function ImageLightbox({
   alt = "Image",
   children,
 }: ImageLightboxProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -168,7 +170,7 @@ export function ImageLightbox({
                 onClick={zoomOutFn}
                 disabled={zoom <= ZOOM_MIN}
                 className={btnClass}
-                aria-label="Zoom out"
+                aria-label={t("chat.imageLightbox.zoomOut")}
               >
                 <ZoomOut size={16} />
               </button>
@@ -177,7 +179,7 @@ export function ImageLightbox({
                 onClick={zoomInFn}
                 disabled={zoom >= ZOOM_MAX}
                 className={btnClass}
-                aria-label="Zoom in"
+                aria-label={t("chat.imageLightbox.zoomIn")}
               >
                 <ZoomIn size={16} />
               </button>
@@ -188,7 +190,7 @@ export function ImageLightbox({
               type="button"
               onClick={handleDownload}
               className={cn("absolute bottom-3 right-3", btnClass)}
-              aria-label="Download image"
+              aria-label={t("chat.imageLightbox.downloadImage")}
             >
               <Download01 size={16} />
             </button>

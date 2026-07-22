@@ -1,6 +1,7 @@
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { useEnabledRegistries } from "@/web/hooks/use-enabled-registries";
 import { useMergedStoreDiscovery } from "@/web/hooks/use-merged-store-discovery";
+import { useT } from "@/web/i18n/use-t";
 import { authClient } from "@/web/lib/auth-client";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -78,6 +79,7 @@ export function CreateConnectionDialog({
   onOpenChange,
   onCreated,
 }: CreateConnectionDialogProps) {
+  const t = useT();
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const { stdioEnabled } = useAuthConfig();
@@ -273,16 +275,17 @@ export function CreateConnectionDialog({
       onOpenChange(false);
       onCreated?.(newId);
     } catch {
-      toast.error("Failed to create connection");
+      toast.error(
+        t("connections.createConnectionDialog.failedToCreateConnection"),
+      );
     }
   };
 
-  const dialogTitle = "Create Connection";
-  const dialogDescription =
-    "Create a custom connection in your organization. Fill in the details below.";
+  const dialogTitle = t("connections.createConnectionDialog.title");
+  const dialogDescription = t("connections.createConnectionDialog.description");
   const submitLabel = form.formState.isSubmitting
-    ? "Saving..."
-    : "Create Connection";
+    ? t("connections.createConnectionDialog.saving")
+    : t("connections.createConnectionDialog.createButton");
 
   const formFields = (
     <div className="grid gap-4">
@@ -291,7 +294,9 @@ export function CreateConnectionDialog({
         name="ui_type"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>Type *</FormLabel>
+            <FormLabel>
+              {t("connections.createConnectionDialog.typeLabel")}
+            </FormLabel>
             <Select value={field.value} onValueChange={field.onChange}>
               <FormControl>
                 <SelectTrigger>
@@ -302,19 +307,19 @@ export function CreateConnectionDialog({
                 <SelectItem value="HTTP">
                   <span className="flex items-center gap-2">
                     <Globe02 className="w-4 h-4" />
-                    HTTP
+                    {t("connections.createConnectionDialog.httpType")}
                   </span>
                 </SelectItem>
                 <SelectItem value="SSE">
                   <span className="flex items-center gap-2">
                     <Globe02 className="w-4 h-4" />
-                    SSE
+                    {t("connections.createConnectionDialog.sseType")}
                   </span>
                 </SelectItem>
                 <SelectItem value="Websocket">
                   <span className="flex items-center gap-2">
                     <Globe02 className="w-4 h-4" />
-                    Websocket
+                    {t("connections.createConnectionDialog.websocketType")}
                   </span>
                 </SelectItem>
                 {stdioEnabled && (
@@ -322,13 +327,15 @@ export function CreateConnectionDialog({
                     <SelectItem value="NPX">
                       <span className="flex items-center gap-2">
                         <Container className="w-4 h-4" />
-                        NPX Package
+                        {t("connections.createConnectionDialog.npxPackageType")}
                       </span>
                     </SelectItem>
                     <SelectItem value="STDIO">
                       <span className="flex items-center gap-2">
                         <Terminal className="w-4 h-4" />
-                        Custom Command
+                        {t(
+                          "connections.createConnectionDialog.customCommandType",
+                        )}
                       </span>
                     </SelectItem>
                   </>
@@ -347,10 +354,14 @@ export function CreateConnectionDialog({
           name="npx_package"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>NPM Package *</FormLabel>
+              <FormLabel>
+                {t("connections.createConnectionDialog.npmPackageLabel")}
+              </FormLabel>
               <FormControl>
                 <Input
-                  placeholder="@perplexity-ai/mcp-server"
+                  placeholder={t(
+                    "connections.createConnectionDialog.npmPackagePlaceholder",
+                  )}
                   {...field}
                   value={field.value ?? ""}
                   onPaste={(e) => {
@@ -383,10 +394,14 @@ export function CreateConnectionDialog({
               name="stdio_command"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Command *</FormLabel>
+                  <FormLabel>
+                    {t("connections.createConnectionDialog.commandLabel")}
+                  </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="node, bun, python..."
+                      placeholder={t(
+                        "connections.createConnectionDialog.commandPlaceholder",
+                      )}
                       {...field}
                       value={field.value ?? ""}
                     />
@@ -401,10 +416,14 @@ export function CreateConnectionDialog({
               name="stdio_args"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Arguments</FormLabel>
+                  <FormLabel>
+                    {t("connections.createConnectionDialog.argumentsLabel")}
+                  </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="arg1 arg2 --flag value"
+                      placeholder={t(
+                        "connections.createConnectionDialog.argumentsPlaceholder",
+                      )}
                       {...field}
                       value={field.value ?? ""}
                     />
@@ -420,16 +439,24 @@ export function CreateConnectionDialog({
             name="stdio_cwd"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Working Directory</FormLabel>
+                <FormLabel>
+                  {t(
+                    "connections.createConnectionDialog.workingDirectoryLabel",
+                  )}
+                </FormLabel>
                 <FormControl>
                   <Input
-                    placeholder="/path/to/project (optional)"
+                    placeholder={t(
+                      "connections.createConnectionDialog.workingDirectoryPlaceholder",
+                    )}
                     {...field}
                     value={field.value ?? ""}
                   />
                 </FormControl>
                 <p className="text-xs text-muted-foreground">
-                  Directory where the command will be executed
+                  {t(
+                    "connections.createConnectionDialog.workingDirectoryDescription",
+                  )}
                 </p>
                 <FormMessage />
               </FormItem>
@@ -445,7 +472,11 @@ export function CreateConnectionDialog({
           name="env_vars"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Environment Variables</FormLabel>
+              <FormLabel>
+                {t(
+                  "connections.createConnectionDialog.environmentVariablesLabel",
+                )}
+              </FormLabel>
               <FormControl>
                 <EnvVarsEditor
                   value={field.value ?? []}
@@ -466,10 +497,14 @@ export function CreateConnectionDialog({
             name="connection_url"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>URL *</FormLabel>
+                <FormLabel>
+                  {t("connections.createConnectionDialog.urlLabel")}
+                </FormLabel>
                 <FormControl>
                   <Input
-                    placeholder="https://example.com/mcp"
+                    placeholder={t(
+                      "connections.createConnectionDialog.urlPlaceholder",
+                    )}
                     {...field}
                     value={field.value ?? ""}
                     onPaste={(e) => {
@@ -498,14 +533,17 @@ export function CreateConnectionDialog({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  {providerHint?.token?.label ?? "Token (optional)"}
+                  {providerHint?.token?.label ??
+                    t("connections.createConnectionDialog.tokenLabelDefault")}
                 </FormLabel>
                 <FormControl>
                   <Input
                     type="password"
                     placeholder={
                       providerHint?.token?.placeholder ??
-                      "Bearer token or API key"
+                      t(
+                        "connections.createConnectionDialog.tokenPlaceholderDefault",
+                      )
                     }
                     className="ph-no-capture"
                     {...field}
@@ -525,7 +563,9 @@ export function CreateConnectionDialog({
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Open GitHub PAT settings
+                          {t(
+                            "connections.createConnectionDialog.openGitHubPatSettings",
+                          )}
                         </a>
                       </>
                     )}
@@ -544,9 +584,16 @@ export function CreateConnectionDialog({
         name="title"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>Name *</FormLabel>
+            <FormLabel>
+              {t("connections.createConnectionDialog.nameLabel")}
+            </FormLabel>
             <FormControl>
-              <Input placeholder="My Connection" {...field} />
+              <Input
+                placeholder={t(
+                  "connections.createConnectionDialog.namePlaceholder",
+                )}
+                {...field}
+              />
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -558,10 +605,14 @@ export function CreateConnectionDialog({
         name="description"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>Description</FormLabel>
+            <FormLabel>
+              {t("connections.createConnectionDialog.descriptionLabel")}
+            </FormLabel>
             <FormControl>
               <Textarea
-                placeholder="A brief description of this connection"
+                placeholder={t(
+                  "connections.createConnectionDialog.descriptionPlaceholder",
+                )}
                 rows={3}
                 {...field}
                 value={field.value ?? ""}
@@ -628,7 +679,7 @@ export function CreateConnectionDialog({
                 variant="outline"
                 onClick={() => handleClose(false)}
               >
-                Cancel
+                {t("connections.createConnectionDialog.cancelButton")}
               </Button>
               <Button
                 type="submit"

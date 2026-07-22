@@ -24,6 +24,7 @@ import {
 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import { authClient } from "@/web/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
@@ -133,6 +134,7 @@ function PublishDialogBody({
   onPullRequestChanged,
   onPublished,
 }: PublishDialogProps) {
+  const t = useT();
   const githubClient = useMCPClient({
     connectionId: githubConnectionId,
     orgId,
@@ -203,7 +205,11 @@ function PublishDialogBody({
         );
     setGitStatus(status);
     setGitDiff(diff);
-    setPublishTitle(`Changes from ${status.current ?? branch}`);
+    setPublishTitle(
+      t("thread.publishDialog.changesFrom", {
+        branch: status.current ?? branch,
+      }),
+    );
 
     setIsGeneratingSuggestion(true);
     fetchSuggestCommitMessage(orgSlug, virtualMcpId, branch, {
@@ -247,13 +253,15 @@ function PublishDialogBody({
             setPublishError(
               retryErr instanceof Error
                 ? retryErr.message
-                : "Failed to load changes after re-provisioning the sandbox.",
+                : t("thread.publishDialog.failedLoadAfterReprovision"),
             );
             return;
           }
         }
         setPublishError(
-          error instanceof Error ? error.message : "Failed to load changes.",
+          error instanceof Error
+            ? error.message
+            : t("thread.publishDialog.failedLoad"),
         );
       } finally {
         setIsLoadingGitDiff(false);
@@ -314,7 +322,9 @@ function PublishDialogBody({
     setPublishError(undefined);
     let openedPr: CreatedPullRequest | undefined;
     try {
-      const prTitle = publishTitle.trim() || `Changes from ${githubHeadBranch}`;
+      const prTitle =
+        publishTitle.trim() ||
+        t("thread.publishDialog.changesFrom", { branch: githubHeadBranch });
       const prBody = publishBody.trim() || undefined;
       const message = commitMessage() || prTitle;
 
@@ -322,7 +332,9 @@ function PublishDialogBody({
         await publishGitChanges(orgSlug, virtualMcpId, branch, message);
       } catch (error) {
         throw new PublishFlowError(
-          error instanceof Error ? error.message : "Failed to push changes",
+          error instanceof Error
+            ? error.message
+            : t("thread.publishDialog.failedPushChanges"),
           "push",
         );
       }
@@ -331,7 +343,9 @@ function PublishDialogBody({
         await rebaseGitBranch(orgSlug, virtualMcpId, branch, baseBranch);
       } catch (error) {
         throw new PublishFlowError(
-          error instanceof Error ? error.message : "Failed to rebase onto base",
+          error instanceof Error
+            ? error.message
+            : t("thread.publishDialog.failedRebase"),
           "rebase",
         );
       }
@@ -350,7 +364,7 @@ function PublishDialogBody({
         throw new PublishFlowError(
           error instanceof Error
             ? error.message
-            : "Failed to open pull request",
+            : t("thread.publishDialog.failedOpenPullRequest"),
           "open-pr",
         );
       }
@@ -368,13 +382,13 @@ function PublishDialogBody({
         throw new PublishFlowError(
           error instanceof Error
             ? error.message
-            : "Failed to merge pull request",
+            : t("thread.publishDialog.failedMergePullRequest"),
           "merge",
           openedPr,
         );
       }
 
-      toast.success(`Published to ${baseBranch}`);
+      toast.success(t("thread.publishDialog.publishedTo", { baseBranch }));
       handleOpenChange(false);
       setGitDiff(null);
       setPublishTitle("");
@@ -387,11 +401,14 @@ function PublishDialogBody({
         error.step === "merge" &&
         error.pr
       ) {
-        const msg = `Changes were pushed and PR #${error.pr.number} is open, but merge failed: ${error.message}`;
+        const msg = t("thread.publishDialog.mergeFailed", {
+          prNumber: error.pr.number,
+          message: error.message,
+        });
         setPublishError(msg);
         toast.error(msg, {
           action: {
-            label: "View PR",
+            label: t("thread.publishDialog.viewPr"),
             onClick: () =>
               window.open(error.pr!.htmlUrl, "_blank", "noopener,noreferrer"),
           },
@@ -400,7 +417,9 @@ function PublishDialogBody({
         return;
       }
       setPublishError(
-        error instanceof Error ? error.message : "Failed to publish",
+        error instanceof Error
+          ? error.message
+          : t("thread.publishDialog.failedPublish"),
       );
     } finally {
       setIsPublishing(false);
@@ -410,7 +429,7 @@ function PublishDialogBody({
   const handleDiscardFile = async (filepath: string) => {
     try {
       await discardGitFiles(orgSlug, virtualMcpId, branch, [filepath]);
-      toast.success(`Discarded changes to ${filepath}`);
+      toast.success(t("thread.publishDialog.discardedChanges", { filepath }));
       setGitDiff((prev) => {
         if (!prev) return prev;
         const next = { ...prev, diffs: { ...prev.diffs } };
@@ -421,7 +440,9 @@ function PublishDialogBody({
       setGitStatus(status);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to discard changes",
+        error instanceof Error
+          ? error.message
+          : t("thread.publishDialog.failedDiscardChanges"),
       );
     }
   };
@@ -434,14 +455,16 @@ function PublishDialogBody({
       const allFiles = Object.keys(gitDiff.diffs);
       if (allFiles.length === 0) return;
       await discardGitFiles(orgSlug, virtualMcpId, branch, allFiles);
-      toast.success("All changes discarded");
+      toast.success(t("thread.publishDialog.allChangesDiscarded"));
       setGitDiff(null);
       const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
       setGitStatus(status);
       handleOpenChange(false);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to discard changes",
+        error instanceof Error
+          ? error.message
+          : t("thread.publishDialog.failedDiscardChanges"),
       );
     } finally {
       setIsDiscardingAll(false);
@@ -452,7 +475,9 @@ function PublishDialogBody({
     setIsSubmittingForReview(true);
     setSubmitForReviewError(undefined);
     try {
-      const prTitle = publishTitle.trim() || `Changes from ${githubHeadBranch}`;
+      const prTitle =
+        publishTitle.trim() ||
+        t("thread.publishDialog.changesFrom", { branch: githubHeadBranch });
       const prBody = publishBody.trim() || undefined;
       const message = commitMessage() || prTitle;
 
@@ -470,18 +495,23 @@ function PublishDialogBody({
         coAuthor,
       });
 
-      toast.success(`Submitted pull request #${pr.number} for review`, {
-        action: {
-          label: "View on GitHub",
-          onClick: () =>
-            window.open(pr.htmlUrl, "_blank", "noopener,noreferrer"),
+      toast.success(
+        t("thread.publishDialog.submittedForReview", { prNumber: pr.number }),
+        {
+          action: {
+            label: t("thread.publishDialog.viewOnGithub"),
+            onClick: () =>
+              window.open(pr.htmlUrl, "_blank", "noopener,noreferrer"),
+          },
         },
-      });
+      );
       handleOpenChange(false);
       await onPullRequestChanged?.();
     } catch (error) {
       setSubmitForReviewError(
-        error instanceof Error ? error.message : "Failed to submit for review",
+        error instanceof Error
+          ? error.message
+          : t("thread.publishDialog.failedSubmitForReview"),
       );
     } finally {
       setIsSubmittingForReview(false);
@@ -494,18 +524,25 @@ function PublishDialogBody({
         <div className="shrink-0 space-y-3 px-6 pt-5 pb-4">
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">
-              {openPrFromCommits ? "Submit for review" : publishLabel}
+              {openPrFromCommits
+                ? t("thread.publishDialog.submitForReview")
+                : publishLabel}
             </p>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-success" />
-              {diffCount} {diffCount === 1 ? "change" : "changes"}{" "}
-              {openPrFromCommits ? "in this PR" : "to publish"}
+              {diffCount}{" "}
+              {diffCount === 1
+                ? t("thread.publishDialog.change")
+                : t("thread.publishDialog.changes")}{" "}
+              {openPrFromCommits
+                ? t("thread.publishDialog.inThisPr")
+                : t("thread.publishDialog.toPublish")}
             </div>
           </div>
           {discardAllConfirm ? (
             <div className="flex items-center justify-between gap-3 rounded-md bg-destructive/5 px-3 py-2">
               <span className="text-xs text-destructive">
-                Discard all changes? This cannot be undone.
+                {t("thread.publishDialog.discardConfirmMessage")}
               </span>
               <div className="flex shrink-0 items-center gap-2">
                 <Button
@@ -515,7 +552,7 @@ function PublishDialogBody({
                   className="h-7 px-2 text-xs"
                   onClick={() => setDiscardAllConfirm(false)}
                 >
-                  Cancel
+                  {t("thread.publishDialog.cancel")}
                 </Button>
                 <Button
                   type="button"
@@ -527,7 +564,7 @@ function PublishDialogBody({
                   {isDiscardingAll ? (
                     <Loading01 className="h-3 w-3 animate-spin" />
                   ) : null}
-                  Discard all
+                  {t("thread.publishDialog.discardAll")}
                 </Button>
               </div>
             </div>
@@ -535,10 +572,10 @@ function PublishDialogBody({
             <div className="flex items-center justify-between">
               <TabsList className="h-8 w-auto" variant="pill">
                 <TabsTrigger value="description" className="px-3 text-xs">
-                  Description
+                  {t("thread.publishDialog.description")}
                 </TabsTrigger>
                 <TabsTrigger value="changes" className="px-3 text-xs">
-                  Changes
+                  {t("thread.publishDialog.changes")}
                 </TabsTrigger>
               </TabsList>
               {diffCount > 0 && !openPrFromCommits && (
@@ -548,7 +585,7 @@ function PublishDialogBody({
                   onClick={() => setDiscardAllConfirm(true)}
                   disabled={isPublishing || isDiscardingAll}
                 >
-                  Discard all
+                  {t("thread.publishDialog.discardAll")}
                 </button>
               )}
             </div>
@@ -561,7 +598,9 @@ function PublishDialogBody({
           {isLoadingGitDiff ? (
             <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
               <Loading01 className="h-4 w-4 animate-spin" />
-              <span className="text-sm">Loading changes…</span>
+              <span className="text-sm">
+                {t("thread.publishDialog.loadingChanges")}
+              </span>
             </div>
           ) : (
             <>
@@ -569,7 +608,9 @@ function PublishDialogBody({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium">
-                      {openPrFromCommits ? "Pull request" : "Commit message"}
+                      {openPrFromCommits
+                        ? t("thread.publishDialog.pullRequest")
+                        : t("thread.publishDialog.commitMessage")}
                     </p>
                     <button
                       type="button"
@@ -586,7 +627,9 @@ function PublishDialogBody({
                       ) : (
                         <Stars01 className="h-3 w-3" />
                       )}
-                      {isGeneratingSuggestion ? "Generating…" : "Regenerate"}
+                      {isGeneratingSuggestion
+                        ? t("thread.publishDialog.generating")
+                        : t("thread.publishDialog.regenerate")}
                     </button>
                   </div>
                   <div className="space-y-1.5">
@@ -594,14 +637,16 @@ function PublishDialogBody({
                       htmlFor="publish-title"
                       className="text-xs font-medium text-muted-foreground"
                     >
-                      Title
+                      {t("thread.publishDialog.title")}
                     </label>
                     <Input
                       id="publish-title"
                       value={publishTitle}
                       onChange={(e) => setPublishTitle(e.target.value)}
                       placeholder={
-                        isGeneratingSuggestion ? "Generating…" : "Commit title…"
+                        isGeneratingSuggestion
+                          ? t("thread.publishDialog.generating")
+                          : t("thread.publishDialog.commitTitlePlaceholder")
                       }
                       disabled={
                         isPublishing ||
@@ -616,7 +661,7 @@ function PublishDialogBody({
                       htmlFor="publish-body"
                       className="text-xs font-medium text-muted-foreground"
                     >
-                      Description
+                      {t("thread.publishDialog.descriptionLabel")}
                     </label>
                     <Textarea
                       id="publish-body"
@@ -624,8 +669,8 @@ function PublishDialogBody({
                       onChange={(e) => setPublishBody(e.target.value)}
                       placeholder={
                         isGeneratingSuggestion
-                          ? "Generating…"
-                          : "Description (optional)…"
+                          ? t("thread.publishDialog.generating")
+                          : t("thread.publishDialog.descriptionPlaceholder")
                       }
                       disabled={
                         isPublishing ||
@@ -637,14 +682,20 @@ function PublishDialogBody({
                     />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Branch: <span className="font-mono">{branch}</span>
+                    {t("thread.publishDialog.branchLabel")}{" "}
+                    <span className="font-mono">{branch}</span>
                     {" → "}
                     <span className="font-mono">{baseBranch}</span>
                     {" · "}
                     <span className="text-foreground/80">
                       {isPublishOnly
-                        ? `${publishLabel} squash-merges into ${baseBranch}.`
-                        : `Opens a pull request into ${baseBranch} for review.`}
+                        ? t("thread.publishDialog.squashMergesInto", {
+                            publishLabel,
+                            baseBranch,
+                          })
+                        : t("thread.publishDialog.opensPullRequestInto", {
+                            baseBranch,
+                          })}
                     </span>
                   </p>
                 </div>
@@ -670,7 +721,7 @@ function PublishDialogBody({
           >
             <span className="flex items-center gap-3">
               <Eye className="h-4 w-4 text-muted-foreground" />
-              Visit preview
+              {t("thread.publishDialog.visitPreview")}
             </span>
             <ArrowRight className="h-4 w-4 text-muted-foreground" />
           </button>
@@ -703,7 +754,7 @@ function PublishDialogBody({
                 ) : (
                   <GitBranch01 className="h-4 w-4" />
                 )}
-                Submit for review
+                {t("thread.publishDialog.submitForReviewButton")}
               </Button>
               {submitForReviewError && (
                 <p className="mt-2 text-xs text-destructive">

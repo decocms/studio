@@ -15,6 +15,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   Eye,
   Palette,
@@ -84,6 +85,7 @@ export function LibraryPage({
   onOpenSkill?: (skillPath: string) => void;
   onOpenBrand?: (brandPath: string) => void;
 } = {}) {
+  const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -167,11 +169,15 @@ export function LibraryPage({
       await upload.mutateAsync({ dir: uploadDir, files: [...files] });
       toast.success(
         files.length === 1
-          ? `Uploaded ${files[0]?.name}`
-          : `Uploaded ${files.length} files`,
+          ? t("library.library.uploadedSingle", {
+              filename: files[0]?.name ?? "",
+            })
+          : t("library.library.uploadedMultiple", { count: files.length }),
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
+      toast.error(
+        err instanceof Error ? err.message : t("library.library.uploadFailed"),
+      );
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
@@ -217,12 +223,14 @@ export function LibraryPage({
     if (!uploadVolume || !name) return;
     try {
       await mkdir.mutateAsync(uploadDir ? `${uploadDir}/${name}` : name);
-      toast.success(`Folder "${name}" created`);
+      toast.success(t("library.library.folderCreated", { name }));
       setNewFolderOpen(false);
       setNewFolderName("");
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to create folder",
+        err instanceof Error
+          ? err.message
+          : t("library.library.folderCreateFailed"),
       );
     }
   }
@@ -232,9 +240,13 @@ export function LibraryPage({
     const entry = pendingDelete;
     try {
       await remove.mutateAsync(entry.path);
-      toast.success(`Deleted ${basename(entry.path)}`);
+      toast.success(
+        t("library.library.deleted", { name: basename(entry.path) }),
+      );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Delete failed");
+      toast.error(
+        err instanceof Error ? err.message : t("library.library.deleteFailed"),
+      );
     } finally {
       setPendingDelete(null);
     }
@@ -269,7 +281,7 @@ export function LibraryPage({
           <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary px-10 py-8 text-center">
             <Upload01 size={28} className="text-primary" />
             <p className="text-sm font-medium text-foreground">
-              Drop to upload to {dropLabel}
+              {t("library.library.dropToUpload", { location: dropLabel })}
             </p>
           </div>
         </div>
@@ -285,13 +297,15 @@ export function LibraryPage({
             )}
             <div className="flex items-center gap-2">
               <h1 className="min-w-0 flex-1 truncate text-xl font-medium text-foreground">
-                {isRoot ? "Library" : (location.segments.at(-1) ?? "Library")}
+                {isRoot
+                  ? t("library.library.title")
+                  : (location.segments.at(-1) ?? t("library.library.title"))}
               </h1>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={refresh}
-                aria-label="Refresh"
+                aria-label={t("library.library.refresh")}
               >
                 <RefreshCw01 size={14} />
               </Button>
@@ -302,13 +316,13 @@ export function LibraryPage({
                   onClick={() => setNewFolderOpen(true)}
                 >
                   <Plus size={14} />
-                  New folder
+                  {t("library.library.newFolder")}
                 </Button>
               )}
               {location.readOnly ? (
                 <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Eye size={12} />
-                  Read-only
+                  {t("library.library.readOnly")}
                 </span>
               ) : (
                 <Button
@@ -317,7 +331,9 @@ export function LibraryPage({
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Upload01 size={14} />
-                  {upload.isPending ? "Uploading…" : "Upload file"}
+                  {upload.isPending
+                    ? t("library.library.uploading")
+                    : t("library.library.uploadFile")}
                 </Button>
               )}
               <input
@@ -341,7 +357,7 @@ export function LibraryPage({
               onKeyDown={(e) => {
                 if (e.key === "Escape") setSearchText("");
               }}
-              placeholder="Search all files…"
+              placeholder={t("library.library.searchPlaceholder")}
               className="h-10 rounded-xl pr-9 pl-9"
             />
             {searchText && (
@@ -350,7 +366,7 @@ export function LibraryPage({
                 size="icon"
                 className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
                 onClick={() => setSearchText("")}
-                aria-label="Clear search"
+                aria-label={t("library.library.clearSearch")}
               >
                 <XClose size={14} />
               </Button>
@@ -417,14 +433,16 @@ export function LibraryPage({
       <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New folder</DialogTitle>
+            <DialogTitle>{t("library.library.newFolderTitle")}</DialogTitle>
             <DialogDescription>
-              Create a folder in {browsePath || "the library"}.
+              {t("library.library.newFolderDescription", {
+                path: browsePath || t("library.library.theLibrary"),
+              })}
             </DialogDescription>
           </DialogHeader>
           <Input
             autoFocus
-            placeholder="folder-name"
+            placeholder={t("library.library.folderNamePlaceholder")}
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
             onKeyDown={(e) => {
@@ -433,13 +451,13 @@ export function LibraryPage({
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewFolderOpen(false)}>
-              Cancel
+              {t("library.library.cancel")}
             </Button>
             <Button
               disabled={!newFolderName.trim() || mkdir.isPending}
               onClick={() => void handleCreateFolder()}
             >
-              Create
+              {t("library.library.create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -461,18 +479,20 @@ export function LibraryPage({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete {pendingDelete ? basename(pendingDelete.path) : ""}?
+              {t("library.library.deleteTitle", {
+                name: pendingDelete ? basename(pendingDelete.path) : "",
+              })}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDelete?.kind === "dir"
-                ? "The folder and everything inside it will be deleted for the whole organization. Sandboxes see this change within seconds."
-                : "The file will be deleted for the whole organization. Sandboxes see this change within seconds."}
+                ? t("library.library.deleteDirectoryDescription")
+                : t("library.library.deleteFileDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("library.library.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={() => void handleDelete()}>
-              Delete
+              {t("library.library.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

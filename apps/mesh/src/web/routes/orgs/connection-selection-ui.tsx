@@ -34,6 +34,7 @@ import {
 } from "@untitledui/icons";
 import { type ReactNode, useState } from "react";
 import { type ConnectionGroup } from "@/shared/utils/group-connections";
+import { useT } from "@/web/i18n/use-t.ts";
 
 // ---------------------------------------------------------------------------
 // Shared dropdown-menu toggle: hidden until selection mode or row hover,
@@ -92,6 +93,7 @@ export function ConnectionGroupCard({
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
 }) {
+  const t = useT();
   const allSelected = group.connections.every((c) => selectedIds.has(c.id));
   const someSelected = group.connections.some((c) => selectedIds.has(c.id));
 
@@ -113,7 +115,9 @@ export function ConnectionGroupCard({
         connection={{
           title: group.title,
           icon: group.icon,
-          description: `${group.connections.length} instances`,
+          description: t("orgs.connectionSelectionUi.instancesCount", {
+            count: group.connections.length,
+          }),
         }}
         onClick={() => (selectionMode ? toggleGroupSelection() : onOpen())}
         className={cn(
@@ -137,7 +141,7 @@ export function ConnectionGroupCard({
             ) : (
               <div className="flex items-center gap-1">
                 <span className="text-xs text-muted-foreground font-normal">
-                  Connected
+                  {t("orgs.connectionSelectionUi.connected")}
                 </span>
                 <span className="text-xs text-muted-foreground font-normal tabular-nums">
                   x{group.connections.length}
@@ -152,7 +156,7 @@ export function ConnectionGroupCard({
                 }}
               >
                 <Eye size={16} />
-                Open
+                {t("orgs.connectionSelectionUi.open")}
               </DropdownMenuItem>
             </HeaderActionsMenu>
           </div>
@@ -188,6 +192,7 @@ export function ConnectionCardHeaderActions({
   onToggleStatus: (status: "active" | "inactive") => void;
   onDelete: () => void;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-1">
       {selectionMode ? (
@@ -198,7 +203,7 @@ export function ConnectionCardHeaderActions({
         />
       ) : (
         <span className="text-xs text-muted-foreground font-normal">
-          Connected
+          {t("orgs.connectionSelectionUi.connected")}
         </span>
       )}
       <HeaderActionsMenu selectionMode={selectionMode}>
@@ -209,7 +214,7 @@ export function ConnectionCardHeaderActions({
           }}
         >
           <Eye size={16} />
-          Open
+          {t("orgs.connectionSelectionUi.open")}
         </DropdownMenuItem>
         {(canManage || canManageAgents) && (
           <DropdownMenuItem
@@ -219,7 +224,7 @@ export function ConnectionCardHeaderActions({
             }}
           >
             <CheckSquare size={16} />
-            Select
+            {t("orgs.connectionSelectionUi.select")}
           </DropdownMenuItem>
         )}
         {canManage &&
@@ -231,7 +236,7 @@ export function ConnectionCardHeaderActions({
               }}
             >
               <SlashCircle01 size={16} />
-              Disable
+              {t("orgs.connectionSelectionUi.disable")}
             </DropdownMenuItem>
           ) : (
             <DropdownMenuItem
@@ -241,7 +246,7 @@ export function ConnectionCardHeaderActions({
               }}
             >
               <Power01 size={16} />
-              Enable
+              {t("orgs.connectionSelectionUi.enable")}
             </DropdownMenuItem>
           ))}
         {canManage && (
@@ -253,7 +258,7 @@ export function ConnectionCardHeaderActions({
             }}
           >
             <Trash01 size={16} />
-            Delete
+            {t("orgs.connectionSelectionUi.delete")}
           </DropdownMenuItem>
         )}
       </HeaderActionsMenu>
@@ -288,13 +293,14 @@ export function BulkActionBar({
   onToggleStatus: (status: "active" | "inactive") => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   if (count === 0) return null;
 
   return (
     <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
       <div className="rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur px-3 py-2 flex items-center gap-2">
         <div className="text-xs text-muted-foreground pr-1 tabular-nums">
-          {count} selected
+          {t("orgs.connectionSelectionUi.selectedCount", { count })}
         </div>
         {count < total ? (
           <Button
@@ -303,7 +309,7 @@ export function BulkActionBar({
             className="h-7 text-xs px-2"
             onClick={onSelectAll}
           >
-            Select all ({total})
+            {t("orgs.connectionSelectionUi.selectAll", { total })}
           </Button>
         ) : (
           <Button
@@ -312,7 +318,7 @@ export function BulkActionBar({
             className="h-7 text-xs px-2"
             onClick={onDeselectAll}
           >
-            Clear selection
+            {t("orgs.connectionSelectionUi.clearSelection")}
           </Button>
         )}
         {canManageAgents && (
@@ -323,7 +329,7 @@ export function BulkActionBar({
             onClick={onAddToAgent}
           >
             <Plus size={13} />
-            Add to Agent
+            {t("orgs.connectionSelectionUi.addToAgent")}
           </Button>
         )}
         {canManage && (
@@ -334,7 +340,7 @@ export function BulkActionBar({
               className="h-7 text-xs px-2"
               onClick={() => onToggleStatus("active")}
             >
-              Enable
+              {t("orgs.connectionSelectionUi.enable")}
             </Button>
             <Button
               variant="outline"
@@ -342,7 +348,7 @@ export function BulkActionBar({
               className="h-7 text-xs px-2"
               onClick={() => onToggleStatus("inactive")}
             >
-              Disable
+              {t("orgs.connectionSelectionUi.disable")}
             </Button>
             <Button
               variant="destructive"
@@ -351,7 +357,7 @@ export function BulkActionBar({
               onClick={onDelete}
             >
               <Trash01 size={13} />
-              Delete
+              {t("orgs.connectionSelectionUi.delete")}
             </Button>
           </>
         )}
@@ -383,21 +389,24 @@ export function AddToAgentDialog({
   agents: VirtualMCPEntity[];
   onConfirm: (agentId: string) => void;
 }) {
+  const t = useT();
   const [selected, setSelected] = useState<string | null>(null);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
-          <DialogTitle>Add to Agent</DialogTitle>
+          <DialogTitle>
+            {t("orgs.connectionSelectionUi.addToAgentTitle")}
+          </DialogTitle>
           <DialogDescription>
-            Select an agent to add the selected connections to.
+            {t("orgs.connectionSelectionUi.addToAgentDescription")}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-60 overflow-auto py-2 space-y-1">
           {agents.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
-              No agents found
+              {t("orgs.connectionSelectionUi.noAgentsFound")}
             </p>
           ) : (
             agents.map((agent) => (
@@ -432,7 +441,7 @@ export function AddToAgentDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("orgs.connectionSelectionUi.cancel")}
           </Button>
           <Button
             disabled={!selected}
@@ -444,7 +453,7 @@ export function AddToAgentDialog({
               }
             }}
           >
-            Add
+            {t("orgs.connectionSelectionUi.add")}
           </Button>
         </DialogFooter>
       </DialogContent>

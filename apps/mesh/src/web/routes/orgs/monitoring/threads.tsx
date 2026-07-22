@@ -5,6 +5,7 @@
 import { Suspense, useState } from "react";
 import type { useConnections, useVirtualMCPs } from "@decocms/mesh-sdk";
 import { useMCPClient } from "@decocms/mesh-sdk";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
 import {
   useInfiniteQuery,
   useQuery,
@@ -106,6 +107,7 @@ function ThreadSheetHeader({
   onPrev: () => void;
   onNext: () => void;
 }) {
+  const t = useT();
   const agentId = getThreadAgentId(thread);
   const agentName = resolveAgentName(agentId, virtualMcps, connections, "");
   const agentIcon = resolveAgentIcon(agentId, virtualMcps, connections);
@@ -139,7 +141,7 @@ function ThreadSheetHeader({
             onClick={onPrev}
             disabled={selectedIndex === 0}
             className="h-7 w-7 text-muted-foreground"
-            aria-label="Previous chat"
+            aria-label={t("orgs.threads.previousChat")}
           >
             <ChevronUp size={14} />
           </Button>
@@ -149,7 +151,7 @@ function ThreadSheetHeader({
             onClick={onNext}
             disabled={selectedIndex === total - 1}
             className="h-7 w-7 text-muted-foreground"
-            aria-label="Next chat"
+            aria-label={t("orgs.threads.nextChat")}
           >
             <ChevronDown size={14} />
           </Button>
@@ -172,6 +174,7 @@ function ThreadMetaRow({
   virtualMcps: ReturnType<typeof useVirtualMCPs>;
   members: ReturnType<typeof useMembers>["data"] | undefined;
 }) {
+  const t = useT();
   const agentId = getThreadAgentId(thread);
   const agentName = resolveAgentName(agentId, virtualMcps, connections, "");
   const agentIcon = resolveAgentIcon(agentId, virtualMcps, connections);
@@ -203,7 +206,9 @@ function ThreadMetaRow({
   return (
     <div className="px-5 md:px-6 py-5 border-b border-border grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
       <div>
-        <div className="text-xs text-muted-foreground mb-1">Status</div>
+        <div className="text-xs text-muted-foreground mb-1">
+          {t("orgs.threads.status")}
+        </div>
         <div className="flex items-center gap-1.5">
           <StatusIcon size={13} className={statusCfg.iconClassName} />
           <span className={cn("text-sm", statusCfg.labelColor)}>
@@ -213,12 +218,16 @@ function ThreadMetaRow({
       </div>
 
       <div>
-        <div className="text-xs text-muted-foreground mb-1">Date</div>
+        <div className="text-xs text-muted-foreground mb-1">
+          {t("orgs.threads.date")}
+        </div>
         <div className="text-sm text-foreground">{formattedDate}</div>
       </div>
 
       <div>
-        <div className="text-xs text-muted-foreground mb-1">User</div>
+        <div className="text-xs text-muted-foreground mb-1">
+          {t("orgs.threads.user")}
+        </div>
         <div className="flex items-center gap-2">
           <Avatar
             url={userImage}
@@ -233,7 +242,9 @@ function ThreadMetaRow({
 
       {agentName && (
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Agent</div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("orgs.threads.agent")}
+          </div>
           <div className="flex items-center gap-2">
             <IntegrationIcon
               icon={agentIcon}
@@ -363,6 +374,24 @@ function ThreadRow({
 
 const MESSAGES_PAGE_SIZE = 100;
 
+function ThreadConversationPanelEmpty() {
+  const t = useT();
+  return (
+    <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+      {t("orgs.threads.noMessagesInChat")}
+    </div>
+  );
+}
+
+function ThreadConversationPanelLoading() {
+  const t = useT();
+  return (
+    <div className="py-4 text-center text-xs text-muted-foreground">
+      {t("orgs.threads.loadingMore")}
+    </div>
+  );
+}
+
 function ThreadConversationPanel({
   client,
   locator,
@@ -451,9 +480,7 @@ function ThreadConversationPanel({
       />
 
       {messages.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-          No messages in this chat
-        </div>
+        <ThreadConversationPanelEmpty />
       ) : (
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
@@ -473,11 +500,7 @@ function ThreadConversationPanel({
                 />
               </div>
             ))}
-            {isFetchingNextPage && (
-              <div className="py-4 text-center text-xs text-muted-foreground">
-                Loading more\u2026
-              </div>
-            )}
+            {isFetchingNextPage && <ThreadConversationPanelLoading />}
           </div>
         </div>
       )}
@@ -486,6 +509,24 @@ function ThreadConversationPanel({
 }
 
 // ── Thread sheet wrapper (renders header once, body swaps for loading/error) ─
+
+function ThreadSheetBodyError() {
+  const t = useT();
+  return (
+    <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+      {t("orgs.threads.failedToLoadMessages")}
+    </div>
+  );
+}
+
+function ThreadSheetBodyLoading() {
+  const t = useT();
+  return (
+    <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+      {t("orgs.threads.loadingConversation")}
+    </div>
+  );
+}
 
 export function ThreadSheetBody({
   thread,
@@ -523,9 +564,7 @@ export function ThreadSheetBody({
             onPrev={onPrev}
             onNext={onNext}
           />
-          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-            Failed to load messages
-          </div>
+          <ThreadSheetBodyError />
         </>
       }
     >
@@ -541,9 +580,7 @@ export function ThreadSheetBody({
               onPrev={onPrev}
               onNext={onNext}
             />
-            <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-              Loading conversation\u2026
-            </div>
+            <ThreadSheetBodyLoading />
           </>
         }
       >
@@ -565,6 +602,51 @@ export function ThreadSheetBody({
 }
 
 // ── Main threads tab ────────────────────────────────────────────────────────
+
+function ThreadsTabLoadingState() {
+  const t = useT();
+  return (
+    <div className="flex flex-1 items-center justify-center py-20">
+      <span className="text-sm text-muted-foreground">
+        {t("orgs.threads.loading")}
+      </span>
+    </div>
+  );
+}
+
+function ThreadsTabEmptyState({
+  hasActiveFilters,
+  t,
+}: {
+  hasActiveFilters: boolean;
+  t: TFunction;
+}) {
+  return (
+    <div className="flex flex-1 items-center justify-center py-20">
+      <EmptyState
+        title={t(
+          hasActiveFilters
+            ? "orgs.threads.noMatchingChats"
+            : "orgs.threads.noChatsInTimeRange",
+        )}
+        description={t(
+          hasActiveFilters
+            ? "orgs.threads.tryAdjustingFilters"
+            : "orgs.threads.tryExpandingTimeRange",
+        )}
+      />
+    </div>
+  );
+}
+
+function ThreadsTabLoadingMore() {
+  const t = useT();
+  return (
+    <div className="py-4 text-center text-sm text-muted-foreground">
+      {t("orgs.threads.loadingMore")}
+    </div>
+  );
+}
 
 export interface ThreadsTabContentProps {
   client: ReturnType<typeof useMCPClient>;
@@ -593,6 +675,7 @@ export function ThreadsTabContent({
   filterUserIds,
   filterStatus,
 }: ThreadsTabContentProps) {
+  const t = useT();
   const [selectedThreadIndex, setSelectedThreadIndex] = useState<number | null>(
     null,
   );
@@ -733,7 +816,7 @@ export function ThreadsTabContent({
     !!searchQuery ||
     (filterAgentIds?.length ?? 0) > 0 ||
     (filterUserIds?.length ?? 0) > 0 ||
-    (filterStatus && filterStatus !== "all");
+    !!(filterStatus && filterStatus !== "all");
 
   const handlePrev = () =>
     setSelectedThreadIndex((i) => (i !== null && i > 0 ? i - 1 : i));
@@ -749,42 +832,28 @@ export function ThreadsTabContent({
           <div className="flex-1 min-w-0 pt-1">
             <div className="min-w-0">
               {isLoading ? (
-                <div className="flex flex-1 items-center justify-center py-20">
-                  <span className="text-sm text-muted-foreground">
-                    Loading\u2026
-                  </span>
-                </div>
+                <ThreadsTabLoadingState />
               ) : visibleThreads.length === 0 ? (
-                <div className="flex flex-1 items-center justify-center py-20">
-                  <EmptyState
-                    title={
-                      hasActiveFilters
-                        ? "No matching chats"
-                        : "No chats in this time range"
-                    }
-                    description={
-                      hasActiveFilters
-                        ? "Try adjusting your filters or search query."
-                        : "Try expanding the time range to see older chats."
-                    }
-                  />
-                </div>
+                <ThreadsTabEmptyState
+                  hasActiveFilters={hasActiveFilters}
+                  t={t}
+                />
               ) : (
                 <>
                   <Table className="w-full border-collapse">
                     <TableHeader className="border-b-0 z-20">
                       <TableRow className="h-9 hover:bg-transparent border-b border-border">
                         <TableHead className="pl-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                          Title
+                          {t("orgs.threads.title")}
                         </TableHead>
                         <TableHead className="w-36 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                          Agent
+                          {t("orgs.threads.agent")}
                         </TableHead>
                         <TableHead className="w-28 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                          User
+                          {t("orgs.threads.user")}
                         </TableHead>
                         <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                          Status
+                          {t("orgs.threads.status")}
                         </TableHead>
                         <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
                           <button
@@ -792,7 +861,7 @@ export function ThreadsTabContent({
                             onClick={() => toggleSort("tokens")}
                             className="inline-flex items-center gap-1 ml-auto hover:text-foreground transition-colors uppercase"
                           >
-                            Tokens
+                            {t("orgs.threads.tokens")}
                             {sortKey === "tokens" &&
                               (sortDir === "desc" ? (
                                 <ChevronDown size={12} />
@@ -807,7 +876,7 @@ export function ThreadsTabContent({
                             onClick={() => toggleSort("cost")}
                             className="inline-flex items-center gap-1 ml-auto hover:text-foreground transition-colors uppercase"
                           >
-                            Cost
+                            {t("orgs.threads.cost")}
                             {sortKey === "cost" &&
                               (sortDir === "desc" ? (
                                 <ChevronDown size={12} />
@@ -817,7 +886,7 @@ export function ThreadsTabContent({
                           </button>
                         </TableHead>
                         <TableHead className="w-32 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                          Date
+                          {t("orgs.threads.date")}
                         </TableHead>
                       </TableRow>
                     </TableHeader>
@@ -842,11 +911,7 @@ export function ThreadsTabContent({
                       ))}
                     </TableBody>
                   </Table>
-                  {isFetchingNextPage && (
-                    <div className="py-4 text-center text-sm text-muted-foreground">
-                      Loading more...
-                    </div>
-                  )}
+                  {isFetchingNextPage && <ThreadsTabLoadingMore />}
                 </>
               )}
             </div>

@@ -23,6 +23,7 @@ import { AlertTriangle, Loading01, LockUnlocked01 } from "@untitledui/icons";
 import type { ReactNode } from "react";
 import { Suspense, useReducer } from "react";
 import type { VirtualMCPConnection } from "@decocms/mesh-sdk/types";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
 import {
   type ConnectionFormValue,
   type SelectionValue,
@@ -50,7 +51,12 @@ function LoadingSpinner() {
 }
 
 // Error fallback factory for method not found errors
-function createMethodNotFoundFallback(notSupportedMessage: string) {
+// Receives t as an argument: the returned function is an ErrorBoundary render
+// callback, not a component, so it must not call hooks itself.
+function createMethodNotFoundFallback(
+  notSupportedMessage: string,
+  t: TFunction,
+) {
   return ({ error }: { error: Error | null }) => {
     // Check for "Method not found" error (code -32601)
     const isMethodNotFound =
@@ -74,13 +80,15 @@ function createMethodNotFoundFallback(notSupportedMessage: string) {
           <AlertTriangle className="h-6 w-6 text-destructive" />
         </div>
         <div className="space-y-2">
-          <h3 className="text-lg font-medium">Something went wrong</h3>
+          <h3 className="text-lg font-medium">
+            {t("virtualMcp.dependencySelectionDialog.somethingWentWrong")}
+          </h3>
           <p className="text-sm text-muted-foreground max-w-xs mx-auto">
             {error?.message
               ? error.message.length > 200
                 ? `${error.message.slice(0, 200)}...`
                 : error.message
-              : "An unexpected error occurred"}
+              : t("virtualMcp.dependencySelectionDialog.unexpectedError")}
           </p>
         </div>
       </div>
@@ -128,6 +136,60 @@ function SelectionItem({
         className="mt-0.5"
       />
     </label>
+  );
+}
+
+// Helper component for tabs row
+function ConnectionDetailsContentTabs({
+  activeTab,
+  onTabChange,
+  showSelectAll,
+  isAllSelected,
+  handleSelectAll,
+}: {
+  activeTab: TabId;
+  onTabChange: (value: TabId) => void;
+  showSelectAll: boolean;
+  isAllSelected: boolean;
+  handleSelectAll: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="flex items-center justify-between px-6 py-3 border-t border-border shrink-0">
+      <CollectionTabs
+        tabs={[
+          {
+            id: "tools",
+            label: t("virtualMcp.dependencySelectionDialog.tabTools"),
+          },
+          {
+            id: "active",
+            label: t("virtualMcp.dependencySelectionDialog.tabActive"),
+          },
+          {
+            id: "resources",
+            label: t("virtualMcp.dependencySelectionDialog.tabResources"),
+          },
+          {
+            id: "prompts",
+            label: t("virtualMcp.dependencySelectionDialog.tabPrompts"),
+          },
+        ]}
+        activeTab={activeTab}
+        onTabChange={(id) => onTabChange(id as TabId)}
+      />
+      {showSelectAll && (
+        <button
+          type="button"
+          onClick={handleSelectAll}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {isAllSelected
+            ? t("virtualMcp.dependencySelectionDialog.deselectAll")
+            : t("virtualMcp.dependencySelectionDialog.selectAll")}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -183,6 +245,7 @@ function ActiveToolsTab({
   toolSelections: SelectionValue;
   onToggleTool: (toolName: string, allToolNames: string[]) => void;
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId,
@@ -213,7 +276,7 @@ function ActiveToolsTab({
     return (
       <div className="flex-1 overflow-auto px-4 py-3 space-y-1">
         <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-          No active tools selected
+          {t("virtualMcp.dependencySelectionDialog.noActiveToolsSelected")}
         </div>
       </div>
     );
@@ -265,12 +328,13 @@ function ToolsTab({
     ),
   }));
 
+  const t = useT();
   return (
     <SelectionTab
       items={items}
       selections={selections}
       onToggle={onToggle}
-      emptyMessage="No tools available"
+      emptyMessage={t("virtualMcp.dependencySelectionDialog.noToolsAvailable")}
       disabled={disabled}
     />
   );
@@ -302,12 +366,15 @@ function ResourcesTab({
     description: resource.description,
   }));
 
+  const t = useT();
   return (
     <SelectionTab
       items={items}
       selections={selections}
       onToggle={onToggle}
-      emptyMessage="No resources available"
+      emptyMessage={t(
+        "virtualMcp.dependencySelectionDialog.noResourcesAvailable",
+      )}
       disabled={disabled}
     />
   );
@@ -339,12 +406,15 @@ function PromptsTab({
     description: prompt.description,
   }));
 
+  const t = useT();
   return (
     <SelectionTab
       items={items}
       selections={selections}
       onToggle={onToggle}
-      emptyMessage="No prompts available"
+      emptyMessage={t(
+        "virtualMcp.dependencySelectionDialog.noPromptsAvailable",
+      )}
       disabled={disabled}
     />
   );
@@ -395,6 +465,7 @@ function ConnectionDetailsContent({
   toggleAllPrompts: (connId: string) => void;
   onTabChange: (value: TabId) => void;
 }) {
+  const t = useT();
   const sel = formData[selectedId];
   const isAllSelected =
     activeTab === "tools"
@@ -438,27 +509,13 @@ function ConnectionDetailsContent({
       </div>
 
       {/* Tabs row + Select all */}
-      <div className="flex items-center justify-between px-6 py-3 border-t border-border shrink-0">
-        <CollectionTabs
-          tabs={[
-            { id: "tools", label: "Tools" },
-            { id: "active", label: "Active" },
-            { id: "resources", label: "Resources" },
-            { id: "prompts", label: "Prompts" },
-          ]}
-          activeTab={activeTab}
-          onTabChange={(id) => onTabChange(id as TabId)}
-        />
-        {showSelectAll && (
-          <button
-            type="button"
-            onClick={handleSelectAll}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {isAllSelected ? "Deselect all" : "Select all"}
-          </button>
-        )}
-      </div>
+      <ConnectionDetailsContentTabs
+        activeTab={activeTab}
+        onTabChange={onTabChange}
+        showSelectAll={showSelectAll}
+        isAllSelected={isAllSelected}
+        handleSelectAll={handleSelectAll}
+      />
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden flex flex-col">
@@ -466,6 +523,7 @@ function ConnectionDetailsContent({
           <ErrorBoundary
             fallback={createMethodNotFoundFallback(
               "Tools not supported by this server",
+              t,
             )}
           >
             <Suspense fallback={<LoadingSpinner />}>
@@ -485,6 +543,7 @@ function ConnectionDetailsContent({
           <ErrorBoundary
             fallback={createMethodNotFoundFallback(
               "Tools not supported by this server",
+              t,
             )}
           >
             <Suspense fallback={<LoadingSpinner />}>
@@ -506,6 +565,7 @@ function ConnectionDetailsContent({
           <ErrorBoundary
             fallback={createMethodNotFoundFallback(
               "Resources not supported by this server",
+              t,
             )}
           >
             <Suspense fallback={<LoadingSpinner />}>
@@ -525,6 +585,7 @@ function ConnectionDetailsContent({
           <ErrorBoundary
             fallback={createMethodNotFoundFallback(
               "Prompts not supported by this server",
+              t,
             )}
           >
             <Suspense fallback={<LoadingSpinner />}>
@@ -554,6 +615,22 @@ interface DependencySelectionDialogProps {
   onAuthenticate?: (connectionId: string) => void;
 }
 
+// Dialog footer component
+function DialogFooterComponent({
+  onClose,
+}: {
+  onClose: (open: boolean) => void;
+}) {
+  const t = useT();
+  return (
+    <DialogFooter className="px-6 py-4 border-t border-border shrink-0">
+      <Button variant="outline" onClick={() => onClose(false)}>
+        {t("virtualMcp.dependencySelectionDialog.done")}
+      </Button>
+    </DialogFooter>
+  );
+}
+
 // Auth check — renders auth prompt if the connection needs authorization
 function AuthGate({
   connectionId,
@@ -564,6 +641,7 @@ function AuthGate({
   onAuthenticate?: (connectionId: string) => void;
   children: ReactNode;
 }) {
+  const t = useT();
   const authStatus = useMCPAuthStatus({ connectionId });
   const needsAuth = authStatus.supportsOAuth && !authStatus.isAuthenticated;
 
@@ -574,10 +652,11 @@ function AuthGate({
           <LockUnlocked01 size={22} className="text-muted-foreground" />
         </div>
         <div className="space-y-1">
-          <p className="text-sm font-medium">Authorization required</p>
+          <p className="text-sm font-medium">
+            {t("virtualMcp.dependencySelectionDialog.authorizationRequired")}
+          </p>
           <p className="text-xs text-muted-foreground max-w-xs">
-            This connection needs to be authorized before you can configure its
-            tools and resources.
+            {t("virtualMcp.dependencySelectionDialog.authorizationDescription")}
           </p>
         </div>
         {onAuthenticate && (
@@ -586,7 +665,7 @@ function AuthGate({
             size="sm"
             onClick={() => onAuthenticate(connectionId)}
           >
-            Authorize
+            {t("virtualMcp.dependencySelectionDialog.authorize")}
           </Button>
         )}
       </div>
@@ -765,11 +844,7 @@ export function DependencySelectionDialog({
           </AuthGate>
         </Suspense>
 
-        <DialogFooter className="px-6 py-4 border-t border-border shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Done
-          </Button>
-        </DialogFooter>
+        <DialogFooterComponent onClose={onOpenChange} />
       </DialogContent>
     </Dialog>
   );

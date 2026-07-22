@@ -33,6 +33,7 @@ import {
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll.ts";
 import type { useMembers } from "@/web/hooks/use-members";
+import { useT } from "@/web/i18n/use-t.ts";
 import { KEYS } from "@/web/lib/query-keys";
 import { getOrgMembers } from "./utils.ts";
 
@@ -69,6 +70,7 @@ function MonitoringLogsTableContent({
   membersData,
   client,
 }: MonitoringLogsTableProps) {
+  const t = useT();
   const connections = connectionsData ?? [];
   const virtualMcps = virtualMcpsData ?? [];
   const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
@@ -160,15 +162,15 @@ function MonitoringLogsTableContent({
               aria-hidden="true"
             />
           }
-          title="No logs found"
+          title={t("orgs.audit.noLogsFound")}
           description={
             searchQuery ||
             connectionIds.length > 0 ||
             virtualMcpIds.length > 0 ||
             tool ||
             status !== "all"
-              ? "No logs match your filters"
-              : "No logs found in this time range"
+              ? t("orgs.audit.noLogsMatchFilters")
+              : t("orgs.audit.noLogsInTimeRange")
           }
         />
       </div>
@@ -184,22 +186,22 @@ function MonitoringLogsTableContent({
               <TableRow className="h-9 hover:bg-transparent border-b border-border">
                 <TableHead className="w-5" />
                 <TableHead className="pr-2 md:pr-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                  Tool / Connection
+                  {t("orgs.audit.toolConnection")}
                 </TableHead>
                 <TableHead className="w-36 md:w-44 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                  Agent
+                  {t("orgs.audit.agent")}
                 </TableHead>
                 <TableHead className="w-28 md:w-36 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                  User
+                  {t("orgs.audit.user")}
                 </TableHead>
                 <TableHead className="w-32 md:w-40 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                  Date
+                  {t("orgs.audit.date")}
                 </TableHead>
                 <TableHead className="w-16 md:w-20 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-                  Latency
+                  {t("orgs.audit.latency")}
                 </TableHead>
                 <TableHead className="w-16 md:w-24 px-2 md:px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right pr-3 md:pr-5">
-                  Status
+                  {t("orgs.audit.status")}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -267,7 +269,7 @@ function MonitoringLogsTableContent({
                       }
                       disabled={selectedLogIndex === 0}
                       className="h-7 w-7 text-muted-foreground"
-                      aria-label="Previous entry"
+                      aria-label={t("orgs.audit.previousEntry")}
                     >
                       <ChevronUp size={14} />
                     </Button>
@@ -281,7 +283,7 @@ function MonitoringLogsTableContent({
                       }
                       disabled={selectedLogIndex === filteredLogs.length - 1}
                       className="h-7 w-7 text-muted-foreground"
-                      aria-label="Next entry"
+                      aria-label={t("orgs.audit.nextEntry")}
                     >
                       <ChevronDown size={14} />
                     </Button>
@@ -295,13 +297,13 @@ function MonitoringLogsTableContent({
                   </div>
                 ) : detailQuery.isError ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3 text-sm text-muted-foreground">
-                    <p>Failed to load log details</p>
+                    <p>{t("orgs.audit.failedLoadLogDetails")}</p>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => detailQuery.refetch()}
                     >
-                      Retry
+                      {t("orgs.audit.retry")}
                     </Button>
                   </div>
                 ) : (

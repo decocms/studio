@@ -1,0 +1,154 @@
+import type { library as libraryEn } from "../en/library.ts";
+
+export const library = {
+  "library.brandComponentsPreview.allChip": "Todos",
+  "library.brandComponentsPreview.emailPlaceholder": "voce@exemplo.com",
+  "library.brandComponentsPreview.errorBadge": "Erro",
+  "library.brandComponentsPreview.ghostButton": "Ghost",
+  "library.brandComponentsPreview.iframeTitle": "Componentes da marca",
+  "library.brandComponentsPreview.incomeChip": "Receita",
+  "library.brandComponentsPreview.infoBadge": "Info",
+  "library.brandComponentsPreview.monthlySavingsLabel": "Economia mensal",
+  "library.brandComponentsPreview.primaryButton": "Primario",
+  "library.brandComponentsPreview.secondaryButton": "Secundario",
+  "library.brandComponentsPreview.spendingChip": "Gastos",
+  "library.brandComponentsPreview.subtitle":
+    "Botoes, cards, inputs e badges nos seus tokens.",
+  "library.brandComponentsPreview.successBadge": "Sucesso",
+  "library.brandComponentsPreview.title": "Sua marca, aplicada",
+  "library.brandComponentsPreview.warningBadge": "Aviso",
+  "library.brandPreview.addLogo": "Adicionar logo",
+  "library.brandPreview.brandNotAvailable":
+    "Esta marca não está mais disponível.",
+  "library.brandPreview.brandSaved": "Marca salva",
+  "library.brandPreview.cancel": "Cancelar",
+  "library.brandPreview.colors": "Cores",
+  "library.brandPreview.components": "Componentes",
+  "library.brandPreview.deck": "Apresentação",
+  "library.brandPreview.defaultFont": "fonte",
+  "library.brandPreview.edit": "Editar",
+  "library.brandPreview.failedSaveBrand": "Falha ao salvar a marca",
+  "library.brandPreview.hidePreview": "Ocultar visualização",
+  "library.brandPreview.logo": "Logo",
+  "library.brandPreview.logoUpdated": "Logo atualizado",
+  "library.brandPreview.logoUploadFailed": "Falha ao enviar a logo",
+  "library.brandPreview.motion": "Movimento",
+  "library.brandPreview.noVoiceYet": "Nenhuma voz de marca escrita ainda.",
+  "library.brandPreview.radius": "Arredondamento",
+  "library.brandPreview.replaceLogo": "Substituir logo",
+  "library.brandPreview.save": "Salvar",
+  "library.brandPreview.saving": "Salvando…",
+  "library.brandPreview.shadows": "Sombras",
+  "library.brandPreview.showPreview": "Mostrar visualização",
+  "library.brandPreview.spacing": "Espaçamento",
+  "library.brandPreview.tokens": "Tokens",
+  "library.brandPreview.typography": "Tipografia",
+  "library.brandPreview.voiceGuidelines": "Voz & diretrizes",
+  "library.brandPreview.voicePlaceholder":
+    "Descreva a voz, tom da marca, deve e não deve fazer…",
+  "library.cards.actionsFor": "Ações para {filename}",
+  "library.cards.brand": "Marca",
+  "library.cards.browseFiles": "Procurar arquivos",
+  "library.cards.delete": "Excluir",
+  "library.cards.download": "Baixar",
+  "library.cards.passwordProtected":
+    "Protegido por senha — link + senha para visualizar",
+  "library.cards.publicBadge":
+    "Público — qualquer pessoa com o link pode visualizar",
+  "library.cards.share": "Compartilhar",
+  "library.cards.sharedViaParent": "Compartilhado via pasta pai",
+  "library.cards.skill": "Habilidade",
+  "library.fileShareButton.buttonSet": "Definir",
+  "library.fileShareButton.buttonUpdate": "Atualizar",
+  "library.fileShareButton.copyLink": "Copiar link",
+  "library.fileShareButton.failedUpdateSharing":
+    "Falha ao atualizar compartilhamento",
+  "library.fileShareButton.inheritedDescription":
+    "Qualquer pessoa com o link pode visualizar {target}. Gerencie o compartilhamento na pasta pai.",
+  "library.fileShareButton.linkCopied":
+    "Link copiado para a área de transferência",
+  "library.fileShareButton.modeOrgOnly": "Somente organização",
+  "library.fileShareButton.modePassword": "Senha",
+  "library.fileShareButton.modePublic": "Público",
+  "library.fileShareButton.newPasswordPlaceholder": "Nova senha",
+  "library.fileShareButton.passwordDescription":
+    "Qualquer pessoa com o link E a senha pode visualizar {target}.",
+  "library.fileShareButton.passwordPlaceholder": "Senha",
+  "library.fileShareButton.privateDescription":
+    "Apenas membros de sua organização podem abrir {target}.",
+  "library.fileShareButton.publicFileDescription":
+    "Qualquer pessoa na internet com o link pode visualizar este arquivo.",
+  "library.fileShareButton.publicFolderDescription":
+    "Qualquer pessoa na internet pode visualizar arquivos nesta pasta via seu link.",
+  "library.fileShareButton.share": "Compartilhar",
+  "library.fileShareButton.shareDialogTitle": "Compartilhar {type}",
+  "library.fileShareButton.sharedViaParent": "Compartilhado via pasta pai",
+  "library.fileShareButton.toastOrgOnly":
+    "Este {subject} agora é somente da organização",
+  "library.fileShareButton.toastPassword":
+    "Este {subject} agora está protegido por senha",
+  "library.fileShareButton.toastPublic":
+    "Qualquer pessoa com o link agora pode visualizar este {subject}",
+  "library.library.cancel": "Cancelar",
+  "library.library.clearSearch": "Limpar pesquisa",
+  "library.library.create": "Criar",
+  "library.library.delete": "Deletar",
+  "library.library.deleteDirectoryDescription":
+    "A pasta e tudo dentro dela será deletado para toda a organização. Sandboxes veem essa mudança em segundos.",
+  "library.library.deleteFailed": "Falha ao deletar",
+  "library.library.deleteFileDescription":
+    "O arquivo será deletado para toda a organização. Sandboxes veem essa mudança em segundos.",
+  "library.library.deleteTitle": "Deletar {name}?",
+  "library.library.deleted": "Deletado {name}",
+  "library.library.dropToUpload": "Solte para enviar para {location}",
+  "library.library.folderCreateFailed": "Falha ao criar pasta",
+  "library.library.folderCreated": 'Pasta "{name}" criada',
+  "library.library.folderNamePlaceholder": "nome-da-pasta",
+  "library.library.newFolder": "Nova pasta",
+  "library.library.newFolderDescription": "Criar uma pasta em {path}.",
+  "library.library.newFolderTitle": "Nova pasta",
+  "library.library.readOnly": "Apenas leitura",
+  "library.library.refresh": "Atualizar",
+  "library.library.searchPlaceholder": "Pesquisar todos os arquivos…",
+  "library.library.theLibrary": "a biblioteca",
+  "library.library.title": "Biblioteca",
+  "library.library.uploadFailed": "Falha ao enviar",
+  "library.library.uploadFile": "Enviar arquivo",
+  "library.library.uploadedMultiple": "Enviados {count} arquivos",
+  "library.library.uploadedSingle": "Enviado {filename}",
+  "library.library.uploading": "Enviando…",
+  "library.libraryViews.brands": "Marcas",
+  "library.libraryViews.curatedSkillSetsReadOnly":
+    "Conjuntos de skills curados — somente leitura",
+  "library.libraryViews.emptyFolder":
+    "Pasta vazia — envie um arquivo ou crie uma pasta para começar.",
+  "library.libraryViews.emptyReadOnlySet":
+    "Vazio — este conjunto somente leitura sincroniza de sua fonte no GitHub.",
+  "library.libraryViews.failedToLoad": "Falha ao carregar",
+  "library.libraryViews.files": "Arquivos",
+  "library.libraryViews.filesCount": "{count} arquivo(s)",
+  "library.libraryViews.folders": "Pastas",
+  "library.libraryViews.library": "Biblioteca",
+  "library.libraryViews.noFilesMatch":
+    'Nenhum arquivo corresponde a "{query}".',
+  "library.libraryViews.noFilesYet":
+    "Nenhum arquivo ainda — envie um ou peça a um agente para produzir algo.",
+  "library.libraryViews.noPublicSkillSetsConfigured":
+    "Nenhum conjunto de skills público configurado.",
+  "library.libraryViews.readOnly": "Somente leitura",
+  "library.libraryViews.recentlyAdded": "Adicionado recentemente",
+  "library.libraryViews.searchResults": "{count} resultado(s)",
+  "library.libraryViews.skillSetsCount": "{count} conjunto(s)",
+  "library.libraryViews.skills": "Skills",
+  "library.libraryViews.volumeHomeDescription":
+    "Pasta inicial da sua organização",
+  "library.libraryViews.volumeOutputsDescription":
+    "Saídas de execução de agentes",
+  "library.libraryViews.volumeUploadsDescription":
+    "Arquivos que seu time envia",
+  "library.previewContent.close": "Fechar",
+  "library.previewContent.download": "Baixar",
+  "library.previewContent.fileNotAvailable":
+    "Este arquivo não está mais disponível.",
+  "library.previewContent.openInNewTab": "Abrir em nova aba",
+} satisfies Record<keyof typeof libraryEn, string>;

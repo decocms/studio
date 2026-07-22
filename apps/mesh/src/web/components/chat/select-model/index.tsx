@@ -7,6 +7,7 @@ import {
 import { DesktopCliModelSelectorBody } from "./desktop-cli";
 import { getAgentModelSet } from "./agent-models";
 import { useChatPrefs } from "../context";
+import { useT } from "@/web/i18n/use-t";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 
 interface BodyProps {
@@ -25,9 +26,10 @@ interface BodyProps {
  * settings/automations model pickers.
  */
 export function ModelSelectorBody({ onClose, agent }: BodyProps) {
+  const t = useT();
   const prefs = useChatPrefs();
   const effective = agent ?? prefs.pendingHarnessId ?? "decopilot";
-  const cli = getAgentModelSet(effective);
+  const cli = getAgentModelSet(effective, t);
 
   if (!cli) {
     return <DecopilotModelSelectorBody onClose={onClose} />;
@@ -61,7 +63,8 @@ export function ModelSelectorStandaloneBody({
   agent,
   ...rest
 }: StandaloneProps) {
-  const cli = agent ? getAgentModelSet(agent) : null;
+  const t = useT();
+  const cli = agent ? getAgentModelSet(agent, t) : null;
   if (!cli) return <DecopilotModelSelectorStandalone {...rest} />;
   return (
     <DesktopCliModelSelectorBody

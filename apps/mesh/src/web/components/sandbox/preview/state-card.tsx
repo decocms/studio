@@ -11,6 +11,7 @@ import type { ClaimPhase } from "../hooks/sandbox-events-context";
 import type { PhaseProgress } from "./derive-phase-progress";
 import type { SandboxStartError } from "./preview-state";
 import { headlineFor } from "./state-card-helpers";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export type SandboxStateCardProps =
   | {
@@ -28,6 +29,8 @@ export type SandboxStateCardProps =
     };
 
 export function SandboxStateCard(props: SandboxStateCardProps) {
+  const t = useT();
+
   if (props.kind === "starting") {
     return (
       <div className="flex h-full w-full items-center justify-center bg-background p-6">
@@ -49,17 +52,19 @@ export function SandboxStateCard(props: SandboxStateCardProps) {
           <h3 className="text-lg font-medium">{headlineFor("errored")}</h3>
           <p className="max-w-sm text-sm text-muted-foreground">
             {needsGithubAuth
-              ? "This agent's GitHub repo isn't authenticated. Reconnect it in Connections, then retry."
+              ? t("sandbox.stateCard.githubNotAuthenticatedMessage")
               : props.error.message}
           </p>
           <div className="mt-2 flex items-center gap-2">
             {needsGithubAuth && props.connectionsHref && (
               <Button asChild>
-                <a href={props.connectionsHref}>Reconnect GitHub</a>
+                <a href={props.connectionsHref}>
+                  {t("sandbox.stateCard.reconnectGithub")}
+                </a>
               </Button>
             )}
             <Button variant="outline" onClick={props.onRetry}>
-              <RefreshCw01 className="size-4" /> Retry
+              <RefreshCw01 className="size-4" /> {t("sandbox.stateCard.retry")}
             </Button>
           </div>
         </div>
@@ -73,10 +78,10 @@ export function SandboxStateCard(props: SandboxStateCardProps) {
         <PauseCircle className="size-12 text-blue-500" />
         <h3 className="text-lg font-medium">{headlineFor("suspended")}</h3>
         <p className="max-w-sm text-sm text-muted-foreground">
-          Resume to continue.
+          {t("sandbox.stateCard.resumeToContinue")}
         </p>
         <Button onClick={props.onResume} className="mt-2">
-          <Play className="size-4" /> Resume
+          <Play className="size-4" /> {t("sandbox.stateCard.resume")}
         </Button>
       </div>
     </div>

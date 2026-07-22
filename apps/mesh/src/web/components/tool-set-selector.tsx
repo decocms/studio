@@ -16,6 +16,7 @@ import {
 import { useSuspenseInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useRef, useState } from "react";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface ToolSetSelectorProps {
   toolSet: Record<string, string[]>;
@@ -139,6 +140,7 @@ export function ToolSetSelector({
   excludeVirtualMcpId,
   searchQuery: controlledSearchQuery,
 }: ToolSetSelectorProps) {
+  const t = useT();
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const searchQuery =
     controlledSearchQuery !== undefined
@@ -393,7 +395,7 @@ export function ToolSetSelector({
           <CollectionSearch
             value={internalSearchQuery}
             onChange={setInternalSearchQuery}
-            placeholder="Search MCP Servers..."
+            placeholder={t("common.toolSetSelector.searchPlaceholder")}
           />
         )}
 
@@ -408,7 +410,7 @@ export function ToolSetSelector({
                 : "border-border opacity-75 hover:opacity-100",
             )}
           >
-            All
+            {t("common.toolSetSelector.filterAll")}
           </button>
           <button
             onClick={() => setFilterMode("selected")}
@@ -419,7 +421,7 @@ export function ToolSetSelector({
                 : "border-border opacity-75 hover:opacity-100",
             )}
           >
-            Selected
+            {t("common.toolSetSelector.filterSelected")}
           </button>
           <button
             onClick={() => setFilterMode("unselected")}
@@ -430,7 +432,7 @@ export function ToolSetSelector({
                 : "border-border opacity-75 hover:opacity-100",
             )}
           >
-            Unselected
+            {t("common.toolSetSelector.filterUnselected")}
           </button>
         </div>
 
@@ -439,12 +441,12 @@ export function ToolSetSelector({
           {filteredConnections.length === 0 ? (
             <div className="p-4 text-sm text-muted-foreground text-center">
               {searchQuery
-                ? "No connections found"
+                ? t("common.toolSetSelector.noConnectionsFound")
                 : filterMode === "selected"
-                  ? "No servers selected"
+                  ? t("common.toolSetSelector.noServersSelected")
                   : filterMode === "unselected"
-                    ? "No unselected servers"
-                    : "No connections available"}
+                    ? t("common.toolSetSelector.noUnselectedServers")
+                    : t("common.toolSetSelector.noConnectionsAvailable")}
             </div>
           ) : (
             <div className="p-2 space-y-1">
@@ -533,7 +535,7 @@ export function ToolSetSelector({
                 </div>
               ) : connectionTools.length === 0 ? (
                 <div className="text-sm text-muted-foreground text-center py-8">
-                  This connection has no tools available
+                  {t("common.toolSetSelector.noToolsAvailable")}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -558,7 +560,7 @@ export function ToolSetSelector({
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-sm text-muted-foreground text-center">
-              Select a connection to view its tools
+              {t("common.toolSetSelector.selectConnection")}
             </div>
           </div>
         )}

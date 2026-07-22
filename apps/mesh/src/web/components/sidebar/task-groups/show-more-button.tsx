@@ -1,5 +1,6 @@
 import { Loading01 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ShowMoreButtonProps {
   onClick: () => void;
@@ -21,10 +22,11 @@ export function ShowMoreButton({
   isFetching,
   indented,
 }: ShowMoreButtonProps) {
+  const t = useT();
   return (
     <button
       type="button"
-      aria-label="Show more tasks"
+      aria-label={t("sidebar.showMoreButton.ariaLabel")}
       onClick={onClick}
       disabled={isFetching}
       className={cn(
@@ -35,7 +37,11 @@ export function ShowMoreButton({
       )}
     >
       {isFetching && <Loading01 size={14} className="animate-spin" />}
-      <span>{isFetching ? "Loading…" : "Show more"}</span>
+      <span>
+        {isFetching
+          ? t("sidebar.showMoreButton.loading")
+          : t("sidebar.showMoreButton.showMore")}
+      </span>
     </button>
   );
 }

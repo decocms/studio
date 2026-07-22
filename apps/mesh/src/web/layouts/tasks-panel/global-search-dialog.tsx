@@ -18,6 +18,7 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/query-keys";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { useT } from "@/web/i18n/use-t.ts";
 import { McpAvatar } from "./mcp-avatar";
 
 type ThreadResult = {
@@ -49,6 +50,7 @@ export function GlobalSearchDialog({
   const { org } = useProjectContext();
   const { setTaskId } = usePanelActions();
   const studio = useStudioTools();
+  const t = useT();
 
   const trimmed = query.trim();
 
@@ -87,9 +89,9 @@ export function GlobalSearchDialog({
         closeButtonClassName="hidden"
       >
         <DialogHeader className="sr-only">
-          <DialogTitle>Search</DialogTitle>
+          <DialogTitle>{t("tasksPanel.globalSearchDialog.title")}</DialogTitle>
           <DialogDescription>
-            Search across your organization's resources.
+            {t("tasksPanel.globalSearchDialog.description")}
           </DialogDescription>
         </DialogHeader>
         <Command
@@ -99,19 +101,21 @@ export function GlobalSearchDialog({
           <CommandInput
             value={query}
             onValueChange={setQuery}
-            placeholder="Search..."
+            placeholder={t("tasksPanel.globalSearchDialog.placeholder")}
           />
           <CommandList>
             {!trimmed ? (
               <div className="py-6 text-center text-sm text-muted-foreground">
-                Start typing to search.
+                {t("tasksPanel.globalSearchDialog.startTyping")}
               </div>
             ) : isFetching && items.length === 0 ? (
               <div className="py-6 text-center text-sm text-muted-foreground">
-                Searching…
+                {t("tasksPanel.globalSearchDialog.searching")}
               </div>
             ) : items.length === 0 ? (
-              <CommandEmpty>No results.</CommandEmpty>
+              <CommandEmpty>
+                {t("tasksPanel.globalSearchDialog.noResults")}
+              </CommandEmpty>
             ) : (
               items.map((item) => {
                 if (item.type === "thread") {
@@ -125,7 +129,8 @@ export function GlobalSearchDialog({
                       <McpAvatar virtualMcpId={item.virtual_mcp_id} size="xs" />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-foreground truncate">
-                          {item.title || "Untitled chat"}
+                          {item.title ||
+                            t("tasksPanel.globalSearchDialog.untitledChat")}
                         </div>
                       </div>
                       <span className="text-xs text-muted-foreground shrink-0">

@@ -12,6 +12,7 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import { Suspense } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ConnectionInstancesPanelProps {
   instances: ConnectionEntity[];
@@ -42,6 +43,7 @@ function InstanceItem({
     status: "active" | "inactive",
   ) => void;
 }) {
+  const t = useT();
   const authStatus = useMCPAuthStatus({ connectionId: instance.id });
   const isVirtual = instance.connection_type === "VIRTUAL";
   const needsAuth =
@@ -67,11 +69,13 @@ function InstanceItem({
         <p className="text-sm font-medium truncate">{instance.title}</p>
         {needsAuth ? (
           <span className="text-xs text-destructive font-medium">
-            Needs authorization
+            {t("details.connectionInstancesPanel.needsAuthorization")}
           </span>
         ) : isDisabled ? (
           <span className="text-xs text-destructive font-medium">
-            {instance.status === "error" ? "Disabled (error)" : "Disabled"}
+            {instance.status === "error"
+              ? t("details.connectionInstancesPanel.disabledError")
+              : t("details.connectionInstancesPanel.disabled")}
           </span>
         ) : null}
       </div>
@@ -83,7 +87,7 @@ function InstanceItem({
             className="h-7 text-xs"
             onClick={() => onAuthenticate(instance)}
           >
-            Authorize
+            {t("details.connectionInstancesPanel.authorize")}
           </Button>
         )}
         {isDisabled ? (
@@ -94,7 +98,7 @@ function InstanceItem({
             onClick={() => onToggleStatus(instance, "active")}
           >
             <Power01 size={13} />
-            Enable
+            {t("details.connectionInstancesPanel.enable")}
           </Button>
         ) : (
           <Button
@@ -102,7 +106,7 @@ function InstanceItem({
             size="icon"
             className="h-7 w-7 text-muted-foreground"
             onClick={() => onToggleStatus(instance, "inactive")}
-            title="Disable"
+            title={t("details.connectionInstancesPanel.disable")}
           >
             <SlashCircle01 size={13} />
           </Button>
@@ -112,7 +116,7 @@ function InstanceItem({
           size="icon"
           className="h-7 w-7"
           onClick={() => onConfigure(instance)}
-          title="Configure"
+          title={t("details.connectionInstancesPanel.configure")}
         >
           <Settings02 size={13} />
         </Button>
@@ -121,7 +125,7 @@ function InstanceItem({
           size="icon"
           className="h-7 w-7 text-muted-foreground hover:text-destructive"
           onClick={() => onDelete(instance)}
-          title="Delete"
+          title={t("details.connectionInstancesPanel.delete")}
         >
           <Trash01 size={13} />
         </Button>
@@ -137,6 +141,7 @@ function InstanceItemFallback({
   instance: ConnectionEntity;
   onConfigure: (instance: ConnectionEntity) => void;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-3 rounded-lg border border-transparent px-4 py-2.5 transition-colors">
       <IntegrationIcon
@@ -154,7 +159,7 @@ function InstanceItemFallback({
           size="icon"
           className="h-7 w-7"
           onClick={() => onConfigure(instance)}
-          title="Configure"
+          title={t("details.connectionInstancesPanel.configure")}
         >
           <Settings02 size={13} />
         </Button>
@@ -172,12 +177,15 @@ export function ConnectionInstancesPanel({
   onAdd,
   isAdding,
 }: ConnectionInstancesPanelProps) {
+  const t = useT();
   if (instances.length === 0) return null;
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">
-          {instances.length === 1 ? "Instance" : "Instances"}
+          {instances.length === 1
+            ? t("details.connectionInstancesPanel.instance")
+            : t("details.connectionInstancesPanel.instances")}
         </h3>
         <Button
           variant="default"
@@ -191,7 +199,7 @@ export function ConnectionInstancesPanel({
           ) : (
             <Plus size={13} />
           )}
-          Add instance
+          {t("details.connectionInstancesPanel.addInstance")}
         </Button>
       </div>
       <div className="p-2 flex flex-col gap-1">

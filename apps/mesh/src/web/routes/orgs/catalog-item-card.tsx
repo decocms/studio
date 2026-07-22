@@ -17,6 +17,7 @@ import type { ConnectionEntity } from "@decocms/mesh-sdk";
 import { track } from "@/web/lib/posthog-client";
 import type { RegistryItem } from "@/web/components/store/types";
 import { getRegistryItemAppName } from "@/web/utils/extract-connection-data";
+import { useT } from "@/web/i18n/use-t.ts";
 
 function isCommunityItem(item: RegistryItem): boolean {
   return item._registryId?.includes("community-registry") === true;
@@ -39,6 +40,7 @@ export function CatalogItemCard({
   onNavigateConnected: (conn: ConnectionEntity) => void;
   onConnect: (item: RegistryItem) => void;
 }) {
+  const t = useT();
   const [communityWarningOpen, setCommunityWarningOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<"connect" | null>(null);
 
@@ -120,7 +122,7 @@ export function CatalogItemCard({
             )}
             {isConnected ? (
               <span className="text-xs text-muted-foreground font-normal">
-                Connected
+                {t("orgs.catalogItemCard.connected")}
               </span>
             ) : (
               canManage && (
@@ -137,7 +139,7 @@ export function CatalogItemCard({
                   {connectingItemId === item.id ? (
                     <Loading01 size={14} className="animate-spin" />
                   ) : (
-                    "Connect"
+                    t("orgs.catalogItemCard.connect")
                   )}
                 </Button>
               )
@@ -151,18 +153,19 @@ export function CatalogItemCard({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Community MCP Server</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("orgs.catalogItemCard.communityMcpServerTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This MCP server is from the Community MCP Registry and is not
-              maintained or verified by Deco. Community servers may have varying
-              levels of quality, security, and reliability. Proceed with caution
-              and review the server details before connecting.
+              {t("orgs.catalogItemCard.communityMcpServerDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("orgs.catalogItemCard.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction onClick={handleCommunityConfirm}>
-              Continue
+              {t("orgs.catalogItemCard.continue")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

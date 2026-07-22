@@ -3,6 +3,8 @@ import type { CtaProps } from "@/reports/deck-types";
 import Icon from "../icon";
 import { trackConnectCta } from "../onboarding";
 import { useReportCtaHref } from "../use-report-cta-href";
+import { useT } from "@/web/i18n/use-t";
+import type { TranslationKey } from "@/web/i18n/use-t";
 import { DECK } from "./tokens";
 
 // ── closing pitch (Figma: Product 2, node 9317-17836) ────────────────────────
@@ -10,61 +12,139 @@ import { DECK } from "./tokens";
 // and CTA; a marquee of every audited dimension (each its own icon); and a
 // report card peeking from the bottom with the scored areas.
 
-const HEADLINE_A = "Acesse a análise completa e";
-const HEADLINE_B = "opere seu site no piloto automático.";
-const SUB_A = "389 verificações em 15 dimensões, cada problema com uma";
-const SUB_B = "próxima ação clara. A Deco corrige por você.";
-const CTA_LABEL = "Ver diagnóstico completo";
-
 const CARD = DECK.forest;
 const LIME = DECK.lime;
 
 // The audited dimensions — each with its own icon and accent (the marquee).
-type Pill = { label: string; icon: string; color: string };
+type Pill = { labelKey: TranslationKey; icon: string; color: string };
 const PILLS: Pill[] = [
-  { label: "SEO", icon: "search", color: "#ffc116" },
-  { label: "Busca por IA", icon: "smart_toy", color: "#14b8a6" },
-  { label: "Performance", icon: "bolt", color: "#a595ff" },
-  { label: "Conversão", icon: "shopping_cart", color: "#ffc116" },
-  { label: "Rastreamento", icon: "monitoring", color: "#6e9fdb" },
-  { label: "Acessibilidade", icon: "accessibility_new", color: "#b7a8ff" },
-  { label: "Segurança", icon: "shield", color: "#f0846b" },
-  { label: "Conteúdo", icon: "article", color: "#ffc116" },
-  { label: "Analytics & Funil", icon: "bar_chart", color: "#a3c73a" },
+  {
+    labelKey: "reports.ctaTemplate.pill.seo",
+    icon: "search",
+    color: "#ffc116",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.aiSearch",
+    icon: "smart_toy",
+    color: "#14b8a6",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.performance",
+    icon: "bolt",
+    color: "#a595ff",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.conversion",
+    icon: "shopping_cart",
+    color: "#ffc116",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.tracking",
+    icon: "monitoring",
+    color: "#6e9fdb",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.accessibility",
+    icon: "accessibility_new",
+    color: "#b7a8ff",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.security",
+    icon: "shield",
+    color: "#f0846b",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.content",
+    icon: "article",
+    color: "#ffc116",
+  },
+  {
+    labelKey: "reports.ctaTemplate.pill.analytics",
+    icon: "bar_chart",
+    color: "#a3c73a",
+  },
 ];
 
 // The scored areas shown inside the report card (from the attached spec).
-type ReportArea = { label: string; score: number; color: string };
+type ReportArea = { labelKey: TranslationKey; score: number; color: string };
 const REPORT_AREAS: ReportArea[] = [
-  { label: "Conversão", score: 42, color: "#6e9fdb" },
-  { label: "Performance", score: 35, color: "#a595ff" },
-  { label: "SEO", score: 54, color: "#f0b613" },
-  { label: "Busca por IA (GEO)", score: 67, color: "#14b8a6" },
-  { label: "Acessibilidade", score: 48, color: "#8aa9ff" },
-  { label: "Segurança", score: 31, color: "#f0846b" },
-  { label: "Analytics & Funil", score: 75, color: "#8caa25" },
+  {
+    labelKey: "reports.ctaTemplate.area.conversion",
+    score: 42,
+    color: "#6e9fdb",
+  },
+  {
+    labelKey: "reports.ctaTemplate.area.performance",
+    score: 35,
+    color: "#a595ff",
+  },
+  { labelKey: "reports.ctaTemplate.area.seo", score: 54, color: "#f0b613" },
+  {
+    labelKey: "reports.ctaTemplate.area.aiSearchGeo",
+    score: 67,
+    color: "#14b8a6",
+  },
+  {
+    labelKey: "reports.ctaTemplate.area.accessibility",
+    score: 48,
+    color: "#8aa9ff",
+  },
+  {
+    labelKey: "reports.ctaTemplate.area.security",
+    score: 31,
+    color: "#f0846b",
+  },
+  {
+    labelKey: "reports.ctaTemplate.area.analytics",
+    score: 75,
+    color: "#8caa25",
+  },
 ];
 
 const SEGMENTS = 14;
 
 // Fixes queued from the findings — the falling backlog on the left.
-type FixTask = { title: string; level: string; color: string };
+type FixTask = {
+  titleKey: TranslationKey;
+  levelKey: TranslationKey;
+  color: string;
+};
 const FIX_TASKS: FixTask[] = [
   {
-    title: "Corrigir LCP acima de 4s na home",
-    level: "Alta",
+    titleKey: "reports.ctaTemplate.fixTask.lcpHome",
+    levelKey: "reports.ctaTemplate.level.high",
     color: "#d43d3d",
   },
   {
-    title: "Adicionar canonical em 12 páginas",
-    level: "Alta",
+    titleKey: "reports.ctaTemplate.fixTask.canonical",
+    levelKey: "reports.ctaTemplate.level.high",
     color: "#d43d3d",
   },
-  { title: "Liberar GPTBot no robots.txt", level: "Média", color: "#f0b613" },
-  { title: "Corrigir GA4 duplicando eventos", level: "Alta", color: "#d43d3d" },
-  { title: "Adicionar alt em 18 imagens", level: "Média", color: "#f0b613" },
-  { title: "Reduzir checkout para 3 campos", level: "Alta", color: "#d43d3d" },
-  { title: "Ativar HSTS e CSP", level: "Média", color: "#f0b613" },
+  {
+    titleKey: "reports.ctaTemplate.fixTask.gptBot",
+    levelKey: "reports.ctaTemplate.level.medium",
+    color: "#f0b613",
+  },
+  {
+    titleKey: "reports.ctaTemplate.fixTask.ga4",
+    levelKey: "reports.ctaTemplate.level.high",
+    color: "#d43d3d",
+  },
+  {
+    titleKey: "reports.ctaTemplate.fixTask.altImages",
+    levelKey: "reports.ctaTemplate.level.medium",
+    color: "#f0b613",
+  },
+  {
+    titleKey: "reports.ctaTemplate.fixTask.checkout",
+    levelKey: "reports.ctaTemplate.level.high",
+    color: "#d43d3d",
+  },
+  {
+    titleKey: "reports.ctaTemplate.fixTask.hstsCsp",
+    levelKey: "reports.ctaTemplate.level.medium",
+    color: "#f0b613",
+  },
 ];
 
 // Delivery cadence heatmap (7 rows × 16 weeks), deterministic so it's stable.
@@ -75,15 +155,26 @@ function heatLevel(row: number, col: number): number {
   return (row * 3 + col * 5 + ((row * col) % 4)) % 5;
 }
 
-const CADENCE_METRICS = [
-  { label: "Tempo médio até corrigir", value: "3 dias" },
-  { label: "Correções esta semana", value: "7" },
-  { label: "Em revisão", value: "2" },
+type CadenceMetric = { labelKey: TranslationKey; valueKey: TranslationKey };
+const CADENCE_METRICS: CadenceMetric[] = [
+  {
+    labelKey: "reports.ctaTemplate.cadence.avgFixTime",
+    valueKey: "reports.ctaTemplate.cadence.avgFixTimeValue",
+  },
+  {
+    labelKey: "reports.ctaTemplate.cadence.fixesThisWeek",
+    valueKey: "reports.ctaTemplate.cadence.fixesThisWeekValue",
+  },
+  {
+    labelKey: "reports.ctaTemplate.cadence.inReview",
+    valueKey: "reports.ctaTemplate.cadence.inReviewValue",
+  },
 ];
 
 // ── marquee pill ──────────────────────────────────────────────────────────────
 
-function DimensionPill({ label, icon, color }: Pill) {
+function DimensionPill({ labelKey, icon, color }: Pill) {
+  const t = useT();
   return (
     <span
       className="flex shrink-0 items-center gap-2.5 rounded-full py-2 pl-3 pr-5"
@@ -96,7 +187,7 @@ function DimensionPill({ label, icon, color }: Pill) {
         className="whitespace-nowrap text-[15px]"
         style={{ color: "#ffffff" }}
       >
-        {label}
+        {t(labelKey)}
       </span>
     </span>
   );
@@ -128,6 +219,7 @@ function ReportCard({
   faviconUrl: string;
   initial: string;
 }) {
+  const t = useT();
   const [faviconFailed, setFaviconFailed] = useState(false);
   return (
     <div
@@ -166,20 +258,20 @@ function ReportCard({
           className="text-[12px] font-semibold uppercase tracking-wide"
           style={{ color: DECK.soft }}
         >
-          Diagnóstico
+          {t("reports.ctaTemplate.reportCard.diagnostic")}
         </span>
       </div>
 
       {/* scored areas */}
       <ul className="mt-5 flex flex-col gap-4">
         {REPORT_AREAS.map((area) => (
-          <li key={area.label} className="flex flex-col gap-1.5">
+          <li key={area.labelKey} className="flex flex-col gap-1.5">
             <div className="flex items-baseline justify-between">
               <span
                 className="text-[11px] font-semibold uppercase tracking-wide"
                 style={{ color: DECK.ink }}
               >
-                {area.label}
+                {t(area.labelKey)}
               </span>
               <span
                 className="text-[15px] font-semibold tabular-nums"
@@ -204,7 +296,8 @@ function ReportCard({
 
 // ── falling task backlog (left, decorative) ──────────────────────────────────
 
-function TaskCard({ title, level, color }: FixTask) {
+function TaskCard({ titleKey, levelKey, color }: FixTask) {
+  const t = useT();
   return (
     <div
       className="rounded-xl bg-white p-3"
@@ -222,7 +315,7 @@ function TaskCard({ title, level, color }: FixTask) {
           className="text-[12.5px] font-medium leading-snug"
           style={{ color: DECK.ink }}
         >
-          {title}
+          {t(titleKey)}
         </span>
       </div>
       <span
@@ -230,7 +323,7 @@ function TaskCard({ title, level, color }: FixTask) {
         style={{ background: "rgba(40,37,36,0.04)", color: DECK.muted }}
       >
         <span className="size-1.5 rounded-full" style={{ background: color }} />
-        {level}
+        {t(levelKey)}
       </span>
     </div>
   );
@@ -249,7 +342,7 @@ function TaskStream() {
     >
       <div className="report-task-track gap-3">
         {[...FIX_TASKS, ...FIX_TASKS].map((t, i) => (
-          <TaskCard key={`${t.title}-${i}`} {...t} />
+          <TaskCard key={`${t.titleKey}-${i}`} {...t} />
         ))}
       </div>
     </div>
@@ -259,6 +352,7 @@ function TaskStream() {
 // ── delivery cadence card (right, decorative) ─────────────────────────────────
 
 function CadenceCard() {
+  const t = useT();
   return (
     <div
       className="w-[320px] rounded-2xl bg-white p-5"
@@ -268,7 +362,7 @@ function CadenceCard() {
         className="text-[11px] font-semibold uppercase tracking-wide"
         style={{ color: DECK.soft }}
       >
-        Ritmo de entrega
+        {t("reports.ctaTemplate.cadence.title")}
       </span>
       <div
         className="mt-4 grid gap-[3px]"
@@ -289,13 +383,13 @@ function CadenceCard() {
       <ul className="mt-4 flex flex-col">
         {CADENCE_METRICS.map((m) => (
           <li
-            key={m.label}
+            key={m.labelKey}
             className="flex items-center justify-between py-2.5 text-[13px]"
             style={{ borderTop: `1px solid ${DECK.border}` }}
           >
-            <span style={{ color: DECK.muted }}>{m.label}</span>
+            <span style={{ color: DECK.muted }}>{t(m.labelKey)}</span>
             <span className="font-semibold" style={{ color: DECK.ink }}>
-              {m.value}
+              {t(m.valueKey)}
             </span>
           </li>
         ))}
@@ -320,6 +414,7 @@ export default function CtaTemplate({
   checksTotal,
   active = false,
 }: CtaProps) {
+  const t = useT();
   const show = active ? "true" : "false";
   const ctaHref = useReportCtaHref(domain);
   const hasCoverage =
@@ -363,8 +458,9 @@ export default function CtaTemplate({
               transitionDelay: active ? "60ms" : "0ms",
             }}
           >
-            {HEADLINE_A}
-            <br className="hidden sm:block" /> {HEADLINE_B}
+            {t("reports.ctaTemplate.headline.part1")}
+            <br className="hidden sm:block" />{" "}
+            {t("reports.ctaTemplate.headline.part2")}
           </h2>
 
           <p
@@ -375,8 +471,9 @@ export default function CtaTemplate({
               transitionDelay: active ? "130ms" : "0ms",
             }}
           >
-            {SUB_A}
-            <br className="hidden sm:block" /> {SUB_B}
+            {t("reports.ctaTemplate.subheading.part1")}
+            <br className="hidden sm:block" />{" "}
+            {t("reports.ctaTemplate.subheading.part2")}
           </p>
 
           <a
@@ -396,7 +493,7 @@ export default function CtaTemplate({
               transitionDelay: active ? "220ms" : "0ms",
             }}
           >
-            <span>{CTA_LABEL}</span>
+            <span>{t("reports.ctaTemplate.cta.label")}</span>
             <Icon name="arrow_forward" size="medium" />
           </a>
         </div>
@@ -415,7 +512,7 @@ export default function CtaTemplate({
         >
           <div className="report-marquee-track gap-2">
             {[...PILLS, ...PILLS].map((p, i) => (
-              <DimensionPill key={`${p.label}-${i}`} {...p} />
+              <DimensionPill key={`${p.labelKey}-${i}`} {...p} />
             ))}
           </div>
         </div>

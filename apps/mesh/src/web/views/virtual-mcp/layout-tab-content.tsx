@@ -5,6 +5,7 @@ import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { FIXED_SYSTEM_TABS } from "@/web/layouts/main-panel-tabs/tab-id";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Card, CardContent } from "@deco/ui/components/card.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
@@ -59,6 +60,7 @@ export function LayoutTabContent({
   form: VirtualMcpFormReturn;
   flushAndSave: () => Promise<unknown>;
 }) {
+  const t = useT();
   const studio = useStudioTools();
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
@@ -297,12 +299,18 @@ export function LayoutTabContent({
   // Order mirrors the right-panel tab order in the unified chat layout:
   // Chat (no main panel), then fixed system tabs, then pinned ext-apps.
   const defaultMainOptions: { value: string; label: string }[] = [
-    { value: "chat", label: "Chat" },
-    { value: "settings", label: "Settings" },
-    { value: "automations", label: "Automations" },
+    { value: "chat", label: t("virtualMcp.layoutTabContent.chat") },
+    { value: "settings", label: t("virtualMcp.layoutTabContent.settings") },
+    {
+      value: "automations",
+      label: t("virtualMcp.layoutTabContent.automations"),
+    },
   ];
   if (hasClonableSource) {
-    defaultMainOptions.push({ value: "preview", label: "Preview" });
+    defaultMainOptions.push({
+      value: "preview",
+      label: t("virtualMcp.layoutTabContent.preview"),
+    });
   }
   for (const pv of pinnedViews) {
     defaultMainOptions.push({
@@ -317,15 +325,19 @@ export function LayoutTabContent({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-medium text-foreground">Layout</h2>
+        <h2 className="text-sm font-medium text-foreground">
+          {t("virtualMcp.layoutTabContent.layout")}
+        </h2>
       </div>
       <Card className="p-6 gap-5">
         <CardContent className="p-0 space-y-5">
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-0.5 min-w-0">
-              <Label className="font-normal text-foreground">Main view</Label>
+              <Label className="font-normal text-foreground">
+                {t("virtualMcp.layoutTabContent.mainView")}
+              </Label>
               <p className="text-xs text-muted-foreground">
-                What users see when they first open this agent.
+                {t("virtualMcp.layoutTabContent.mainViewDescription")}
               </p>
             </div>
             <Select
@@ -351,9 +363,11 @@ export function LayoutTabContent({
 
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-0.5 min-w-0">
-              <Label className="font-normal text-foreground">Show chat</Label>
+              <Label className="font-normal text-foreground">
+                {t("virtualMcp.layoutTabContent.showChat")}
+              </Label>
               <p className="text-xs text-muted-foreground">
-                Display Chat in the side panel alongside the main view.
+                {t("virtualMcp.layoutTabContent.showChatDescription")}
               </p>
             </div>
             <Tooltip delayDuration={0}>
@@ -373,7 +387,7 @@ export function LayoutTabContent({
               </TooltipTrigger>
               {defaultMainView === "chat" && (
                 <TooltipContent side="top">
-                  Chat is always shown when it is the default view
+                  {t("virtualMcp.layoutTabContent.chatAlwaysShown")}
                 </TooltipContent>
               )}
             </Tooltip>
@@ -387,21 +401,21 @@ export function LayoutTabContent({
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-0.5 min-w-0">
                   <Label className="font-normal text-foreground">
-                    Pinned views
+                    {t("virtualMcp.layoutTabContent.pinnedViews")}
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Surface interactive tools as top-level tabs in the agent.
+                    {t("virtualMcp.layoutTabContent.pinnedViewsDescription")}
                   </p>
                 </div>
               </div>
               {noConnections && (
                 <p className="text-xs text-muted-foreground">
-                  Add a connection above to configure pinned views.
+                  {t("virtualMcp.layoutTabContent.addConnectionMessage")}
                 </p>
               )}
               {noInteractiveTools && !noConnections && (
                 <p className="text-xs text-muted-foreground">
-                  None of the connected servers expose interactive tools.
+                  {t("virtualMcp.layoutTabContent.noInteractiveTools")}
                 </p>
               )}
               {connectionsData.length > 0 && (

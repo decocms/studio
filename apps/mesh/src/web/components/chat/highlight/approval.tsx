@@ -17,6 +17,7 @@ import {
   usePreferences,
   type ToolApprovalLevel,
 } from "@/web/hooks/use-preferences.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { PaginatedFormFooterLeft } from "./common/paginated-form-footer";
 import { useMultiPartDecisionForm } from "./common/use-multipart-decision-form";
@@ -30,8 +31,8 @@ export {
 // Constants
 // ============================================================================
 
-const DEFAULT_DENY_REASON =
-  "User denied this tool call, give other alternatives.";
+// ponytail: module-scope constant used by multiple functions for denial reason
+const DEFAULT_DENY_REASON_KEY = "chat.approval.defaultDenyReason";
 
 // ============================================================================
 // ApprovalLevelSelect
@@ -42,6 +43,7 @@ function ApprovalLevelSelect({
 }: {
   onYolo: (level: ToolApprovalLevel) => void;
 }) {
+  const t = useT();
   const [preferences, setPreferences] = usePreferences();
 
   const handleLevelChange = (value: string) => {
@@ -78,7 +80,7 @@ function ApprovalLevelSelect({
       <SelectContent>
         {APPROVAL_LEVEL_OPTIONS.map((opt) => (
           <SelectItem key={opt.value} value={opt.value}>
-            {opt.label}
+            {t(opt.labelKey)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -91,8 +93,13 @@ function ApprovalLevelSelect({
 // ============================================================================
 
 function ApprovalDetail({ input }: { input: unknown }) {
+  const t = useT();
   if (input === undefined || input === null) {
-    return <div className="px-4 text-xs text-muted-foreground">No input</div>;
+    return (
+      <div className="px-4 text-xs text-muted-foreground">
+        {t("chat.approval.noInput")}
+      </div>
+    );
   }
   let formatted: string;
   try {
@@ -127,12 +134,18 @@ function SingleApprovalPrompt({
   approval,
   onRespond,
 }: SingleApprovalPromptProps) {
+  const t = useT();
   const [preferences] = usePreferences();
   const currentLevel: ToolApprovalLevel =
     preferences.toolApprovalLevel ?? "readonly";
 
   const handleDeny = () =>
-    onRespond(approval.approvalId, false, DEFAULT_DENY_REASON, currentLevel);
+    onRespond(
+      approval.approvalId,
+      false,
+      t(DEFAULT_DENY_REASON_KEY),
+      currentLevel,
+    );
   const handleAccept = () =>
     onRespond(approval.approvalId, true, undefined, currentLevel);
   const handleAcceptAll = (level: ToolApprovalLevel) =>
@@ -152,7 +165,7 @@ function SingleApprovalPrompt({
         className="h-7 px-2.5 text-xs text-muted-foreground [@media(hover:hover)]:hover:text-foreground active:scale-[0.97] transition-transform"
         onClick={handleDeny}
       >
-        Deny
+        {t("chat.approval.denyButton")}
       </Button>
       <Button
         type="button"
@@ -160,7 +173,7 @@ function SingleApprovalPrompt({
         className="h-7 px-2.5 text-xs active:scale-[0.97] transition-transform"
         onClick={handleAccept}
       >
-        Accept
+        {t("chat.approval.acceptButton")}
       </Button>
     </>
   );
@@ -168,7 +181,7 @@ function SingleApprovalPrompt({
   return (
     <CollapsibleHighlight
       icon={<ShieldTick size={14} />}
-      label="Approval needed"
+      label={t("chat.approval.needsApproval")}
       title={approval.friendlyName}
       defaultExpanded={true}
       footerLeft={footerLeft}
@@ -212,6 +225,7 @@ function BatchedApprovalPrompt({
   isStreaming,
   onRespond,
 }: BatchedApprovalPromptProps) {
+  const t = useT();
   const [preferences] = usePreferences();
   const currentLevel: ToolApprovalLevel =
     preferences.toolApprovalLevel ?? "readonly";
@@ -240,7 +254,7 @@ function BatchedApprovalPrompt({
       onRespond(
         approval.approvalId,
         v.approved,
-        v.approved === false ? DEFAULT_DENY_REASON : undefined,
+        v.approved === false ? t(DEFAULT_DENY_REASON_KEY) : undefined,
         v.levelOverride ?? currentLevel,
       );
     },
@@ -274,7 +288,7 @@ function BatchedApprovalPrompt({
       >
         <CollapsibleHighlight
           icon={<ShieldTick size={14} />}
-          label={`${approvals.length} approvals pending`}
+          label={t("chat.approval.batchedLabel", { count: approvals.length })}
           title={current?.friendlyName ?? ""}
           defaultExpanded={true}
           footerLeft={
@@ -322,6 +336,7 @@ function ApprovalDecisionButtons({
   control: Control<ApprovalFormValues>;
   onChange: () => void;
 }) {
+  const t = useT();
   return (
     <Controller
       control={control}
@@ -342,7 +357,7 @@ function ApprovalDecisionButtons({
               }}
               aria-pressed={isDenied}
             >
-              Deny
+              {t("chat.approval.denyButton")}
             </Button>
             <Button
               type="button"
@@ -355,7 +370,7 @@ function ApprovalDecisionButtons({
               }}
               aria-pressed={isAccepted}
             >
-              Accept
+              {t("chat.approval.acceptButton")}
             </Button>
           </>
         );
@@ -369,11 +384,12 @@ function ApprovalDecisionButtons({
 // ============================================================================
 
 function ApprovalLoadingUI() {
+  const t = useT();
   return (
     <div className="flex items-center gap-2 p-4 border border-dashed rounded-lg bg-accent/50 w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2">
       <ShieldTick className="size-5 text-muted-foreground shimmer" />
       <span className="text-sm text-muted-foreground shimmer">
-        Preparing approval request...
+        {t("chat.approval.preparingRequest")}
       </span>
     </div>
   );

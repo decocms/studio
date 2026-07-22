@@ -58,6 +58,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { EmptyState } from "@/web/components/empty-state";
 import { useWorkspaceLayoutState } from "@/web/hooks/use-layout-state";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Toolbar } from "./toolbar";
 import { WorkspacePanelGroup } from "./workspace-panel-group";
 import { ToggleButtons } from "./toggle-buttons";
@@ -98,11 +99,12 @@ export function useInsetContext(): InsetContextValue | null {
 // ---------------------------------------------------------------------------
 
 function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
+  const t = useT();
   return (
     <ErrorBoundary
       fallback={
         <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-          Something went wrong loading the chat. Try refreshing.
+          {t("agentShellLayout.agentShellLayout.chatLoadingError")}
         </div>
       }
     >
@@ -295,6 +297,7 @@ function MobileTaskWorkspace({
   layout: TaskLayout;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
 }) {
+  const t = useT();
   const mobileSurface = layout.mainOpen ? "main" : (layout.sidePanel ?? "chat");
 
   return (
@@ -318,7 +321,7 @@ function MobileTaskWorkspace({
             <ErrorBoundary
               fallback={
                 <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-                  Something went wrong. Try refreshing.
+                  {t("agentShellLayout.agentShellLayout.somethingWentWrong")}
                 </div>
               }
             >
@@ -355,6 +358,7 @@ function MobileTaskWorkspace({
 // ---------------------------------------------------------------------------
 
 function AgentInsetProvider() {
+  const t = useT();
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { org } = useProjectContext();
@@ -425,7 +429,7 @@ function AgentInsetProvider() {
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
           <div className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground">
             <Loading01 className="size-4 animate-spin mr-2" />
-            Creating task…
+            {t("agentShellLayout.agentShellLayout.creatingTask")}
           </div>
         </div>
       </InsetContext>
@@ -437,7 +441,9 @@ function AgentInsetProvider() {
       <InsetContext value={insetContextValue}>
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
           <div className="flex flex-col h-full items-center justify-center gap-2 bg-background card-shadow rounded-[0.75rem] p-8 text-sm">
-            <div className="font-medium">Task unavailable</div>
+            <div className="font-medium">
+              {t("agentShellLayout.agentShellLayout.taskUnavailable")}
+            </div>
             <div className="text-muted-foreground">
               {ensureState.error.message}
             </div>
@@ -456,8 +462,11 @@ function AgentInsetProvider() {
               image={
                 <AlertCircle size={48} className="text-muted-foreground" />
               }
-              title="Agent not found"
-              description={`The agent "${virtualMcpId}" does not exist in this organization.`}
+              title={t("agentShellLayout.agentShellLayout.agentNotFound")}
+              description={t(
+                "agentShellLayout.agentShellLayout.agentNotFoundDescription",
+                { virtualMcpId },
+              )}
               actions={
                 <Button
                   variant="outline"
@@ -465,7 +474,7 @@ function AgentInsetProvider() {
                     navigate({ to: "/$org", params: { org: orgSlug } })
                   }
                 >
-                  Go to organization home
+                  {t("agentShellLayout.agentShellLayout.goToOrgHome")}
                 </Button>
               }
             />

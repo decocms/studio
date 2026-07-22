@@ -10,6 +10,7 @@ import {
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Loading01 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /**
  * Renames a page variant by saving its matcher as a global block and pointing
@@ -30,6 +31,7 @@ export function VariantRenameDialog({
   onSubmit: (name: string) => void | Promise<void>;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(initialName);
   const [prevOpen, setPrevOpen] = useState(open);
 
@@ -55,11 +57,15 @@ export function VariantRenameDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Rename variant</DialogTitle>
+            <DialogTitle>
+              {t("sectionsEditor.variantRenameDialog.title")}
+            </DialogTitle>
             <DialogDescription>
-              Save this matcher as a global block with a custom label. Leave
-              empty to inline the matcher again and fall back to{" "}
-              <span className="font-medium">{autoLabel || "the rule"}</span>.
+              {t("sectionsEditor.variantRenameDialog.description", {
+                fallback:
+                  autoLabel ||
+                  t("sectionsEditor.variantRenameDialog.defaultFallback"),
+              })}
             </DialogDescription>
           </DialogHeader>
 
@@ -68,7 +74,7 @@ export function VariantRenameDialog({
               htmlFor="variant-rename-name"
               className="text-xs font-medium text-muted-foreground"
             >
-              Name
+              {t("sectionsEditor.variantRenameDialog.nameLabel")}
             </label>
             <Input
               id="variant-rename-name"
@@ -87,16 +93,16 @@ export function VariantRenameDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {t("sectionsEditor.variantRenameDialog.cancel")}
             </Button>
             <Button type="submit" disabled={isPending}>
               {isPending ? (
                 <>
                   <Loading01 size={14} className="animate-spin" />
-                  Saving…
+                  {t("sectionsEditor.variantRenameDialog.saving")}
                 </>
               ) : (
-                "Save"
+                t("sectionsEditor.variantRenameDialog.save")
               )}
             </Button>
           </DialogFooter>

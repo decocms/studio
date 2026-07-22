@@ -1,9 +1,9 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { AnnouncementCard } from "@/web/components/announcement-card";
 import { useReleaseSeenState } from "@/web/hooks/use-release-seen-state";
+import { useT } from "@/web/i18n/use-t.ts";
 import { authClient } from "@/web/lib/auth-client";
 import { RELEASES } from "@/web/lib/release-feed";
-import { useT } from "@/web/i18n/use-t";
 
 const FRESHNESS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const MIN_USER_AGE_MS = 7 * 24 * 60 * 60 * 1000;

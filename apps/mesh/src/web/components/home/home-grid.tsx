@@ -19,6 +19,7 @@ import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowRight } from "@untitledui/icons";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import { AgentAvatar } from "@/web/components/agent-icon";
@@ -247,6 +248,7 @@ function AgentUITile({
 
   const mainTab = useTileMainTab(tile);
 
+  const t = useT();
   return (
     <div className="relative flex h-full w-full flex-col p-3">
       {!isEditMode && (
@@ -259,7 +261,7 @@ function AgentUITile({
           aria-busy={starting}
           className="mb-1 self-start rounded-md px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-progress disabled:opacity-60"
         >
-          Open chat
+          {t("home.homeGrid.openChat")}
         </button>
       )}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
@@ -340,6 +342,7 @@ function TileLoadingFallback({
   icon: string | null;
   name: string;
 }) {
+  const t = useT();
   return (
     <div className="flex h-full w-full flex-col gap-3 p-5 opacity-60">
       <div className="flex items-center gap-2.5">
@@ -349,7 +352,7 @@ function TileLoadingFallback({
             {name}
           </div>
           <div className="truncate text-xs text-muted-foreground">
-            Loading tile…
+            {t("home.homeGrid.loadingTile")}
           </div>
         </div>
       </div>
@@ -377,6 +380,7 @@ function TileErrorFallback({
   prompts: HomePromptEntry[];
   isEditMode: boolean;
 }) {
+  const t = useT();
   const { open, startBlank, dialog, starting } = usePromptEntryAction(
     tile.agentId,
   );
@@ -391,7 +395,7 @@ function TileErrorFallback({
         disabled={starting || isEditMode}
         className="mb-1 self-start rounded-md px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-progress disabled:opacity-60"
       >
-        Open chat
+        {t("home.homeGrid.openChat")}
       </button>
       {chips.length > 0 && !isEditMode && (
         <div className="grid grid-cols-1 gap-2 overflow-hidden sm:grid-cols-2">
@@ -414,6 +418,7 @@ function TileErrorFallback({
 }
 
 export function HomeGrid({ isEditMode }: HomeGridProps) {
+  const t = useT();
   const { org } = useProjectContext();
   const {
     isLoading,
@@ -498,9 +503,7 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
   const removeAgentFromHome = (agentId: string) => {
     void homeWriter
       .apply((ids) => ids.filter((id) => id !== agentId))
-      .catch(() =>
-        toast.error("Couldn't remove from home — please try again."),
-      );
+      .catch(() => toast.error(t("home.homeGrid.couldntRemoveFromHome")));
   };
 
   /** Remove a single tile from the agent's `homeTiles` metadata instead
@@ -550,7 +553,7 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
         queryKey: KEYS.homeNextActions(org.slug),
       });
     } catch {
-      toast.error("Couldn't remove tile — please try again.");
+      toast.error(t("home.homeGrid.couldntRemoveTile"));
     }
   };
 

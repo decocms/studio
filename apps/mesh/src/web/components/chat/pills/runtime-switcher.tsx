@@ -31,6 +31,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import type { SandboxProviderKind } from "@decocms/mesh-sdk";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useChatPrefs, useChatTask } from "../context";
 import { useAgentOptionAvailability } from "../use-agent-availability";
 import { preferredLocalAgentOption } from "./agent-options";
@@ -38,15 +39,26 @@ import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-life
 
 type Icon = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
 
-function runtimeMeta(sandbox: SandboxProviderKind | null): {
+function runtimeMeta(
+  sandbox: SandboxProviderKind | null,
+  t: ReturnType<typeof useT>,
+): {
   key: "cloud" | "local";
   label: string;
   Icon: Icon;
 } {
   if (sandbox === "user-desktop") {
-    return { key: "local", label: "This device", Icon: Monitor01 };
+    return {
+      key: "local",
+      label: t("chat.runtimeSwitcher.thisDevice"),
+      Icon: Monitor01,
+    };
   }
-  return { key: "cloud", label: "Cloud sandbox", Icon: Cloud01 };
+  return {
+    key: "cloud",
+    label: t("chat.runtimeSwitcher.cloudSandbox"),
+    Icon: Cloud01,
+  };
 }
 
 function RuntimeItem({
@@ -92,6 +104,10 @@ function RuntimeItem({
   );
 }
 
+function getRuntimeLabel(label: string): string {
+  return label.toLowerCase();
+}
+
 export function RuntimeSwitcher({
   showLabel = false,
 }: {
@@ -99,6 +115,7 @@ export function RuntimeSwitcher({
    *  landing. Off (default): the dense in-conversation composer row. */
   showLabel?: boolean;
 } = {}) {
+  const t = useT();
   const { pendingSandboxProviderKind, setPendingAgentOption } = useChatPrefs();
   const { isThreadLocked } = useChatTask();
   const { vmEntry } = useSandboxLifecycle();
@@ -126,7 +143,7 @@ export function RuntimeSwitcher({
         ? "user-desktop"
         : null);
 
-  const current = runtimeMeta(currentSandbox);
+  const current = runtimeMeta(currentSandbox, t);
   const CurrentIcon = current.Icon;
 
   return (
@@ -137,7 +154,9 @@ export function RuntimeSwitcher({
             <Button
               variant="ghost"
               size={showLabel ? "sm" : "icon"}
-              aria-label={`Runtime: ${current.label}`}
+              aria-label={t("chat.runtimeSwitcher.runtime", {
+                label: current.label,
+              })}
               className={cn(
                 "text-muted-foreground hover:text-foreground",
                 showLabel ? "h-9 gap-1.5 px-2 text-xs font-medium" : "size-9",
@@ -154,29 +173,31 @@ export function RuntimeSwitcher({
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          Running on {current.label.toLowerCase()}
+          {t("chat.runtimeSwitcher.runningOn", {
+            label: getRuntimeLabel(current.label),
+          })}
         </TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="start" className="w-64 p-1">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-          Run on
+          {t("chat.runtimeSwitcher.runOn")}
         </DropdownMenuLabel>
         <RuntimeItem
           icon={<Cloud01 size={14} />}
-          label="Cloud sandbox"
-          description="Runs in deco's cloud"
+          label={t("chat.runtimeSwitcher.cloudSandbox")}
+          description={t("chat.runtimeSwitcher.runsInDecosCloud")}
           active={current.key === "cloud"}
           available={availability.agentSandbox}
-          disabledHint="Not available on this deployment"
+          disabledHint={t("chat.runtimeSwitcher.notAvailableOnThisDeployment")}
           onSelect={() => setPendingAgentOption("decopilot")}
         />
         <RuntimeItem
           icon={<Monitor01 size={14} />}
-          label="This device"
-          description="Runs on your machine via deco link"
+          label={t("chat.runtimeSwitcher.thisDevice")}
+          description={t("chat.runtimeSwitcher.runsOnYourMachineViaDecoLink")}
           active={current.key === "local"}
           available={localOption !== null}
-          disabledHint="Run `decocms link` on your desktop"
+          disabledHint={t("chat.runtimeSwitcher.runDecocmsLinkOnYourDesktop")}
           onSelect={() => localOption && setPendingAgentOption(localOption)}
         />
       </DropdownMenuContent>

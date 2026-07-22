@@ -29,6 +29,7 @@ import { ChevronDown, GitBranch01, GitPullRequest } from "@untitledui/icons";
 import { generateBranchName } from "@/shared/branch-name";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { useBranches } from "./use-branches";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useOpenPrs } from "./use-pr-data.ts";
 
 interface Props {
@@ -74,6 +75,7 @@ export function BranchPicker({
   disabled = false,
   placement = "chat",
 }: Props) {
+  const t = useT();
   const isHeader = placement === "header";
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"branches" | "prs">("branches");
@@ -140,7 +142,7 @@ export function BranchPicker({
     setOpen(false);
   };
 
-  const label = value ?? "Select branch…";
+  const label = value ?? t("thread.branchPicker.selectBranch");
   const handleSearchChange = (nextSearch: string) => {
     setSearch(nextSearch);
     searchRequestId.current += 1;
@@ -234,7 +236,7 @@ export function BranchPicker({
             <CommandInput
               placeholder={
                 tab === "branches"
-                  ? "Search loaded branches…"
+                  ? t("thread.branchPicker.searchLoadedBranches")
                   : "Search pull requests…"
               }
               value={search}
@@ -247,7 +249,7 @@ export function BranchPicker({
                 className="h-7 shrink-0"
                 onClick={() => pick(generateBranchName(userLabel))}
               >
-                New
+                {t("thread.branchPicker.new")}
               </Button>
             )}
           </div>
@@ -325,15 +327,14 @@ export function BranchPicker({
               <>
                 {isError && (
                   <div className="p-3 text-xs text-muted-foreground">
-                    Couldn't load branches from GitHub. You can still pick from
-                    your branches.
+                    {t("thread.branchPicker.couldntLoadBranches")}
                   </div>
                 )}
                 {!isError && !isLoading && (
                   <CommandEmpty>
                     {hasMore
-                      ? "Looking through more branches..."
-                      : "No branches found."}
+                      ? t("thread.branchPicker.lookingThroughMoreBranches")
+                      : t("thread.branchPicker.noBranchesFound")}
                   </CommandEmpty>
                 )}
                 {recent.length > 0 && (
@@ -358,7 +359,9 @@ export function BranchPicker({
                 {yours.length > 0 && (
                   <>
                     {recent.length > 0 && <CommandSeparator />}
-                    <CommandGroup heading="Your branches">
+                    <CommandGroup
+                      heading={t("thread.branchPicker.yourBranches")}
+                    >
                       {yours.map((b) => (
                         <CommandItem
                           key={b.name}
@@ -376,7 +379,9 @@ export function BranchPicker({
                 {others.length > 0 && (
                   <>
                     <CommandSeparator />
-                    <CommandGroup heading="Other branches in repo">
+                    <CommandGroup
+                      heading={t("thread.branchPicker.otherBranchesInRepo")}
+                    >
                       {others.map((b) => (
                         <CommandItem
                           key={b.name}
@@ -406,14 +411,14 @@ export function BranchPicker({
                       onClick={fetchMore}
                     >
                       {isFetchingMore || isSearchingRemote
-                        ? "Loading more…"
-                        : "Load more branches"}
+                        ? t("thread.branchPicker.loadingMore")
+                        : t("thread.branchPicker.loadMoreBranches")}
                     </Button>
                   </div>
                 )}
                 {!hasMore && others.length > 0 && (
                   <div className="border-t p-2 text-center text-xs text-muted-foreground">
-                    All loaded
+                    {t("thread.branchPicker.allLoaded")}
                   </div>
                 )}
               </>

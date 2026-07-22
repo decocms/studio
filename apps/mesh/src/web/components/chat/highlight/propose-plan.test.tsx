@@ -1,10 +1,22 @@
 import { setupComponentTest } from "../../../../test/setup"; // happy-dom + jest-dom matchers
 setupComponentTest();
 import { describe, expect, it, mock } from "bun:test";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render as renderBare } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { ProposePlanHighlight } from "./propose-plan";
 import type { PendingPlan } from "./extract-pending-plans";
+
+// ProposePlanPrompt calls useT(), which reads language preference via TanStack Query.
+function wrapper({ children }: { children: ReactNode }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+  });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+const render = (ui: Parameters<typeof renderBare>[0]) =>
+  renderBare(ui, { wrapper });
 
 describe("ProposePlanHighlight", () => {
   const plan = (toolCallId: string, text: string): PendingPlan => ({

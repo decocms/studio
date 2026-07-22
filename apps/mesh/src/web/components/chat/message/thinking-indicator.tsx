@@ -9,6 +9,7 @@ import { LiveTimer } from "../../live-timer.tsx";
 import { GridLoader } from "../../grid-loader.tsx";
 import { formatDuration } from "../../../lib/format-time.ts";
 import { useClockTick } from "../../../lib/use-clock-tick.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export type ReasoningPart = Extract<
   ChatMessage["parts"][number],
@@ -23,28 +24,32 @@ interface ThinkingStageConfig {
   detail: string;
 }
 
-const THINKING_STAGES: Record<ThinkingStage, ThinkingStageConfig> = {
-  planning: {
-    icon: (
-      <Target04
-        className="text-muted-foreground shrink-0 animate-pulse"
-        size={14}
-      />
-    ),
-    label: "Planning next moves",
-    detail: "Deciding how to approach the request",
-  },
-  thinking: {
-    icon: (
-      <Stars01
-        className="text-muted-foreground shrink-0 animate-pulse"
-        size={14}
-      />
-    ),
-    label: "Thinking",
-    detail: "Working through the next response",
-  },
-};
+function getThinkingStages(
+  t: ReturnType<typeof useT>,
+): Record<ThinkingStage, ThinkingStageConfig> {
+  return {
+    planning: {
+      icon: (
+        <Target04
+          className="text-muted-foreground shrink-0 animate-pulse"
+          size={14}
+        />
+      ),
+      label: t("chat.thinkingIndicator.planningLabel"),
+      detail: t("chat.thinkingIndicator.planningDetail"),
+    },
+    thinking: {
+      icon: (
+        <Stars01
+          className="text-muted-foreground shrink-0 animate-pulse"
+          size={14}
+        />
+      ),
+      label: t("chat.thinkingIndicator.thinkingLabel"),
+      detail: t("chat.thinkingIndicator.thinkingDetail"),
+    },
+  };
+}
 
 const PLANNING_DURATION = 1200;
 
@@ -82,6 +87,7 @@ function ThoughtSummaryShell({
 }
 
 function RunStatusIndicator({ startedAt }: { startedAt: number | null }) {
+  const t = useT();
   const stage = useOptionalChatStream()?.runStatusStage ?? null;
   const [fallbackStage, setFallbackStage] = useState<ThinkingStage>("planning");
 
@@ -110,7 +116,8 @@ function RunStatusIndicator({ startedAt }: { startedAt: number | null }) {
     );
   }
 
-  const config = THINKING_STAGES[fallbackStage];
+  const thinkingStages = getThinkingStages(t);
+  const config = thinkingStages[fallbackStage];
 
   return (
     <ThoughtSummaryShell
@@ -146,6 +153,7 @@ const SLOW_AFTER_MS = 20_000;
  * once per second so the threshold flips without a per-component timer.
  */
 export function ThinkingState({ startedAt }: { startedAt: number | null }) {
+  const t = useT();
   useClockTick(1000);
   const stream = useOptionalChatStream();
   const elapsedMs = startedAt !== null ? Date.now() - startedAt : 0;
@@ -156,13 +164,13 @@ export function ThinkingState({ startedAt }: { startedAt: number | null }) {
       <RunStatusIndicator startedAt={startedAt} />
       {isSlow && stream?.stop && (
         <div className="flex items-center gap-2 pb-1 text-[13px] text-muted-foreground/60">
-          <span>This is taking longer than usual.</span>
+          <span>{t("chat.thinkingIndicator.takingLonger")}</span>
           <button
             type="button"
             onClick={() => stream.stop()}
             className="text-muted-foreground hover:text-foreground underline underline-offset-2"
           >
-            Cancel
+            {t("chat.thinkingIndicator.cancel")}
           </button>
         </div>
       )}
@@ -179,15 +187,18 @@ export function ThoughtSummary({
   parts: ReasoningPart[];
   isStreaming: boolean;
 }) {
+  const t = useT();
   const allPartsRedacted = parts.every((part) =>
     part.text?.includes("REDACTED"),
   );
 
   const thoughtMessage = duration
     ? duration / 1000 > 1
-      ? `Thought for ${formatDuration(duration / 1000)}`
-      : "Thought"
-    : "Thought";
+      ? t("chat.thinkingIndicator.thoughtFor", {
+          duration: formatDuration(duration / 1000),
+        })
+      : t("chat.thinkingIndicator.thought")
+    : t("chat.thinkingIndicator.thought");
 
   // Join with newlines (not spaces) so we can extract individual lines
   const rawText = parts
@@ -223,7 +234,9 @@ export function ThoughtSummary({
           <Lightbulb01 className="size-4" />
         )
       }
-      title={isStreaming ? "Thinking..." : thoughtMessage}
+      title={
+        isStreaming ? t("chat.thinkingIndicator.thinking") : thoughtMessage
+      }
       summary={summary}
       detail={detail}
       state={isStreaming ? "loading" : "idle"}

@@ -14,6 +14,7 @@ import { Input } from "@deco/ui/components/input.tsx";
 import { PasswordInput } from "@deco/ui/components/password-input.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useSaveCompanionConfig } from "./use-save-companion-config.ts";
 import type { CompanionFormProps } from "./types.ts";
 
@@ -33,6 +34,7 @@ export function VtexConfigForm({
   onDone,
   onIsPendingChange,
 }: CompanionFormProps) {
+  const t = useT();
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -75,10 +77,14 @@ export function VtexConfigForm({
           name="accountName"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Nome da conta</FormLabel>
+              <FormLabel>
+                {t("commerceOnboarding.vtexConfigForm.accountNameLabel")}
+              </FormLabel>
               <FormControl>
                 <Input
-                  placeholder="Nome da sua conta VTEX"
+                  placeholder={t(
+                    "commerceOnboarding.vtexConfigForm.accountNamePlaceholder",
+                  )}
                   {...field}
                   disabled={isPending}
                 />
@@ -93,10 +99,14 @@ export function VtexConfigForm({
           name="appKey"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>App Key (opcional)</FormLabel>
+              <FormLabel>
+                {t("commerceOnboarding.vtexConfigForm.appKeyLabel")}
+              </FormLabel>
               <FormControl>
                 <PasswordInput
-                  placeholder="App Key da VTEX"
+                  placeholder={t(
+                    "commerceOnboarding.vtexConfigForm.appKeyPlaceholder",
+                  )}
                   {...field}
                   disabled={isPending}
                 />
@@ -111,10 +121,14 @@ export function VtexConfigForm({
           name="appToken"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>App Token (opcional)</FormLabel>
+              <FormLabel>
+                {t("commerceOnboarding.vtexConfigForm.appTokenLabel")}
+              </FormLabel>
               <FormControl>
                 <PasswordInput
-                  placeholder="App Token da VTEX"
+                  placeholder={t(
+                    "commerceOnboarding.vtexConfigForm.appTokenPlaceholder",
+                  )}
                   {...field}
                   disabled={isPending}
                 />
@@ -129,7 +143,7 @@ export function VtexConfigForm({
         <p role="alert" className="text-sm text-destructive">
           {error instanceof Error
             ? error.message
-            : "Não foi possível salvar a configuração"}
+            : t("commerceOnboarding.vtexConfigForm.savingError")}
         </p>
       )}
 
@@ -140,10 +154,12 @@ export function VtexConfigForm({
           onClick={onDone}
           disabled={isPending}
         >
-          Cancelar
+          {t("commerceOnboarding.vtexConfigForm.cancelButton")}
         </Button>
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Salvando..." : "Salvar"}
+          {isPending
+            ? t("commerceOnboarding.vtexConfigForm.savingButton")
+            : t("commerceOnboarding.vtexConfigForm.saveButton")}
         </Button>
       </DialogFooter>
     </form>

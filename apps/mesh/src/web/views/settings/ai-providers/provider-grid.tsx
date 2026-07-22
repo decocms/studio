@@ -11,6 +11,7 @@ import {
   OPENAI_COMPATIBLE_PRESETS,
   type OpenAICompatiblePreset,
 } from "@/web/utils/openai-compatible-presets";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export type ProviderSelection =
   | { kind: "provider"; provider: AiProviderInfo }
@@ -68,6 +69,7 @@ export function ProviderGrid({
   onSelect,
   onShowAll,
 }: ProviderGridProps) {
+  const t = useT();
   const deco = providers.find((p) => p.id === "deco");
   const CLOUD_ORDER: Record<string, number> = {
     openrouter: 0,
@@ -134,8 +136,8 @@ export function ProviderGrid({
           <ProviderTile
             key="custom"
             logo={openaiCompatible.logo}
-            name="Custom OpenAI-compatible"
-            description="Bring your own model server (advanced)"
+            name={t("settings.aiProviders.customOpenAiCompatible")}
+            description={t("settings.aiProviders.customOpenAiDescription")}
             onClick={() =>
               onSelect({
                 kind: "openai-compatible",
@@ -161,7 +163,7 @@ export function ProviderGrid({
           <div className="relative rounded-xl border border-violet-400/30 bg-gradient-to-br from-violet-50/50 via-transparent to-lime-50/30 dark:from-violet-950/20 dark:to-lime-950/10 p-1.5">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-violet-400/5 to-lime-400/5 pointer-events-none" />
             <p className="text-xs font-medium text-violet-700 dark:text-violet-400 mb-1.5 px-2 pt-2 relative">
-              Recommended — 100+ models, pay as you go
+              {t("settings.aiProviders.recommended")}
             </p>
             <SettingsCard className="relative">
               <ProviderTile
@@ -181,7 +183,10 @@ export function ProviderGrid({
           {shouldPreview && (
             <SettingsCardItem
               onClick={onShowAll}
-              title={`${hiddenCount} more provider${hiddenCount === 1 ? "" : "s"}`}
+              title={t("settings.aiProviders.moreProviders", {
+                count: hiddenCount,
+                plural: hiddenCount === 1 ? "" : "s",
+              })}
               action={
                 <ChevronRight size={16} className="text-muted-foreground" />
               }

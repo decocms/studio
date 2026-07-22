@@ -1,5 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useSidebar } from "@deco/ui/components/sidebar.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /**
  * Vertical handle positioned at the sidebar's right edge that lets the user
@@ -16,14 +17,15 @@ export function SidebarResizeHandle({
   onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => void;
   onDoubleClick?: () => void;
 }) {
+  const t = useT();
   const { state, isMobile } = useSidebar();
   if (isMobile || state === "collapsed") return null;
   return (
     <div
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize sidebar"
-      title="Drag to resize, double-click to reset"
+      aria-label={t("sidebar.sidebarResizeHandle.ariaLabel")}
+      title={t("sidebar.sidebarResizeHandle.title")}
       onPointerDown={onPointerDown}
       onDoubleClick={onDoubleClick}
       className="group/resize absolute top-0 z-20 h-full w-2 -translate-x-1/2 cursor-col-resize"

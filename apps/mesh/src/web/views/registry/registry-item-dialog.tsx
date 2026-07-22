@@ -31,6 +31,8 @@ import {
   X,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import { ImageUpload } from "./image-upload.tsx";
 import { ToolsEditor } from "./tools-editor.tsx";
 import { useImageUpload } from "@/web/hooks/registry/use-image-upload";
@@ -76,7 +78,11 @@ const DEFAULT_CATEGORIES = [
   "operations",
 ];
 
-const STEP_LABELS = ["Essentials", "Details", "Advanced"] as const;
+const STEP_LABEL_KEYS = [
+  "registry.registryItemDialog.essentials",
+  "registry.registryItemDialog.details",
+  "registry.registryItemDialog.advanced",
+] as const;
 type WizardStep = 1 | 2 | 3;
 
 const AI_BUTTON_CLASS =
@@ -119,14 +125,15 @@ function normalizeIdentifierSegment(value: string): string {
 
 /* ─── Step indicator ─── */
 function StepIndicator({ current }: { current: WizardStep }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-1.5">
-      {STEP_LABELS.map((label, idx) => {
+      {STEP_LABEL_KEYS.map((labelKey, idx) => {
         const stepNum = (idx + 1) as WizardStep;
         const isActive = stepNum === current;
         const isDone = stepNum < current;
         return (
-          <div key={label} className="flex items-center gap-1.5">
+          <div key={labelKey} className="flex items-center gap-1.5">
             {idx > 0 && (
               <div
                 className={cn("w-4 h-px", isDone ? "bg-primary" : "bg-border")}
@@ -154,7 +161,7 @@ function StepIndicator({ current }: { current: WizardStep }) {
               >
                 {stepNum}
               </span>
-              <span className="hidden sm:inline">{label}</span>
+              <span className="hidden sm:inline">{t(labelKey)}</span>
             </div>
           </div>
         );
@@ -166,19 +173,20 @@ function StepIndicator({ current }: { current: WizardStep }) {
 /* ─── Tag Selector ─── */
 function TagSelector({
   id,
-  label,
+  labelKey,
   values,
   availableOptions,
-  placeholder,
+  placeholderKey,
   onChange,
 }: {
   id: string;
-  label: string;
+  labelKey: TranslationKey;
   values: string[];
   availableOptions: string[];
-  placeholder: string;
+  placeholderKey: TranslationKey;
   onChange: (values: string[]) => void;
 }) {
+  const t = useT();
   const [input, setInput] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const normalizedAvailable = normalizeOptions(availableOptions);
@@ -220,7 +228,7 @@ function TagSelector({
 
   return (
     <div className="grid gap-2">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id}>{t(labelKey)}</Label>
       <div className="relative">
         <div
           className="min-h-9 w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-sm focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]"
@@ -254,7 +262,7 @@ function TagSelector({
             <input
               id={id}
               className="flex-1 min-w-[120px] bg-transparent outline-none border-none text-sm"
-              placeholder={selectedValues.length ? "" : placeholder}
+              placeholder={selectedValues.length ? "" : t(placeholderKey)}
               value={input}
               onFocus={() => setIsFocused(true)}
               onBlur={() => {
@@ -307,11 +315,13 @@ function TagSelector({
                   setInput("");
                 }}
               >
-                Create &quot;{createFromQuery}&quot;
+                {t("registry.registryItemDialog.createTag", {
+                  value: createFromQuery,
+                })}
               </button>
             ) : (
               <div className="px-2.5 py-1.5 text-sm text-muted-foreground">
-                Type to search or create.
+                {t("registry.registryItemDialog.typeToSearchOrCreate")}
               </div>
             )}
           </div>
@@ -333,6 +343,7 @@ function CategorySelect({
   availableOptions: string[];
   onChange: (value: string) => void;
 }) {
+  const t = useT();
   const [input, setInput] = useState(value);
   const [isFocused, setIsFocused] = useState(false);
 
@@ -364,12 +375,12 @@ function CategorySelect({
 
   return (
     <div className="grid gap-2">
-      <Label htmlFor={id}>Category</Label>
+      <Label htmlFor={id}>{t("registry.registryItemDialog.category")}</Label>
       <div className="relative">
         <Input
           id={id}
           className="h-9 text-sm"
-          placeholder="Select or create category"
+          placeholder={t("registry.registryItemDialog.selectOrCreateCategory")}
           value={input}
           onFocus={() => {
             setInput(value);
@@ -396,7 +407,7 @@ function CategorySelect({
               setInput("");
             }}
           >
-            clear
+            {t("registry.registryItemDialog.clear")}
           </button>
         )}
 
@@ -421,11 +432,13 @@ function CategorySelect({
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => commitValue(currentToken)}
               >
-                Create &quot;{currentToken}&quot;
+                {t("registry.registryItemDialog.createCategory", {
+                  value: currentToken,
+                })}
               </button>
             ) : (
               <div className="px-2.5 py-1.5 text-sm text-muted-foreground">
-                Type to search or create.
+                {t("registry.registryItemDialog.typeToSearchOrCreate")}
               </div>
             )}
           </div>
@@ -446,6 +459,7 @@ export function RegistryItemDialog({
   isSubmitting = false,
   onSubmit,
 }: RegistryItemDialogProps) {
+  const t = useT();
   const { org } = useProjectContext();
   const { uploadImage, isUploading } = useImageUpload();
   const { discover, discoverStatus, discoverError, resetDiscover } =
@@ -563,7 +577,7 @@ export function RegistryItemDialog({
     } else {
       setErrors((prev) => ({
         ...prev,
-        imageUrl: "Failed to upload image. Please try again.",
+        imageUrl: t("registry.registryItemDialog.failedToUploadImage"),
       }));
     }
   };
@@ -624,14 +638,21 @@ export function RegistryItemDialog({
       const normalizedNameSegment = normalizeIdentifierSegment(title);
       const generatedId = `${normalizedProvider}/${normalizedNameSegment}`;
 
-      if (!title.trim()) nextErrors.title = "Name is required.";
+      if (!title.trim())
+        nextErrors.title = t("registry.registryItemDialog.nameIsRequired");
       if (!isEdit) {
-        if (!normalizedProvider) nextErrors.provider = "Provider is required.";
+        if (!normalizedProvider)
+          nextErrors.provider = t(
+            "registry.registryItemDialog.providerIsRequired",
+          );
         else if (!normalizedNameSegment)
-          nextErrors.title = "Name must contain valid characters.";
+          nextErrors.title = t(
+            "registry.registryItemDialog.nameMustContainValidCharacters",
+          );
         else if (!ID_PATTERN.test(generatedId))
-          nextErrors.provider =
-            "Use lowercase letters/numbers and separators '/' or '-'.";
+          nextErrors.provider = t(
+            "registry.registryItemDialog.useValidIdFormat",
+          );
       }
 
       const normalizedRemoteUrl = normalizeRemoteUrl(remoteHost);
@@ -640,13 +661,19 @@ export function RegistryItemDialog({
         try {
           const parsed = new URL(normalizedRemoteUrl);
           if (!["http:", "https:"].includes(parsed.protocol))
-            nextErrors.remoteUrl = "Remote URL must be http(s).";
+            nextErrors.remoteUrl = t(
+              "registry.registryItemDialog.remoteUrlMustBeHttps",
+            );
         } catch {
-          nextErrors.remoteUrl = "Remote URL is invalid.";
+          nextErrors.remoteUrl = t(
+            "registry.registryItemDialog.remoteUrlIsInvalid",
+          );
         }
       }
       if (normalizedRemoteType && !REMOTE_TYPES.has(normalizedRemoteType))
-        nextErrors.remoteType = "Remote type must be: http, sse or stdio.";
+        nextErrors.remoteType = t(
+          "registry.registryItemDialog.remoteTypeMustBe",
+        );
 
       if (imageUrl.trim()) {
         const isDataUrl = imageUrl.trim().startsWith("data:image/");
@@ -654,9 +681,13 @@ export function RegistryItemDialog({
           try {
             const parsed = new URL(imageUrl.trim());
             if (!["http:", "https:"].includes(parsed.protocol))
-              nextErrors.imageUrl = "Image URL must be http(s).";
+              nextErrors.imageUrl = t(
+                "registry.registryItemDialog.imageUrlMustBeHttps",
+              );
           } catch {
-            nextErrors.imageUrl = "Image URL is invalid.";
+            nextErrors.imageUrl = t(
+              "registry.registryItemDialog.imageUrlIsInvalid",
+            );
           }
         }
       }
@@ -664,10 +695,13 @@ export function RegistryItemDialog({
 
     if (s === 2) {
       if (description.length > 1500)
-        nextErrors.description = "Description must be 1500 characters or less.";
+        nextErrors.description = t(
+          "registry.registryItemDialog.descriptionMaxLength",
+        );
       if (shortDescription.trim().length > 160)
-        nextErrors.shortDescription =
-          "Short description must be 160 characters or less.";
+        nextErrors.shortDescription = t(
+          "registry.registryItemDialog.shortDescriptionMaxLength",
+        );
     }
 
     if (s === 3) {
@@ -676,21 +710,29 @@ export function RegistryItemDialog({
         try {
           const parsed = new URL(parsedReadmeUrl);
           if (!["http:", "https:"].includes(parsed.protocol))
-            nextErrors.readmeUrl = "README URL must be http(s).";
+            nextErrors.readmeUrl = t(
+              "registry.registryItemDialog.readmeUrlMustBeHttps",
+            );
         } catch {
-          nextErrors.readmeUrl = "README URL is invalid.";
+          nextErrors.readmeUrl = t(
+            "registry.registryItemDialog.readmeUrlIsInvalid",
+          );
         }
       }
       if (readme.trim().length > 50000)
-        nextErrors.readme = "README must be 50 000 characters or less.";
+        nextErrors.readme = t("registry.registryItemDialog.readmeMaxLength");
       const normalizedRepositoryUrl = repositoryUrl.trim();
       if (normalizedRepositoryUrl) {
         try {
           const parsed = new URL(normalizedRepositoryUrl);
           if (!["http:", "https:"].includes(parsed.protocol))
-            nextErrors.repositoryUrl = "Repository URL must be http(s).";
+            nextErrors.repositoryUrl = t(
+              "registry.registryItemDialog.repositoryUrlMustBeHttps",
+            );
         } catch {
-          nextErrors.repositoryUrl = "Repository URL is invalid.";
+          nextErrors.repositoryUrl = t(
+            "registry.registryItemDialog.repositoryUrlIsInvalid",
+          );
         }
       }
     }
@@ -786,7 +828,9 @@ export function RegistryItemDialog({
       {/* Provider + Name */}
       <div className="row-span-2 grid gap-3 content-start">
         <div className="grid gap-1.5">
-          <Label htmlFor="registry-item-provider">Provider</Label>
+          <Label htmlFor="registry-item-provider">
+            {t("registry.registryItemDialog.provider")}
+          </Label>
           <Input
             id="registry-item-provider"
             className="h-9 text-sm"
@@ -797,7 +841,7 @@ export function RegistryItemDialog({
           />
           {!isEdit && (
             <p className="text-xs text-muted-foreground">
-              Item ID:{" "}
+              {t("registry.registryItemDialog.itemId")}{" "}
               <span className="font-mono">
                 {`${normalizeIdentifierSegment(provider) || "provider"}/${normalizeIdentifierSegment(title) || "name"}`}
               </span>
@@ -809,7 +853,9 @@ export function RegistryItemDialog({
         </div>
 
         <div className="grid gap-1.5">
-          <Label htmlFor="registry-item-title">Name</Label>
+          <Label htmlFor="registry-item-title">
+            {t("registry.registryItemDialog.name")}
+          </Label>
           <Input
             id="registry-item-title"
             className="h-9 text-sm"
@@ -839,7 +885,9 @@ export function RegistryItemDialog({
 
       {/* Remote URL + Type */}
       <div className="col-span-2 grid gap-1.5">
-        <Label htmlFor="registry-remote-url">Remote URL</Label>
+        <Label htmlFor="registry-remote-url">
+          {t("registry.registryItemDialog.remoteUrl")}
+        </Label>
         <div className="flex items-center gap-2">
           <div className="flex-1 flex items-center rounded-xl border border-input px-3">
             <span className="text-xs font-semibold text-muted-foreground mr-1">
@@ -862,7 +910,9 @@ export function RegistryItemDialog({
               id="registry-remote-type"
               className="w-[90px] h-9 shrink-0"
             >
-              <SelectValue placeholder="Type" />
+              <SelectValue
+                placeholder={t("registry.registryItemDialog.type")}
+              />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="http">http</SelectItem>
@@ -897,14 +947,16 @@ export function RegistryItemDialog({
                 <RefreshCcw01 size={12} />
               )}
               {discoverStatus === "loading"
-                ? "Discovering tools..."
+                ? t("registry.registryItemDialog.discoveringTools")
                 : tools.length > 0
-                  ? "Re-discover tools"
-                  : "Discover tools from URL"}
+                  ? t("registry.registryItemDialog.rediscoverTools")
+                  : t("registry.registryItemDialog.discoverToolsFromUrl")}
             </Button>
             {tools.length > 0 && discoverStatus !== "loading" && (
               <span className="text-xs text-muted-foreground">
-                {tools.length} tool{tools.length !== 1 ? "s" : ""} loaded
+                {t("registry.registryItemDialog.toolsLoaded", {
+                  count: tools.length.toString(),
+                })}
               </span>
             )}
           </div>
@@ -914,7 +966,9 @@ export function RegistryItemDialog({
               <div className="flex items-center gap-2 text-xs text-success">
                 <CheckCircle size={14} className="shrink-0" />
                 <span className="font-medium">
-                  {tools.length} tool{tools.length !== 1 ? "s" : ""} discovered
+                  {t("registry.registryItemDialog.toolsDiscovered", {
+                    count: tools.length.toString(),
+                  })}
                 </span>
               </div>
               <div className="flex flex-wrap gap-1">
@@ -929,13 +983,14 @@ export function RegistryItemDialog({
                 ))}
                 {tools.length > 8 && (
                   <span className="text-[10px] text-muted-foreground self-center">
-                    +{tools.length - 8} more
+                    {t("registry.registryItemDialog.andMore", {
+                      count: (tools.length - 8).toString(),
+                    })}
                   </span>
                 )}
               </div>
               <p className="text-[10px] text-muted-foreground">
-                These tools will enrich AI-generated descriptions, tags and
-                categories in the next step.
+                {t("registry.registryItemDialog.toolsWillEnrich")}
               </p>
             </div>
           )}
@@ -944,8 +999,7 @@ export function RegistryItemDialog({
             <div className="flex items-center gap-2 text-xs text-warning bg-warning/10 border border-warning/20 rounded-lg px-3 py-2">
               <AlertCircle size={14} className="shrink-0" />
               <span>
-                This server requires authentication. The connection is valid but
-                tools cannot be listed without credentials.
+                {t("registry.registryItemDialog.authRequiredMessage")}
               </span>
             </div>
           )}
@@ -967,7 +1021,7 @@ export function RegistryItemDialog({
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between">
           <Label htmlFor="registry-item-short-description">
-            Short Description
+            {t("registry.registryItemDialog.shortDescription")}
           </Label>
           <span className="text-xs text-muted-foreground">
             {shortDescription.length}/160
@@ -976,7 +1030,9 @@ export function RegistryItemDialog({
         <Input
           id="registry-item-short-description"
           className="h-9 text-sm"
-          placeholder="Short summary for the store card"
+          placeholder={t(
+            "registry.registryItemDialog.shortSummaryForStoreCard",
+          )}
           value={shortDescription}
           maxLength={160}
           onChange={(event) => setShortDescription(event.target.value)}
@@ -989,7 +1045,9 @@ export function RegistryItemDialog({
       {/* Description */}
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between">
-          <Label htmlFor="registry-item-description">Description</Label>
+          <Label htmlFor="registry-item-description">
+            {t("registry.registryItemDialog.description")}
+          </Label>
           <span className="text-xs text-muted-foreground">
             {description.length}/1500
           </span>
@@ -997,7 +1055,7 @@ export function RegistryItemDialog({
         <Textarea
           id="registry-item-description"
           className="text-sm max-h-28 overflow-y-auto resize-none"
-          placeholder="Brief description of this MCP server"
+          placeholder={t("registry.registryItemDialog.briefDescription")}
           rows={2}
           value={description}
           onChange={(event) => setDescription(event.target.value)}
@@ -1022,10 +1080,10 @@ export function RegistryItemDialog({
         <div className="grid content-start gap-2">
           <TagSelector
             id="registry-tags"
-            label="Tags"
+            labelKey="registry.registryItemDialog.tags"
             values={tags}
             availableOptions={[...DEFAULT_TAGS, ...availableTags]}
-            placeholder="Type and press Enter or comma"
+            placeholderKey="registry.registryItemDialog.typeAndPressEnter"
             onChange={setTags}
           />
         </div>
@@ -1035,10 +1093,10 @@ export function RegistryItemDialog({
       <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
         <div className="grid gap-0.5">
           <Label htmlFor="registry-is-public" className="text-sm">
-            Public
+            {t("registry.registryItemDialog.public")}
           </Label>
           <p className="text-xs text-muted-foreground">
-            Make this MCP visible in the public store URL.
+            {t("registry.registryItemDialog.makeThisMcpVisible")}
           </p>
         </div>
         <Switch
@@ -1052,10 +1110,10 @@ export function RegistryItemDialog({
       <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
         <div className="grid gap-0.5">
           <Label htmlFor="registry-is-verified" className="text-sm">
-            Verified
+            {t("registry.registryItemDialog.verified")}
           </Label>
           <p className="text-xs text-muted-foreground">
-            Curated and approved by deco.
+            {t("registry.registryItemDialog.curatedAndApproved")}
           </p>
         </div>
         <Switch
@@ -1069,10 +1127,10 @@ export function RegistryItemDialog({
       <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
         <div className="grid gap-0.5">
           <Label htmlFor="registry-is-official" className="text-sm">
-            Official
+            {t("registry.registryItemDialog.official")}
           </Label>
           <p className="text-xs text-muted-foreground">
-            Made and hosted by the service provider.
+            {t("registry.registryItemDialog.madeAndHostedByServiceProvider")}
           </p>
         </div>
         <Switch
@@ -1089,18 +1147,20 @@ export function RegistryItemDialog({
       {/* Owner + Repository */}
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="registry-item-owner">Owner (optional)</Label>
+          <Label htmlFor="registry-item-owner">
+            {t("registry.registryItemDialog.ownerOptional")}
+          </Label>
           <Input
             id="registry-item-owner"
             className="h-9 text-sm"
-            placeholder="Team, company, or responsible person"
+            placeholder={t("registry.registryItemDialog.teamCompanyOrPerson")}
             value={owner}
             onChange={(event) => setOwner(event.target.value)}
           />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="registry-item-repository-url">
-            Repository URL (optional)
+            {t("registry.registryItemDialog.repositoryUrlOptional")}
           </Label>
           <Input
             id="registry-item-repository-url"
@@ -1118,7 +1178,7 @@ export function RegistryItemDialog({
       {/* README */}
       <div className="rounded-xl border border-border p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <Label>README</Label>
+          <Label>{t("registry.registryItemDialog.readme")}</Label>
           <span className="text-xs text-muted-foreground">
             {readme.length}/50000
           </span>
@@ -1136,7 +1196,9 @@ export function RegistryItemDialog({
               )}
               onClick={() => setReadmeMode(mode)}
             >
-              {mode === "link" ? "Link" : "Content"}
+              {mode === "link"
+                ? t("registry.registryItemDialog.link")
+                : t("registry.registryItemDialog.content")}
             </button>
           ))}
         </div>
@@ -1191,15 +1253,15 @@ export function RegistryItemDialog({
       <DialogContent className="sm:max-w-[820px] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader className="space-y-3">
           <DialogTitle>
-            {isEdit ? "Edit MCP Server" : "Add MCP Server"}
+            {isEdit
+              ? t("registry.registryItemDialog.editMcpServer")
+              : t("registry.registryItemDialog.addMcpServer")}
           </DialogTitle>
           <StepIndicator current={step} />
           <DialogDescription>
-            {step === 1 &&
-              "Set up the identity, connection and discover available tools."}
-            {step === 2 &&
-              "Add descriptions, categories and tags to help discovery."}
-            {step === 3 && "Configure optional metadata, README and tools."}
+            {step === 1 && t("registry.registryItemDialog.step1Description")}
+            {step === 2 && t("registry.registryItemDialog.step2Description")}
+            {step === 3 && t("registry.registryItemDialog.step3Description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -1214,7 +1276,7 @@ export function RegistryItemDialog({
             {step > 1 && (
               <Button variant="ghost" size="sm" onClick={handleBack}>
                 <ArrowLeft size={14} />
-                Back
+                {t("registry.registryItemDialog.back")}
               </Button>
             )}
           </div>
@@ -1225,20 +1287,20 @@ export function RegistryItemDialog({
               onClick={() => handleOpenChange(false)}
               disabled={isSubmitting}
             >
-              Cancel
+              {t("registry.registryItemDialog.cancel")}
             </Button>
             {step < 3 ? (
               <Button size="sm" onClick={handleNext}>
-                Next
+                {t("registry.registryItemDialog.next")}
                 <ArrowRight size={14} />
               </Button>
             ) : (
               <Button size="sm" onClick={handleSubmit} disabled={isSubmitting}>
                 {isSubmitting
-                  ? "Saving..."
+                  ? t("registry.registryItemDialog.saving")
                   : isEdit
-                    ? "Save changes"
-                    : "Create"}
+                    ? t("registry.registryItemDialog.saveChanges")
+                    : t("registry.registryItemDialog.create")}
               </Button>
             )}
           </div>

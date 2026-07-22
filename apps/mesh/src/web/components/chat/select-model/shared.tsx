@@ -12,6 +12,8 @@ import {
 import { type ReactNode } from "react";
 import { type AiProviderModel } from "../../../hooks/collections/use-ai-providers";
 import { getProviderLogo } from "@/web/utils/ai-providers-logos";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 
 export type { AiProviderModel } from "../../../hooks/collections/use-ai-providers";
 
@@ -37,23 +39,35 @@ export function parseModelTitle(model: { title: string; modelId: string }): {
 // 1–4 context level for dot indicator (absolute thresholds)
 function getContextLevel(tokens: number): {
   level: number;
-  label: string;
-  description: string;
+  labelKey: TranslationKey;
+  descriptionKey: TranslationKey;
 } {
   if (tokens < 32_000) {
-    return { level: 1, label: "Small", description: "Short conversations" };
+    return {
+      level: 1,
+      labelKey: "chat.shared.contextLevelSmall",
+      descriptionKey: "chat.shared.contextLevelSmallDesc",
+    };
   }
   if (tokens < 200_000) {
-    return { level: 2, label: "Medium", description: "Good for most tasks" };
+    return {
+      level: 2,
+      labelKey: "chat.shared.contextLevelMedium",
+      descriptionKey: "chat.shared.contextLevelMediumDesc",
+    };
   }
   if (tokens < 500_000) {
     return {
       level: 3,
-      label: "Large",
-      description: "Long projects & research",
+      labelKey: "chat.shared.contextLevelLarge",
+      descriptionKey: "chat.shared.contextLevelLargeDesc",
     };
   }
-  return { level: 4, label: "Very large", description: "Massive files & data" };
+  return {
+    level: 4,
+    labelKey: "chat.shared.contextLevelVeryLarge",
+    descriptionKey: "chat.shared.contextLevelVeryLargeDesc",
+  };
 }
 
 // Semantic colors per level — context (more = better: destructive→success)
@@ -72,49 +86,77 @@ const COST_DOLLAR_COLORS = [
   "text-destructive",
 ] as const;
 
-// Approximate word count for token amounts
-function approxWords(tokens: number): string {
+// ponytail: helpers with dynamic i18n resolution get passed t as param
+function approxWords(tokens: number, t: TFunction): string {
   const k = Math.round((tokens * 0.75) / 1000);
-  return k >= 1 ? `~${k}K words` : `~${Math.round(tokens * 0.75)} words`;
+  const wordCount = k >= 1 ? `${k}K` : `${Math.round(tokens * 0.75)}`;
+  return t("chat.shared.approxWords", { wordCount });
 }
 
 // 1–4 cost level (absolute thresholds, input $/1M)
 function getCostLevel(inputPerM: number): {
   level: number;
-  label: string;
+  labelKey: TranslationKey;
 } {
-  if (inputPerM < 1) return { level: 1, label: "Cheap" };
-  if (inputPerM < 5) return { level: 2, label: "Moderate" };
-  if (inputPerM < 15) return { level: 3, label: "High" };
-  return { level: 4, label: "Expensive" };
+  if (inputPerM < 1)
+    return { level: 1, labelKey: "chat.shared.costLevelCheap" };
+  if (inputPerM < 5)
+    return { level: 2, labelKey: "chat.shared.costLevelModerate" };
+  if (inputPerM < 15)
+    return { level: 3, labelKey: "chat.shared.costLevelHigh" };
+  return { level: 4, labelKey: "chat.shared.costLevelExpensive" };
 }
 
 // ============================================================================
 // UI Components
 // ============================================================================
 
-const CAPABILITY_CONFIGS: Record<string, { icon: ReactNode; label: string }> = {
-  text: { icon: <AlignLeft className="size-3.5" />, label: "Text" },
-  vision: { icon: <Image01 className="size-3.5" />, label: "Vision" },
-  image: { icon: <ImagePlus className="size-3.5" />, label: "Image" },
-  tools: { icon: <Tool01 className="size-3.5" />, label: "Tools" },
-  reasoning: { icon: <Stars01 className="size-3.5" />, label: "Reasoning" },
+const CAPABILITY_CONFIGS: Record<
+  string,
+  { icon: ReactNode; labelKey: TranslationKey }
+> = {
+  text: {
+    icon: <AlignLeft className="size-3.5" />,
+    labelKey: "chat.shared.capabilityText",
+  },
+  vision: {
+    icon: <Image01 className="size-3.5" />,
+    labelKey: "chat.shared.capabilityVision",
+  },
+  image: {
+    icon: <ImagePlus className="size-3.5" />,
+    labelKey: "chat.shared.capabilityImage",
+  },
+  tools: {
+    icon: <Tool01 className="size-3.5" />,
+    labelKey: "chat.shared.capabilityTools",
+  },
+  reasoning: {
+    icon: <Stars01 className="size-3.5" />,
+    labelKey: "chat.shared.capabilityReasoning",
+  },
   "web-search": {
     icon: <SearchMd className="size-3.5" />,
-    label: "Web search",
+    labelKey: "chat.shared.capabilityWebSearch",
   },
 };
 
 function CapabilityBadge({ capability }: { capability: string }) {
-  const config = CAPABILITY_CONFIGS[capability] ?? {
-    icon: null,
-    label: capability.charAt(0).toUpperCase() + capability.slice(1),
-  };
+  const t = useT();
+  const config = CAPABILITY_CONFIGS[capability];
+
+  if (config) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground border border-border rounded px-2 py-0.5">
+        {config.icon}
+        {t(config.labelKey)}
+      </span>
+    );
+  }
 
   return (
     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground border border-border rounded px-2 py-0.5">
-      {config.icon}
-      {config.label}
+      {capability.charAt(0).toUpperCase() + capability.slice(1)}
     </span>
   );
 }
@@ -126,10 +168,11 @@ export function ModelDetailsPanel({
   model: AiProviderModel | null;
   compact?: boolean;
 }) {
+  const t = useT();
   if (!model) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        Hover to preview
+        {t("chat.shared.hoverToPreview")}
       </div>
     );
   }
@@ -147,15 +190,20 @@ export function ModelDetailsPanel({
       <div className="flex flex-col gap-2 pt-3 pb-3 px-3 text-xs">
         {model.limits?.contextWindow && (
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Context</span>
+            <span className="text-muted-foreground">
+              {t("chat.shared.context")}
+            </span>
             <span className="text-foreground font-medium">
-              {model.limits.contextWindow.toLocaleString()} tokens
+              {model.limits.contextWindow.toLocaleString()}{" "}
+              {t("chat.shared.tokens")}
             </span>
           </div>
         )}
         {inputCostPerM != null && (
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Input</span>
+            <span className="text-muted-foreground">
+              {t("chat.shared.input")}
+            </span>
             <span className="text-foreground font-medium">
               ${inputCostPerM.toFixed(2)} / 1M
             </span>
@@ -163,7 +211,9 @@ export function ModelDetailsPanel({
         )}
         {outputCostPerM != null && (
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Output</span>
+            <span className="text-muted-foreground">
+              {t("chat.shared.output")}
+            </span>
             <span className="text-foreground font-medium">
               ${outputCostPerM.toFixed(2)} / 1M
             </span>
@@ -171,9 +221,12 @@ export function ModelDetailsPanel({
         )}
         {model.limits?.maxOutputTokens && (
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Output limit</span>
+            <span className="text-muted-foreground">
+              {t("chat.shared.outputLimit")}
+            </span>
             <span className="text-foreground font-medium">
-              {model.limits.maxOutputTokens.toLocaleString()} tokens
+              {model.limits.maxOutputTokens.toLocaleString()}{" "}
+              {t("chat.shared.tokens")}
             </span>
           </div>
         )}
@@ -218,13 +271,13 @@ export function ModelDetailsPanel({
       <div className="flex flex-col gap-6">
         {model.limits?.contextWindow &&
           (() => {
-            const { level, label, description } = getContextLevel(
+            const { level, labelKey, descriptionKey } = getContextLevel(
               model.limits.contextWindow,
             );
             return (
               <div className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground">
-                  Context window
+                  {t("chat.shared.contextWindow")}
                 </span>
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-0.5">
@@ -241,14 +294,15 @@ export function ModelDetailsPanel({
                     ))}
                   </div>
                   <span className="text-xs text-muted-foreground font-medium">
-                    {label}
+                    {t(labelKey)}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    — {description}
+                    — {t(descriptionKey)}
                   </span>
                 </div>
                 <span className="text-sm text-muted-foreground">
-                  {model.limits.contextWindow.toLocaleString()} tokens
+                  {model.limits.contextWindow.toLocaleString()}{" "}
+                  {t("chat.shared.tokens")}
                 </span>
               </div>
             );
@@ -257,14 +311,15 @@ export function ModelDetailsPanel({
         {model.limits?.maxOutputTokens && (
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted-foreground">
-              Output limit
+              {t("chat.shared.outputLimit")}
             </span>
             <div className="flex items-baseline gap-2">
               <span className="text-sm text-foreground">
-                {model.limits.maxOutputTokens.toLocaleString()} tokens
+                {model.limits.maxOutputTokens.toLocaleString()}{" "}
+                {t("chat.shared.tokens")}
               </span>
               <span className="text-sm text-muted-foreground">
-                {approxWords(model.limits.maxOutputTokens)}
+                {approxWords(model.limits.maxOutputTokens, t)}
               </span>
             </div>
           </div>
@@ -272,14 +327,14 @@ export function ModelDetailsPanel({
 
         {(inputCostPerM != null || outputCostPerM != null) &&
           (() => {
-            const { level, label } =
+            const { level, labelKey } =
               inputCostPerM != null
                 ? getCostLevel(inputCostPerM)
-                : { level: 0, label: "" };
+                : { level: 0, labelKey: null };
             return (
               <div className="flex flex-col gap-2">
                 <span className="text-xs font-medium text-muted-foreground">
-                  Pricing
+                  {t("chat.shared.pricing")}
                 </span>
                 {inputCostPerM != null && (
                   <div className="flex items-center gap-2">
@@ -299,7 +354,7 @@ export function ModelDetailsPanel({
                       ))}
                     </div>
                     <span className="text-xs text-muted-foreground font-medium">
-                      {label}
+                      {labelKey ? t(labelKey) : ""}
                     </span>
                   </div>
                 )}
@@ -307,20 +362,22 @@ export function ModelDetailsPanel({
                   {inputCostPerM != null && (
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-muted-foreground">
-                        Input
+                        {t("chat.shared.input")}
                       </span>
                       <span className="text-xs text-foreground">
-                        ${inputCostPerM.toFixed(2)} / 1M tokens
+                        ${inputCostPerM.toFixed(2)} / 1M{" "}
+                        {t("chat.shared.tokens")}
                       </span>
                     </div>
                   )}
                   {outputCostPerM != null && (
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-muted-foreground">
-                        Output
+                        {t("chat.shared.output")}
                       </span>
                       <span className="text-xs text-foreground">
-                        ${outputCostPerM.toFixed(2)} / 1M tokens
+                        ${outputCostPerM.toFixed(2)} / 1M{" "}
+                        {t("chat.shared.tokens")}
                       </span>
                     </div>
                   )}
@@ -335,13 +392,16 @@ export function ModelDetailsPanel({
 
 export function SelectedModelDisplay({
   model,
-  placeholder = "Select model",
+  placeholder,
   isLoading = false,
 }: {
   model: AiProviderModel | null;
   placeholder?: string;
   isLoading?: boolean;
 }) {
+  const t = useT();
+  const resolvedPlaceholder = placeholder ?? t("chat.shared.selectModel");
+
   if (isLoading) {
     return (
       <div className="flex items-center gap-1.5">
@@ -354,7 +414,9 @@ export function SelectedModelDisplay({
   if (!model) {
     return (
       <div className="flex items-center gap-1.5">
-        <span className="text-sm text-muted-foreground">{placeholder}</span>
+        <span className="text-sm text-muted-foreground">
+          {resolvedPlaceholder}
+        </span>
         <ChevronDown
           size={14}
           className="text-muted-foreground opacity-50 shrink-0"
@@ -477,18 +539,20 @@ export function getAcceptedMimeTypesForModel(
 
 export function getSupportedFileTypesLabel(
   selectedModel: AiProviderModel | null | undefined,
-): string {
+): {
+  parts: TranslationKey[];
+  count: number;
+} {
   const caps = selectedModel?.capabilities ?? [];
-  const parts: string[] = [];
+  const parts: TranslationKey[] = [];
 
-  if (caps.includes("vision") || caps.includes("image")) parts.push("images");
-  if (caps.includes("file")) parts.push("PDFs");
-  if (caps.includes("audio")) parts.push("audio");
-  if (caps.includes("video")) parts.push("video");
-  if (modelSupportsFiles(selectedModel)) parts.push("Office files");
+  if (caps.includes("vision") || caps.includes("image"))
+    parts.push("chat.shared.fileTypeImages");
+  if (caps.includes("file")) parts.push("chat.shared.fileTypePdfs");
+  if (caps.includes("audio")) parts.push("chat.shared.fileTypeAudio");
+  if (caps.includes("video")) parts.push("chat.shared.fileTypeVideo");
+  if (modelSupportsFiles(selectedModel))
+    parts.push("chat.shared.fileTypeOffice");
 
-  if (parts.length === 0) return "text only";
-  if (parts.length === 1) return parts[0]!;
-  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
+  return { parts, count: parts.length };
 }

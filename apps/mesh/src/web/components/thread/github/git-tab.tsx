@@ -15,6 +15,7 @@
 import { useProjectContext, useVirtualMCP } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { GitBranch01, LinkExternal01 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import { MemoizedMarkdown } from "../../chat/markdown.tsx";
 import { useChatTask } from "../../chat/index";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
@@ -26,16 +27,19 @@ import { usePrByBranch, type PrSummary } from "./use-pr-data.ts";
  * PR exists (open, closed, or merged). Click opens the PR on GitHub.
  */
 function PrHeader({ pr }: { pr: PrSummary }) {
+  const t = useT();
   return (
     <div className="flex h-12 items-center border-b border-border px-4 shrink-0">
       <a
         href={pr.htmlUrl}
         target="_blank"
         rel="noreferrer"
-        aria-label={`Open PR #${pr.number} on GitHub`}
+        aria-label={t("thread.gitTab.openPrAriaLabel", {
+          number: String(pr.number),
+        })}
         className="inline-flex items-center gap-1.5 text-base font-medium text-foreground hover:underline"
       >
-        PR #{pr.number}
+        {t("thread.gitTab.prNumber", { number: String(pr.number) })}
         <LinkExternal01 className="h-4 w-4 text-muted-foreground" />
       </a>
     </div>
@@ -43,6 +47,7 @@ function PrHeader({ pr }: { pr: PrSummary }) {
 }
 
 export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
+  const t = useT();
   const { org } = useProjectContext();
   const vm = useVirtualMCP(virtualMcpId);
   const { currentBranch: branch } = useChatTask();
@@ -52,7 +57,7 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
   if (!githubRepo?.connectionId) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
-        This virtualmcp is not linked to a GitHub repository.
+        {t("thread.gitTab.notLinkedToGithub")}
       </div>
     );
   }
@@ -61,9 +66,11 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-sm">
         <GitBranch01 className="h-6 w-6 text-muted-foreground" />
-        <div className="text-muted-foreground">No branch selected.</div>
+        <div className="text-muted-foreground">
+          {t("thread.gitTab.noBranchSelected")}
+        </div>
         <div className="text-xs text-muted-foreground">
-          Pick a branch from the header to see PR status.
+          {t("thread.gitTab.pickBranchForPrStatus")}
         </div>
       </div>
     );
@@ -93,6 +100,7 @@ interface ContentProps {
 }
 
 function GitTabContent(props: ContentProps) {
+  const t = useT();
   const { orgId, orgSlug, virtualMcpId, connectionId, owner, repo, branch } =
     props;
 
@@ -115,14 +123,16 @@ function GitTabContent(props: ContentProps) {
 
   if (isLoading) {
     return (
-      <div className="p-4 text-sm text-muted-foreground">Loading PR state…</div>
+      <div className="p-4 text-sm text-muted-foreground">
+        {t("thread.gitTab.loadingPrState")}
+      </div>
     );
   }
 
   if (isError) {
     return (
       <div className="p-4 text-sm text-destructive">
-        Couldn't load PR state. The GitHub connection may be broken.
+        {t("thread.gitTab.couldNotLoadPrState")}
       </div>
     );
   }
@@ -136,11 +146,14 @@ function GitTabContent(props: ContentProps) {
         <PrHeader pr={pr} />
         <div className="flex flex-col gap-4 p-4 overflow-auto">
           <div className="text-sm text-success">
-            {pr.merged ? "✓ Merged" : "✗ Closed"} into {pr.base}
+            {pr.merged ? t("thread.gitTab.merged") : t("thread.gitTab.closed")}{" "}
+            {t("thread.gitTab.into", { base: pr.base })}
             {pr.mergedAt && (
               <> · {new Date(pr.mergedAt).toLocaleDateString()}</>
             )}
-            {pr.author && <> · by @{pr.author}</>}
+            {pr.author && (
+              <> · {t("thread.gitTab.by", { author: pr.author })}</>
+            )}
           </div>
           <h1 className="text-lg font-semibold">
             {decodeHtmlEntities(pr.title)}
@@ -180,14 +193,12 @@ function GitTabContent(props: ContentProps) {
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="rounded-md border border-border bg-muted/30 p-4 text-sm">
-        This branch doesn't have an open pull request. Click "Submit for review"
-        in the header to open one; the agent will draft the title and summary
-        from the current state of the branch.
+        {t("thread.gitTab.noPrYet")}
       </div>
       <div className="flex items-center gap-2">
         <Button size="sm" variant="outline" onClick={() => openExt(branchUrl)}>
           <LinkExternal01 className="mr-1.5 h-4 w-4" />
-          Open branch on GitHub
+          {t("thread.gitTab.openBranchOnGithub")}
         </Button>
       </div>
     </div>

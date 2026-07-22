@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useChatStream } from "@/web/components/chat/context";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { useT } from "@/web/i18n/use-t";
 import type { VisualEditorPayload } from "./visual-editor-script";
 
 /** Sanitize a string for safe embedding in markdown (escape backticks and asterisks) */
@@ -55,6 +56,10 @@ export function formatVisualEditorMessage(
   return lines.join("\n");
 }
 
+/* TODO(i18n): formatVisualEditorMessage contains instruction text that should be localized.
+   This would require passing useT() as a parameter or moving locale-aware logic into the component.
+   For now, keeping the English instructions as-is since they're part of the AI prompt format. */
+
 /**
  * Compute the floating prompt position relative to the clicked element.
  * Returns { leftPct, topPct } as percentages of viewport.
@@ -94,6 +99,7 @@ export function VisualEditorPrompt({
   const inputRef = useRef<HTMLInputElement>(null);
   const { sendMessage } = useChatStream();
   const { openSidePanel } = usePanelActions();
+  const t = useT();
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -131,14 +137,14 @@ export function VisualEditorPrompt({
           onKeyDown={(e) => {
             if (e.key === "Escape") onDismiss();
           }}
-          placeholder="Ask the AI..."
+          placeholder={t("sandbox.visualEditorPrompt.inputPlaceholder")}
           className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
         <button
           type="submit"
           disabled={!input.trim()}
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-30"
-          title="Send"
+          title={t("sandbox.visualEditorPrompt.sendButton")}
         >
           <svg
             width="10"
@@ -147,7 +153,7 @@ export function VisualEditorPrompt({
             fill="none"
             aria-hidden="true"
           >
-            <title>Send</title>
+            <title>{t("sandbox.visualEditorPrompt.sendButton")}</title>
             <path
               d="M5 9V1M1 5l4-4 4 4"
               stroke="currentColor"

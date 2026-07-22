@@ -1,12 +1,14 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { Archive } from "@untitledui/icons";
 import { AccessScreenLayout } from "@/web/components/access-screen-layout";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface ArchivedOrgScreenProps {
   orgName?: string;
 }
 
 export function ArchivedOrgScreen({ orgName }: ArchivedOrgScreenProps) {
+  const t = useT();
   const handleGoHome = () => {
     window.location.href = "/";
   };
@@ -17,19 +19,18 @@ export function ArchivedOrgScreen({ orgName }: ArchivedOrgScreenProps) {
         <Archive className="h-6 w-6 text-muted-foreground" />
       </div>
       <div className="space-y-2">
-        <h3 className="text-lg font-medium">Organization unavailable</h3>
+        <h3 className="text-lg font-medium">
+          {t("common.archivedOrgScreen.orgUnavailable")}
+        </h3>
         <p className="text-sm text-muted-foreground">
-          {orgName ? (
-            <>
-              <strong>{orgName}</strong> has been deleted or is no longer
-              available.
-            </>
-          ) : (
-            "This organization has been deleted or is no longer available."
-          )}
+          {orgName
+            ? t("common.archivedOrgScreen.deletedWithName", { orgName })
+            : t("common.archivedOrgScreen.deletedGeneric")}
         </p>
       </div>
-      <Button onClick={handleGoHome}>Go to home</Button>
+      <Button onClick={handleGoHome}>
+        {t("common.archivedOrgScreen.goHome")}
+      </Button>
     </AccessScreenLayout>
   );
 }

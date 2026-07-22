@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { setCollectionToastTranslations } from "@decocms/mesh-sdk";
 
 import { AuthConfigProvider } from "@/web/providers/auth-config-provider";
 import { BetterAuthUIProvider } from "@/web/providers/better-auth-ui-provider";
@@ -15,6 +16,7 @@ import {
   restoreHtmlResourceCache,
 } from "@/web/lib/html-resource-persist";
 import { Toaster } from "sonner";
+import { useT } from "@/web/i18n/use-t";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +42,25 @@ persistQueryClient(queryClient);
 void restoreHtmlResourceCache(queryClient);
 persistHtmlResourceCache(queryClient);
 
+function SdkTranslationInitializer({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const t = useT();
+
+  setCollectionToastTranslations({
+    itemCreatedSuccessfully: t("collections.mutations.itemCreatedSuccessfully"),
+    itemUpdatedSuccessfully: t("collections.mutations.itemUpdatedSuccessfully"),
+    itemDeletedSuccessfully: t("collections.mutations.itemDeletedSuccessfully"),
+    createItemFailed: t("collections.mutations.createItemFailed"),
+    updateItemFailed: t("collections.mutations.updateItemFailed"),
+    deleteItemFailed: t("collections.mutations.deleteItemFailed"),
+  });
+
+  return <>{children}</>;
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
@@ -48,7 +69,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <ThemeProvider>
           <AuthConfigProvider>
             <BetterAuthUIProvider>
-              <PostHogIdentitySync>{children}</PostHogIdentitySync>
+              <PostHogIdentitySync>
+                <SdkTranslationInitializer>
+                  {children}
+                </SdkTranslationInitializer>
+              </PostHogIdentitySync>
             </BetterAuthUIProvider>
           </AuthConfigProvider>
         </ThemeProvider>

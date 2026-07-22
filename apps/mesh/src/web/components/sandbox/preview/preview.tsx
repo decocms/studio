@@ -6,6 +6,8 @@ import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 
 import {
   ChevronDown,
@@ -138,10 +140,11 @@ const PREVIEW_DEVICE_WIDTHS: Record<PreviewDeviceSize, number | null> = {
 
 const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
 
-const DEVICE_LABELS: Record<PreviewDeviceSize, string> = {
-  mobile: "Mobile (375px)",
-  tablet: "Tablet (768px)",
-  desktop: "Desktop",
+// Device labels are resolved per-render in the component to use t()
+const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, TranslationKey> = {
+  mobile: "sandbox.preview.deviceMobile",
+  tablet: "sandbox.preview.deviceTablet",
+  desktop: "sandbox.preview.deviceDesktop",
 };
 
 /**
@@ -209,6 +212,7 @@ function PathParamInput({
       {focused && (
         <span className="pointer-events-none ml-1.5 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
           <CornerDownLeft size={10} />
+          {/* TODO(i18n): "Enter to go" is part of inline editing hint; needs component context for t() */}
           Enter to go
         </span>
       )}
@@ -250,6 +254,7 @@ function reloadIframeOrFallback(
 }
 
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
+  const t = useT();
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { currentBranch: branch } = useChatTask();
@@ -789,14 +794,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     if (!url) return;
     try {
       await navigator.clipboard.writeText(url);
-      toast.success("URL copied to clipboard");
+      toast.success(t("sandbox.preview.urlCopiedToClipboard"));
     } catch {
-      toast.error("Failed to copy URL");
+      toast.error(t("sandbox.preview.failedToCopyUrl"));
     }
   };
 
   const previewLabel = (() => {
-    if (!previewUrl) return "No server running";
+    if (!previewUrl) return t("sandbox.preview.noServerRunning");
     if (activeGlobalSection) return activeGlobalSection.name;
     try {
       const url = new URL(previewUrl);
@@ -844,7 +849,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const navigatePreviewToGlobalSection = (section: GlobalSectionEntry) => {
     if (!previewUrl || !meta) {
-      toast.error("Preview metadata not ready yet");
+      toast.error(t("sandbox.preview.previewMetadataNotReady"));
       return;
     }
     beginNavigation();
@@ -880,14 +885,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? path.trim()
       : `/${path.trim()}`;
     if (pages.some((p) => normPath(p.path) === normPath(trimmedPath))) {
-      setCreatePageError(`A page with path "${trimmedPath}" already exists.`);
+      setCreatePageError(
+        t("sandbox.preview.pageAlreadyExists", { path: trimmedPath }),
+      );
       return;
     }
     let template: Record<string, unknown> | undefined;
     if (templateKey) {
       template = decofile?.[templateKey] as Record<string, unknown> | undefined;
       if (!template) {
-        setCreatePageError("Selected template no longer exists.");
+        setCreatePageError(t("sandbox.preview.templateNoLongerExists"));
         return;
       }
     }
@@ -899,7 +906,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         template,
       });
       setCreatePageDialogOpen(false);
-      toast.success(`Page "${name}" created`);
+      toast.success(t("sandbox.preview.pageCreated", { name }));
       await sleep(DEV_SERVER_SETTLE_MS);
       navigatePreviewToPage({
         key: result.key,
@@ -909,7 +916,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       activateEditingMode("blocks");
     } catch (error) {
       setCreatePageError(
-        error instanceof Error ? error.message : "Failed to create page",
+        error instanceof Error
+          ? error.message
+          : t("sandbox.preview.failedToCreatePage"),
       );
     }
   };
@@ -923,21 +932,23 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             <ToolbarIconButton
               onClick={() => toggleEditingMode("visual")}
               aria-pressed={editingMode === "visual"}
-              aria-label="Visual editor"
+              aria-label={t("sandbox.preview.visualEditor")}
               active={editingMode === "visual"}
               disabled={!canVisualEdit}
             >
               <CursorClick01 size={16} />
             </ToolbarIconButton>
           </TooltipTrigger>
-          <TooltipContent side="top">Visual editor</TooltipContent>
+          <TooltipContent side="top">
+            {t("sandbox.preview.visualEditor")}
+          </TooltipContent>
         </Tooltip>
         <div className="mx-0.5 h-5 w-px bg-border" />
         <Tooltip>
           <TooltipTrigger asChild>
             <ToolbarIconButton
               onClick={handleDeviceToggle}
-              aria-label={DEVICE_LABELS[previewDeviceSize]}
+              aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
               disabled={!canVisualEdit}
             >
               <span
@@ -951,7 +962,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             </ToolbarIconButton>
           </TooltipTrigger>
           <TooltipContent side="top">
-            {DEVICE_LABELS[previewDeviceSize]}
+            {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -986,10 +997,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 data-testid="preview-blocks-toggle"
                 onClick={() => toggleEditingMode("blocks")}
                 aria-pressed={editingMode === "blocks"}
-                aria-label="Blocks editor"
+                aria-label={t("sandbox.preview.blocksEditor")}
               >
                 <TextInput size={14} />
-                Blocks
+                {t("sandbox.preview.blocks")}
               </Button>
 
               <div className="flex w-full min-w-0 max-w-[500px] items-center gap-0.5">
@@ -999,7 +1010,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       <RefreshCw01 size={14} />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom">Refresh</TooltipContent>
+                  <TooltipContent side="bottom">
+                    {t("sandbox.preview.refresh")}
+                  </TooltipContent>
                 </Tooltip>
 
                 <div
@@ -1090,7 +1103,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       type="button"
                       className="flex h-full shrink-0 items-center pl-1 pr-2"
                       onClick={() => setPagesOpen((prev) => !prev)}
-                      aria-label="Choose page"
+                      aria-label={t("sandbox.preview.choosePage")}
                     >
                       <ChevronDown
                         size={12}
@@ -1129,7 +1142,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             setPagesSearch("");
                             navigatePreviewToPage(target);
                           }}
-                          placeholder="Search pages and components..."
+                          placeholder={t(
+                            "sandbox.preview.searchPagesAndComponents",
+                          )}
                           className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                           autoFocus
                         />
@@ -1151,7 +1166,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             className="shrink-0 text-muted-foreground"
                           />
                           <span className="flex-1 font-medium">
-                            Create new page
+                            {t("sandbox.preview.createNewPage")}
                           </span>
                         </button>
                       </div>
@@ -1159,8 +1174,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       filteredGlobalSections.length === 0 ? (
                         <div className="px-4 py-5 text-center text-xs text-muted-foreground">
                           {pages.length === 0 && globalSections.length === 0
-                            ? "No pages found in this site."
-                            : "No results match your search."}
+                            ? t("sandbox.preview.noPagesFound")
+                            : t("sandbox.preview.noSearchResults")}
                         </div>
                       ) : (
                         <div className="max-h-80 overflow-y-auto overscroll-contain">
@@ -1200,7 +1215,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                               )}
                             >
                               <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
-                                Global components
+                                {t("sandbox.preview.globalComponents")}
                               </div>
                               {filteredGlobalSections.map((section) => (
                                 <button
@@ -1249,7 +1264,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       <LinkExternal01 size={14} />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom">Open in new tab</TooltipContent>
+                  <TooltipContent side="bottom">
+                    {t("sandbox.preview.openInNewTab")}
+                  </TooltipContent>
                 </Tooltip>
               </div>
 
@@ -1262,10 +1279,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-44">
                     <DropdownMenuItem onClick={handleHardReload}>
-                      Hard Reload
+                      {t("sandbox.preview.hardReload")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleCopyUrl}>
-                      Copy Current URL
+                      {t("sandbox.preview.copyCurrentUrl")}
                     </DropdownMenuItem>
                     {decofile && meta && (
                       <>
@@ -1282,7 +1299,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             }}
                           >
                             <CreditCardSearch size={14} />
-                            Edit SEO
+                            {t("sandbox.preview.editSeo")}
                           </DropdownMenuItem>
                         )}
                         {currentPageKey && (
@@ -1295,17 +1312,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                                   ),
                                 );
                               } catch {
-                                toast.error("Invalid page block key");
+                                toast.error(
+                                  t("sandbox.preview.invalidPageBlockKey"),
+                                );
                               }
                             }}
                           >
                             <Code01 size={14} />
-                            View JSON
+                            {t("sandbox.preview.viewJson")}
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem onClick={() => setSiteSeoOpen(true)}>
                           <CreditCardSearch size={14} />
-                          Site SEO
+                          {t("sandbox.preview.siteSeo")}
                         </DropdownMenuItem>
                       </>
                     )}
@@ -1323,7 +1342,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             width={14}
                             height={14}
                           />
-                          Open in VSCode
+                          {t("sandbox.preview.openInVscode")}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() =>
@@ -1336,7 +1355,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             width={14}
                             height={14}
                           />
-                          Open in Cursor
+                          {t("sandbox.preview.openInCursor")}
                         </DropdownMenuItem>
                       </>
                     )}
@@ -1434,7 +1453,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 {effectiveEditingMode === "visual" && !visualElement && (
                   <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
                     <CursorClick01 size={12} />
-                    Click any element to ask the AI
+                    {t("sandbox.preview.clickElementToAsk")}
                   </div>
                 )}
                 {effectiveEditingMode === "visual" && visualElement && (
@@ -1467,7 +1486,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       ref={previewIframeRef}
                       src={iframeSrc}
                       className="w-full h-full border-0"
-                      title="Dev Server Preview"
+                      title={t("sandbox.preview.devServerPreviewTitle")}
                       onLoad={() => {
                         // The page finished loading — always clear the navigation
                         // indicator first, before any of the early returns below.

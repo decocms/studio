@@ -18,6 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { Plus } from "@untitledui/icons";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { getArrayItemImageSrc, getArrayItemLabel } from "../array-item-display";
 import {
@@ -115,6 +116,7 @@ export function ArrayField({
   onRequestAddSection,
   sandbox,
 }: FieldProps) {
+  const t = useT();
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
   const arrayFieldKey = arrayFieldKeyFromPath(path);
@@ -252,14 +254,14 @@ export function ArrayField({
   const handleAddClick = () => {
     if (usesSectionPicker) {
       if (!previewBaseUrl) {
-        toast.error("Start the preview dev server to add sections.");
+        toast.error(t("sectionsEditor.arrayField.startPreviewServer"));
         return;
       }
       if (onRequestAddSection) {
         onRequestAddSection({ append: appendItem });
         return;
       }
-      toast.error("Section picker is not available in this editor.");
+      toast.error(t("sectionsEditor.arrayField.sectionPickerNotAvailable"));
       return;
     }
     addItem();
@@ -521,7 +523,9 @@ export function ArrayField({
         className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30"
       >
         <Plus size={14} />
-        {usesSectionPicker ? "Add section" : "Add item"}
+        {usesSectionPicker
+          ? t("sectionsEditor.arrayField.addSection")
+          : t("sectionsEditor.arrayField.addItem")}
       </button>
     </div>
   );
