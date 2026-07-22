@@ -293,10 +293,20 @@ export class GatewayClient extends Client {
     }
 
     const clientOrFactory = entry.client;
-    const promise =
-      typeof clientOrFactory === "function"
-        ? Promise.resolve(clientOrFactory())
-        : Promise.resolve(clientOrFactory);
+    let promise: Promise<IClient>;
+    try {
+      promise =
+        typeof clientOrFactory === "function"
+          ? Promise.resolve(clientOrFactory())
+          : Promise.resolve(clientOrFactory);
+    } catch (err) {
+      // A factory that throws synchronously (vs. returning a rejected
+      // promise) must still surface as a rejection — resolveClient's
+      // Promise<IClient> contract otherwise breaks for sync callers like
+      // getResolvedClient(), which would throw instead of returning a
+      // rejected promise.
+      return Promise.reject(err);
+    }
 
     // Remove from cache on failure so subsequent calls retry
     const guarded = promise.catch((err) => {
