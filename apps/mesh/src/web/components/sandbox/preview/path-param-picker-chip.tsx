@@ -34,10 +34,20 @@ import {
 
 const PICKER_FETCH_TIMEOUT_MS = 10_000;
 
-const KIND_LABELS: Record<PathParamKind, { noun: string; heading: string }> = {
-  product: { noun: "product", heading: "Products" },
-  category: { noun: "category", heading: "Categories" },
-};
+function kindLabels(
+  t: ReturnType<typeof useT>,
+): Record<PathParamKind, { noun: string; heading: string }> {
+  return {
+    product: {
+      noun: t("sandbox.pathParamPickerChip.kindProductNoun"),
+      heading: t("sandbox.pathParamPickerChip.kindProductHeading"),
+    },
+    category: {
+      noun: t("sandbox.pathParamPickerChip.kindCategoryNoun"),
+      heading: t("sandbox.pathParamPickerChip.kindCategoryHeading"),
+    },
+  };
+}
 
 /**
  * Invoke a loader via the studio preview-invoke proxy (same-origin,
@@ -144,7 +154,7 @@ function PickerSourceGroup({
     retry: 1,
   });
 
-  const { noun, heading } = KIND_LABELS[source.kind];
+  const { noun, heading } = kindLabels(t)[source.kind];
   const options = source.clientFilter
     ? filterPickerOptions(query.data ?? [], search)
     : (query.data ?? []);
@@ -226,7 +236,8 @@ export function PathParamPickerChip({
 
   // The `*` catch-all reads badly in the URL bar; show a friendly word instead.
   const paramLabel = paramName === "*" ? "path" : `:${paramName}`;
-  const nouns = [...new Set(sources.map((s) => KIND_LABELS[s.kind].noun))];
+  const labels = kindLabels(t);
+  const nouns = [...new Set(sources.map((s) => labels[s.kind].noun))];
   const placeholder = t("sandbox.pathParamPickerChip.searchPlaceholder", {
     options: nouns.join(" or "),
   });
