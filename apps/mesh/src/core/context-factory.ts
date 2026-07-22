@@ -176,6 +176,23 @@ interface AuthenticatedUser {
   role?: string;
 }
 
+/**
+ * Extract the canonical organization slug from an org-scoped API path.
+ * Header hints are still supported for legacy, unscoped routes, but the URL
+ * path is authoritative whenever it is present.
+ */
+function getOrgSlugFromRequestPath(req: Request): string | undefined {
+  try {
+    const segments = new URL(req.url).pathname.split("/").filter(Boolean);
+    if (segments[0] === "api" && segments[1]) {
+      return decodeURIComponent(segments[1]);
+    }
+  } catch {
+    // Fall through to legacy header/single-membership resolution.
+  }
+  return undefined;
+}
+
 // Type for the hasPermission API (from @decocms/better-auth organization plugin)
 type HasPermissionAPI = (params: {
   headers: Headers;
@@ -646,6 +663,8 @@ async function authenticateRequest(
   role?: string;
   permissions?: Permission; // Permissions from API key or custom role (for non-browser sessions)
   apiKeyId?: string;
+  apiKey?: StudioContext["auth"]["apiKey"];
+  tokenOrganizationId?: string;
   organization?: OrganizationContext;
 }> {
   const authHeader = req.headers.get("Authorization");
@@ -670,11 +689,11 @@ async function authenticateRequest(
 
       // For MCP OAuth sessions we need to query the database directly because
       // getFullOrganization requires a browser session (cookies). The OAuth
-      // grant doesn't carry org context, so prefer an explicit hint from the
-      // request (x-org-id / x-org-slug) and fall back to the user's first
-      // membership only when no hint is given. Without the hint, multi-org
-      // users get a non-deterministic pick and end up with the wrong
-      // ctx.organization on every request that doesn't target their first org.
+      // grant doesn't carry org context. A canonical `/api/:org` path is
+      // authoritative; legacy callers may still provide x-org-id / x-org-slug
+      // headers, and we fall back to the user's only membership when neither
+      // source is present. Without a deterministic hint, multi-org users would
+      // get the wrong ctx.organization.
       const orgIdHint = req.headers.get("x-org-id");
       const orgSlugHint = req.headers.get("x-org-slug");
       // External MCP clients (Claude Desktop/Code) authenticate via OAuth and
@@ -682,16 +701,8 @@ async function authenticateRequest(
       // path (`/api/:org/mcp/...`). Without honoring it, a multi-org member
       // falls through to the single-membership guard below, resolves to NO
       // role, and loses the admin/owner bypass (every connection tool call
-      // 403s "Access denied"). Derive the slug from the path as a hint.
-      const pathOrgSlug = (() => {
-        try {
-          const segs = new URL(req.url).pathname.split("/").filter(Boolean);
-          if (segs[0] === "api" && segs[1]) return decodeURIComponent(segs[1]);
-        } catch {
-          // Malformed URL — fall through to header/single-membership logic.
-        }
-        return undefined;
-      })();
+      // 403s "Access denied"). Derive the authoritative slug from the path.
+      const pathOrgSlug = getOrgSlugFromRequestPath(req);
 
       const membership = await timings.measure("auth_query_membership", () => {
         const base = db
@@ -707,6 +718,14 @@ async function authenticateRequest(
           ])
           .where("member.userId", "=", userId);
 
+        // The canonical org path is authoritative. External MCP clients do not
+        // send x-org-* headers, and accepting a stale header ahead of the path
+        // can bind permissions to one org while the route serves another.
+        if (pathOrgSlug) {
+          return base
+            .where("organization.slug", "=", pathOrgSlug)
+            .executeTakeFirst();
+        }
         if (orgIdHint) {
           return base
             .where("organization.id", "=", orgIdHint)
@@ -715,11 +734,6 @@ async function authenticateRequest(
         if (orgSlugHint) {
           return base
             .where("organization.slug", "=", orgSlugHint)
-            .executeTakeFirst();
-        }
-        if (pathOrgSlug) {
-          return base
-            .where("organization.slug", "=", pathOrgSlug)
             .executeTakeFirst();
         }
         // No org hint — only resolve when the user has exactly one membership.
@@ -845,6 +859,7 @@ async function authenticateRequest(
           },
           role,
           permissions: meshJwtPayload.permissions,
+          tokenOrganizationId: organizationId,
           organization,
         };
       }
@@ -860,6 +875,7 @@ async function authenticateRequest(
         valid?: boolean;
         key?: {
           id: string;
+          name?: string | null;
           userId: string;
           metadata?: { organization?: OrganizationContext };
           permissions?: Permission;
@@ -920,6 +936,15 @@ async function authenticateRequest(
           user: onBehalfOf ?? { id: result.key.userId, role },
           role: onBehalfOf ? onBehalfOf.role : role,
           permissions, // Store the API key's permissions
+          apiKey: {
+            id: result.key.id,
+            name: result.key.name ?? "",
+            userId: result.key.userId,
+            metadata: result.key.metadata as
+              | Record<string, unknown>
+              | undefined,
+          },
+          tokenOrganizationId: orgMetadata?.id,
           organization: orgMetadata
             ? {
                 id: orgMetadata.id,
@@ -1423,14 +1448,11 @@ export async function createStudioContextFactory(
     // Build auth object for StudioContext
     const studioAuth: StudioContext["auth"] = {
       user: authResult.user,
+      tokenOrganizationId: authResult.tokenOrganizationId,
     };
 
-    if (authResult.apiKeyId) {
-      studioAuth.apiKey = {
-        id: authResult.apiKeyId,
-        name: "", // Not needed for access control
-        userId: "", // Not needed for access control
-      };
+    if (authResult.apiKey) {
+      studioAuth.apiKey = authResult.apiKey;
     }
 
     // Organization from Better Auth (OAuth session or API key metadata)
