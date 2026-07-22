@@ -25,7 +25,6 @@ import {
   SidebarInset,
   SidebarLayout,
   SidebarProvider,
-  useSidebar,
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Outlet, useSearch } from "@tanstack/react-router";
@@ -47,14 +46,6 @@ import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
-
-function CollapsedAgentCrumb() {
-  const { state } = useSidebar();
-  const reportsOnly = useReportsOnly();
-  // No agent switcher in the collapsed top bar for commerce (reports-only) orgs.
-  if (state !== "collapsed" || reportsOnly) return null;
-  return <AgentSwitcherCrumb />;
-}
 
 function RouteFallback() {
   return <ShellRouteLoading />;
@@ -86,24 +77,10 @@ export default function OrgShellLayout() {
   );
   const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
 
-  // On desktop the header lives in the right column above the panels only (not
-  // spanning the sidebar).
-  const headerInRightColumn = !isMobile;
-  const desktopHeader = (
-    <Toolbar.Header>
-      <Toolbar.LeftColumn>
-        <CollapsedAgentCrumb />
-        <Toolbar.TogglesSlot />
-      </Toolbar.LeftColumn>
-      <Toolbar.CenterSlot />
-      <Toolbar.RightColumn>
-        <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end items-center gap-0.5">
-          <Toolbar.TabsSlot />
-        </div>
-        <Toolbar.RightSlot />
-      </Toolbar.RightColumn>
-    </Toolbar.Header>
-  );
+  // On desktop each panel owns its own 48px header (see WorkspacePanelGroup), so
+  // there is no shared top bar spanning the panels — only the mobile layout,
+  // which has no side-by-side split, keeps a single shared header on top.
+  const headerOnTop = isMobile;
 
   // Single flex row. Like the desktop collapsed topbar, only the *agent* shows
   // here (it flexes and truncates) — the org switcher lives in the sidebar
@@ -153,10 +130,9 @@ export default function OrgShellLayout() {
         <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <ChatPrefsProvider>
             <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
-              {/* Header on top: mobile always, desktop unless the sidebar owns
-                  the full height. */}
-              {!headerInRightColumn &&
-                (isMobile ? mobileHeader : desktopHeader)}
+              {/* Shared header on top for mobile only; desktop panels each own
+                  their own header. */}
+              {headerOnTop && mobileHeader}
               <SidebarLayout
                 ref={wrapperRef}
                 className="flex-1 bg-sidebar relative min-h-0"
@@ -180,14 +156,7 @@ export default function OrgShellLayout() {
                     />
                   </>
                 )}
-                {headerInRightColumn ? (
-                  <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full">
-                    {desktopHeader}
-                    {inset}
-                  </div>
-                ) : (
-                  inset
-                )}
+                {inset}
               </SidebarLayout>
               {isMobile && (
                 <MobileSidebarSheet

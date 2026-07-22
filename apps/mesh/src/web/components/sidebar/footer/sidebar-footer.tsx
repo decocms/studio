@@ -52,7 +52,8 @@ function SettingsIconButton() {
   );
 }
 
-function SidebarExtraActions() {
+/** Quick actions in the footer: invite members + add connection. */
+function SidebarInviteAction() {
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   return (
     <>
@@ -86,75 +87,23 @@ function SidebarExtraActions() {
   );
 }
 
-function SidebarExtraActionsCommerce() {
-  return (
-    <SidebarMenu className="gap-0.5">
-      <SidebarMenuItem>
-        <InviteMemberDialog
-          trigger={
-            <SidebarMenuButton tooltip="Invite members">
-              <UserPlus01 />
-              <span>Invite members</span>
-            </SidebarMenuButton>
-          }
-        />
-      </SidebarMenuItem>
-    </SidebarMenu>
-  );
-}
-
+/**
+ * Account footer — Invite members + Add connection, the desktop-link
+ * indicator, and the account row with Settings tucked into a bottom-right icon
+ * (no full-width Settings row). The credits chip only shows outside
+ * reports-only orgs.
+ */
 export function SidebarAccountFooter() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const reportsOnly = useReportsOnly();
-
-  if (reportsOnly) {
-    if (isCollapsed) {
-      return (
-        <SidebarFooter className="px-2 pb-3 gap-1">
-          <SidebarExtraActionsCommerce />
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <div className="flex justify-center">
-                <LinkedDesktopIndicator />
-              </div>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SettingsFullButton />
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <AccountPopover />
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
-      );
-    }
-
-    return (
-      <SidebarFooter className="px-2 pb-3 gap-0.5">
-        <SidebarExtraActionsCommerce />
-        <SidebarMenu className="gap-0.5">
-          <SidebarMenuItem>
-            <LinkedDesktopIndicator variant="full" />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <div className="flex items-center gap-1">
-              <div className="flex-1 min-w-0">
-                <AccountPopover />
-              </div>
-              <SettingsIconButton />
-            </div>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-    );
-  }
+  const showCredits = !reportsOnly;
 
   if (isCollapsed) {
     return (
       <SidebarFooter className="px-2 pb-3 gap-1">
-        <SidebarExtraActions />
-        <SidebarTopActions />
+        <SidebarInviteAction />
+        {showCredits && <SidebarTopActions />}
         <SidebarMenu>
           <SidebarMenuItem>
             <div className="flex justify-center">
@@ -174,17 +123,19 @@ export function SidebarAccountFooter() {
 
   return (
     <SidebarFooter className="px-2 pb-3 gap-0.5">
-      <SidebarExtraActions />
-      <SidebarTopActions />
+      <SidebarInviteAction />
+      {showCredits && <SidebarTopActions />}
       <SidebarMenu className="gap-0.5">
         <SidebarMenuItem>
           <LinkedDesktopIndicator variant="full" />
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SettingsFullButton />
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <AccountPopover />
+          <div className="flex items-center gap-1">
+            <div className="flex-1 min-w-0">
+              <AccountPopover />
+            </div>
+            <SettingsIconButton />
+          </div>
         </SidebarMenuItem>
       </SidebarMenu>
     </SidebarFooter>

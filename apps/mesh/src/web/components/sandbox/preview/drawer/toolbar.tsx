@@ -19,11 +19,11 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   ChevronDown,
+  ChevronUp,
   Loading01,
   Play,
   Plus,
   RefreshCw01,
-  StopCircle,
   Terminal,
   X,
 } from "@untitledui/icons";
@@ -74,7 +74,28 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
   };
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-1 border-t border-b border-border bg-muted/60 px-3">
+    <div className="flex h-7 shrink-0 items-center gap-1 border-t border-b border-border bg-muted/60 px-2">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={props.onToggle}
+            aria-label={props.open ? "Collapse terminal" : "Expand terminal"}
+            aria-expanded={props.open}
+            className="size-6 shrink-0"
+          >
+            {props.open ? (
+              <ChevronDown className="size-4" />
+            ) : (
+              <ChevronUp className="size-4" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {props.open ? "Collapse terminal" : "Expand terminal"}
+        </TooltipContent>
+      </Tooltip>
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         <SetupTab
           active={props.active === DEFAULT_TAB}
@@ -138,13 +159,13 @@ function SetupTab({
       aria-expanded={active && open}
       onClick={onClick}
       className={cn(
-        "flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs",
+        "flex h-6 items-center gap-1.5 rounded-md border px-2 text-xs",
         active
           ? "border-border bg-background font-medium text-foreground shadow-sm"
           : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
       )}
     >
-      <Terminal className="size-3.5" />
+      <Terminal className="size-4" />
       sandbox
     </button>
   );
@@ -156,8 +177,8 @@ function SetupTab({
  *   - idle      → [▶ Start]
  *   - suspended → [▶ Resume]
  *   - errored   → [↻ Retry]
- *   - starting  → [⏹ Stop]
- *   - running   → [⏹ Stop]  +  chevron menu { Restart }
+ *   - starting  → [Stop]
+ *   - running   → [Stop]  +  chevron menu { Restart }
  * Restarting a still-starting sandbox makes no sense, so the chevron half
  * only renders for "running".
  */
@@ -178,21 +199,21 @@ function SandboxActionControls({
 }) {
   if (status === "idle" && onStart) {
     return (
-      <Button variant="outline" size="sm" onClick={onStart}>
+      <Button variant="outline" size="xs" onClick={onStart}>
         <Play className="size-3.5" /> Start
       </Button>
     );
   }
   if (status === "suspended" && onResume) {
     return (
-      <Button variant="outline" size="sm" onClick={onResume}>
+      <Button variant="outline" size="xs" onClick={onResume}>
         <Play className="size-3.5" /> Resume
       </Button>
     );
   }
   if (status === "errored" && onRetry) {
     return (
-      <Button variant="outline" size="sm" onClick={onRetry}>
+      <Button variant="outline" size="xs" onClick={onRetry}>
         <RefreshCw01 className="size-3.5" /> Retry
       </Button>
     );
@@ -205,13 +226,13 @@ function SandboxActionControls({
           <TooltipTrigger asChild>
             <Button
               variant="outline"
-              size="sm"
+              size="xs"
               onClick={onStop}
               className={cn(
                 showRestart ? "rounded-r-none border-r-0" : undefined,
               )}
             >
-              <StopCircle className="size-3.5" /> Stop
+              Stop
             </Button>
           </TooltipTrigger>
           <TooltipContent>Stop sandbox</TooltipContent>
@@ -221,7 +242,7 @@ function SandboxActionControls({
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                size="sm"
+                size="xs"
                 className="rounded-l-none px-1"
               >
                 <ChevronDown className="size-3" />
@@ -254,7 +275,7 @@ function TabButton({
   return (
     <div
       className={cn(
-        "flex h-7 items-center rounded-md border text-xs",
+        "flex h-6 items-center rounded-md border text-xs",
         active
           ? "border-border bg-background shadow-sm"
           : "border-transparent hover:bg-background/50",
@@ -265,7 +286,7 @@ function TabButton({
         onClick={onClick}
         className={cn(
           "flex h-full items-center",
-          onClose ? "pl-2.5 pr-1" : "px-2.5",
+          onClose ? "pl-2 pr-1" : "px-2",
           active
             ? "font-medium text-foreground"
             : "text-muted-foreground hover:text-foreground",
@@ -280,7 +301,7 @@ function TabButton({
           onClick={onClose}
           className="pr-1.5 text-muted-foreground hover:text-foreground"
         >
-          <X className="size-3" />
+          <X className="size-3.5" />
         </button>
       )}
     </div>
@@ -300,8 +321,8 @@ function AddScriptButton({
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" aria-label="Run script">
-              <Plus className="size-3.5" />
+            <Button variant="ghost" size="xs" aria-label="Run script">
+              <Plus className="size-4" />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -348,7 +369,7 @@ function ScriptControls({
 }) {
   if (isKilling) {
     return (
-      <Button variant="outline" size="sm" disabled>
+      <Button variant="outline" size="xs" disabled>
         <Loading01 className="size-3.5 animate-spin" /> Stopping…
       </Button>
     );
@@ -357,7 +378,7 @@ function ScriptControls({
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="outline" size="sm" onClick={onRun}>
+          <Button variant="outline" size="xs" onClick={onRun}>
             <Play className="size-3.5" /> Run
           </Button>
         </TooltipTrigger>
@@ -368,8 +389,8 @@ function ScriptControls({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="outline" size="sm" onClick={onStop}>
-          <StopCircle className="size-3.5" /> Stop
+        <Button variant="outline" size="xs" onClick={onStop}>
+          Stop
         </Button>
       </TooltipTrigger>
       <TooltipContent>Stop process</TooltipContent>

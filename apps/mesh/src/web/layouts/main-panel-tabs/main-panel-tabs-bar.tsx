@@ -1,22 +1,20 @@
 /**
- * MainPanelTabsBar — horizontal tab strip rendered in the agent-shell
- * header via `Toolbar.Tabs` (portal).
+ * MainPanelTabsBar — the main panel's button row: the agent-independent
+ * overlays (Library, Tasks) followed by the view tabs (Preview, Code, …).
  *
- * Rendering pipeline:
- *   1. Normalize tabs via useMainPanelTabs (system / agent / expanded).
- *   2. Compute the per-tab active flag; the Automations system tab uses
- *      isAutomationsPillActive so it lights up on list + detail URLs.
- *   3. Promote the active tab into the visible slice when needed via
- *      selectTabSlots (cap = 6).
- *   4. Render each visible tab as <HeaderTabButton>. If there is
- *      overflow, append a <TabOverflowMenu>.
+ * At most MAX_VISIBLE buttons show; the rest collapse into a stack popover.
+ * Opening an item from the popover swaps it into the last visible slot and
+ * persists that arrangement per agent (localStorage), so a button you promote
+ * stays promoted across navigation — it doesn't fall back into the stack the
+ * moment you switch away.
  *
  * Click routing: the Automations pill uses resolveAutomationsPillClickTarget
- * (list/detail collapse); every other tab uses the hook's setActiveTab,
- * which already routes through resolveTabClickTarget (click active → close).
+ * (list/detail collapse); overlays use their toggle; every other tab uses the
+ * hook's setActiveTab (tab-as-toggle via resolveTabClickTarget).
  */
 
 import { useNavigate } from "@tanstack/react-router";
+import { Columns03, Folder } from "@untitledui/icons";
 import {
   isAutomationsPillActive,
   resolveAutomationsPillClickTarget,
@@ -25,45 +23,70 @@ import { useMainPanelTabs, type Tab } from "./use-main-panel-tabs";
 import { selectTabSlots } from "./select-tab-slots";
 import { HeaderTabButton } from "./header-tab-button";
 import { TabOverflowMenu } from "./tab-overflow-menu";
+import type { TabIcon } from "./resolve-tab-icon";
 import { track } from "@/web/lib/posthog-client";
+import { useLocalStorage } from "@/web/hooks/use-local-storage";
+import { useMainOverlayToggle } from "@/web/layouts/agent-shell-layout/use-main-overlay-toggle";
+import { useTaskBoardEnabled } from "@/web/hooks/use-organization-settings";
 
-const MAX_VISIBLE_TABS = 6;
+/** Hard cap on visible tab buttons; the shell narrows this further when the
+ *  header runs out of room (see `maxVisible`). */
+const MAX_VISIBLE = 3;
+
+// Left-to-right priority for the lead buttons (before any user promotion).
+// Overview (the agent's home view, when present) leads; then the source/edit
+// views; Library ("files") trails them — it's a secondary overlay, so it must
+// not outrank the agent's primary views.
+const DEFAULT_LEAD_ORDER = ["overview", "preview", "content", "files"];
+
+type BarItem = {
+  id: string;
+  title: string;
+  icon: TabIcon;
+  active: boolean;
+  locked: boolean;
+  onSelect: () => void;
+};
 
 export function MainPanelTabsBar({
   virtualMcpId,
   taskId,
   disableActiveMainToggle = false,
+  maxVisible = MAX_VISIBLE,
 }: {
   virtualMcpId: string;
   taskId: string;
   disableActiveMainToggle?: boolean;
+  /** Space-adaptive cap from the shell; clamped to `MAX_VISIBLE`. */
+  maxVisible?: number;
 }) {
   const navigate = useNavigate();
   const { tabs, activeTab, mainOpen, setActiveTab } = useMainPanelTabs({
     virtualMcpId,
     taskId,
   });
-
-  const automationsActive = isAutomationsPillActive({ activeTab, mainOpen });
-
-  const isTabActive = (tab: Tab) => {
-    if (tab.id === "automations") return automationsActive;
-    return mainOpen && tab.id === activeTab;
-  };
-
-  const activeFromTabs = tabs.find((t) => isTabActive(t));
-  const effectiveActiveId = activeFromTabs?.id ?? null;
-
-  const { visible, overflow } = selectTabSlots(
-    tabs,
-    effectiveActiveId,
-    MAX_VISIBLE_TABS,
+  const library = useMainOverlayToggle("files");
+  const tasks = useMainOverlayToggle("board");
+  const taskBoardEnabled = useTaskBoardEnabled();
+  // Key is versioned (v2): the default lead order changed (Preview · Content ·
+  // Library now lead), so arrangements persisted under the old order — which
+  // could pin Code second — must be discarded rather than override the new
+  // default.
+  const [persistedVisible, setPersistedVisible] = useLocalStorage<string[]>(
+    `main-tab-bar:v2:${virtualMcpId}`,
+    [],
   );
 
-  const handleSelect = (id: string) => {
+  const automationsActive = isAutomationsPillActive({ activeTab, mainOpen });
+  const isTabActive = (tab: Tab) =>
+    tab.id === "automations"
+      ? automationsActive
+      : mainOpen && tab.id === activeTab;
+
+  const selectTab = (id: string) => {
     const clicked = tabs.find((t) => t.id === id);
     if (disableActiveMainToggle && clicked && isTabActive(clicked)) return;
-    const wasActive = effectiveActiveId === id && mainOpen;
+    const wasActive = mainOpen && activeTab === id;
     track("main_panel_tab_clicked", {
       virtual_mcp_id: virtualMcpId,
       tab_id: id,
@@ -71,16 +94,10 @@ export function MainPanelTabsBar({
       was_active: wasActive,
     });
     if (id === "automations") {
-      const target = resolveAutomationsPillClickTarget({
-        activeTab,
-        mainOpen,
-      });
+      const target = resolveAutomationsPillClickTarget({ activeTab, mainOpen });
       navigate({
         to: ".",
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          main: target,
-        }),
+        search: (prev: Record<string, unknown>) => ({ ...prev, main: target }),
         replace: true,
       });
       return;
@@ -88,20 +105,117 @@ export function MainPanelTabsBar({
     setActiveTab(id);
   };
 
+  // Agent-independent overlays (Library, Tasks) open as main-panel overlays
+  // (?main=files / ?main=board). They trail the view tabs so the primary views
+  // lead the row; when the row overflows they fall into the stack popover.
+  const overlayItems: BarItem[] = [];
+  if (library.enabled) {
+    overlayItems.push({
+      id: "files",
+      title: "Library",
+      icon: { kind: "component", Component: Folder },
+      active: library.active,
+      locked: false,
+      onSelect: () => {
+        track("agent_toolbar_toggled", {
+          button: "library",
+          next_state: library.active ? "closed" : "open",
+        });
+        library.toggle();
+      },
+    });
+  }
+  if (taskBoardEnabled && tasks.enabled) {
+    overlayItems.push({
+      id: "board",
+      title: "Tasks",
+      icon: { kind: "component", Component: Columns03 },
+      active: tasks.active,
+      locked: false,
+      onSelect: () => {
+        track("agent_toolbar_toggled", {
+          button: "tasks",
+          next_state: tasks.active ? "closed" : "open",
+        });
+        tasks.toggle();
+      },
+    });
+  }
+
+  const tabItems: BarItem[] = tabs.map((tab) => ({
+    id: tab.id,
+    title: tab.title,
+    icon: tab.icon,
+    active: isTabActive(tab),
+    locked: disableActiveMainToggle && isTabActive(tab),
+    onSelect: () => selectTab(tab.id),
+  }));
+
+  const items = [...tabItems, ...overlayItems];
+
+  // Default left-to-right priority when the user hasn't promoted anything:
+  // Preview, then Content, then Library lead the row; everything else keeps
+  // its natural order behind them. Stable sort preserves natural order for
+  // unranked ids ("files" is the Library overlay).
+  const leadRank = (id: string) => {
+    const i = DEFAULT_LEAD_ORDER.indexOf(id);
+    return i === -1 ? DEFAULT_LEAD_ORDER.length : i;
+  };
+  const defaultOrdered = [...items].sort(
+    (a, b) => leadRank(a.id) - leadRank(b.id),
+  );
+
+  // Reorder so the persisted (user-promoted) buttons lead, then everything
+  // else in default order. selectTabSlots then shows the first MAX_VISIBLE and
+  // still guarantees the active item is visible (promoting it into the last
+  // slot for display when needed).
+  const byId = new Map(defaultOrdered.map((i) => [i.id, i]));
+  const persistedPresent = persistedVisible.filter((id) => byId.has(id));
+  const persistedSet = new Set(persistedPresent);
+  const ordered: BarItem[] = [
+    ...persistedPresent.map((id) => byId.get(id)!),
+    ...defaultOrdered.filter((i) => !persistedSet.has(i.id)),
+  ];
+
+  const effectiveMax = Math.max(1, Math.min(maxVisible, MAX_VISIBLE));
+
+  const activeItem = items.find((i) => i.active);
+  const { visible, overflow } = selectTabSlots(
+    ordered,
+    activeItem?.id ?? null,
+    effectiveMax,
+  );
+
+  // Opening an overflow item swaps it into the last visible slot and persists
+  // the new arrangement so it sticks.
+  const openFromOverflow = (id: string) => {
+    const kept = visible.slice(0, effectiveMax - 1).map((i) => i.id);
+    setPersistedVisible([...kept, id]);
+    byId.get(id)?.onSelect();
+  };
+
   return (
     <div className="flex items-center min-w-0 gap-0.5">
-      {visible.map((tab) => (
+      {visible.map((item) => (
         <HeaderTabButton
-          key={tab.id}
-          title={tab.title}
-          icon={tab.icon}
-          active={isTabActive(tab)}
-          locked={disableActiveMainToggle && isTabActive(tab)}
-          onClick={() => handleSelect(tab.id)}
+          key={item.id}
+          title={item.title}
+          icon={item.icon}
+          active={item.active}
+          locked={item.locked}
+          onClick={item.onSelect}
         />
       ))}
       {overflow.length > 0 && (
-        <TabOverflowMenu overflow={overflow} onSelect={handleSelect} />
+        <TabOverflowMenu
+          overflow={overflow.map((i) => ({
+            id: i.id,
+            title: i.title,
+            icon: i.icon,
+            active: i.active,
+          }))}
+          onSelect={openFromOverflow}
+        />
       )}
     </div>
   );

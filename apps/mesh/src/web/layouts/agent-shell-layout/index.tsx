@@ -1,25 +1,19 @@
 /**
  * Agent Shell Layout
  *
- * Desktop layout:
- *   SidebarInset
- *   ├── Toolbar                            (outside Suspense)
- *   │   • Toolbar.TabsSlot    (portal target — main-panel tab bar)
- *   │   • Toolbar.TogglesSlot (portal target — chat / new-task)
- *   └── Suspense
- *       └── AgentInsetProvider
- *           • useVirtualMCP (suspends here)
- *           • Toolbar.Toggles → portal into slot
- *           • Toolbar.Tabs → portal into slot
- *           • Chat.Provider
- *             └── VmEventsBridge
- *                 └── Chat.ActiveTaskProvider
- *                     └── WorkspacePanelGroup (SidePanel | MainPanel)
- *                         (the per-thread todo list is rendered
- *                          by TodosHighlight inside ChatHighlight,
- *                          not as a side column)
+ * Desktop layout — each panel owns its own 48px header (no shared top bar):
+ *   AgentInsetProvider
+ *   • useVirtualMCP (suspends here)
+ *   • Chat.Provider
+ *     └── VmEventsBridge
+ *         └── Chat.ActiveTaskProvider
+ *             └── WorkspacePanelGroup
+ *                 ├── Chat panel  (header: Chat toggle)
+ *                 └── Main panel  (header: view tabs + toggles, Preview
+ *                     controls, publish). Buttons relocate between the two
+ *                     headers so nothing disappears when a panel is closed.
  *
- * Mobile layout:
+ * Mobile layout (single shared header on top, owned by org-shell):
  *   Chat.Provider
  *   └── VmEventsBridge
  *       └── Chat.ActiveTaskProvider
@@ -60,11 +54,8 @@ import { useWorkspaceLayoutState } from "@/web/hooks/use-layout-state";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { Toolbar } from "./toolbar";
 import { WorkspacePanelGroup } from "./workspace-panel-group";
-import { ToggleButtons } from "./toggle-buttons";
-import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
 import { MobileMainPanelTabSelect } from "@/web/layouts/main-panel-tabs/mobile-main-panel-tab-select";
 import { MainPanelWithDrawer } from "@/web/layouts/main-panel-tabs/main-panel-with-drawer";
-import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-events-context.tsx";
 import {
   SandboxLifecycleProvider,
@@ -252,33 +243,21 @@ function DesktopTaskWorkspace({
 }) {
   return (
     <>
-      <Toolbar.Toggles>
-        <ToggleButtons
-          sidePanel={layout.sidePanel}
-          toggleSidePanel={layout.toggleSidePanel}
-          disableActiveSidePanelToggle={!layout.mainOpen}
-        />
-      </Toolbar.Toggles>
-      {/* Tabs must live under SandboxEventsProvider — useMainPanelTabs gates
-          Content on lifecycle.phase === "running" + decofile. */}
-      <Toolbar.Tabs>
-        <MainPanelTabsBar
-          virtualMcpId={virtualMcpId}
-          taskId={layout.taskId}
-          disableActiveMainToggle={layout.sidePanel === null}
-        />
-      </Toolbar.Tabs>
       <NewTaskBridge
         onNewTaskRef={onNewTaskRef}
         createNewTask={layout.createNewTask}
       />
-      <VirtualMcpHeaderInfo virtualMcp={entity} />
+      {/* Panels each own a 48px header (tabs / toggles / publish). Everything
+          lives under SandboxEventsProvider — useMainPanelTabs gates Content on
+          lifecycle.phase === "running" + decofile. */}
       <Suspense fallback={<Chat.Skeleton />}>
         <WorkspacePanelGroup
           virtualMcpId={virtualMcpId}
           taskId={layout.taskId}
+          entity={entity}
           sidePanel={layout.sidePanel}
           mainOpen={layout.mainOpen}
+          toggleSidePanel={layout.toggleSidePanel}
           chatContent={<ActiveTaskBoundary />}
         />
       </Suspense>

@@ -205,12 +205,6 @@ function ToolbarTogglesSlot({ className }: { className?: string }) {
   return <div ref={setTogglesEl} className={cn("contents", className)} />;
 }
 
-function ToolbarToggles({ children }: { children: ReactNode }) {
-  const { togglesEl } = useToolbarCtx();
-  if (!togglesEl) return null;
-  return createPortal(children, togglesEl);
-}
-
 function ToolbarRightSlot() {
   const { setRightEl } = useToolbarCtx();
   return (
@@ -219,12 +213,6 @@ function ToolbarRightSlot() {
       className="flex items-center justify-end gap-0.5 shrink-0"
     />
   );
-}
-
-function ToolbarRight({ children }: { children: ReactNode }) {
-  const { rightEl } = useToolbarCtx();
-  if (!rightEl) return null;
-  return createPortal(children, rightEl);
 }
 
 Toolbar.Provider = ToolbarProviderImpl;
@@ -238,6 +226,4 @@ Toolbar.Center = ToolbarCenter;
 Toolbar.TabsSlot = ToolbarTabsSlot;
 Toolbar.Tabs = ToolbarTabs;
 Toolbar.TogglesSlot = ToolbarTogglesSlot;
-Toolbar.Toggles = ToolbarToggles;
 Toolbar.RightSlot = ToolbarRightSlot;
-Toolbar.Right = ToolbarRight;

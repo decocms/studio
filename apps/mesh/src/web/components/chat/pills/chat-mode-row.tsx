@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { BranchPill } from "./branch-pill";
-import { RuntimeSwitcher } from "./runtime-switcher";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { authClient } from "@/web/lib/auth-client";
@@ -15,10 +14,10 @@ interface PureProps {
  * Pure layout — used by tests. Renders the branch pill (when present) in the
  * parent flex flow. Returns null when there is nothing to show.
  *
- * This pure component only handles the branch pill. The smart `ChatModeRow`
- * below renders the sandbox-backed agent's `RuntimeSwitcher` (Cloud sandbox vs
- * This device) alongside it; the chat model runtime itself is still chosen in
- * the model selector.
+ * The runtime choice (Cloud sandbox vs This device) is NOT surfaced here — it
+ * lives in the "Smart" model selector's Cloud ⟷ This device toggle, which
+ * writes through the same `pendingAgentOption`. A standalone pill here was
+ * redundant, so this row only carries the branch pill.
  */
 export function ChatModeRowPure({ branchPill }: PureProps) {
   if (!branchPill) return null;
@@ -28,9 +27,6 @@ export function ChatModeRowPure({ branchPill }: PureProps) {
 interface SmartProps {
   virtualMcp: VirtualMCPEntity | null | undefined;
   currentBranch: string | null;
-  /** Show the runtime switcher's full label. On for the spacious empty-chat
-   *  landing; off (default) for the dense in-conversation composer row. */
-  showRuntimeLabel?: boolean;
 }
 
 /**
@@ -42,11 +38,7 @@ interface SmartProps {
  *
  * Locked flag is derived from `useOptionalChatStream().messages.length > 0`.
  */
-export function ChatModeRow({
-  virtualMcp,
-  currentBranch,
-  showRuntimeLabel = false,
-}: SmartProps) {
+export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const stream = useOptionalChatStream();
   const taskCtx = useOptionalChatTask();
   const locked =
@@ -55,11 +47,6 @@ export function ChatModeRow({
 
   const githubRepo = getActiveGithubRepo(virtualMcp);
   const connectionId = githubRepo?.connectionId;
-  // Sandbox-backed agents (imported from a repo) get the runtime switcher —
-  // Cloud sandbox vs This device — right next to the branch pill, so you can
-  // pick where it runs even before the sandbox starts. Once the thread is
-  // locked, RuntimeSwitcher hides itself because there is no longer a choice.
-  const hasSandbox = !!githubRepo;
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
@@ -87,10 +74,5 @@ export function ChatModeRow({
       />
     ) : null;
 
-  return (
-    <>
-      {hasSandbox && <RuntimeSwitcher showLabel={showRuntimeLabel} />}
-      <ChatModeRowPure branchPill={branchPill} />
-    </>
-  );
+  return <ChatModeRowPure branchPill={branchPill} />;
 }

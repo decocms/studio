@@ -20,11 +20,14 @@ export function HeaderTabButton({
   disabled = false,
   locked = false,
   className,
+  testId,
 }: {
   title: string;
   icon: TabIcon;
   active: boolean;
   onClick: () => void;
+  /** Optional test hook (data-testid). */
+  testId?: string;
   /** Disables the button and dims it (e.g. every tab while the org still
    *  needs runtime setup — the view is a genuine dead-end). */
   disabled?: boolean;
@@ -42,11 +45,12 @@ export function HeaderTabButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      data-testid={testId}
       aria-pressed={active}
       aria-disabled={locked || undefined}
       aria-label={title}
       className={cn(
-        "shrink-0 flex items-center gap-1.5 h-8 rounded-md px-2",
+        "shrink-0 flex items-center gap-1.5 h-7 rounded-md px-2",
         "[transition:background-color_180ms_ease,color_180ms_ease]",
         "disabled:opacity-40 disabled:pointer-events-none",
         locked && "pointer-events-none",

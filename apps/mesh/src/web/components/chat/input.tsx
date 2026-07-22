@@ -12,7 +12,6 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
-  useVirtualMCP,
 } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -42,7 +41,6 @@ import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { QueueTray } from "./queue-tray";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
-import { ChatModeRow } from "./pills/chat-mode-row";
 import { TierTrigger } from "./tier-trigger";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import {
@@ -68,7 +66,6 @@ import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dial
 import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/web/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
-import { shouldRenderInlineModeRow } from "./input-mode-row";
 import { resolveComposerAction } from "./composer-action";
 
 // ============================================================================
@@ -276,7 +273,6 @@ export function ChatInput({
 
   const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
-  const fullVm = useVirtualMCP(selectedVirtualMcp?.id ?? decopilotId);
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -420,10 +416,6 @@ export function ChatInput({
   });
   const canSubmit = composerAction === "send";
   const showStopOrCancel = composerAction === "stop";
-  const showInlineModeRow = shouldRenderInlineModeRow({
-    messageCount: messages.length,
-    showConnectionsBanner,
-  });
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
     if (composerAction === "send" && tiptapDoc) {
@@ -670,14 +662,8 @@ export function ChatInput({
                       )}
                     </div>
 
-                    {/* Right Actions (branch/mode, model, mic, send) */}
+                    {/* Right Actions (model, mic, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      {showInlineModeRow && (
-                        <ChatModeRow
-                          virtualMcp={fullVm}
-                          currentBranch={taskCtx?.currentBranch ?? null}
-                        />
-                      )}
                       <TierTrigger />
 
                       {/* Microphone button — always enabled; the composer has
