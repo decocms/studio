@@ -53,6 +53,8 @@ import {
   type Member,
 } from "./config";
 import { TaskBoardItemDialog } from "./task-dialog";
+import { buildTaskChatContext } from "./build-task-chat-context";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import {
   EMPTY_FILTERS,
   TaskFiltersBar,
@@ -216,6 +218,7 @@ export function TaskBoardPage() {
   );
   const { setTaskId } = usePanelActions();
   const { create } = useThreadActions();
+  const studio = useStudioTools();
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
   // Deep link: `/$org/board?task=<id>` opens that task's modal (from a linked
@@ -244,9 +247,16 @@ export function TaskBoardPage() {
   const startChatFromTask = async (task: TaskBoardItem) => {
     const newId = crypto.randomUUID();
     const agentId = getWellKnownDecopilotVirtualMCP(org.id).id;
+    // Pull the task's linked PRs (best-effort — the chat still opens without
+    // them) so the seeded context references prior work, not just the title.
+    const prs = await studio
+      .call("TASK_BOARD_ITEM_PRS_GET", { taskBoardItemId: task.id })
+      .then((r) => r.prs)
+      .catch(() => []);
+    const context = buildTaskChatContext(task, prs);
     // Prefill the composer with a removable task @ref chip (not raw text) and
     // do NOT auto-send — the user reviews/adds to it, then hits send. The chip
-    // expands to the task's title + description at send time (see derive-parts).
+    // expands to the task context at send time (see derive-parts).
     const doc: TiptapDoc = {
       type: "doc",
       content: [
@@ -258,7 +268,11 @@ export function TaskBoardPage() {
               name: task.title,
               char: "@",
               kind: "task",
-              metadata: { title: task.title, description: task.description },
+              metadata: {
+                title: task.title,
+                description: task.description,
+                context,
+              },
             }),
             { type: "text", text: " " },
           ],
