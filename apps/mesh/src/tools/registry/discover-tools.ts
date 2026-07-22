@@ -139,6 +139,11 @@ interface DiscoverTool {
   description?: string | null;
 }
 
+const RawDiscoverToolSchema = z.object({
+  name: z.string(),
+  description: z.string().nullable().optional(),
+});
+
 function isAuthRequiredError(message: string): boolean {
   const lower = message.toLowerCase();
   return (
@@ -148,6 +153,42 @@ function isAuthRequiredError(message: string): boolean {
     lower.includes("403") ||
     lower.includes('"code":-32000')
   );
+}
+
+/**
+ * Parse a raw `tools/list` JSON-RPC response body (plain JSON or SSE-framed)
+ * into a validated tool list. Unlike the MCP SDK client path, this fallback
+ * talks to the server over a bare `fetch`, so nothing validates the shape of
+ * the remote server's response until this function does — a malformed or
+ * malicious `name`/`description` here would otherwise flow straight into the
+ * UI (rendered as a React child, used as a list key).
+ */
+export function parseToolsListResponse(text: string): DiscoverTool[] | null {
+  let json: Record<string, unknown> | null = null;
+
+  try {
+    if (text.includes("event:") || text.includes("data:")) {
+      const dataLine = text.split("\n").find((l) => l.startsWith("data:"));
+      if (dataLine) {
+        json = JSON.parse(dataLine.slice(5).trim());
+      }
+    } else {
+      json = JSON.parse(text);
+    }
+  } catch {
+    return null;
+  }
+
+  if (!json) return null;
+
+  const result = (json.result as Record<string, unknown>) ?? json;
+  const parsed = z.array(RawDiscoverToolSchema).safeParse(result?.tools);
+  if (!parsed.success) return null;
+
+  return parsed.data.map((t) => ({
+    name: t.name,
+    description: t.description ?? null,
+  }));
 }
 
 async function tryRawToolsList(
@@ -176,27 +217,7 @@ async function tryRawToolsList(
     if (!res.ok) return null;
 
     const text = await res.text();
-    let json: Record<string, unknown> | null = null;
-
-    if (text.includes("event:") || text.includes("data:")) {
-      const dataLine = text.split("\n").find((l) => l.startsWith("data:"));
-      if (dataLine) {
-        json = JSON.parse(dataLine.slice(5).trim());
-      }
-    } else {
-      json = JSON.parse(text);
-    }
-
-    if (!json) return null;
-
-    const result = (json.result as Record<string, unknown>) ?? json;
-    const tools = result?.tools as DiscoverTool[] | undefined;
-    if (!Array.isArray(tools)) return null;
-
-    return tools.map((t) => ({
-      name: t.name,
-      description: t.description ?? null,
-    }));
+    return parseToolsListResponse(text);
   } catch {
     return null;
   } finally {
