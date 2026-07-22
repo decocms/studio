@@ -5,6 +5,10 @@
  * fails fast if the status isn't "online". Useful as a quick check
  * before running an integration test that depends on a live link.
  *
+ * The link daemon can take a moment to finish registering right after
+ * `bun run dev --local-sandbox-provider` or `deco link` starts, so a
+ * single check is flaky — this retries with backoff before giving up.
+ *
  * Run with: `bun run smoke:link` from `apps/mesh/`.
  *
  * Required env:
@@ -13,6 +17,25 @@
  * Optional env:
  *   MESH_BASE_URL      Cluster base URL (default http://localhost:4000)
  */
+
+import { retry, RetryError } from "@decocms/std";
+
+async function checkOnline(baseUrl: string, token: string): Promise<string[]> {
+  const res = await fetch(`${baseUrl}/api/links/me`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`/api/links/me returned ${res.status}`);
+  }
+  const body = (await res.json()) as {
+    status?: string;
+    capabilities?: string[];
+  };
+  if (body.status !== "online") {
+    throw new Error(`link status is "${body.status}", not "online"`);
+  }
+  return body.capabilities ?? [];
+}
 
 async function main(): Promise<void> {
   const baseUrl = process.env.MESH_BASE_URL ?? "http://localhost:4000";
@@ -23,26 +46,21 @@ async function main(): Promise<void> {
     );
     process.exit(2);
   }
-  const res = await fetch(`${baseUrl}/api/links/me`, {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
+  try {
+    const capabilities = await retry(() => checkOnline(baseUrl, token), {
+      maxAttempts: 5,
+      minTimeout: 500,
+      maxTimeout: 3000,
+    });
+    console.log("smoke: link online — capabilities", capabilities);
+  } catch (err) {
+    const cause = err instanceof RetryError ? err.cause : err;
+    const message = cause instanceof Error ? cause.message : String(cause);
     console.error(
-      `smoke: /api/links/me returned ${res.status} — start the link with \`bun run dev --local-sandbox-provider\` or \`deco link <studio-url>\``,
+      `smoke: ${message} — start the link with \`bun run dev --local-sandbox-provider\` or \`deco link <studio-url>\``,
     );
     process.exit(1);
   }
-  const body = (await res.json()) as {
-    status?: string;
-    capabilities?: string[];
-  };
-  if (body.status !== "online") {
-    console.error(
-      "smoke: link is not online; start it with `bun run dev --local-sandbox-provider` or `deco link <studio-url>`",
-    );
-    process.exit(1);
-  }
-  console.log("smoke: link online — capabilities", body.capabilities);
 }
 
 main().catch((err) => {
