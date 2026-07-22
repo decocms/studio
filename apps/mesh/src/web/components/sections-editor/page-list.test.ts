@@ -164,6 +164,37 @@ describe("page-list", () => {
     });
   });
 
+  it("findSiteAppEntry resolves site app on TanStack Start sites (no manifest apps block)", () => {
+    // TanStack Start's composeMeta only generates sections/pages/loaders/actions/matchers —
+    // it does not register site/apps/site.ts in manifest.blocks.apps. The function
+    // should still return the entry because the canonical "site" key is trusted directly.
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Header.tsx": { $ref: "#/definitions/Header" },
+          },
+          pages: {},
+          loaders: {},
+        },
+      },
+      schema: {},
+    };
+    const decofile = {
+      site: {
+        __resolveType: "site/apps/site.ts",
+        seo: { title: "Home" },
+        platform: "vtex",
+      },
+    };
+
+    expect(findSiteAppEntry(decofile, meta)).toEqual({
+      key: "site",
+      name: "Site",
+      resolveType: "site/apps/site.ts",
+    });
+  });
+
   it("extractGlobalSections uses catalog filters for saved blocks", () => {
     const meta: LiveMeta = {
       manifest: {
