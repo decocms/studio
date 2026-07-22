@@ -12,23 +12,26 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "bun:test";
 import { decodeJwt } from "jose";
 import {
-  issueMeshToken,
-  verifyMeshToken,
-  type MeshJwtPayload,
-  type MeshTokenPayload,
+  getStudioTokenFromHeaders,
+  issueStudioToken,
+  LEGACY_STUDIO_TOKEN_HEADER,
+  STUDIO_TOKEN_HEADER,
+  verifyStudioToken,
+  type StudioJwtPayload,
+  type StudioTokenPayload,
 } from "./jwt";
 
-const decodeMeshToken = (token: string): MeshJwtPayload =>
-  decodeJwt<MeshTokenPayload>(token);
+const decodeStudioToken = (token: string): StudioJwtPayload =>
+  decodeJwt<StudioTokenPayload>(token);
 
 // ============================================================================
 // JWT Utility Tests
 // ============================================================================
 
 describe("JWT Utility Functions", () => {
-  describe("issueMeshToken", () => {
+  describe("issueStudioToken", () => {
     it("should issue a valid JWT token with all payload fields", async () => {
-      const payload: MeshTokenPayload = {
+      const payload: StudioTokenPayload = {
         sub: "user_123",
         permissions: {
           conn_456: ["SEND_MESSAGE", "LIST_THREADS"],
@@ -43,7 +46,7 @@ describe("JWT Utility Functions", () => {
         },
       };
 
-      const token = await issueMeshToken(payload);
+      const token = await issueStudioToken(payload);
 
       expect(token).toBeDefined();
       expect(typeof token).toBe("string");
@@ -51,7 +54,7 @@ describe("JWT Utility Functions", () => {
     });
 
     it("should issue token with default 5 minute expiration", async () => {
-      const payload: MeshTokenPayload = {
+      const payload: StudioTokenPayload = {
         sub: "user_123",
         permissions: {},
         metadata: {
@@ -60,8 +63,8 @@ describe("JWT Utility Functions", () => {
         },
       };
 
-      const token = await issueMeshToken(payload);
-      const decoded = decodeMeshToken(token);
+      const token = await issueStudioToken(payload);
+      const decoded = decodeStudioToken(token);
 
       expect(decoded.exp).toBeDefined();
       expect(decoded.iat).toBeDefined();
@@ -73,7 +76,7 @@ describe("JWT Utility Functions", () => {
     });
 
     it("should issue token with custom expiration", async () => {
-      const payload: MeshTokenPayload = {
+      const payload: StudioTokenPayload = {
         sub: "user_123",
         permissions: {},
         metadata: {
@@ -82,8 +85,8 @@ describe("JWT Utility Functions", () => {
         },
       };
 
-      const token = await issueMeshToken(payload, "1h");
-      const decoded = decodeMeshToken(token);
+      const token = await issueStudioToken(payload, "1h");
+      const decoded = decodeStudioToken(token);
 
       // Expiration should be ~1 hour from now
       const oneHourInSeconds = 60 * 60;
@@ -92,7 +95,7 @@ describe("JWT Utility Functions", () => {
     });
 
     it("should include all custom payload fields in token", async () => {
-      const payload: MeshTokenPayload = {
+      const payload: StudioTokenPayload = {
         sub: "user_test_123",
         permissions: {
           conn_abc: ["TOOL_A", "TOOL_B"],
@@ -107,8 +110,8 @@ describe("JWT Utility Functions", () => {
         },
       };
 
-      const token = await issueMeshToken(payload);
-      const decoded = decodeMeshToken(token);
+      const token = await issueStudioToken(payload);
+      const decoded = decodeStudioToken(token);
 
       expect(decoded.sub).toBe("user_test_123");
       expect(decoded.permissions).toEqual({
@@ -123,9 +126,9 @@ describe("JWT Utility Functions", () => {
     });
   });
 
-  describe("verifyMeshToken", () => {
+  describe("verifyStudioToken", () => {
     it("should verify and return payload for valid token", async () => {
-      const payload: MeshTokenPayload = {
+      const payload: StudioTokenPayload = {
         sub: "user_123",
         permissions: { conn_456: ["*"] },
         metadata: {
@@ -134,8 +137,8 @@ describe("JWT Utility Functions", () => {
         },
       };
 
-      const token = await issueMeshToken(payload);
-      const verified = await verifyMeshToken(token);
+      const token = await issueStudioToken(payload);
+      const verified = await verifyStudioToken(token);
 
       expect(verified).toBeDefined();
       expect(verified?.sub).toBe("user_123");
@@ -146,13 +149,13 @@ describe("JWT Utility Functions", () => {
 
     it("should return undefined for invalid token", async () => {
       const invalidToken = "invalid.token.here";
-      const verified = await verifyMeshToken(invalidToken);
+      const verified = await verifyStudioToken(invalidToken);
 
       expect(verified).toBeUndefined();
     });
 
     it("should return undefined for tampered token", async () => {
-      const payload: MeshTokenPayload = {
+      const payload: StudioTokenPayload = {
         sub: "user_123",
         permissions: {},
         metadata: {
@@ -161,14 +164,14 @@ describe("JWT Utility Functions", () => {
         },
       };
 
-      const token = await issueMeshToken(payload);
+      const token = await issueStudioToken(payload);
 
       // Tamper with the payload part (second segment)
       const parts = token.split(".");
       parts[1] = "tampered_payload_data";
       const tamperedToken = parts.join(".");
 
-      const verified = await verifyMeshToken(tamperedToken);
+      const verified = await verifyStudioToken(tamperedToken);
       expect(verified).toBeUndefined();
     });
 
@@ -178,7 +181,7 @@ describe("JWT Utility Functions", () => {
       const fakeToken =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMyIsInBlcm1pc3Npb25zIjp7fSwibWV0YWRhdGEiOnsibWVzaFVybCI6Imh0dHBzOi8vbWVzaC5leGFtcGxlLmNvbSIsImNvbm5lY3Rpb25JZCI6ImNvbm5fNDU2In19.fake_signature";
 
-      const verified = await verifyMeshToken(fakeToken);
+      const verified = await verifyStudioToken(fakeToken);
       expect(verified).toBeUndefined();
     });
   });
@@ -190,7 +193,7 @@ describe("JWT Utility Functions", () => {
 
 describe("Token Payload Structure", () => {
   it("should support empty permissions object", async () => {
-    const payload: MeshTokenPayload = {
+    const payload: StudioTokenPayload = {
       sub: "user_123",
       permissions: {},
       metadata: {
@@ -199,14 +202,14 @@ describe("Token Payload Structure", () => {
       },
     };
 
-    const token = await issueMeshToken(payload);
-    const decoded = decodeMeshToken(token);
+    const token = await issueStudioToken(payload);
+    const decoded = decodeStudioToken(token);
 
     expect(decoded.permissions).toEqual({});
   });
 
   it("should support multiple connections in permissions", async () => {
-    const payload: MeshTokenPayload = {
+    const payload: StudioTokenPayload = {
       sub: "user_123",
       permissions: {
         conn_1: ["TOOL_A"],
@@ -219,8 +222,8 @@ describe("Token Payload Structure", () => {
       },
     };
 
-    const token = await issueMeshToken(payload);
-    const decoded = decodeMeshToken(token);
+    const token = await issueStudioToken(payload);
+    const decoded = decodeStudioToken(token);
 
     expect(Object.keys(decoded.permissions as object).length).toBe(3);
     expect((decoded.permissions as Record<string, string[]>)["conn_1"]).toEqual(
@@ -235,7 +238,7 @@ describe("Token Payload Structure", () => {
   });
 
   it("should support undefined state in metadata", async () => {
-    const payload: MeshTokenPayload = {
+    const payload: StudioTokenPayload = {
       sub: "user_123",
       permissions: {},
       metadata: {
@@ -245,14 +248,14 @@ describe("Token Payload Structure", () => {
       },
     };
 
-    const token = await issueMeshToken(payload);
-    const decoded = decodeMeshToken(token);
+    const token = await issueStudioToken(payload);
+    const decoded = decodeStudioToken(token);
 
     expect(decoded.metadata?.state).toBeUndefined();
   });
 
   it("should support complex state objects in metadata", async () => {
-    const payload: MeshTokenPayload = {
+    const payload: StudioTokenPayload = {
       sub: "user_123",
       permissions: {},
       metadata: {
@@ -274,8 +277,8 @@ describe("Token Payload Structure", () => {
       },
     };
 
-    const token = await issueMeshToken(payload);
-    const decoded = decodeMeshToken(token);
+    const token = await issueStudioToken(payload);
+    const decoded = decodeStudioToken(token);
 
     expect(decoded.metadata?.state).toEqual(payload.metadata?.state);
   });
@@ -297,7 +300,7 @@ describe("Token Expiration", () => {
   it("should reject expired token on verification", async () => {
     vi.useRealTimers(); // Need real timers for token issuance
 
-    const payload: MeshTokenPayload = {
+    const payload: StudioTokenPayload = {
       sub: "user_123",
       permissions: {},
       metadata: {
@@ -307,24 +310,24 @@ describe("Token Expiration", () => {
     };
 
     // Issue token with very short expiration
-    const token = await issueMeshToken(payload, "2s");
+    const token = await issueStudioToken(payload, "2s");
 
     // Token should be valid immediately
-    const validResult = await verifyMeshToken(token);
+    const validResult = await verifyStudioToken(token);
     expect(validResult).toBeDefined();
 
     // Wait for token to expire (3s gives ample buffer on loaded CI runners)
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
     // Token should now be invalid
-    const expiredResult = await verifyMeshToken(token);
+    const expiredResult = await verifyStudioToken(token);
     expect(expiredResult).toBeUndefined();
   });
 
   it("should decode expired token (decode doesn't verify)", async () => {
     vi.useRealTimers();
 
-    const payload: MeshTokenPayload = {
+    const payload: StudioTokenPayload = {
       sub: "user_123",
       permissions: {},
       metadata: {
@@ -333,13 +336,13 @@ describe("Token Expiration", () => {
       },
     };
 
-    const token = await issueMeshToken(payload, "1s");
+    const token = await issueStudioToken(payload, "1s");
 
     // Wait for expiration
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     // Decode should still work (no verification)
-    const decoded = decodeMeshToken(token);
+    const decoded = decodeStudioToken(token);
     expect(decoded.sub).toBe("user_123");
   });
 });
@@ -350,7 +353,7 @@ describe("Token Expiration", () => {
 
 describe("Security", () => {
   it("should use HS256 algorithm", async () => {
-    const payload: MeshTokenPayload = {
+    const payload: StudioTokenPayload = {
       sub: "user_123",
       permissions: {},
       metadata: {
@@ -359,7 +362,7 @@ describe("Security", () => {
       },
     };
 
-    const token = await issueMeshToken(payload);
+    const token = await issueStudioToken(payload);
 
     // Decode header to check algorithm
     const headerPart = token.split(".")[0]!;
@@ -370,7 +373,7 @@ describe("Security", () => {
   });
 
   it("should include issued at (iat) claim", async () => {
-    const payload: MeshTokenPayload = {
+    const payload: StudioTokenPayload = {
       sub: "user_123",
       permissions: {},
       metadata: {
@@ -380,17 +383,17 @@ describe("Security", () => {
     };
 
     const beforeIssue = Math.floor(Date.now() / 1000);
-    const token = await issueMeshToken(payload);
+    const token = await issueStudioToken(payload);
     const afterIssue = Math.floor(Date.now() / 1000);
 
-    const decoded = decodeMeshToken(token);
+    const decoded = decodeStudioToken(token);
 
     expect(decoded.iat).toBeGreaterThanOrEqual(beforeIssue);
     expect(decoded.iat).toBeLessThanOrEqual(afterIssue);
   });
 
   it("should include expiration (exp) claim", async () => {
-    const payload: MeshTokenPayload = {
+    const payload: StudioTokenPayload = {
       sub: "user_123",
       permissions: {},
       metadata: {
@@ -399,15 +402,15 @@ describe("Security", () => {
       },
     };
 
-    const token = await issueMeshToken(payload);
-    const decoded = decodeMeshToken(token);
+    const token = await issueStudioToken(payload);
+    const decoded = decodeStudioToken(token);
 
     expect(decoded.exp).toBeDefined();
     expect(typeof decoded.exp).toBe("number");
   });
 
   it("should produce different tokens for same payload (due to iat)", async () => {
-    const payload: MeshTokenPayload = {
+    const payload: StudioTokenPayload = {
       sub: "user_123",
       permissions: {},
       metadata: {
@@ -416,17 +419,84 @@ describe("Security", () => {
       },
     };
 
-    const token1 = await issueMeshToken(payload);
+    const token1 = await issueStudioToken(payload);
 
     // Small delay to ensure different iat
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    const token2 = await issueMeshToken(payload);
+    const token2 = await issueStudioToken(payload);
 
     // Tokens should be different due to different iat
     // Note: They might be same if issued in same second
     // This is acceptable behavior
     expect(token1).toBeDefined();
     expect(token2).toBeDefined();
+  });
+});
+
+// ============================================================================
+// Back-compat (Mesh -> Studio rename) Tests
+// ============================================================================
+
+describe("Back-compat with pre-rename wire format", () => {
+  const payload: StudioTokenPayload = {
+    sub: "user_123",
+    permissions: {},
+    metadata: {
+      meshUrl: "https://mesh.example.com",
+      connectionId: "conn_456",
+    },
+  };
+
+  describe("getStudioTokenFromHeaders", () => {
+    it("reads the new x-studio-token header", () => {
+      const headers = new Headers({ [STUDIO_TOKEN_HEADER]: "new-token" });
+      expect(getStudioTokenFromHeaders(headers)).toBe("new-token");
+    });
+
+    it("still accepts the legacy x-mesh-token header", () => {
+      const headers = new Headers({
+        [LEGACY_STUDIO_TOKEN_HEADER]: "old-token",
+      });
+      expect(getStudioTokenFromHeaders(headers)).toBe("old-token");
+    });
+
+    it("prefers the new header when both are present", () => {
+      const headers = new Headers({
+        [STUDIO_TOKEN_HEADER]: "new-token",
+        [LEGACY_STUDIO_TOKEN_HEADER]: "old-token",
+      });
+      expect(getStudioTokenFromHeaders(headers)).toBe("new-token");
+    });
+
+    it("returns null when neither header is present", () => {
+      expect(getStudioTokenFromHeaders(new Headers())).toBeNull();
+    });
+  });
+
+  it("issues tokens without iss/aud, matching the pre-rename format", async () => {
+    // Pre-rename issueMeshToken never set iss/aud. Locking that here means
+    // tokens issued before the rename verify identically to new ones, and
+    // pre-rename verifiers accept tokens issued after it.
+    const token = await issueStudioToken(payload);
+    const decoded = decodeStudioToken(token);
+
+    expect(decoded.iss).toBeUndefined();
+    expect(decoded.aud).toBeUndefined();
+    expect(await verifyStudioToken(token)).toBeDefined();
+  });
+
+  it("keeps the legacy meshUrl claim key on the wire", async () => {
+    const token = await issueStudioToken(payload);
+
+    // The raw JWT payload must literally contain the old claim key —
+    // deployed downstream apps and already-issued tokens depend on it.
+    const rawPayload = JSON.parse(
+      Buffer.from(token.split(".")[1]!, "base64url").toString(),
+    );
+    expect(rawPayload.metadata.meshUrl).toBe("https://mesh.example.com");
+
+    const verified = await verifyStudioToken(token);
+    expect(verified?.metadata?.meshUrl).toBe("https://mesh.example.com");
   });
 });

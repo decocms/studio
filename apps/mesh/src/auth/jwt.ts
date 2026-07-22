@@ -39,13 +39,37 @@ function getSecret(): Uint8Array {
   return jwtSecret;
 }
 
+/** Header carrying the Studio proxy token to/from downstream apps. */
+export const STUDIO_TOKEN_HEADER = "x-studio-token";
+/** @deprecated Legacy header name; accepted (and dual-sent) during the de-mesh deprecation window. */
+export const LEGACY_STUDIO_TOKEN_HEADER = "x-mesh-token";
+
+/**
+ * Read the Studio proxy token from request headers.
+ * Prefers `x-studio-token`; still accepts the legacy `x-mesh-token` (old
+ * clients keep working until they upgrade) with a deprecation log.
+ */
+export function getStudioTokenFromHeaders(headers: Headers): string | null {
+  const token = headers.get(STUDIO_TOKEN_HEADER);
+  if (token) return token;
+  const legacy = headers.get(LEGACY_STUDIO_TOKEN_HEADER);
+  if (legacy) {
+    console.log("deprecated header", { header: LEGACY_STUDIO_TOKEN_HEADER });
+  }
+  return legacy;
+}
+
 /**
  * Studio proxy token payload
+ *
+ * Wire-format note: claim keys (including `metadata.meshUrl`) are persisted in
+ * already-issued tokens and read by deployed downstream apps — only the local
+ * TypeScript symbols were renamed from Mesh* to Studio*.
  */
-export interface MeshTokenPayload {
+export interface StudioTokenPayload {
   /** User ID who initiated the request */
   sub: string;
-  /** User identity propagated to downstream apps via x-mesh-token */
+  /** User identity propagated to downstream apps via x-studio-token */
   user?: {
     id: string;
     email?: string;
@@ -56,7 +80,7 @@ export interface MeshTokenPayload {
   metadata?: {
     /** Configuration state */
     state?: Record<string, unknown>;
-    /** Studio instance URL */
+    /** Studio instance URL. Claim key stays `meshUrl` — persisted wire data. */
     meshUrl: string;
     /** Connection ID this token was issued for */
     connectionId: string;
@@ -71,17 +95,20 @@ export interface MeshTokenPayload {
   permissions: Record<string, string[]>;
 }
 
-export type MeshJwtPayload = JWTPayload & MeshTokenPayload;
+export type StudioJwtPayload = JWTPayload & StudioTokenPayload;
 
 /**
- * Issue a signed JWT with studio token payload
+ * Issue a signed JWT with Studio token payload
+ *
+ * Wire-format note: no `iss`/`aud` is set (and never was), so tokens issued
+ * before the Mesh→Studio rename keep verifying until they expire.
  *
  * @param payload - The token payload
  * @param expiresIn - Expiration time (default: 5 minutes)
  * @returns Signed JWT string
  */
-export async function issueMeshToken(
-  payload: MeshTokenPayload,
+export async function issueStudioToken(
+  payload: StudioTokenPayload,
   expiresIn: string = "5m",
 ): Promise<string> {
   const secret = getSecret();
@@ -94,18 +121,18 @@ export async function issueMeshToken(
 }
 
 /**
- * Verify and decode a studio token
+ * Verify and decode a Studio token
  *
  * @param token - JWT string to verify
  * @returns Decoded payload if valid, undefined if invalid
  */
-export async function verifyMeshToken(
+export async function verifyStudioToken(
   token: string,
-): Promise<MeshJwtPayload | undefined> {
+): Promise<StudioJwtPayload | undefined> {
   try {
     const secret = getSecret();
     const { payload } = await jwtVerify(token, secret);
-    return payload as MeshJwtPayload;
+    return payload as StudioJwtPayload;
   } catch {
     return undefined;
   }
@@ -116,7 +143,7 @@ export async function verifyMeshToken(
  *
  * Uses the same MESH_JWT_SECRET and payload shape that the AI Gateway's
  * verifyMeshJwt() expects: { iss: "mesh", sub: userId }.
- * This is intentionally simpler than issueMeshToken — downstream services
+ * This is intentionally simpler than issueStudioToken — downstream services
  * only need the user identity, not the full proxy-token metadata.
  *
  * @param userId - The authenticated user's ID
@@ -137,6 +164,8 @@ export async function mintGatewayJwt(
   }
   const secret = new TextEncoder().encode(gwSecret);
   return await new SignJWT({
+    // ponytail: `iss: "mesh"` is the AI Gateway's wire contract (its verifyMeshJwt
+    // requires it) — rename only once the gateway accepts "studio" too.
     iss: "mesh",
     sub: userId,
     ...(email && { email }),

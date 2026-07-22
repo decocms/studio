@@ -246,6 +246,8 @@ export const proxyConnectionForId = (
 
   if (ctx.token) {
     headers ??= {};
+    headers["x-studio-token"] = ctx.token;
+    // Legacy header, dual-sent so older Studio deployments keep working.
     headers["x-mesh-token"] = ctx.token;
   }
 

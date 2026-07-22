@@ -410,7 +410,10 @@ export const withRuntime = <
         authToken: req.headers.get("authorization") ?? null,
         env: { ...process.env, ...env },
         server,
-        tokenOrContext: req.headers.get("x-mesh-token") ?? undefined,
+        tokenOrContext:
+          req.headers.get("x-studio-token") ??
+          req.headers.get("x-mesh-token") ??
+          undefined,
         url: req.url,
       });
 

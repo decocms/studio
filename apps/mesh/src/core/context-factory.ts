@@ -11,7 +11,7 @@
 
 import { SpanStatusCode, type Meter, type Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
-import { verifyMeshToken } from "../auth/jwt";
+import { getStudioTokenFromHeaders, verifyStudioToken } from "../auth/jwt";
 import { CredentialVault } from "../encryption/credential-vault";
 import { getSettings } from "../settings";
 import { getBaseUrl } from "./server-constants";
@@ -615,11 +615,11 @@ async function resolveOnBehalfOfUser(
   apiKeyOrgId: string | undefined,
   memberRoleCache?: MemberRoleCache,
 ): Promise<AuthenticatedUser | undefined> {
-  const meshToken = req.headers.get("x-mesh-token");
-  if (!meshToken) return undefined;
+  const studioToken = getStudioTokenFromHeaders(req.headers);
+  if (!studioToken) return undefined;
 
   const payload = await timings.measure("auth_verify_onbehalf_mesh_jwt", () =>
-    verifyMeshToken(meshToken),
+    verifyStudioToken(studioToken),
   );
   if (!payload?.sub) return undefined;
 
@@ -795,7 +795,7 @@ async function authenticateRequest(
     // These are issued by studio for downstream services calling back
     try {
       const meshJwtPayload = await timings.measure("auth_verify_mesh_jwt", () =>
-        verifyMeshToken(token),
+        verifyStudioToken(token),
       );
 
       if (meshJwtPayload) {
