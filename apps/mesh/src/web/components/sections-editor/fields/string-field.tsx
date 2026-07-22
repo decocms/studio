@@ -60,19 +60,21 @@ function dateTimeInputToIso(localValue: string): string {
  * segments; the popover gives users a point-and-click fallback and
  * replaces the (locale-dependent, ugly) browser-native picker indicator.
  */
+type DatePickerInputProps = Readonly<{
+  id: string;
+  withTime: boolean;
+  value: string;
+  onChange: (iso: string) => void;
+  calendarLabel?: string;
+}>;
+
 function DatePickerInput({
   id,
   withTime,
   value,
   onChange,
   calendarLabel,
-}: {
-  id: string;
-  withTime: boolean;
-  value: string;
-  onChange: (iso: string) => void;
-  calendarLabel?: string;
-}) {
+}: DatePickerInputProps) {
   const [open, setOpen] = useState(false);
 
   const toInput = (iso: string) =>
@@ -166,15 +168,13 @@ function DatePickerInput({
   );
 }
 
-function FieldLabel({
-  htmlFor,
-  label,
-  description,
-}: {
+type FieldLabelProps = Readonly<{
   htmlFor: string;
   label: string;
   description?: string;
-}) {
+}>;
+
+function FieldLabel({ htmlFor, label, description }: FieldLabelProps) {
   return (
     <div className="space-y-0.5">
       <Label htmlFor={htmlFor}>{label}</Label>
