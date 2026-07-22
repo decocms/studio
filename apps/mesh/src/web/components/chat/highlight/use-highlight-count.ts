@@ -12,6 +12,7 @@
  */
 
 import type { UIMessage } from "ai";
+import type { Todo } from "@decocms/harness/decopilot/built-in-tools/todo-write";
 import { deriveCurrentTodos } from "./derive-current-todos";
 import { extractPendingApprovals } from "./extract-pending-approvals";
 import { extractPendingPlans } from "./extract-pending-plans";
@@ -26,6 +27,9 @@ export interface HighlightFlags {
   hasApprovals: boolean;
   hasPlans: boolean;
   isWaitingForUserInput: boolean;
+  // Exposed so `TodosHighlight` doesn't re-run the same backward scan over
+  // `messages` that this hook already did to compute `hasTodos`.
+  todos: Todo[];
 }
 
 export interface DeriveHighlightFlagsInput {
@@ -44,6 +48,7 @@ const EMPTY_FLAGS: HighlightFlags = {
   hasApprovals: false,
   hasPlans: false,
   isWaitingForUserInput: false,
+  todos: [],
 };
 
 export function deriveHighlightFlags(
@@ -111,6 +116,7 @@ export function deriveHighlightFlags(
     hasApprovals,
     hasPlans,
     isWaitingForUserInput,
+    todos,
   };
 }
 

@@ -283,7 +283,7 @@ export function ChatHighlight() {
 
   return (
     <div className="absolute bottom-full left-0 right-0">
-      <TodosHighlight />
+      <TodosHighlight todos={flags.todos} />
       <DesktopOfflineBanner />
       {showError && (
         <StatusHighlight
