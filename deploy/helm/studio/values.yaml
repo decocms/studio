@@ -41,6 +41,7 @@ resources:
     cpu: "750m"
     memory: "1Gi"
   limits:
+    cpu: "1"
     memory: "1Gi"
 
 database:
@@ -100,6 +101,7 @@ nginx:
       cpu: "500m"
       memory: "128Mi"
     limits:
+      cpu: "1"
       memory: "256Mi"
   securityContext:
     runAsNonRoot: true
