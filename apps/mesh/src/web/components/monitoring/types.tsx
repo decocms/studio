@@ -119,6 +119,19 @@ export interface MonitoringSearchParams {
 
 export type PropertyFilterOperator = "eq" | "contains" | "exists" | "in";
 
+const PROPERTY_FILTER_OPERATORS: readonly PropertyFilterOperator[] = [
+  "eq",
+  "contains",
+  "exists",
+  "in",
+];
+
+function isPropertyFilterOperator(
+  value: string,
+): value is PropertyFilterOperator {
+  return (PROPERTY_FILTER_OPERATORS as readonly string[]).includes(value);
+}
+
 export interface PropertyFilter {
   key: string;
   operator: PropertyFilterOperator;
@@ -149,7 +162,8 @@ export function deserializePropertyFilters(str: string): PropertyFilter[] {
     const [key, operator, ...valueParts] = part.split(":");
     return {
       key: decodeURIComponent(key || ""),
-      operator: (operator as PropertyFilterOperator) || "eq",
+      operator:
+        operator && isPropertyFilterOperator(operator) ? operator : "eq",
       value: decodeURIComponent(valueParts.join(":") || ""),
     };
   });
