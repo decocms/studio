@@ -151,6 +151,51 @@ describe("resolveSchema – nullable unions inherit leaf metadata", () => {
     expect(collection?.format).toBe("dynamic-options");
     expect(collection?.options).toBe("vtex/loaders/collections/list.ts");
   });
+
+  test("preserves format/options as siblings of a $ref (real deco shape)", () => {
+    // deco emits `@format icon-select` annotations on the property node while
+    // the type itself lives behind a $ref (e.g. stone ButtonCtaAttendenceProps.icon).
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        color: {
+          $ref: "#/definitions/BackgroundColor",
+          format: "icon-select",
+          options: "odin-ui/loaders/background-colors.ts",
+        },
+      },
+    });
+    (meta.schema as { definitions?: Record<string, unknown> }).definitions = {
+      BackgroundColor: { type: "string" },
+    };
+
+    const color = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.color;
+    expect(color?.format).toBe("icon-select");
+    expect(color?.options).toBe("odin-ui/loaders/background-colors.ts");
+  });
+
+  test("preserves format/options on a union of const literals", () => {
+    // TS union of icon names (`"user" | "chat" | ...`) with @format icon-select:
+    // the enum-from-consts path must keep the widget annotations, otherwise the
+    // field demotes to a static select without icon previews.
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        icon: {
+          anyOf: [{ const: "user" }, { const: "chat" }, { const: "earth" }],
+          format: "icon-select",
+          options: "site/loaders/icons.ts",
+        },
+      },
+    });
+
+    const icon = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.icon;
+    expect(icon?.enum).toEqual(["user", "chat", "earth"]);
+    expect(icon?.format).toBe("icon-select");
+    expect(icon?.options).toBe("site/loaders/icons.ts");
+  });
 });
 
 describe("resolveSchema – app resolveType aliases", () => {
