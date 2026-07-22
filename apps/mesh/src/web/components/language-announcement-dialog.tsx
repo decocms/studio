@@ -10,14 +10,14 @@ import {
 import { Button } from "@deco/ui/components/button.tsx";
 import { authClient } from "@/web/lib/auth-client";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
+import { detectLocale } from "@/web/i18n/locale.ts";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { useT } from "@/web/i18n/use-t.ts";
 import { track } from "@/web/lib/posthog-client";
 
-// When pt-BR shipped. Only users created before this see the announcement;
-// anyone who signs up afterwards already gets the language picker from day one
-// (and the browser-based default via detectLocale), so there's nothing new to
-// announce to them.
+// When pt-BR shipped. Only users created before this are auto-switched; anyone
+// who signs up afterwards already gets pt-BR as their default (via detectLocale)
+// when their browser is Portuguese, so there's nothing to announce to them.
 const PT_BR_RELEASE = Date.parse("2026-07-21T00:00:00Z");
 
 function markSeen(userId: string) {
@@ -38,10 +38,13 @@ function hasSeen(userId: string) {
 }
 
 /**
- * One-time modal announcing that Portuguese (Brazil) is now available. Shown
- * once per user, only to existing English-speaking users (created before the
- * pt-BR release). Dismissing it — via either button, the close icon, or the
- * overlay — persists the "seen" flag so it never returns.
+ * One-time heads-up shown when we auto-switch an existing user to Portuguese.
+ *
+ * Existing users (created before the pt-BR release) whose browser is set to
+ * Portuguese are flipped to pt-BR automatically, then this modal — now rendered
+ * in Portuguese — tells them so and offers a one-click revert to English. The
+ * "seen" flag persists per user, so it fires once and, crucially, we never
+ * re-flip someone who chose to switch back on their next reload.
  */
 export function LanguageAnnouncementDialog() {
   const t = useT();
@@ -55,38 +58,43 @@ export function LanguageAnnouncementDialog() {
   const isExistingUser =
     createdAt != null && new Date(createdAt).getTime() < PT_BR_RELEASE;
 
+  const browserIsPortuguese = detectLocale() === "pt-BR";
+
   const eligible =
     !isPending &&
     !!userId &&
     isExistingUser &&
+    browserIsPortuguese &&
     preferences.language === "en" &&
     !hasSeen(userId);
 
   // Decide once, on the first render where the session has settled — mirrors
-  // the derived-state pattern used by VersionCheckDialog (no useEffect).
+  // the derived-state pattern used by VersionCheckDialog (no useEffect). On the
+  // eligible path we auto-switch to pt-BR here, then open the heads-up.
   const [decided, setDecided] = useState(false);
   const [open, setOpen] = useState(false);
   if (!decided && !isPending) {
     setDecided(true);
-    if (eligible) {
+    if (eligible && userId) {
+      markSeen(userId);
+      setPreferences((prev) => ({ ...prev, language: "pt-BR" }));
       setOpen(true);
-      track("pt_br_announcement_shown");
+      track("pt_br_auto_switch_shown");
     }
   }
 
-  const dismiss = (action: "switch" | "keep" | "close") => {
-    if (userId) markSeen(userId);
-    track("pt_br_announcement_dismissed", { action });
+  const close = (action: "ok" | "switch-back" | "dismiss") => {
+    track("pt_br_auto_switch_closed", { action });
     setOpen(false);
   };
 
-  const switchToPortuguese = () => {
-    setPreferences((prev) => ({ ...prev, language: "pt-BR" }));
-    dismiss("switch");
+  const switchBackToEnglish = () => {
+    setPreferences((prev) => ({ ...prev, language: "en" }));
+    close("switch-back");
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && dismiss("close")}>
+    <Dialog open={open} onOpenChange={(next) => !next && close("dismiss")}>
       <DialogContent className="sm:max-w-md">
         <div className="text-4xl" aria-hidden="true">
           🇧🇷
@@ -98,11 +106,11 @@ export function LanguageAnnouncementDialog() {
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={() => dismiss("keep")}>
-            {t("announcements.ptBr.keep")}
+          <Button variant="outline" onClick={switchBackToEnglish}>
+            {t("announcements.ptBr.switchBack")}
           </Button>
-          <Button onClick={switchToPortuguese}>
-            {t("announcements.ptBr.switch")}
+          <Button onClick={() => close("ok")}>
+            {t("announcements.ptBr.ok")}
           </Button>
         </DialogFooter>
       </DialogContent>

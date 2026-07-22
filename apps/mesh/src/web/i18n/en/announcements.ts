@@ -1,7 +1,7 @@
 export const announcements = {
-  "announcements.ptBr.title": "Portuguese is now available",
+  "announcements.ptBr.title": "Studio is now in Portuguese",
   "announcements.ptBr.description":
-    "Studio now speaks Portuguese (Brazil). Want to switch? You can always change your language later in settings.",
-  "announcements.ptBr.switch": "Switch to Portuguese",
-  "announcements.ptBr.keep": "Keep English",
+    "We noticed your browser is set to Portuguese, so we switched Studio to Portuguese (Brazil) for you. You can switch back to English anytime in settings.",
+  "announcements.ptBr.ok": "OK!",
+  "announcements.ptBr.switchBack": "Switch back to English",
 } as const;

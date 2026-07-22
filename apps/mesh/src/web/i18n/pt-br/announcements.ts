@@ -1,9 +1,9 @@
 import type { announcements as announcementsEn } from "../en/announcements.ts";
 
 export const announcements = {
-  "announcements.ptBr.title": "Português já disponível",
+  "announcements.ptBr.title": "O Studio agora está em português",
   "announcements.ptBr.description":
-    "O Studio agora fala português (Brasil). Quer mudar? Você pode alterar o idioma depois nas configurações.",
-  "announcements.ptBr.switch": "Mudar para português",
-  "announcements.ptBr.keep": "Manter em inglês",
+    "Notamos que seu navegador está em português, então mudamos o Studio para português (Brasil). Você pode voltar para o inglês quando quiser nas configurações.",
+  "announcements.ptBr.ok": "OK!",
+  "announcements.ptBr.switchBack": "Voltar para o inglês",
 } satisfies Record<keyof typeof announcementsEn, string>;
