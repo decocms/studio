@@ -384,6 +384,7 @@ export const sandbox = {
   "sandbox.preview.globalComponents": "Componentes globais",
   "sandbox.preview.hardReload": "Recarregamento forçado",
   "sandbox.preview.invalidPageBlockKey": "Chave de bloco de página inválida",
+  "sandbox.preview.moreOptions": "Mais opções",
   "sandbox.preview.noPagesFound": "Nenhuma página encontrada neste site.",
   "sandbox.preview.noSearchResults":
     "Nenhum resultado corresponde à sua pesquisa.",
