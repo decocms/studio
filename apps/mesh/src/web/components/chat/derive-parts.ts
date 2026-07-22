@@ -245,11 +245,15 @@ export function derivePartsFromTiptapDoc(
         const meta = node.attrs.metadata as {
           title?: string;
           description?: string | null;
+          // Prebuilt at chat-start (buildTaskChatContext): title + description
+          // plus the task's linked PRs and other chats. Older drafts lack it,
+          // so fall back to title + description.
+          context?: string;
         } | null;
         const title = meta?.title ?? (node.attrs.name as string) ?? "";
-        const body = [title, meta?.description?.trim()]
-          .filter(Boolean)
-          .join("\n\n");
+        const body =
+          meta?.context?.trim() ||
+          [title, meta?.description?.trim()].filter(Boolean).join("\n\n");
         if (body) parts.push({ type: "text", text: body });
         return;
       }
