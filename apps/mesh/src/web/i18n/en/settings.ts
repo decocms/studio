@@ -392,6 +392,7 @@ export const settings = {
   "settings.orgRoleDetail.owner": "Owner",
   "settings.orgRoleDetail.ownerMembershipCannotBeChanged":
     "Owner membership cannot be changed",
+  "settings.orgRoleDetail.removeMember": "Remove {name} from role",
   "settings.orgRoleDetail.roleCreatedSuccessfully":
     "Role created successfully!",
   "settings.orgRoleDetail.roleName": "Role name",

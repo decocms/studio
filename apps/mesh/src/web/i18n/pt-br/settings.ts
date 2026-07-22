@@ -410,6 +410,7 @@ export const settings = {
   "settings.orgRoleDetail.owner": "Propriet\u00e1rio",
   "settings.orgRoleDetail.ownerMembershipCannotBeChanged":
     "A associa\u00e7\u00e3o de propriet\u00e1rio n\u00e3o pode ser alterada",
+  "settings.orgRoleDetail.removeMember": "Remover {name} do papel",
   "settings.orgRoleDetail.roleCreatedSuccessfully": "Papel criado com sucesso!",
   "settings.orgRoleDetail.roleName": "Nome do papel",
   "settings.orgRoleDetail.roleNameIsRequired":
