@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { lookup } from "node:dns/promises";
 import { z } from "zod";
 
 /** RFC 1918 / loopback / link-local ranges, keyed off the first two IPv4 octets. */
@@ -94,6 +95,45 @@ export function isPrivateUrl(url: string): boolean {
 
     return false;
   } catch {
+    return true;
+  }
+}
+
+/** Checks a bare resolved IP literal (v4 or v6, no brackets) against private/loopback/link-local ranges — used to vet DNS resolution results, since `isPrivateUrl` only sees the literal hostname written in the URL. */
+function isPrivateIpAddress(ip: string): boolean {
+  const ipv4Match = ip.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (ipv4Match) {
+    const [, a, b] = ipv4Match.map(Number);
+    return isPrivateIPv4Octets(a!, b);
+  }
+
+  const ipv6 = ip.toLowerCase();
+  if (ipv6 === "::1" || ipv6 === "::") return true;
+  if (ipv6.startsWith("::ffff:")) return true;
+  if (ipv6.startsWith("fc") || ipv6.startsWith("fd")) return true;
+  if (ipv6.startsWith("fe80")) return true;
+  if (ipv6.startsWith("100:")) return true;
+  return isPrivateEmbeddedIPv4(ipv6);
+}
+
+/**
+ * A hostname's IP-literal form is vetted synchronously by `isPrivateUrl`, but
+ * a plain domain name only reveals its real destination after DNS
+ * resolution — an attacker who controls DNS for their own domain (e.g. an A
+ * record pointing at the 169.254.169.254 cloud metadata endpoint) bypasses
+ * the literal-IP guard entirely. Resolve first and vet every returned
+ * address before connecting.
+ */
+export async function resolvesToPrivateAddress(
+  hostname: string,
+  resolveHost: (host: string) => Promise<string[]> = async (host) =>
+    (await lookup(host, { all: true })).map((r) => r.address),
+): Promise<boolean> {
+  try {
+    const addresses = await resolveHost(hostname);
+    return addresses.length === 0 || addresses.some(isPrivateIpAddress);
+  } catch {
+    // Can't verify where this hostname actually points — fail closed.
     return true;
   }
 }
@@ -271,12 +311,40 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
       };
     }
 
+    const timeoutMs = 10_000;
+
+    // isPrivateUrl already fully vets an IP-literal hostname; only a plain
+    // domain name needs a DNS lookup to catch a domain whose DNS record
+    // points at a private/metadata address.
+    const hostname = new URL(url).hostname;
+    const isIpLiteral =
+      /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
+      (hostname.startsWith("[") && hostname.endsWith("]"));
+
+    let blockedByDns = false;
+    if (!isIpLiteral) {
+      try {
+        blockedByDns = await withTimeout(
+          resolvesToPrivateAddress(hostname),
+          5_000,
+          "DNS resolution timeout",
+        );
+      } catch {
+        blockedByDns = true; // can't verify in time — fail closed
+      }
+    }
+
+    if (blockedByDns) {
+      return {
+        tools: [],
+        error: "URLs targeting private networks are not allowed",
+      };
+    }
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
     };
-
-    const timeoutMs = 10_000;
 
     const urlVariants = getUrlVariants(url);
     const transportTypes: TransportType[] =

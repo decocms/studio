@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   isPrivateUrl,
   parseToolsListResponse,
+  resolvesToPrivateAddress,
   withTimeout,
 } from "./discover-tools";
 
@@ -60,6 +61,45 @@ describe("isPrivateUrl", () => {
     expect(isPrivateUrl("https://example.com/mcp")).toBe(false);
     expect(isPrivateUrl("http://8.8.8.8/")).toBe(false);
     expect(isPrivateUrl("http://[::8.8.8.8]/")).toBe(false);
+  });
+});
+
+describe("resolvesToPrivateAddress", () => {
+  it("blocks a domain whose DNS record points at a private/metadata address", async () => {
+    // e.g. an attacker-controlled domain with an A record for the cloud
+    // metadata endpoint — isPrivateUrl never sees a literal IP to catch this.
+    const resolveHost = async () => ["169.254.169.254"];
+    expect(await resolvesToPrivateAddress("evil.com", resolveHost)).toBe(true);
+  });
+
+  it("allows a domain that resolves only to public addresses", async () => {
+    const resolveHost = async () => ["93.184.216.34"];
+    expect(await resolvesToPrivateAddress("example.com", resolveHost)).toBe(
+      false,
+    );
+  });
+
+  it("blocks if any resolved address (v4 or v6) is private, even alongside public ones", async () => {
+    const resolveHost = async () => ["8.8.8.8", "10.0.0.5"];
+    expect(await resolvesToPrivateAddress("mixed.example", resolveHost)).toBe(
+      true,
+    );
+    const resolveHostV6 = async () => ["2001:db8::1", "::1"];
+    expect(
+      await resolvesToPrivateAddress("mixed-v6.example", resolveHostV6),
+    ).toBe(true);
+  });
+
+  it("fails closed when resolution throws or returns nothing", async () => {
+    const throwing = async () => {
+      throw new Error("NXDOMAIN");
+    };
+    expect(await resolvesToPrivateAddress("nowhere.example", throwing)).toBe(
+      true,
+    );
+
+    const empty = async () => [];
+    expect(await resolvesToPrivateAddress("empty.example", empty)).toBe(true);
   });
 });
 
