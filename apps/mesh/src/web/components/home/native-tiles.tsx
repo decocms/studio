@@ -400,9 +400,9 @@ function CommerceMetricTile({
   metricKey: keyof typeof METRIC_CONFIG;
 }) {
   const t = useT();
-  const connected =
-    useConnections({ slug: "vtex" }).length > 0 ||
-    useConnections({ slug: "shopify" }).length > 0;
+  const vtexConnections = useConnections({ slug: "vtex" });
+  const shopifyConnections = useConnections({ slug: "shopify" });
+  const connected = vtexConnections.length > 0 || shopifyConnections.length > 0;
   const [open, setOpen] = useState(false);
   const cfg = METRIC_CONFIG[metricKey];
   if (connected || !cfg) return <ConnectedSoon label="Commerce" />;
