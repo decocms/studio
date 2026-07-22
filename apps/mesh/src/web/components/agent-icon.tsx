@@ -294,7 +294,6 @@ interface AgentAvatarProps {
   name: string;
   size?: AgentAvatarSize;
   className?: string;
-  "aria-label"?: string;
 }
 
 /** Colored background + centered icon — shared by all icon-rendering paths. */
@@ -303,13 +302,11 @@ function IconAvatar({
   color,
   size,
   className,
-  "aria-label": ariaLabel,
 }: {
   Icon: IconComponent;
   color: AgentIconColor;
   size: AgentAvatarSize;
   className?: string;
-  "aria-label"?: string;
 }) {
   const sizeConfig = SIZES[size];
   return (
@@ -322,7 +319,6 @@ function IconAvatar({
         "flex items-center justify-center shrink-0 outline-none ring-0 shadow-none",
         className,
       )}
-      aria-label={ariaLabel}
     >
       <Icon size={sizeConfig.icon} />
     </div>
@@ -334,7 +330,6 @@ export function AgentAvatar({
   name,
   size = "md",
   className,
-  "aria-label": ariaLabel,
 }: AgentAvatarProps) {
   const parsed = parseIconString(icon);
 
@@ -344,13 +339,7 @@ export function AgentAvatar({
     const Icon = IconComp ?? getDeterministicIcon(name).IconComp;
 
     return (
-      <IconAvatar
-        Icon={Icon}
-        color={color}
-        size={size}
-        className={className}
-        aria-label={ariaLabel}
-      />
+      <IconAvatar Icon={Icon} color={color} size={size} className={className} />
     );
   }
 
@@ -365,7 +354,6 @@ export function AgentAvatar({
         name={name}
         size={size}
         className={className}
-        aria-label={ariaLabel}
       />
     );
   }
@@ -379,7 +367,6 @@ export function AgentAvatar({
       color={color}
       size={size}
       className={className}
-      aria-label={ariaLabel}
     />
   );
 }
@@ -408,14 +395,12 @@ function AgentAvatarImage({
   name,
   size = "md",
   className,
-  "aria-label": ariaLabel,
 }: {
   url: string;
   color?: string;
   name: string;
   size?: AgentAvatarSize;
   className?: string;
-  "aria-label"?: string;
 }) {
   const [errored, setErrored] = useState(false);
   const sizeConfig = SIZES[size];
@@ -429,7 +414,6 @@ function AgentAvatarImage({
         color={color}
         size={size}
         className={className}
-        aria-label={ariaLabel}
       />
     );
   }
@@ -443,7 +427,6 @@ function AgentAvatarImage({
         "shrink-0 overflow-hidden outline-none ring-0 shadow-none",
         className,
       )}
-      aria-label={ariaLabel}
     >
       <img
         src={url}
