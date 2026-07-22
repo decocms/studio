@@ -155,6 +155,9 @@ export function useVoiceInput(): UseVoiceInputReturn {
     try {
       recognition.start();
     } catch {
+      isRecordingRef.current = false;
+      recognitionRef.current = null;
+      stopVisualizer();
       setStatus("idle");
       return "idle";
     }
