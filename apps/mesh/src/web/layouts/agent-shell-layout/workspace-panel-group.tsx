@@ -100,32 +100,41 @@ function MainControls({
 }
 
 /**
- * Header-width breakpoints that drive the main header's responsive degradation.
- * The header is always the panel's full width, so these read as panel widths
- * and there's no measure→layout→measure feedback loop.
+ * Breakpoints that drive the main header's responsive degradation.
  *
  * Priority as space shrinks (least essential drops first): the page selector
- * goes first, then the 3rd tab, then the 2nd — Preview + the right-side actions
- * always survive. Numbers are generous so the surviving controls never overlap;
- * tune here if the thresholds feel early/late.
+ * goes first, then the 3rd tab, then the 2nd — the right-side actions (Edit /
+ * publish) always survive. Two independent measured signals drive this, so it
+ * adapts to whatever the right actions actually take (branch selector present
+ * or not, i18n label lengths, …) instead of guessing off the whole header:
+ *
+ *  - `pageSelectorMin` is checked against the *measured free gap* the selector
+ *    sits in, so it hides (display:none) the instant that gap can't hold a
+ *    usable selector, instead of squishing to a chevron with no label.
+ *  - `threeTabs` / `twoTabs` are checked against the *space left of the right
+ *    actions* (`headerWidth - rightWidth`), i.e. the room the tab group + gap
+ *    actually get. A CSS safety net (the left group is `min-w-0`/overflow-hidden
+ *    and shrinks) guarantees the right actions are never clipped even if these
+ *    estimates run slightly optimistic — the tab group yields first.
  */
 const HEADER_W = {
-  /**
-   * Minimum space the centered page selector needs before it's shown. Measured
-   * against the *actual* gap left between the tab group and the right actions
-   * (not the whole header), so a dense header with many controls hides it
-   * rather than squishing it to a single letter.
-   */
   pageSelectorMin: 140,
-  /** Third tab kept at/above this width. */
-  threeTabs: 560,
-  /** Second tab kept at/above this width; below it only the active tab shows. */
-  twoTabs: 440,
+  /** Space left of the right actions to keep 3 labelled tabs before folding. */
+  threeTabs: 475,
+  /** Space left of the right actions to keep 2 labelled tabs before folding. */
+  twoTabs: 340,
 } as const;
 
-function maxTabsForWidth(width: number): number {
-  if (width === 0 || width >= HEADER_W.threeTabs) return 3;
-  if (width >= HEADER_W.twoTabs) return 2;
+/**
+ * How many view tabs to show given the space to the LEFT of the right actions.
+ * `headerWidth`/`rightWidth` are `-1` until measured — treat that as roomy so
+ * the header opens fully and only tightens once real measurements land.
+ */
+function maxTabsForSpace(headerWidth: number, rightWidth: number): number {
+  if (headerWidth < 0 || rightWidth < 0) return 3;
+  const leftSpace = headerWidth - rightWidth;
+  if (leftSpace >= HEADER_W.threeTabs) return 3;
+  if (leftSpace >= HEADER_W.twoTabs) return 2;
   return 1;
 }
 
@@ -159,21 +168,17 @@ export function WorkspacePanelGroup({
   // publish) move into the chat header so views are still reachable.
   const mainControlsInChat = chatOpen && !mainOpen;
 
-  // Measure the main header (== panel width) so the tab bar and page selector
-  // degrade with available space instead of squishing or overflowing. Width is
-  // 0 until the first measurement lands; `maxTabsForWidth`/`showPageSelector`
-  // both treat 0 as "roomy" so the header opens fully and only tightens if the
-  // measurement says it must — no collapsed first-paint flash.
+  // Responsive header: measure the whole header (== panel width) and the right
+  // actions cluster, so the tab count adapts to the room actually left for it
+  // (`headerWidth - rightWidth`), and measure the centered page-selector gap so
+  // the selector hides the moment it can't fit — never squished. All three read
+  // `-1` until measured, treated as "roomy" so the header opens fully first.
   const [headerWidth, headerRef] = useElementWidth();
-  const maxTabs = maxTabsForWidth(headerWidth);
-  // The page selector centers in the flex-1 gap between the tab group and the
-  // right actions. Measure that gap directly (not the whole header) so it
-  // vanishes when there's no room for a usable selector instead of squishing
-  // to a single letter. `0` (pre-measurement) reads as roomy to avoid a
-  // first-paint flash.
+  const [rightWidth, rightRef] = useElementWidth();
+  const maxTabs = maxTabsForSpace(headerWidth, rightWidth);
   const [pageSelectorSpace, pageSelectorRef] = useElementWidth();
   const showPageSelector =
-    pageSelectorSpace === 0 || pageSelectorSpace >= HEADER_W.pageSelectorMin;
+    pageSelectorSpace < 0 || pageSelectorSpace >= HEADER_W.pageSelectorMin;
 
   // The agent switcher + new-chat action live in the nav sidebar while it's
   // expanded. When the sidebar is collapsed it has no room for them, so we
@@ -232,7 +237,10 @@ export function WorkspacePanelGroup({
   // actions still land far right.
   const mainHeader = (
     <PanelHeader ref={headerRef} className="justify-between gap-2">
-      <div className="flex shrink-0 items-center gap-0.5">
+      {/* min-w-0 + overflow-hidden is the safety net: if the tab count estimate
+          runs optimistic, THIS group yields (its trailing tabs clip) so the
+          right actions on the far side are never pushed off-screen. */}
+      <div className="flex min-w-0 shrink items-center gap-0.5 overflow-hidden">
         {!chatOpen && agentCrumb}
         {!chatOpen && (
           <ChatToggle sidePanel={sidePanel} toggleSidePanel={toggleSidePanel} />
@@ -258,9 +266,13 @@ export function WorkspacePanelGroup({
         <MainPanelHeaderSlot className={cn(!showPageSelector && "hidden")} />
       </div>
       {/* shrink-0: the right actions (Edit / Submit / Publish / ⋯) are the
-          highest-priority controls — they hold their size so they never
-          overlap the center selector; the selector yields instead. */}
-      <div className="flex shrink-0 items-center justify-end gap-1">
+          highest-priority controls — they hold their size and are never
+          clipped; the selector and tab group yield instead. Measured so the
+          tab count knows how much room is actually left for it. */}
+      <div
+        ref={rightRef}
+        className="flex shrink-0 items-center justify-end gap-1"
+      >
         {!chatOpen && newChatCrumb}
         {branchSelector}
         <MainPanelHeaderEndSlot />
