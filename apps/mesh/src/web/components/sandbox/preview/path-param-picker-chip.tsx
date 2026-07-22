@@ -34,6 +34,9 @@ import {
 
 const PICKER_FETCH_TIMEOUT_MS = 10_000;
 
+const PARAM_LABEL_BADGE =
+  "rounded-sm bg-violet-500/15 px-1 py-0.5 text-[12px] text-violet-600 dark:text-violet-400";
+
 const KIND_LABELS: Record<PathParamKind, { noun: string; heading: string }> = {
   product: { noun: "product", heading: "Products" },
   category: { noun: "category", heading: "Categories" },
@@ -267,7 +270,10 @@ export function PathParamPickerChip({
         title={t("sandbox.pathParamPickerChip.buttonTitle", {
           paramLabel,
         })}
-        className="max-w-64 shrink-0 cursor-pointer truncate rounded-sm bg-violet-500/15 px-1 py-0.5 text-[12px] text-violet-600 hover:bg-violet-500/25 dark:text-violet-400"
+        className={cn(
+          PARAM_LABEL_BADGE,
+          "max-w-64 shrink-0 cursor-pointer truncate hover:bg-violet-500/25",
+        )}
         onClick={(e) => {
           e.stopPropagation();
           handleOpenChange(true);
@@ -294,7 +300,7 @@ export function PathParamPickerChip({
             <SearchSm size={16} className="shrink-0 text-foreground" />
             <span className="text-sm font-medium text-foreground">
               {t("sandbox.pathParamPickerChip.pickValueHeading")}{" "}
-              <span className="rounded-sm bg-violet-500/15 px-1 py-0.5 font-mono text-[12px] text-violet-600 dark:text-violet-400">
+              <span className={cn(PARAM_LABEL_BADGE, "font-mono")}>
                 {paramLabel}
               </span>
             </span>
