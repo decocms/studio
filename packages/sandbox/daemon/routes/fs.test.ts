@@ -29,6 +29,7 @@ import {
   GREP_MAX_RESULT_LIMIT,
   resolveGrepResultLimit,
   toRepoRelativePath,
+  invalidDecofileBlockJson,
 } from "./fs";
 
 const hasRg = spawnSync("which", ["rg"]).status === 0;
@@ -266,6 +267,137 @@ describe("fs handlers", () => {
     );
     expect(res.status).toBe(200);
     expect(readFileSync(join(appRoot, "e.txt"), "utf-8")).toBe("b b b");
+  });
+
+  describe("invalidDecofileBlockJson (scope)", () => {
+    it("flags malformed JSON in a .deco/blocks file", () => {
+      expect(
+        invalidDecofileBlockJson(".deco/blocks/pages-home.json", "{ bad "),
+      ).toContain("invalid JSON");
+    });
+    it("passes well-formed JSON in a .deco/blocks file", () => {
+      expect(
+        invalidDecofileBlockJson(".deco/blocks/pages-home.json", '{"a":1}'),
+      ).toBeNull();
+    });
+    it("matches nested and backslash-separated block paths", () => {
+      expect(
+        invalidDecofileBlockJson("repo/.deco/blocks/nested/x.json", "{"),
+      ).toContain("invalid JSON");
+      expect(invalidDecofileBlockJson(".deco\\blocks\\x.json", "{")).toContain(
+        "invalid JSON",
+      );
+    });
+    it("ignores files outside .deco/blocks, JSONC configs, and .gen.json artifacts", () => {
+      // out of scope → never parsed, so invalid content is allowed through
+      expect(invalidDecofileBlockJson("tsconfig.json", "{ // c\n}")).toBeNull();
+      expect(invalidDecofileBlockJson("src/data.json", "{ bad")).toBeNull();
+      expect(
+        invalidDecofileBlockJson(".deco/blocks.gen.json", "{ bad"),
+      ).toBeNull();
+      expect(
+        invalidDecofileBlockJson(".deco/meta.gen.json", "{ bad"),
+      ).toBeNull();
+      expect(
+        invalidDecofileBlockJson(".deco/blocks/readme.md", "not json"),
+      ).toBeNull();
+    });
+  });
+
+  it("write: rejects invalid JSON for a .deco/blocks file and does not create it", async () => {
+    const h = makeWriteHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/write", {
+        path: ".deco/blocks/pages-home.json",
+        // dangling key inside an array + unbalanced brace — the exact corruption shape
+        content: '{ "benefits": [ { "label": "x" }, "rule": { "a": 1 } } ]',
+      }),
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("invalid JSON");
+    expect(existsSync(join(appRoot, ".deco/blocks/pages-home.json"))).toBe(
+      false,
+    );
+  });
+
+  it("write: accepts valid JSON for a .deco/blocks file", async () => {
+    const h = makeWriteHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/write", {
+        path: ".deco/blocks/pages-home.json",
+        content: '{\n  "__resolveType": "site/pages/Home.tsx"\n}',
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(existsSync(join(appRoot, ".deco/blocks/pages-home.json"))).toBe(
+      true,
+    );
+  });
+
+  it("write: does not validate JSON outside .deco/blocks (JSONC configs, plain files)", async () => {
+    const h = makeWriteHandler({ appRoot, repoDir: appRoot });
+    // tsconfig.json is JSONC (comments) and must not be gated
+    const res = await h(
+      post("/_sandbox/write", {
+        path: "tsconfig.json",
+        content: "{\n  // a comment\n  }",
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(readFileSync(join(appRoot, "tsconfig.json"), "utf-8")).toContain(
+      "// a comment",
+    );
+  });
+
+  it("edit: rejects an edit that would leave a .deco/blocks file invalid and leaves it intact", async () => {
+    const blockDir = join(appRoot, ".deco", "blocks");
+    mkdirSync(blockDir, { recursive: true });
+    const rel = ".deco/blocks/pages-home.json";
+    const valid = JSON.stringify(
+      {
+        variants: [
+          {
+            value: { __resolveType: "Benefits" },
+            rule: { __resolveType: "never" },
+          },
+        ],
+      },
+      null,
+      2,
+    );
+    writeFileSync(join(appRoot, rel), valid);
+    const h = makeEditHandler({ appRoot, repoDir: appRoot });
+    // unwrap the variant wrapper but leave the `rule` sibling dangling — invalid
+    const res = await h(
+      post("/_sandbox/edit", {
+        path: rel,
+        old_string: '"variants": [\n    {\n      "value": {',
+        new_string: '"section": {',
+      }),
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("invalid JSON");
+    // file must be untouched — the original, still-valid content
+    expect(readFileSync(join(appRoot, rel), "utf-8")).toBe(valid);
+  });
+
+  it("edit: allows a valid edit to a .deco/blocks file", async () => {
+    const blockDir = join(appRoot, ".deco", "blocks");
+    mkdirSync(blockDir, { recursive: true });
+    const rel = ".deco/blocks/pages-home.json";
+    writeFileSync(join(appRoot, rel), '{\n  "title": "old"\n}');
+    const h = makeEditHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/edit", {
+        path: rel,
+        old_string: '"old"',
+        new_string: '"new"',
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(readFileSync(join(appRoot, rel), "utf-8")).toContain('"new"');
   });
 
   (hasRg ? it : it.skip)("grep: returns matching content lines", async () => {
