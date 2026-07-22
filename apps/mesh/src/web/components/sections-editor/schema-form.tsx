@@ -244,8 +244,12 @@ export function renderField(props: FieldProps) {
     return <MapField key={props.path} {...props} />;
   }
 
-  // dynamic-options → DynamicOptionsField (select with options from a loader)
-  if (schema.format === "dynamic-options" && schema.options) {
+  // dynamic-options / icon-select → DynamicOptionsField (select with options
+  // from a loader; icon-select options carry an inline-SVG preview)
+  if (
+    (schema.format === "dynamic-options" || schema.format === "icon-select") &&
+    schema.options
+  ) {
     return <DynamicOptionsField key={props.path} {...props} />;
   }
 

@@ -26,6 +26,8 @@ export interface DynamicOption {
   value: string;
   label?: string;
   image?: string;
+  /** Inline SVG markup for the option preview (deco `icon-select` loaders). */
+  icon?: string;
 }
 
 export function normalizeOptions(data: unknown): DynamicOption[] {
@@ -40,10 +42,64 @@ export function normalizeOptions(data: unknown): DynamicOption[] {
         value: String(obj.value),
         label: typeof obj.label === "string" ? obj.label : String(obj.value),
         image: typeof obj.image === "string" ? obj.image : undefined,
+        icon: typeof obj.icon === "string" ? obj.icon : undefined,
       });
     }
   }
   return result;
+}
+
+/**
+ * Client-side narrowing of the fetched options. The loader already receives
+ * the search as `term`, but many real-world options loaders ignore it and
+ * always return the full list (e.g. odin-ui's icons loader) — without this
+ * the combobox search would do nothing.
+ */
+export function filterOptions(
+  options: DynamicOption[],
+  search: string,
+): DynamicOption[] {
+  const term = search.trim().toLowerCase();
+  if (!term) return options;
+  return options.filter(
+    (opt) =>
+      opt.value.toLowerCase().includes(term) ||
+      (opt.label ?? "").toLowerCase().includes(term),
+  );
+}
+
+/**
+ * Data URI for an option's inline-SVG preview. Rendered through an `img` so
+ * loader-controlled markup is never injected into the document. Loader SVGs
+ * rely on Tailwind's current-color utilities (e.g. odin-ui color swatches are
+ * `<circle class="fill-current"/>` with `style="color: #hex"` on the root);
+ * inside an isolated SVG document those classes have no CSS, so the shim
+ * defines them — without it every swatch falls back to a black fill.
+ *
+ * `color` is the fallback `currentColor` for the SVG document: isolated SVG
+ * documents default `currentColor` to black, which makes monochrome icon
+ * sets (e.g. odin-ui icons with `fill="currentColor"`) invisible on a dark
+ * theme. A stylesheet rule loses to an inline `style` attribute, so swatches
+ * that set their own `style="color: #hex"` on the root are unaffected.
+ */
+export function svgPreviewDataUri(svg: string, color?: string): string {
+  const colorRule = color ? `svg{color:${color}}` : "";
+  const shim = `<style>${colorRule}.fill-current{fill:currentColor}.stroke-current{stroke:currentColor}.text-current{color:currentColor}</style>`;
+  const shimmed = svg.replace(/(<svg[^>]*>)/i, `$1${shim}`);
+  return `data:image/svg+xml;utf8,${encodeURIComponent(shimmed)}`;
+}
+
+/** The app's current foreground color, so icon previews match the theme. */
+function themeForegroundColor(): string | undefined {
+  const color = getComputedStyle(document.documentElement).color;
+  return color || undefined;
+}
+
+/** Preview image source for an option: `image` is a URL, `icon` inline SVG. */
+function optionPreviewSrc(opt: DynamicOption): string | undefined {
+  if (opt.image) return opt.image;
+  if (opt.icon) return svgPreviewDataUri(opt.icon, themeForegroundColor());
+  return undefined;
 }
 
 async function fetchDynamicOptions(
@@ -67,6 +123,29 @@ async function fetchDynamicOptions(
   }
   const data = await res.json();
   return normalizeOptions(data);
+}
+
+function OptionPreview({
+  option,
+  className,
+}: {
+  option: DynamicOption;
+  className?: string;
+}) {
+  const src = optionPreviewSrc(option);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      referrerPolicy="no-referrer"
+      className={cn(
+        "shrink-0",
+        option.image ? "rounded object-cover" : "object-contain",
+        className,
+      )}
+    />
+  );
 }
 
 function FieldHeader({
@@ -118,6 +197,8 @@ export function DynamicOptionsField({
     ? `${sandbox.orgSlug}/${sandbox.virtualMcpId}/${sandbox.branch}`
     : "";
 
+  const currentValue = typeof value === "string" ? value : "";
+
   const query = useQuery({
     queryKey: KEYS.sandboxInvoke(
       sandboxKey,
@@ -129,13 +210,15 @@ export function DynamicOptionsField({
         loaderPath!,
         debouncedSearch || undefined,
       ),
-    enabled: !!previewUrl && !!loaderPath && open,
+    // Fetch eagerly when a value is already selected so its preview (icon /
+    // swatch / label) shows on the closed trigger, not only after opening.
+    enabled: !!previewUrl && !!loaderPath && (open || !!currentValue),
     staleTime: 60_000,
     retry: 1,
   });
 
   const options = query.data ?? [];
-  const currentValue = typeof value === "string" ? value : "";
+  const visibleOptions = filterOptions(options, search);
   const selectedOption = options.find((opt) => opt.value === currentValue);
 
   // Fallback to text input when preview is not available
@@ -170,14 +253,7 @@ export function DynamicOptionsField({
           >
             {selectedOption ? (
               <span className="flex min-w-0 items-center gap-2">
-                {selectedOption.image && (
-                  <img
-                    src={selectedOption.image}
-                    alt=""
-                    referrerPolicy="no-referrer"
-                    className="h-6 w-6 shrink-0 rounded object-cover"
-                  />
-                )}
+                <OptionPreview option={selectedOption} className="h-6 w-6" />
                 <span className="truncate">
                   {selectedOption.label ?? selectedOption.value}
                 </span>
@@ -212,7 +288,7 @@ export function DynamicOptionsField({
                   : t("sectionsEditor.dynamicOptionsField.noResults")}
               </CommandEmpty>
               <CommandGroup>
-                {options.map((opt) => (
+                {visibleOptions.map((opt) => (
                   <CommandItem
                     key={opt.value}
                     value={opt.value}
@@ -222,14 +298,10 @@ export function DynamicOptionsField({
                     }}
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      {opt.image && (
-                        <img
-                          src={opt.image}
-                          alt=""
-                          referrerPolicy="no-referrer"
-                          className="h-9 w-9 shrink-0 rounded object-cover"
-                        />
-                      )}
+                      <OptionPreview
+                        option={opt}
+                        className={cn(opt.image ? "h-9 w-9" : "h-6 w-6")}
+                      />
                       <span className="truncate">{opt.label ?? opt.value}</span>
                     </span>
                     <Check
