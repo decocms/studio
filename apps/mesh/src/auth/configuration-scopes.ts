@@ -12,6 +12,43 @@
 import { prop } from "@/tools/connection/json-path";
 
 /**
+ * The literal "*" scope grants `permissions["*"] = ["*"]` — an unconditional
+ * "all resources, all tools" grant that downstream `checkApiKeyPermission`
+ * treats as full access, bypassing every role check. A connection's
+ * configuration scopes must never be able to mint that: it is a privilege
+ * escalation primitive (any org member could create a connection, harvest the
+ * resulting wildcard mesh JWT, and replay it to reach admin/owner-only tools).
+ *
+ * Legitimate connection scopes are always resource-scoped ("KEY::SCOPE"), which
+ * only ever grant access to the specific connection referenced in state. The
+ * genuine full-access credential path (per-run sandbox keys) goes through
+ * API key creation directly, not through connection configuration scopes.
+ */
+const WILDCARD_SCOPE = "*";
+
+/**
+ * Reject the wildcard "*" scope in a connection's configuration scopes.
+ *
+ * Enforced at write time (connection create/update) so a wildcard can never be
+ * stored — regardless of whether it arrives in the request body or is
+ * self-reported by a (potentially attacker-controlled) MCP server during tool
+ * discovery. See {@link WILDCARD_SCOPE} for why.
+ *
+ * @throws Error if any scope is the literal "*"
+ */
+export function assertNoWildcardScopes(
+  scopes: string[] | null | undefined,
+): void {
+  if (scopes?.includes(WILDCARD_SCOPE)) {
+    throw new Error(
+      'Wildcard configuration scope "*" is not allowed. Connection scopes ' +
+        'must be resource-scoped ("KEY::SCOPE"); a wildcard would grant ' +
+        "unconditional access to every tool and resource.",
+    );
+  }
+}
+
+/**
  * Parse scope string to extract key and scope parts
  * @param scope - Scope string in format "KEY::SCOPE"
  * @returns Tuple of [key, scopeName]
@@ -81,8 +118,10 @@ export function extractConnectionPermissions(
   }
 
   for (const scope of scopes) {
-    if (scope === "*") {
-      permissions["*"] = ["*"];
+    // Defense-in-depth: never expand a connection's "*" scope into a full
+    // wildcard grant, even if one was persisted before write-time validation
+    // existed (or via any path that bypassed it). See WILDCARD_SCOPE.
+    if (scope === WILDCARD_SCOPE) {
       continue;
     }
     const parsed = tryParseScope(scope);

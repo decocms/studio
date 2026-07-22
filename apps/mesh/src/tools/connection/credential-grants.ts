@@ -1,4 +1,5 @@
 import {
+  assertNoWildcardScopes,
   getReferencedConnectionIds,
   parseScope,
 } from "@/auth/configuration-scopes";
@@ -84,12 +85,16 @@ export async function validateConfiguration(
   organizationId: string,
   ctx: StudioContext,
 ): Promise<void> {
+  // Reject the wildcard "*" scope outright: it would mint an unconditional
+  // full-access mesh JWT and is a privilege-escalation primitive. This is the
+  // primary, fail-fast enforcement point — it covers scopes supplied in the
+  // request body as well as scopes self-reported by the target MCP server
+  // during tool discovery, since both are merged before reaching here.
+  assertNoWildcardScopes(scopes);
+
   // Validate scope format and state keys.
   for (const scope of scopes) {
     // Parse scope format: "KEY::SCOPE" (throws on invalid format).
-    if (scope === "*") {
-      continue;
-    }
     const [key] = parseScope(scope);
     const value = prop(key, state);
 
