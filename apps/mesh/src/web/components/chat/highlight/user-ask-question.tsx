@@ -171,7 +171,7 @@ function ChoiceInput({
               >
                 <span
                   className={cn(
-                    "flex items-center justify-center size-6 rounded-md text-sm shrink-0",
+                    "flex items-center justify-center size-6 rounded-md text-sm shrink-0 mt-0.5",
                     isSelected
                       ? "bg-chart-1 text-white"
                       : "bg-muted text-foreground",
