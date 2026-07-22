@@ -450,7 +450,7 @@ function AgentAvatarImage({
         alt={name}
         className={cn(
           "h-full w-full",
-          bgClass ? "object-contain p-3" : "object-cover",
+          bgClass ? "object-contain" : "object-cover",
         )}
         onError={() => setErrored(true)}
       />
