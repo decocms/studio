@@ -229,4 +229,65 @@ describe("createSandboxFsHooks", () => {
     expect(attempts).toBe(2);
     expect(invalidated).toBe(1);
   });
+
+  test("respawns on 404 sandbox-not-found even when canAutoRestart is false", async () => {
+    // A reaped sandbox (worker eviction / housekeeper GC dropped it mid-run) is
+    // provably gone — never a user pause — so even a persistent branch recovers
+    // instead of surfacing a sticky failure. `force` must reach invalidateHandle
+    // so the map entry is reaped, not just the memoised handle cleared.
+    let attempts = 0;
+    let forced: boolean | undefined;
+    const provider = {
+      kind: "agent-sandbox",
+      proxyDaemonRequest: async () => {
+        attempts++;
+        if (attempts === 1) {
+          return new Response(JSON.stringify({ error: "sandbox not found" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response(
+          JSON.stringify({ kind: "text", content: "recovered", lineCount: 1 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    } as unknown as SandboxProvider;
+    const hooks = createSandboxFsHooks(provider, {
+      ensureHandle: async () => "h",
+      invalidateHandle: async (opts) => {
+        forced = opts?.force;
+      },
+      canAutoRestart: false,
+    });
+    const out = await hooks.onRead("/app/x.ts");
+    expect(out).toBe("recovered");
+    expect(attempts).toBe(2);
+    expect(forced).toBe(true);
+  });
+
+  test("does NOT respawn on an ambiguous connect failure when canAutoRestart is false", async () => {
+    // A transport throw (not a 404) could be a transient blip on a still-live
+    // persistent sandbox — reaping would abandon its working tree — so the
+    // conservative branch surfaces the sticky failure without a retry.
+    let attempts = 0;
+    let invalidated = 0;
+    const provider = {
+      kind: "agent-sandbox",
+      proxyDaemonRequest: async () => {
+        attempts++;
+        throw new Error("connection refused");
+      },
+    } as unknown as SandboxProvider;
+    const hooks = createSandboxFsHooks(provider, {
+      ensureHandle: async () => "h",
+      invalidateHandle: async () => {
+        invalidated++;
+      },
+      canAutoRestart: false,
+    });
+    await expect(hooks.onRead("/app/x.ts")).rejects.toThrow(/not running/);
+    expect(attempts).toBe(1);
+    expect(invalidated).toBe(0);
+  });
 });
