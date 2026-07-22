@@ -475,10 +475,12 @@ function HomeAgentRow({
               .removeAgent(agent.id)
               .catch(() => toast.error(t("home.addTileDrawer.removeError")))
           }
-          aria-label={t("home.addTileDrawer.removeFromHome", {
+          aria-label={t("home.addTileDrawer.removeAgentFromHome", {
             name: agent.title ?? agent.id,
           })}
-          title={t("home.addTileDrawer.removeFromHomeTitle")}
+          title={t("home.addTileDrawer.removeAgentFromHome", {
+            name: agent.title ?? agent.id,
+          })}
           className="shrink-0 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
         >
           <X size={14} />
