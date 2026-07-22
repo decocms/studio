@@ -95,9 +95,17 @@ export const createCommerceDiagnosticShareRoutes = () => {
     const email = parsed.data.invitee_email.toLowerCase();
     const db = ctx.db;
 
+    // The deep link is `/{slug}/...` and the home resolves the org by slug, so
+    // an org without a slug can't produce a working link. Slugs are non-null in
+    // practice (Better Auth mints one on create); fail loud rather than emit a
+    // `/{id}/...` link that 404s.
+    const orgSlug = org.slug;
+    if (!orgSlug) {
+      return c.json({ error: "organization has no slug" }, 409);
+    }
+
     // The deep link opens the diagnostic once the recipient is in the org. A
     // fresh taskId per share matches commerceReportNavTarget (a new home thread).
-    const orgSlug = org.slug ?? org.id;
     const redirectPath = diagnosticDeepLinkPath(
       orgSlug,
       org.id,
@@ -131,7 +139,11 @@ export const createCommerceDiagnosticShareRoutes = () => {
       }
     }
 
-    // Reuse a live pending invitation (idempotent re-share), else insert one.
+    // Reuse a live pending invitation, else insert one. This collapses repeated
+    // shares of the same diagnostic to one row in the common (serial) case; two
+    // truly-concurrent shares to the same email can still both miss the select
+    // and insert — there's no unique constraint to dedup them, and accepting
+    // either lands the recipient in the org, so the duplicate is harmless.
     // The invitation table is Better-Auth-managed and not in the Kysely schema,
     // so it's raw SQL (camelCase columns are quoted). This is the path that
     // bypasses the generic sendInvitationEmail — see the header comment.
