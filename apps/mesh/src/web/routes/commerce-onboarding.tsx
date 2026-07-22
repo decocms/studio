@@ -20,6 +20,12 @@ import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.tsx";
+import {
   getCommerceDiscoveryAgentId,
   getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
@@ -88,21 +94,43 @@ type CommerceOnboardingLayoutProps = ComponentProps<typeof AuthSplitLayout>;
 
 function LanguageSwitcher() {
   const [preferences, setPreferences] = usePreferences();
-  const isPortuguese = preferences.language === "pt-BR";
+  const currentLang = preferences.language === "pt-BR" ? "PT-BR" : "EN";
 
   return (
-    <button
-      onClick={() => {
-        setPreferences((prev) => ({
-          ...prev,
-          language: isPortuguese ? "en" : "pt-BR",
-        }));
-      }}
-      className="text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
-      type="button"
-    >
-      {isPortuguese ? "English" : "Português"}
-    </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
+          type="button"
+        >
+          {currentLang}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onClick={() => {
+            setPreferences((prev) => ({
+              ...prev,
+              language: "en",
+            }));
+          }}
+          className={preferences.language === "en" ? "bg-accent" : ""}
+        >
+          English
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            setPreferences((prev) => ({
+              ...prev,
+              language: "pt-BR",
+            }));
+          }}
+          className={preferences.language === "pt-BR" ? "bg-accent" : ""}
+        >
+          Português (Brasil)
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
