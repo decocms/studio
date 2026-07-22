@@ -87,6 +87,8 @@ export const thread = {
   "thread.headerActions.resolveConflictsTooltip":
     "Resolve conflicts with {base} before merging",
   "thread.headerActions.runningTests": "Running tests…",
+  "thread.headerActions.squashMergeTooltip":
+    "Squash-merge PR #{prNumber} into {base}",
   "thread.headerActions.startingSandbox": "Starting sandbox…",
   "thread.headerActions.submitForReview": "Submit for review",
   "thread.headerActions.switchingTo": "Switching to {branch}…",

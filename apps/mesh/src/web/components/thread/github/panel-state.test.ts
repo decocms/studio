@@ -353,6 +353,7 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Publish to production");
     expect(r.action).toBe("merge-split");
     expect(r.variant).toBe("success");
+    expect(r.tooltip).toBe("Squash-merge PR #42 into main");
   });
 
   test("ahead of base + closed non-merged PR → Reopen PR", () => {
