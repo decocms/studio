@@ -18,6 +18,8 @@ describe("AgentAvatar", () => {
     const img = container.querySelector("img");
     expect(img).toBeInTheDocument();
     expect(img?.parentElement?.className).toContain("bg-red-100");
+    expect(img).toHaveClass("h-full", "w-full", "object-contain");
+    expect(img).not.toHaveClass("p-3");
   });
 
   it("recovers after an image load error once a new URL is set", () => {
