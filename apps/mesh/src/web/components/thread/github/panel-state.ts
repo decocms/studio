@@ -367,7 +367,7 @@ export function selectHeaderButton(
       label: publishToBaseLabel(pr.base, t),
       action: "merge-split",
       variant: "success",
-      tooltip: t("thread.headerActions.prMergedTooltip", {
+      tooltip: t("thread.headerActions.squashMergeTooltip", {
         prNumber: String(pr.number),
         base: pr.base,
       }),
