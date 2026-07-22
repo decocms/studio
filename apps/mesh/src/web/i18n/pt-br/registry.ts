@@ -155,6 +155,8 @@ export const registry = {
     "Ocultar da loja pública",
   "registry.monitorConnectionsPanel.loadFailed":
     "Falha ao carregar conexões de QA.",
+  "registry.monitorConnectionsPanel.loadingConnections":
+    "Carregando conexões de QA...",
   "registry.monitorConnectionsPanel.needsAuth": "Requer Autenticação",
   "registry.monitorConnectionsPanel.noConnectionsForFilter":
     'Nenhuma conexão de QA para este filtro. Clique em "Sincronizar" para criar mapeamentos de itens da loja e solicitações pendentes.',

@@ -693,7 +693,11 @@ export function MonitorConnectionsPanel() {
         </Button>
       </div>
       <div className="space-y-2">
-        {listQuery.isError ? (
+        {listQuery.isLoading ? (
+          <p className="text-xs text-muted-foreground text-center py-3">
+            {t("registry.monitorConnectionsPanel.loadingConnections")}
+          </p>
+        ) : listQuery.isError ? (
           <div className="p-8 text-center rounded-lg border border-border">
             <p className="text-sm text-destructive">
               {t("registry.monitorConnectionsPanel.loadFailed")}
@@ -711,25 +715,27 @@ export function MonitorConnectionsPanel() {
             </p>
           )
         )}
-        {!listQuery.isError && filteredItems.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filteredItems.map((entry) => {
-              const counts = failuresByItem[entry.mapping.item_id] ?? {
-                failedTools: 0,
-                failedResults: 0,
-              };
-              return (
-                <ConnectionRow
-                  key={entry.mapping.id}
-                  entry={entry}
-                  onAuthChanged={() => listQuery.refetch()}
-                  failedToolsCount={counts.failedTools}
-                  failedResultCount={counts.failedResults}
-                />
-              );
-            })}
-          </div>
-        )}
+        {!listQuery.isLoading &&
+          !listQuery.isError &&
+          filteredItems.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {filteredItems.map((entry) => {
+                const counts = failuresByItem[entry.mapping.item_id] ?? {
+                  failedTools: 0,
+                  failedResults: 0,
+                };
+                return (
+                  <ConnectionRow
+                    key={entry.mapping.id}
+                    entry={entry}
+                    onAuthChanged={() => listQuery.refetch()}
+                    failedToolsCount={counts.failedTools}
+                    failedResultCount={counts.failedResults}
+                  />
+                );
+              })}
+            </div>
+          )}
       </div>
     </Card>
   );
