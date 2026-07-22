@@ -120,7 +120,7 @@ function MentionNodeView(props: NodeViewProps) {
   // prompt or a legacy chip without `kind` (we'll re-verify in the handler).
   // Resources and skills have no edit dialog — their chip is inert.
   const isClickable =
-    view.editable && char === "/" && (kind === "prompt" || kind == null);
+    view.editable && char === "/" && (kind === "prompt" || kind === undefined);
 
   const triggerEdit = () => {
     const storage = getMentionStorage(editor);
@@ -253,8 +253,8 @@ export const MentionNode = Node.create({
         },
       },
       kind: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-kind") || null,
+        default: undefined,
+        parseHTML: (element) => element.getAttribute("data-kind") || undefined,
         renderHTML: (attributes) => {
           if (!attributes.kind) return {};
           return { "data-kind": attributes.kind };
