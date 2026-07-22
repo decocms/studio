@@ -53,6 +53,8 @@ import { track } from "@/web/lib/posthog-client";
 interface SlashMentionProps {
   editor: Editor;
   virtualMcpId: string | null;
+  /** Set to true while this dropdown is open — see TiptapProviderProps. */
+  suggestionOpenRef?: { current: boolean };
 }
 
 interface SlashItem extends BaseItem {
@@ -174,7 +176,11 @@ async function fetchAndInsertSkill(
   }
 }
 
-export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
+export const SlashMention = ({
+  editor,
+  virtualMcpId,
+  suggestionOpenRef,
+}: SlashMentionProps) => {
   const t = useT();
   const queryClient = useQueryClient();
   const { org } = useProjectContext();
@@ -415,6 +421,7 @@ export const SlashMention = ({ editor, virtualMcpId }: SlashMentionProps) => {
         queryFn={fetchItems}
         onSelect={handleItemSelect}
         onOpenChange={(open) => {
+          if (suggestionOpenRef) suggestionOpenRef.current = open;
           // Fires when the / picker dropdown actually renders (TipTap's
           // onStart). NOT when a literal "/" is typed — e.g. inside a URL
           // the picker won't open so the event won't fire.

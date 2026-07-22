@@ -1,7 +1,7 @@
 import { setupComponentTest } from "../../../../test/setup";
 setupComponentTest();
 import { describe, expect, it } from "bun:test";
-import { render as renderBare } from "@testing-library/react";
+import { fireEvent, render as renderBare } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -48,6 +48,40 @@ describe("TiptapProvider disabled", () => {
     const { container } = renderProvider(false);
     const editable = container.querySelector("[contenteditable]");
     expect(editable?.getAttribute("contenteditable")).toBe("true");
+  });
+});
+
+describe("TiptapProvider enter-to-submit vs. an open suggestion dropdown", () => {
+  // ProseMirror's own keydown listener runs before the @/ mention picker's
+  // (it's registered at editor mount, well before the picker ever opens —
+  // see the comment on suggestionOpenRef in input.tsx). Without the guard,
+  // pressing Enter to select a suggestion would also submit the draft.
+  function renderSubmittable(suggestionOpenRef: { current: boolean }) {
+    let submitCount = 0;
+    const { container } = render(
+      <TiptapProvider
+        tiptapDoc={undefined}
+        setTiptapDoc={() => {}}
+        enterToSubmit={true}
+        onSubmit={() => {
+          submitCount++;
+        }}
+        suggestionOpenRef={suggestionOpenRef}
+      >
+        <EditableProbe />
+      </TiptapProvider>,
+    );
+    const editable = container.querySelector("[contenteditable]")!;
+    fireEvent.keyDown(editable, { key: "Enter", code: "Enter" });
+    return submitCount;
+  }
+
+  it("submits on Enter when no suggestion dropdown is open", () => {
+    expect(renderSubmittable({ current: false })).toBe(1);
+  });
+
+  it("does not submit on Enter while a suggestion dropdown is open", () => {
+    expect(renderSubmittable({ current: true })).toBe(0);
   });
 });
 

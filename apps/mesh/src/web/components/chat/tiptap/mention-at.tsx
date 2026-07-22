@@ -25,6 +25,8 @@ import { useT } from "@/web/i18n/use-t.ts";
 interface AtMentionProps {
   editor: Editor;
   virtualMcpId: string | null;
+  /** Set to true while this dropdown is open — see TiptapProviderProps. */
+  suggestionOpenRef?: { current: boolean };
 }
 
 type AtMode = "categories" | "agents" | "resources";
@@ -38,7 +40,11 @@ interface AtItem extends BaseItem {
   uri?: string;
 }
 
-export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
+export const AtMention = ({
+  editor,
+  virtualMcpId,
+  suggestionOpenRef,
+}: AtMentionProps) => {
   const t = useT();
   const queryClient = useQueryClient();
   const { org } = useProjectContext();
@@ -258,6 +264,7 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
   };
 
   const handleOpenChange = (open: boolean) => {
+    if (suggestionOpenRef) suggestionOpenRef.current = open;
     if (open) {
       // Fires when the @ picker dropdown actually renders (TipTap's onStart).
       // NOT when a literal "@" is typed — e.g. inside an email address the
