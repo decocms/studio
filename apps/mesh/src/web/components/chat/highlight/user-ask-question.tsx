@@ -179,7 +179,7 @@ function ChoiceInput({
                 >
                   {index + 1}
                 </span>
-                <span className="text-sm text-foreground">
+                <span className="text-sm text-foreground min-w-0 break-words">
                   {option}
                 </span>
               </button>
