@@ -110,8 +110,13 @@ function MainControls({
  * tune here if the thresholds feel early/late.
  */
 const HEADER_W = {
-  /** Page selector shown at/above this width; hidden (not squished) below. */
-  pageSelector: 680,
+  /**
+   * Minimum space the centered page selector needs before it's shown. Measured
+   * against the *actual* gap left between the tab group and the right actions
+   * (not the whole header), so a dense header with many controls hides it
+   * rather than squishing it to a single letter.
+   */
+  pageSelectorMin: 140,
   /** Third tab kept at/above this width. */
   threeTabs: 560,
   /** Second tab kept at/above this width; below it only the active tab shows. */
@@ -161,8 +166,14 @@ export function WorkspacePanelGroup({
   // measurement says it must — no collapsed first-paint flash.
   const [headerWidth, headerRef] = useElementWidth();
   const maxTabs = maxTabsForWidth(headerWidth);
+  // The page selector centers in the flex-1 gap between the tab group and the
+  // right actions. Measure that gap directly (not the whole header) so it
+  // vanishes when there's no room for a usable selector instead of squishing
+  // to a single letter. `0` (pre-measurement) reads as roomy to avoid a
+  // first-paint flash.
+  const [pageSelectorSpace, pageSelectorRef] = useElementWidth();
   const showPageSelector =
-    headerWidth === 0 || headerWidth >= HEADER_W.pageSelector;
+    pageSelectorSpace === 0 || pageSelectorSpace >= HEADER_W.pageSelectorMin;
 
   // The agent switcher + new-chat action live in the nav sidebar while it's
   // expanded. When the sidebar is collapsed it has no room for them, so we
@@ -233,16 +244,19 @@ export function WorkspacePanelGroup({
           maxVisible={maxTabs}
         />
       </div>
-      {/* The page selector centers between the two side groups. Below the
-          `pageSelector` breakpoint it's hidden (display:none) rather than
-          squished — the portal target stays mounted so Preview keeps rendering
-          into it and never falls back to its inline toolbar. */}
-      <MainPanelHeaderSlot
-        className={cn(
-          "min-w-0 flex-1 justify-center",
-          !showPageSelector && "hidden",
-        )}
-      />
+      {/* The page selector centers between the two side groups in this flex-1
+          gap. We measure the gap (not the header) and, once it's too tight for
+          a usable selector, hide the slot (display:none) rather than let it
+          squish. The measured wrapper stays flex-1 so hiding the slot doesn't
+          collapse the measurement (no feedback loop); the portal target stays
+          mounted so Preview keeps rendering into it instead of falling back to
+          its inline toolbar. */}
+      <div
+        ref={pageSelectorRef}
+        className="flex min-w-0 flex-1 items-center justify-center"
+      >
+        <MainPanelHeaderSlot className={cn(!showPageSelector && "hidden")} />
+      </div>
       {/* shrink-0: the right actions (Edit / Submit / Publish / ⋯) are the
           highest-priority controls — they hold their size so they never
           overlap the center selector; the selector yields instead. */}
