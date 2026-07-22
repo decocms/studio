@@ -47,6 +47,7 @@ import {
   Zap,
   Key01,
   HardDrive,
+  LinkExternal01,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useT } from "@/web/i18n/use-t.ts";
@@ -101,6 +102,12 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           icon: <Building02 size={14} />,
           to: "/$org/settings/general",
           requires: "org:manage",
+        },
+        {
+          key: "connect",
+          label: "Connect to clients",
+          icon: <LinkExternal01 size={14} />,
+          to: "/$org/settings/connect",
         },
         {
           key: "brand-context",

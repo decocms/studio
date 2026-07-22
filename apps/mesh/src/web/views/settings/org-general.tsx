@@ -1,4 +1,5 @@
 import { Page } from "@/web/components/page";
+import { ConnectBanner } from "@/web/components/connect/connect-banner";
 import { OrganizationForm } from "@/web/components/settings/organization-form";
 import { DomainSettings } from "@/web/components/settings/domain-settings";
 import { DeleteOrganizationSection } from "@/web/components/settings/delete-organization-section";
@@ -13,6 +14,7 @@ export function OrgGeneralPage() {
         <Page.Body>
           <SettingsPage>
             <Page.Title>{t("settings.orgGeneral.organization")}</Page.Title>
+            <ConnectBanner />
             <OrganizationForm />
             <DomainSettings />
             <DeleteOrganizationSection />

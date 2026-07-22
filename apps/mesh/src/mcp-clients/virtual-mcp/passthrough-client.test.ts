@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import { slugify } from "@decocms/mcp-utils/aggregate";
+import { namespaceCode } from "@decocms/mcp-utils/aggregate";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type {
   VirtualMCPConnection,
@@ -143,7 +143,7 @@ describe("PassthroughClient", () => {
   });
 
   describe("tool namespacing", () => {
-    it("prefixes tool names with slugified connection ID", async () => {
+    it("prefixes tool names with the connection's namespace code", async () => {
       const connA = makeConnection("conn_aaa", "Server A");
       const connB = makeConnection("conn_bbb", "Server B");
 
@@ -170,8 +170,8 @@ describe("PassthroughClient", () => {
       const result = await pt.listTools();
       const names = result.tools.map((t) => t.name);
 
-      expect(names).toContain(`${slugify("conn_aaa")}_search`);
-      expect(names).toContain(`${slugify("conn_bbb")}_query`);
+      expect(names).toContain(`${namespaceCode("conn_aaa")}_search`);
+      expect(names).toContain(`${namespaceCode("conn_bbb")}_query`);
     });
   });
 
@@ -190,7 +190,7 @@ describe("PassthroughClient", () => {
         mockCtx,
       );
 
-      const namespacedName = `${slugify("conn_xyz")}_myTool`;
+      const namespacedName = `${namespaceCode("conn_xyz")}_myTool`;
       await pt.callTool({ name: namespacedName, arguments: { q: "test" } });
 
       // GatewayClient strips namespace before calling upstream
@@ -231,7 +231,7 @@ describe("PassthroughClient", () => {
       const names = result.tools.map((t) => t.name);
 
       expect(names).toHaveLength(1);
-      expect(names[0]).toBe(`${slugify("conn_b1")}_allowed`);
+      expect(names[0]).toBe(`${namespaceCode("conn_b1")}_allowed`);
     });
 
     it("selected_tools filters to specified tools only", async () => {
@@ -254,7 +254,7 @@ describe("PassthroughClient", () => {
       const names = result.tools.map((t) => t.name);
 
       expect(names).toHaveLength(1);
-      expect(names[0]).toBe(`${slugify("conn_sel")}_keep`);
+      expect(names[0]).toBe(`${namespaceCode("conn_sel")}_keep`);
     });
   });
 
