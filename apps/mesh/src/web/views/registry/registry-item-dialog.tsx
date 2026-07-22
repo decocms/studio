@@ -605,6 +605,10 @@ export function RegistryItemDialog({
   const handleDiscoverTools = async () => {
     const url = normalizeRemoteUrl(remoteHost);
     if (!url) return;
+    if (discoverTimerRef.current) {
+      clearTimeout(discoverTimerRef.current);
+      discoverTimerRef.current = null;
+    }
     lastDiscoveredUrlRef.current = url;
     const discovered = await discover(url, remoteTypeRef.current);
     if (discovered) {
@@ -743,6 +747,12 @@ export function RegistryItemDialog({
 
   const handleNext = () => {
     if (!validateStep(step)) return;
+    if (step === 1 && discoverTimerRef.current) {
+      // Leaving step 1 cancels any pending auto-discover so it can't
+      // overwrite tools the user edits by hand later, on step 3.
+      clearTimeout(discoverTimerRef.current);
+      discoverTimerRef.current = null;
+    }
     if (step < 3) setStep((step + 1) as WizardStep);
   };
 
