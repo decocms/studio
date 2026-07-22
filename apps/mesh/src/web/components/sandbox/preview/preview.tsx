@@ -697,7 +697,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const activateEditingMode = (mode: PreviewEditingMode) => {
     const previousMode = editingMode;
     if (!isMobile && mode !== previousMode) {
-      if (mode === "blocks") blocksPanelRef.current?.resize(40);
+      if (mode === "blocks") blocksPanelRef.current?.resize(30);
       else blocksPanelRef.current?.collapse();
     }
     setEditingMode(mode);
@@ -1363,14 +1363,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               ref={blocksPanelRef}
               id="preview-blocks-editor"
               order={1}
-              defaultSize={effectiveEditingMode === "blocks" ? 40 : 0}
-              minSize={30}
+              defaultSize={effectiveEditingMode === "blocks" ? 30 : 0}
+              minSize={20}
               collapsible
               collapsedSize={0}
-              className={cn(
-                "overflow-hidden",
-                effectiveEditingMode === "blocks" ? "min-w-[320px]" : "min-w-0",
-              )}
+              className="min-w-0 overflow-hidden"
             >
               {effectiveEditingMode === "blocks" && (
                 <BlocksPanel
