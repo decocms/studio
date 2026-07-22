@@ -539,8 +539,6 @@ export const settings = {
   "settings.providerKeyRow.cancel": "Cancelar",
   "settings.providerKeyRow.delete": "Excluir",
   "settings.providerKeyRow.deleteApiKey": "Excluir chave de API",
-  "settings.providerKeyRow.deleteApiKeyWarning":
-    "Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita. Isso excluir\u00e1 permanentemente {label}.",
   "settings.providerKeyRow.deleteProviderKey": "Excluir chave do provedor",
   "settings.providerKeyRow.editProviderKey": "Editar chave do provedor",
   "settings.providerKeyRow.failedToDeleteKey":

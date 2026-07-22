@@ -509,8 +509,6 @@ export const settings = {
   "settings.providerKeyRow.cancel": "Cancel",
   "settings.providerKeyRow.delete": "Delete",
   "settings.providerKeyRow.deleteApiKey": "Delete API key",
-  "settings.providerKeyRow.deleteApiKeyWarning":
-    "This action cannot be undone. This will permanently delete {label}.",
   "settings.providerKeyRow.deleteProviderKey": "Delete provider key",
   "settings.providerKeyRow.editProviderKey": "Edit provider key",
   "settings.providerKeyRow.failedToDeleteKey": "Failed to delete key: {error}",

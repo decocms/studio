@@ -141,9 +141,12 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
               {t("settings.providerKeyRow.deleteApiKey")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {t("settings.providerKeyRow.deleteApiKeyWarning", {
-                label: providerKey.label,
-              })}
+              {/* TODO(i18n): rich text — bolded label can't round-trip through t()'s plain-string interpolation */}
+              This action cannot be undone. This will permanently delete{" "}
+              <span className="font-medium text-foreground">
+                {providerKey.label}
+              </span>
+              .
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
