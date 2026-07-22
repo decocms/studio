@@ -290,7 +290,6 @@ interface AgentAvatarProps {
   size?: AgentAvatarSize;
   className?: string;
   "aria-label"?: string;
-  role?: string;
 }
 
 /** Colored background + centered icon — shared by all icon-rendering paths. */
@@ -300,14 +299,12 @@ function IconAvatar({
   size,
   className,
   "aria-label": ariaLabel,
-  role,
 }: {
   Icon: IconComponent;
   color: AgentIconColor;
   size: AgentAvatarSize;
   className?: string;
   "aria-label"?: string;
-  role?: string;
 }) {
   const sizeConfig = SIZES[size];
   return (
@@ -321,7 +318,6 @@ function IconAvatar({
         className,
       )}
       aria-label={ariaLabel}
-      role={role}
     >
       <Icon size={sizeConfig.icon} />
     </div>
@@ -334,7 +330,6 @@ export function AgentAvatar({
   size = "md",
   className,
   "aria-label": ariaLabel,
-  role,
 }: AgentAvatarProps) {
   const parsed = parseIconString(icon);
 
@@ -350,7 +345,6 @@ export function AgentAvatar({
         size={size}
         className={className}
         aria-label={ariaLabel}
-        role={role}
       />
     );
   }
@@ -367,7 +361,6 @@ export function AgentAvatar({
         size={size}
         className={className}
         aria-label={ariaLabel}
-        role={role}
       />
     );
   }
@@ -382,7 +375,6 @@ export function AgentAvatar({
       size={size}
       className={className}
       aria-label={ariaLabel}
-      role={role}
     />
   );
 }
@@ -412,7 +404,6 @@ function AgentAvatarImage({
   size = "md",
   className,
   "aria-label": ariaLabel,
-  role,
 }: {
   url: string;
   color?: string;
@@ -420,7 +411,6 @@ function AgentAvatarImage({
   size?: AgentAvatarSize;
   className?: string;
   "aria-label"?: string;
-  role?: string;
 }) {
   const [errored, setErrored] = useState(false);
   const sizeConfig = SIZES[size];
@@ -435,7 +425,6 @@ function AgentAvatarImage({
         size={size}
         className={className}
         aria-label={ariaLabel}
-        role={role}
       />
     );
   }
@@ -450,7 +439,6 @@ function AgentAvatarImage({
         className,
       )}
       aria-label={ariaLabel}
-      role={role}
     >
       <img
         src={url}
