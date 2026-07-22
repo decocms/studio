@@ -150,7 +150,18 @@ function ConnectionRow({
     updateAuth.mutate(
       { connectionId, authStatus: "authenticated" },
       {
-        onSuccess: () => onAuthChanged(),
+        onSuccess: () => {
+          onAuthChanged();
+          // Auth changed → upstream may return different content; drop cached
+          // UI HTML for this connection (IDB + in-memory query) so it re-reads
+          // fresh, regardless of whether auth happened via OAuth or a token.
+          void clearHtmlResourceCacheForConnection(connectionId);
+          queryClient.invalidateQueries({
+            predicate: (query) =>
+              query.queryKey[1] === UI_RESOURCE_HTML_KEY &&
+              query.queryKey[3] === connectionId,
+          });
+        },
         onError: (err) =>
           toast.error(
             `Failed to save auth status for "${title}": ${err instanceof Error ? err.message : String(err)}`,
@@ -268,14 +279,6 @@ function ConnectionRow({
       setIsReplacingToken(false);
       setTokenValue("");
       markAuthenticated();
-      // Auth changed → upstream may return different content; drop cached UI
-      // HTML for this connection (IDB + in-memory query) so it re-reads fresh.
-      void clearHtmlResourceCacheForConnection(connectionId);
-      queryClient.invalidateQueries({
-        predicate: (query) =>
-          query.queryKey[1] === UI_RESOURCE_HTML_KEY &&
-          query.queryKey[3] === connectionId,
-      });
       await probeQuery.refetch();
     } catch (err) {
       toast.error(
