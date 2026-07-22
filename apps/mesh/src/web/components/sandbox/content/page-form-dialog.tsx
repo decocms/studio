@@ -1,5 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Loading01 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 import {
   Dialog,
   DialogContent,
@@ -18,22 +20,22 @@ import type { PageEntry } from "@/web/components/sections-editor/page-list";
 
 export type PageFormMode = "create" | "duplicate" | "rename";
 
-const TITLES: Record<PageFormMode, string> = {
-  create: "Create new page",
-  duplicate: "Duplicate page",
-  rename: "Rename page",
+const TITLE_KEYS: Record<PageFormMode, TranslationKey> = {
+  create: "sandbox.pageFormDialog.titleCreate",
+  duplicate: "sandbox.pageFormDialog.titleDuplicate",
+  rename: "sandbox.pageFormDialog.titleRename",
 };
 
-const SUBMIT_LABELS: Record<PageFormMode, string> = {
-  create: "Create",
-  duplicate: "Duplicate",
-  rename: "Save",
+const SUBMIT_LABEL_KEYS: Record<PageFormMode, TranslationKey> = {
+  create: "sandbox.pageFormDialog.submitCreate",
+  duplicate: "sandbox.pageFormDialog.submitDuplicate",
+  rename: "sandbox.pageFormDialog.submitSave",
 };
 
-const PENDING_LABELS: Record<PageFormMode, string> = {
-  create: "Creating…",
-  duplicate: "Duplicating…",
-  rename: "Saving…",
+const PENDING_LABEL_KEYS: Record<PageFormMode, TranslationKey> = {
+  create: "sandbox.pageFormDialog.pendingCreate",
+  duplicate: "sandbox.pageFormDialog.pendingDuplicate",
+  rename: "sandbox.pageFormDialog.pendingSave",
 };
 
 export function PageFormDialog({
@@ -73,6 +75,7 @@ export function PageFormDialog({
   }) => void | Promise<void>;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(initialName);
   const [path, setPath] = useState(initialPath);
   const [templateKey, setTemplateKey] = useState(BLANK_TEMPLATE);
@@ -129,7 +132,7 @@ export function PageFormDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{TITLES[mode]}</DialogTitle>
+            <DialogTitle>{t(TITLE_KEYS[mode])}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -139,7 +142,7 @@ export function PageFormDialog({
                   htmlFor="page-form-template"
                   className="text-xs font-medium text-muted-foreground"
                 >
-                  Template
+                  {t("sandbox.pageFormDialog.labelTemplate")}
                 </label>
                 <PageTemplateSelect
                   id="page-form-template"
@@ -155,13 +158,13 @@ export function PageFormDialog({
                 htmlFor="page-form-name"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Name
+                {t("sandbox.pageFormDialog.labelName")}
               </label>
               <Input
                 id="page-form-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="My page"
+                placeholder={t("sandbox.pageFormDialog.placeholderName")}
                 autoFocus
                 disabled={isPending}
               />
@@ -171,13 +174,13 @@ export function PageFormDialog({
                 htmlFor="page-form-path"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Path
+                {t("sandbox.pageFormDialog.labelPath")}
               </label>
               <Input
                 id="page-form-path"
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                placeholder="/example"
+                placeholder={t("sandbox.pageFormDialog.placeholderPath")}
                 disabled={isPending}
               />
             </div>
@@ -193,7 +196,7 @@ export function PageFormDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {t("sandbox.pageFormDialog.buttonCancel")}
             </Button>
             <Button
               type="submit"
@@ -202,10 +205,10 @@ export function PageFormDialog({
               {isPending ? (
                 <>
                   <Loading01 size={14} className="animate-spin" />
-                  {PENDING_LABELS[mode]}
+                  {t(PENDING_LABEL_KEYS[mode])}
                 </>
               ) : (
-                SUBMIT_LABELS[mode]
+                t(SUBMIT_LABEL_KEYS[mode])
               )}
             </Button>
           </DialogFooter>

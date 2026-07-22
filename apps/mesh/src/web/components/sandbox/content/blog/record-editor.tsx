@@ -8,6 +8,8 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import { ImageField } from "@/web/components/sections-editor/fields/image-field";
 import { buildBlogBlock, getBlogPayload, type BlogKind } from "./blog-data";
 import { str } from "./blocks/primitives";
@@ -20,39 +22,54 @@ type RecordKind = Extract<BlogKind, "authors">;
 
 interface FieldDef {
   key: string;
-  label: string;
+  labelKey: TranslationKey;
   widget: "text" | "textarea" | "image" | "select";
-  placeholder?: string;
+  placeholderKey?: TranslationKey;
   /** Choices for the "select" widget; the first one is the display default. */
-  options?: Array<{ value: string; label: string }>;
+  options?: Array<{ value: string; labelKey: TranslationKey }>;
 }
 
 const FIELDS: Record<RecordKind, FieldDef[]> = {
   authors: [
-    { key: "name", label: "Name", widget: "text" },
+    { key: "name", labelKey: "sandbox.recordEditor.fieldName", widget: "text" },
     {
       key: "type",
-      label: "Type",
+      labelKey: "sandbox.recordEditor.fieldType",
       widget: "select",
       options: [
-        { value: "Person", label: "Person" },
-        { value: "Organization", label: "Organization" },
+        { value: "Person", labelKey: "sandbox.recordEditor.optionPerson" },
+        {
+          value: "Organization",
+          labelKey: "sandbox.recordEditor.optionOrganization",
+        },
       ],
     },
     {
       key: "email",
-      label: "Email",
+      labelKey: "sandbox.recordEditor.fieldEmail",
       widget: "text",
-      placeholder: "author@example.com",
+      placeholderKey: "sandbox.recordEditor.placeholderEmail",
     },
-    { key: "jobTitle", label: "Job title", widget: "text" },
-    { key: "company", label: "Company", widget: "text" },
-    { key: "avatar", label: "Avatar", widget: "image" },
+    {
+      key: "jobTitle",
+      labelKey: "sandbox.recordEditor.fieldJobTitle",
+      widget: "text",
+    },
+    {
+      key: "company",
+      labelKey: "sandbox.recordEditor.fieldCompany",
+      widget: "text",
+    },
+    {
+      key: "avatar",
+      labelKey: "sandbox.recordEditor.fieldAvatar",
+      widget: "image",
+    },
   ],
 };
 
-const TITLE: Record<RecordKind, string> = {
-  authors: "Author",
+const TITLE: Record<RecordKind, TranslationKey> = {
+  authors: "sandbox.recordEditor.titleAuthor",
 };
 
 export function RecordEditor({
@@ -70,6 +87,7 @@ export function RecordEditor({
   blockKey: string;
   block: Record<string, unknown> | undefined;
 }) {
+  const t = useT();
   const save = useSaveBlogBlock({
     orgSlug,
     virtualMcpId,
@@ -88,7 +106,7 @@ export function RecordEditor({
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
-        <span className="text-sm font-medium">{TITLE[kind]}</span>
+        <span className="text-sm font-medium">{t(TITLE[kind])}</span>
         <SaveStatus isPending={save.isPending} isError={save.isError} />
       </div>
       <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6">
@@ -100,27 +118,27 @@ export function RecordEditor({
                   schema={{
                     type: "string",
                     format: "image-uri",
-                    title: field.label,
+                    title: t(field.labelKey),
                   }}
                   value={payload[field.key]}
                   onChange={(v) => setField(field.key, v)}
                   path={field.key}
-                  label={field.label}
+                  label={t(field.labelKey)}
                 />
               ) : field.widget === "select" ? (
                 <>
-                  <Label htmlFor={field.key}>{field.label}</Label>
+                  <Label htmlFor={field.key}>{t(field.labelKey)}</Label>
                   <Select
                     value={str(payload[field.key]) || field.options?.[0]?.value}
                     onValueChange={(v) => setField(field.key, v)}
                   >
                     <SelectTrigger id={field.key} className="h-10 w-full">
-                      <SelectValue placeholder={field.label} />
+                      <SelectValue placeholder={t(field.labelKey)} />
                     </SelectTrigger>
                     <SelectContent>
                       {(field.options ?? []).map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                          {t(option.labelKey)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -128,7 +146,7 @@ export function RecordEditor({
                 </>
               ) : (
                 <>
-                  <Label htmlFor={field.key}>{field.label}</Label>
+                  <Label htmlFor={field.key}>{t(field.labelKey)}</Label>
                   {field.widget === "textarea" ? (
                     <Textarea
                       id={field.key}
@@ -140,7 +158,11 @@ export function RecordEditor({
                     <Input
                       id={field.key}
                       value={str(payload[field.key])}
-                      placeholder={field.placeholder}
+                      placeholder={
+                        field.placeholderKey
+                          ? t(field.placeholderKey)
+                          : undefined
+                      }
                       onChange={(e) => setField(field.key, e.target.value)}
                       className="h-10"
                     />

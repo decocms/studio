@@ -20,6 +20,7 @@ import {
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import {
   buildBlogBlock,
@@ -79,6 +80,7 @@ export function CategoryEditor({
   onOpenPost: (key: string) => void;
   previewBaseUrl?: string | null;
 }) {
+  const t = useT();
   const save = useSaveBlogBlock({
     orgSlug,
     virtualMcpId,
@@ -166,8 +168,10 @@ export function CategoryEditor({
       syncCategory(nextCategory);
       toast.success(
         changed > 0
-          ? `Renamed slug and updated ${changed} ${changed === 1 ? "post" : "posts"}`
-          : "Renamed slug",
+          ? t("sandbox.categoryEditor.renameSuccessWithPosts", {
+              count: String(changed),
+            })
+          : t("sandbox.categoryEditor.renameSuccessNoPosts"),
       );
       setPendingRename(null);
     } catch (err) {
@@ -175,7 +179,11 @@ export function CategoryEditor({
       // the user can retry the rename cleanly.
       setSlugDraft(oldSlug);
       setPendingRename(null);
-      toast.error(err instanceof Error ? err.message : "Rename failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.categoryEditor.renameFailed"),
+      );
     } finally {
       setIsRenaming(false);
     }
@@ -205,7 +213,7 @@ export function CategoryEditor({
       <div className="flex h-full flex-col">
         <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
           <span className="truncate text-sm font-medium">
-            {str(category.name) || "Untitled category"}
+            {str(category.name) || t("sandbox.categoryEditor.untitledCategory")}
           </span>
           <div className="flex shrink-0 items-center gap-3">
             <SaveStatus isPending={save.isPending} isError={save.isError} />
@@ -214,13 +222,13 @@ export function CategoryEditor({
                 type="button"
                 variant="outline"
                 size="sm"
-                title="Open the category preview in a new tab"
+                title={t("sandbox.categoryEditor.previewTooltip")}
                 onClick={() =>
                   window.open(previewUrl, "_blank", "noopener,noreferrer")
                 }
               >
                 <LinkExternal01 size={14} />
-                See category preview
+                {t("sandbox.categoryEditor.seeCategoryPreview")}
               </Button>
             )}
           </div>
@@ -231,41 +239,49 @@ export function CategoryEditor({
             <EditableText
               value={str(category.name)}
               onChange={(v) => setField("name", v)}
-              placeholder="Category name"
+              placeholder={t("sandbox.categoryEditor.categoryNamePlaceholder")}
               className="py-1 text-3xl font-bold text-foreground"
             />
 
             <div className="mt-4 space-y-2">
-              <Label htmlFor="category-slug">Slug</Label>
+              <Label htmlFor="category-slug">
+                {t("sandbox.categoryEditor.slugLabel")}
+              </Label>
               <Input
                 id="category-slug"
                 value={slugDraft}
                 onChange={(e) => setSlugDraft(e.target.value)}
                 onBlur={commitSlugFromDraft}
-                placeholder="my-category"
+                placeholder={t("sandbox.categoryEditor.slugPlaceholder")}
                 className="h-10"
               />
             </div>
 
             <div className="mt-4 space-y-2">
-              <Label htmlFor="category-description">Description</Label>
+              <Label htmlFor="category-description">
+                {t("sandbox.categoryEditor.descriptionLabel")}
+              </Label>
               <Input
                 id="category-description"
                 value={str(category.description)}
                 onChange={(e) => setField("description", e.target.value)}
-                placeholder="Short description for this category"
+                placeholder={t("sandbox.categoryEditor.descriptionPlaceholder")}
                 className="h-10"
               />
             </div>
 
             {/* Category page content — same collapsible panel as the post body */}
-            <CollapsibleSection icon={Pilcrow01} title="Content" defaultOpen>
+            <CollapsibleSection
+              icon={Pilcrow01}
+              title={t("sandbox.categoryEditor.contentTitle")}
+              defaultOpen
+            >
               <BlockDocument
                 value={asBlocks(category.sections)}
                 onChange={(next) => setField("sections", next)}
                 meta={meta}
                 sandboxRef={{ orgSlug, virtualMcpId, branch }}
-                emptyMessage="This category has no content yet. Use ⊕ to add your first block."
+                emptyMessage={t("sandbox.categoryEditor.noContentEmpty")}
               />
             </CollapsibleSection>
 
@@ -278,8 +294,9 @@ export function CategoryEditor({
                     className="shrink-0 text-muted-foreground"
                   />
                   <span className="text-sm">
-                    {postCount} {postCount === 1 ? "post" : "posts"} in this
-                    category
+                    {t("sandbox.categoryEditor.postsInCategory", {
+                      count: String(postCount),
+                    })}
                   </span>
                 </div>
                 <Button
@@ -289,12 +306,12 @@ export function CategoryEditor({
                   disabled={!committedSlug}
                   title={
                     !committedSlug
-                      ? "Set a slug to add posts to this category"
-                      : "Pick posts to add to this category"
+                      ? t("sandbox.categoryEditor.setSlugTooltip")
+                      : t("sandbox.categoryEditor.pickPostsTooltip")
                   }
                   onClick={() => onManagePosts(committedSlug)}
                 >
-                  Add posts
+                  {t("sandbox.categoryEditor.addPostsButton")}
                   <ArrowRight size={14} />
                 </Button>
               </div>
@@ -313,7 +330,8 @@ export function CategoryEditor({
                         />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm">
-                            {p.title || "Untitled post"}
+                            {p.title ||
+                              t("sandbox.categoryEditor.untitledPost")}
                           </span>
                           {p.slug && (
                             <span className="block truncate text-xs text-muted-foreground">
@@ -342,17 +360,23 @@ export function CategoryEditor({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Rename category slug?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("sandbox.categoryEditor.renameDialogTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingRename
-                ? `Changing the slug from "${pendingRename.oldSlug}" to "${pendingRename.newSlug}" will update ${pendingRename.count} ${
-                    pendingRename.count === 1 ? "post" : "posts"
-                  } that reference this category.`
+                ? t("sandbox.categoryEditor.renameDialogDescription", {
+                    oldSlug: pendingRename.oldSlug,
+                    newSlug: pendingRename.newSlug,
+                    count: String(pendingRename.count),
+                  })
                 : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isRenaming}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isRenaming}>
+              {t("sandbox.categoryEditor.cancelButton")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -365,10 +389,10 @@ export function CategoryEditor({
               {isRenaming ? (
                 <>
                   <Loading01 size={14} className="animate-spin" />
-                  Renaming…
+                  {t("sandbox.categoryEditor.renamingLabel")}
                 </>
               ) : (
-                "Rename & update posts"
+                t("sandbox.categoryEditor.renameActionButton")
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

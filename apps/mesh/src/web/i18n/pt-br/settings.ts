@@ -16,7 +16,7 @@ export const settings = {
   "settings.nav.manage": "Gerenciar",
   "settings.nav.monitor": "Monitoramento",
   "settings.nav.members": "Membros",
-  "settings.nav.roles": "Papéis",
+  "settings.nav.roles": "Cargos",
   "settings.nav.security": "Segurança",
   "settings.nav.account": "Conta",
   "settings.nav.profile": "Perfil e preferências",
@@ -48,9 +48,11 @@ export const settings = {
   "settings.preferences.toolApprovalDescription":
     "Controle como as ferramentas são aprovadas antes da execução.",
   "settings.preferences.toolApprovalAsk": "Perguntar antes de editar",
+  "settings.preferences.toolApprovalAskShort": "Perguntar",
   "settings.preferences.toolApprovalAskDescription":
     "Aprova automaticamente ferramentas somente leitura",
   "settings.preferences.toolApprovalAuto": "Aprovar automaticamente",
+  "settings.preferences.toolApprovalAutoShort": "Auto",
   "settings.preferences.toolApprovalAutoDescription":
     "Executa tudo sem aprovação",
   "settings.automations.browseAgentsButton": "Procurar agentes",
@@ -637,4 +639,11 @@ export const settings = {
   "settings.simpleModeSection.tierWebSearch": "Busca na web",
   "settings.simpleModeSection.tierWebSearchDesc":
     "Respostas r\u00e1pidas e atualizadas da web",
+  "settings.aiProviders.recommended":
+    "Recomendado \u2014 100+ modelos, pague conforme usa",
+  "settings.aiProviders.customOpenAiCompatible":
+    "OpenAI-compat\u00edvel personalizado",
+  "settings.aiProviders.customOpenAiDescription":
+    "Traga seu pr\u00f3prio servidor de modelos (avan\u00e7ado)",
+  "settings.aiProviders.moreProviders": "{count} provedor{plural} adicional",
 } satisfies Record<keyof typeof settingsEn, string>;

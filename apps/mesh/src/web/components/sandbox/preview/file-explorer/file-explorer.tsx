@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { useChatStream } from "@/web/components/chat/context";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { useT } from "@/web/i18n/use-t.ts";
 import { KEYS } from "@/web/lib/query-keys";
 import { saveChangesDebug } from "../../../thread/github/save-changes-debug.ts";
 import {
@@ -242,10 +243,15 @@ export function FileExplorer({
     });
   }
 
-  function copyText(label: string, value: string) {
+  function copyText(t: ReturnType<typeof useT>, label: string, value: string) {
     void navigator.clipboard.writeText(value).then(
-      () => toast.success(`${label} copied`),
-      () => toast.error(`Failed to copy ${label.toLowerCase()}`),
+      () => toast.success(t("sandbox.fileExplorer.textCopied", { label })),
+      () =>
+        toast.error(
+          t("sandbox.fileExplorer.failedToCopyText", {
+            label: label.toLowerCase(),
+          }),
+        ),
     );
   }
 
@@ -347,11 +353,11 @@ export function FileExplorer({
     });
   }
 
-  async function handleCreateFile(name: string) {
+  async function handleCreateFile(t: ReturnType<typeof useT>, name: string) {
     if (!nameDialog) return;
     const filePath = joinTreePath(nameDialog.parentDir, name);
     if (pathExistsInFileList(filePath, files, directories)) {
-      throw new Error(`"${name}" already exists`);
+      throw new Error(t("sandbox.fileExplorer.fileAlreadyExists", { name }));
     }
     await postSandbox("write", {
       path: toDaemonPath(filePath),
@@ -363,11 +369,11 @@ export function FileExplorer({
     handleFileClick(filePath);
   }
 
-  async function handleCreateFolder(name: string) {
+  async function handleCreateFolder(t: ReturnType<typeof useT>, name: string) {
     if (!nameDialog) return;
     const folderPath = joinTreePath(nameDialog.parentDir, name);
     if (pathExistsInFileList(folderPath, files, directories)) {
-      throw new Error(`"${name}" already exists`);
+      throw new Error(t("sandbox.fileExplorer.fileAlreadyExists", { name }));
     }
     const daemonFolderPath = toDaemonPath(folderPath);
     await postSandbox("mkdir", { path: daemonFolderPath });
@@ -394,7 +400,7 @@ export function FileExplorer({
     });
   }
 
-  async function handleRename(name: string) {
+  async function handleRename(t: ReturnType<typeof useT>, name: string) {
     if (!nameDialog) return;
     const fromPath = nameDialog.node.path;
     const parentDir = getParentTreePath(fromPath);
@@ -404,7 +410,7 @@ export function FileExplorer({
       return;
     }
     if (pathExistsInFileList(toPath, files, directories)) {
-      throw new Error(`"${name}" already exists`);
+      throw new Error(t("sandbox.fileExplorer.fileAlreadyExists", { name }));
     }
     await postSandbox("rename", {
       from: toDaemonPath(fromPath),
@@ -422,7 +428,7 @@ export function FileExplorer({
     setNameDialog(null);
   }
 
-  async function handleDelete(node: TreeNode) {
+  async function handleDelete(t: ReturnType<typeof useT>, node: TreeNode) {
     setFsActionPending(true);
     try {
       await postSandbox("unlink", {
@@ -434,15 +440,22 @@ export function FileExplorer({
       await fetchFileTree();
       await refreshGitStatus();
       setDeleteTarget(null);
-      toast.success(`Deleted "${node.name}"`);
+      toast.success(t("sandbox.fileExplorer.fileDeleted", { name: node.name }));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Delete failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.fileExplorer.deleteFailed"),
+      );
     } finally {
       setFsActionPending(false);
     }
   }
 
-  async function handleNameDialogSubmit(name: string) {
+  async function handleNameDialogSubmit(
+    t: ReturnType<typeof useT>,
+    name: string,
+  ) {
     const validationError = validateExplorerEntryName(name);
     if (validationError) {
       toast.error(validationError);
@@ -451,17 +464,21 @@ export function FileExplorer({
     setFsActionPending(true);
     try {
       if (nameDialog?.mode === "new-file") {
-        await handleCreateFile(name);
-        toast.success(`Created "${name}"`);
+        await handleCreateFile(t, name);
+        toast.success(t("sandbox.fileExplorer.fileCreated", { name }));
       } else if (nameDialog?.mode === "new-folder") {
-        await handleCreateFolder(name);
-        toast.success(`Created folder "${name}"`);
+        await handleCreateFolder(t, name);
+        toast.success(t("sandbox.fileExplorer.folderCreated", { name }));
       } else if (nameDialog?.mode === "rename") {
-        await handleRename(name);
-        toast.success(`Renamed to "${name}"`);
+        await handleRename(t, name);
+        toast.success(t("sandbox.fileExplorer.renamedTo", { name }));
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Operation failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.fileExplorer.operationFailed"),
+      );
     } finally {
       setFsActionPending(false);
     }
@@ -479,6 +496,7 @@ export function FileExplorer({
 
   // Deep-link: open the requested file when `openPath` is set or changes.
   const [prevOpenPath, setPrevOpenPath] = useState<string | null>(null);
+  const t = useT();
   if (openPath && openPath !== prevOpenPath) {
     setPrevOpenPath(openPath);
     const pathToOpen = openPath;
@@ -486,7 +504,9 @@ export function FileExplorer({
       if (isSafeExplorerOpenPath(pathToOpen)) {
         void handleFileClick(pathToOpen).catch((err) => {
           toast.error(
-            err instanceof Error ? err.message : "Failed to open file",
+            err instanceof Error
+              ? err.message
+              : t("sandbox.fileExplorer.failedToOpenFile"),
           );
         });
       }
@@ -530,7 +550,7 @@ export function FileExplorer({
       };
     });
     if (truncated) {
-      toast.warning("File list truncated — some files may be hidden");
+      toast.warning(t("sandbox.fileExplorer.fileListTruncated"));
     }
     return truncated;
   }
@@ -581,13 +601,16 @@ export function FileExplorer({
     }
   }
 
-  async function ensureAncestorsLoaded(treePath: string) {
+  async function ensureAncestorsLoaded(
+    t: ReturnType<typeof useT>,
+    treePath: string,
+  ) {
     const loaded = new Set(loadedLazyDirsRef.current);
     for (const dir of getAncestorDirectories(treePath)) {
       if (!directoryNeedsLazyLoad(dir, loaded)) continue;
       const truncated = await loadLazyDirectory(dir);
       if (truncated) {
-        throw new Error("Folder listing truncated — expand again to load more");
+        throw new Error(t("sandbox.fileExplorer.folderListingTruncated"));
       }
       loaded.add(dir);
     }
@@ -612,7 +635,7 @@ export function FileExplorer({
       setTreeLoaded(true);
     } catch {
       if (treeLoaded) {
-        toast.error("Failed to refresh file tree");
+        toast.error(t("sandbox.fileExplorer.failedToRefreshFileTree"));
       }
     } finally {
       setLoading(false);
@@ -857,7 +880,9 @@ export function FileExplorer({
         if (truncated) return;
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Failed to load folder",
+          err instanceof Error
+            ? err.message
+            : t("sandbox.fileExplorer.failedToLoadFolder"),
         );
         return;
       }
@@ -875,7 +900,7 @@ export function FileExplorer({
 
   async function handleFileClick(path: string) {
     await initialTreeLoadRef.current;
-    await ensureAncestorsLoaded(path);
+    await ensureAncestorsLoaded(t, path);
     const ancestors = getAncestorDirectories(path);
     setExpandedDirs((prev) => {
       const next = new Set(prev);
@@ -1001,8 +1026,8 @@ export function FileExplorer({
               type="text"
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Search files..."
-              aria-label="Search files"
+              placeholder={t("sandbox.fileExplorer.searchFilesPlaceholder")}
+              aria-label={t("sandbox.fileExplorer.searchFilesLabel")}
               className="w-full rounded-md border border-input bg-transparent pl-7 pr-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
             />
           </div>
@@ -1013,13 +1038,15 @@ export function FileExplorer({
                 variant="ghost"
                 size="icon"
                 className="size-7 shrink-0"
-                aria-label="New file"
+                aria-label={t("sandbox.fileExplorer.newFileLabel")}
                 onClick={() => openCreateDialog("new-file")}
               >
                 <FilePlus01 size={14} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">New file</TooltipContent>
+            <TooltipContent side="bottom">
+              {t("sandbox.fileExplorer.newFile")}
+            </TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1028,13 +1055,15 @@ export function FileExplorer({
                 variant="ghost"
                 size="icon"
                 className="size-7 shrink-0"
-                aria-label="New folder"
+                aria-label={t("sandbox.fileExplorer.newFolderLabel")}
                 onClick={() => openCreateDialog("new-folder")}
               >
                 <FolderPlus size={14} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">New folder</TooltipContent>
+            <TooltipContent side="bottom">
+              {t("sandbox.fileExplorer.newFolder")}
+            </TooltipContent>
           </Tooltip>
         </div>
 
@@ -1082,9 +1111,11 @@ export function FileExplorer({
                         parentDir,
                       })
                     }
-                    onCopyPath={() => copyText("Path", toTreePath(node.path))}
+                    onCopyPath={() =>
+                      copyText(t, "Path", toTreePath(node.path))
+                    }
                     onCopyRelativePath={() =>
-                      copyText("Relative path", toDaemonPath(node.path))
+                      copyText(t, "Relative path", toDaemonPath(node.path))
                     }
                     onRename={() =>
                       setNameDialog({
@@ -1099,7 +1130,7 @@ export function FileExplorer({
               })}
             {!search && treeLoaded && flatNodes.length === 0 && (
               <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                No files found
+                {t("sandbox.fileExplorer.noFilesFound")}
               </div>
             )}
 
@@ -1107,7 +1138,7 @@ export function FileExplorer({
             {search && (
               <>
                 <div className="flex items-center gap-1.5 px-3 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  <span>Files</span>
+                  <span>{t("sandbox.fileExplorer.files")}</span>
                   {fileNameMatchCount > 0 && (
                     <span className="normal-case tracking-normal text-muted-foreground/70">
                       {fileNameMatchCount}
@@ -1117,7 +1148,7 @@ export function FileExplorer({
                 </div>
                 {fileNameMatches !== null && fileNameMatches.length === 0 && (
                   <div className="px-3 py-1 text-xs text-muted-foreground">
-                    No file names match
+                    {t("sandbox.fileExplorer.noFileNamesMatch")}
                   </div>
                 )}
                 {fileNameMatches?.map((path) => {
@@ -1153,7 +1184,7 @@ export function FileExplorer({
             {search && (
               <div className="mt-1 border-t pt-1">
                 <div className="flex items-center gap-1.5 px-3 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  <span>In files</span>
+                  <span>{t("sandbox.fileExplorer.inFiles")}</span>
                   {contentMatchCount > 0 && (
                     <span className="text-muted-foreground/70 normal-case tracking-normal">
                       {contentMatchCount}
@@ -1168,7 +1199,7 @@ export function FileExplorer({
                   contentMatches !== null &&
                   contentGroups.length === 0 && (
                     <div className="px-3 py-1 text-xs text-muted-foreground">
-                      No matches in file contents
+                      {t("sandbox.fileExplorer.noMatchesInFileContents")}
                     </div>
                   )}
                 {contentGroups.map((group) => {
@@ -1280,7 +1311,7 @@ export function FileExplorer({
                 name="askAiInput"
                 autoFocus
                 type="text"
-                placeholder="Ask the AI..."
+                placeholder={t("sandbox.fileExplorer.askTheAiPlaceholder")}
                 className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 onKeyDown={(e) => {
                   e.stopPropagation();
@@ -1290,7 +1321,7 @@ export function FileExplorer({
               <button
                 type="submit"
                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity"
-                title="Send"
+                title={t("sandbox.fileExplorer.send")}
               >
                 <svg
                   width="10"
@@ -1299,7 +1330,7 @@ export function FileExplorer({
                   fill="none"
                   aria-hidden="true"
                 >
-                  <title>Send</title>
+                  <title>{t("sandbox.fileExplorer.send")}</title>
                   <path
                     d="M5 9V1M1 5l4-4 4 4"
                     stroke="currentColor"
@@ -1372,7 +1403,7 @@ export function FileExplorer({
             </div>
           ) : (
             <div className="flex items-center justify-center h-full w-full text-sm text-muted-foreground">
-              Select a file to edit
+              {t("sandbox.fileExplorer.selectFileToEdit")}
             </div>
           )}
         </div>
@@ -1382,8 +1413,10 @@ export function FileExplorer({
           <div className="flex items-center justify-between px-3 py-1 border-t text-[11px] text-muted-foreground shrink-0">
             <span className="truncate">{selectedFile}</span>
             <span>
-              {isDirty ? "Modified" : "Saved"} &middot;{" "}
-              {getLanguageFromPath(selectedFile)}
+              {isDirty
+                ? t("sandbox.fileExplorer.modified")
+                : t("sandbox.fileExplorer.saved")}{" "}
+              &middot; {getLanguageFromPath(selectedFile)}
             </span>
           </div>
         )}
@@ -1401,7 +1434,7 @@ export function FileExplorer({
             : undefined
         }
         isPending={fsActionPending}
-        onSubmit={handleNameDialogSubmit}
+        onSubmit={(name) => handleNameDialogSubmit(t, name)}
         onOpenChange={(open) => {
           if (!open && !fsActionPending) setNameDialog(null);
         }}
@@ -1414,7 +1447,7 @@ export function FileExplorer({
         onOpenChange={(open) => {
           if (!open && !fsActionPending) setDeleteTarget(null);
         }}
-        onConfirm={(node) => void handleDelete(node)}
+        onConfirm={(node) => void handleDelete(t, node)}
       />
     </div>
   );

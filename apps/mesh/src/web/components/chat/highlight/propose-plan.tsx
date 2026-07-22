@@ -5,6 +5,7 @@ import { ClipboardCheck } from "@untitledui/icons";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { MessageTextPart } from "../message/parts/text-part.tsx";
 import { selectActivePlan, type PendingPlan } from "./extract-pending-plans";
+import { useT } from "@/web/i18n/use-t.ts";
 export {
   extractPendingPlans,
   selectActivePlan,
@@ -26,6 +27,7 @@ function ProposePlanPrompt({
   onApprove,
   onDismiss,
 }: ProposePlanPromptProps) {
+  const t = useT();
   const handleApprove = () => {
     onApprove(plan.plan);
   };
@@ -39,7 +41,7 @@ function ProposePlanPrompt({
         className="h-7 px-2.5 text-xs text-muted-foreground [@media(hover:hover)]:hover:text-foreground active:scale-[0.97] transition-transform"
         onClick={onDismiss}
       >
-        Keep iterating
+        {t("chat.proposePlan.keepIterating")}
       </Button>
       <Button
         type="button"
@@ -47,7 +49,7 @@ function ProposePlanPrompt({
         className="h-7 px-2.5 text-xs bg-purple-600 hover:bg-purple-700 text-white active:scale-[0.97] transition-transform"
         onClick={handleApprove}
       >
-        Let&apos;s go
+        {t("chat.proposePlan.letsGo")}
       </Button>
     </>
   );
@@ -55,8 +57,8 @@ function ProposePlanPrompt({
   return (
     <CollapsibleHighlight
       icon={<ClipboardCheck size={14} />}
-      label="Plan ready"
-      title="Implementation Plan"
+      label={t("chat.proposePlan.planReady")}
+      title={t("chat.proposePlan.implementationPlan")}
       defaultExpanded={true}
       footerRight={footerRight}
     >

@@ -1,5 +1,6 @@
 import { CollectionTable, type TableColumn } from "./collection-table.tsx";
 import type { ReactNode } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface CollectionTableWrapperProps<T> {
   columns: TableColumn<T>[];
@@ -22,10 +23,14 @@ export function CollectionTableWrapper<T>({
   onRowClick,
   emptyState,
 }: CollectionTableWrapperProps<T>) {
+  const t = useT();
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="text-muted-foreground">
+          {t("collections.collectionTableWrapper.loading")}
+        </div>
       </div>
     );
   }
@@ -35,7 +40,7 @@ export function CollectionTableWrapper<T>({
       <div className="flex items-center justify-center h-full">
         {emptyState || (
           <div className="text-center py-12 text-muted-foreground">
-            No items found
+            {t("collections.collectionTableWrapper.noItemsFound")}
           </div>
         )}
       </div>

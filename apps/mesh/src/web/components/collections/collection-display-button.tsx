@@ -1,3 +1,4 @@
+import { useT } from "@/web/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   DropdownMenu,
@@ -49,6 +50,7 @@ export function CollectionDisplayButton({
   sortOptions = [],
   filters = [],
 }: CollectionDisplayButtonProps) {
+  const t = useT();
   const activeFilterCount = filters.filter((f) => f.value !== "ALL").length;
 
   return (
@@ -70,7 +72,9 @@ export function CollectionDisplayButton({
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent>Display &amp; filters</TooltipContent>
+          <TooltipContent>
+            {t("collections.collectionDisplayButton.displayAndFilters")}
+          </TooltipContent>
         </Tooltip>
       </TooltipProvider>
       <DropdownMenuContent align="end" className="w-[200px] p-0 gap-0">
@@ -92,7 +96,7 @@ export function CollectionDisplayButton({
         {sortOptions.length > 0 && onSort && (
           <div className="p-1 flex flex-col gap-0.5 border-b border-border">
             <div className="px-2 py-1.5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
-              Sort by
+              {t("collections.collectionDisplayButton.sortBy")}
             </div>
             {sortOptions.map((option) => {
               const isSelected = sortKey === option.id;

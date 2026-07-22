@@ -25,6 +25,8 @@ import {
   useState,
   useTransition,
 } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   type AiProviderModel,
@@ -49,10 +51,11 @@ import { ModelDetailsPanel, parseModelTitle } from "./shared";
 const TIER_IDS = ["smarter", "faster", "cheaper"] as const;
 type TierId = (typeof TIER_IDS)[number];
 
-const TIER_LABELS: Record<TierId, string> = {
-  smarter: "Smarter",
-  faster: "Faster",
-  cheaper: "Cheaper",
+// TIER_LABELS will be resolved via i18n at render time, so we define labelKeys instead
+const TIER_LABEL_KEYS: Record<TierId, TranslationKey> = {
+  smarter: "chat.decopilot.tierSmarter",
+  faster: "chat.decopilot.tierFaster",
+  cheaper: "chat.decopilot.tierCheaper",
 };
 
 const TIER_PATTERNS: Array<{ tier: TierId; prefixes: string[] }> = [
@@ -243,6 +246,7 @@ function ModelListErrorFallback({
   credentialId: string | undefined;
   orgSlug?: string;
 }) {
+  const t = useT();
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 py-8 text-center">
       <div className="bg-destructive/10 p-2 rounded-full">
@@ -250,11 +254,11 @@ function ModelListErrorFallback({
       </div>
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium text-foreground">
-          Failed to load models
+          {t("chat.decopilot.failedToLoadModels")}
         </p>
         <p className="text-xs text-muted-foreground max-w-[260px]">
-          {error?.message || "Could not fetch models from this provider."}
-          {" Try another provider or retry."}
+          {error?.message || t("chat.decopilot.couldNotFetchModels")}
+          {" " + t("chat.decopilot.tryAnotherProviderOrRetry")}
         </p>
       </div>
       <div className="flex items-center gap-2">
@@ -265,7 +269,7 @@ function ModelListErrorFallback({
           className="gap-1.5"
         >
           <RefreshCcw01 className="size-3.5" />
-          Retry
+          {t("chat.decopilot.retry")}
         </Button>
       </div>
     </div>
@@ -323,6 +327,16 @@ function ModelTierSection({
   );
 }
 
+function getTierLabel(
+  tierId: TierId | "other",
+  t: ReturnType<typeof useT>,
+): string {
+  if (tierId === "other") {
+    return t("chat.decopilot.tierOther");
+  }
+  return t(TIER_LABEL_KEYS[tierId]);
+}
+
 // Each row is its own component so the React Compiler can memoize them
 // individually — only the toggled item re-renders, not all 500.
 function ManageModelItem({
@@ -374,16 +388,17 @@ type ManageVirtualItem =
 
 function buildManageItems(
   grouped: Record<TierId | "other", AiProviderModel[]>,
+  t: ReturnType<typeof useT>,
 ): ManageVirtualItem[] {
   const items: ManageVirtualItem[] = [];
   for (const tierId of TIER_IDS) {
     if (grouped[tierId].length > 0) {
-      items.push({ type: "header", label: TIER_LABELS[tierId] });
+      items.push({ type: "header", label: getTierLabel(tierId, t) });
       for (const m of grouped[tierId]) items.push({ type: "model", model: m });
     }
   }
   if (grouped.other.length > 0) {
-    items.push({ type: "header", label: "Other" });
+    items.push({ type: "header", label: getTierLabel("other", t) });
     for (const m of grouped.other) items.push({ type: "model", model: m });
   }
   return items;
@@ -459,6 +474,7 @@ function ConnectionModelList({
   onToggleManage: () => void;
   filterModels?: (m: AiProviderModel) => boolean;
 }) {
+  const t = useT();
   const { models: rawModels } = useAiProviderModels(keyId);
   // When no explicit filter is given, hide async-research-only models
   // (e.g. Gemini Deep Research). They aren't usable as a Thinking/Coding/
@@ -503,7 +519,7 @@ function ConnectionModelList({
 
   if (managing) {
     const grouped = groupByTier(applySearch(allModels));
-    const flatItems = buildManageItems(grouped);
+    const flatItems = buildManageItems(grouped, t);
     const selectedCount = allModels.filter((m) =>
       shortlistSet.has(m.modelId),
     ).length;
@@ -517,10 +533,10 @@ function ConnectionModelList({
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground cursor-pointer"
           >
             <ArrowLeft size={14} />
-            Back
+            {t("chat.decopilot.back")}
           </button>
           <span className="text-xs text-muted-foreground">
-            {selectedCount} selected
+            {t("chat.decopilot.selectedCount", { count: selectedCount })}
           </span>
         </div>
         <VirtualManageList
@@ -543,14 +559,14 @@ function ConnectionModelList({
       {TIER_IDS.map((tierId) => (
         <ModelTierSection
           key={tierId}
-          label={TIER_LABELS[tierId]}
+          label={getTierLabel(tierId, t)}
           models={grouped[tierId]}
           onSelect={onModelSelect}
           onHover={onHover}
         />
       ))}
       <ModelTierSection
-        label="Other"
+        label={getTierLabel("other", t)}
         models={grouped.other}
         onSelect={onModelSelect}
         onHover={onHover}
@@ -632,6 +648,7 @@ function ModelSelectorInner({
   onModelChange,
   filterModels,
 }: ModelSelectorInnerProps) {
+  const t = useT();
   const [hoveredModel, setHoveredModel] = useState<AiProviderModel | null>(
     null,
   );
@@ -677,7 +694,9 @@ function ModelSelectorInner({
               ref={searchInputRef}
               type="text"
               placeholder={
-                managing ? "Search all models..." : "Search for a model..."
+                managing
+                  ? t("chat.decopilot.searchAllModels")
+                  : t("chat.decopilot.searchForModel")
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -693,7 +712,7 @@ function ModelSelectorInner({
                   className="w-auto max-w-[140px] h-8 shrink-0 gap-1.5 px-2 [&>svg:last-child]:hidden"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <SelectValue placeholder="Key">
+                  <SelectValue placeholder={t("chat.decopilot.key")}>
                     {(() => {
                       const key = keys.find((k) => k.id === credentialId);
                       const provider = key
@@ -790,7 +809,7 @@ function ModelSelectorInner({
               className="flex items-center gap-2 flex-1 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
             >
               <Settings02 className="size-3.5 shrink-0" />
-              Manage models
+              {t("chat.decopilot.manageModels")}
             </button>
             <div className="w-px bg-border shrink-0" />
             <button
@@ -804,7 +823,7 @@ function ModelSelectorInner({
               className="flex items-center gap-2 flex-1 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
             >
               <Key01 className="size-3.5 shrink-0" />
-              Manage API keys
+              {t("chat.decopilot.manageApiKeys")}
             </button>
           </div>
         )}

@@ -1,3 +1,4 @@
+import { useT } from "@/web/i18n/use-t.ts";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -102,6 +103,7 @@ function VirtualMCPPopoverContentInner({
   onVirtualMcpChange,
   searchInputRef,
 }: VirtualMCPPopoverContentProps) {
+  const t = useT();
   const virtualMcps = useVirtualMCPs();
   const [searchTerm, setSearchTerm] = useState("");
   const internalRef = useRef<HTMLInputElement>(null);
@@ -145,7 +147,7 @@ function VirtualMCPPopoverContentInner({
           <Input
             ref={inputRef}
             type="text"
-            placeholder="Search for an agent..."
+            placeholder={t("chat.selectVirtualMcp.searchPlaceholder")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="flex-1 h-8 text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none p-0"
@@ -157,7 +159,9 @@ function VirtualMCPPopoverContentInner({
             className="h-8 px-3 rounded-lg text-sm font-medium shrink-0"
             disabled={isCreating}
           >
-            {isCreating ? "Creating..." : "Create Agent"}
+            {isCreating
+              ? t("chat.selectVirtualMcp.creating")
+              : t("chat.selectVirtualMcp.createAgent")}
           </Button>
         </div>
       </div>
@@ -189,7 +193,7 @@ function VirtualMCPPopoverContentInner({
           </div>
         ) : (
           <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-            No agents found
+            {t("chat.selectVirtualMcp.noAgentsFound")}
           </div>
         )}
       </div>
@@ -232,10 +236,11 @@ export function VirtualMCPSelector({
   onVirtualMcpChange,
   variant: _variant,
   className,
-  placeholder = "Select Agent",
+  placeholder: _placeholder,
   showTooltip = true,
   disabled = false,
 }: VirtualMCPSelectorProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -280,7 +285,7 @@ export function VirtualMCPSelector({
                     : "cursor-pointer hover:text-muted-foreground",
                   className,
                 )}
-                aria-label={placeholder}
+                aria-label={t("chat.selectVirtualMcp.selectAgent")}
               >
                 {selectedVirtualMcp ? (
                   <AgentAvatar
@@ -332,7 +337,8 @@ export function VirtualMCPSelector({
           </TooltipTrigger>
           {showTooltip && !open && (
             <TooltipContent side="top" className="text-xs">
-              {selectedVirtualMcp?.title ?? "Choose an agent to chat with"}
+              {selectedVirtualMcp?.title ??
+                t("chat.selectVirtualMcp.chooseAgentTooltip")}
             </TooltipContent>
           )}
         </Tooltip>

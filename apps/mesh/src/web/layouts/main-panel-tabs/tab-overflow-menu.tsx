@@ -14,6 +14,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { TabIcon } from "./resolve-tab-icon";
 import { TabIconGlyph } from "./tab-icon-glyph";
 
@@ -30,6 +31,7 @@ export function TabOverflowMenu({
   overflow: OverflowTab[];
   onSelect: (id: string) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   const handleClick = (id: string) => {
@@ -42,8 +44,8 @@ export function TabOverflowMenu({
       <PopoverTrigger asChild>
         <button
           type="button"
-          title="More tabs"
-          aria-label="More tabs"
+          title={t("mainPanelTabs.tabOverflowMenu.moreTabs")}
+          aria-label={t("mainPanelTabs.tabOverflowMenu.moreTabs")}
           className="shrink-0 flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         >
           <DotsHorizontal className="size-4" />

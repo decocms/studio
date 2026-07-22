@@ -6,6 +6,8 @@ import {
   usePreferences,
   type ToolApprovalLevel,
 } from "@/web/hooks/use-preferences.ts";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 import { useChatPrefs, useChatStream, useChatTask } from "../context";
 import type { RequestOptions } from "../store/thread-connection";
 import { ApprovalHighlight, extractPendingApprovals } from "./approval";
@@ -27,13 +29,11 @@ import type { UserAskToolPart } from "../types";
 // StatusHighlight (error | warning)
 // ============================================================================
 
-const WARNING_DESCRIPTIONS: Record<string, string> = {
-  length:
-    "Response reached the model's output limit. Different models have different limits. Try switching models or asking it to continue.",
-  "content-filter": "Response was filtered due to content policy.",
-  "tool-calls":
-    "Response paused after tool execution to prevent infinite loops and save costs. Click continue to keep working.",
-};
+const WARNING_DESCRIPTIONS = {
+  length: "chat.highlight.warningDescriptionLength",
+  "content-filter": "chat.highlight.warningDescriptionContentFilter",
+  "tool-calls": "chat.highlight.warningDescriptionToolCalls",
+} as const satisfies Record<string, TranslationKey>;
 
 type StatusHighlightProps =
   | {
@@ -50,16 +50,29 @@ type StatusHighlightProps =
     };
 
 function StatusHighlight(props: StatusHighlightProps) {
+  const t = useT();
   const { variant, onDismiss } = props;
   const isError = variant === "error";
 
-  const label = isError ? "Error occurred" : "Response incomplete";
+  const label = isError
+    ? t("chat.highlight.errorOccurred")
+    : t("chat.highlight.responseIncomplete");
   const Icon = isError ? AlertCircle : AlertTriangle;
 
-  const rawMessage = isError
-    ? props.error.message
-    : (WARNING_DESCRIPTIONS[props.finishReason] ??
-      `Response stopped unexpectedly: ${props.finishReason}`);
+  const rawMessage =
+    props.variant === "error"
+      ? props.error.message
+      : (() => {
+          const warningDescriptionKey =
+            WARNING_DESCRIPTIONS[
+              props.finishReason as keyof typeof WARNING_DESCRIPTIONS
+            ];
+          return warningDescriptionKey
+            ? t(warningDescriptionKey)
+            : t("chat.highlight.responseStoppedUnexpectedly", {
+                reason: props.finishReason,
+              });
+        })();
 
   const { summary, rawDetails } = isError
     ? parseErrorMessage(rawMessage)
@@ -81,7 +94,7 @@ function StatusHighlight(props: StatusHighlightProps) {
             onClick={props.onFixInChat}
             className="h-7 text-xs"
           >
-            Fix in chat
+            {t("chat.highlight.fixInChat")}
           </Button>
         ) : (
           <Button
@@ -90,7 +103,7 @@ function StatusHighlight(props: StatusHighlightProps) {
             onClick={props.onContinue}
             className="h-7 text-xs"
           >
-            Continue
+            {t("chat.highlight.continue")}
           </Button>
         )
       }
@@ -110,9 +123,11 @@ function StatusHighlight(props: StatusHighlightProps) {
             >
               <path d="m4.5 3 3 3-3 3" />
             </svg>
-            <span className="group-open:hidden">Show technical details</span>
+            <span className="group-open:hidden">
+              {t("chat.highlight.showTechnicalDetails")}
+            </span>
             <span className="hidden group-open:inline">
-              Hide technical details
+              {t("chat.highlight.hideTechnicalDetails")}
             </span>
           </summary>
           <div className="relative mt-2">
@@ -121,11 +136,13 @@ function StatusHighlight(props: StatusHighlightProps) {
               onClick={() => {
                 void navigator.clipboard
                   .writeText(rawDetails)
-                  .then(() => toast.success("Copied to clipboard"))
-                  .catch(() => toast.error("Could not copy"));
+                  .then(() =>
+                    toast.success(t("chat.highlight.copiedToClipboard")),
+                  )
+                  .catch(() => toast.error(t("chat.highlight.couldNotCopy")));
               }}
-              aria-label="Copy error details"
-              title="Copy"
+              aria-label={t("chat.highlight.copyErrorDetails")}
+              title={t("chat.highlight.copy")}
               className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-md bg-background/80 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground"
             >
               <Copy01 className="size-3.5" />
@@ -145,6 +162,7 @@ function StatusHighlight(props: StatusHighlightProps) {
 // ============================================================================
 
 export function ChatHighlight() {
+  const t = useT();
   const {
     error,
     clearError,
@@ -197,7 +215,9 @@ export function ChatHighlight() {
 
   const handleFixInChat = () => {
     if (error) {
-      const text = `I encountered this error: ${error.message}. Can you help me fix it?`;
+      const text = t("chat.highlight.fixInChatMessage", {
+        error: error.message,
+      });
       const doc = {
         type: "doc" as const,
         content: [{ type: "paragraph", content: [{ type: "text", text }] }],
@@ -212,7 +232,7 @@ export function ChatHighlight() {
       content: [
         {
           type: "paragraph",
-          content: [{ type: "text", text: "Please continue." }],
+          content: [{ type: "text", text: t("chat.highlight.pleaseContinue") }],
         },
       ],
     };
@@ -238,7 +258,12 @@ export function ChatHighlight() {
     createTaskWithMessage({
       virtualMcpId,
       message: {
-        parts: [{ type: "text", text: `Implement this plan:\n\n${planText}` }],
+        parts: [
+          {
+            type: "text",
+            text: t("chat.highlight.implementPlanMessage", { plan: planText }),
+          },
+        ],
       },
     });
   };

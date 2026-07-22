@@ -1,4 +1,6 @@
 import { Image01 } from "@untitledui/icons";
+import type { TranslationKey } from "@/web/i18n/use-t";
+import { useT } from "@/web/i18n/use-t";
 import { safeEditorImageUrl } from "./safe-editor-image-url";
 
 /**
@@ -63,27 +65,64 @@ function hostFromUrl(url: string | null | undefined): string {
   }
 }
 
-const FALLBACK_TITLE = "Your page title";
-const FALLBACK_DESC = "Your meta description will appear here.";
-
 type Layout = "search" | "card" | "chat" | "attachment";
 
-interface Platform {
+interface PlatformDef {
   id: string;
-  label: string;
+  labelKey: TranslationKey;
   color: string;
   layout: Layout;
 }
 
-const PLATFORMS: Platform[] = [
-  { id: "google", label: "Google", color: "#4285F4", layout: "search" },
-  { id: "facebook", label: "Facebook", color: "#1877F2", layout: "card" },
-  { id: "twitter", label: "X (Twitter)", color: "#0f1419", layout: "card" },
-  { id: "linkedin", label: "LinkedIn", color: "#0A66C2", layout: "card" },
-  { id: "whatsapp", label: "WhatsApp", color: "#25D366", layout: "chat" },
-  { id: "telegram", label: "Telegram", color: "#229ED9", layout: "chat" },
-  { id: "slack", label: "Slack", color: "#611f69", layout: "attachment" },
-  { id: "discord", label: "Discord", color: "#5865F2", layout: "attachment" },
+const PLATFORMS: PlatformDef[] = [
+  {
+    id: "google",
+    labelKey: "sectionsEditor.seoPreview.platformGoogle",
+    color: "#4285F4",
+    layout: "search",
+  },
+  {
+    id: "facebook",
+    labelKey: "sectionsEditor.seoPreview.platformFacebook",
+    color: "#1877F2",
+    layout: "card",
+  },
+  {
+    id: "twitter",
+    labelKey: "sectionsEditor.seoPreview.platformTwitter",
+    color: "#0f1419",
+    layout: "card",
+  },
+  {
+    id: "linkedin",
+    labelKey: "sectionsEditor.seoPreview.platformLinkedin",
+    color: "#0A66C2",
+    layout: "card",
+  },
+  {
+    id: "whatsapp",
+    labelKey: "sectionsEditor.seoPreview.platformWhatsapp",
+    color: "#25D366",
+    layout: "chat",
+  },
+  {
+    id: "telegram",
+    labelKey: "sectionsEditor.seoPreview.platformTelegram",
+    color: "#229ED9",
+    layout: "chat",
+  },
+  {
+    id: "slack",
+    labelKey: "sectionsEditor.seoPreview.platformSlack",
+    color: "#611f69",
+    layout: "attachment",
+  },
+  {
+    id: "discord",
+    labelKey: "sectionsEditor.seoPreview.platformDiscord",
+    color: "#5865F2",
+    layout: "attachment",
+  },
 ];
 
 function PreviewImage({
@@ -122,7 +161,12 @@ function PreviewImage({
   );
 }
 
-function GoogleCard({ seo, host, path }: PreviewBodyProps) {
+function GoogleCard({
+  seo,
+  host,
+  path,
+  t,
+}: PreviewBodyProps & { t: ReturnType<typeof useT> }) {
   return (
     <div
       className="rounded-lg p-3 text-left"
@@ -159,19 +203,23 @@ function GoogleCard({ seo, host, path }: PreviewBodyProps) {
         className="mt-1.5 truncate text-[18px] leading-snug"
         style={{ color: "#1a0dab" }}
       >
-        {seo.title ?? FALLBACK_TITLE}
+        {seo.title ?? t("sectionsEditor.seoPreview.fallbackTitle")}
       </div>
       <div
         className="mt-0.5 line-clamp-2 text-[13px] leading-snug"
         style={{ color: "#4d5156" }}
       >
-        {seo.description ?? FALLBACK_DESC}
+        {seo.description ?? t("sectionsEditor.seoPreview.fallbackDescription")}
       </div>
     </div>
   );
 }
 
-function OgCard({ seo, host }: PreviewBodyProps) {
+function OgCard({
+  seo,
+  host,
+  t,
+}: PreviewBodyProps & { t: ReturnType<typeof useT> }) {
   return (
     <div
       className="overflow-hidden rounded-lg text-left"
@@ -186,10 +234,11 @@ function OgCard({ seo, host }: PreviewBodyProps) {
           className="line-clamp-1 text-[14px] font-semibold"
           style={{ color: "#1c2024" }}
         >
-          {seo.title ?? FALLBACK_TITLE}
+          {seo.title ?? t("sectionsEditor.seoPreview.fallbackTitle")}
         </div>
         <div className="line-clamp-2 text-[12px]" style={{ color: "#60666c" }}>
-          {seo.description ?? FALLBACK_DESC}
+          {seo.description ??
+            t("sectionsEditor.seoPreview.fallbackDescription")}
         </div>
       </div>
     </div>
@@ -200,11 +249,12 @@ function ChatCard({
   seo,
   host,
   accent,
-}: PreviewBodyProps & { accent: string }) {
+  t,
+}: PreviewBodyProps & { accent: string; t: ReturnType<typeof useT> }) {
   return (
     <div className="rounded-lg p-2 text-left" style={{ background: "#f0f2f5" }}>
       <p className="px-1 pb-1.5 text-[12px]" style={{ color: "#3b4045" }}>
-        Here's a post you might write with the link of your website:
+        {t("sectionsEditor.seoPreview.chatCardHint")}
       </p>
       <div
         className="overflow-hidden rounded-md"
@@ -219,13 +269,14 @@ function ChatCard({
             className="line-clamp-1 text-[12px] font-semibold"
             style={{ color: "#1c2024" }}
           >
-            {seo.title ?? FALLBACK_TITLE}
+            {seo.title ?? t("sectionsEditor.seoPreview.fallbackTitle")}
           </div>
           <div
             className="line-clamp-2 text-[11px]"
             style={{ color: "#60666c" }}
           >
-            {seo.description ?? FALLBACK_DESC}
+            {seo.description ??
+              t("sectionsEditor.seoPreview.fallbackDescription")}
           </div>
           <div className="mt-0.5 text-[10px]" style={{ color: "#8a9099" }}>
             {host}
@@ -241,7 +292,12 @@ function AttachmentCard({
   host,
   accent,
   dark,
-}: PreviewBodyProps & { accent: string; dark?: boolean }) {
+  t,
+}: PreviewBodyProps & {
+  accent: string;
+  dark?: boolean;
+  t: ReturnType<typeof useT>;
+}) {
   const bg = dark ? "#2b2d31" : "#fff";
   const titleColor = dark ? "#00a8fc" : "#1264a3";
   const descColor = dark ? "#dbdee1" : "#3b4045";
@@ -263,13 +319,14 @@ function AttachmentCard({
             className="line-clamp-1 text-[13px] font-semibold"
             style={{ color: titleColor }}
           >
-            {seo.title ?? FALLBACK_TITLE}
+            {seo.title ?? t("sectionsEditor.seoPreview.fallbackTitle")}
           </div>
           <div
             className="line-clamp-2 text-[12px]"
             style={{ color: descColor }}
           >
-            {seo.description ?? FALLBACK_DESC}
+            {seo.description ??
+              t("sectionsEditor.seoPreview.fallbackDescription")}
           </div>
         </div>
         <PreviewImage
@@ -293,19 +350,27 @@ function PlatformCard({
   seo,
   host,
   path,
+  t,
 }: {
-  platform: Platform;
+  platform: PlatformDef;
   seo: SeoValues;
   host: string;
   path: string;
+  t: ReturnType<typeof useT>;
 }) {
   const body =
     platform.layout === "search" ? (
-      <GoogleCard seo={seo} host={host} path={path} />
+      <GoogleCard seo={seo} host={host} path={path} t={t} />
     ) : platform.layout === "card" ? (
-      <OgCard seo={seo} host={host} path={path} />
+      <OgCard seo={seo} host={host} path={path} t={t} />
     ) : platform.layout === "chat" ? (
-      <ChatCard seo={seo} host={host} path={path} accent={platform.color} />
+      <ChatCard
+        seo={seo}
+        host={host}
+        path={path}
+        accent={platform.color}
+        t={t}
+      />
     ) : (
       <AttachmentCard
         seo={seo}
@@ -313,6 +378,7 @@ function PlatformCard({
         path={path}
         accent={platform.color}
         dark={platform.id === "discord"}
+        t={t}
       />
     );
 
@@ -324,7 +390,7 @@ function PlatformCard({
           style={{ background: platform.color }}
         />
         <span className="text-xs font-medium text-muted-foreground">
-          {platform.label}
+          {t(platform.labelKey)}
         </span>
       </div>
       {body}
@@ -341,6 +407,7 @@ export function SeoPreview({
   url: string | null | undefined;
   path?: string;
 }) {
+  const t = useT();
   const raw = readSeo(seo);
   const values: SeoValues = {
     ...raw,
@@ -359,6 +426,7 @@ export function SeoPreview({
           seo={values}
           host={host}
           path={displayPath}
+          t={t}
         />
       ))}
     </div>

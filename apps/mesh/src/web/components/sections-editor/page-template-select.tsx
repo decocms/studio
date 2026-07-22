@@ -17,6 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { PageEntry } from "./page-list";
 
 /** Sentinel value for "start from a blank page". */
@@ -40,6 +41,7 @@ export function PageTemplateSelect({
   templates: PageEntry[];
   disabled?: boolean;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const selected = templates.find((t) => t.key === value);
 
@@ -56,7 +58,10 @@ export function PageTemplateSelect({
           className="w-full justify-between font-normal"
         >
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate">{selected?.name ?? "Blank page"}</span>
+            <span className="truncate">
+              {selected?.name ??
+                t("sectionsEditor.pageTemplateSelect.blankPageDefaultLabel")}
+            </span>
             {selected?.path ? (
               <span className="truncate text-muted-foreground">
                 {selected.path}
@@ -71,7 +76,12 @@ export function PageTemplateSelect({
         style={{ width: "var(--radix-popover-trigger-width)" }}
       >
         <Command>
-          <CommandInput placeholder="Search pages…" className="h-9" />
+          <CommandInput
+            placeholder={t(
+              "sectionsEditor.pageTemplateSelect.searchPlaceholder",
+            )}
+            className="h-9"
+          />
           <CommandList
             // The popover is portalled outside the Dialog, so Radix's
             // react-remove-scroll blocks wheel events over it (scrollbar drag
@@ -82,16 +92,18 @@ export function PageTemplateSelect({
               e.currentTarget.scrollTop += e.deltaY * factor;
             }}
           >
-            <CommandEmpty>No pages found.</CommandEmpty>
+            <CommandEmpty>
+              {t("sectionsEditor.pageTemplateSelect.noPagesFoundMessage")}
+            </CommandEmpty>
             <CommandGroup>
               <CommandItem
-                value="Blank page"
+                value={t("sectionsEditor.pageTemplateSelect.blankPageLabel")}
                 onSelect={() => {
                   onChange(BLANK_TEMPLATE);
                   setOpen(false);
                 }}
               >
-                Blank page
+                {t("sectionsEditor.pageTemplateSelect.blankPageLabel")}
                 <Check
                   className={cn(
                     "ml-auto",

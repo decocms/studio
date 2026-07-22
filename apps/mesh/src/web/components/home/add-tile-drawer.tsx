@@ -84,6 +84,7 @@ import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
 import { ToggleButton } from "./toggle-button";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /** How many agents the home view can actually display — adding past this is
  * blocked so the user never pins something that silently won't show. */
@@ -113,6 +114,7 @@ interface ConnectionUITools {
 
 export function AddTileDrawer({ open, onOpenChange }: AddTileDrawerProps) {
   const [search, setSearch] = useState("");
+  const t = useT();
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -121,10 +123,9 @@ export function AddTileDrawer({ open, onOpenChange }: AddTileDrawerProps) {
         className="w-full sm:max-w-md p-0 flex flex-col"
       >
         <SheetHeader className="px-5 py-4 border-b border-border">
-          <SheetTitle>Manage home</SheetTitle>
+          <SheetTitle>{t("home.addTileDrawer.title")}</SheetTitle>
           <SheetDescription>
-            Add agents to the home board and pin their interactive UIs or
-            prompts.
+            {t("home.addTileDrawer.description")}
           </SheetDescription>
           <div className="relative mt-3">
             <SearchSm
@@ -135,7 +136,7 @@ export function AddTileDrawer({ open, onOpenChange }: AddTileDrawerProps) {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search agents…"
+              placeholder={t("home.addTileDrawer.searchPlaceholder")}
               className="pl-8 h-8 text-sm"
             />
           </div>
@@ -276,6 +277,8 @@ function OnHomeSection({
     }),
   );
 
+  const t = useT();
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -285,18 +288,18 @@ function OnHomeSection({
     if (oldIndex === -1 || newIndex === -1) return;
     home
       .reorder(arrayMove([...ids], oldIndex, newIndex))
-      .catch(() => toast.error("Couldn't reorder home — please try again."));
+      .catch(() => toast.error(t("home.addTileDrawer.reorderError")));
   };
 
   return (
     <div className="flex flex-col gap-1.5">
       <SectionHeader
-        title="On home"
+        title={t("home.addTileDrawer.onHomeTitle")}
         hint={`${home.homeIds.length}/${HOME_LIMIT}`}
       />
       {agents.length === 0 ? (
         <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-          No agents on the home yet.
+          {t("home.addTileDrawer.noAgentsOnHome")}
         </p>
       ) : (
         <DndContext
@@ -331,13 +334,16 @@ function AvailableSection({
 }) {
   const [visible, setVisible] = useState(20);
   const shown = agents.slice(0, visible);
+  const t = useT();
 
   return (
     <div className="flex flex-col gap-1.5">
-      <SectionHeader title="Add to home" />
+      <SectionHeader title={t("home.addTileDrawer.addToHomeTitle")} />
       {agents.length === 0 ? (
         <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-          {hasSearch ? "No agents match." : "Every agent is on the home."}
+          {hasSearch
+            ? t("home.addTileDrawer.noAgentsMatch")
+            : t("home.addTileDrawer.allAgentsOnHome")}
         </p>
       ) : (
         <>
@@ -352,7 +358,9 @@ function AvailableSection({
               onClick={() => setVisible((v) => v + 20)}
               className="mt-1 self-center rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent/40 hover:text-foreground"
             >
-              Load more ({agents.length - visible})
+              {t("home.addTileDrawer.loadMore", {
+                count: agents.length - visible,
+              })}
             </button>
           )}
         </>
@@ -363,8 +371,9 @@ function AvailableSection({
 
 /** Tiles/prompts summary line shared by both row variants. */
 function useAgentSubtitle(agent: VirtualMCPEntity): string {
+  const t = useT();
   const tileCount = getHomeTiles(agent.metadata?.ui).filter(
-    (t) => !!t.resourceUri,
+    (tile) => !!tile.resourceUri,
   ).length;
   const curatedPrompts = agent.metadata?.ui?.homePrompts;
   const promptCount = Array.isArray(curatedPrompts)
@@ -373,10 +382,12 @@ function useAgentSubtitle(agent: VirtualMCPEntity): string {
 
   const parts: string[] = [];
   if (tileCount > 0)
-    parts.push(`${tileCount} tile${tileCount === 1 ? "" : "s"}`);
+    parts.push(t("home.addTileDrawer.tileCountLabel", { count: tileCount }));
   if (promptCount !== null && promptCount > 0)
-    parts.push(`${promptCount} prompt${promptCount === 1 ? "" : "s"}`);
-  if (promptCount === 0) parts.push("prompts off");
+    parts.push(
+      t("home.addTileDrawer.promptCountLabel", { count: promptCount }),
+    );
+  if (promptCount === 0) parts.push(t("home.addTileDrawer.promptsOffLabel"));
   return parts.join(" · ");
 }
 
@@ -388,6 +399,7 @@ function HomeAgentRow({
   home: HomeBoard;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const t = useT();
   const {
     attributes,
     listeners,
@@ -396,7 +408,8 @@ function HomeAgentRow({
     transition,
     isDragging,
   } = useSortable({ id: agent.id });
-  const subtitle = useAgentSubtitle(agent) || "Quick access";
+  const subtitle =
+    useAgentSubtitle(agent) || t("home.addTileDrawer.quickAccess");
   const expansionId = `home-agent-expansion-${agent.id}`;
 
   const style = {
@@ -421,7 +434,9 @@ function HomeAgentRow({
           {...attributes}
           {...listeners}
           className="shrink-0 text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-          aria-label={`Drag to reorder ${agent.title ?? agent.id}`}
+          aria-label={t("home.addTileDrawer.dragToReorder", {
+            name: agent.title ?? agent.id,
+          })}
         >
           <DotsGrid size={14} />
         </button>
@@ -458,12 +473,12 @@ function HomeAgentRow({
           onClick={() =>
             home
               .removeAgent(agent.id)
-              .catch(() =>
-                toast.error("Couldn't remove from home — please try again."),
-              )
+              .catch(() => toast.error(t("home.addTileDrawer.removeError")))
           }
-          aria-label={`Remove ${agent.title ?? agent.id} from home`}
-          title="Remove from home"
+          aria-label={t("home.addTileDrawer.removeFromHome", {
+            name: agent.title ?? agent.id,
+          })}
+          title={t("home.addTileDrawer.removeFromHomeTitle")}
           className="shrink-0 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
         >
           <X size={14} />
@@ -486,6 +501,7 @@ function AvailableAgentRow({
   const [expanded, setExpanded] = useState(false);
   const [adding, setAdding] = useState(false);
   const subtitle = useAgentSubtitle(agent);
+  const t = useT();
   const expansionId = `available-agent-expansion-${agent.id}`;
 
   const handleAdd = async () => {
@@ -494,7 +510,7 @@ function AvailableAgentRow({
     try {
       await home.addAgent(agent.id);
     } catch {
-      toast.error("Couldn't add to home — please try again.");
+      toast.error(t("home.addTileDrawer.addError"));
     } finally {
       setAdding(false);
     }
@@ -537,11 +553,11 @@ function AvailableAgentRow({
           type="button"
           onClick={handleAdd}
           disabled={adding || home.atLimit}
-          aria-label="Add to home"
+          aria-label={t("home.addTileDrawer.addToHomeTitle")}
           title={
             home.atLimit
-              ? `Home is full (${HOME_LIMIT}) — remove an agent first`
-              : "Add to home"
+              ? t("home.addTileDrawer.homeFullMessage", { limit: HOME_LIMIT })
+              : t("home.addTileDrawer.addToHomeTitle")
           }
           className="shrink-0 inline-flex size-7 items-center justify-center rounded-md bg-foreground text-background text-xs hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -705,12 +721,14 @@ function AgentToolList({
 
   const hasPinned = pinnedTiles.some((tile) => !!resolveToolForTile(tile));
 
+  const t = useT();
+
   return (
     <div className="flex flex-col gap-2">
       {hasPinned && (
         <div className="flex flex-col gap-0.5">
           <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground px-2">
-            Pinned tiles
+            {t("home.addTileDrawer.pinnedTiles")}
           </span>
           {pinnedTiles.map((tile) => {
             const match = resolveToolForTile(tile);
@@ -733,7 +751,7 @@ function AgentToolList({
       )}
       <div className="flex flex-col gap-0.5">
         <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground px-2">
-          Add tile
+          {t("home.addTileDrawer.addTileLabel")}
         </span>
         {data.map((conn) =>
           conn.uiTools.map((tool) => (
@@ -769,12 +787,16 @@ function withHomeTiles(
 
 /** Runs a home-tile mutation, logging and toasting on failure. Shared by the
  * pinned-tile remove/save flows and the add-tile flow. */
-async function runHomeTileAction(action: string, fn: () => Promise<void>) {
+async function runHomeTileAction(
+  action: string,
+  fn: () => Promise<void>,
+  t: ReturnType<typeof useT>,
+) {
   try {
     await fn();
   } catch (err) {
     console.error(`[home-tiles] failed to ${action} tile`, err);
-    toast.error("Couldn't update home — please try again.");
+    toast.error(t("home.addTileDrawer.updateError"));
   }
 }
 
@@ -785,11 +807,12 @@ function resolveToolInput(
   formValues: Record<string, unknown>,
   properties: Record<string, ToolInputProperty> | undefined,
   required: string[] | undefined,
+  t: ReturnType<typeof useT>,
 ): { toolInput?: Record<string, unknown> } | undefined {
   if (!properties || Object.keys(properties).length === 0) return {};
   const coerced = coerceFormValues(formValues, properties, required);
   if (!coerced) {
-    toast.error("Invalid value in one of the fields — please fix it.");
+    toast.error(t("home.addTileDrawer.invalidFieldError"));
     return undefined;
   }
   return Object.keys(coerced).length > 0 ? { toolInput: coerced } : {};
@@ -817,6 +840,8 @@ function TileConfigForm({
   submitting: boolean;
   submitLabel: string;
 }) {
+  const t = useT();
+
   return (
     <div className="px-3 pb-2 pt-1 flex flex-col gap-2">
       <ToolInputForm
@@ -832,7 +857,7 @@ function TileConfigForm({
           className="h-7 text-xs"
           onClick={onCancel}
         >
-          Cancel
+          {t("home.addTileDrawer.cancel")}
         </Button>
         <Button
           size="sm"
@@ -867,6 +892,7 @@ function PinnedTileRow({
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const t = useT();
   const hasProps =
     tool.inputSchema?.properties &&
     Object.keys(tool.inputSchema.properties).length > 0;
@@ -877,14 +903,18 @@ function PinnedTileRow({
 
   const handleRemove = async () => {
     setSubmitting(true);
-    await runHomeTileAction("remove", async () => {
-      const baseTiles = getHomeTiles(agent.metadata?.ui);
-      const nextTiles = tile.tileId
-        ? baseTiles.filter((t) => t.tileId !== tile.tileId)
-        : baseTiles.filter((t) => t !== tile);
-      await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
-      setShowForm(false);
-    });
+    await runHomeTileAction(
+      "remove",
+      async () => {
+        const baseTiles = getHomeTiles(agent.metadata?.ui);
+        const nextTiles = tile.tileId
+          ? baseTiles.filter((t) => t.tileId !== tile.tileId)
+          : baseTiles.filter((t) => t !== tile);
+        await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
+        setShowForm(false);
+      },
+      t,
+    );
     setSubmitting(false);
   };
 
@@ -893,24 +923,29 @@ function PinnedTileRow({
       formValues,
       tool.inputSchema?.properties,
       tool.inputSchema?.required,
+      t,
     );
     if (!resolved) return;
     const { toolInput } = resolved;
 
     setSubmitting(true);
-    await runHomeTileAction("save", async () => {
-      const baseTiles = getHomeTiles(agent.metadata?.ui);
-      const nextTiles = baseTiles.map((t) => {
-        const isMatch = tile.tileId ? t.tileId === tile.tileId : t === tile;
-        if (!isMatch) return t;
-        return {
-          ...t,
-          toolInput,
-        };
-      });
-      await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
-      setShowForm(false);
-    });
+    await runHomeTileAction(
+      "save",
+      async () => {
+        const baseTiles = getHomeTiles(agent.metadata?.ui);
+        const nextTiles = baseTiles.map((t) => {
+          const isMatch = tile.tileId ? t.tileId === tile.tileId : t === tile;
+          if (!isMatch) return t;
+          return {
+            ...t,
+            toolInput,
+          };
+        });
+        await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
+        setShowForm(false);
+      },
+      t,
+    );
     setSubmitting(false);
   };
 
@@ -938,8 +973,8 @@ function PinnedTileRow({
           <button
             type="button"
             onClick={() => setShowForm((v) => !v)}
-            aria-label="Configure tile props"
-            title="Configure tile props"
+            aria-label={t("home.addTileDrawer.configureTile")}
+            title={t("home.addTileDrawer.configureTile")}
             className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60"
           >
             <Settings01 size={14} />
@@ -949,7 +984,7 @@ function PinnedTileRow({
           isPinned
           submitting={submitting}
           onClick={handleRemove}
-          label="Remove from home"
+          label={t("home.addTileDrawer.removeFromHome")}
         />
       </div>
       {showForm && hasProps && tool.inputSchema?.properties && (
@@ -963,7 +998,7 @@ function PinnedTileRow({
           onCancel={() => setShowForm(false)}
           onSubmit={handleSave}
           submitting={submitting}
-          submitLabel="Save"
+          submitLabel={t("home.addTileDrawer.save")}
         />
       )}
     </div>
@@ -986,6 +1021,7 @@ function AddToolRow({
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const t = useT();
   const hasProps =
     tool.inputSchema?.properties &&
     Object.keys(tool.inputSchema.properties).length > 0;
@@ -999,7 +1035,9 @@ function AddToolRow({
     }
 
     if (!home.isOnHome(agent.id) && home.atLimit) {
-      toast.error(`Home is full (${HOME_LIMIT}) — remove an agent first`);
+      toast.error(
+        t("home.addTileDrawer.homeFullMessage", { limit: HOME_LIMIT }),
+      );
       return;
     }
 
@@ -1011,27 +1049,32 @@ function AddToolRow({
       formValues,
       tool.inputSchema?.properties,
       tool.inputSchema?.required,
+      t,
     );
     if (!resolved) return;
     const { toolInput } = resolved;
 
     setSubmitting(true);
-    await runHomeTileAction("add", async () => {
-      const baseTiles = getHomeTiles(agent.metadata?.ui);
-      const nextTiles = [
-        ...baseTiles,
-        {
-          tileId: crypto.randomUUID(),
-          connectionId: connection.id,
-          resourceUri: tool.resourceUri,
-          toolName: tool.name,
-          ...(toolInput ? { toolInput } : {}),
-        },
-      ];
-      await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
-      setShowForm(false);
-      setFormValues({});
-    });
+    await runHomeTileAction(
+      "add",
+      async () => {
+        const baseTiles = getHomeTiles(agent.metadata?.ui);
+        const nextTiles = [
+          ...baseTiles,
+          {
+            tileId: crypto.randomUUID(),
+            connectionId: connection.id,
+            resourceUri: tool.resourceUri,
+            toolName: tool.name,
+            ...(toolInput ? { toolInput } : {}),
+          },
+        ];
+        await home.saveAgentMetadata(agent, withHomeTiles(agent, nextTiles));
+        setShowForm(false);
+        setFormValues({});
+      },
+      t,
+    );
     setSubmitting(false);
   };
 
@@ -1050,7 +1093,7 @@ function AddToolRow({
           isPinned={false}
           submitting={submitting}
           onClick={handleAdd}
-          label="Add to home"
+          label={t("home.addTileDrawer.addToHomeTitle")}
         />
       </div>
       {showForm && hasProps && tool.inputSchema?.properties && (
@@ -1067,7 +1110,7 @@ function AddToolRow({
           }}
           onSubmit={saveTile}
           submitting={submitting}
-          submitLabel="Pin"
+          submitLabel={t("home.addTileDrawer.pin")}
         />
       )}
     </div>

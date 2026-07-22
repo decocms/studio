@@ -10,6 +10,7 @@ import {
   Loading01,
 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ImageUploadProps {
   value: string;
@@ -28,6 +29,7 @@ export function ImageUpload({
   error,
   isUploading = false,
 }: ImageUploadProps) {
+  const t = useT();
   const [isDragging, setIsDragging] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -69,7 +71,7 @@ export function ImageUpload({
 
   return (
     <div className="grid gap-1.5">
-      <Label>Image</Label>
+      <Label>{t("registry.imageUpload.image")}</Label>
 
       {hasImage ? (
         /* ── With image: preview + actions ── */
@@ -78,7 +80,7 @@ export function ImageUpload({
             <div className="size-20 rounded-lg border border-border bg-muted/20 overflow-hidden shrink-0">
               <img
                 src={value}
-                alt="Preview"
+                alt={t("registry.imageUpload.previewAlt")}
                 className="w-full h-full object-cover"
               />
             </div>
@@ -94,7 +96,7 @@ export function ImageUpload({
                   disabled={isUploading}
                 >
                   <RefreshCcw01 className="size-3" />
-                  Change
+                  {t("registry.imageUpload.change")}
                 </Button>
                 <Button
                   type="button"
@@ -108,7 +110,7 @@ export function ImageUpload({
                   disabled={isUploading}
                 >
                   <Trash01 className="size-3" />
-                  Remove
+                  {t("registry.imageUpload.remove")}
                 </Button>
               </div>
             </div>
@@ -118,7 +120,9 @@ export function ImageUpload({
         /* ── Uploading state ── */
         <div className="relative min-h-[180px] rounded-xl border border-border bg-muted/10 flex flex-col items-center justify-center gap-3">
           <Loading01 className="size-8 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Uploading image...</p>
+          <p className="text-sm text-muted-foreground">
+            {t("registry.imageUpload.uploadingImage")}
+          </p>
         </div>
       ) : (
         /* ── Without image: dropzone ── */
@@ -147,10 +151,12 @@ export function ImageUpload({
             </div>
             <div className="text-center">
               <p className="text-sm font-medium text-foreground">
-                {isDragging ? "Drop image here" : "Click or drag to upload"}
+                {isDragging
+                  ? t("registry.imageUpload.dropImageHere")
+                  : t("registry.imageUpload.clickOrDragToUpload")}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                PNG, JPG, SVG up to 2MB
+                {t("registry.imageUpload.supportedFormats")}
               </p>
             </div>
           </div>
@@ -167,7 +173,7 @@ export function ImageUpload({
                 }}
               >
                 <Link01 className="size-3" />
-                Or paste an image URL
+                {t("registry.imageUpload.orPasteImageUrl")}
               </button>
             </div>
           ) : (
@@ -176,7 +182,7 @@ export function ImageUpload({
               onClick={(event) => event.stopPropagation()}
             >
               <Input
-                placeholder="https://example.com/logo.png"
+                placeholder={t("registry.imageUpload.urlPlaceholder")}
                 value={value}
                 className="text-xs h-8"
                 onChange={(event) => onChange(event.target.value)}

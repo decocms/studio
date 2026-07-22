@@ -1,20 +1,22 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { AlertCircle, Box, LinkExternal01 } from "@untitledui/icons";
 import { EmptyState } from "@/web/components/empty-state";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const BLOCKS_DOCS_URL = "https://github.com/decocms/blocks";
 
 export function BlocksEmptyState() {
+  const t = useT();
   return (
     <EmptyState
       className="h-full w-full"
       image={<Box size={48} className="text-muted-foreground" />}
-      title="Want to edit this website with easy-to-use forms?"
-      description="Set up rich content editing so anyone can update pages without touching code."
+      title={t("mainPanelTabs.blocksTabStates.emptyStateTitle")}
+      description={t("mainPanelTabs.blocksTabStates.emptyStateDescription")}
       actions={
         <Button size="sm" asChild>
           <a href={BLOCKS_DOCS_URL} target="_blank" rel="noreferrer">
-            Set up content editing
+            {t("mainPanelTabs.blocksTabStates.setupContentEditing")}
             <LinkExternal01 size={14} />
           </a>
         </Button>
@@ -30,18 +32,19 @@ export function BlocksErrorState({
   source: "sandbox" | "data";
   onRetry: () => void;
 }) {
+  const t = useT();
   const description =
     source === "sandbox"
-      ? "The project preview could not start. Retry to make Blocks available."
-      : "Studio could not load this project's Blocks metadata.";
+      ? t("mainPanelTabs.blocksTabStates.errorStateSandbox")
+      : t("mainPanelTabs.blocksTabStates.errorStateData");
   return (
     <EmptyState
       image={<AlertCircle size={48} className="text-muted-foreground" />}
-      title="Blocks unavailable"
+      title={t("mainPanelTabs.blocksTabStates.errorStateTitle")}
       description={description}
       actions={
         <Button variant="outline" size="sm" onClick={onRetry}>
-          Retry
+          {t("mainPanelTabs.blocksTabStates.retry")}
         </Button>
       }
     />

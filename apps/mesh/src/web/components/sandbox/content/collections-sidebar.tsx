@@ -14,6 +14,7 @@ import {
   Zap,
 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { CollectionCounts, CollectionId } from "./content-browser";
 
 export function CollectionsSidebar({
@@ -27,16 +28,19 @@ export function CollectionsSidebar({
   showBlog: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
+  const t = useT();
   return (
     <div className="w-[208px] shrink-0 border-r flex flex-col">
       <div className="px-3 h-12 flex items-center border-b shrink-0">
-        <span className="text-sm font-medium">Content</span>
+        <span className="text-sm font-medium">
+          {t("sandbox.collectionsSidebar.content")}
+        </span>
       </div>
       <nav className="flex flex-col p-1.5 gap-0.5">
         <CollectionRow
           id="pages"
           icon={LayoutAlt01}
-          label="Pages"
+          label={t("sandbox.collectionsSidebar.pages")}
           count={counts.pages}
           active={active === "pages"}
           onSelect={onSelect}
@@ -44,7 +48,7 @@ export function CollectionsSidebar({
         <CollectionRow
           id="sections"
           icon={Globe02}
-          label="Sections"
+          label={t("sandbox.collectionsSidebar.sections")}
           count={counts.sections}
           active={active === "sections"}
           onSelect={onSelect}
@@ -52,7 +56,7 @@ export function CollectionsSidebar({
         <CollectionRow
           id="apps"
           icon={Grid01}
-          label="Apps"
+          label={t("sandbox.collectionsSidebar.apps")}
           count={counts.apps}
           active={active === "apps"}
           onSelect={onSelect}
@@ -60,7 +64,7 @@ export function CollectionsSidebar({
         <CollectionRow
           id="redirects"
           icon={CornerUpRight}
-          label="Redirects"
+          label={t("sandbox.collectionsSidebar.redirects")}
           count={counts.redirects}
           active={active === "redirects"}
           onSelect={onSelect}
@@ -68,7 +72,7 @@ export function CollectionsSidebar({
         <CollectionRow
           id="loaders"
           icon={Database01}
-          label="Loaders"
+          label={t("sandbox.collectionsSidebar.loaders")}
           count={counts.loaders}
           active={active === "loaders"}
           onSelect={onSelect}
@@ -76,7 +80,7 @@ export function CollectionsSidebar({
         <CollectionRow
           id="actions"
           icon={Zap}
-          label="Actions"
+          label={t("sandbox.collectionsSidebar.actions")}
           count={counts.actions}
           active={active === "actions"}
           onSelect={onSelect}
@@ -84,21 +88,21 @@ export function CollectionsSidebar({
         <CollectionRow
           id="site"
           icon={Settings01}
-          label="Site"
+          label={t("sandbox.collectionsSidebar.site")}
           active={active === "site"}
           onSelect={onSelect}
         />
         <CollectionRow
           id="seo"
           icon={CreditCardSearch}
-          label="SEO"
+          label={t("sandbox.collectionsSidebar.seo")}
           active={active === "seo"}
           onSelect={onSelect}
         />
         <CollectionRow
           id="calendar"
           icon={Calendar}
-          label="Calendar"
+          label={t("sandbox.collectionsSidebar.calendar")}
           active={active === "calendar"}
           onSelect={onSelect}
         />
@@ -106,12 +110,12 @@ export function CollectionsSidebar({
           <>
             <div className="mt-3 flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70">
               <BookOpen01 size={13} className="shrink-0" />
-              Blog
+              {t("sandbox.collectionsSidebar.blog")}
             </div>
             <CollectionRow
               id="posts"
               icon={File02}
-              label="Posts"
+              label={t("sandbox.collectionsSidebar.posts")}
               count={counts.posts}
               active={active === "posts"}
               onSelect={onSelect}
@@ -119,7 +123,7 @@ export function CollectionsSidebar({
             <CollectionRow
               id="authors"
               icon={Users01}
-              label="Authors"
+              label={t("sandbox.collectionsSidebar.authors")}
               count={counts.authors}
               active={active === "authors"}
               onSelect={onSelect}
@@ -127,7 +131,7 @@ export function CollectionsSidebar({
             <CollectionRow
               id="categories"
               icon={Tag01}
-              label="Categories"
+              label={t("sandbox.collectionsSidebar.categories")}
               count={counts.categories}
               active={active === "categories"}
               onSelect={onSelect}

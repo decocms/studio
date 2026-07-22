@@ -26,6 +26,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { Label } from "@deco/ui/components/label.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 import type { RunBlockSandboxRef } from "@/web/components/sandbox/content/use-run-block";
 import {
   readProductListIds,
@@ -42,11 +44,11 @@ import {
 } from "./heading-value";
 import { AddButton, RemoveButton, str, ToolbarButton } from "./primitives";
 
-const HEADING_LEVEL_LABEL: Record<HeadingLevel, string> = {
-  normal: "Normal",
-  h1: "H1",
-  h2: "H2",
-  h3: "H3",
+const HEADING_LEVEL_KEYS: Record<HeadingLevel, TranslationKey> = {
+  normal: "sandbox.productBlocks.headingNormal",
+  h1: "sandbox.productBlocks.headingH1",
+  h2: "sandbox.productBlocks.headingH2",
+  h3: "sandbox.productBlocks.headingH3",
 };
 
 /** Visual preview of the chosen level for the title input. */
@@ -65,6 +67,7 @@ function ShelfTitle({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const t = useT();
   const { level, text } = parseHeadingValue(value);
   return (
     <div className="space-y-1.5">
@@ -73,17 +76,17 @@ function ShelfTitle({
           <ToolbarButton
             key={l}
             active={level === l}
-            label={HEADING_LEVEL_LABEL[l]}
+            label={t(HEADING_LEVEL_KEYS[l])}
             onClick={() => onChange(formatHeadingValue(l, text))}
           >
-            {HEADING_LEVEL_LABEL[l]}
+            {t(HEADING_LEVEL_KEYS[l])}
           </ToolbarButton>
         ))}
       </div>
       <input
         value={text}
         onChange={(e) => onChange(formatHeadingValue(level, e.target.value))}
-        placeholder="Shelf title"
+        placeholder={t("sandbox.productBlocks.shelfTitlePlaceholder")}
         className={cn(
           "w-full border-0 bg-transparent p-0 outline-none placeholder:text-muted-foreground/50 focus:ring-0",
           HEADING_LEVEL_CLASS[level],
@@ -186,7 +189,7 @@ function SortableProductCard({
         />
         <button
           type="button"
-          aria-label="Drag to reorder"
+          aria-label={useT()("sandbox.productBlocks.dragToReorderLabel")}
           {...attributes}
           {...listeners}
           className="absolute left-1 top-1 flex h-6 w-6 cursor-grab items-center justify-center rounded bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-foreground active:cursor-grabbing group-hover/card:opacity-100"
@@ -195,7 +198,7 @@ function SortableProductCard({
         </button>
         <button
           type="button"
-          aria-label="Remove product"
+          aria-label={useT()("sandbox.productBlocks.removeProductLabel")}
           onClick={onRemove}
           className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-destructive group-hover/card:opacity-100 cursor-pointer"
         >
@@ -204,9 +207,14 @@ function SortableProductCard({
       </div>
       <div className="flex flex-col gap-0.5 p-2">
         <p className="line-clamp-2 text-xs leading-tight text-foreground">
-          {option?.label ?? (loading ? "Loading…" : `Product ${id}`)}
+          {option?.label ??
+            (loading
+              ? useT()("sandbox.productBlocks.loadingEllipsis")
+              : useT()("sandbox.productBlocks.productWithId", { id }))}
         </p>
-        <p className="text-[11px] text-muted-foreground">ID {id}</p>
+        <p className="text-[11px] text-muted-foreground">
+          {useT()("sandbox.productBlocks.idLabel", { id })}
+        </p>
       </div>
     </div>
   );
@@ -265,6 +273,7 @@ function ProductGrid({
 
 /** Full-width dashed CTA shown when a shelf has no products yet. */
 function EmptyProducts({ onBrowse }: { onBrowse: () => void }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -274,9 +283,11 @@ function EmptyProducts({ onBrowse }: { onBrowse: () => void }) {
       <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground">
         <Package size={16} />
       </span>
-      <span className="text-sm font-medium text-foreground">Add products</span>
+      <span className="text-sm font-medium text-foreground">
+        {t("sandbox.productBlocks.addProductsButton")}
+      </span>
       <span className="text-xs text-muted-foreground">
-        Search VTEX products, or pick a category or cluster
+        {t("sandbox.productBlocks.addProductsDescription")}
       </span>
     </button>
   );
@@ -290,15 +301,18 @@ function ProductIdsEditor({
   ids: string[];
   onChange: (ids: string[]) => void;
 }) {
+  const t = useT();
   const setAt = (index: number, value: string) =>
     onChange(ids.map((id, i) => (i === index ? value : id)));
 
   return (
     <div className="space-y-2">
-      <Label className="text-xs text-muted-foreground">VTEX product IDs</Label>
+      <Label className="text-xs text-muted-foreground">
+        {t("sandbox.productBlocks.vtexProductIds")}
+      </Label>
       {ids.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          Start the dev server to browse products, or add SKU ids below.
+          {t("sandbox.productBlocks.startDevServerDescription")}
         </p>
       )}
       <ul className="space-y-2">
@@ -307,18 +321,18 @@ function ProductIdsEditor({
             <input
               value={id}
               onChange={(e) => setAt(index, e.target.value)}
-              placeholder="151331"
+              placeholder={t("sandbox.productBlocks.skuIdPlaceholder")}
               className="h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground/50 focus:ring-0"
             />
             <RemoveButton
-              label="Remove product ID"
+              label={t("sandbox.productBlocks.removeProductIdButton")}
               onClick={() => onChange(ids.filter((_, i) => i !== index))}
             />
           </li>
         ))}
       </ul>
       <AddButton
-        label="Add product ID"
+        label={t("sandbox.productBlocks.addProductIdButton")}
         onClick={() => onChange([...ids, ""])}
       />
     </div>
@@ -357,10 +371,15 @@ export function ProductShelfBlock({
           {ids.length > 0 && (
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-muted-foreground">
-                {ids.length} {ids.length === 1 ? "product" : "products"}
+                {ids.length}{" "}
+                {useT()(
+                  ids.length === 1
+                    ? "sandbox.productBlocks.productSingular"
+                    : "sandbox.productBlocks.productPlural",
+                )}
               </span>
               <BrowseButton
-                label="Browse products"
+                label={useT()("sandbox.productBlocks.browseProductsButton")}
                 onClick={() => setPickerOpen(true)}
               />
             </div>
@@ -405,6 +424,7 @@ function SelectedProductRow({
   loading: boolean;
   onRemove: () => void;
 }) {
+  const t = useT();
   return (
     <div className="group/item flex items-center gap-3 rounded-md border bg-background p-2">
       <ProductThumb
@@ -415,11 +435,19 @@ function SelectedProductRow({
       />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-foreground">
-          {option?.label ?? (loading ? "Loading…" : `Product ${id}`)}
+          {option?.label ??
+            (loading
+              ? t("sandbox.productBlocks.loadingEllipsis")
+              : t("sandbox.productBlocks.productWithId", { id }))}
         </p>
-        <p className="text-xs text-muted-foreground">ID {id}</p>
+        <p className="text-xs text-muted-foreground">
+          {t("sandbox.productBlocks.idLabel", { id })}
+        </p>
       </div>
-      <RemoveButton label="Remove product" onClick={onRemove} />
+      <RemoveButton
+        label={t("sandbox.productBlocks.removeProductButton")}
+        onClick={onRemove}
+      />
     </div>
   );
 }
@@ -433,6 +461,7 @@ export function ProductCardBlock({
   onChange: (next: Record<string, unknown>) => void;
   sandboxRef?: RunBlockSandboxRef | null;
 }) {
+  const t = useT();
   const productId = readProductListIds(block.product).filter(Boolean)[0] ?? "";
   const [pickerOpen, setPickerOpen] = useState(false);
   const lookup = useProductsByIds(sandboxRef, productId ? [productId] : []);
@@ -446,20 +475,20 @@ export function ProductCardBlock({
   return (
     <div className="space-y-4 rounded-lg border bg-card p-4">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Product card
+        {t("sandbox.productBlocks.productCardLabel")}
       </div>
       <div className="space-y-2">
         <Label
           htmlFor="product-card-cta"
           className="text-xs text-muted-foreground"
         >
-          CTA label
+          {t("sandbox.productBlocks.ctaLabelField")}
         </Label>
         <input
           id="product-card-cta"
           value={str(block.textCta)}
           onChange={(e) => onChange({ ...block, textCta: e.target.value })}
-          placeholder="Ver produto"
+          placeholder={t("sandbox.productBlocks.ctaLabelPlaceholder")}
           className="h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground/50 focus:ring-0"
         />
       </div>
@@ -468,21 +497,26 @@ export function ProductCardBlock({
           htmlFor="product-card-slug"
           className="text-xs text-muted-foreground"
         >
-          Product slug
+          {t("sandbox.productBlocks.productSlugField")}
         </Label>
         <input
           id="product-card-slug"
           value={str(block.productSlug)}
           onChange={(e) => onChange({ ...block, productSlug: e.target.value })}
-          placeholder="product-slug"
+          placeholder={t("sandbox.productBlocks.productSlugPlaceholder")}
           className="h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground/50 focus:ring-0"
         />
       </div>
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <Label className="text-xs text-muted-foreground">Product</Label>
+          <Label className="text-xs text-muted-foreground">
+            {t("sandbox.productBlocks.productField")}
+          </Label>
           {sandboxRef && productId && (
-            <BrowseButton label="Change" onClick={() => setPickerOpen(true)} />
+            <BrowseButton
+              label={t("sandbox.productBlocks.changeButton")}
+              onClick={() => setPickerOpen(true)}
+            />
           )}
         </div>
         {sandboxRef ? (
@@ -500,14 +534,14 @@ export function ProductCardBlock({
               className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed py-3 text-sm text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
             >
               <SearchSm size={14} />
-              Choose a product
+              {t("sandbox.productBlocks.chooseProductButton")}
             </button>
           )
         ) : (
           <input
             value={productId}
             onChange={(e) => setIds(e.target.value ? [e.target.value] : [])}
-            placeholder="VTEX product ID (e.g. 151331)"
+            placeholder={t("sandbox.productBlocks.vtexProductIdPlaceholder")}
             className="h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground/50 focus:ring-0"
           />
         )}

@@ -1,5 +1,6 @@
 import { EnvVarsEditor } from "@/web/components/env-vars-editor";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import {
   DropdownMenu,
@@ -51,6 +52,7 @@ export function ConnectionFields({
   onReauthenticate?: () => void | Promise<void>;
   onRemoveOAuth?: () => void | Promise<void>;
 }) {
+  const t = useT();
   const uiType = useWatch({ control: form.control, name: "ui_type" });
   const connectionUrl = useWatch({
     control: form.control,
@@ -84,22 +86,22 @@ export function ConnectionFields({
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3">
           <span className="text-xs text-muted-foreground font-medium">
-            Type
+            {t("details.connectionSidebar.type")}
           </span>
           <div className="flex items-center gap-2 h-10 px-3 border border-border rounded-lg bg-muted/50">
             <Users03 className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm">Virtual MCP</span>
+            <span className="text-sm">
+              {t("details.connectionSidebar.virtualMcp")}
+            </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            This connection references a Virtual MCP. Tools and resources are
-            aggregated dynamically from the Virtual MCP&apos;s underlying
-            connections.
+            {t("details.connectionSidebar.virtualMcpDescription")}
           </p>
         </div>
         {virtualMcpId && (
           <div className="flex flex-col gap-2">
             <span className="text-xs text-muted-foreground font-medium">
-              Virtual MCP ID
+              {t("details.connectionSidebar.virtualMcpId")}
             </span>
             <div className="flex items-center gap-2 h-10 px-3 border border-border rounded-lg bg-muted/50">
               <code className="text-sm text-muted-foreground">
@@ -120,7 +122,7 @@ export function ConnectionFields({
         render={({ field }) => (
           <FormItem className="flex flex-col gap-3">
             <FormLabel className="text-xs text-muted-foreground font-medium">
-              Connection
+              {t("details.connectionSidebar.connection")}
             </FormLabel>
             {/* Unified container for HTTP/SSE/Websocket */}
             {uiType !== "NPX" && uiType !== "STDIO" ? (
@@ -133,13 +135,23 @@ export function ConnectionFields({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="HTTP">HTTP</SelectItem>
-                    <SelectItem value="SSE">SSE</SelectItem>
-                    <SelectItem value="Websocket">Websocket</SelectItem>
+                    <SelectItem value="HTTP">
+                      {t("details.connectionSidebar.http")}
+                    </SelectItem>
+                    <SelectItem value="SSE">
+                      {t("details.connectionSidebar.sse")}
+                    </SelectItem>
+                    <SelectItem value="Websocket">
+                      {t("details.connectionSidebar.websocket")}
+                    </SelectItem>
                     {showStdioOptions && (
                       <>
-                        <SelectItem value="NPX">NPX Package</SelectItem>
-                        <SelectItem value="STDIO">Custom Command</SelectItem>
+                        <SelectItem value="NPX">
+                          {t("details.connectionSidebar.npxPackage")}
+                        </SelectItem>
+                        <SelectItem value="STDIO">
+                          {t("details.connectionSidebar.customCommand")}
+                        </SelectItem>
                       </>
                     )}
                   </SelectContent>
@@ -152,7 +164,9 @@ export function ConnectionFields({
                     <FormItem className="flex-1 min-w-0">
                       <FormControl>
                         <Input
-                          placeholder="https://example.com/mcp"
+                          placeholder={t(
+                            "details.connectionSidebar.urlPlaceholder",
+                          )}
                           {...urlField}
                           value={urlField.value ?? ""}
                           className="h-10 border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent"
@@ -173,19 +187,19 @@ export function ConnectionFields({
                   <SelectItem value="HTTP">
                     <span className="flex items-center gap-2">
                       <Globe02 className="w-4 h-4" />
-                      HTTP
+                      {t("details.connectionSidebar.http")}
                     </span>
                   </SelectItem>
                   <SelectItem value="SSE">
                     <span className="flex items-center gap-2">
                       <Globe02 className="w-4 h-4" />
-                      SSE
+                      {t("details.connectionSidebar.sse")}
                     </span>
                   </SelectItem>
                   <SelectItem value="Websocket">
                     <span className="flex items-center gap-2">
                       <Globe02 className="w-4 h-4" />
-                      Websocket
+                      {t("details.connectionSidebar.websocket")}
                     </span>
                   </SelectItem>
                   {showStdioOptions && (
@@ -193,13 +207,13 @@ export function ConnectionFields({
                       <SelectItem value="NPX">
                         <span className="flex items-center gap-2">
                           <Container className="w-4 h-4" />
-                          NPX Package
+                          {t("details.connectionSidebar.npxPackage")}
                         </span>
                       </SelectItem>
                       <SelectItem value="STDIO">
                         <span className="flex items-center gap-2">
                           <Terminal className="w-4 h-4" />
-                          Custom Command
+                          {t("details.connectionSidebar.customCommand")}
                         </span>
                       </SelectItem>
                     </>
@@ -220,11 +234,13 @@ export function ConnectionFields({
           render={({ field }) => (
             <FormItem className="flex flex-col gap-3">
               <FormLabel className="text-xs text-muted-foreground font-medium">
-                NPM Package
+                {t("details.connectionSidebar.npmPackage")}
               </FormLabel>
               <FormControl>
                 <Input
-                  placeholder="@perplexity-ai/mcp-server"
+                  placeholder={t(
+                    "details.connectionSidebar.npmPackagePlaceholder",
+                  )}
                   {...field}
                   value={field.value || ""}
                   className="h-10 rounded-lg"
@@ -246,11 +262,13 @@ export function ConnectionFields({
               render={({ field }) => (
                 <FormItem className="flex flex-col gap-3">
                   <FormLabel className="text-xs text-muted-foreground font-medium">
-                    Command
+                    {t("details.connectionSidebar.command")}
                   </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="node, bun, python..."
+                      placeholder={t(
+                        "details.connectionSidebar.commandPlaceholder",
+                      )}
                       {...field}
                       value={field.value || ""}
                       className="h-10 rounded-lg"
@@ -267,18 +285,20 @@ export function ConnectionFields({
               render={({ field }) => (
                 <FormItem className="flex flex-col gap-3">
                   <FormLabel className="text-xs text-muted-foreground font-medium">
-                    Arguments
+                    {t("details.connectionSidebar.arguments")}
                   </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="arg1 arg2 --flag value"
+                      placeholder={t(
+                        "details.connectionSidebar.argumentsPlaceholder",
+                      )}
                       {...field}
                       value={field.value || ""}
                       className="h-10 rounded-lg"
                     />
                   </FormControl>
                   <p className="text-xs text-muted-foreground">
-                    Space-separated arguments
+                    {t("details.connectionSidebar.spaceSeparatedArguments")}
                   </p>
                   <FormMessage />
                 </FormItem>
@@ -292,11 +312,13 @@ export function ConnectionFields({
             render={({ field }) => (
               <FormItem className="flex flex-col gap-3">
                 <FormLabel className="text-xs text-muted-foreground font-medium">
-                  Working Directory
+                  {t("details.connectionSidebar.workingDirectory")}
                 </FormLabel>
                 <FormControl>
                   <Input
-                    placeholder="/path/to/project (optional)"
+                    placeholder={t(
+                      "details.connectionSidebar.workingDirectoryPlaceholder",
+                    )}
                     {...field}
                     value={field.value || ""}
                     className="h-10 rounded-lg"
@@ -317,7 +339,7 @@ export function ConnectionFields({
           render={({ field }) => (
             <FormItem className="flex flex-col gap-3">
               <FormLabel className="text-xs text-muted-foreground font-medium">
-                Environment Variables
+                {t("details.connectionSidebar.environmentVariables")}
               </FormLabel>
               <FormControl>
                 <EnvVarsEditor
@@ -339,7 +361,9 @@ export function ConnectionFields({
           render={({ field }) => (
             <FormItem className="flex flex-col gap-3">
               <FormLabel className="text-xs text-muted-foreground font-medium">
-                {isGitHubCopilotMcp ? "GitHub Personal Access Token" : "Token"}
+                {isGitHubCopilotMcp
+                  ? t("details.connectionSidebar.githubPersonalAccessToken")
+                  : t("details.connectionSidebar.token")}
               </FormLabel>
               {/* Authentication status badge */}
               {hasOAuthToken ? (
@@ -352,7 +376,7 @@ export function ConnectionFields({
                       >
                         <Badge variant="success" className="gap-1.5">
                           <CheckCircle size={12} />
-                          Authenticated via OAuth
+                          {t("details.connectionSidebar.authenticatedViaOAuth")}
                           <ChevronDown size={12} />
                         </Badge>
                       </button>
@@ -360,14 +384,14 @@ export function ConnectionFields({
                     <DropdownMenuContent align="start">
                       <DropdownMenuItem onClick={onReauthenticate}>
                         <RefreshCcw01 size={16} />
-                        Re-authenticate
+                        {t("details.connectionSidebar.reauthenticate")}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         variant="destructive"
                         onClick={onRemoveOAuth}
                       >
                         <Trash01 size={16} />
-                        Remove OAuth
+                        {t("details.connectionSidebar.removeOAuth")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -381,7 +405,7 @@ export function ConnectionFields({
                     type="button"
                     onClick={() => field.onChange("")}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Clear and replace token"
+                    title={t("details.connectionSidebar.clearAndReplaceToken")}
                   >
                     <XClose size={14} className="text-muted-foreground" />
                   </button>
@@ -393,8 +417,8 @@ export function ConnectionFields({
                       type="password"
                       placeholder={
                         isGitHubCopilotMcp
-                          ? "Paste your GitHub PAT"
-                          : "Enter access token..."
+                          ? t("details.connectionSidebar.pasteYourGitHubPat")
+                          : t("details.connectionSidebar.enterAccessToken")
                       }
                       {...field}
                       value={field.value || ""}
@@ -403,7 +427,7 @@ export function ConnectionFields({
                   </FormControl>
                   {isGitHubCopilotMcp && (
                     <FormDescription>
-                      Create a PAT at{" "}
+                      {t("details.connectionSidebar.createAPatAt")}{" "}
                       <a
                         href="https://github.com/settings/personal-access-tokens"
                         target="_blank"

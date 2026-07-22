@@ -31,6 +31,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t";
 import { MONITORING_CONFIG } from "./config.ts";
 
 // ============================================================================
@@ -408,6 +409,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
   const [copiedOutput, setCopiedOutput] = useState(false);
   const navigate = useNavigate();
   const { org } = useProjectContext();
+  const t = useT();
   // Reads from the same cache the monitoring page already populated, so this
   // doesn't trigger an extra fetch — we just need the connection's slug
   // (the tool detail route keys off $appSlug, not the connection id).
@@ -433,8 +435,8 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
         setCopiedOutput(true);
         setTimeout(() => setCopiedOutput(false), 2000);
       }
-    } catch {
-      toast.error("Failed to copy to clipboard");
+    } catch (error) {
+      toast.error(t("monitoring.types.failedToCopy"));
     }
   };
 
@@ -454,7 +456,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
     // so map this log's connectionId to its slug before navigating.
     const connection = connections.find((c) => c.id === log.connectionId);
     if (!connection) {
-      toast.error("Could not find the connection for this tool call");
+      toast.error(t("monitoring.types.connectionNotFound"));
       return;
     }
     // Generate unique replay ID
@@ -481,8 +483,8 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
       await navigator.clipboard.writeText(log.requestId);
       setCopiedRequestId(true);
       setTimeout(() => setCopiedRequestId(false), 2000);
-    } catch {
-      toast.error("Failed to copy to clipboard");
+    } catch (error) {
+      toast.error(t("monitoring.types.failedToCopy"));
     }
   };
 
@@ -502,13 +504,17 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
         {/* Timestamp */}
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Timestamp</div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("monitoring.types.timestamp")}
+          </div>
           <div className="text-sm text-foreground">{formattedTimestamp}</div>
         </div>
 
         {/* Duration */}
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Duration</div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("monitoring.types.duration")}
+          </div>
           <div className="text-sm font-mono text-foreground">
             {log.durationMs}ms
           </div>
@@ -516,21 +522,27 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
 
         {/* User */}
         <div>
-          <div className="text-xs text-muted-foreground mb-1">User</div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("monitoring.types.user")}
+          </div>
           <div className="text-sm text-foreground">{log.userName}</div>
         </div>
 
         {/* Agent */}
         {log.virtualMcpName && (
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Agent</div>
+            <div className="text-xs text-muted-foreground mb-1">
+              {t("monitoring.types.agent")}
+            </div>
             <div className="text-sm text-foreground">{log.virtualMcpName}</div>
           </div>
         )}
 
         {/* Request ID */}
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Request ID</div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("monitoring.types.requestId")}
+          </div>
           <div className="flex items-center gap-1">
             <code className="font-mono text-foreground text-[11px]">
               {log.requestId}
@@ -539,7 +551,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
               size="icon"
               variant="ghost"
               onClick={handleCopyRequestId}
-              aria-label="Copy request ID"
+              aria-label={t("monitoring.types.copyRequestId")}
               className="h-5 w-5 text-muted-foreground hover:text-foreground"
             >
               {copiedRequestId ? <Check size={12} /> : <Copy01 size={12} />}
@@ -550,7 +562,9 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
         {/* Client */}
         {log.userAgent && (
           <div>
-            <div className="text-xs text-muted-foreground mb-1">Client</div>
+            <div className="text-xs text-muted-foreground mb-1">
+              {t("monitoring.types.client")}
+            </div>
             <div className="text-sm font-mono text-foreground">
               {log.userAgent}
             </div>
@@ -561,7 +575,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
         {log.properties && Object.keys(log.properties).length > 0 && (
           <div className="md:col-span-2">
             <div className="text-xs text-muted-foreground mb-1.5">
-              Properties
+              {t("monitoring.types.properties")}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(log.properties).map(([key, value]) => (
@@ -600,7 +614,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         }}
                       >
                         <FilterLines size={14} className="mr-2" />
-                        Filter by this property
+                        {t("monitoring.types.filterByProperty")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -611,14 +625,14 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                             await navigator.clipboard.writeText(
                               `${key}=${value}`,
                             );
-                            toast.success("Copied filter to clipboard");
-                          } catch {
-                            toast.error("Failed to copy to clipboard");
+                            toast.success(t("monitoring.types.copiedFilter"));
+                          } catch (error) {
+                            toast.error(t("monitoring.types.failedToCopy"));
                           }
                         }}
                       >
                         <Copy01 size={14} className="mr-2" />
-                        Copy filter
+                        {t("monitoring.types.copyFilter")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -627,14 +641,14 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(key);
-                            toast.success("Copied key to clipboard");
-                          } catch {
-                            toast.error("Failed to copy to clipboard");
+                            toast.success(t("monitoring.types.copiedKey"));
+                          } catch (error) {
+                            toast.error(t("monitoring.types.failedToCopy"));
                           }
                         }}
                       >
                         <Key01 size={14} className="mr-2" />
-                        Copy key
+                        {t("monitoring.types.copyKey")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -643,14 +657,14 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(value);
-                            toast.success("Copied value to clipboard");
-                          } catch {
-                            toast.error("Failed to copy to clipboard");
+                            toast.success(t("monitoring.types.copiedValue"));
+                          } catch (error) {
+                            toast.error(t("monitoring.types.failedToCopy"));
                           }
                         }}
                       >
                         <Type01 size={14} className="mr-2" />
-                        Copy value
+                        {t("monitoring.types.copyValue")}
                       </Button>
                     </div>
                   </PopoverContent>
@@ -664,7 +678,9 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
       {/* Error message */}
       {log.errorMessage && (
         <div>
-          <div className="text-xs text-destructive mb-1">Error</div>
+          <div className="text-xs text-destructive mb-1">
+            {t("monitoring.types.error")}
+          </div>
           <div className="text-destructive font-mono text-xs bg-destructive/10 p-2 rounded break-all">
             {log.errorMessage}
           </div>
@@ -678,11 +694,12 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
             <div className="flex items-center justify-between p-1 pl-4 border-b border-border">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground select-none">
-                  Input
+                  {t("monitoring.types.input")}
                 </span>
                 {inputJson.isTruncated && (
                   <span className="text-xs text-warning">
-                    ({formatBytes(inputJson.originalSize)} - truncated)
+                    ({formatBytes(inputJson.originalSize)} -{" "}
+                    {t("monitoring.types.truncated")})
                   </span>
                 )}
               </div>
@@ -694,13 +711,15 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         size="icon"
                         variant="ghost"
                         onClick={handleReplay}
-                        aria-label="Replay tool call"
+                        aria-label={t("monitoring.types.replayToolCall")}
                         className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
                       >
                         <Play size={14} />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Replay tool call</TooltipContent>
+                    <TooltipContent>
+                      {t("monitoring.types.replayToolCall")}
+                    </TooltipContent>
                   </Tooltip>
                 )}
                 {inputJson.isTruncated && (
@@ -710,20 +729,22 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         size="icon"
                         variant="ghost"
                         onClick={() => handleDownload("input")}
-                        aria-label="Download full input"
+                        aria-label={t("monitoring.types.downloadFullInput")}
                         className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
                       >
                         <Download01 size={14} />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Download full input</TooltipContent>
+                    <TooltipContent>
+                      {t("monitoring.types.downloadFullInput")}
+                    </TooltipContent>
                   </Tooltip>
                 )}
                 <Button
                   size="icon"
                   variant="ghost"
                   onClick={() => handleCopy("input")}
-                  aria-label="Copy input"
+                  aria-label={t("monitoring.types.copyInput")}
                   className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
                 >
                   {copiedInput ? <Check size={14} /> : <Copy01 size={14} />}
@@ -745,11 +766,12 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
             <div className="flex items-center justify-between p-1 pl-4 border-b border-border">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground select-none">
-                  Output
+                  {t("monitoring.types.output")}
                 </span>
                 {outputJson.isTruncated && (
                   <span className="text-xs text-warning">
-                    ({formatBytes(outputJson.originalSize)} - truncated)
+                    ({formatBytes(outputJson.originalSize)} -{" "}
+                    {t("monitoring.types.truncated")})
                   </span>
                 )}
               </div>
@@ -761,20 +783,22 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         size="icon"
                         variant="ghost"
                         onClick={() => handleDownload("output")}
-                        aria-label="Download full output"
+                        aria-label={t("monitoring.types.downloadFullOutput")}
                         className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
                       >
                         <Download01 size={14} />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Download full output</TooltipContent>
+                    <TooltipContent>
+                      {t("monitoring.types.downloadFullOutput")}
+                    </TooltipContent>
                   </Tooltip>
                 )}
                 <Button
                   size="icon"
                   variant="ghost"
                   onClick={() => handleCopy("output")}
-                  aria-label="Copy output"
+                  aria-label={t("monitoring.types.copyOutput")}
                   className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
                 >
                   {copiedOutput ? <Check size={14} /> : <Copy01 size={14} />}

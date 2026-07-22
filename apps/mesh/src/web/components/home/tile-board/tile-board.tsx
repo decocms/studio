@@ -27,6 +27,7 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { DotsGrid, DotsHorizontal, Trash01 } from "@untitledui/icons";
 import { type ReactNode, useRef, useState } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   GRID_COLS,
   GRID_GAP_PX,
@@ -226,6 +227,7 @@ function BoardTile({
   onRemove,
   children,
 }: BoardTileProps) {
+  const t = useT();
   const {
     setNodeRef,
     attributes,
@@ -265,7 +267,7 @@ function BoardTile({
               {...attributes}
               {...listeners}
               className="absolute top-2 left-2 z-10 flex size-8 items-center justify-center rounded-md bg-background/90 border border-border text-muted-foreground hover:text-foreground hover:bg-muted cursor-grab active:cursor-grabbing"
-              aria-label="Drag tile"
+              aria-label={t("home.tileBoard.dragTileAriaLabel")}
             >
               <DotsGrid size={16} />
             </button>
@@ -292,6 +294,7 @@ function TileMenu({
   onRemove: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -299,7 +302,7 @@ function TileMenu({
         <button
           type="button"
           className="flex size-8 items-center justify-center rounded-md bg-background/90 border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
-          aria-label="Tile options"
+          aria-label={t("home.tileBoard.tileOptionsAriaLabel")}
         >
           <DotsHorizontal size={16} />
         </button>
@@ -318,7 +321,7 @@ function TileMenu({
           className="text-destructive focus:text-destructive"
         >
           <Trash01 size={14} className="mr-2" />
-          Remove tile
+          {t("home.tileBoard.removeTile")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -339,10 +342,13 @@ function TileSizeGrid({
   const [hover, setHover] = useState<{ w: number; h: number } | null>(null);
   const active = hover ?? { w: tile.w, h: tile.h };
 
+  const t = useT();
   return (
     <div className="px-2 py-1.5">
       <div className="mb-2 flex items-center justify-between gap-4">
-        <span className="text-xs text-muted-foreground">Size</span>
+        <span className="text-xs text-muted-foreground">
+          {t("home.tileBoard.sizeLabel")}
+        </span>
         <span className="text-xs font-medium tabular-nums">
           {active.w} × {active.h}
         </span>
@@ -363,7 +369,7 @@ function TileSizeGrid({
                 key={`${w}x${h}`}
                 type="button"
                 disabled={disabled}
-                aria-label={`${w} by ${h}`}
+                aria-label={t("home.tileBoard.sizeGridCellAriaLabel", { w, h })}
                 onPointerEnter={() => setHover({ w, h })}
                 onClick={() => onPick({ w, h })}
                 className={cn(

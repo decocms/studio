@@ -5,6 +5,7 @@ import { MemoizedMarkdown } from "../../markdown.tsx";
 import { Check, Copy01 } from "@untitledui/icons";
 import type { TextUIPart } from "ai";
 import { track } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface MessageTextPartProps {
   id: string;
@@ -26,6 +27,7 @@ export function MessageTextPart({
   animate = false,
 }: MessageTextPartProps) {
   const { handleCopy } = useCopy();
+  const t = useT();
   const [isCopied, setIsCopied] = useState(false);
 
   const handleCopyMessage = async () => {
@@ -63,7 +65,7 @@ export function MessageTextPart({
               type="button"
               onClick={handleCopyMessage}
               className="text-muted-foreground [@media(hover:hover)]:hover:text-foreground transition-colors active:scale-[0.97]"
-              aria-label="Copy message"
+              aria-label={t("chat.textPart.copyMessage")}
             >
               {isCopied ? (
                 <Check className="size-4" />

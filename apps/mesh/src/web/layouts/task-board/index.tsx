@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 import { getInitials } from "@/web/lib/get-initials";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import {
   Calendar,
@@ -116,23 +117,25 @@ const PILL =
 
 /** Card flag for a task whose agent is paused waiting on human input. */
 function BlockedBadge() {
+  const t = useT();
   return (
     <span
       className={cn(PILL, "border-warning/30 text-warning")}
-      title="The agent is waiting for your input"
+      title={t("taskBoard.taskBoard.blockedBadgeTitle")}
     >
       <HelpCircle size={14} />
-      Needs input
+      {t("taskBoard.taskBoard.needsInput")}
     </span>
   );
 }
 
 function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
+  const t = useT();
   const config = PRIORITY_CONFIG[priority];
   return (
     <span className={PILL}>
       <span className={cn("size-2 rounded-full", config.dotClassName)} />
-      {config.label}
+      {t(config.labelKey)}
     </span>
   );
 }
@@ -168,6 +171,7 @@ function AssigneeDisplay({
   members?: Member[];
   onAssign?: (userId: string | null) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
@@ -176,8 +180,10 @@ function AssigneeDisplay({
         className="inline-flex items-center"
         title={
           assignedBy?.user?.name
-            ? `Assigned to Super Agent by ${assignedBy.user.name}`
-            : "Assigned to Super Agent"
+            ? t("taskBoard.taskBoard.assignedToSuperAgentBy", {
+                name: assignedBy.user.name,
+              })
+            : t("taskBoard.taskBoard.assignedToSuperAgent")
         }
       >
         {assignedBy && (
@@ -238,6 +244,7 @@ function AssigneeDisplay({
 }
 
 export function TaskBoardPage() {
+  const t = useT();
   const { items, isLoading } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const reportsOnly = useReportsOnly();
@@ -389,7 +396,9 @@ export function TaskBoardPage() {
       {/* Header — capped + centered to the same width as the board content so
           they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
-        <h1 className="text-xl font-medium text-foreground">Tasks</h1>
+        <h1 className="text-xl font-medium text-foreground">
+          {t("taskBoard.taskBoard.tasksTitle")}
+        </h1>
 
         {/* Commerce orgs: a persistent unlock CTA that self-hides once the
             diagnostic is paid. The board stays usable in the meantime. */}
@@ -423,19 +432,19 @@ export function TaskBoardPage() {
                 active={layout === "list"}
                 onClick={() => setLayout("list")}
                 icon={List}
-                label="List"
+                label={t("common.taskBoard.listView")}
               />
               <LayoutToggle
                 active={layout === "board"}
                 onClick={() => setLayout("board")}
                 icon={Columns03}
-                label="Board"
+                label={t("common.taskBoard.boardView")}
               />
             </div>
 
             <Button size="sm" onClick={openCreate}>
               <Plus size={16} />
-              New task
+              {t("taskBoard.taskBoard.newTask")}
             </Button>
           </div>
         </div>
@@ -444,19 +453,19 @@ export function TaskBoardPage() {
       {items.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
           <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
-            No tasks yet. Start one with New task.
+            {t("taskBoard.taskBoard.noTasksYet")}
           </div>
         </div>
       ) : visibleItems.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
           <div className="flex flex-col items-center gap-3 rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
-            No tasks match these filters.
+            {t("taskBoard.taskBoard.noTasksMatch")}
             <Button
               variant="outline"
               size="sm"
               onClick={() => setFilters(EMPTY_FILTERS)}
             >
-              Clear filters
+              {t("taskBoard.taskBoard.clearFilters")}
             </Button>
           </div>
         </div>
@@ -569,15 +578,17 @@ function ConnectGitHubDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const { connect, isConnecting } = useConnectApp("deco/mcp-github");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Connect GitHub</DialogTitle>
+          <DialogTitle>
+            {t("taskBoard.taskBoard.connectGithubTitle")}
+          </DialogTitle>
           <DialogDescription>
-            Auto-fix hands the task to the Super Agent, which opens a pull
-            request with the change. Connect GitHub so it can push and open PRs.
+            {t("taskBoard.taskBoard.connectGithubDescription")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -594,7 +605,7 @@ function ConnectGitHubDialog({
             ) : (
               <GitHubIcon className="size-4" />
             )}
-            Connect GitHub
+            {t("taskBoard.taskBoard.connectGithubButton")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -613,11 +624,12 @@ function LayoutToggle({
   icon: typeof List;
   label: string;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${label} view`}
+      aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", { label })}
       aria-pressed={active}
       className={cn(
         "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
@@ -651,6 +663,7 @@ function Lanes({
   onAutoFix?: (item: TaskBoardItem) => void;
   onAssign?: (id: string, userId: string | null) => void;
 }) {
+  const t = useT();
   const [overLane, setOverLane] = useState<TaskBoardItemStatus | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
@@ -705,15 +718,19 @@ function Lanes({
                   className={cn("shrink-0", config.iconClassName)}
                 />
                 <span className="text-sm font-medium text-foreground">
-                  {config.label}
+                  {t(config.labelKey)}
                 </span>
                 <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
                   {laneItems.length}
                 </span>
                 <button
                   type="button"
-                  aria-label={`New task in ${config.label}`}
-                  title={`New task in ${config.label}`}
+                  aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
+                    lane: t(config.labelKey),
+                  })}
+                  title={t("taskBoard.taskBoard.newTaskInLaneTitle", {
+                    lane: t(config.labelKey),
+                  })}
                   onClick={() => onCreate(status)}
                   className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
@@ -771,6 +788,7 @@ function TaskCard({
   onAutoFix?: () => void;
   onAssign?: (userId: string | null) => void;
 }) {
+  const t = useT();
   const statusConfig = STATUS_CONFIG[item.status];
   const StatusIcon = statusConfig.icon;
   const lastMessage = primaryThread(item)?.lastMessage;
@@ -838,7 +856,7 @@ function TaskCard({
           className="flex items-center gap-1.5 self-end rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
         >
           <Lightning01 size={12} />
-          Auto-fix
+          {t("taskBoard.taskBoard.autoFix")}
         </button>
       )}
     </button>

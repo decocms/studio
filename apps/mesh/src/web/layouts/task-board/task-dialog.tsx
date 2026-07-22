@@ -42,6 +42,7 @@ import {
 import { SuperAgentIcon } from "@/web/components/super-agent-icon";
 import { useMembers } from "@/web/hooks/use-members";
 import { getInitials } from "@/web/lib/get-initials";
+import { useT } from "@/web/i18n/use-t.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   PRIORITIES,
@@ -88,35 +89,10 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat(undefined, {
  * (wrapping row); a borderless ghost row in the desktop sidebar.
  */
 const PROPERTY_BUTTON =
-  "inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:border-transparent";
+  "inline-flex h-9 items-center justify-start gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:border-transparent";
 
-const THREAD_STATUS: Record<
-  NonNullable<TaskBoardItemThread["status"]>,
-  { label: string; className: string; icon: typeof AlertSquare; spin?: boolean }
-> = {
-  failed: { label: "Error", className: "text-destructive", icon: AlertSquare },
-  requires_action: {
-    label: "Needs input",
-    className: "text-warning",
-    icon: HelpCircle,
-  },
-  in_progress: {
-    label: "Running",
-    className: "text-primary",
-    icon: Loading02,
-    spin: true,
-  },
-  completed: {
-    label: "Completed",
-    className: "text-success",
-    icon: CheckCircle,
-  },
-  expired: {
-    label: "Expired",
-    className: "text-muted-foreground",
-    icon: AlertCircle,
-  },
-};
+// ponytail: THREAD_STATUS labels moved into component to access t()
+// each status key is resolved dynamically via t() in ActivityCard
 
 export function TaskBoardItemDialog({
   open,
@@ -150,6 +126,7 @@ export function TaskBoardItemDialog({
   onNewChat?: () => void;
   isSaving?: boolean;
 }) {
+  const t = useT();
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
   const { handleCopy, copied } = useCopy();
@@ -212,12 +189,14 @@ export function TaskBoardItemDialog({
         closeButtonClassName="hidden"
       >
         <DialogTitle className="sr-only">
-          {item ? "Edit task" : "New task"}
+          {item
+            ? t("taskBoard.taskDialog.editTaskTitle")
+            : t("taskBoard.taskDialog.newTaskTitle")}
         </DialogTitle>
 
         <button
           type="button"
-          aria-label="Close"
+          aria-label={t("taskBoard.taskDialog.closeAriaLabel")}
           onClick={close}
           className="absolute right-2.5 top-2.5 z-10 flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
@@ -243,7 +222,7 @@ export function TaskBoardItemDialog({
               onKeyDown={(e) => {
                 if (e.key === "Enter") e.preventDefault();
               }}
-              placeholder="Task title..."
+              placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
               autoFocus
               rows={1}
               className="w-full resize-none overflow-hidden border-0 bg-transparent text-xl font-medium leading-snug text-foreground outline-none placeholder:text-foreground/30"
@@ -253,7 +232,7 @@ export function TaskBoardItemDialog({
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe a task for an agent..."
+                placeholder={t("taskBoard.taskDialog.descriptionPlaceholder")}
                 className="min-h-[96px] w-full flex-1 resize-none border-0 bg-transparent text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50 sm:min-h-[120px]"
               />
               {description && (
@@ -261,7 +240,9 @@ export function TaskBoardItemDialog({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Copy description"
+                  aria-label={t(
+                    "taskBoard.taskDialog.copyDescriptionAriaLabel",
+                  )}
                   className="absolute right-0 top-0 size-7 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
                   onClick={() => handleCopy(description)}
                 >
@@ -290,7 +271,7 @@ export function TaskBoardItemDialog({
               stacked sidebar on desktop. */}
           <div className="flex w-full shrink-0 flex-col gap-4 border-t border-border p-6 sm:w-[220px] sm:border-t-0 sm:border-l sm:px-6 sm:py-10">
             <span className="hidden px-3 text-sm text-muted-foreground sm:block">
-              Properties
+              {t("taskBoard.taskDialog.propertiesLabel")}
             </span>
 
             <div className="flex flex-wrap gap-2 sm:flex-col">
@@ -301,7 +282,7 @@ export function TaskBoardItemDialog({
                       size={16}
                       className={STATUS_CONFIG[status].iconClassName}
                     />
-                    {STATUS_CONFIG[status].label}
+                    {t(STATUS_CONFIG[status].labelKey)}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
@@ -317,7 +298,7 @@ export function TaskBoardItemDialog({
                           size={16}
                           className={STATUS_CONFIG[s].iconClassName}
                         />
-                        {STATUS_CONFIG[s].label}
+                        {t(STATUS_CONFIG[s].labelKey)}
                       </DropdownMenuItem>
                     );
                   })}
@@ -336,7 +317,7 @@ export function TaskBoardItemDialog({
                     {priority === "none" ? (
                       <>
                         <DotsHorizontal size={16} />
-                        Set priority
+                        {t("taskBoard.taskDialog.setPriorityButton")}
                       </>
                     ) : (
                       <>
@@ -346,7 +327,7 @@ export function TaskBoardItemDialog({
                             PRIORITY_CONFIG[priority].dotClassName,
                           )}
                         />
-                        {PRIORITY_CONFIG[priority].label}
+                        {t(PRIORITY_CONFIG[priority].labelKey)}
                       </>
                     )}
                   </button>
@@ -360,7 +341,7 @@ export function TaskBoardItemDialog({
                           PRIORITY_CONFIG[p].dotClassName,
                         )}
                       />
-                      {PRIORITY_CONFIG[p].label}
+                      {t(PRIORITY_CONFIG[p].labelKey)}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -397,7 +378,8 @@ export function TaskBoardItemDialog({
                               size="2xs"
                             />
                             <span className="truncate">
-                              {assignedBy.user?.name ?? "Super Agent"}
+                              {assignedBy.user?.name ??
+                                t("taskBoard.taskDialog.superAgentDefaultName")}
                             </span>
                           </span>
                           {/* Mobile: no room for the elbow tree — fold the
@@ -417,13 +399,13 @@ export function TaskBoardItemDialog({
                                 className="ring-2 ring-background"
                               />
                             </span>
-                            Super Agent
+                            {t("taskBoard.taskDialog.superAgentLabel")}
                           </span>
                         </>
                       ) : isSuperAgent ? (
                         <>
                           <SuperAgentIcon size={16} />
-                          Super Agent
+                          {t("taskBoard.taskDialog.superAgentLabel")}
                         </>
                       ) : assignee ? (
                         <>
@@ -434,7 +416,8 @@ export function TaskBoardItemDialog({
                             size="2xs"
                           />
                           <span className="truncate">
-                            {assignee.user?.name ?? "Unassigned"}
+                            {assignee.user?.name ??
+                              t("taskBoard.taskDialog.unassignedLabel")}
                           </span>
                         </>
                       ) : (
@@ -443,7 +426,7 @@ export function TaskBoardItemDialog({
                             size={16}
                             className="text-muted-foreground"
                           />
-                          Assign
+                          {t("taskBoard.taskDialog.assignButton")}
                         </>
                       )}
                     </button>
@@ -473,7 +456,7 @@ export function TaskBoardItemDialog({
                       className={cn(PROPERTY_BUTTON, "pointer-events-none")}
                     >
                       <SuperAgentIcon size={16} />
-                      Super Agent
+                      {t("taskBoard.taskDialog.superAgentLabel")}
                     </span>
                   </div>
                 )}
@@ -489,12 +472,16 @@ export function TaskBoardItemDialog({
                     )}
                   >
                     <Calendar size={16} className="text-muted-foreground" />
-                    {dueDate ? DUE_DATE_FMT.format(dueDate) : "Due date"}
+                    {dueDate
+                      ? DUE_DATE_FMT.format(dueDate)
+                      : t("taskBoard.taskDialog.dueDateLabel")}
                     {dueDate && (
                       <span
                         role="button"
                         tabIndex={0}
-                        aria-label="Clear due date"
+                        aria-label={t(
+                          "taskBoard.taskDialog.clearDueDateAriaLabel",
+                        )}
                         className="-mr-1 ml-0.5 flex size-4 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -534,7 +521,7 @@ export function TaskBoardItemDialog({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Delete task"
+              aria-label={t("taskBoard.taskDialog.deleteTaskAriaLabel")}
               className="size-10 text-muted-foreground hover:text-destructive"
               onClick={onDelete}
             >
@@ -548,7 +535,7 @@ export function TaskBoardItemDialog({
             {item && onNewChat && (
               <Button variant="outline" size="sm" onClick={onNewChat}>
                 <Edit05 size={16} />
-                New chat
+                {t("taskBoard.taskDialog.newChatButton")}
               </Button>
             )}
             <Button
@@ -557,7 +544,9 @@ export function TaskBoardItemDialog({
               onClick={submit}
             >
               <Plus size={16} />
-              {item ? "Save" : "Create task"}
+              {item
+                ? t("taskBoard.taskDialog.saveButton")
+                : t("taskBoard.taskDialog.createTaskButton")}
             </Button>
           </div>
         </div>
@@ -579,7 +568,47 @@ function ActivityCard({
   startedBy?: Member;
   onOpen?: (thread: TaskBoardItemThread) => void;
 }) {
-  const state = thread.status ? THREAD_STATUS[thread.status] : null;
+  const t = useT();
+
+  // ponytail: build THREAD_STATUS dynamically to access t()
+  const THREAD_STATUS_CONFIG: Record<
+    NonNullable<TaskBoardItemThread["status"]>,
+    {
+      label: string;
+      className: string;
+      icon: typeof AlertSquare;
+      spin?: boolean;
+    }
+  > = {
+    failed: {
+      label: t("taskBoard.taskDialog.threadStatusError"),
+      className: "text-destructive",
+      icon: AlertSquare,
+    },
+    requires_action: {
+      label: t("taskBoard.taskDialog.threadStatusNeedsInput"),
+      className: "text-warning",
+      icon: HelpCircle,
+    },
+    in_progress: {
+      label: t("taskBoard.taskDialog.threadStatusRunning"),
+      className: "text-primary",
+      icon: Loading02,
+      spin: true,
+    },
+    completed: {
+      label: t("taskBoard.taskDialog.threadStatusCompleted"),
+      className: "text-success",
+      icon: CheckCircle,
+    },
+    expired: {
+      label: t("taskBoard.taskDialog.threadStatusExpired"),
+      className: "text-muted-foreground",
+      icon: AlertCircle,
+    },
+  };
+
+  const state = thread.status ? THREAD_STATUS_CONFIG[thread.status] : null;
   const message = thread.lastMessage;
 
   return (
@@ -587,11 +616,13 @@ function ActivityCard({
       <div className="flex items-center gap-2 px-4 py-3.5">
         <SuperAgentIcon size={16} />
         <span className="truncate text-sm text-foreground">
-          {thread.title || "Super Agent"}
+          {thread.title || t("taskBoard.taskDialog.superAgentDefaultName")}
         </span>
         {startedBy && (
           <>
-            <span className="text-sm text-muted-foreground/50">started by</span>
+            <span className="text-sm text-muted-foreground/50">
+              {t("taskBoard.taskDialog.startedByLabel")}
+            </span>
             <Avatar
               url={startedBy.user?.image ?? undefined}
               fallback={getInitials(startedBy.user?.name)}
@@ -599,7 +630,7 @@ function ActivityCard({
               size="2xs"
             />
             <span className="truncate text-sm text-foreground">
-              {startedBy.user?.name ?? "someone"}
+              {startedBy.user?.name ?? t("taskBoard.taskDialog.someoneLabel")}
             </span>
           </>
         )}
@@ -637,33 +668,45 @@ function ActivityCard({
 }
 
 /** Icon + label + color for a PR's live state (merged/closed/draft/open). */
-function prStateStyle(pr: TaskBoardItemPr): {
+function prStateStyle(
+  pr: TaskBoardItemPr,
+  t: ReturnType<typeof useT>,
+): {
   label: string;
   className: string;
   icon: typeof GitPullRequest;
 } {
   if (pr.merged)
-    return { label: "Merged", className: "text-special", icon: GitMerge };
+    return {
+      label: t("taskBoard.taskDialog.prStateMerged"),
+      className: "text-special",
+      icon: GitMerge,
+    };
   if (pr.state === "closed")
     return {
-      label: "Closed",
+      label: t("taskBoard.taskDialog.prStateClosed"),
       className: "text-destructive",
       icon: GitPullRequest,
     };
   if (pr.draft)
     return {
-      label: "Draft",
+      label: t("taskBoard.taskDialog.prStateDraft"),
       className: "text-muted-foreground",
       icon: GitPullRequest,
     };
   // "open" or unknown live state — still a link the user can follow.
-  return { label: "Open", className: "text-success", icon: GitPullRequest };
+  return {
+    label: t("taskBoard.taskDialog.prStateOpen"),
+    className: "text-success",
+    icon: GitPullRequest,
+  };
 }
 
 /** One PR row — state badge, title (falls back to repo#number), external link,
  *  and the PR description (live-fetched) clamped below when present. */
 function PullRequestRow({ pr }: { pr: TaskBoardItemPr }) {
-  const style = prStateStyle(pr);
+  const t = useT();
+  const style = prStateStyle(pr, t);
   const body = pr.body?.trim();
   return (
     <a
@@ -700,6 +743,7 @@ function PullRequestRow({ pr }: { pr: TaskBoardItemPr }) {
  * empty chrome to a task that never opened a PR.
  */
 function PullRequestsCard({ itemId }: { itemId: string }) {
+  const t = useT();
   const { data: prs, isLoading } = useTaskBoardItemPrs(itemId);
   if (!isLoading && (!prs || prs.length === 0)) return null;
 
@@ -707,12 +751,14 @@ function PullRequestsCard({ itemId }: { itemId: string }) {
     <div className="flex flex-col overflow-hidden rounded-lg border border-border">
       <div className="flex items-center gap-2 px-4 py-3.5">
         <GitPullRequest size={16} className="text-muted-foreground" />
-        <span className="text-sm text-foreground">Pull requests</span>
+        <span className="text-sm text-foreground">
+          {t("taskBoard.taskDialog.pullRequestsLabel")}
+        </span>
       </div>
       {!prs ? (
         <div className="flex items-center gap-2 border-t border-border px-4 py-2 text-sm text-muted-foreground">
           <Loading02 size={16} className="animate-spin" />
-          <span>Loading…</span>
+          <span>{t("taskBoard.taskDialog.loadingLabel")}</span>
         </div>
       ) : (
         prs.map((pr) => <PullRequestRow key={pr.url} pr={pr} />)

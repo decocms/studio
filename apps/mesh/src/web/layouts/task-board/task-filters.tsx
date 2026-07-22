@@ -6,6 +6,7 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { useT, type TranslationKey } from "@/web/i18n/use-t.ts";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -123,12 +124,12 @@ export function taskMatchesFilters(
   return true;
 }
 
-const DUE_OPTIONS: { value: DueFilter; label: string }[] = [
-  { value: "overdue", label: "Overdue" },
-  { value: "today", label: "Due today" },
-  { value: "week", label: "Due this week" },
-  { value: "none", label: "No due date" },
-];
+const DUE_OPTIONS_LABEL_KEYS: Record<DueFilter, TranslationKey> = {
+  overdue: "taskBoard.taskFilters.dueDateFilterOverdue",
+  today: "taskBoard.taskFilters.dueDateFilterDueToday",
+  week: "taskBoard.taskFilters.dueDateFilterDueThisWeek",
+  none: "taskBoard.taskFilters.dueDateFilterNoDueDate",
+};
 
 /**
  * Shared trigger styling — a compact chip that fills in when a value is set.
@@ -155,15 +156,16 @@ function AssigneeFilter({
   onChange: (next: string | null) => void;
   block?: boolean;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   let glyph: ReactNode = <User01 size={14} className="shrink-0" />;
-  let label = "Assignee";
+  let label = t("taskBoard.taskFilters.assigneeLabel");
   if (value === UNASSIGNED_FILTER) {
-    label = "Unassigned";
+    label = t("taskBoard.taskFilters.assigneeUnassigned");
   } else if (value === SUPER_AGENT_ASSIGNEE_ID) {
     glyph = <SuperAgentIcon size={14} />;
-    label = "Super Agent";
+    label = t("taskBoard.taskFilters.assigneeSuperAgent");
   } else if (value) {
     const member = members.find((m) => m.userId === value);
     glyph = (
@@ -174,7 +176,7 @@ function AssigneeFilter({
         size="2xs"
       />
     );
-    label = member?.user?.name ?? "Member";
+    label = member?.user?.name ?? t("taskBoard.taskFilters.assigneeMember");
   }
 
   const select = (next: string | null) => {
@@ -196,12 +198,17 @@ function AssigneeFilter({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-56 p-0">
         <Command>
-          <CommandInput placeholder="Filter by assignee…" className="h-9" />
+          <CommandInput
+            placeholder={t("taskBoard.taskFilters.assigneeFilterPlaceholder")}
+            className="h-9"
+          />
           <CommandList>
-            <CommandEmpty>No members found.</CommandEmpty>
+            <CommandEmpty>
+              {t("taskBoard.taskFilters.assigneeNoMembersFound")}
+            </CommandEmpty>
             <CommandGroup>
               <CommandItem value="Anyone" onSelect={() => select(null)}>
-                Anyone
+                {t("taskBoard.taskFilters.assigneeAnyone")}
               </CommandItem>
               <CommandItem
                 value="Unassigned"
@@ -209,7 +216,7 @@ function AssigneeFilter({
                 className="gap-2"
               >
                 <User01 size={16} className="text-muted-foreground" />
-                Unassigned
+                {t("taskBoard.taskFilters.assigneeUnassigned")}
               </CommandItem>
               <CommandItem
                 value="Super Agent"
@@ -217,10 +224,12 @@ function AssigneeFilter({
                 className="gap-2"
               >
                 <SuperAgentIcon size={16} />
-                Super Agent
+                {t("taskBoard.taskFilters.assigneeSuperAgent")}
               </CommandItem>
             </CommandGroup>
-            <CommandGroup heading="Members">
+            <CommandGroup
+              heading={t("taskBoard.taskFilters.assigneeGroupMembers")}
+            >
               {members.map((m) => (
                 <CommandItem
                   key={m.userId}
@@ -254,6 +263,7 @@ function PriorityFilter({
   onChange: (next: TaskBoardItemPriority | null) => void;
   block?: boolean;
 }) {
+  const t = useT();
   const triggerClass = chipClass(value !== null, block);
   const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
   return (
@@ -270,13 +280,15 @@ function PriorityFilter({
           ) : (
             <Flag01 size={14} className="shrink-0" />
           )}
-          {value ? PRIORITY_CONFIG[value].label : "Priority"}
+          {value
+            ? t(PRIORITY_CONFIG[value].labelKey)
+            : t("taskBoard.taskFilters.priorityLabel")}
           <ChevronDown size={12} className={chevronClass} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-40">
         <DropdownMenuItem onSelect={() => onChange(null)}>
-          Any priority
+          {t("taskBoard.taskFilters.priorityAnyPriority")}
         </DropdownMenuItem>
         {PRIORITIES.map((p) => (
           <DropdownMenuItem
@@ -290,7 +302,7 @@ function PriorityFilter({
                 PRIORITY_CONFIG[p].dotClassName,
               )}
             />
-            {PRIORITY_CONFIG[p].label}
+            {t(PRIORITY_CONFIG[p].labelKey)}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -307,7 +319,8 @@ function DueDateFilter({
   onChange: (next: DueFilter | null) => void;
   block?: boolean;
 }) {
-  const label = DUE_OPTIONS.find((o) => o.value === value)?.label;
+  const t = useT();
+  const label = value ? t(DUE_OPTIONS_LABEL_KEYS[value]) : undefined;
   const triggerClass = chipClass(value !== null, block);
   const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
   return (
@@ -315,21 +328,25 @@ function DueDateFilter({
       <DropdownMenuTrigger asChild>
         <button type="button" className={triggerClass}>
           <Calendar size={14} className="shrink-0" />
-          {label ?? "Due date"}
+          {label ?? t("taskBoard.taskFilters.dueDateLabel")}
           <ChevronDown size={12} className={chevronClass} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-44">
         <DropdownMenuItem onSelect={() => onChange(null)} className="gap-2">
           <Calendar size={16} className="text-muted-foreground" />
-          Any time
+          {t("taskBoard.taskFilters.dueDateAnyTime")}
         </DropdownMenuItem>
-        {DUE_OPTIONS.map((o) => {
-          const danger = o.value === "overdue";
+        {(
+          Object.entries(DUE_OPTIONS_LABEL_KEYS) as Array<
+            [DueFilter, TranslationKey]
+          >
+        ).map(([value, labelKey]) => {
+          const danger = value === "overdue";
           return (
             <DropdownMenuItem
-              key={o.value}
-              onSelect={() => onChange(o.value)}
+              key={value}
+              onSelect={() => onChange(value)}
               className={cn("gap-2", danger && "text-destructive")}
             >
               <Calendar
@@ -339,7 +356,7 @@ function DueDateFilter({
                   danger ? "text-destructive" : "text-muted-foreground",
                 )}
               />
-              {o.label}
+              {t(labelKey)}
             </DropdownMenuItem>
           );
         })}
@@ -392,6 +409,7 @@ export function TaskFiltersBar({
   members: Member[];
   onChange: (next: TaskFilters) => void;
 }) {
+  const t = useT();
   return (
     <div className="flex flex-wrap items-center gap-2">
       <FilterLines
@@ -405,7 +423,7 @@ export function TaskFiltersBar({
           onClick={() => onChange(EMPTY_FILTERS)}
           className="ml-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
-          Clear
+          {t("taskBoard.taskFilters.clearButton")}
         </button>
       )}
     </div>
@@ -426,6 +444,7 @@ export function TaskFiltersDrawer({
   members: Member[];
   onChange: (next: TaskFilters) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const count = activeFilterCount(filters);
   const triggerClass = chipClass(count > 0);
@@ -434,7 +453,7 @@ export function TaskFiltersDrawer({
       <DrawerTrigger asChild>
         <button type="button" className={triggerClass}>
           <FilterLines size={14} className="shrink-0" />
-          Filters
+          {t("taskBoard.taskFilters.filterDrawerButtonLabel")}
           {count > 0 && (
             <span className="ml-0.5 flex size-4 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background">
               {count}
@@ -444,7 +463,7 @@ export function TaskFiltersDrawer({
       </DrawerTrigger>
       <DrawerContent className="p-0">
         <DrawerTitle className="px-4 pt-4 text-base font-medium text-foreground">
-          Filters
+          {t("taskBoard.taskFilters.filterDrawerTitle")}
         </DrawerTitle>
         <div className="flex flex-col gap-2 p-4">
           <FilterControls
@@ -461,11 +480,13 @@ export function TaskFiltersDrawer({
               className="flex-1"
               onClick={() => onChange(EMPTY_FILTERS)}
             >
-              Clear all
+              {t("taskBoard.taskFilters.clearAllButton")}
             </Button>
           )}
           <DrawerClose asChild>
-            <Button className="flex-1">Done</Button>
+            <Button className="flex-1">
+              {t("taskBoard.taskFilters.doneButton")}
+            </Button>
           </DrawerClose>
         </DrawerFooter>
       </DrawerContent>

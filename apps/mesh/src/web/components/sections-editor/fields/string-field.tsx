@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
 import { RichTextField } from "./rich-text-field";
 
@@ -64,11 +65,13 @@ function DatePickerInput({
   withTime,
   value,
   onChange,
+  calendarLabel,
 }: {
   id: string;
   withTime: boolean;
   value: string;
   onChange: (iso: string) => void;
+  calendarLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -120,7 +123,7 @@ function DatePickerInput({
             variant="outline"
             size="icon"
             className="h-10 w-10 shrink-0"
-            aria-label="Open calendar"
+            aria-label={calendarLabel}
           >
             <CalendarIcon className="h-4 w-4" />
           </Button>
@@ -170,6 +173,7 @@ export function StringField({
   path,
   label,
 }: FieldProps) {
+  const t = useT();
   const strValue = typeof value === "string" ? value : "";
   const format = schema.format;
 
@@ -220,6 +224,7 @@ export function StringField({
           withTime={format === "date-time"}
           value={strValue}
           onChange={onChange}
+          calendarLabel={t("sectionsEditor.stringField.openCalendar")}
         />
       </div>
     );

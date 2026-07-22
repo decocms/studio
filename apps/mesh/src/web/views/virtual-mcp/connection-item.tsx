@@ -1,6 +1,7 @@
 import { IntegrationIcon } from "@/web/components/integration-icon.tsx";
 import { useMCPAuthStatus } from "@/web/hooks/use-mcp-auth-status";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   Select,
   SelectContent,
@@ -102,6 +103,7 @@ function SiblingInstanceSelector({
   onSwitchInstance: (oldId: string, newId: string) => void;
   onNewInstance?: () => void;
 }) {
+  const t = useT();
   const siblings = useConnections({
     filters: [{ column: "app_name", value: appName }],
   });
@@ -141,7 +143,7 @@ function SiblingInstanceSelector({
             value={NEW_INSTANCE_VALUE}
             className="text-xs text-muted-foreground"
           >
-            + New instance
+            + {t("virtualMcp.connectionItem.newInstance")}
           </SelectItem>
         )}
       </SelectContent>
@@ -189,6 +191,8 @@ function ConnectionItemWithAuth({
     !isVirtual && authStatus.supportsOAuth && !authStatus.isAuthenticated;
   const isDisabled = connectionStatus !== "active";
 
+  const t = useT();
+
   const toggleStatus = async (status: "active" | "inactive") => {
     try {
       await connectionActions.update.mutateAsync({
@@ -196,10 +200,12 @@ function ConnectionItemWithAuth({
         data: { status },
       });
       toast.success(
-        status === "active" ? "Connection enabled" : "Connection disabled",
+        status === "active"
+          ? t("virtualMcp.connectionItem.connectionEnabled")
+          : t("virtualMcp.connectionItem.connectionDisabled"),
       );
     } catch {
-      toast.error("Failed to update connection");
+      toast.error(t("virtualMcp.connectionItem.failedToUpdateConnection"));
     }
   };
 
@@ -231,11 +237,13 @@ function ConnectionItemWithAuth({
           <p className="text-sm font-medium truncate">{connectionTitle}</p>
           {needsAuth ? (
             <span className="text-xs text-destructive font-medium">
-              Needs authorization
+              {t("virtualMcp.connectionItem.needsAuthorization")}
             </span>
           ) : isDisabled ? (
             <span className="text-xs text-destructive font-medium">
-              {connectionStatus === "error" ? "Disabled (error)" : "Disabled"}
+              {connectionStatus === "error"
+                ? t("virtualMcp.connectionItem.disabledError")
+                : t("virtualMcp.connectionItem.disabled")}
             </span>
           ) : (
             connectionDescription && (
@@ -256,7 +264,7 @@ function ConnectionItemWithAuth({
               onAuthenticate(connection_id);
             }}
           >
-            Authorize
+            {t("virtualMcp.connectionItem.authorize")}
           </Button>
         ) : isDisabled ? (
           <Button
@@ -270,7 +278,7 @@ function ConnectionItemWithAuth({
             }}
           >
             <Power01 size={13} />
-            Enable
+            {t("virtualMcp.connectionItem.enable")}
           </Button>
         ) : (
           <Tooltip delayDuration={0}>
@@ -279,7 +287,9 @@ function ConnectionItemWithAuth({
                 <Settings02 size={16} />
               </span>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Connection settings</TooltipContent>
+            <TooltipContent side="bottom">
+              {t("virtualMcp.connectionItem.connectionSettings")}
+            </TooltipContent>
           </Tooltip>
         )}
       </Link>
@@ -305,12 +315,14 @@ function ConnectionItemWithAuth({
                 size="icon"
                 className="h-7 w-7"
                 onClick={onOpenSettings}
-                aria-label="Configure resources"
+                aria-label={t("virtualMcp.connectionItem.configureResources")}
               >
                 <Settings04 size={13} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Configure resources</TooltipContent>
+            <TooltipContent side="bottom">
+              {t("virtualMcp.connectionItem.configureResources")}
+            </TooltipContent>
           </Tooltip>
           {!isDisabled && (
             <Tooltip delayDuration={0}>
@@ -320,12 +332,14 @@ function ConnectionItemWithAuth({
                   size="icon"
                   className="h-7 w-7 text-muted-foreground"
                   onClick={() => toggleStatus("inactive")}
-                  aria-label="Disable connection"
+                  aria-label={t("virtualMcp.connectionItem.disableConnection")}
                 >
                   <SlashCircle01 size={13} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Disable</TooltipContent>
+              <TooltipContent side="bottom">
+                {t("virtualMcp.connectionItem.disable")}
+              </TooltipContent>
             </Tooltip>
           )}
           <Tooltip delayDuration={0}>
@@ -335,12 +349,14 @@ function ConnectionItemWithAuth({
                 size="icon"
                 className="h-7 w-7 text-muted-foreground hover:text-destructive"
                 onClick={onRemove}
-                aria-label="Remove connection"
+                aria-label={t("virtualMcp.connectionItem.removeConnection")}
               >
                 <XClose size={13} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Remove</TooltipContent>
+            <TooltipContent side="bottom">
+              {t("virtualMcp.connectionItem.remove")}
+            </TooltipContent>
           </Tooltip>
         </div>
       </div>

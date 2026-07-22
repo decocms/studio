@@ -33,6 +33,7 @@ import {
   Loading01,
   SearchMd,
 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import { CsvImportDialog } from "./csv-import-dialog";
 import { DeleteConfirmDialog } from "./delete-confirm-dialog";
 import { RegistryItemCard } from "./registry-item-card";
@@ -67,6 +68,7 @@ function extractRemoteUrl(item: RegistryItem): string {
 }
 
 export default function RegistryItemsPage() {
+  const t = useT();
   const toolbarButtonClass = "h-8";
 
   const [searchInput, setSearchInput] = useState("");
@@ -137,14 +139,16 @@ export default function RegistryItemsPage() {
     try {
       if ("data" in payload) {
         await updateMutation.mutateAsync(payload);
-        toast.success("Registry item updated");
+        toast.success(t("registry.registryItemsPage.registryItemUpdated"));
       } else {
         await createMutation.mutateAsync(payload);
-        toast.success("Registry item created");
+        toast.success(t("registry.registryItemsPage.registryItemCreated"));
       }
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save item",
+        error instanceof Error
+          ? error.message
+          : t("registry.registryItemsPage.failedToSaveItem"),
       );
       throw error;
     }
@@ -166,11 +170,15 @@ export default function RegistryItemsPage() {
         },
       });
       toast.success(
-        currentVerified ? "Removed verified status" : "Marked as verified",
+        currentVerified
+          ? t("registry.registryItemsPage.removedVerifiedStatus")
+          : t("registry.registryItemsPage.markedAsVerified"),
       );
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update item",
+        error instanceof Error
+          ? error.message
+          : t("registry.registryItemsPage.failedToUpdateItem"),
       );
     }
   };
@@ -191,11 +199,15 @@ export default function RegistryItemsPage() {
         },
       });
       toast.success(
-        currentOfficial ? "Removed official status" : "Marked as official",
+        currentOfficial
+          ? t("registry.registryItemsPage.removedOfficialStatus")
+          : t("registry.registryItemsPage.markedAsOfficial"),
       );
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update item",
+        error instanceof Error
+          ? error.message
+          : t("registry.registryItemsPage.failedToUpdateItem"),
       );
     }
   };
@@ -204,11 +216,13 @@ export default function RegistryItemsPage() {
     if (!deletingItem) return;
     try {
       await deleteMutation.mutateAsync(deletingItem.id);
-      toast.success("Registry item deleted");
+      toast.success(t("registry.registryItemsPage.registryItemDeleted"));
       setDeletingItem(null);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete item",
+        error instanceof Error
+          ? error.message
+          : t("registry.registryItemsPage.failedToDeleteItem"),
       );
     }
   };
@@ -218,7 +232,9 @@ export default function RegistryItemsPage() {
       <div className="shrink-0 border-b border-border">
         <div className="h-12 px-4 md:px-6 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-sm font-medium">Items</h2>
+            <h2 className="text-sm font-medium">
+              {t("registry.registryItemsPage.items")}
+            </h2>
             <Badge variant="secondary" className="text-xs">
               {totalCount}
             </Badge>
@@ -232,11 +248,13 @@ export default function RegistryItemsPage() {
                   className={cn(toolbarButtonClass, "gap-1.5")}
                 >
                   <FilterLines size={14} />
-                  Filters
+                  {t("registry.registryItemsPage.filters")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-[260px]">
-                <DropdownMenuLabel>Tags</DropdownMenuLabel>
+                <DropdownMenuLabel>
+                  {t("registry.registryItemsPage.tags")}
+                </DropdownMenuLabel>
                 {tags.length > 0 ? (
                   tags.map((tag) => (
                     <DropdownMenuCheckboxItem
@@ -253,11 +271,13 @@ export default function RegistryItemsPage() {
                   ))
                 ) : (
                   <DropdownMenuItem disabled>
-                    No tags available
+                    {t("registry.registryItemsPage.noTagsAvailable")}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuLabel>Categories</DropdownMenuLabel>
+                <DropdownMenuLabel>
+                  {t("registry.registryItemsPage.categories")}
+                </DropdownMenuLabel>
                 {categories.length > 0 ? (
                   categories.map((category) => (
                     <DropdownMenuCheckboxItem
@@ -274,7 +294,7 @@ export default function RegistryItemsPage() {
                   ))
                 ) : (
                   <DropdownMenuItem disabled>
-                    No categories available
+                    {t("registry.registryItemsPage.noCategoriesAvailable")}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -293,17 +313,17 @@ export default function RegistryItemsPage() {
             >
               <ToggleGroupItem
                 value="cards"
-                aria-label="Cards view"
+                aria-label={t("registry.registryItemsPage.cardsViewAriaLabel")}
                 className={toolbarButtonClass}
               >
-                Cards
+                {t("registry.registryItemsPage.cards")}
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="table"
-                aria-label="Table view"
+                aria-label={t("registry.registryItemsPage.tableViewAriaLabel")}
                 className={toolbarButtonClass}
               >
-                Table
+                {t("registry.registryItemsPage.table")}
               </ToggleGroupItem>
             </ToggleGroup>
 
@@ -313,14 +333,14 @@ export default function RegistryItemsPage() {
               className={toolbarButtonClass}
               onClick={() => setCsvOpen(true)}
             >
-              Import CSV
+              {t("registry.registryItemsPage.importCsv")}
             </Button>
             <Button
               size="sm"
               className={toolbarButtonClass}
               onClick={() => setCreateOpen(true)}
             >
-              Add MCP Servers
+              {t("registry.registryItemsPage.addMcpServers")}
             </Button>
           </div>
         </div>
@@ -331,7 +351,7 @@ export default function RegistryItemsPage() {
             <Input
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Search by id, title, description, or server name"
+              placeholder={t("registry.registryItemsPage.searchPlaceholder")}
               className="flex-1 border-0 shadow-none focus-visible:ring-0 px-0 h-full text-sm placeholder:text-muted-foreground/50 bg-transparent"
             />
           </label>
@@ -364,7 +384,7 @@ export default function RegistryItemsPage() {
                 setSelectedCategories([]);
               }}
             >
-              Clear filters
+              {t("registry.registryItemsPage.clearFilters")}
             </Button>
           </div>
         )}
@@ -377,24 +397,24 @@ export default function RegistryItemsPage() {
               <>
                 <Loading01 className="size-5 animate-spin text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
-                  Loading items...
+                  {t("registry.registryItemsPage.loadingItems")}
                 </p>
               </>
             ) : (
               <>
                 <h3 className="text-base font-medium">
                   {hasActiveFilters
-                    ? "No items found"
-                    : "No MCPs in your registry"}
+                    ? t("registry.registryItemsPage.noItemsFound")
+                    : t("registry.registryItemsPage.noMcpsInRegistry")}
                 </h3>
                 <p className="text-sm text-muted-foreground max-w-md">
                   {hasActiveFilters
-                    ? "Try removing filters or changing your search to find matching MCPs."
-                    : "Add your first MCP item to start building your private registry catalog."}
+                    ? t("registry.registryItemsPage.tryRemovingFilters")
+                    : t("registry.registryItemsPage.addFirstMcpItem")}
                 </p>
                 {!hasActiveFilters && (
                   <Button size="lg" onClick={() => setCreateOpen(true)}>
-                    Add MCP Servers
+                    {t("registry.registryItemsPage.addMcpServers")}
                   </Button>
                 )}
               </>
@@ -424,15 +444,27 @@ export default function RegistryItemsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[56px]">Icon</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Tags</TableHead>
-                    <TableHead>Categories</TableHead>
-                    <TableHead>Remote URL</TableHead>
-                    <TableHead>Visibility</TableHead>
+                    <TableHead className="w-[56px]">
+                      {t("registry.registryItemsPage.icon")}
+                    </TableHead>
+                    <TableHead>
+                      {t("registry.registryItemsPage.title")}
+                    </TableHead>
+                    <TableHead>{t("registry.registryItemsPage.id")}</TableHead>
+                    <TableHead>
+                      {t("registry.registryItemsPage.tags")}
+                    </TableHead>
+                    <TableHead>
+                      {t("registry.registryItemsPage.categories")}
+                    </TableHead>
+                    <TableHead>
+                      {t("registry.registryItemsPage.remoteUrl")}
+                    </TableHead>
+                    <TableHead>
+                      {t("registry.registryItemsPage.visibility")}
+                    </TableHead>
                     <TableHead className="text-right w-[68px]">
-                      Actions
+                      {t("registry.registryItemsPage.actions")}
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -490,10 +522,12 @@ export default function RegistryItemsPage() {
                         {item.is_public ? (
                           <Badge variant="default" className="gap-1">
                             <Globe01 size={10} />
-                            Public
+                            {t("registry.registryItemsPage.public")}
                           </Badge>
                         ) : (
-                          <Badge variant="secondary">Private</Badge>
+                          <Badge variant="secondary">
+                            {t("registry.registryItemsPage.private")}
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
@@ -503,7 +537,10 @@ export default function RegistryItemsPage() {
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0"
-                              aria-label={`Actions for ${item.title}`}
+                              aria-label={t(
+                                "registry.registryItemsPage.actionsFor",
+                                { title: item.title },
+                              )}
                             >
                               <DotsVertical size={18} />
                             </Button>
@@ -512,13 +549,13 @@ export default function RegistryItemsPage() {
                             <DropdownMenuItem
                               onClick={() => setEditingItem(item)}
                             >
-                              Edit
+                              {t("registry.registryItemsPage.edit")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               variant="destructive"
                               onClick={() => setDeletingItem(item)}
                             >
-                              Delete
+                              {t("registry.registryItemsPage.delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -537,7 +574,7 @@ export default function RegistryItemsPage() {
         {itemsQuery.isFetchingNextPage && (
           <div className="py-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loading01 className="size-4 animate-spin" />
-            Loading more items...
+            {t("registry.registryItemsPage.loadingMoreItems")}
           </div>
         )}
       </div>
@@ -565,11 +602,17 @@ export default function RegistryItemsPage() {
         onImport={async (parsedItems) => {
           try {
             const result = await bulkCreateMutation.mutateAsync(parsedItems);
-            toast.success(`Imported ${result.created} item(s)`);
+            toast.success(
+              t("registry.registryItemsPage.importedItems", {
+                count: result.created,
+              }),
+            );
             return result;
           } catch (error) {
             toast.error(
-              error instanceof Error ? error.message : "Failed to import CSV",
+              error instanceof Error
+                ? error.message
+                : t("registry.registryItemsPage.failedToImportCsv"),
             );
             throw error;
           }

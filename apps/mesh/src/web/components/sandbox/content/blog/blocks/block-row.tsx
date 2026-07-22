@@ -4,6 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@deco/ui/lib/utils.js";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import type { RunBlockSandboxRef } from "@/web/components/sandbox/content/use-run-block";
+import { useT } from "@/web/i18n/use-t.ts";
 import { BlockEditor, type RawBlock } from "./block-registry";
 
 /**
@@ -33,6 +34,7 @@ export function BlockRow({
   onDuplicate: () => void;
   sandboxRef?: RunBlockSandboxRef | null;
 }) {
+  const t = useT();
   const {
     attributes,
     listeners,
@@ -56,7 +58,7 @@ export function BlockRow({
     >
       <button
         type="button"
-        aria-label="Drag to reorder"
+        aria-label={t("sandbox.blockRow.dragToReorder")}
         className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground active:cursor-grabbing group-hover/row:opacity-100"
         {...attributes}
         {...listeners}
@@ -66,7 +68,7 @@ export function BlockRow({
       <div className="absolute right-1 top-1 z-10 flex flex-row gap-0.5 rounded-md bg-background/80 opacity-0 backdrop-blur-sm transition-opacity group-hover/row:opacity-100">
         <button
           type="button"
-          aria-label="Duplicate block"
+          aria-label={t("sandbox.blockRow.duplicateBlock")}
           onClick={onDuplicate}
           className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
         >
@@ -74,7 +76,7 @@ export function BlockRow({
         </button>
         <button
           type="button"
-          aria-label="Delete block"
+          aria-label={t("sandbox.blockRow.deleteBlock")}
           onClick={onDelete}
           className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-destructive cursor-pointer"
         >

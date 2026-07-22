@@ -5,14 +5,16 @@ import { Button } from "@deco/ui/components/button.tsx";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { NoPermissionState } from "@/web/components/no-permission-state";
 import { useDeploymentAdmin } from "@/web/hooks/use-deployment-admin";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const TABS = [
-  { to: "/_admin/users", label: "Users" },
-  { to: "/_admin/orgs", label: "Organizations" },
+  { to: "/_admin/users", labelKey: "admin.layout.usersTab" },
+  { to: "/_admin/orgs", labelKey: "admin.layout.organizationsTab" },
 ] as const;
 
 function AdminTabs() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const t = useT();
 
   return (
     <nav className="flex items-center gap-1 border-b border-border px-4 md:px-10">
@@ -27,7 +29,7 @@ function AdminTabs() {
               : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
-          {tab.label}
+          {t(tab.labelKey)}
         </Link>
       ))}
     </nav>
@@ -36,6 +38,7 @@ function AdminTabs() {
 
 function AdminGate() {
   const { isAdmin, loading, needsEmailVerification } = useDeploymentAdmin();
+  const t = useT();
 
   if (loading) {
     return (
@@ -48,15 +51,15 @@ function AdminGate() {
   if (!isAdmin) {
     return (
       <NoPermissionState
-        area="the admin dashboard"
+        area={t("admin.layout.adminDashboardArea")}
         description={
           needsEmailVerification
-            ? "Verify your email address to access the admin dashboard."
-            : "This dashboard is restricted to deployment admins."
+            ? t("admin.layout.emailVerificationRequired")
+            : t("admin.layout.restrictedToDashboard")
         }
         action={
           <Button variant="outline" size="sm" asChild>
-            <Link to="/">Go home</Link>
+            <Link to="/">{t("admin.layout.goHome")}</Link>
           </Button>
         }
       />
@@ -66,7 +69,9 @@ function AdminGate() {
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background">
       <div className="shrink-0 px-4 pt-6 md:px-10">
-        <h1 className="pb-4 text-xl font-medium">Admin Dashboard</h1>
+        <h1 className="pb-4 text-xl font-medium">
+          {t("admin.layout.adminDashboard")}
+        </h1>
       </div>
       <AdminTabs />
       <div className="flex-1 overflow-hidden">

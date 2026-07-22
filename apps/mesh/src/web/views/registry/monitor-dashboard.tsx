@@ -33,6 +33,7 @@ import {
   summarizeToolResults,
 } from "@/web/lib/registry/monitor-utils";
 import { Play, StopSquare } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 
 function pct(run: { total_items: number; tested_items: number }): number {
   if (!run.total_items) return 0;
@@ -58,6 +59,7 @@ function ResultLogEntry({
   index: number;
   icon?: string | null;
 }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const {
     latestToolResults,
@@ -77,8 +79,11 @@ function ResultLogEntry({
   );
   const toolProgressLabel =
     discoveredToolsCount > 0
-      ? `${testedToolsCount}/${discoveredToolsCount} tools tested`
-      : "0 tools";
+      ? t("registry.monitorDashboard.toolsTestedCount", {
+          tested: testedToolsCount,
+          discovered: discoveredToolsCount,
+        })
+      : t("registry.monitorDashboard.noTools");
 
   return (
     <div className="rounded border border-border overflow-hidden">
@@ -136,9 +141,19 @@ function ResultLogEntry({
           {r.status.replace("_", " ")}
         </Badge>
         {r.connection_ok ? (
-          <span className="text-[10px] text-success shrink-0">conn✓</span>
+          <span
+            className="text-[10px] text-success shrink-0"
+            title={t("registry.monitorDashboard.connOkTitle")}
+          >
+            conn✓
+          </span>
         ) : (
-          <span className="text-[10px] text-destructive shrink-0">conn✗</span>
+          <span
+            className="text-[10px] text-destructive shrink-0"
+            title={t("registry.monitorDashboard.connFailTitle")}
+          >
+            conn✗
+          </span>
         )}
         {r.tools_listed && (
           <span className="text-[10px] text-muted-foreground shrink-0">
@@ -150,9 +165,13 @@ function ResultLogEntry({
                 </span>
               </>
             ) : isHealthCheck && latestToolResults.length > 0 ? (
-              <span>{latestToolResults.length} tools found</span>
+              <span>
+                {t("registry.monitorDashboard.toolsFoundCount", {
+                  count: latestToolResults.length,
+                })}
+              </span>
             ) : (
-              "no tools"
+              t("registry.monitorDashboard.noToolsLabel")
             )}
           </span>
         )}
@@ -169,7 +188,7 @@ function ResultLogEntry({
           {r.error_message && (
             <div className="space-y-0.5">
               <p className="text-[10px] font-semibold text-destructive">
-                Error
+                {t("registry.monitorDashboard.errorLabel")}
               </p>
               <pre className="text-[11px] bg-destructive/5 border border-destructive/10 rounded px-2 py-1.5 whitespace-pre-wrap break-all text-destructive max-h-20 overflow-auto">
                 {r.error_message}
@@ -179,23 +198,27 @@ function ResultLogEntry({
 
           <div className="flex items-center gap-3 text-[10px] flex-wrap">
             <span>
-              Connection:{" "}
+              {t("registry.monitorDashboard.connectionLabel")}{" "}
               <span
                 className={cn(
                   r.connection_ok ? "text-success" : "text-destructive",
                 )}
               >
-                {r.connection_ok ? "OK" : "Failed"}
+                {r.connection_ok
+                  ? t("registry.monitorDashboard.statusOk")
+                  : t("registry.monitorDashboard.statusFailed")}
               </span>
             </span>
             <span>
-              Tools listed:{" "}
+              {t("registry.monitorDashboard.toolsListedLabel")}{" "}
               <span
                 className={cn(
                   r.tools_listed ? "text-success" : "text-destructive",
                 )}
               >
-                {r.tools_listed ? "Yes" : "No"}
+                {r.tools_listed
+                  ? t("registry.monitorDashboard.yes")
+                  : t("registry.monitorDashboard.no")}
               </span>
             </span>
             {r.action_taken !== "none" && (
@@ -208,7 +231,10 @@ function ResultLogEntry({
           {hasToolTests ? (
             <div className="space-y-1">
               <p className="text-[10px] font-semibold text-muted-foreground">
-                Tools tested: {passedTools} passed, {failedTools} failed
+                {t("registry.monitorDashboard.toolsTestedDetails", {
+                  passed: passedTools,
+                  failed: failedTools,
+                })}
               </p>
               <div className="space-y-0.5">
                 {realToolTests.map((tool, toolIndex) => (
@@ -222,8 +248,9 @@ function ResultLogEntry({
           ) : isHealthCheck && latestToolResults.length > 0 ? (
             <div className="space-y-1">
               <p className="text-[10px] font-semibold text-muted-foreground">
-                Tools discovered ({latestToolResults.length}) - not individually
-                tested (health-check mode)
+                {t("registry.monitorDashboard.toolsDiscoveredHealthCheck", {
+                  count: latestToolResults.length,
+                })}
               </p>
               <div className="flex flex-wrap gap-1">
                 {latestToolResults.map((tool, toolIndex) => (
@@ -239,7 +266,7 @@ function ResultLogEntry({
             </div>
           ) : r.tools_listed ? (
             <p className="text-[10px] text-muted-foreground italic">
-              No tools found on this server.
+              {t("registry.monitorDashboard.noToolsFound")}
             </p>
           ) : null}
 
@@ -255,6 +282,7 @@ function ResultLogEntry({
 }
 
 function ToolMiniRow({ tool }: { tool: MonitorToolResult }) {
+  const t = useT();
   const [showDetails, setShowDetails] = useState(false);
   return (
     <div className="rounded border border-border overflow-hidden">
@@ -295,7 +323,7 @@ function ToolMiniRow({ tool }: { tool: MonitorToolResult }) {
           {tool.input && Object.keys(tool.input).length > 0 && (
             <div>
               <p className="text-[10px] font-semibold text-muted-foreground">
-                Input
+                {t("registry.monitorDashboard.inputLabel")}
               </p>
               <pre className="bg-muted/50 rounded px-2 py-1 whitespace-pre-wrap break-all max-h-16 overflow-auto">
                 {JSON.stringify(tool.input, null, 2)}
@@ -305,7 +333,7 @@ function ToolMiniRow({ tool }: { tool: MonitorToolResult }) {
           {tool.outputPreview && (
             <div>
               <p className="text-[10px] font-semibold text-muted-foreground">
-                Output
+                {t("registry.monitorDashboard.outputLabel")}
               </p>
               <pre className="bg-muted/50 rounded px-2 py-1 whitespace-pre-wrap break-all max-h-16 overflow-auto">
                 {tool.outputPreview}
@@ -325,6 +353,7 @@ export function MonitorDashboard({
   activeRunId?: string;
   onRunChange: (runId: string | undefined) => void;
 }) {
+  const t = useT();
   const { settings } = useRegistryMonitorConfig();
   const [modeOverride, setModeOverride] = useState<MonitorMode | null>(null);
   const [confirmStartOpen, setConfirmStartOpen] = useState(false);
@@ -411,15 +440,19 @@ export function MonitorDashboard({
         <Card className="p-4 space-y-3">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <h3 className="text-sm font-semibold">Current QA Run</h3>
+              <h3 className="text-sm font-semibold">
+                {t("registry.monitorDashboard.currentQaRunTitle")}
+              </h3>
               <p className="text-xs text-muted-foreground">
-                Start a full QA validation run and track results in real time.
+                {t("registry.monitorDashboard.currentQaRunDescription")}
               </p>
             </div>
             <div className="flex items-center gap-2">
               {runningRun && runningRun.id !== activeRunId && (
                 <Badge variant="outline" className="text-[10px]">
-                  Run in progress: {runningRun.id.slice(0, 8)}
+                  {t("registry.monitorDashboard.runInProgressBadge", {
+                    runId: runningRun.id.slice(0, 8),
+                  })}
                 </Badge>
               )}
               <Button
@@ -430,10 +463,10 @@ export function MonitorDashboard({
               >
                 <Play size={14} />
                 {runStartMutation.isPending
-                  ? "Starting..."
+                  ? t("registry.monitorDashboard.startingButton")
                   : runningRun && runningRun.id !== activeRunId
-                    ? "Start another run"
-                    : "Start QA run"}
+                    ? t("registry.monitorDashboard.startAnotherRunButton")
+                    : t("registry.monitorDashboard.startQaRunButton")}
               </Button>
               <Button
                 size="sm"
@@ -443,36 +476,46 @@ export function MonitorDashboard({
                 className="gap-1.5"
               >
                 <StopSquare size={14} />
-                Cancel
+                {t("registry.monitorDashboard.cancelButton")}
               </Button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label className="space-y-1">
-              <span className="text-[11px] text-muted-foreground">QA mode</span>
+              <span className="text-[11px] text-muted-foreground">
+                {t("registry.monitorDashboard.qaModeLabel")}
+              </span>
               <select
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={selectedMode}
                 onChange={(e) => setModeOverride(e.target.value as MonitorMode)}
                 disabled={isRunning}
               >
-                <option value="health_check">Health check</option>
-                <option value="tool_call">Tool call</option>
-                <option value="full_agent">Agentic (LLM model)</option>
+                <option value="health_check">
+                  {t("registry.monitorDashboard.modeHealthCheck")}
+                </option>
+                <option value="tool_call">
+                  {t("registry.monitorDashboard.modeToolCall")}
+                </option>
+                <option value="full_agent">
+                  {t("registry.monitorDashboard.modeAgentic")}
+                </option>
               </select>
             </label>
 
             <label className="space-y-1">
               <span className="text-[11px] text-muted-foreground">
-                QA run history (pick a previous run)
+                {t("registry.monitorDashboard.qaRunHistoryLabel")}
               </span>
               <select
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={activeRunId ?? ""}
                 onChange={(e) => onRunChange(e.target.value || undefined)}
               >
-                <option value="">Auto-select latest run</option>
+                <option value="">
+                  {t("registry.monitorDashboard.autoSelectLatestRun")}
+                </option>
                 {(runsQuery.data?.items ?? []).map((runItem) => (
                   <option key={runItem.id} value={runItem.id}>
                     {new Date(runItem.created_at).toLocaleString()} -{" "}
@@ -485,10 +528,10 @@ export function MonitorDashboard({
 
           <p className="text-[11px] text-muted-foreground rounded-md bg-muted/30 px-2.5 py-2">
             {selectedMode === "health_check"
-              ? "Checks connectivity and tool listing only — no tool calls are made."
+              ? t("registry.monitorDashboard.modeDescriptionHealthCheck")
               : selectedMode === "tool_call"
-                ? "Calls each tool with empty inputs to verify it responds without errors."
-                : "Uses an LLM model to execute chained tool calls and validate outputs."}
+                ? t("registry.monitorDashboard.modeDescriptionToolCall")
+                : t("registry.monitorDashboard.modeDescriptionAgentic")}
           </p>
 
           {run ? (
@@ -504,7 +547,10 @@ export function MonitorDashboard({
                   {run.status}
                 </Badge>
                 <span className="text-xs text-muted-foreground">
-                  {run.tested_items}/{run.total_items} tested
+                  {t("registry.monitorDashboard.itemsTestedCount", {
+                    tested: run.tested_items,
+                    total: run.total_items,
+                  })}
                 </span>
                 {duration && (
                   <span className="text-xs text-muted-foreground">
@@ -513,7 +559,7 @@ export function MonitorDashboard({
                 )}
                 {isRunning && run.current_item_id && (
                   <span className="text-xs text-muted-foreground truncate max-w-64">
-                    QA on:{" "}
+                    {t("registry.monitorDashboard.qaOnLabel")}{" "}
                     <span className="font-mono">{run.current_item_id}</span>
                   </span>
                 )}
@@ -532,30 +578,38 @@ export function MonitorDashboard({
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <Card className="p-2.5 space-y-0.5">
-                  <p className="text-[10px] text-success">Passed</p>
+                  <p className="text-[10px] text-success">
+                    {t("registry.monitorDashboard.passedLabel")}
+                  </p>
                   <p className="text-lg font-bold text-success">
                     {run.passed_items}
                   </p>
                 </Card>
                 <Card className="p-2.5 space-y-0.5">
-                  <p className="text-[10px] text-destructive">Failed</p>
+                  <p className="text-[10px] text-destructive">
+                    {t("registry.monitorDashboard.failedLabel")}
+                  </p>
                   <p className="text-lg font-bold text-destructive">
                     {run.failed_items}
                   </p>
                 </Card>
                 <Card className="p-2.5 space-y-0.5">
-                  <p className="text-[10px] text-muted-foreground">Skipped</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {t("registry.monitorDashboard.skippedLabel")}
+                  </p>
                   <p className="text-lg font-bold">{run.skipped_items}</p>
                 </Card>
                 <Card className="p-2.5 space-y-0.5">
-                  <p className="text-[10px] text-muted-foreground">Total</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {t("registry.monitorDashboard.totalLabel")}
+                  </p>
                   <p className="text-lg font-bold">{run.total_items}</p>
                 </Card>
               </div>
             </>
           ) : (
             <p className="text-xs text-muted-foreground">
-              No run selected yet. Start a new run to begin.
+              {t("registry.monitorDashboard.noRunSelectedMessage")}
             </p>
           )}
         </Card>
@@ -564,26 +618,33 @@ export function MonitorDashboard({
           <div className="flex items-center justify-between gap-2">
             <div>
               <h3 className="text-sm font-semibold">
-                QA results log ({resultItems.length})
+                {t("registry.monitorDashboard.qaResultsLogTitle", {
+                  count: resultItems.length,
+                })}
               </h3>
               <p className="text-[11px] text-muted-foreground">
-                Live per-MCP test output for the selected run.
+                {t("registry.monitorDashboard.qaResultsLogDescription")}
               </p>
             </div>
             <div className="flex items-center gap-2">
               {isRunning && (
                 <Badge className="bg-primary/10 text-primary border-primary/20 animate-pulse">
-                  run in progress
+                  {t("registry.monitorDashboard.runInProgressLabel")}
                 </Badge>
               )}
               {run && (
                 <Badge variant="outline" className="text-[10px]">
-                  progress: {run.tested_items} of {run.total_items} MCPs
+                  {t("registry.monitorDashboard.progressBadge", {
+                    tested: run.tested_items,
+                    total: run.total_items,
+                  })}
                 </Badge>
               )}
               {runConfigMode && (
                 <Badge variant="outline" className="text-[10px]">
-                  mode: {runConfigMode.replace("_", " ")}
+                  {t("registry.monitorDashboard.modeBadge", {
+                    mode: runConfigMode.replace("_", " "),
+                  })}
                 </Badge>
               )}
             </div>
@@ -591,7 +652,7 @@ export function MonitorDashboard({
 
           {resultItems.length === 0 ? (
             <div className="h-[280px] rounded border border-dashed border-border flex items-center justify-center text-xs text-muted-foreground">
-              No results yet. Start a run to see live logs here.
+              {t("registry.monitorDashboard.noResultsYetMessage")}
             </div>
           ) : (
             <div
@@ -625,22 +686,26 @@ export function MonitorDashboard({
       <AlertDialog open={confirmStartOpen} onOpenChange={setConfirmStartOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Start another test run?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("registry.monitorDashboard.confirmStartTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              There is already a run in progress
-              {runningRun ? ` (${runningRun.id})` : ""}. Starting another run
-              may increase database load and slow down both executions.
+              {t("registry.monitorDashboard.confirmStartDescription", {
+                runId: runningRun ? ` (${runningRun.id})` : "",
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("registry.monitorDashboard.cancelButtonDialog")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 setConfirmStartOpen(false);
                 void startMonitor();
               }}
             >
-              Start anyway
+              {t("registry.monitorDashboard.startAnywayButton")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

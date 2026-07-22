@@ -1,3 +1,4 @@
+import { useT } from "@/web/i18n/use-t.ts";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import type { FieldProps } from "./field-props";
@@ -41,6 +42,8 @@ export function SecretField({
   label,
   path,
 }: FieldProps) {
+  const t = useT();
+
   if (typeof value === "string" || (value == null && !isSecretBlock(value))) {
     const stringValue = typeof value === "string" ? value : "";
     return (
@@ -58,7 +61,7 @@ export function SecretField({
           autoComplete="new-password"
           autoCorrect="off"
           spellCheck={false}
-          placeholder="Secret value"
+          placeholder={t("sectionsEditor.secretField.secretValuePlaceholder")}
           onChange={(e) => onChange(e.target.value)}
           className="h-10"
         />
@@ -84,7 +87,7 @@ export function SecretField({
       <Input
         id={`${path}-name`}
         value={name}
-        placeholder="Secret name"
+        placeholder={t("sectionsEditor.secretField.secretNamePlaceholder")}
         onChange={(e) => onChange({ ...block, name: e.target.value })}
         className="h-10"
       />
@@ -95,7 +98,9 @@ export function SecretField({
         autoCorrect="off"
         spellCheck={false}
         placeholder={
-          hasStoredSecret ? "Leave blank to keep current value" : "Secret value"
+          hasStoredSecret
+            ? t("sectionsEditor.secretField.leaveBlankPlaceholder")
+            : t("sectionsEditor.secretField.secretValuePlaceholder")
         }
         onChange={(e) => {
           const next = e.target.value;
@@ -109,7 +114,7 @@ export function SecretField({
       />
       {hasStoredSecret && (
         <p className="text-xs text-muted-foreground">
-          A secret value is stored.
+          {t("sectionsEditor.secretField.storedSecretMessage")}
         </p>
       )}
     </div>

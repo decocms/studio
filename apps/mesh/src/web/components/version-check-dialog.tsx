@@ -4,7 +4,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { RefreshCw01 } from "@untitledui/icons";
 import type { PublicConfig } from "@/api/routes/public-config";
 import { AnnouncementCard } from "@/web/components/announcement-card";
-import { useT } from "@/web/i18n/use-t";
+import { useT } from "@/web/i18n/use-t.ts";
 import { KEYS } from "@/web/lib/query-keys";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;

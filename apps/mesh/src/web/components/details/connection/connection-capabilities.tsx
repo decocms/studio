@@ -11,6 +11,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import type { Tool as UiTool } from "@/web/components/tools";
 import { ConnectionUiTab } from "./connection-ui-tab.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /**
  * Converts a snake_case or dot.case tool function name to readable English.
@@ -72,9 +73,12 @@ interface ConnectionCapabilitiesProps {
 }
 
 function EmptyCapabilities({ label }: { label: string }) {
+  const t = useT();
   return (
     <div className="px-5 py-8 text-center">
-      <p className="text-sm text-muted-foreground">No {label} available.</p>
+      <p className="text-sm text-muted-foreground">
+        {t("details.connectionCapabilities.noItemsAvailable", { item: label })}
+      </p>
     </div>
   );
 }
@@ -86,6 +90,7 @@ export function ConnectionCapabilities({
   connectionId,
   org,
 }: ConnectionCapabilitiesProps) {
+  const t = useT();
   const navigate = useNavigate();
   const connectionData = useConnection(connectionId ?? "");
   const appSlug = connectionData
@@ -113,11 +118,10 @@ export function ConnectionCapabilities({
     return (
       <div className="rounded-xl border border-border bg-card p-5">
         <h3 className="text-sm font-semibold text-foreground mb-1">
-          Capabilities
+          {t("details.connectionCapabilities.capabilities")}
         </h3>
         <p className="text-sm text-muted-foreground">
-          No capabilities discovered yet. The connection may still be
-          connecting.
+          {t("details.connectionCapabilities.noCapabilitiesDiscovered")}
         </p>
       </div>
     );
@@ -129,18 +133,20 @@ export function ConnectionCapabilities({
         <div className="px-5 flex items-center justify-between border-b border-border">
           <TabsList variant="underline" className="gap-1">
             <TabsTrigger value="tools" variant="underline">
-              Tools ({tools.length})
+              {t("details.connectionCapabilities.toolsTab", {
+                count: tools.length,
+              })}
             </TabsTrigger>
             {hasUiTools && (
               <TabsTrigger value="apps" variant="underline">
-                UI
+                {t("details.connectionCapabilities.uiTab")}
               </TabsTrigger>
             )}
             <TabsTrigger value="prompts" variant="underline">
-              Prompts
+              {t("details.connectionCapabilities.promptsTab")}
             </TabsTrigger>
             <TabsTrigger value="resources" variant="underline">
-              Resources
+              {t("details.connectionCapabilities.resourcesTab")}
             </TabsTrigger>
           </TabsList>
         </div>

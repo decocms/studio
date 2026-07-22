@@ -2,6 +2,7 @@
 
 import type { ToolUIPart } from "ai";
 import { LinkExternal01, Palette, Star01 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import { LatencyLabel, ToolCallShell } from "./common.tsx";
 import { getEffectiveState, unwrapResult } from "./utils.tsx";
 
@@ -40,13 +41,19 @@ interface BrandContextPartProps {
   latency?: number;
 }
 
-const COLOR_LABELS: Record<keyof BrandColors, string> = {
-  primary: "Primary",
-  secondary: "Secondary",
-  accent: "Accent",
-  background: "Background",
-  foreground: "Foreground",
-};
+// ponytail: COLOR_LABELS keyed by role, used in getColorEntries map
+// see BrandCard + BrandContextListPart for instantiation — each needs t() called at render time
+function getColorLabels(
+  t: ReturnType<typeof useT>,
+): Record<keyof BrandColors, string> {
+  return {
+    primary: t("chat.brandContext.colorPrimary"),
+    secondary: t("chat.brandContext.colorSecondary"),
+    accent: t("chat.brandContext.colorAccent"),
+    background: t("chat.brandContext.colorBackground"),
+    foreground: t("chat.brandContext.colorForeground"),
+  };
+}
 
 export function domainHref(domain: string): string {
   try {
@@ -151,6 +158,8 @@ function BrandLogo({
 }
 
 function ColorStrip({ colors }: { colors: BrandColors }) {
+  const t = useT();
+  const colorLabels = getColorLabels(t);
   const entries = getColorEntries(colors);
   if (entries.length === 0) return null;
   return (
@@ -160,7 +169,7 @@ function ColorStrip({ colors }: { colors: BrandColors }) {
           key={key}
           className="flex-1"
           style={{ backgroundColor: value }}
-          title={`${COLOR_LABELS[key]}: ${value}`}
+          title={`${colorLabels[key]}: ${value}`}
           aria-hidden
         />
       ))}
@@ -189,6 +198,8 @@ function BrandCard({
   showDefaultBadge?: boolean;
   isDefault?: boolean;
 }) {
+  const t = useT();
+  const colorLabels = getColorLabels(t);
   const colorEntries = getColorEntries(colors);
   const fontEntries = getFontEntries(fonts);
 
@@ -205,7 +216,7 @@ function BrandCard({
                 {showDefaultBadge && isDefault && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                     <Star01 className="size-3 text-amber-500" />
-                    default
+                    {t("chat.brandContext.defaultBadge")}
                   </span>
                 )}
               </span>
@@ -232,10 +243,10 @@ function BrandCard({
 
         {colorEntries.length > 0 && (
           <div className="flex flex-col gap-3">
-            <SectionLabel>Colors</SectionLabel>
+            <SectionLabel>{t("chat.brandContext.colorsSection")}</SectionLabel>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
               {colorEntries.map(([key, value]) => (
-                <ColorDot key={key} name={COLOR_LABELS[key]} value={value} />
+                <ColorDot key={key} name={colorLabels[key]} value={value} />
               ))}
             </div>
           </div>
@@ -243,7 +254,9 @@ function BrandCard({
 
         {fontEntries.length > 0 && (
           <div className="flex flex-col gap-3">
-            <SectionLabel>Typography</SectionLabel>
+            <SectionLabel>
+              {t("chat.brandContext.typographySection")}
+            </SectionLabel>
             <div className="flex flex-wrap gap-2.5">
               {fontEntries.map(([role, family]) => (
                 <FontChip key={role} role={role} family={family} />
@@ -257,6 +270,7 @@ function BrandCard({
 }
 
 export function BrandContextPart({ part, latency }: BrandContextPartProps) {
+  const t = useT();
   const state = getEffectiveState(part.state);
   const result = unwrapResult<BrandContextResult>(part.output);
   const isLoading = state === "loading";
@@ -267,8 +281,12 @@ export function BrandContextPart({ part, latency }: BrandContextPartProps) {
     return (
       <ToolCallShell
         icon={<Palette className="animate-pulse" />}
-        title="Extracting brand"
-        summary={input?.domain ? `from ${input.domain}` : undefined}
+        title={t("chat.brandContext.extractingBrand")}
+        summary={
+          input?.domain
+            ? t("chat.brandContext.fromDomain", { domain: input.domain })
+            : undefined
+        }
         state="loading"
         defaultOpen
       />
@@ -279,8 +297,8 @@ export function BrandContextPart({ part, latency }: BrandContextPartProps) {
     return (
       <ToolCallShell
         icon={<Palette />}
-        title="Brand extraction failed"
-        summary={result?.error ?? "Unknown error"}
+        title={t("chat.brandContext.extractionFailed")}
+        summary={result?.error ?? t("chat.brandContext.unknownError")}
         state="error"
         trailing={<LatencyLabel latency={latency} />}
       />
@@ -291,7 +309,11 @@ export function BrandContextPart({ part, latency }: BrandContextPartProps) {
     <>
       <ToolCallShell
         icon={<Palette className="text-fuchsia-500" />}
-        title={result?.name ? `Brand set: ${result.name}` : "Brand context set"}
+        title={
+          result?.name
+            ? t("chat.brandContext.brandSet", { name: result.name })
+            : t("chat.brandContext.brandContextSet")
+        }
         summary={result?.domain}
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
@@ -325,6 +347,7 @@ export function BrandContextGetPart({
   part,
   latency,
 }: BrandContextGetPartProps) {
+  const t = useT();
   const state = getEffectiveState(part.state);
   const result = unwrapResult<BrandContextRecord>(part.output);
   const isLoading = state === "loading";
@@ -334,7 +357,7 @@ export function BrandContextGetPart({
     return (
       <ToolCallShell
         icon={<Palette className="animate-pulse" />}
-        title="Loading brand"
+        title={t("chat.brandContext.loadingBrand")}
         state="loading"
       />
     );
@@ -344,7 +367,7 @@ export function BrandContextGetPart({
     return (
       <ToolCallShell
         icon={<Palette />}
-        title="Couldn't load brand"
+        title={t("chat.brandContext.couldNotLoadBrand")}
         state="error"
         trailing={<LatencyLabel latency={latency} />}
       />
@@ -355,7 +378,11 @@ export function BrandContextGetPart({
     <>
       <ToolCallShell
         icon={<Palette className="text-fuchsia-500" />}
-        title={result.name ? `Brand · ${result.name}` : "Brand"}
+        title={
+          result.name
+            ? t("chat.brandContext.brandWithName", { name: result.name })
+            : t("chat.brandContext.brand")
+        }
         summary={result.domain}
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
@@ -388,6 +415,8 @@ export function BrandContextListPart({
   part,
   latency,
 }: BrandContextListPartProps) {
+  const t = useT();
+  const colorLabels = getColorLabels(t);
   const state = getEffectiveState(part.state);
   const result = unwrapResult<BrandContextListResult>(part.output);
   const items = Array.isArray(result?.items) ? result.items : [];
@@ -398,7 +427,7 @@ export function BrandContextListPart({
     return (
       <ToolCallShell
         icon={<Palette className="animate-pulse" />}
-        title="Loading brands"
+        title={t("chat.brandContext.loadingBrands")}
         state="loading"
       />
     );
@@ -408,7 +437,7 @@ export function BrandContextListPart({
     return (
       <ToolCallShell
         icon={<Palette />}
-        title="Couldn't load brands"
+        title={t("chat.brandContext.couldNotLoadBrands")}
         state="error"
         trailing={<LatencyLabel latency={latency} />}
       />
@@ -419,8 +448,8 @@ export function BrandContextListPart({
     return (
       <ToolCallShell
         icon={<Palette />}
-        title="No brands yet"
-        summary="The organization hasn't set up any brand context."
+        title={t("chat.brandContext.noBrandsYet")}
+        summary={t("chat.brandContext.noBrandsContext")}
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
       />
@@ -431,7 +460,11 @@ export function BrandContextListPart({
     <>
       <ToolCallShell
         icon={<Palette className="text-fuchsia-500" />}
-        title={items.length === 1 ? "1 brand" : `${items.length} brands`}
+        title={
+          items.length === 1
+            ? t("chat.brandContext.oneBrand")
+            : t("chat.brandContext.multipleBrands", { count: items.length })
+        }
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
       />
@@ -457,7 +490,7 @@ export function BrandContextListPart({
                 )}
                 <div className="flex flex-col leading-tight min-w-0 flex-1">
                   <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground truncate">
-                    {brand.name ?? "Untitled"}
+                    {brand.name ?? t("chat.brandContext.untitled")}
                     {brand.isDefault && (
                       <Star01 className="size-3 text-amber-500 shrink-0" />
                     )}
@@ -475,7 +508,7 @@ export function BrandContextListPart({
                         key={key}
                         className="size-3 rounded-full border border-border"
                         style={{ backgroundColor: value }}
-                        title={`${COLOR_LABELS[key]}: ${value}`}
+                        title={`${colorLabels[key]}: ${value}`}
                         aria-hidden
                       />
                     ))}
