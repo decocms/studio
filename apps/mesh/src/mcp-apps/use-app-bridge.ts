@@ -61,13 +61,17 @@ function buildHostContext(
   toolInfo?: McpUiHostContext["toolInfo"],
   maxHeight?: number,
   orgId?: string,
+  // The Studio UI language (preferences.language), so the embedded MCP app
+  // localizes to match Studio rather than the raw browser locale. Falls back to
+  // the detected browser locale when not supplied.
+  locale?: string,
 ): McpUiHostContext {
   return {
     theme: getDocumentTheme(),
     styles: readHostStyles(),
     displayMode,
     availableDisplayModes: ["inline", "fullscreen"],
-    locale: detectLocale(),
+    locale: locale ?? detectLocale(),
     timeZone: detectTimeZone(),
     platform: detectPlatform(),
     ...(toolInfo != null && { toolInfo }),
@@ -130,6 +134,8 @@ interface BridgeStoreConfig {
   minHeight: number;
   maxHeight: number;
   orgId?: string;
+  /** Studio UI language (BCP 47) fed into hostContext.locale. */
+  locale?: string;
   toolInfo?: McpUiHostContext["toolInfo"];
   toolInput?: Record<string, unknown>;
   toolResult?: CallToolResult;
@@ -189,7 +195,10 @@ class BridgeStore {
 
     if (!this.bridge || this.disposed) return;
 
-    if (config.displayMode !== prev.displayMode) {
+    if (
+      config.displayMode !== prev.displayMode ||
+      config.locale !== prev.locale
+    ) {
       this.pushHostContext();
     }
     if (config.toolInput !== prev.toolInput && config.toolInput != null) {
@@ -203,9 +212,9 @@ class BridgeStore {
   /** Rebuild and push full host context to the bridge (e.g. on theme change). */
   private pushHostContext() {
     if (!this.bridge || this.disposed) return;
-    const { displayMode, maxHeight, toolInfo, orgId } = this.config;
+    const { displayMode, maxHeight, toolInfo, orgId, locale } = this.config;
     this.bridge.setHostContext(
-      buildHostContext(displayMode, toolInfo, maxHeight, orgId),
+      buildHostContext(displayMode, toolInfo, maxHeight, orgId, locale),
     );
   }
 
@@ -302,12 +311,14 @@ class BridgeStore {
     }
 
     try {
-      const { client, displayMode, maxHeight, toolInfo, orgId } = this.config;
+      const { client, displayMode, maxHeight, toolInfo, orgId, locale } =
+        this.config;
       const hostContext = buildHostContext(
         displayMode,
         toolInfo,
         maxHeight,
         orgId,
+        locale,
       );
 
       // Pass the MCP client directly — AppBridge auto-wires oncalltool,
@@ -470,6 +481,8 @@ interface UseAppBridgeOptions {
   minHeight: number;
   maxHeight: number;
   orgId?: string;
+  /** Studio UI language (BCP 47) fed into hostContext.locale. */
+  locale?: string;
   toolInfo?: McpUiHostContext["toolInfo"];
   toolInput?: Record<string, unknown>;
   toolResult?: CallToolResult;
