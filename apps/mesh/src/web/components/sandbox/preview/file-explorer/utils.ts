@@ -499,13 +499,16 @@ export function groupGrepMatches(
 /**
  * Strip the line-number prefix from the daemon's read endpoint.
  * The daemon returns content in `"1\tcontent\n2\tcontent"` format.
+ *
+ * Uses `replace` rather than a `(.*)` capture: `.` does not match `\r`,
+ * \u2028, or \u2029, so a capture group would truncate any line containing
+ * one of those (e.g. a JSON string value with an embedded line separator),
+ * silently corrupting large files. `replace` drops only the `<n>\t` prefix
+ * and keeps the rest of the line verbatim.
  */
 export function stripLineNumbers(content: string): string {
   return content
     .split("\n")
-    .map((line) => {
-      const match = line.match(/^\d+\t(.*)/);
-      return match ? match[1] : line;
-    })
+    .map((line) => line.replace(/^\d+\t/, ""))
     .join("\n");
 }

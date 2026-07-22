@@ -216,6 +216,20 @@ function isTailwindCssPath(path: string): boolean {
   );
 }
 
+/**
+ * CMS artifacts live under a `.deco/` directory. The `/.deco/` (and `/.deco`)
+ * forms also match projects whose package path isn't the repo root
+ * (`<pkg>/.deco/...`), matching how block writes are addressed elsewhere.
+ */
+function isDecoPath(path: string): boolean {
+  return (
+    path === ".deco" ||
+    path.endsWith("/.deco") ||
+    path.startsWith(".deco/") ||
+    path.includes("/.deco/")
+  );
+}
+
 /** Publish (squash-merge) is only allowed for CMS JSON under `.deco/` (plus generated assets). */
 export function isDecoOnlyDiff(
   diff: GitDiffResult | null | undefined,
@@ -224,11 +238,7 @@ export function isDecoOnlyDiff(
   const paths = Object.keys(diff.diffs);
   if (paths.length === 0) return false;
   return paths.every(
-    (p) =>
-      p === ".deco" ||
-      p.startsWith(".deco/") ||
-      isBlocksGenJsonPath(p) ||
-      isTailwindCssPath(p),
+    (p) => isDecoPath(p) || isBlocksGenJsonPath(p) || isTailwindCssPath(p),
   );
 }
 

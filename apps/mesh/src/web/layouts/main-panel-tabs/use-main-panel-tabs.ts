@@ -264,8 +264,10 @@ export function useMainPanelTabs(ctx: {
           previewUrl,
         }
       : null;
-  // Subscribe to the same query keys as Preview; only fetch after the dev
-  // server is running, but still re-render when Preview warms the cache.
+  // Subscribe to the same query keys as Preview. The committed `.deco/*.gen.json`
+  // snapshots are read as soon as the daemon is up (before the dev server), so
+  // the Content tab can show without waiting; the live route fetch stays gated
+  // behind `devServerReady` and takes over once the preview warms up.
   const { data: decofile } = useDecofile(decofileFetchParams, {
     fetchEnabled: devServerReady,
   });

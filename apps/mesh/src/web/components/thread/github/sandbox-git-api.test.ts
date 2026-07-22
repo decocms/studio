@@ -122,6 +122,36 @@ describe("isDecoOnlyDiff", () => {
     expect(isDecoOnlyDiff(diff)).toBe(false);
   });
 
+  test("true for a subdir package path (`<pkg>/.deco/...` + generated assets)", () => {
+    const diff: GitDiffResult = {
+      diffs: {
+        "eitri-shopping-monte-carlo-shared/.deco/blocks/foo.json": {
+          from: "{}",
+          to: "{}",
+        },
+        "eitri-shopping-monte-carlo-shared/.deco/blocks.gen.json": {
+          from: "{}",
+          to: '{"foo":{}}',
+        },
+        "eitri-shopping-monte-carlo-shared/static/tailwind.css": {
+          from: "a",
+          to: "b",
+        },
+      },
+    };
+    expect(isDecoOnlyDiff(diff)).toBe(true);
+  });
+
+  test("false when subdir code changes alongside `<pkg>/.deco`", () => {
+    const diff: GitDiffResult = {
+      diffs: {
+        "pkg/.deco/blocks/foo.json": { from: "{}", to: "{}" },
+        "pkg/routes/index.tsx": { from: "a", to: "b" },
+      },
+    };
+    expect(isDecoOnlyDiff(diff)).toBe(false);
+  });
+
   test("true when diff includes auto-generated blocks.gen.json", () => {
     const diff: GitDiffResult = {
       diffs: {
