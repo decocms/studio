@@ -89,6 +89,8 @@ export const common = {
   "common.githubRepoPicker.authenticatingGitHub": "Autenticando com GitHub",
   "common.githubRepoPicker.backToAccounts": "Voltar às contas",
   "common.githubRepoPicker.changeConnection": "Alterar conexão",
+  "common.githubRepoPicker.checkAgain": "Verificar novamente",
+  "common.githubRepoPicker.chooseRepositories": "Escolher repositórios",
   "common.githubRepoPicker.completeOAuthFlow":
     "Complete o fluxo OAuth no seu navegador",
   "common.githubRepoPicker.connectionExpiredMessage":
@@ -100,6 +102,7 @@ export const common = {
     "Falha ao carregar contas do GitHub",
   "common.githubRepoPicker.failedReconnect":
     "Falha ao reconectar GitHub: {error}",
+  "common.githubRepoPicker.githubConnected": "GitHub conectado",
   "common.githubRepoPicker.importFromGitHub": "Importar do GitHub",
   "common.githubRepoPicker.importedRepo": "Importado {name} do GitHub",
   "common.githubRepoPicker.installGitHubApp": "Instalar o aplicativo GitHub",
@@ -107,14 +110,20 @@ export const common = {
     "Instalando a conexão com GitHub...",
   "common.githubRepoPicker.noRepositoriesFound":
     "Nenhum repositório encontrado",
+  "common.githubRepoPicker.noRepositoriesShared":
+    "Ainda não há repositórios compartilhados com a Deco. Escolha no GitHub o que deseja compartilhar e volte aqui para continuar.",
   "common.githubRepoPicker.personalAccount": "Conta pessoal",
   "common.githubRepoPicker.private": "Privado",
   "common.githubRepoPicker.public": "Público",
   "common.githubRepoPicker.reconnectGitHub": "Reconectar GitHub",
+  "common.githubRepoPicker.repositoryAccessNote":
+    "Você decide exatamente o que a Deco pode acessar. Escolher “todos os repositórios” é opcional.",
   "common.githubRepoPicker.searchRepositories": "Pesquisar repositórios...",
   "common.githubRepoPicker.select": "Selecionar",
   "common.githubRepoPicker.selectConnection": "Selecione uma conexão",
   "common.githubRepoPicker.settingUpGitHub": "Configurando GitHub",
+  "common.githubRepoPicker.setupRepositoriesTitle":
+    "Permita que a Deco veja seus repositórios",
   "common.githubRepoPicker.somethingWentWrong":
     "Algo deu errado ao conectar ao GitHub.",
   "common.githubRepoPicker.tryAgain": "Tentar novamente",

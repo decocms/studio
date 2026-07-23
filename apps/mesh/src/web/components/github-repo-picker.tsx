@@ -33,6 +33,7 @@ import { KEYS } from "@/web/lib/query-keys";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  LinkExternal01,
   Loading01,
   Lock01,
   LockUnlocked01,
@@ -623,6 +624,72 @@ function InstallationPicker({
   const data = installationsQuery.data;
   if (!data) return null;
 
+  const installUrl = data.appSlug
+    ? `https://github.com/apps/${data.appSlug}/installations/new`
+    : "https://github.com/settings/installations";
+
+  if (data.installations.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {showBackButton && (
+          <div className="flex items-center gap-1 px-4 pt-3 pb-1 shrink-0">
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft size={12} />
+              {t("common.githubRepoPicker.changeConnection")}
+            </button>
+          </div>
+        )}
+
+        <div className="flex-1 flex flex-col items-center justify-center px-8 py-6 text-center">
+          <div className="size-16 rounded-2xl bg-muted flex items-center justify-center">
+            <GitHubIcon className="size-8 text-foreground" />
+          </div>
+
+          <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-success">
+            <span className="size-1.5 rounded-full bg-success" />
+            {t("common.githubRepoPicker.githubConnected")}
+          </div>
+
+          <h2 className="mt-2 text-base font-semibold text-foreground">
+            {t("common.githubRepoPicker.setupRepositoriesTitle")}
+          </h2>
+          <p className="mt-1.5 max-w-[360px] text-xs leading-relaxed text-muted-foreground">
+            {t("common.githubRepoPicker.noRepositoriesShared")}
+          </p>
+
+          <div className="mt-5 flex items-center gap-2">
+            <Button asChild size="sm">
+              <a href={installUrl} target="_blank" rel="noopener noreferrer">
+                {t("common.githubRepoPicker.chooseRepositories")}
+                <LinkExternal01 size={14} />
+              </a>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void installationsQuery.refetch()}
+              disabled={installationsQuery.isFetching}
+            >
+              {installationsQuery.isFetching && (
+                <Loading01 size={14} className="animate-spin" />
+              )}
+              {t("common.githubRepoPicker.checkAgain")}
+            </Button>
+          </div>
+
+          <p className="mt-4 max-w-[360px] rounded-lg bg-muted/50 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+            {t("common.githubRepoPicker.repositoryAccessNote")}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {showBackButton && (
@@ -670,11 +737,7 @@ function InstallationPicker({
 
       <div className="px-4 py-3 border-t border-border shrink-0">
         <a
-          href={
-            data.appSlug
-              ? `https://github.com/apps/${data.appSlug}/installations/new`
-              : "https://github.com/settings/installations"
-          }
+          href={installUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
