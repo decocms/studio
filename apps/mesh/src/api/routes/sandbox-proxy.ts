@@ -238,6 +238,36 @@ function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
   return runner;
 }
 
+/**
+ * Publish/rebase first PUT an `operator` identity into the daemon's persisted
+ * tenant config, then trigger the commit/push against the single working
+ * tree the daemon reads that config back from. On a sandbox shared by
+ * multiple users (see `sharedSandboxId`), two concurrent publish/rebase
+ * calls for the same claim can otherwise interleave: one request's operator
+ * PUT gets read back by the other's commit, and two `git commit`/`push`
+ * sequences race the same working tree. Serializing per claim closes that
+ * window for this mesh process. Entries are removed once idle so this never
+ * grows unbounded — it only ever holds one promise per claim currently in
+ * flight.
+ */
+const claimGitLocks = new Map<string, Promise<unknown>>();
+
+export function withClaimGitLock<T>(
+  claimName: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const prior = claimGitLocks.get(claimName) ?? Promise.resolve();
+  const next = prior.catch(() => {}).then(fn);
+  const settled = next.catch(() => {});
+  claimGitLocks.set(claimName, settled);
+  settled.finally(() => {
+    if (claimGitLocks.get(claimName) === settled) {
+      claimGitLocks.delete(claimName);
+    }
+  });
+  return next;
+}
+
 // ---- Proxy helpers ----------------------------------------------------------
 
 /** Sandbox runtime responses must never be cached — 410 Gone was getting stuck in disk cache. */
@@ -670,26 +700,37 @@ export const createSandboxRoutes = () => {
     const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
     const ctx = c.var.studioContext;
 
-    try {
-      await patchSandboxOperator(ctx, runner, claimName);
-      const githubRepo = parseGithubRepoFromMetadata(
-        virtualMcpMetadata,
-        connectionIds,
-      );
-      if (githubRepo) {
-        await refreshSandboxGitCredentials(ctx, runner, claimName, githubRepo);
+    return withClaimGitLock(claimName, async () => {
+      try {
+        await patchSandboxOperator(ctx, runner, claimName);
+        const githubRepo = parseGithubRepoFromMetadata(
+          virtualMcpMetadata,
+          connectionIds,
+        );
+        if (githubRepo) {
+          await refreshSandboxGitCredentials(
+            ctx,
+            runner,
+            claimName,
+            githubRepo,
+          );
+        }
+      } catch (err) {
+        if (err instanceof GitPushAuthError) {
+          return c.json(
+            { error: err.message },
+            403,
+            SANDBOX_PROXY_CACHE_HEADERS,
+          );
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
       }
-    } catch (err) {
-      if (err instanceof GitPushAuthError) {
-        return c.json({ error: err.message }, 403, SANDBOX_PROXY_CACHE_HEADERS);
-      }
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-    }
 
-    return proxyDaemon(c, "/_sandbox/git/publish", {
-      forwardJsonBody: true,
-      map404to410: true,
+      return proxyDaemon(c, "/_sandbox/git/publish", {
+        forwardJsonBody: true,
+        map404to410: true,
+      });
     });
   });
   app.post("/:virtualMcpId/:branch/git/discard", (c) =>
@@ -705,16 +746,18 @@ export const createSandboxRoutes = () => {
     const { claimName } = c.get("vmClaim");
     const ctx = c.var.studioContext;
 
-    try {
-      await patchSandboxOperator(ctx, runner, claimName);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-    }
+    return withClaimGitLock(claimName, async () => {
+      try {
+        await patchSandboxOperator(ctx, runner, claimName);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+      }
 
-    return proxyDaemon(c, "/_sandbox/git/rebase", {
-      forwardJsonBody: true,
-      map404to410: true,
+      return proxyDaemon(c, "/_sandbox/git/rebase", {
+        forwardJsonBody: true,
+        map404to410: true,
+      });
     });
   });
   app.post(
