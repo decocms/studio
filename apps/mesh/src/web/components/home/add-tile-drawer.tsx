@@ -90,6 +90,26 @@ import { useT } from "@/web/i18n/use-t.ts";
  * blocked so the user never pins something that silently won't show. */
 export const HOME_LIMIT = 8;
 
+/** Adds `id` to the ordered home-agent list if there's room, or returns
+ * `null` (no-op) if it's already there or the live (non-dead) count is
+ * already at HOME_LIMIT. Must run *inside* the writer's transform — it's
+ * given the ids live at write time, not a render-time snapshot — so two
+ * adds started concurrently (e.g. two pins whose mutations are both still
+ * in flight) can't both pass a stale under-limit check and push the count
+ * past HOME_LIMIT. */
+export function nextHomeIdsWithAdd(
+  ids: string[],
+  id: string,
+  validIds?: ReadonlySet<string>,
+): string[] | null {
+  if (ids.includes(id)) return null;
+  const liveCount = validIds
+    ? ids.filter((x) => validIds.has(x)).length
+    : ids.length;
+  if (liveCount >= HOME_LIMIT) return null;
+  return [...ids, id];
+}
+
 interface AddTileDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -189,10 +209,8 @@ function useHomeBoard(validIds?: ReadonlySet<string>) {
     : homeIds.length;
   const atLimit = liveCount >= HOME_LIMIT;
 
-  const addAgent = (id: string) => {
-    if (isOnHome(id) || atLimit) return Promise.resolve();
-    return writer.apply((ids) => (ids.includes(id) ? null : [...ids, id]));
-  };
+  const addAgent = (id: string) =>
+    writer.apply((ids) => nextHomeIdsWithAdd(ids, id, validIds));
   const removeAgent = (id: string) =>
     writer.apply((ids) => ids.filter((x) => x !== id));
   const reorder = (next: string[]) => writer.apply(() => next);
@@ -207,11 +225,7 @@ function useHomeBoard(validIds?: ReadonlySet<string>) {
       id: agent.id,
       data: { metadata: nextMetadata },
     });
-    if (!isOnHome(agent.id) && !atLimit) {
-      await writer.apply((ids) =>
-        ids.includes(agent.id) ? null : [...ids, agent.id],
-      );
-    }
+    await writer.apply((ids) => nextHomeIdsWithAdd(ids, agent.id, validIds));
     await refetchHome();
   };
 
