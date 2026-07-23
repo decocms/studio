@@ -646,6 +646,14 @@ export function SectionsEditor({
       clearTimeout(sectionRuleDebounceRef.current);
       sectionRuleDebounceRef.current = null;
     }
+    // Cancel a pending page-variant rule autosave too — it rebuilds the whole
+    // page's `sections` from a `decofile` snapshot read at fire time, which
+    // may still predate this save's result, so a stale timer would revert
+    // the restructuring committed here.
+    if (ruleDebounceRef.current) {
+      clearTimeout(ruleDebounceRef.current);
+      ruleDebounceRef.current = null;
+    }
     const fullPageData = buildPageDataWithSections(
       decofile,
       activePageKey,
