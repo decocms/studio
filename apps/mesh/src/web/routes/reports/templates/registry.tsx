@@ -120,7 +120,6 @@ export default function SlideTemplate({
           {...t}
           {...common}
           faviconUrl={deck.meta.faviconUrl}
-          domain={deck.meta.domain}
         />
       );
     case "competitor":

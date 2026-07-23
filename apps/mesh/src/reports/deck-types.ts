@@ -310,8 +310,6 @@ export type ScorecardProps = Omit<ScorecardTemplate, "template"> &
   CommonSlideProps & {
     /** Scanned store favicon, shown on the "você" side of each head-to-head. */
     faviconUrl: string;
-    /** Scanned store domain — labels the "você" side of the vs. header. */
-    domain?: string;
   };
 
 export type CompetitorProps = Omit<CompetitorTemplate, "template"> &

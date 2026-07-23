@@ -73,7 +73,9 @@ function rivalDisplay(name?: string): string {
 }
 
 // Favicon tile size — vh-capped on mobile so 4+ rows fit short viewports.
-const FAV_CLS = "h-[min(2rem,3.4svh)] w-[min(2rem,3.4svh)] sm:h-8 sm:w-8";
+// Bumped from 2rem so the rival's brand reads louder on the rows that actually
+// have a comparison (Guilherme: "muito mais foco na logo do concorrente").
+const FAV_CLS = "h-[min(2.5rem,4svh)] w-[min(2.5rem,4svh)] sm:h-10 sm:w-10";
 // Sort key: what you lead first, ties/neutral next, what you're behind on last.
 const rank = (t?: string) => (t === "good" ? 0 : t === "bad" ? 2 : 1);
 
@@ -92,30 +94,11 @@ export default function ScorecardTemplate({
   rivalLabel,
   dimensions,
   faviconUrl,
-  domain,
   active,
 }: ScorecardProps) {
   const sorted = dimensions
     .map((d, i) => ({ d, i }))
     .sort((a, b) => rank(a.d.tone) - rank(b.d.tone) || a.i - b.i);
-
-  // The one rival to put front and centre: whoever beats you on the most rows
-  // (survival framing — the reader should see the real threat's brand loud).
-  // Falls back to any named rival when nobody is strictly "leading".
-  const dominantRival = (() => {
-    const beats = new Map<string, number>();
-    for (const d of dimensions)
-      if (d.rivalName && d.tone === "bad")
-        beats.set(d.rivalName, (beats.get(d.rivalName) ?? 0) + 1);
-    let name: string | undefined;
-    let max = 0;
-    for (const [n, c] of beats)
-      if (c > max) {
-        max = c;
-        name = n;
-      }
-    return name ?? dimensions.find((d) => d.rivalName)?.rivalName;
-  })();
 
   return (
     <div className="flex h-full flex-col">
@@ -125,52 +108,6 @@ export default function ScorecardTemplate({
         annotation={annotation}
         active={active}
       />
-
-      {/* you vs. the leading rival — big brands, the competitor deliberately
-          weighted heavier so the threat reads at a glance ("modo de sobrevivência"). */}
-      {dominantRival && (
-        <div
-          className="reveal flex shrink-0 items-center justify-center gap-3 px-5 pt-1 sm:gap-5 sm:px-10 lg:px-16"
-          data-show={active ? "true" : "false"}
-        >
-          <div className="flex min-w-0 items-center gap-2">
-            <img
-              src={faviconUrl}
-              alt=""
-              width={40}
-              height={40}
-              className="h-9 w-9 shrink-0 rounded-xl border bg-white p-1.5 sm:h-10 sm:w-10"
-              style={{ borderColor: DECK.border }}
-            />
-            <span
-              className="truncate text-sm sm:text-[15px]"
-              style={{ color: DECK.muted }}
-            >
-              {rivalDisplay(domain) || "Você"}
-            </span>
-          </div>
-
-          <span
-            className="shrink-0 text-sm font-medium italic"
-            style={{ color: DECK.muted, opacity: 0.7 }}
-          >
-            vs
-          </span>
-
-          <div className="flex min-w-0 items-center gap-2.5">
-            <RivalMark
-              name={dominantRival}
-              className="h-12 w-12 sm:h-14 sm:w-14"
-            />
-            <span
-              className="truncate text-[15px] font-semibold sm:text-lg"
-              style={{ color: TONE_COLOR.bad }}
-            >
-              {rivalDisplay(dominantRival)}
-            </span>
-          </div>
-        </div>
-      )}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-[min(1rem,1.2svh)] sm:px-10 sm:py-4 lg:px-16">
         <div className="my-auto flex w-full flex-col">
