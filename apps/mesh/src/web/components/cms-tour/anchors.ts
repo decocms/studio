@@ -8,8 +8,6 @@
 export const TOUR_ANCHORS = {
   /** The Preview tab in the header (produced generically as `tour-tab-preview`). */
   previewTab: "tour-tab-preview",
-  /** The preview content root — readiness signal that the Preview view is live. */
-  previewRoot: "tour-preview-root",
   dropdown: "tour-dropdown",
   edit: "tour-edit",
   visualEditor: "tour-visual-editor",

@@ -17,7 +17,7 @@
  */
 
 import { useState } from "react";
-import type { Config, Driver } from "driver.js";
+import type { Config, Driver, DriveStep } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./cms-tour.css";
 import { authClient } from "@/web/lib/auth-client";
@@ -31,16 +31,39 @@ import { tourAnchorSelector } from "./anchors";
 import { buildSteps } from "./steps";
 
 /**
- * The tour only starts once the Preview *content* is mounted (not merely the
- * Preview tab, which is always in the header). This keeps the auto-run from
- * firing a mostly-empty tour when another main view (e.g. Code) is active.
+ * The tour only starts once the preview toolbar is actually on screen. The CMS
+ * toggle anchors an early step and only exists when the Preview view is open
+ * with its toolbar rendered (dev server up), so gating on it — not merely the
+ * Preview root, which can be mounted-but-hidden behind another tab — keeps the
+ * tour from launching in a context where its controls are missing.
  */
-const READY_SELECTOR = tourAnchorSelector("previewRoot");
+const READY_SELECTOR = tourAnchorSelector("edit");
 
 const seenFlag = (userId: string) =>
   makeSeenFlag(LOCALSTORAGE_KEYS.cmsTourSeen(userId));
 
-function buildConfig(t: TFunction): Config {
+/** An anchor counts only when it's in the DOM *and* actually visible (not
+ *  display:none behind an inactive tab, not a zero-box collapsed control). */
+function isAnchorOnScreen(selector: string): boolean {
+  const el = document.querySelector(selector);
+  return el instanceof HTMLElement && el.offsetParent !== null;
+}
+
+/**
+ * Build the step list from only the anchors that are present AND visible right
+ * now. This is what keeps a step from floating over an unrelated spot or
+ * mis-highlighting a hidden control: absent controls (e.g. the branch pill on a
+ * template with no connected repo) simply aren't steps, so the progress count
+ * has no gaps either.
+ */
+function visibleSteps(t: TFunction): DriveStep[] {
+  return buildSteps(t).filter(
+    (step) =>
+      typeof step.element === "string" && isAnchorOnScreen(step.element),
+  );
+}
+
+function buildConfig(t: TFunction, steps: DriveStep[]): Config {
   return {
     showProgress: true,
     progressText: t("cmsTour.progress"),
@@ -54,9 +77,9 @@ function buildConfig(t: TFunction): Config {
     allowClose: true,
     stagePadding: 6,
     stageRadius: 8,
-    // Anchors live across two panels and some appear only once the preview is
-    // live; wait briefly for each and skip any that never show.
-    waitForElement: 2000,
+    // Steps are pre-filtered to currently-visible anchors, so don't wait/float
+    // for an element to appear; skip immediately if one vanishes mid-tour.
+    waitForElement: 0,
     skipMissingElement: true,
     popoverClass: "cms-tour-popover",
     onPopoverRender: (popover, { driver: instance }) => {
@@ -79,7 +102,7 @@ function buildConfig(t: TFunction): Config {
     onDestroyed: () => {
       tourStarted = false;
     },
-    steps: buildSteps(t),
+    steps,
   };
 }
 
@@ -100,21 +123,27 @@ async function loadDriver(): Promise<(config?: Config) => Driver> {
 }
 
 /**
- * Poll (bounded, via rAF) until the Preview content is mounted, then drive the
- * tour. `onStart` fires the moment we commit to driving (used to mark the
- * auto-run seen). If the content never appears — or driver.js fails to load /
- * throws — we release the guard so a later attempt (or the ⋯ re-run) can retry.
+ * Poll (bounded, via rAF) until the preview toolbar is on screen, then drive the
+ * tour over the currently-visible anchors. `onStart` fires the moment we commit
+ * to driving (used to mark the auto-run seen). If the toolbar never appears, no
+ * anchor is visible, or driver.js fails to load / throws, we release the guard
+ * so a later attempt (or the ⋯ re-run) can retry.
  */
 function driveTour(t: TFunction, onStart?: () => void) {
   if (tourStarted) return;
   tourStarted = true;
   let frames = 0;
   const tryStart = () => {
-    if (document.querySelector(READY_SELECTOR)) {
+    if (isAnchorOnScreen(READY_SELECTOR)) {
+      const steps = visibleSteps(t);
+      if (steps.length === 0) {
+        tourStarted = false;
+        return;
+      }
       onStart?.();
       loadDriver()
         .then((driver) => {
-          driver(buildConfig(t)).drive();
+          driver(buildConfig(t, steps)).drive();
         })
         .catch(() => {
           tourStarted = false;
