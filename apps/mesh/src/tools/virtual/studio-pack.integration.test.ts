@@ -196,7 +196,7 @@ describe("installStudioPack", () => {
       "COLLECTION_CONNECTIONS_GET",
     ]);
     expect(manager?.metadata?.instructions).toContain(
-      "print that value exactly once in a fenced plain-text code block",
+      "Print that value once in a fenced plain-text code block",
     );
   });
 });
