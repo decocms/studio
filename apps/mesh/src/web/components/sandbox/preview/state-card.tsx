@@ -35,7 +35,7 @@ export type SandboxStateCardProps =
       /** Identifies the other member's thread (its branch, or title). */
       label: string;
       onContinue: () => void;
-      onStartNewChat: () => void;
+      onStartNewThread: () => void;
     };
 
 export function SandboxStateCard(props: SandboxStateCardProps) {
@@ -57,7 +57,7 @@ export function SandboxStateCard(props: SandboxStateCardProps) {
               <Eye className="size-4" />{" "}
               {t("sandbox.stateCard.othersThreadContinue")}
             </Button>
-            <Button onClick={props.onStartNewChat}>
+            <Button onClick={props.onStartNewThread}>
               <Plus className="size-4" />{" "}
               {t("sandbox.stateCard.othersThreadNewChat")}
             </Button>

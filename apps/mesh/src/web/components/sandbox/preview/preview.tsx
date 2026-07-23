@@ -1381,7 +1381,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       kind="othersThread"
                       label={previewState.label}
                       onContinue={lifecycle.acknowledgeOthersThread}
-                      onStartNewChat={() =>
+                      onStartNewThread={() =>
                         navigate({
                           to: "/$org/$taskId",
                           params: {

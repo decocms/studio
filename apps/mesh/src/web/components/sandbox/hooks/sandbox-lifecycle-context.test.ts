@@ -5,6 +5,8 @@ import {
   shouldSelfHeal,
   computeDrawerStatus,
   buildSandboxStartArgs,
+  deriveOthersThreadLabel,
+  computeOthersThreadGate,
   type BranchMapEntryLike,
 } from "./sandbox-lifecycle-context";
 
@@ -109,10 +111,15 @@ describe("shouldSelfHeal", () => {
     lastDeadVmId: null as string | null,
     isPending: false,
     userStopped: false,
+    autoStartBlocked: false,
   };
 
   test("fresh dead vm → true", () => {
     expect(shouldSelfHeal(base)).toBe(true);
+  });
+
+  test("blocked on another member's thread → false (no silent reprovision)", () => {
+    expect(shouldSelfHeal({ ...base, autoStartBlocked: true })).toBe(false);
   });
 
   test("not notFound → false", () => {
@@ -184,5 +191,126 @@ describe("computeDrawerStatus", () => {
     expect(computeDrawerStatus({ kind: "othersThread", label: "main" })).toBe(
       "idle",
     );
+  });
+});
+
+describe("deriveOthersThreadLabel", () => {
+  test("own thread (created_by === userId) → null", () => {
+    expect(
+      deriveOthersThreadLabel({
+        userId: "u1",
+        createdBy: "u1",
+        branch: "main",
+        title: "New chat",
+      }),
+    ).toBeNull();
+  });
+
+  test("no userId → null (unauthenticated, don't gate)", () => {
+    expect(
+      deriveOthersThreadLabel({
+        userId: null,
+        createdBy: "u2",
+        branch: "main",
+        title: "New chat",
+      }),
+    ).toBeNull();
+  });
+
+  test("no created_by → null (own/new unsaved thread)", () => {
+    expect(
+      deriveOthersThreadLabel({
+        userId: "u1",
+        createdBy: null,
+        branch: "main",
+        title: "New chat",
+      }),
+    ).toBeNull();
+  });
+
+  test("others thread with a branch → branch (encodes owner)", () => {
+    expect(
+      deriveOthersThreadLabel({
+        userId: "u1",
+        createdBy: "u2",
+        branch: "tavano-321312",
+        title: "New chat",
+      }),
+    ).toBe("tavano-321312");
+  });
+
+  test("others thread with no branch → title fallback", () => {
+    expect(
+      deriveOthersThreadLabel({
+        userId: "u1",
+        createdBy: "u2",
+        branch: null,
+        title: "Fix the banner",
+      }),
+    ).toBe("Fix the banner");
+  });
+
+  test("others thread with neither branch nor title → null", () => {
+    expect(
+      deriveOthersThreadLabel({
+        userId: "u1",
+        createdBy: "u2",
+        branch: null,
+        title: null,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("computeOthersThreadGate", () => {
+  test("own thread (no label) → not blocked regardless of ack", () => {
+    expect(
+      computeOthersThreadGate({
+        othersThreadLabel: null,
+        acknowledgedThreadId: null,
+        threadId: "t1",
+      }).autoStartBlocked,
+    ).toBe(false);
+  });
+
+  test("others thread, never acknowledged → blocked", () => {
+    expect(
+      computeOthersThreadGate({
+        othersThreadLabel: "main",
+        acknowledgedThreadId: null,
+        threadId: "t1",
+      }).autoStartBlocked,
+    ).toBe(true);
+  });
+
+  test("others thread, acknowledged this thread → not blocked", () => {
+    expect(
+      computeOthersThreadGate({
+        othersThreadLabel: "main",
+        acknowledgedThreadId: "t1",
+        threadId: "t1",
+      }).autoStartBlocked,
+    ).toBe(false);
+  });
+
+  test("acknowledged a DIFFERENT thread → blocked (re-arms per thread)", () => {
+    expect(
+      computeOthersThreadGate({
+        othersThreadLabel: "main",
+        acknowledgedThreadId: "t1",
+        threadId: "t2",
+      }).autoStartBlocked,
+    ).toBe(true);
+  });
+
+  test("acknowledgement survives a null → assigned branch on the same thread", () => {
+    // Same thread id, so acknowledging while branch was null stays valid once
+    // the server assigns a branch — no re-prompt, no double SANDBOX_START.
+    const acked = computeOthersThreadGate({
+      othersThreadLabel: "New chat", // title fallback (branch was null)
+      acknowledgedThreadId: "t1",
+      threadId: "t1",
+    });
+    expect(acked.autoStartBlocked).toBe(false);
   });
 });

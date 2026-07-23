@@ -61,6 +61,9 @@ export interface ShouldSelfHealArgs {
   lastDeadVmId: string | null;
   isPending: boolean;
   userStopped: boolean;
+  /** Same gate as auto-start: never silently reprovision a sandbox on another
+   *  member's branch while the confirmation gate is up. */
+  autoStartBlocked: boolean;
 }
 
 export function shouldSelfHeal(args: ShouldSelfHealArgs): boolean {
@@ -69,8 +72,41 @@ export function shouldSelfHeal(args: ShouldSelfHealArgs): boolean {
     !!args.deadVmId &&
     !args.isPending &&
     !args.userStopped &&
+    !args.autoStartBlocked &&
     args.deadVmId !== args.lastDeadVmId
   );
+}
+
+/** The gate label for an active thread: non-null iff the thread belongs to
+ *  another member (its branch — which encodes the owner — or title as a
+ *  fallback). Extracted from the layout so the ownership rule is unit-testable:
+ *  an inverted comparison here would silently gate the user's own thread. */
+export function deriveOthersThreadLabel(args: {
+  userId: string | null;
+  createdBy: string | null | undefined;
+  branch: string | null | undefined;
+  title: string | null | undefined;
+}): string | null {
+  const isOthers =
+    !!args.userId && !!args.createdBy && args.createdBy !== args.userId;
+  if (!isOthers) return null;
+  return args.branch ?? args.title ?? null;
+}
+
+/** Whether auto-start (and self-heal) must be held back pending confirmation.
+ *  Keyed by thread id, not branch: acknowledging a null-branch thread survives
+ *  the server later assigning it a branch (no re-prompt / double-start), and
+ *  two different members' threads that collide on a branch name don't share an
+ *  acknowledgement. Re-arms when the active thread id changes. */
+export function computeOthersThreadGate(args: {
+  othersThreadLabel: string | null;
+  acknowledgedThreadId: string | null;
+  threadId: string | null;
+}): { autoStartBlocked: boolean } {
+  const acknowledged =
+    args.acknowledgedThreadId !== null &&
+    args.acknowledgedThreadId === args.threadId;
+  return { autoStartBlocked: !!args.othersThreadLabel && !acknowledged };
 }
 
 /** Shared SANDBOX_START arg-builder so every call site (auto-start,
@@ -181,6 +217,7 @@ export function SandboxLifecycleProvider({
   sandboxMap,
   sandboxProviderKind,
   othersThreadLabel,
+  othersThreadId,
   children,
 }: {
   virtualMcpId: string | null;
@@ -197,6 +234,8 @@ export function SandboxLifecycleProvider({
    *  acknowledged, auto-start is held back so we never silently boot a sandbox
    *  on someone else's branch. Null on the user's own thread. */
   othersThreadLabel: string | null;
+  /** Active thread id — the acknowledgement key (see computeOthersThreadGate). */
+  othersThreadId: string | null;
   children: ReactNode;
 }) {
   const { org } = useProjectContext();
@@ -204,16 +243,15 @@ export function SandboxLifecycleProvider({
   const events = useSandboxEvents();
   const queryClient = useQueryClient();
 
-  // Confirmation gate for another member's thread. Keyed by branch (normalize
-  // null → "") so switching threads re-arms the gate rather than carrying a
-  // stale acknowledgement. `false` = never acknowledged (distinct from the
-  // null-branch key "").
-  const [acknowledgedBranch, setAcknowledgedBranch] = useState<string | false>(
-    false,
-  );
-  const acknowledged =
-    acknowledgedBranch !== false && acknowledgedBranch === (branch ?? "");
-  const autoStartBlocked = !!othersThreadLabel && !acknowledged;
+  // Confirmation gate for another member's thread (see computeOthersThreadGate).
+  const [acknowledgedThreadId, setAcknowledgedThreadId] = useState<
+    string | null
+  >(null);
+  const { autoStartBlocked } = computeOthersThreadGate({
+    othersThreadLabel,
+    acknowledgedThreadId,
+    threadId: othersThreadId,
+  });
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -327,6 +365,7 @@ export function SandboxLifecycleProvider({
     lastDeadVmId: reprovisionedForVmIdRef.current,
     isPending: startVm.isPending,
     userStopped,
+    autoStartBlocked,
   });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot reprovision trigger gated on notFound→deadVmId
   useEffect(() => {
@@ -414,7 +453,7 @@ export function SandboxLifecycleProvider({
 
   // Confirm opening another member's thread → release the gate. Auto-start
   // becomes eligible on the next render and fires SANDBOX_START for this branch.
-  const acknowledgeOthersThread = () => setAcknowledgedBranch(branch ?? "");
+  const acknowledgeOthersThread = () => setAcknowledgedThreadId(othersThreadId);
 
   // Value is recomputed each render; React 19 Compiler handles memoization.
   const value: SandboxLifecycleValue = {

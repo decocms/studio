@@ -70,6 +70,7 @@ import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-ev
 import {
   SandboxLifecycleProvider,
   selectVmEntry,
+  deriveOthersThreadLabel,
   type BranchMapEntryLike,
 } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
@@ -177,13 +178,14 @@ function VmEventsBridge({
 
   // Someone else's thread: hold auto-start behind a confirmation gate so the
   // sandbox doesn't silently boot on the creator's branch (mirrors the chat
-  // composer's read-only banner). Label it by branch (encodes the owner), or
-  // title as a fallback. Own thread → null (no gate).
-  const isOthersThread =
-    !!userId && !!activeTask?.created_by && activeTask.created_by !== userId;
-  const othersThreadLabel = isOthersThread
-    ? (activeTask?.branch ?? activeTask?.title ?? null)
-    : null;
+  // composer's read-only banner). Ownership rule lives in the pure, tested
+  // deriveOthersThreadLabel; own thread → null (no gate).
+  const othersThreadLabel = deriveOthersThreadLabel({
+    userId: userId ?? null,
+    createdBy: activeTask?.created_by,
+    branch: activeTask?.branch,
+    title: activeTask?.title,
+  });
 
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
@@ -227,6 +229,7 @@ function VmEventsBridge({
         sandboxMap={effectiveSandboxMap}
         sandboxProviderKind={pendingSandboxProviderKind}
         othersThreadLabel={othersThreadLabel}
+        othersThreadId={activeTask?.id ?? null}
       >
         <BlocksPreviewWorkspaceProvider
           key={`${virtualMcpId}:${currentBranch ?? "no-branch"}`}
