@@ -132,6 +132,31 @@ describe("resolveConfig port", () => {
   );
 });
 
+describe("resolveConfig clickhouse max memory usage", () => {
+  it("defaults to undefined when unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.clickhouseMaxMemoryUsage).toBeUndefined();
+  });
+
+  it("uses CLICKHOUSE_MAX_MEMORY_USAGE when set", () => {
+    const result = resolveConfig(flags, {
+      CLICKHOUSE_MAX_MEMORY_USAGE: "1000000000",
+    });
+
+    expect(result.settings.clickhouseMaxMemoryUsage).toBe(1000000000);
+  });
+
+  it.each(["abc", "0", "-1", "1.5", "Infinity"])(
+    "throws for invalid value %p",
+    (value) => {
+      expect(() =>
+        resolveConfig(flags, { CLICKHOUSE_MAX_MEMORY_USAGE: value }),
+      ).toThrow("CLICKHOUSE_MAX_MEMORY_USAGE must be a positive integer");
+    },
+  );
+});
+
 describe("resolveConfig deployment admin emails", () => {
   it("defaults to an empty list when unset", () => {
     const result = resolveConfig(flags, {});
