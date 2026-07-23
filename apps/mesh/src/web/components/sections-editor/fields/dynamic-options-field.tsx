@@ -50,6 +50,36 @@ export function normalizeOptions(data: unknown): DynamicOption[] {
 }
 
 /**
+ * Options derived from the schema's own `enum` (icon-name literals). Used as a
+ * fallback when the `@options` loader yields nothing — e.g. a deco `icon-select`
+ * field whose options loader (`availableIcons.ts`) was dropped during the
+ * TanStack migration, so `/deco/invoke/<loader>` 404s. Without this the combobox
+ * would render empty; with it the field degrades to the pre-#5080 text list.
+ */
+export function enumFallbackOptions(
+  enumValues: unknown[] | undefined,
+): DynamicOption[] {
+  if (!Array.isArray(enumValues)) return [];
+  const result: DynamicOption[] = [];
+  for (const item of enumValues) {
+    if (typeof item === "string") result.push({ value: item, label: item });
+  }
+  return result;
+}
+
+/**
+ * Pick the option source: loader results when it returned any, otherwise the
+ * schema-enum fallback. Loader options carry icon/image previews; the fallback
+ * is plain text — so a working loader always wins.
+ */
+export function resolveOptions(
+  loaderOptions: DynamicOption[],
+  fallback: DynamicOption[],
+): DynamicOption[] {
+  return loaderOptions.length > 0 ? loaderOptions : fallback;
+}
+
+/**
  * Client-side narrowing of the fetched options. The loader already receives
  * the search as `term`, but many real-world options loaders ignore it and
  * always return the full list (e.g. odin-ui's icons loader) — without this
@@ -217,12 +247,14 @@ export function DynamicOptionsField({
     retry: 1,
   });
 
-  const options = query.data ?? [];
+  const enumFallback = enumFallbackOptions(schema.enum);
+  const options = resolveOptions(query.data ?? [], enumFallback);
   const visibleOptions = filterOptions(options, search);
   const selectedOption = options.find((opt) => opt.value === currentValue);
 
-  // Fallback to text input when preview is not available
-  if (!previewUrl || !loaderPath) {
+  // Fallback to text input only when there's no option source at all: no
+  // loader/preview to fetch from AND no schema enum to list.
+  if ((!previewUrl || !loaderPath) && enumFallback.length === 0) {
     return (
       <div className="space-y-2">
         <FieldHeader
