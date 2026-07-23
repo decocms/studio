@@ -2,6 +2,12 @@ export type PackageManager = "npm" | "pnpm" | "yarn" | "bun" | "deno";
 
 export type VMRuntime = "node" | "bun" | "deno";
 
+/** Base branch sandbox work starts from and publishes back to. */
+export const DEFAULT_BASE_BRANCH = "main";
+
+/** Shared branch used by new GitHub-backed threads and branchless sandboxes. */
+export const DEFAULT_WORKSPACE_BRANCH = "staging";
+
 export const PACKAGE_MANAGER_CONFIG: Record<
   PackageManager,
   {

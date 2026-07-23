@@ -78,9 +78,9 @@ export function shouldSelfHeal(args: ShouldSelfHealArgs): boolean {
 }
 
 /** The gate label for an active thread: non-null iff the thread belongs to
- *  another member (its branch — which encodes the owner — or title as a
- *  fallback). Extracted from the layout so the ownership rule is unit-testable:
- *  an inverted comparison here would silently gate the user's own thread. */
+ *  another member (its branch or title as a fallback). Extracted from the
+ *  layout so the ownership rule is unit-testable: an inverted comparison here
+ *  would silently gate the user's own thread. */
 export function deriveOthersThreadLabel(args: {
   userId: string | null;
   createdBy: string | null | undefined;
@@ -95,7 +95,7 @@ export function deriveOthersThreadLabel(args: {
 
 /** Whether auto-start (and self-heal) must be held back pending confirmation.
  *  Keyed by thread id, not branch: acknowledging a null-branch thread survives
- *  the server later assigning it a branch (no re-prompt / double-start), and
+ *  the server later assigning its default branch (no re-prompt / double-start), and
  *  two different members' threads that collide on a branch name don't share an
  *  acknowledgement. Re-arms when the active thread id changes. */
 export function computeOthersThreadGate(args: {
@@ -318,7 +318,7 @@ export function SandboxLifecycleProvider({
   // Branch-keyed, not taskId-keyed: that matches useSandboxStart's own
   // dedup and avoids resurrecting a user-killed VM across task switches.
   // Dedup key: use branch string, or "" for the no-branch (pre-lock) case so a
-  // single auto-start fires even before the server assigns a branch.
+  // single auto-start fires even before the server assigns the default branch.
   const autoStartDedupKey = branch ?? "";
   const attempted =
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; mutation happens inside effect after add()

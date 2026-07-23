@@ -47,8 +47,10 @@ import {
   detectRepoRuntime,
   detectRepoRuntimeAnonymous,
 } from "../../shared/github-runtime-detect";
-import { generateBranchName } from "../../shared/branch-name";
-import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
+import {
+  DEFAULT_WORKSPACE_BRANCH,
+  PACKAGE_MANAGER_CONFIG,
+} from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import {
@@ -126,7 +128,7 @@ export const SANDBOX_START = defineTool({
       .min(1)
       .optional()
       .describe(
-        "Optional git branch to check out. When omitted the handler generates a Bayer-style `<greek-letter>-<constellation>` name (e.g. `alpha-centauri`) and uses it. The resolved branch is returned in the response so callers can persist it.",
+        "Optional git branch to check out. When omitted, the handler uses the shared `staging` branch. The resolved branch is returned in the response so callers can persist it.",
       ),
     sandboxProviderKind: sandboxProviderKindInputSchema
       .optional()
@@ -146,11 +148,7 @@ export const SANDBOX_START = defineTool({
     requireAuth(ctx);
     const organization = requireOrganization(ctx);
     await ctx.access.check();
-    const resolvedBranch =
-      input.branch ??
-      generateBranchName(
-        ctx.auth.user?.name ?? ctx.auth.user?.email?.split("@")[0],
-      );
+    const resolvedBranch = input.branch ?? DEFAULT_WORKSPACE_BRANCH;
 
     // Resolve kind after loading metadata so recorded sandboxMap entries can
     // pin the provider when the caller did not pass an explicit kind.

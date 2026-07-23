@@ -71,7 +71,7 @@ describe("resolveRemoteDefaultBranch", () => {
 });
 
 describe("spawnCheckoutBranch", () => {
-  it("forks a new local branch from default, not from current HEAD", async () => {
+  it("forks a new local branch from main, not from current HEAD", async () => {
     const { url, root, cleanup } = setupBareRepo();
     try {
       const repoDir = cloneWorkspace(url, root);
@@ -91,7 +91,7 @@ describe("spawnCheckoutBranch", () => {
       ).toBe("deco/new-branch");
       expect(existsSync(join(repoDir, "README.md"))).toBe(true);
       expect(existsSync(join(repoDir, "feature.txt"))).toBe(false);
-      expect(logs.some((l) => l.includes("default branch 'main'"))).toBe(true);
+      expect(logs.some((l) => l.includes("base branch 'main'"))).toBe(true);
     } finally {
       cleanup();
     }
@@ -129,28 +129,29 @@ describe("spawnCheckoutBranch", () => {
     }
   }, 30_000);
 
-  it("rejects a malicious origin/HEAD default branch instead of shelling it out", async () => {
+  it("ignores origin/HEAD when creating a branch from main", async () => {
     const { url, root, cleanup } = setupBareRepo();
     try {
       const repoDir = cloneWorkspace(url, root);
-      // A repo's default branch name is remote-controlled: whoever owns
-      // `origin` can point origin/HEAD anywhere. Git's ref-format rules allow
-      // shell metacharacters in ref names, so an attacker-named default
-      // branch would otherwise get interpolated straight into `sh -c`.
+      // The remote default is deliberately irrelevant to sandbox branch
+      // creation: a missing branch always forks from the fixed main base.
       execSync(
         `git -C ${repoDir} symbolic-ref refs/remotes/origin/HEAD 'refs/heads/pwn;touch\${IFS}${root}/INJECTED'`,
       );
 
-      await expect(
-        spawnCheckoutBranch({
-          repoDir,
-          branch: "does-not-exist-anywhere",
-          runGit: makeRunGit(repoDir),
-          log: () => {},
-        }),
-      ).rejects.toThrow(InvalidRemoteBranchNameError);
+      await spawnCheckoutBranch({
+        repoDir,
+        branch: "does-not-exist-anywhere",
+        runGit: makeRunGit(repoDir),
+        log: () => {},
+      });
 
       expect(existsSync(join(root, "INJECTED"))).toBe(false);
+      expect(
+        execSync(`git -C ${repoDir} rev-parse --abbrev-ref HEAD`)
+          .toString()
+          .trim(),
+      ).toBe("does-not-exist-anywhere");
     } finally {
       cleanup();
     }
@@ -163,7 +164,7 @@ describe("spawnCheckoutBranch", () => {
       // `branch` comes from the sandbox's git config and flows into git argv
       // (ls-remote/fetch/checkout) — argv form rules out shell injection, but
       // `assertValidRemoteBranchName` should still reject this before it ever
-      // reaches a git invocation, same as the origin/HEAD case above.
+      // reaches a git invocation.
       await expect(
         spawnCheckoutBranch({
           repoDir,

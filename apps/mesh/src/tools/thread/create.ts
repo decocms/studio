@@ -5,11 +5,7 @@
  *
  * Branch resolution (only meaningful when the vMCP has a githubRepo):
  *   1. Honor `data.branch` when provided.
- *   2. Otherwise pick the most-recent shared hosted branch, then the user's
- *      most-recent user-desktop branch.
- *   3. Fall back to a freshly generated Bayer-style `<greek>-<constellation>`
- *      name (e.g. `alpha-centauri`) when the user has no sandboxMap entries
- *      for this vMCP.
+ *   2. Otherwise use the shared `staging` branch.
  *
  * Threads created on a vMCP without a githubRepo always get `branch = null`.
  *
@@ -27,7 +23,7 @@ import {
 import { normalizeThreadForResponse } from "./helpers";
 import { ThreadCreateDataSchema, ThreadEntitySchema } from "./schema";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
-import { generateBranchName } from "@/shared/branch-name";
+import { DEFAULT_WORKSPACE_BRANCH } from "@/shared/runtime-defaults";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -48,40 +44,6 @@ type GithubRepoMeta = {
     connectionId?: string;
   } | null;
 };
-
-type SandboxMapMeta = {
-  sandboxMap?: Record<
-    string,
-    Record<string, Record<string, { createdAt?: number }>>
-  >;
-};
-
-/**
- * Pick the user's most-recently-touched branch from sandboxMap (3-level shape:
- * sandboxMap[userId][branch][sandboxProviderKind] → SandboxRecord). Returns
- * undefined when the user has no entries (caller falls back to
- * generateBranchName).
- */
-function pickWarmBranchFromSandboxMap(
-  sandboxMap: SandboxMapMeta["sandboxMap"],
-  userId: string,
-): string | undefined {
-  const branchMap = sandboxMap?.[userId];
-  if (!branchMap) return undefined;
-  // For each branch, take the max createdAt across all sandboxProviderKind entries.
-  const sorted = Object.entries(branchMap).sort(([, aKinds], [, bKinds]) => {
-    const aMax = Math.max(
-      0,
-      ...Object.values(aKinds).map((e) => e.createdAt ?? 0),
-    );
-    const bMax = Math.max(
-      0,
-      ...Object.values(bKinds).map((e) => e.createdAt ?? 0),
-    );
-    return bMax - aMax;
-  });
-  return sorted[0]?.[0];
-}
 
 export const COLLECTION_THREADS_CREATE = defineTool({
   name: "COLLECTION_THREADS_CREATE",
@@ -117,27 +79,11 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       throw new Error(`Virtual MCP not found: ${data.virtual_mcp_id}`);
     }
 
-    const metadata = vmcp.metadata as
-      | (GithubRepoMeta & SandboxMapMeta)
-      | null
-      | undefined;
+    const metadata = vmcp.metadata as GithubRepoMeta | null | undefined;
     const githubRepo = metadata?.githubRepo;
-    let branch: string | null = null;
-    if (githubRepo) {
-      const sharedWarmBranch = (
-        await ctx.storage.agentSandboxSessions.findLatestReadyByVirtualMcp(
-          organization.id,
-          data.virtual_mcp_id,
-        )
-      )?.branch;
-      branch =
-        data.branch ??
-        sharedWarmBranch ??
-        pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
-        generateBranchName(
-          ctx.auth.user?.name ?? ctx.auth.user?.email?.split("@")[0],
-        );
-    }
+    const branch = githubRepo
+      ? (data.branch ?? DEFAULT_WORKSPACE_BRANCH)
+      : null;
 
     const result = await ctx.storage.threads.create({
       id: taskId,

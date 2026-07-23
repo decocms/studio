@@ -106,13 +106,10 @@ async function createAgentAndThread(
       },
     },
   );
-  // Pass `branch: "main"` explicitly: COLLECTION_THREADS_CREATE auto-
-  // picks a branch when the agent has `metadata.githubRepo`
-  // (`pickWarmBranchFromSandboxMap` → `generateBranchName()`), which
-  // would beat the body's "main" in the route handler's
-  // `existingThread?.branch ?? input.branch` resolution and pin the row
-  // to a synthetic name like "jane-doe-mabc1x9z". Seed the row at "main"
-  // so the lock assertions can check against a stable value.
+  // Pass `branch: "main"` explicitly: COLLECTION_THREADS_CREATE otherwise
+  // assigns `staging`, which would beat the body's "main" in the route
+  // handler's `existingThread?.branch ?? input.branch` resolution. Seed the
+  // row at "main" so the lock assertions can check against a stable value.
   const thread = await callSelfMcpTool<{ item: { id: string } }>(
     api,
     orgSlug,

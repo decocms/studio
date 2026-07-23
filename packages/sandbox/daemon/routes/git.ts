@@ -134,7 +134,7 @@ export interface GitStatusResult {
   current: string | null;
   tracking: string | null;
   detached: boolean;
-  /** Default branch (e.g. main) from origin/HEAD. */
+  /** Sandbox base branch (`main`). */
   base: string;
   /** Commits on branch not in origin/<base>. */
   aheadOfBase: number;

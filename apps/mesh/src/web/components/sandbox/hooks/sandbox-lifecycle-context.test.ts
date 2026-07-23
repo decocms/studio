@@ -78,7 +78,7 @@ describe("shouldAutoStart", () => {
     expect(shouldAutoStart({ ...base, userId: null })).toBe(false);
   });
 
-  test("no branch → true (server generates branch on SANDBOX_START)", () => {
+  test("no branch → true (server assigns staging on SANDBOX_START)", () => {
     expect(shouldAutoStart({ ...base, branch: null })).toBe(true);
   });
 
@@ -228,7 +228,7 @@ describe("deriveOthersThreadLabel", () => {
     ).toBeNull();
   });
 
-  test("others thread with a branch → branch (encodes owner)", () => {
+  test("others thread with a branch → branch label", () => {
     expect(
       deriveOthersThreadLabel({
         userId: "u1",
@@ -305,7 +305,7 @@ describe("computeOthersThreadGate", () => {
 
   test("acknowledgement survives a null → assigned branch on the same thread", () => {
     // Same thread id, so acknowledging while branch was null stays valid once
-    // the server assigns a branch — no re-prompt, no double SANDBOX_START.
+    // the server assigns staging — no re-prompt, no double SANDBOX_START.
     const acked = computeOthersThreadGate({
       othersThreadLabel: "New chat", // title fallback (branch was null)
       acknowledgedThreadId: "t1",

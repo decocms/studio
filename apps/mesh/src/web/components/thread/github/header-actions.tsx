@@ -17,7 +17,6 @@ import { toast } from "sonner";
 import { authClient } from "@/web/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { resolveGithubAttachment } from "@/web/lib/github-repo.ts";
-import { generateBranchName } from "@/shared/branch-name";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { squashMergePullRequest } from "./github-pr-api.ts";
@@ -70,7 +69,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
-  const { currentBranch: branch, setCurrentTaskBranch } = useChatTask();
+  const { currentBranch: branch } = useChatTask();
   const chat = useChatStream();
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishDialogIntent, setPublishDialogIntent] = useState<
@@ -267,13 +266,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
     ]);
   };
 
-  const switchToFreshBranch = async () => {
-    const nextBranch = generateBranchName(
-      session?.user?.name ?? session?.user?.email?.split("@")[0],
-    );
-    await setCurrentTaskBranch(nextBranch);
-  };
-
   const handleSquashMerge = async (pullNumber: number) => {
     if (!githubRepo?.connectionId || githubActionPending) return;
     setGithubActionPending(true);
@@ -289,7 +281,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
         t("thread.headerActions.publishedPr", { prNumber: String(pullNumber) }),
       );
       await refreshPrState();
-      await switchToFreshBranch();
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -403,7 +394,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
                 : null
           }
           onPullRequestChanged={refreshPrState}
-          onPublished={switchToFreshBranch}
         />
       )}
     </>
