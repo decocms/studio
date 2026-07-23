@@ -121,10 +121,19 @@ export function svgPreviewDataUri(svg: string, color?: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(shimmed)}`;
 }
 
-/** The app's current foreground color, so icon previews match the theme. */
+/**
+ * The app's foreground token, so monochrome `currentColor` icon previews match
+ * the theme (white on the dark theme). Reads the `--foreground` design-system
+ * variable, which flips with the `.dark` class on `<html>`. Reading the raw
+ * `color` of `<html>` instead is wrong — the theme sets its foreground via this
+ * variable, not the element's `color`, so `<html>.color` stays the default black
+ * and would render every icon black (invisible on the dark theme).
+ */
 function themeForegroundColor(): string | undefined {
-  const color = getComputedStyle(document.documentElement).color;
-  return color || undefined;
+  const fg = getComputedStyle(document.documentElement)
+    .getPropertyValue("--foreground")
+    .trim();
+  return fg || undefined;
 }
 
 /** Preview image source for an option: `image` is a URL, `icon` inline SVG. */
