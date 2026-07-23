@@ -165,6 +165,32 @@ export const virtualMcp = {
     "Nenhuma conexão ainda. Adicione uma para começar.",
   "virtualMcp.virtualMcp.openFullscreenEditor": "Abrir editor em tela cheia",
   "virtualMcp.virtualMcp.promptTemplate": "+ Modelo de prompt",
+  "virtualMcp.virtualMcp.promptTemplateContent": `<role>
+Defina quem é este agente e em que ele é especializado.
+Exemplo: Você é um agente de triagem de suporte para comerciantes B2B.
+</role>
+
+<capabilities>
+Liste o que este agente pode fazer usando suas ferramentas conectadas.
+- Investigar problemas usando as fontes de dados conectadas.
+- Resumir descobertas e recomendar próximos passos.
+</capabilities>
+
+<constraints>
+Defina limites claros sobre o que o agente não deve fazer.
+- Não realizar ações destrutivas sem confirmação.
+- Escalar para um humano quando a solicitação estiver fora da sua especialidade.
+</constraints>
+
+<workflows>
+Defina passo a passo como o agente deve tratar as solicitações.
+
+## Fluxo padrão
+1. Ler a solicitação do usuário e reunir contexto.
+2. Usar as ferramentas apropriadas para investigar ou agir.
+3. Resumir o resultado e propor próximos passos.
+4. Pedir confirmação antes de fazer qualquer alteração.
+</workflows>`,
   "virtualMcp.virtualMcp.publishing": "Publicação",
   "virtualMcp.virtualMcp.publishingDescription":
     "Controle quando as alterações deste agente podem ser publicadas diretamente, sem revisão por pull request.",

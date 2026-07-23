@@ -162,6 +162,32 @@ export const virtualMcp = {
     "No connections yet. Add one to get started.",
   "virtualMcp.virtualMcp.openFullscreenEditor": "Open fullscreen editor",
   "virtualMcp.virtualMcp.promptTemplate": "+ Prompt template",
+  "virtualMcp.virtualMcp.promptTemplateContent": `<role>
+Define who this agent is and what it specializes in.
+Example: You are a support triage agent for B2B merchants.
+</role>
+
+<capabilities>
+List what this agent can do using its connected tools.
+- Investigate issues using connected data sources.
+- Summarize findings and recommend next steps.
+</capabilities>
+
+<constraints>
+Set clear boundaries on what the agent must not do.
+- Do not perform destructive actions without confirmation.
+- Escalate to a human when the request is outside your expertise.
+</constraints>
+
+<workflows>
+Define step-by-step how the agent should handle requests.
+
+## Default workflow
+1. Read the user's request and gather context.
+2. Use the appropriate tools to investigate or act.
+3. Summarize the result and propose next steps.
+4. Ask for confirmation before making any changes.
+</workflows>`,
   "virtualMcp.virtualMcp.publishing": "Publishing",
   "virtualMcp.virtualMcp.publishingDescription":
     "Control when this agent's changes can be published directly, skipping pull-request review.",
