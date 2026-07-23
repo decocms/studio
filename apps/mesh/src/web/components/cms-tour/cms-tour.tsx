@@ -75,6 +75,10 @@ function buildConfig(t: TFunction, steps: DriveStep[]): Config {
     showButtons: ["next", "previous"],
     smoothScroll: true,
     allowClose: true,
+    // Look-but-don't-touch: the highlighted control stays non-interactive so a
+    // user can't click e.g. the Preview tab mid-tour, close the view, and strand
+    // the remaining steps with no anchors. Navigation is Next / Back / Skip only.
+    disableActiveInteraction: true,
     stagePadding: 6,
     stageRadius: 8,
     // Steps are pre-filtered to currently-visible anchors, so don't wait/float
