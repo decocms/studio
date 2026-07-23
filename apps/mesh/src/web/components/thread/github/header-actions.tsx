@@ -478,8 +478,9 @@ function HeaderButtonRenderer(props: {
           label={
             props.publishGate.pending
               ? t("thread.headerActions.reviewingChanges")
-              : (props.publishGate.reason ??
-                t("thread.headerActions.publishDirectlySkipReview"))
+              : props.publishGate.allowed
+                ? t("thread.headerActions.publishDirectlySkipReview")
+                : t("thread.headerActions.publishNeedsReview")
           }
         >
           <Button

@@ -76,6 +76,8 @@ export const thread = {
     "Publish directly, skipping review",
   "thread.headerActions.publishedPr": "Published PR #{prNumber}",
   "thread.headerActions.published": "Published",
+  "thread.headerActions.publishNeedsReview":
+    "This change needs review before publishing.",
   "thread.headerActions.publishToProduction": "Publish to production",
   "thread.headerActions.pushAndOpenPrTooltip":
     "Push and open a PR for {branch} → {base}",
@@ -145,6 +147,8 @@ export const thread = {
   "thread.publishDialog.opensPullRequestInto":
     "Opens a pull request into {baseBranch} for review.",
   "thread.publishDialog.publishedTo": "Published to {baseBranch}",
+  "thread.publishDialog.publishNeedsReview":
+    "This change needs review before publishing.",
   "thread.publishDialog.pullRequest": "Pull request",
   "thread.publishDialog.regenerate": "Regenerate",
   "thread.publishDialog.reviewingChanges": "Reviewing changes…",
