@@ -1460,9 +1460,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 )}
 
                 {display.showWakingPill && (
-                  <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2.5 rounded-full border border-border bg-background/95 px-5 py-3 text-sm font-medium text-foreground shadow-lg backdrop-blur-sm pointer-events-none select-none">
-                    <Loading01 size={18} className="animate-spin" />
-                    {t("sandbox.preview.startingPreview")}
+                  <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">
+                    <Loading01
+                      size={18}
+                      className="mt-0.5 shrink-0 animate-spin text-muted-foreground"
+                    />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium text-foreground">
+                        {t("sandbox.preview.startingPreview")}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {t("sandbox.preview.startingPreviewHint")}
+                      </span>
+                    </div>
                   </div>
                 )}
 

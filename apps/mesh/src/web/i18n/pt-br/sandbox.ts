@@ -407,6 +407,8 @@ export const sandbox = {
     "Procurar páginas e componentes...",
   "sandbox.preview.siteSeo": "SEO do site",
   "sandbox.preview.startingPreview": "Iniciando seu preview",
+  "sandbox.preview.startingPreviewHint":
+    "Você já pode fazer alterações — elas aparecem quando o preview estiver pronto.",
   "sandbox.preview.templateNoLongerExists":
     "O modelo selecionado não existe mais.",
   "sandbox.preview.urlCopiedToClipboard":
