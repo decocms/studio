@@ -392,9 +392,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       removeMember: async (data) => {
-        // Return Better Auth's result: it carries the removed member's userId,
-        // which the tool needs to release the member's paid seat.
-        return auth.api.removeMember({
+        await auth.api.removeMember({
           headers,
           body: data,
         });

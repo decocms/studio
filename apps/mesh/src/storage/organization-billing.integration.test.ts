@@ -107,28 +107,32 @@ describe("OrganizationBillingStorage", () => {
     expect(await storage.listPaidSeatUserIds(ORG)).toEqual(["user_a"]);
   });
 
-  it("releases the seat on member removal and logs the transition", async () => {
-    // Simulate the member row already being gone (removal completed).
+  it("a stale seat row (member gone, release never ran) never counts", async () => {
+    // Simulate the crash window: member removed, releaseSeat never ran.
     await database.db
       .deleteFrom("member")
       .where("userId", "=", "user_a")
       .where("organizationId", "=", ORG)
       .execute();
 
-    const released = await storage.releaseSeatOnMemberRemoval(
-      ORG,
-      "user_a",
-      "admin_1",
-    );
+    // The orphan row still exists…
+    const raw = await database.db
+      .selectFrom("organization_paid_seat")
+      .select(["user_id"])
+      .where("organization_id", "=", ORG)
+      .execute();
+    expect(raw.map((r) => r.user_id)).toEqual(["user_a"]);
+    // …but the member JOIN keeps it out of every count.
+    expect(await storage.listPaidSeatUserIds(ORG)).toEqual([]);
+  });
+
+  it("releases the seat (hooks boundary) and logs the transition", async () => {
+    const released = await storage.releaseSeat(ORG, "user_a", "admin_1");
     expect(released).toBe(true);
     expect(await storage.listPaidSeatUserIds(ORG)).toEqual([]);
 
     // Releasing again is a no-op — nothing new logged.
-    const again = await storage.releaseSeatOnMemberRemoval(
-      ORG,
-      "user_a",
-      "admin_1",
-    );
+    const again = await storage.releaseSeat(ORG, "user_a", "admin_1");
     expect(again).toBe(false);
 
     const frees = await database.db

@@ -9,6 +9,7 @@ import { getDb } from "@/database";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { ConnectionStorage } from "@/storage/connection";
+import { OrganizationBillingStorage } from "@/storage/organization-billing";
 import { Permission } from "@/storage/types";
 import { fetchToolsFromMCP } from "@/tools/connection/fetch-tools";
 import {
@@ -80,6 +81,24 @@ function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
       data: getWellKnownRegistryConnection(organizationId),
     },
   ];
+}
+
+/**
+ * Drop a user's paid seat (if any) + log the transition. Called from the
+ * afterAddMember / afterRemoveMember organization hooks — see
+ * OrganizationBillingStorage.releaseSeat for the invariant this maintains.
+ */
+export async function releaseSeat(
+  organizationId: string,
+  userId: string,
+  changedBy: string,
+): Promise<void> {
+  const database = getDb();
+  await new OrganizationBillingStorage(database.db).releaseSeat(
+    organizationId,
+    userId,
+    changedBy,
+  );
 }
 
 /**

@@ -67,11 +67,27 @@ export class OrganizationBillingStorage {
     };
   }
 
+  /**
+   * Paid seats of CURRENT members only — joined against `member` so a stale
+   * row (member removed but the release hook never ran: crash mid-request)
+   * can never count toward billing or the gateway allowance. Orphan rows are
+   * harmless dust, cleared by the afterAddMember hook if the user ever
+   * rejoins (invites always land free).
+   */
   async listPaidSeatUserIds(organizationId: string): Promise<string[]> {
     const rows = await this.db
       .selectFrom("organization_paid_seat")
-      .select(["user_id"])
-      .where("organization_id", "=", organizationId)
+      .innerJoin("member", (join) =>
+        join
+          .onRef("member.userId", "=", "organization_paid_seat.user_id")
+          .onRef(
+            "member.organizationId",
+            "=",
+            "organization_paid_seat.organization_id",
+          ),
+      )
+      .select(["organization_paid_seat.user_id"])
+      .where("organization_paid_seat.organization_id", "=", organizationId)
       .execute();
     return rows.map((r) => r.user_id);
   }
@@ -147,10 +163,20 @@ export class OrganizationBillingStorage {
           .execute();
       }
 
+      // Same member JOIN as listPaidSeatUserIds: never count a stale row.
       const paidSeats = await trx
         .selectFrom("organization_paid_seat")
+        .innerJoin("member", (join) =>
+          join
+            .onRef("member.userId", "=", "organization_paid_seat.user_id")
+            .onRef(
+              "member.organizationId",
+              "=",
+              "organization_paid_seat.organization_id",
+            ),
+        )
         .select((eb) => eb.fn.countAll().as("count"))
-        .where("organization_id", "=", organizationId)
+        .where("organization_paid_seat.organization_id", "=", organizationId)
         .executeTakeFirst();
 
       return { applied, paidSeatCount: Number(paidSeats?.count ?? 0) };
@@ -158,12 +184,15 @@ export class OrganizationBillingStorage {
   }
 
   /**
-   * Member left/was removed: release their paid seat (if any) and log the
-   * transition — otherwise a removed member's seat keeps counting toward the
-   * org's bill forever. Direct ops (not setSeats): the member row is already
-   * gone at this point, so setSeats' membership validation would reject it.
+   * Drop a user's paid-seat row (if any) and log the transition. Called from
+   * BOTH membership boundaries (auth/index.ts organizationHooks):
+   *   - afterRemoveMember — a removed member must stop counting;
+   *   - afterAddMember — invites always land FREE, so a stale row from a
+   *     crashed removal can't resurrect as paid when the user rejoins.
+   * Direct ops (not setSeats): at removal time the member row is already
+   * gone, so setSeats' membership validation would reject it. Idempotent.
    */
-  async releaseSeatOnMemberRemoval(
+  async releaseSeat(
     organizationId: string,
     userId: string,
     changedBy: string,
