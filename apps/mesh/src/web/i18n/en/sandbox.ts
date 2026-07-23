@@ -194,6 +194,17 @@ export const sandbox = {
   "sandbox.fileExplorer.selectFileToEdit": "Select a file to edit",
   "sandbox.fileExplorer.send": "Send",
   "sandbox.fileExplorer.textCopied": "{label} copied",
+  "sandbox.fileExplorerDeleteDialog.cancel": "Cancel",
+  "sandbox.fileExplorerDeleteDialog.delete": "Delete",
+  "sandbox.fileExplorerDeleteDialog.description":
+    "This will permanently delete",
+  "sandbox.fileExplorerDeleteDialog.folderSuffix": " and everything inside it.",
+  "sandbox.fileExplorerDeleteDialog.titleFile": "Delete file?",
+  "sandbox.fileExplorerDeleteDialog.titleFolder": "Delete folder?",
+  "sandbox.fileExplorerDeleteDialog.unsavedChangesMany":
+    "{count} open files have unsaved changes that will be lost.",
+  "sandbox.fileExplorerDeleteDialog.unsavedChangesOne":
+    "One open file has unsaved changes that will be lost.",
   "sandbox.fileExplorerNameDialog.cancel": "Cancel",
   "sandbox.fileExplorerNameDialog.location": "Location",
   "sandbox.fileExplorerNameDialog.name": "Name",

@@ -203,6 +203,17 @@ export const sandbox = {
   "sandbox.fileExplorer.selectFileToEdit": "Selecione um arquivo para editar",
   "sandbox.fileExplorer.send": "Enviar",
   "sandbox.fileExplorer.textCopied": "{label} copiado",
+  "sandbox.fileExplorerDeleteDialog.cancel": "Cancelar",
+  "sandbox.fileExplorerDeleteDialog.delete": "Excluir",
+  "sandbox.fileExplorerDeleteDialog.description":
+    "Isso excluirá permanentemente",
+  "sandbox.fileExplorerDeleteDialog.folderSuffix": " e tudo dentro dela.",
+  "sandbox.fileExplorerDeleteDialog.titleFile": "Excluir arquivo?",
+  "sandbox.fileExplorerDeleteDialog.titleFolder": "Excluir pasta?",
+  "sandbox.fileExplorerDeleteDialog.unsavedChangesMany":
+    "{count} arquivos abertos têm alterações não salvas que serão perdidas.",
+  "sandbox.fileExplorerDeleteDialog.unsavedChangesOne":
+    "Um arquivo aberto tem alterações não salvas que serão perdidas.",
   "sandbox.fileExplorerNameDialog.cancel": "Cancelar",
   "sandbox.fileExplorerNameDialog.location": "Local",
   "sandbox.fileExplorerNameDialog.name": "Nome",
