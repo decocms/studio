@@ -35,7 +35,7 @@ import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-eve
 import { usePublishGate } from "@/web/components/sandbox/hooks/use-publish-gate.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
-import type { PublishGate } from "./sandbox-git-api.ts";
+import { normalizePublishPolicy, type PublishGate } from "./sandbox-git-api.ts";
 import { useT, type TFunction } from "@/web/i18n/use-t";
 
 interface Props {
@@ -162,6 +162,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     effectiveBranchMeta.kind === "ready"
       ? `${effectiveBranchMeta.headSha}:${effectiveBranchMeta.workingTreeDirty}:${effectiveBranchMeta.unpushed}:${effectiveBranchMeta.aheadOfBase}`
       : "unknown";
+  const publishPolicy = normalizePublishPolicy(vm?.metadata?.publishPolicy);
   const { gate: publishGate } = usePublishGate({
     orgSlug: org.slug,
     virtualMcpId,
@@ -170,6 +171,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     headSha:
       effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.headSha : null,
     signature: publishGateSignature,
+    policy: publishPolicy,
     enabled: publishGateEnabled,
   });
 
@@ -386,6 +388,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
           owner={githubRepo.owner}
           repo={githubRepo.name}
           previewUrl={previewUrl}
+          publishPolicy={publishPolicy}
           dialogIntent={publishDialogIntent}
           headSha={
             effectiveBranchMeta.kind === "ready"
@@ -473,8 +476,12 @@ function HeaderButtonRenderer(props: {
       {props.showPublishSide ? (
         <WithTooltip
           label={
-            props.publishGate.reason ??
-            t("thread.headerActions.publishDirectlySkipReview")
+            props.publishGate.pending
+              ? t("thread.headerActions.reviewingChanges")
+              : props.publishGate.allowed
+                ? t("thread.headerActions.publishDirectlySkipReview")
+                : (props.publishGate.reason ??
+                  t("thread.headerActions.publishNeedsReview"))
           }
         >
           <Button
@@ -483,6 +490,9 @@ function HeaderButtonRenderer(props: {
             disabled={props.githubActionPending || !props.publishGate.allowed}
             onClick={props.onPublishSide}
           >
+            {props.publishGate.pending ? (
+              <Spinner size="xs" variant="default" />
+            ) : null}
             {t("thread.headerActions.publish")}
           </Button>
         </WithTooltip>

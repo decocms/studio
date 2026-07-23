@@ -36,6 +36,7 @@ import {
   isGitStatusLike,
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
+import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
 import {
   buildLoaderInvokeUrl,
   parseLoaderInvokeRequest,
@@ -747,6 +748,86 @@ export const createSandboxRoutes = () => {
               ]);
         const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
         return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message === "SANDBOX_GONE") {
+          return c.json(
+            {
+              error:
+                "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
+            },
+            410,
+            SANDBOX_PROXY_CACHE_HEADERS,
+          );
+        }
+        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+      }
+    },
+  );
+
+  // Smart-review judge: the client sends the full publish payload (status +
+  // combined diff) and the cheap "fast" model tier decides whether the changes
+  // need PR review. Backfills status/diff from the daemon when omitted, mirrors
+  // the suggest-commit handler. On any failure the lib returns a permissive
+  // verdict (requiresReview: false) so the AI's absence never blocks publish.
+  app.post(
+    "/:virtualMcpId/:branch/git/judge-review",
+    bodyLimit({
+      maxSize: SUGGEST_COMMIT_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
+    }),
+    async (c) => {
+      const runner = requireRunner(c);
+      if (runner instanceof Response) return runner;
+
+      const { claimName, userId, projectRef } = c.get("vmClaim");
+      const ctx = c.var.studioContext;
+
+      try {
+        const body = (await c.req.json().catch(() => ({}))) as {
+          status?: GitStatusLike;
+          diff?: GitDiffLike;
+          language?: string;
+        };
+
+        const clientStatus = body.status;
+        const clientDiff = body.diff;
+        const hasClientDiff =
+          clientDiff != null &&
+          typeof clientDiff.diffs === "object" &&
+          clientDiff.diffs !== null;
+
+        const [status, diff] =
+          isGitStatusLike(clientStatus) && hasClientDiff
+            ? [clientStatus, clientDiff]
+            : await Promise.all([
+                fetchDaemonJson<GitStatusLike>(
+                  runner,
+                  claimName,
+                  "/_sandbox/git/status",
+                  "GET",
+                  { userId, projectRef },
+                ),
+                fetchDaemonJson<GitDiffLike>(
+                  runner,
+                  claimName,
+                  "/_sandbox/git/diff",
+                  "GET",
+                  { userId, projectRef },
+                ),
+              ]);
+        const verdict = await judgeRequiresReviewWithLlm(
+          ctx,
+          status,
+          diff,
+          typeof body.language === "string" ? body.language : undefined,
+        );
+        return c.json(verdict, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (message === "SANDBOX_GONE") {

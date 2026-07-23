@@ -542,6 +542,25 @@ const knowledgeMetadataField = z
   );
 
 /**
+ * Controls when a code agent's changes may be published directly (squash-merged
+ * to base) instead of going through pull-request review.
+ * - `smart` (default): a cheap AI judges each change — code that looks risky
+ *   (new endpoints, large or backend changes) needs review; content/design and
+ *   small frontend edits publish directly.
+ * - `code-review`: any code change requires review; only CMS/design changes
+ *   publish directly.
+ * - `open`: every change publishes directly, no review required.
+ */
+const PublishPolicySchema = z.enum(["smart", "code-review", "open"]);
+export type PublishPolicy = z.infer<typeof PublishPolicySchema>;
+
+const publishPolicyMetadataField = PublishPolicySchema.nullable()
+  .optional()
+  .describe(
+    "Controls when this code agent's changes may be published directly vs. requiring PR review. 'smart' (default) uses AI to judge per change; 'code-review' requires review for any code; 'open' allows direct publish always.",
+  );
+
+/**
  * Virtual MCP entity schema - single source of truth
  * Compliant with collections binding pattern
  */
@@ -610,6 +629,7 @@ export const VirtualMCPEntitySchema = z.object({
         .nullable()
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
+      publishPolicy: publishPolicyMetadataField,
     })
     .loose()
     .describe("Metadata"),
@@ -708,6 +728,7 @@ export const VirtualMCPCreateDataSchema = z.object({
         .nullable()
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
+      publishPolicy: publishPolicyMetadataField,
     })
     .loose()
     .nullable()
@@ -787,6 +808,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .nullable()
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
+      publishPolicy: publishPolicyMetadataField,
     })
     .loose()
     .nullable()
