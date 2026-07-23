@@ -370,6 +370,7 @@ export const sandbox = {
   "sandbox.postToolbar.sortZA": "Z–A",
   "sandbox.preview.blocks": "Blocks",
   "sandbox.preview.blocksEditor": "Blocks editor",
+  "sandbox.preview.catchAllParamLabel": "path",
   "sandbox.preview.choosePage": "Choose page",
   "sandbox.preview.clickElementToAsk": "Click any element to ask the AI",
   "sandbox.preview.copyCurrentUrl": "Copy Current URL",

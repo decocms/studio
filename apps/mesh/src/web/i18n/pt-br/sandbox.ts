@@ -383,6 +383,7 @@ export const sandbox = {
   "sandbox.postToolbar.sortZA": "Z–A",
   "sandbox.preview.blocks": "Blocos",
   "sandbox.preview.blocksEditor": "Editor de blocos",
+  "sandbox.preview.catchAllParamLabel": "caminho",
   "sandbox.preview.choosePage": "Escolher página",
   "sandbox.preview.clickElementToAsk":
     "Clique em qualquer elemento para perguntar à IA",
