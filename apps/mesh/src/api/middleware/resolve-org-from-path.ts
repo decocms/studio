@@ -116,9 +116,33 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   // ctx.access.check() (UnauthorizedError → 401).
   let pathRole: string | undefined;
   if (userId) {
+    // This middleware is the hot path for every org-scoped request, so the
+    // seat-gate state (per-seat billing) rides the membership lookup as
+    // scalar subqueries instead of extra round-trips — and only when the
+    // deployment enforces billing at all (STUDIO_BILLING_ENFORCED;
+    // self-hosted never turns it on, paying zero).
+    const billingEnforced = getSettings().billingEnforced;
     const membership = await db
       .selectFrom("member")
       .select(["role"])
+      .$if(billingEnforced, (qb) =>
+        qb.select((eb) => [
+          eb
+            .selectFrom("organization_billing")
+            .select("legacy")
+            .where("organization_id", "=", org.id)
+            .as("billing_legacy"),
+          eb
+            .exists(
+              eb
+                .selectFrom("organization_paid_seat")
+                .select("user_id")
+                .where("organization_id", "=", org.id)
+                .where("user_id", "=", userId),
+            )
+            .as("has_paid_seat"),
+        ]),
+      )
       .where("userId", "=", userId)
       .where("organizationId", "=", org.id)
       .executeTakeFirst();
@@ -143,32 +167,17 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       // the read route can stat the file and serve it if it's public.
     } else {
       pathRole = membership.role;
+      // Seat gate: monetization, orthogonal to roles — enforced inside
+      // AccessControl.check() BEFORE the admin/owner bypass. `billing_legacy`
+      // is null when the org has NO billing row: fail OPEN (treated as
+      // legacy) so an org-creation hook failure can't brick an org.
+      if (billingEnforced) {
+        ctx.access.setSeatGated(
+          membership.billing_legacy === false &&
+            membership.has_paid_seat !== true,
+        );
+      }
     }
-  }
-
-  // Seat gate (per-seat billing) — members only, and only when this
-  // deployment enforces billing (STUDIO_BILLING_ENFORCED; self-hosted never
-  // turns it on). Seats are monetization, orthogonal to roles: the gate state
-  // is loaded here once per request and enforced inside AccessControl.check()
-  // BEFORE the admin/owner bypass. A missing billing row fails OPEN (treated
-  // as legacy) so an org-creation hook failure can't brick an org.
-  if (pathRole && userId && getSettings().billingEnforced) {
-    const [billing, paidSeat] = await Promise.all([
-      db
-        .selectFrom("organization_billing")
-        .select(["legacy"])
-        .where("organization_id", "=", org.id)
-        .executeTakeFirst(),
-      db
-        .selectFrom("organization_paid_seat")
-        .select(["user_id"])
-        .where("organization_id", "=", org.id)
-        .where("user_id", "=", userId)
-        .executeTakeFirst(),
-    ]);
-    ctx.access.setSeatGated(
-      billing !== undefined && !billing.legacy && paidSeat === undefined,
-    );
   }
 
   ctx.organization = {
