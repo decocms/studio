@@ -571,7 +571,7 @@ export const sandbox = {
     "This agent's GitHub repo isn't authenticated. Reconnect it in Connections, then retry.",
   "sandbox.stateCard.othersThreadTitle": "You're in someone else's chat",
   "sandbox.stateCard.othersThreadMessage":
-    "This conversation ({label}) belongs to another member. Continuing will start a sandbox on their branch — start a new chat to work on your own instead.",
+    "This conversation ({label}) belongs to another member. Continuing here means picking up their work — start a new chat to work on your own instead.",
   "sandbox.stateCard.othersThreadContinue": "Continue anyway",
   "sandbox.stateCard.othersThreadNewChat": "Start new chat",
   "sandbox.stateCard.reconnectGithub": "Reconnect GitHub",
