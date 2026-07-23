@@ -85,6 +85,8 @@ export const common = {
   "common.githubRepoPicker.authenticatingGitHub": "Authenticating with GitHub",
   "common.githubRepoPicker.backToAccounts": "Back to accounts",
   "common.githubRepoPicker.changeConnection": "Change connection",
+  "common.githubRepoPicker.checkAgain": "Check again",
+  "common.githubRepoPicker.chooseRepositories": "Choose repositories",
   "common.githubRepoPicker.completeOAuthFlow":
     "Complete the OAuth flow in your browser",
   "common.githubRepoPicker.connectionExpiredMessage":
@@ -95,20 +97,27 @@ export const common = {
     "Failed to load GitHub accounts",
   "common.githubRepoPicker.failedReconnect":
     "Failed to reconnect GitHub: {error}",
+  "common.githubRepoPicker.githubConnected": "GitHub connected",
   "common.githubRepoPicker.importFromGitHub": "Import from GitHub",
   "common.githubRepoPicker.importedRepo": "Imported {name} from GitHub",
   "common.githubRepoPicker.installGitHubApp": "Install the GitHub App",
   "common.githubRepoPicker.installingGitHubConnection":
     "Installing the GitHub connection...",
   "common.githubRepoPicker.noRepositoriesFound": "No repositories found",
+  "common.githubRepoPicker.noRepositoriesShared":
+    "No repositories are shared with Deco yet. Choose what to share on GitHub, then return here to continue.",
   "common.githubRepoPicker.personalAccount": "Personal account",
   "common.githubRepoPicker.private": "Private",
   "common.githubRepoPicker.public": "Public",
   "common.githubRepoPicker.reconnectGitHub": "Reconnect GitHub",
+  "common.githubRepoPicker.repositoryAccessNote":
+    "You decide exactly what Deco can access. Choosing “all repositories” is optional.",
   "common.githubRepoPicker.searchRepositories": "Search repositories...",
   "common.githubRepoPicker.select": "Select",
   "common.githubRepoPicker.selectConnection": "Select a connection",
   "common.githubRepoPicker.settingUpGitHub": "Setting up GitHub",
+  "common.githubRepoPicker.setupRepositoriesTitle":
+    "Let Deco see your repositories",
   "common.githubRepoPicker.somethingWentWrong":
     "Something went wrong while connecting to GitHub.",
   "common.githubRepoPicker.tryAgain": "Try again",
