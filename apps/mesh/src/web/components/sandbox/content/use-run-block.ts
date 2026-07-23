@@ -32,9 +32,10 @@ export function buildPreviewInvokePath(ref: RunBlockSandboxRef): string {
 /**
  * Studio proxy path for a preview GET fetch:
  * `GET /api/:org/sandbox/:virtualMcpId/:branch/preview-fetch?path=<path>`.
- * The proxy fetches `<preview><path>` server-side (only an allowlisted set of
- * paths — `/.decofile`, `/`) so the browser stays out of CORS. Used to read the
- * site's homepage HTML for link-based entity discovery.
+ * The proxy fetches `<preview><path>` server-side so the browser stays out of
+ * CORS. `path` may be any same-origin path that can't escape the origin (the
+ * proxy rejects protocol-relative / traversal); used to read the site's
+ * homepage and listing HTML for link-based entity discovery.
  */
 export function buildPreviewFetchPath(
   ref: RunBlockSandboxRef,

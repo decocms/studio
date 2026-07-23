@@ -123,16 +123,7 @@ export function classifyParamKinds(
  * color words — present in essentially every catalog (clothing, perfume,
  * luggage, soap). PT + EN, since stores serve both markets.
  */
-export const GENERIC_SEED_TERMS = [
-  "rosa",
-  "preto",
-  "azul",
-  "branco",
-  "pink",
-  "black",
-  "blue",
-  "white",
-];
+export const GENERIC_SEED_TERMS = ["rosa", "preto", "pink", "black"];
 
 /**
  * Expand a single-term request builder over the generic seeds when the user
@@ -391,7 +382,7 @@ export function resolveOptionSources(
  * via the preview-fetch proxy (not a loader invoke), fetched once and filtered
  * client-side. `kind` only drives the label/icon.
  */
-export function siteLinksSource(kind: PathParamKind): OptionSource {
+function siteLinksSource(kind: PathParamKind): OptionSource {
   return {
     kind,
     id: SITE_LINKS_SOURCE_ID,
@@ -669,7 +660,6 @@ const NON_CATEGORY_SEGMENTS = new Set([
   "catalogsearch",
   "search",
   "busca",
-  "checkout",
   "privacy-policy-cookie-restriction-mode",
 ]);
 

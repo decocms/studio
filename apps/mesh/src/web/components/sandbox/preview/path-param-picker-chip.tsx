@@ -105,7 +105,10 @@ async function fetchSiteLinkOptions(
   ctx: OptionPayloadContext,
 ): Promise<PathParamOption[]> {
   const home = source.optionsFromPayload(await fetchPreviewPage(ref, "/"), ctx);
-  const firstListing = home[0];
+  // Drill into the first CATEGORY (a listing page whose SSR embeds shelf
+  // products) — not home[0], which is a product when the homepage embeds shelves
+  // (products are emitted before categories), and a PDP has no shelf to scrape.
+  const firstListing = home.find((o) => o.kind === "category");
   if (!firstListing) return home;
   const listingPath = fillPathTemplate(ctx.template, {
     [ctx.paramName]: firstListing.value,
@@ -288,35 +291,54 @@ export function PathParamPickerChip({
   });
 
   const ctx: OptionPayloadContext = { template, paramName };
-  // All sources queried at chip level so we can decide which to render; every
-  // group shares its cache key with PathParamAutoFill (no duplicate fetch).
-  const queries = useQueries({
-    queries: sources.map((source) =>
+  const toState = (
+    source: OptionSource,
+    query: { data?: PathParamOption[]; isLoading: boolean; isError: boolean },
+  ) => ({
+    source,
+    query,
+    options: source.clientFilter
+      ? filterPickerOptions(query.data ?? [], search)
+      : (query.data ?? []),
+  });
+
+  // Primaries are queried on open; fallbacks (the homepage-links source) are
+  // only queried once the primaries have settled with no options — so opening
+  // the picker on a healthy loader-backed page never fires the homepage fetch.
+  const primarySources = sources.filter((s) => !s.isFallback);
+  const fallbackSources = sources.filter((s) => s.isFallback);
+  const primaryQueries = useQueries({
+    queries: primarySources.map((source) =>
       pickerQuery(sandboxRef, source, debouncedSearch, ctx, open),
     ),
   });
-  const states = sources.map((source, i) => {
-    const query = queries[i]!;
-    const options = source.clientFilter
-      ? filterPickerOptions(query.data ?? [], search)
-      : (query.data ?? []);
-    return { source, query, options };
-  });
-
-  // Fallbacks (e.g. the homepage-links source) REPLACE the primaries once every
-  // primary has settled with no options (or there are none) — so a loader's
-  // "couldn't load" / empty result quietly gives way to the fallback instead of
-  // rendering alongside it. While primaries have options (or are still loading),
-  // only they show.
-  const primaries = states.filter((s) => !s.source.isFallback);
+  const primaryStates = primarySources.map((source, i) =>
+    toState(source, primaryQueries[i]!),
+  );
   const primariesExhausted =
-    primaries.length === 0 ||
-    primaries.every(
+    primaryStates.length === 0 ||
+    primaryStates.every(
       (s) => !s.query.isLoading && (s.query.isError || s.options.length === 0),
     );
-  const visible = states.filter((s) =>
-    s.source.isFallback ? primariesExhausted : !primariesExhausted,
+  const fallbackQueries = useQueries({
+    queries: fallbackSources.map((source) =>
+      pickerQuery(
+        sandboxRef,
+        source,
+        debouncedSearch,
+        ctx,
+        open && primariesExhausted,
+      ),
+    ),
+  });
+  const fallbackStates = fallbackSources.map((source, i) =>
+    toState(source, fallbackQueries[i]!),
   );
+
+  // Fallbacks REPLACE the primaries once every primary has settled with no
+  // options (or there are none) — a loader's "couldn't load" / empty result
+  // quietly gives way to the fallback instead of rendering alongside it.
+  const visible = primariesExhausted ? fallbackStates : primaryStates;
 
   // The homepage-links source carries both categories and products. When it's
   // the sole view and both are present, lay them out side by side (Categorias |
