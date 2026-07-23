@@ -3,18 +3,18 @@
 # Bidirectional mount propagation — see the orgFs block in ../values.yaml.
 #
 # Build context is the REPO ROOT (the bundle pulls TS from packages/ and
-# apps/mesh): docker build -f deploy/helm/sandbox-env/orgfs-sidecar/Dockerfile .
+# apps/api): docker build -f deploy/helm/sandbox-env/orgfs-sidecar/Dockerfile .
 
 FROM oven/bun:1.3.14-debian AS build
 WORKDIR /repo
-# Only the sidecar's import graph — no full workspace install. @decocms/std is
-# a zero-dependency workspace package; a hand-made node_modules link resolves
-# the specifier without bun install.
-COPY packages/std packages/std
+# Only the sidecar's import graph — no full workspace install.
+# @decocms/shared/std is a zero-dependency workspace export; a hand-made
+# node_modules link resolves the specifier without bun install.
+COPY packages/shared packages/shared
 COPY packages/sandbox/daemon packages/sandbox/daemon
-COPY apps/mesh/src/file-storage/mount apps/mesh/src/file-storage/mount
+COPY apps/api/src/file-storage/mount apps/api/src/file-storage/mount
 RUN mkdir -p node_modules/@decocms \
-  && ln -s ../../packages/std node_modules/@decocms/std \
+  && ln -s ../../packages/shared node_modules/@decocms/shared \
   && bun build packages/sandbox/daemon/org-fs/sidecar-main.ts \
     --target bun --outfile /out/sidecar.js
 

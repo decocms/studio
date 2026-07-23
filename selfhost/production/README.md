@@ -13,7 +13,7 @@ Production is **not** the umbrella. Install the lean chart
 | Secrets | fixed dev values in the chart | **ExternalSecret** OR a Secret you create (`secret.secretName`) — never inline |
 | Scaling | single replicas, HPA off | **HPA on** for API + worker |
 | Ingress | `LoadBalancer:80` servicelb | your ingress controller / LB / gateway (chart renders none) |
-| Previews | mesh in-process proxy on `:80` | **preview Gateway** (Istio + cert-manager wildcard) |
+| Previews | Studio in-process proxy on `:80` | **preview Gateway** (Istio + cert-manager wildcard) |
 | Sandbox egress | open | **locked down** (netinit iptables) + node isolation |
 
 ## Recommended: bundle it in your own umbrella (wrapper) chart
@@ -111,11 +111,11 @@ The hardened sandbox posture ships in the `sandbox-env` chart; see
   in-cluster/link-local CIDRs and allows only 443 + 53 — untrusted sandbox code
   can't reach your Services. This is the sandbox's outbound firewall.
 - **Node isolation:** pin sandbox pods to a dedicated tainted NodePool so an
-  escape lands away from mesh/Postgres/NATS.
+  escape lands away from Studio/Postgres/NATS.
 - **Zone spread**, **warm pool** (+ optional HPA), and a **sentinel token**.
 - **Preview URLs:** wildcard `*.<domain>` via an Istio Gateway + cert-manager
   (needs Gateway API CRDs + a DNS-01 issuer). Locally this is replaced by the
-  in-process mesh proxy on `:80`.
+  in-process Studio proxy on `:80`.
 
 Install the operator first (once per cluster, into `agent-sandbox-system`), then
 `sandbox-env`:

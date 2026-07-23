@@ -15,9 +15,9 @@ import {
   submitInteraction,
 } from "./gemini-interactions";
 import type { DecopilotSecretModelSource } from "../types";
-import type { MeshProvider } from "./mesh-provider";
+import type { StudioProvider } from "./studio-provider";
 
-export interface ResolvedSecretProvider extends MeshProvider {
+export interface ResolvedSecretProvider extends StudioProvider {
   info: { id: never; name: string; description: string };
   aiSdk: ProviderV3;
   listModels(): Promise<never[]>;

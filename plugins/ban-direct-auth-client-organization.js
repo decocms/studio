@@ -3,7 +3,7 @@
  * org-scoped methods. Those calls must go through `useOrgAuthClient()` so
  * that `organizationId` is injected per-request from the URL/route context
  * instead of falling back to `session.activeOrganizationId` (which leaks
- * across browser tabs — see apps/mesh/src/web/hooks/use-org-auth-client.ts).
+ * across browser tabs — see apps/web/src/hooks/use-org-auth-client.ts).
  *
  * `setActive` is always banned because it persists the active org to the
  * shared session row.

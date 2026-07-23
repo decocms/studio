@@ -20,7 +20,7 @@ MCP tools are exposed via the Model Context Protocol and allow programmatic mana
 When adding a new domain of tools (e.g., `apiKeys`, `webhooks`, `secrets`), create the following structure:
 
 ```
-apps/mesh/src/tools/<domain>/
+apps/api/src/tools/<domain>/
 ├── schema.ts     # Zod schemas for entities and operations
 ├── create.ts     # <DOMAIN>_CREATE tool
 ├── list.ts       # <DOMAIN>_LIST tool
@@ -40,7 +40,7 @@ Define Zod schemas for:
 - **Delete input/output schemas**: ID input, success confirmation output
 
 ```typescript
-// apps/mesh/src/tools/<domain>/schema.ts
+// apps/api/src/tools/<domain>/schema.ts
 import { z } from "zod";
 
 // Entity schema (what's returned in list operations)
@@ -98,7 +98,7 @@ export const MyDeleteOutputSchema = z.object({
 Each tool file follows this pattern:
 
 ```typescript
-// apps/mesh/src/tools/<domain>/create.ts
+// apps/api/src/tools/<domain>/create.ts
 import { defineTool } from "../../core/define-tool";
 import { getUserId, requireAuth, requireOrganization } from "../../core/studio-context";
 import { MyCreateInputSchema, MyCreateOutputSchema } from "./schema";
@@ -142,7 +142,7 @@ export const MY_DOMAIN_CREATE = defineTool({
 ### 3. Create Barrel Export (`index.ts`)
 
 ```typescript
-// apps/mesh/src/tools/<domain>/index.ts
+// apps/api/src/tools/<domain>/index.ts
 export { MY_DOMAIN_CREATE } from "./create";
 export { MY_DOMAIN_LIST } from "./list";
 export { MY_DOMAIN_UPDATE } from "./update";
@@ -157,7 +157,7 @@ export * from "./schema";
 Add tool names and metadata:
 
 ```typescript
-// apps/mesh/src/tools/registry.ts
+// apps/api/src/tools/registry.ts
 
 // 1. Add to ToolCategory type (if new category)
 export type ToolCategory = "Organizations" | "Connections" | "My Domain";
@@ -220,7 +220,7 @@ export function getToolsByCategory() {
 ### 5. Register Tools (`tools/index.ts`)
 
 ```typescript
-// apps/mesh/src/tools/index.ts
+// apps/api/src/tools/index.ts
 import * as MyDomainTools from "./myDomain";
 
 export { MyDomainTools };
@@ -237,7 +237,7 @@ export const ALL_TOOLS = [
 ### 6. Add to Default Permissions (if needed)
 
 ```typescript
-// apps/mesh/src/auth/index.ts
+// apps/api/src/auth/index.ts
 apiKey({
   permissions: {
     defaultPermissions: {
@@ -258,7 +258,7 @@ If your tools wrap Better Auth APIs, you need to:
 **a. Add types to `studio-context.ts`:**
 
 ```typescript
-// apps/mesh/src/core/studio-context.ts
+// apps/api/src/core/studio-context.ts
 
 // Add return types
 export type MyDomainCreateResult = Awaited<
@@ -282,7 +282,7 @@ export interface BoundAuthClient {
 **b. Implement in `context-factory.ts`:**
 
 ```typescript
-// apps/mesh/src/core/context-factory.ts
+// apps/api/src/core/context-factory.ts
 function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
   return {
     // ... existing implementations
@@ -307,7 +307,7 @@ function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
 ### 8. Document in Spec
 
-Add documentation to `apps/mesh/spec/001.md`:
+Add documentation to `apps/api/spec/001.md`:
 
 ```markdown
 #### My Domain Management
@@ -374,14 +374,14 @@ export const EntitySchema = z.object({
 Create test files alongside tool files:
 
 ```
-apps/mesh/src/tools/<domain>/
+apps/api/src/tools/<domain>/
 ├── create.test.ts
 ├── list.test.ts
 ├── update.test.ts
 └── delete.test.ts
 ```
 
-Use the existing test patterns from `apps/mesh/src/tools/connection/` as reference.
+Use the existing test patterns from `apps/api/src/tools/connection/` as reference.
 
 ## Common Mistakes to Avoid
 
@@ -391,4 +391,3 @@ Use the existing test patterns from `apps/mesh/src/tools/connection/` as referen
 4. **Missing default permissions** - Add to `auth/index.ts` if users should have access by default
 5. **Exposing sensitive data** - Only return secrets at creation time
 6. **Missing organization check** - Use `requireOrganization(ctx)` for org-scoped resources
-

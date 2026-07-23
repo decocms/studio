@@ -2,7 +2,7 @@
 #
 # dev-hybrid.sh — develop Studio from source (hot reload) against the LOCAL
 # cluster's real backends and sandbox. Best of both loops:
-#   • mesh runs on your host via `bun run dev` (instant reload), and
+#   • the API + web apps run on your host via `bun run dev:servers`, and
 #   • Postgres / NATS / MinIO / agent-sandbox all come from the k8s-local install,
 #     so sandbox code-exec + previews exercise the real operator — impossible in
 #     the pure `bun dev` loop (no operator on your laptop).
@@ -11,8 +11,9 @@
 # without in-cluster ClickHouse, since `bun dev` uses the local monitoring path),
 # scales the in-cluster Studio app + worker to 0 (so they don't duel the host
 # process over the same DB/NATS run queue), port-forwards the cluster's backend
-# Services to localhost, and launches `bun run dev` pointed at them. On exit, the
-# port-forwards are torn down and the in-cluster app is scaled back to 1.
+# Services to localhost, and launches the raw dev servers pointed at them. On
+# exit, the port-forwards are torn down and the in-cluster app is scaled back
+# to 1.
 #
 # Self-contained: no prerequisite step. Bringing up the cluster (if needed) uses
 # the same local-k8s.sh; the Helm release / observability are otherwise untouched
@@ -71,14 +72,14 @@ echo "==> Starting Studio from source (bun run dev) against the cluster"
 echo "    UI: http://localhost:${VITE_PORT}   (hot reload; sandbox from the cluster)"
 echo ""
 
-# mesh loads ~/.kube/config (your Rancher context, admin) for the agent-sandbox
+# Studio loads ~/.kube/config (your Rancher context, admin) for the agent-sandbox
 # provider, so it creates SandboxClaims + port-forwards to the daemon in
 # agent-sandbox-system straight from the host. Backends point at the forwards.
 cd "${REPO_ROOT}"
 
-# Workspace deps (e.g. @decocms/std from packages/std) must be linked into
+# Workspace deps (e.g. @decocms/shared from packages/shared) must be linked into
 # node_modules for the dev server to resolve them. Link them if missing.
-if [ ! -e node_modules/@decocms/std ]; then
+if [ ! -e node_modules/@decocms/shared ]; then
   echo "==> Linking workspace deps (bun install) — first run only"
   bun install
 fi
@@ -98,8 +99,8 @@ fi
 # a LOCAL sandbox, ignoring these targets. src/index.ts instead honors
 # DATABASE_URL / NATS_URL / STUDIO_SANDBOX_* from the environment, so it connects
 # to the cluster (via the port-forwards) and the agent-sandbox provider.
-# We export ${ENV_FILE} into the environment; there's no apps/mesh/.env, so
-# dev:server's own `--env-file=.env` is a no-op and these win.
+# We export ${ENV_FILE} into the environment; there's no apps/api/.env, so the
+# API dev server's own `--env-file=.env` is a no-op and these values win.
 echo "==> Config: ${ENV_FILE}"
 set -a
 # shellcheck disable=SC1090
@@ -128,10 +129,10 @@ fi
 # runs fine against the newer schema). It only truly matters the other way (your
 # source ADDED migrations), and then this succeeds.
 echo "==> Applying source migrations to the cluster DB (best-effort)"
-if ! bun run --cwd=apps/mesh migrate; then
+if ! bun run --cwd=apps/api migrate; then
   echo "    NOTE: migrate skipped — the cluster DB was migrated by a newer/different"
   echo "    Studio version than this checkout. Proceeding against the existing schema."
   echo "    For a source-owned schema, reset it:  RESET_DB=1 re-run (see README)."
 fi
 echo "==> Starting Vite + server (src/index.ts) against the cluster"
-bun run --cwd=apps/mesh dev:servers
+bun run dev:servers

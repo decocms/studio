@@ -44,7 +44,7 @@ export const BOOTSTRAP_SCRIPT = IFRAME_BOOTSTRAP_SCRIPT;
 
 /**
  * Inlined at bundle time so the runtime daemon stays self-contained —
- * no upward import to `apps/mesh` or `packages/sandbox/server`.
+ * no upward import to an `apps/*` tree or `packages/sandbox/server`.
  */
 // `manifest` files gate `install`: running `deno install` (and friends) on an
 // empty workdir is at best a no-op and at worst a panic (Deno 2.2.6 crashes

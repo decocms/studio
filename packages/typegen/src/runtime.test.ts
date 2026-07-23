@@ -1,6 +1,6 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { createMeshClient } from "./runtime.js";
-import type { MeshClientDeps } from "./runtime.js";
+import { createMeshClient, createStudioClient } from "./runtime.js";
+import type { StudioClientDeps } from "./runtime.js";
 
 // Build mock constructors without touching the module registry
 const mockCallTool = mock(
@@ -20,9 +20,9 @@ function MockTransport() {}
 const deps = {
   Client: MockClient,
   Transport: MockTransport,
-} as unknown as MeshClientDeps;
+} as unknown as StudioClientDeps;
 
-describe("createMeshClient", () => {
+describe("createStudioClient", () => {
   beforeEach(() => {
     mockCallTool.mockClear();
     mockConnect.mockClear();
@@ -34,7 +34,7 @@ describe("createMeshClient", () => {
       MY_TOOL: { input: { id: string }; output: { name: string } };
     };
 
-    const client = createMeshClient<Tools>(
+    const client = createStudioClient<Tools>(
       { mcpId: "vmc_test", apiKey: "sk_test" },
       deps,
     );
@@ -48,6 +48,21 @@ describe("createMeshClient", () => {
     });
   });
 
+  test("keeps createMeshClient as a compatibility alias", async () => {
+    type Tools = {
+      MY_TOOL: { input: { id: string }; output: { name: string } };
+    };
+    const client = createMeshClient<Tools>(
+      { mcpId: "vmc_test", apiKey: "sk_test" },
+      deps,
+    );
+
+    await expect(client.MY_TOOL({ id: "123" })).resolves.toEqual({
+      tool: "MY_TOOL",
+      args: { id: "123" },
+    });
+  });
+
   test("throws on isError response", async () => {
     mockCallTool.mockResolvedValueOnce({
       isError: true,
@@ -57,7 +72,7 @@ describe("createMeshClient", () => {
     type Tools = {
       FAIL_TOOL: { input: Record<string, never>; output: unknown };
     };
-    const client = createMeshClient<Tools>(
+    const client = createStudioClient<Tools>(
       { mcpId: "vmc_test", apiKey: "sk" },
       deps,
     );
@@ -76,7 +91,7 @@ describe("createMeshClient", () => {
     type Tools = {
       FAIL_TOOL: { input: Record<string, never>; output: unknown };
     };
-    const client = createMeshClient<Tools>(
+    const client = createStudioClient<Tools>(
       { mcpId: "vmc_test", apiKey: "sk" },
       deps,
     );
@@ -88,7 +103,7 @@ describe("createMeshClient", () => {
 
   test("close() closes the underlying client and allows reconnect", async () => {
     type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
-    const client = createMeshClient<Tools>(
+    const client = createStudioClient<Tools>(
       { mcpId: "vmc_test", apiKey: "sk" },
       deps,
     );
@@ -107,7 +122,7 @@ describe("createMeshClient", () => {
     mockConnect.mockRejectedValueOnce(new Error("network blip"));
 
     type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
-    const client = createMeshClient<Tools>(
+    const client = createStudioClient<Tools>(
       { mcpId: "vmc_test", apiKey: "sk" },
       deps,
     );
@@ -125,7 +140,7 @@ describe("createMeshClient", () => {
 
   test("is not treated as a thenable (await would otherwise hang forever)", () => {
     type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
-    const client = createMeshClient<Tools>(
+    const client = createStudioClient<Tools>(
       { mcpId: "vmc_test", apiKey: "sk" },
       deps,
     );
@@ -141,7 +156,7 @@ describe("createMeshClient", () => {
       capturedUrls.push(url);
     };
 
-    const client = createMeshClient<Tools>(
+    const client = createStudioClient<Tools>(
       {
         mcpId: "vmc_abc123",
         apiKey: "sk_key",
@@ -149,7 +164,8 @@ describe("createMeshClient", () => {
       },
       {
         ...deps,
-        Transport: capturingTransport as unknown as MeshClientDeps["Transport"],
+        Transport:
+          capturingTransport as unknown as StudioClientDeps["Transport"],
       },
     );
 
@@ -168,11 +184,12 @@ describe("createMeshClient", () => {
       capturedUrls.push(url);
     };
 
-    const client = createMeshClient<Tools>(
+    const client = createStudioClient<Tools>(
       { mcpId: "vmc_abc", apiKey: "sk" },
       {
         ...deps,
-        Transport: capturingTransport as unknown as MeshClientDeps["Transport"],
+        Transport:
+          capturingTransport as unknown as StudioClientDeps["Transport"],
       },
     );
 

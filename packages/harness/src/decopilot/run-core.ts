@@ -38,7 +38,7 @@ import type {
   HarnessStreamInput,
   ModelSelection,
 } from "../types";
-import type { MeshProvider } from "./mesh-provider";
+import type { StudioProvider } from "./studio-provider";
 import type {
   AssembledEngineHandle,
   HarnessAssembledTools,
@@ -64,7 +64,7 @@ export type { DecopilotTelemetry } from "./run-stream";
 /** One resolved (model, provider) pair for a Decopilot model slot. */
 export interface ModelRuntimeSlot {
   model: ModelSelection;
-  provider: MeshProvider;
+  provider: StudioProvider;
 }
 
 /**
@@ -104,7 +104,7 @@ export interface ModelRuntimeSources {
  */
 export function buildModelRuntimeFromSources(
   sources: ModelRuntimeSources,
-  createProvider: (source: DecopilotSecretModelSource) => MeshProvider,
+  createProvider: (source: DecopilotSecretModelSource) => StudioProvider,
 ): ModelRuntime {
   const thinkingSource = sources.modelSources?.thinking ?? null;
   if (!thinkingSource || thinkingSource.kind !== "secret") {

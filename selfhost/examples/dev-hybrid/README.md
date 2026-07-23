@@ -1,4 +1,4 @@
-# Dev-hybrid: `bun dev` against the local cluster
+# Dev-hybrid: Studio source against the local cluster
 
 Develop Studio **from source with hot reload**, while the **real backends and
 sandbox** come from the k8s-local install. It's the loop for working on
@@ -9,8 +9,8 @@ rebuild an image per change.
 ```
         your host                         local cluster (Rancher/k3d)
    ┌─────────────────┐              ┌──────────────────────────────────┐
-   │  bun run dev     │  kubeconfig  │  agent-sandbox operator          │
-   │  (mesh, :4000)   │─────────────▶│  + warm pool  (creates sandboxes,│
+   │ bun dev:servers  │  kubeconfig  │  agent-sandbox operator          │
+   │ (web + API)      │─────────────▶│  + warm pool  (creates sandboxes,│
    │                  │  port-forward│    port-forward to daemon:9000)  │
    │  DATABASE_URL ───┼─────────────▶│  studio-db / studio-minio / nats │
    └─────────────────┘              │  (Studio app + worker scaled to 0)│
@@ -21,7 +21,7 @@ rebuild an image per change.
 
 ```bash
 ./selfhost/examples/dev-hybrid/dev-hybrid.sh
-# open http://localhost:4000  — edit apps/mesh, save, it reloads
+# open http://localhost:4000 — edit apps/web or apps/api, save, it reloads
 # Ctrl-C to stop (restores the in-cluster app, closes the forwards)
 ```
 
@@ -34,8 +34,9 @@ What it does:
    It uses `kubectl scale`, NOT helm, so the release + observability are untouched.
 3. Port-forwards `studio-db:5432`, `studio-minio:9000`, `<release>-nats:4222`.
 4. Exports **`.env`** (created from [`.env.example`](.env.example) on first run)
-   and runs the **raw dev servers** — `bun run --cwd=apps/mesh dev:servers` (Vite
-   client + the real server `src/index.ts`), after `migrate`.
+   and runs the **raw dev servers** — `bun run dev:servers` (Vite from
+   `apps/web` + the real API server from `apps/api/src/index.ts`), after
+   migrating from `apps/api`.
 
 **Why not `bun run dev`?** That entrypoint is `deco dev --local-sandbox-provider`
 — it spins up its OWN embedded Postgres/NATS and a LOCAL (laptop) sandbox,
@@ -52,7 +53,7 @@ provider + template + **sentinel token** (must match the umbrella's
 `sandbox-env.sentinel.token`), and the app secrets/URLs.
 
 The script exports this file into the environment before starting the servers.
-There's no `apps/mesh/.env`, so `dev:server`'s own `--env-file=.env` is a no-op
+There's no `apps/api/.env`, so `dev:server`'s own `--env-file=.env` is a no-op
 and these values win — and it stays **separate from any repo-root `.env`** you
 keep for the plain `bun dev` loop. Edit this `.env` to change what the host
 process points at (e.g. set `CLICKHOUSE_URL` to also use an in-cluster ClickHouse,
@@ -60,12 +61,12 @@ or bump the ports).
 
 ## Why the sandbox works from your host
 
-mesh's agent-sandbox provider loads your **kubeconfig** (`~/.kube/config`, the
+Studio's agent-sandbox provider loads your **kubeconfig** (`~/.kube/config`, the
 Rancher context = admin), so it satisfies the sandbox RBAC and creates
 `SandboxClaim`s in `agent-sandbox-system`. It reaches each sandbox daemon over
 the **API server's port-forward** (not in-cluster Service DNS), which is exactly
 what your host can reach. The sentinel token is passed as
-`STUDIO_SANDBOX_SENTINEL_TOKEN` (same fixed value the umbrella wires) so mesh runs
+`STUDIO_SANDBOX_SENTINEL_TOKEN` (same fixed value the umbrella wires) so Studio runs
 in warm-pool mode.
 
 ## Database version skew

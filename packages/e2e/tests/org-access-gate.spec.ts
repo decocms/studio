@@ -13,7 +13,7 @@ import {
  *   - org slug doesn't exist  → "Organization not found"
  *   - pending invitation       → "You've been invited" + accept flow
  *   - (auto-domain-join needs domain seeding that's awkward via the UI,
- *      so the integration test in apps/mesh/src/api/routes/auth.test.ts
+ *      so the integration test in apps/api/src/api/routes/auth.test.ts
  *      covers it end-to-end against the real DB.)
  */
 test.describe("Org access gate", () => {

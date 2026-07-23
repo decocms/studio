@@ -3,7 +3,7 @@
  *
  * Authenticated by the daemon's bearer `daemonToken` (see `../auth`). The
  * caller is the link daemon's `handleLocalDispatch`
- * (`apps/mesh/src/link-daemon/handle-local-dispatch.ts`), which POSTs the
+ * (`apps/api/src/link-daemon/handle-local-dispatch.ts`), which POSTs the
  * pulled work item here over loopback and relays the SSE response to the
  * cluster as seq-numbered NDJSON chunks. Both sides parse SSE events from
  * `dispatchSSEEventSchema`. (The legacy cluster-side push caller
@@ -38,7 +38,7 @@ import { daemonAppRoot, rebaseWorkspaceCwd } from "../rebase-workspace-cwd";
 import { fetchOffloadedMessages } from "./offload-fetch";
 
 /** Minimal harness shape the dispatch route needs. Decoupled from the
- *  harness factories in `apps/mesh/src/harnesses` so the route file (and
+ *  factories in `packages/harness` so the route file (and
  *  its tests) don't need to import a full harness factory. The daemon's
  *  `lookupHarness` injection adapts a real factory to this shape. */
 export interface DispatchHarness {
@@ -544,5 +544,5 @@ export async function handleCancelRequest(
 }
 
 // Schema re-exports so the daemon's main handler can validate without
-// reaching back into `apps/mesh/src/links/protocol` directly.
+// reaching back into the API link protocol directly.
 export { dispatchSSEEventSchema, harnessStreamInputSchema };

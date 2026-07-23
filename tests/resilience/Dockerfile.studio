@@ -13,15 +13,15 @@ WORKDIR /app
 COPY . .
 RUN bun install
 
-# Build client + server
-RUN bun run --cwd apps/mesh build:client && bun run --cwd apps/mesh build:server
+# Build both apps and stage the web assets into the API distribution.
+RUN bun run build:studio
 
-WORKDIR /app/apps/mesh
+WORKDIR /app/apps/api
 
 RUN mkdir -p /app/data
 
 # Create entrypoint that runs migrations then starts server via CLI
-RUN printf '#!/bin/bash\nset -e\ncd /app/apps/mesh\necho "Running migrations..."\nbun run migrate 2>&1\necho "Starting server..."\nexec bun run src/cli.ts --no-tui\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+RUN printf '#!/bin/bash\nset -e\ncd /app/apps/api\necho "Running migrations..."\nbun run migrate 2>&1\necho "Starting server..."\nexec bun run src/cli.ts --no-tui\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 EXPOSE 3000
 

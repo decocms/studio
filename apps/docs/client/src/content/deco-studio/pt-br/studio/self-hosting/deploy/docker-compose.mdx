@@ -16,7 +16,7 @@ O Studio usa **PostgreSQL** como banco de dados. O repositório inclui três arq
 
 - **`docker-compose.postgres.yml`** — **self-host, tudo-em-um**: Studio (imagem publicada) **mais a stack completa embutida** (PostgreSQL + NATS + MinIO), tudo ligado para que o app não provisione nada sozinho. É o ponto de partida recomendado. (`selfhost/examples/docker-compose` encapsula isso com um `.env.example` documentado.)
 - **`docker-compose.yml`** — **self-host, com seu próprio banco**: apenas o Studio (imagem publicada), esperando um PostgreSQL fornecido por você.
-- **`docker-compose.dev.yml`** — **desenvolvimento**: só as dependências (PostgreSQL + um cluster NATS de 3 nós, topologia prod-like); você roda o Studio **do código-fonte** com `bun run --cwd=apps/mesh dev:server`. Sem sandbox aqui — isso precisa de Kubernetes (veja o loop [dev-hybrid](https://github.com/decocms/studio/tree/main/selfhost/examples/dev-hybrid)).
+- **`docker-compose.dev.yml`** — **desenvolvimento**: só as dependências (PostgreSQL + um cluster NATS de 3 nós, topologia prod-like); você roda os apps de API e web **do código-fonte** com `bun run dev:servers`. Sem sandbox aqui — isso precisa de Kubernetes (veja o loop [dev-hybrid](https://github.com/decocms/studio/tree/main/selfhost/examples/dev-hybrid)).
 
 Os arquivos de self-host usam um volume Docker para persistência e um health check automático em `/health`.
 
@@ -99,7 +99,7 @@ AUTH_GITHUB_CLIENT_ID=...
 AUTH_GITHUB_CLIENT_SECRET=...
 ```
 
-Para configurações mais ricas (SAML/SSO, provedores de email, magic links), monte um `auth-config.json` dentro do container em `/app/apps/mesh/auth-config.json` adicionando um volume ao serviço `studio`, usando [`apps/mesh/auth-config.example.json`](https://github.com/decocms/studio/blob/main/apps/mesh/auth-config.example.json) como ponto de partida. Veja [Autenticação](/pt-br/studio/self-hosting/authentication) para a referência completa.
+Para configurações mais ricas (SAML/SSO, provedores de email, magic links), monte um `auth-config.json` dentro do container em `/app/apps/api/auth-config.json` adicionando um volume ao serviço `studio`, usando [`apps/api/auth-config.example.json`](https://github.com/decocms/studio/blob/main/apps/api/auth-config.example.json) como ponto de partida. Veja [Autenticação](/pt-br/studio/self-hosting/authentication) para a referência completa.
 
 ## Operações
 

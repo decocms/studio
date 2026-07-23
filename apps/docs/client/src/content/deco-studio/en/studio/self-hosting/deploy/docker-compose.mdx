@@ -16,7 +16,7 @@ Studio uses **PostgreSQL** as its database. The repo ships three compose files u
 
 - **`docker-compose.postgres.yml`** — **self-host, all-in-one**: Studio (published image) **plus a fully bundled stack** (PostgreSQL + NATS + MinIO), all wired so the app provisions nothing itself. The recommended starting point. (`selfhost/examples/docker-compose` wraps this with a documented `.env.example`.)
 - **`docker-compose.yml`** — **self-host, bring-your-own DB**: Studio only (published image), expecting a PostgreSQL you provide.
-- **`docker-compose.dev.yml`** — **development**: only the dependencies (PostgreSQL + a 3-node NATS cluster, prod-like topology); you run Studio **from source** with `bun run --cwd=apps/mesh dev:server`. No sandbox here — that needs Kubernetes (see the [dev-hybrid](https://github.com/decocms/studio/tree/main/selfhost/examples/dev-hybrid) loop).
+- **`docker-compose.dev.yml`** — **development**: only the dependencies (PostgreSQL + a 3-node NATS cluster, prod-like topology); you run the API and web apps **from source** with `bun run dev:servers`. No sandbox here — that needs Kubernetes (see the [dev-hybrid](https://github.com/decocms/studio/tree/main/selfhost/examples/dev-hybrid) loop).
 
 The self-host files use a Docker volume for persistence and an automatic `/health` check.
 
@@ -99,7 +99,7 @@ AUTH_GITHUB_CLIENT_ID=...
 AUTH_GITHUB_CLIENT_SECRET=...
 ```
 
-For richer configuration (SAML/SSO, email providers, magic links), mount an `auth-config.json` into the container at `/app/apps/mesh/auth-config.json` by adding a volume to the `studio` service, using [`apps/mesh/auth-config.example.json`](https://github.com/decocms/studio/blob/main/apps/mesh/auth-config.example.json) as a starting point. See [Authentication](/en/studio/self-hosting/authentication) for the full reference.
+For richer configuration (SAML/SSO, email providers, magic links), mount an `auth-config.json` into the container at `/app/apps/api/auth-config.json` by adding a volume to the `studio` service, using [`apps/api/auth-config.example.json`](https://github.com/decocms/studio/blob/main/apps/api/auth-config.example.json) as a starting point. See [Authentication](/en/studio/self-hosting/authentication) for the full reference.
 
 ## Operations
 

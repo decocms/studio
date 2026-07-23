@@ -15,8 +15,13 @@ import { z } from "zod";
 import type { ZodSchema, ZodTypeAny } from "zod";
 import { BindingRegistry, injectBindingSchemas } from "./bindings.ts";
 import { Event, type EventHandlers } from "./events.ts";
-import type { DefaultEnv, User } from "./index.ts";
+import type { DefaultEnv, RuntimeFetchEnv, User } from "./index.ts";
 import { State } from "./state.ts";
+import {
+  resolveStudioRequestContext,
+  resolveStudioUrl,
+  synchronizeStudioEnvironmentAliases,
+} from "./studio-context.ts";
 import {
   type InstallContext,
   type StudioVaultBootstrap,
@@ -235,7 +240,7 @@ export type CreatedResource = {
  * @throws Error if no request context or user is not authenticated
  */
 export function ensureAuthenticated(ctx: AppContext): User {
-  const reqCtx = ctx?.env?.MESH_REQUEST_CONTEXT;
+  const reqCtx = resolveStudioRequestContext(ctx?.env ?? {});
   if (!reqCtx) {
     throw new Error("Unauthorized: missing request context");
   }
@@ -539,7 +544,7 @@ export interface CreateMCPServerOptions<
   TEnv extends Env & DefaultEnv<TSchema, TBindings> = Env &
     DefaultEnv<TSchema, TBindings>,
   State extends
-    TEnv["MESH_REQUEST_CONTEXT"]["state"] = TEnv["MESH_REQUEST_CONTEXT"]["state"],
+    TEnv["STUDIO_REQUEST_CONTEXT"]["state"] = TEnv["STUDIO_REQUEST_CONTEXT"]["state"],
 > {
   serverInfo?: Partial<Implementation> & { instructions?: string };
   before?: (env: TEnv) => Promise<void> | void;
@@ -614,11 +619,11 @@ export interface AppContext<TEnv extends DefaultEnv = DefaultEnv> {
 type ResolvedMCPServerOptions<TSchema extends ZodTypeAny = never> =
   CreateMCPServerOptions<any, TSchema>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-const getMeshCtx = (input: { runtimeContext: AppContext }) => {
-  const ctx = input.runtimeContext.env.MESH_REQUEST_CONTEXT;
+const getStudioCtx = (input: { runtimeContext: AppContext }) => {
+  const ctx = resolveStudioRequestContext(input.runtimeContext.env);
   return {
     connectionId: ctx?.connectionId,
-    meshUrl: ctx?.meshUrl,
+    studioUrl: ctx ? resolveStudioUrl(ctx) : undefined,
     token: ctx?.token,
   };
 };
@@ -674,9 +679,9 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                 onInstall &&
                 (input.context as { firstRun?: boolean }).firstRun
               ) {
-                const { meshUrl, token, connectionId } = getMeshCtx(input);
+                const { studioUrl, token, connectionId } = getStudioCtx(input);
                 await onInstall(input.runtimeContext.env, {
-                  createAgent: makeCreateAgent(meshUrl, token, connectionId),
+                  createAgent: makeCreateAgent(studioUrl, token, connectionId),
                   vault,
                 });
               }
@@ -697,8 +702,9 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
             outputSchema: OnEventsOutputSchema,
             execute: async (input) => {
               const env = input.runtimeContext.env;
-              const state = env.MESH_REQUEST_CONTEXT?.state as z.infer<TSchema>;
-              const { connectionId } = getMeshCtx(input);
+              const state = resolveStudioRequestContext(env)
+                ?.state as z.infer<TSchema>;
+              const { connectionId } = getStudioCtx(input);
               return Event.execute(
                 events.handlers!,
                 input.context.events,
@@ -738,7 +744,7 @@ export type MCPServer<
   TSchema extends ZodTypeAny = never,
   TBindings extends BindingRegistry = BindingRegistry,
 > = {
-  fetch: Fetch<TEnv & DefaultEnv<TSchema, TBindings>>;
+  fetch: Fetch<RuntimeFetchEnv<TEnv & DefaultEnv<TSchema, TBindings>>>;
   callTool: CallTool;
 };
 
@@ -1057,7 +1063,13 @@ export const createMCPServer = <
     return { server, ...registrations };
   };
 
-  const fetch = async (req: Request, env: TEnv) => {
+  const fetch = async (
+    req: Request,
+    inputEnv: RuntimeFetchEnv<TEnv & DefaultEnv<TSchema, TBindings>>,
+  ) => {
+    const env = synchronizeStudioEnvironmentAliases(
+      inputEnv,
+    ) as unknown as TEnv;
     const { server } = await createServer(env);
     const transport = new HttpServerTransport();
 

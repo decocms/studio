@@ -3,7 +3,8 @@
  *
  * Runs inside the `link-daemon` container. Authenticates with a pre-minted
  * Better Auth API key (injected as DAEMON_API_KEY by the test that mints it),
- * dials studio through the Toxiproxy `studio_ws` proxy (MESH_CLUSTER_URL), and
+ * dials Studio through the Toxiproxy `studio_ws` proxy
+ * (`STUDIO_CLUSTER_URL`), and
  * spawns real sandboxes on demand. No OAuth.
  *
  * The session is persisted to disk under `DATA_DIR` before the daemon starts.
@@ -13,9 +14,9 @@
  * resilience harness must mirror that or the first connect fails fatally with
  * `Session for ${clusterUrl} is no longer valid`.
  */
-import { startLinkDaemon } from "../../apps/mesh/src/link-daemon/index";
-import { writeSession } from "../../apps/mesh/src/cli/lib/session";
-import type { Session } from "../../apps/mesh/src/cli/lib/session";
+import { startLinkDaemon } from "../../apps/api/src/link-daemon/index";
+import { writeSession } from "../../apps/api/src/cli/lib/session";
+import type { Session } from "../../apps/api/src/cli/lib/session";
 
 export function buildDaemonSession(input: {
   apiKey: string;
@@ -36,7 +37,10 @@ export function buildDaemonSession(input: {
 
 async function main(): Promise<void> {
   const apiKey = process.env.DAEMON_API_KEY ?? "";
-  const clusterUrl = process.env.MESH_CLUSTER_URL ?? "http://toxiproxy:3010";
+  const clusterUrl =
+    process.env.STUDIO_CLUSTER_URL ??
+    process.env.MESH_CLUSTER_URL ??
+    "http://toxiproxy:3010";
   const dataDir = process.env.DATA_DIR ?? "/app/data/link-daemon";
   const port = Number(process.env.LINK_DAEMON_PORT ?? "4500");
 

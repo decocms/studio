@@ -5,7 +5,7 @@
  * Regression for the privilege-escalation bug where the admin/owner role bypass
  * fired before a key's stored `permissions` were checked — so a "read-only" key
  * minted by an admin acted with full org power (could call API_KEY_CREATE,
- * MONITORING_STATS, etc.). See apps/mesh/src/auth/api-key-permissions.ts.
+ * MONITORING_STATS, etc.). See apps/api/src/auth/api-key-permissions.ts.
  *
  * Contract proven over HTTP only:
  *   - a key scoped to one tool is denied an out-of-scope tool (403), including

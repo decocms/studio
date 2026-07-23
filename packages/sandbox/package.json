@@ -1,8 +1,9 @@
 {
   "name": "@decocms/sandbox",
   "version": "1.22.4",
+  "private": true,
   "type": "module",
-  "description": "Sandbox runner for isolated per-user containerised tool execution",
+  "description": "Sandbox runtime for isolated Studio tool execution",
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
@@ -20,6 +21,7 @@
     "./daemon-client": "./server/daemon-client.ts",
     "./daemon/routes/dispatch": "./daemon/routes/dispatch.ts",
     "./org-fs/detach-mount": "./daemon/org-fs/detach-mount.ts",
+    "./org-fs": "./org-fs.ts",
     "./dispatch": "./dispatch/index.ts",
     "./dispatch/*": "./dispatch/*.ts",
     "./proxy/http": "./proxy/http.ts",
@@ -27,7 +29,7 @@
   },
   "dependencies": {
     "@decocms/harness": "workspace:*",
-    "@decocms/std": "workspace:*",
+    "@decocms/shared": "workspace:*",
     "@kubernetes/client-node": "^1.4.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@opentelemetry/api": "^1.9.0",

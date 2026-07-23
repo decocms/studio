@@ -1,15 +1,15 @@
 export type ToolMap = Record<string, { input: unknown; output: unknown }>;
 
-export type MeshClientInstance<T extends ToolMap> = {
+export type StudioClientInstance<T extends ToolMap> = {
   [K in keyof T]: (input: T[K]["input"]) => Promise<T[K]["output"]>;
 };
 
-export type MeshClient<T extends ToolMap> = MeshClientInstance<T> & {
+export type StudioClient<T extends ToolMap> = StudioClientInstance<T> & {
   /** Close the underlying MCP connection and reset it so the next call reconnects. */
   close(): Promise<void>;
 };
 
-export interface MeshClientOptions {
+export interface StudioClientOptions {
   /** Virtual MCP id. Optional when an endpoint is passed or discoverable. */
   mcpId?: string;
   /** Falls back to process.env.STUDIO_API_KEY (or legacy process.env.MESH_API_KEY) */
@@ -25,5 +25,12 @@ export interface MeshClientOptions {
   endpoint?: { url: string; headers?: Record<string, string> };
 }
 
+/** @deprecated Use `StudioClientInstance`. */
+export type MeshClientInstance<T extends ToolMap> = StudioClientInstance<T>;
+/** @deprecated Use `StudioClient`. */
+export type MeshClient<T extends ToolMap> = StudioClient<T>;
+/** @deprecated Use `StudioClientOptions`. */
+export type MeshClientOptions = StudioClientOptions;
+
 export { discoverEndpoint, type DiscoveredEndpoint } from "./endpoint.js";
-export { createMeshClient } from "./runtime.js";
+export { createMeshClient, createStudioClient } from "./runtime.js";

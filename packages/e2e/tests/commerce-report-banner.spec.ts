@@ -25,8 +25,8 @@ import {
 } from "../fixtures/test-mcp-server";
 import { expect, test } from "../fixtures/test";
 
-/** Wire contract: the org's well-known CD connection id (mesh-sdk
- *  WellKnownOrgMCPId.COMMERCE_DISCOVERY) and the report tool name. */
+/** Wire contract: the org's well-known CD connection id
+ *  (WellKnownOrgMCPId.COMMERCE_DISCOVERY) and the report tool name. */
 const cdConnectionId = (orgId: string) => `${orgId}_commerce-discovery`;
 const REPORT_TOOL = "get_my_diagnostic";
 

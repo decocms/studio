@@ -3,18 +3,7 @@
   "compilerOptions": {
     "outDir": "./dist",
     "declaration": true,
-    "declarationMap": true,
-    // The harness extraction removed every daemon reach-in into apps/mesh EXCEPT
-    // the org-fs mount manager (daemon/org-fs/mount-manager.ts → apps/mesh's
-    // file-storage WebDAV/mount client). That lone exception is slated for a
-    // future @decocms/org-fs slice; until then, narrowly alias just
-    // `@/file-storage/*` (in case it reaches a `@/`-form file-storage type).
-    // The broad `@/*` → apps/mesh/src/* band-aid is gone: the daemon bundle is
-    // cluster-free and the desktop harness now lives in @decocms/harness.
-    "baseUrl": ".",
-    "paths": {
-      "@/file-storage/*": ["../../apps/mesh/src/file-storage/*"]
-    }
+    "declarationMap": true
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]

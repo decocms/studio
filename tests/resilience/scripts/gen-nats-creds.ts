@@ -20,7 +20,7 @@ import { join } from "node:path";
 import {
   buildNatsOperatorArtifacts,
   generateNatsOperatorKeys,
-} from "../../../apps/mesh/src/services/nats-operator-config";
+} from "../../../apps/api/src/services/nats-operator-config";
 
 const OUT = join(import.meta.dir, "..", "nats-config");
 mkdirSync(OUT, { recursive: true });

@@ -12,7 +12,7 @@ Prerequisites: [Bun](https://bun.sh) and Node ≥ 24.
 ```bash
 bun install
 npx lefthook install   # pre-commit hook that runs `bun run fmt`
-bun run dev            # migrations + client + server
+bun run dev            # migrations + web app + API
 ```
 
 ## Filing issues & opening PRs
@@ -35,7 +35,7 @@ dependencies flow through `StudioContext`. Use `defineTool()`. See
 
 ### 2. Never hand-roll async primitives
 
-Use `@decocms/std` for `sleep`, `retry`, and backoff. Don't write another
+Use `@decocms/shared/std` for `sleep`, `retry`, and backoff. Don't write another
 `setTimeout` promise, retry loop, or `Math.min(base * 2 ** n, cap)` jitter
 formula. See the "Async primitives" section in [`AGENTS.md`](./AGENTS.md).
 
@@ -54,6 +54,23 @@ healthy sandbox to "crashed" — tearing the pod down mid-session. Use
 `node:fs/promises` with `await`, stream large payloads, and keep CPU work off
 the hot path. Full detail in [`AGENTS.md`](./AGENTS.md). "Prefer async, never
 block the loop" is the default everywhere, not just the daemon.
+
+### 5. Keep workspace READMEs useful
+
+Every direct child of `apps/` and `packages/` has a `README.md`. These files use
+the same core section order: **Overview**, **Responsibilities**, **Usage**,
+**Architecture**, **Development**, **Boundaries**, and **Related
+documentation**. A short metadata table identifies the workspace, kind,
+runtime, and distribution model.
+
+Write in clear English, active voice, and present tense. Use the current Studio,
+API, and web terminology; keep commands runnable from the repository root; and
+verify links, import paths, and scripts against the implementation. Add
+domain-specific sections when they communicate real protocol, security, or
+operational constraints—not generic boilerplate.
+
+Run `bun run check:readmes` after changing a workspace README. The check also
+runs as part of `bun run check`.
 
 ## Before you push
 

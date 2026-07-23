@@ -3,7 +3,7 @@
  * death, restart, or to inspect logs for assertions.
  *
  * Failure-injection helpers (kill, stop, restart) operate on the compose
- * service name (e.g. "mesh-1"); the test never speaks Docker directly.
+ * service name from the pod registry; the test never speaks Docker directly.
  */
 
 import type { PodName } from "./pods";

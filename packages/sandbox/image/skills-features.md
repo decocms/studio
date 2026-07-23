@@ -308,7 +308,7 @@ the image-size impact ahead of time.
 - [x] **v1** `slides-create` CLI — compose a deck from `deck.json` (slides by layout template) into a theme shell; `--theme`, `--templates-dir` for org brand templates
 - [x] **v1** Theme shells: `aurora-light`, `ink-dark`, `bold-gradient` (shared class contract, CSS custom-property theming)
 - [x] **v1** Slide templates: title, agenda, section-divider, bullets, two-column, quote, kpi-row, timeline, comparison, closing
-- [x] **v1** Decks are single self-contained HTML files driven by the mesh-served `/deck-runtime/v1/deck-viewer.js` (live preview, inline editing, and print-to-PDF live in the runtime/host, not the sandbox)
+- [x] **v1** Decks are single self-contained HTML files driven by the Studio-served `/deck-runtime/v1/deck-viewer.js` (live preview, inline editing, and print-to-PDF live in the runtime/host, not the sandbox)
 - [ ] **v2** Image support inside decks (needs an unauthenticated org-asset route)
 - [ ] **v2** Speaker notes
 

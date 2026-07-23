@@ -127,8 +127,8 @@ export function spawnPty(opts: PtySpawnOpts): PtyHandle {
     rows: opts.rows ?? 30,
     cwd: opts.cwd ?? structured?.cwd ?? process.cwd(),
     env: {
-      TERM: "xterm-256color",
       ...baseEnv,
+      TERM: "xterm-256color",
       ...structured?.env,
       ...overrideEnv,
     },
@@ -382,8 +382,8 @@ function spawnFallback(opts: PtySpawnOpts): PtyHandle {
   const spawnOpts: Parameters<typeof nodeSpawn>[2] = {
     cwd: opts.cwd ?? structured?.cwd ?? process.cwd(),
     env: {
-      TERM: "xterm-256color",
       ...baseEnv,
+      TERM: "xterm-256color",
       ...structured?.env,
       ...overrideEnv,
     },

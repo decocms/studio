@@ -19,7 +19,7 @@
  * better-auth refuses) — serial makes that deterministic.
  *
  * This spec is also the upgrade canary for the adminUserIds mechanism — see
- * the comment on `deploymentAdminUserIds` in apps/mesh/src/auth/index.ts.
+ * the comment on `deploymentAdminUserIds` in apps/api/src/auth/index.ts.
  *
  * The impersonation *exit* path is covered at the API level (stop-impersonating
  * below); the amber "Impersonating" pill is client-only presentation, currently

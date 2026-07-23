@@ -24,7 +24,7 @@ export function shellQuote(value: string): string {
 
 // Re-exported from the shared std package so existing importers
 // (`@decocms/sandbox/shared`) keep using the one canonical impl.
-export { sleep } from "@decocms/std";
+export { sleep } from "@decocms/shared/std";
 
 /** Prepend to any clone script; callers own the clone strategy themselves. */
 export function gitIdentityScript(userName: string, userEmail: string): string {

@@ -20,10 +20,8 @@ import { mkdirSync } from "node:fs";
 import * as net from "node:net";
 import { join, isAbsolute } from "node:path";
 import { safePath } from "../paths";
-// Portable serve-layer leaves from the studio workspace (same cross-package
-// import style entry.ts uses for harness factories).
-import { OrgFsClient } from "../../../../apps/mesh/src/file-storage/mount/client";
-import { createWebdavHandler } from "../../../../apps/mesh/src/file-storage/mount/webdav";
+import { OrgFsClient } from "./client";
+import { createWebdavHandler } from "./webdav";
 import type { OrgFsMountConfig, OrgFsVolumeMount } from "./config";
 import { makeRcRefresh, runInvalidator } from "./invalidator";
 

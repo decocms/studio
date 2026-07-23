@@ -38,13 +38,13 @@ export type {
 export type HarnessId = "decopilot" | "claude-code" | "codex";
 
 /** Tool approval policy a harness should honor when forwarding to its CLI.
- *  Mirrors `apps/mesh/src/harnesses/decopilot/mcp-tools.ts:ToolApprovalLevel`. */
+ *  Mirrors `packages/harness/src/decopilot/mcp-tools.ts:ToolApprovalLevel`. */
 export type ToolApprovalLevel = "auto" | "readonly";
 
 /** Mode flag forwarded into harnesses. The CLI harnesses only care about
  *  "plan" (sets `isPlanMode` for read-only restrictions); decopilot
  *  interprets the rest internally. Mirrors
- *  `apps/mesh/src/harnesses/decopilot/mode-config.ts:CHAT_MODES`. */
+ *  `packages/harness/src/decopilot/mode-config.ts:CHAT_MODES`. */
 export type ChatMode =
   | "default"
   | "plan"
@@ -195,7 +195,7 @@ export interface Harness {
  *  `claudeCodeHarnessFactory.create()` / `codexHarnessFactory.create()`
  *  without depending on cluster-only modules.
  *
- *  Re-declared here (mirroring `apps/mesh/src/core/harness-context.ts`) so
+ *  Re-declared here (mirroring `apps/api/src/core/harness-context.ts`) so
  *  the package stays portable. The cluster's richer `StudioContext` is
  *  structurally assignable to this shape. */
 export interface HarnessContext {

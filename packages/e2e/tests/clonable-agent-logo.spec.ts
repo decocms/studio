@@ -76,7 +76,7 @@ test.describe("clonable agent logo (settings tab)", () => {
     // The IconPicker trigger button is tagged with data-testid so the
     // locator doesn't depend on DOM-tree shape (button order, wrapper
     // divs, etc.). The testid lives on the <button> at the root of
-    // <IconPicker> in apps/mesh/src/web/components/icon-picker.tsx.
+    // <IconPicker> in apps/web/src/components/icon-picker.tsx.
     const iconButton = page.getByTestId("icon-picker-trigger");
 
     // The assertion under test: the button must be enabled. Without the

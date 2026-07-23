@@ -145,11 +145,11 @@ function openAttachWatcher(
 
 describe("pod-death + DBOS replay", () => {
   test.skip("killing the owning pod mid-stream still delivers the final chunk via a survivor", async () => {
-    const session = await bootstrapSession(PODS.MESH_1);
-    await wireMockProvider(PODS.MESH_1, session);
-    const { virtualMcpId } = await createTestAgent(PODS.MESH_1, session);
+    const session = await bootstrapSession(PODS.STUDIO_1);
+    await wireMockProvider(PODS.STUDIO_1, session);
+    const { virtualMcpId } = await createTestAgent(PODS.STUDIO_1, session);
     const { threadId } = await createTestThread(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       session,
       virtualMcpId,
     );
@@ -166,7 +166,7 @@ describe("pod-death + DBOS replay", () => {
       tier: "smart",
     };
     const postRes = await postJson(
-      PODS.MESH_1,
+      PODS.STUDIO_1,
       `/api/${session.orgSlug}/decopilot/threads/${threadId}/messages`,
       messageBody,
       { auth: { apiKey: session.apiKey } },

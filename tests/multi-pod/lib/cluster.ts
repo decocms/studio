@@ -23,7 +23,7 @@ async function compose(...args: string[]): Promise<void> {
 }
 
 /**
- * Bring the cluster up and wait until all mesh pods report /health/live.
+ * Bring the cluster up and wait until all Studio pods report /health/live.
  *
  * We don't pass `--wait` to docker compose because the one-shot `migrate`
  * service (`Exited 0` once schemas are created) is mis-classified as a

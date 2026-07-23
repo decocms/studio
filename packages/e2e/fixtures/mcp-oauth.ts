@@ -1,6 +1,6 @@
 /**
- * Mints a real MCP OAuth 2.1 + PKCE access token against the live mesh —
- * the exact primitive both `apps/mesh/src/cli/commands/auth/login.ts` and
+ * Mints a real MCP OAuth 2.1 + PKCE access token against the live Studio API —
+ * the exact primitive both `apps/api/src/cli/commands/auth/login.ts` and
  * `apps/desktop/crates/upstream/src/login.rs` produce for a signed-in user.
  *
  * Drives the real wire dance: dynamic client registration
@@ -12,7 +12,7 @@
  * approach) → token exchange (`POST /api/auth/mcp/token`). `request` must
  * already carry a session cookie.
  *
- * Inlined here (not imported from `apps/mesh/src/cli/lib/pkce.ts` or
+ * Inlined here (not imported from `apps/api/src/cli/lib/pkce.ts` or
  * similar) per this package's isolation rule — `packages/e2e` never imports
  * app source (see `plugins/ban-e2e-app-imports.js`); a black-box test owning
  * its own contract is correct, not duplication.

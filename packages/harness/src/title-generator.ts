@@ -5,7 +5,7 @@
  */
 
 import type { LanguageModelV3 } from "@ai-sdk/provider";
-import { retry } from "@decocms/std";
+import { retry } from "@decocms/shared/std";
 import { generateObject } from "ai";
 import { z } from "zod";
 

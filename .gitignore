@@ -88,9 +88,9 @@ studio-demo/
 .claude/*.lock
 
 # Playwright
-apps/mesh/test-results/
-apps/mesh/playwright-report/
-apps/mesh/screenshots/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/screenshots/
 packages/e2e/test-results/
 packages/e2e/playwright-report/
 

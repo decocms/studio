@@ -1,7 +1,7 @@
 {
   "name": "@decocms/typegen",
   "version": "0.3.0",
-  "description": "Generate typed TypeScript clients for Mesh Virtual MCPs",
+  "description": "Generate typed TypeScript clients for Studio Virtual MCPs",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/cli.ts",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "bun test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
