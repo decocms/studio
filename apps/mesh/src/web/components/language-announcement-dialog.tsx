@@ -12,6 +12,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { detectLocale } from "@/web/i18n/locale.ts";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { makeSeenFlag } from "@/web/lib/seen-flag";
 import { useT } from "@/web/i18n/use-t.ts";
 import { track } from "@/web/lib/posthog-client";
 
@@ -20,22 +21,8 @@ import { track } from "@/web/lib/posthog-client";
 // when their browser is Portuguese, so there's nothing to announce to them.
 const PT_BR_RELEASE = Date.parse("2026-07-21T00:00:00Z");
 
-function markSeen(userId: string) {
-  try {
-    localStorage.setItem(LOCALSTORAGE_KEYS.ptBrAnnouncementSeen(userId), "1");
-  } catch {}
-}
-
-function hasSeen(userId: string) {
-  try {
-    return (
-      localStorage.getItem(LOCALSTORAGE_KEYS.ptBrAnnouncementSeen(userId)) ===
-      "1"
-    );
-  } catch {
-    return false;
-  }
-}
+const ptBrSeen = (userId: string) =>
+  makeSeenFlag(LOCALSTORAGE_KEYS.ptBrAnnouncementSeen(userId));
 
 /**
  * One-time heads-up shown when we auto-switch an existing user to Portuguese.
@@ -66,7 +53,7 @@ export function LanguageAnnouncementDialog() {
     isExistingUser &&
     browserIsPortuguese &&
     preferences.language === "en" &&
-    !hasSeen(userId);
+    !ptBrSeen(userId).has();
 
   // Decide once, on the first render where the session has settled — mirrors
   // the derived-state pattern used by VersionCheckDialog (no useEffect). On the
@@ -76,7 +63,7 @@ export function LanguageAnnouncementDialog() {
   if (!decided && !isPending) {
     setDecided(true);
     if (eligible && userId) {
-      markSeen(userId);
+      ptBrSeen(userId).mark();
       setPreferences((prev) => ({ ...prev, language: "pt-BR" }));
       setOpen(true);
       track("pt_br_auto_switch_shown");

@@ -16,6 +16,7 @@ import {
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
 import { useT } from "@/web/i18n/use-t.ts";
+import { TOUR_ANCHORS } from "@/web/components/cms-tour/anchors";
 import type { TabIcon } from "./resolve-tab-icon";
 import { TabIconGlyph } from "./tab-icon-glyph";
 
@@ -47,7 +48,7 @@ export function TabOverflowMenu({
         {/* Matches the 28px icon-only tab-button metrics. */}
         <button
           type="button"
-          data-tour="tour-dropdown"
+          data-tour={TOUR_ANCHORS.dropdown}
           title={t("mainPanelTabs.tabOverflowMenu.moreTabs")}
           aria-label={t("mainPanelTabs.tabOverflowMenu.moreTabs")}
           className={cn(

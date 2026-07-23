@@ -317,18 +317,6 @@ export const chat = {
   "chat.queueTray.queuedMessages": "{count} queued message{plural}",
   "chat.queueTray.removeFromQueue": "Remove from queue",
   "chat.queueTray.sendNow": "Send now",
-  "chat.runtimeSwitcher.cloudSandbox": "Cloud sandbox",
-  "chat.runtimeSwitcher.notAvailableOnThisDeployment":
-    "Not available on this deployment",
-  "chat.runtimeSwitcher.runDecocmsLinkOnYourDesktop":
-    "Run `decocms link` on your desktop",
-  "chat.runtimeSwitcher.runOn": "Run on",
-  "chat.runtimeSwitcher.runningOn": "Running on {label}",
-  "chat.runtimeSwitcher.runsInDecosCloud": "Runs in deco's cloud",
-  "chat.runtimeSwitcher.runsOnYourMachineViaDecoLink":
-    "Runs on your machine via deco link",
-  "chat.runtimeSwitcher.runtime": "Runtime: {label}",
-  "chat.runtimeSwitcher.thisDevice": "This device",
   "chat.selectModel.selectModel": "Select model",
   "chat.selectVirtualMcp.chooseAgentTooltip": "Choose an agent to chat with",
   "chat.selectVirtualMcp.createAgent": "Create Agent",

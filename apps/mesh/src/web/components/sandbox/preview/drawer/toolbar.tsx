@@ -83,7 +83,11 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
             variant="ghost"
             size="icon-sm"
             onClick={props.onToggle}
-            aria-label={props.open ? "Collapse terminal" : "Expand terminal"}
+            aria-label={
+              props.open
+                ? t("sandbox.preview.collapseTerminal")
+                : t("sandbox.preview.expandTerminal")
+            }
             aria-expanded={props.open}
             className="size-6 shrink-0"
           >
@@ -95,7 +99,9 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {props.open ? "Collapse terminal" : "Expand terminal"}
+          {props.open
+            ? t("sandbox.preview.collapseTerminal")
+            : t("sandbox.preview.expandTerminal")}
         </TooltipContent>
       </Tooltip>
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">

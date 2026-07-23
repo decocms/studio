@@ -2,20 +2,22 @@
  * CmsTour — the first-run coach-mark tour for the CMS (code agents).
  *
  * A spotlight walkthrough (driver.js) that dims the shell and highlights each
- * key control in turn: Preview, Edit, the Visual editor, the responsive Device
- * toggle, and the Branch selector. It fires once per user (persisted in
- * localStorage) the first time they land on a code agent with a live preview.
+ * key control in turn: Preview, the views dropdown, the CMS (Blocks) editor,
+ * the visual editor, the responsive device toggle, branches, submit-for-review
+ * and publish. It fires once per user (persisted in localStorage) the first
+ * time they land on a code agent with a live preview.
  *
  * driver.js runs imperatively OUTSIDE React (it measures element rects and
  * manages its own scroll/resize listeners), which is exactly why it fits here:
  * no `useEffect` (banned) is needed. We launch it from a derived-state guard —
  * the same "decide once during render" pattern used by LanguageAnnouncementDialog
  * — deferred through `queueMicrotask` so the imperative call lands after paint.
+ * driver.js (+ its CSS) is loaded lazily via dynamic import so its ~8KB stays
+ * out of the initial shell bundle for the users who never trigger the tour.
  */
 
 import { useState } from "react";
-import { driver } from "driver.js";
-import type { Config, DriveStep } from "driver.js";
+import type { Config, Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./cms-tour.css";
 import { authClient } from "@/web/lib/auth-client";
@@ -23,98 +25,20 @@ import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { makeSeenFlag } from "@/web/lib/seen-flag";
 import { useT, type TFunction } from "@/web/i18n/use-t";
+import { tourAnchorSelector } from "./anchors";
+import { buildSteps } from "./steps";
 
-/** The lead anchor — the tour only starts once the Preview tab is on screen. */
-const PREVIEW_SELECTOR = '[data-tour="tour-tab-preview"]';
+/**
+ * The tour only starts once the Preview *content* is mounted (not merely the
+ * Preview tab, which is always in the header). This keeps the auto-run from
+ * firing a mostly-empty tour when another main view (e.g. Code) is active.
+ */
+const READY_SELECTOR = tourAnchorSelector("previewRoot");
 
-type StepDef = {
-  selector: string;
-  titleKey: Parameters<TFunction>[0];
-  descKey: Parameters<TFunction>[0];
-  side: NonNullable<DriveStep["popover"]>["side"];
-};
-
-// Ordered by the natural editing flow: see the site → edit it → edit visually →
-// check it responsively → manage where the changes live. Anchors that aren't on
-// screen (e.g. the branch pill on a template with no connected repo) are skipped
-// automatically via `skipMissingElement`.
-const STEP_DEFS: StepDef[] = [
-  {
-    selector: PREVIEW_SELECTOR,
-    titleKey: "cmsTour.preview.title",
-    descKey: "cmsTour.preview.description",
-    side: "bottom",
-  },
-  {
-    selector: '[data-tour="tour-dropdown"]',
-    titleKey: "cmsTour.dropdown.title",
-    descKey: "cmsTour.dropdown.description",
-    side: "bottom",
-  },
-  {
-    selector: '[data-tour="tour-edit"]',
-    titleKey: "cmsTour.edit.title",
-    descKey: "cmsTour.edit.description",
-    side: "bottom",
-  },
-  {
-    selector: '[data-tour="tour-visual-editor"]',
-    titleKey: "cmsTour.visualEditor.title",
-    descKey: "cmsTour.visualEditor.description",
-    side: "top",
-  },
-  {
-    selector: '[data-tour="tour-device"]',
-    titleKey: "cmsTour.device.title",
-    descKey: "cmsTour.device.description",
-    side: "top",
-  },
-  {
-    selector: '[data-tour="tour-branches"]',
-    titleKey: "cmsTour.branches.title",
-    descKey: "cmsTour.branches.description",
-    side: "bottom",
-  },
-  {
-    selector: '[data-tour="tour-submit"]',
-    titleKey: "cmsTour.submit.title",
-    descKey: "cmsTour.submit.description",
-    side: "bottom",
-  },
-  {
-    selector: '[data-tour="tour-publish"]',
-    titleKey: "cmsTour.publish.title",
-    descKey: "cmsTour.publish.description",
-    side: "bottom",
-  },
-];
-
-function hasSeenTour(userId: string): boolean {
-  try {
-    return localStorage.getItem(LOCALSTORAGE_KEYS.cmsTourSeen(userId)) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function markTourSeen(userId: string) {
-  try {
-    localStorage.setItem(LOCALSTORAGE_KEYS.cmsTourSeen(userId), "1");
-  } catch {}
-}
-
-function buildSteps(t: TFunction): DriveStep[] {
-  return STEP_DEFS.map((step) => ({
-    element: step.selector,
-    popover: {
-      title: t(step.titleKey),
-      description: t(step.descKey),
-      side: step.side,
-      align: "center",
-    },
-  }));
-}
+const seenFlag = (userId: string) =>
+  makeSeenFlag(LOCALSTORAGE_KEYS.cmsTourSeen(userId));
 
 function buildConfig(t: TFunction): Config {
   return {
@@ -167,20 +91,34 @@ function buildConfig(t: TFunction): Config {
 // the real gate: only the first caller drives.
 let tourStarted = false;
 
+/** Lazily pull the driver.js runtime (~7KB gz) off the initial shell bundle.
+ *  Its small CSS is a static side-effect import above (dynamic CSS imports have
+ *  no type), which is fine — the JS is the bulk of the weight. */
+async function loadDriver(): Promise<(config?: Config) => Driver> {
+  const mod = await import("driver.js");
+  return mod.driver;
+}
+
 /**
- * Poll (bounded, via rAF) until the Preview anchor is mounted, then drive the
+ * Poll (bounded, via rAF) until the Preview content is mounted, then drive the
  * tour. `onStart` fires the moment we commit to driving (used to mark the
- * auto-run seen). If the anchor never appears we release the guard so a later
- * attempt can retry.
+ * auto-run seen). If the content never appears — or driver.js fails to load /
+ * throws — we release the guard so a later attempt (or the ⋯ re-run) can retry.
  */
 function driveTour(t: TFunction, onStart?: () => void) {
   if (tourStarted) return;
   tourStarted = true;
   let frames = 0;
   const tryStart = () => {
-    if (document.querySelector(PREVIEW_SELECTOR)) {
+    if (document.querySelector(READY_SELECTOR)) {
       onStart?.();
-      driver(buildConfig(t)).drive();
+      loadDriver()
+        .then((driver) => {
+          driver(buildConfig(t)).drive();
+        })
+        .catch(() => {
+          tourStarted = false;
+        });
       return;
     }
     if (frames++ < 60) {
@@ -217,9 +155,9 @@ export function CmsTour({ virtualMcpId }: { virtualMcpId: string }) {
   const eligible = isCodeAgent && previewReady && !!userId;
 
   const [launched, setLaunched] = useState(false);
-  if (!launched && eligible && userId && !hasSeenTour(userId)) {
+  if (!launched && eligible && userId && !seenFlag(userId).has()) {
     setLaunched(true);
-    queueMicrotask(() => driveTour(t, () => markTourSeen(userId)));
+    queueMicrotask(() => driveTour(t, () => seenFlag(userId).mark()));
   }
 
   return null;

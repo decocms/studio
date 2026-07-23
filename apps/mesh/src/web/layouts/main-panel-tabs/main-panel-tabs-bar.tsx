@@ -20,7 +20,7 @@ import {
   resolveAutomationsPillClickTarget,
 } from "./tab-id";
 import { useMainPanelTabs, type Tab } from "./use-main-panel-tabs";
-import { selectTabSlots } from "./select-tab-slots";
+import { selectBarSlots, MAX_VISIBLE } from "./select-bar-slots";
 import { HeaderTabButton } from "./header-tab-button";
 import { TabOverflowMenu } from "./tab-overflow-menu";
 import type { TabIcon } from "./resolve-tab-icon";
@@ -29,16 +29,6 @@ import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { useMainOverlayToggle } from "@/web/layouts/agent-shell-layout/use-main-overlay-toggle";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
 import { useT } from "@/web/i18n/use-t";
-
-/** Hard cap on visible tab buttons; the shell narrows this further when the
- *  header runs out of room (see `maxVisible`). */
-const MAX_VISIBLE = 3;
-
-// Left-to-right priority for the lead buttons (before any user promotion).
-// Overview (the agent's home view, when present) leads; then the source/edit
-// views; Library ("files") trails them — it's a secondary overlay, so it must
-// not outrank the agent's primary views.
-const DEFAULT_LEAD_ORDER = ["overview", "preview", "content", "files"];
 
 type BarItem = {
   id: string;
@@ -156,60 +146,23 @@ export function MainPanelTabsBar({
 
   const items = [...tabItems, ...overlayItems];
 
-  // Default left-to-right priority when the user hasn't promoted anything:
-  // Preview, then Content, then Library lead the row; everything else keeps
-  // its natural order behind them. Stable sort preserves natural order for
-  // unranked ids ("files" is the Library overlay).
-  const leadRank = (id: string) => {
-    const i = DEFAULT_LEAD_ORDER.indexOf(id);
-    return i === -1 ? DEFAULT_LEAD_ORDER.length : i;
-  };
-  const defaultOrdered = [...items].sort(
-    (a, b) => leadRank(a.id) - leadRank(b.id),
-  );
-
-  // Reorder so the persisted (user-promoted) buttons lead, then everything
-  // else in default order. selectTabSlots then shows the first MAX_VISIBLE and
-  // still guarantees the active item is visible (promoting it into the last
-  // slot for display when needed).
-  const byId = new Map(defaultOrdered.map((i) => [i.id, i]));
-  const persistedPresent = persistedVisible.filter((id) => byId.has(id));
-  const persistedSet = new Set(persistedPresent);
-  const ordered: BarItem[] = [
-    ...persistedPresent.map((id) => byId.get(id)!),
-    ...defaultOrdered.filter((i) => !persistedSet.has(i.id)),
-  ];
-
-  const effectiveMax = Math.max(1, Math.min(maxVisible, MAX_VISIBLE));
-
-  const activeItem = items.find((i) => i.active);
-
   // Code agents (a clonable-source repo, surfaced by a "code" view tab) keep a
-  // minimal bar: Preview stays pinned and the active editing view (Code /
-  // Content / Library / …) shows beside it; everything else collapses into the
-  // stack popover. Reports-only orgs also expose a "code" tab but get their own
-  // curated bar, so they're excluded.
+  // minimal bar: Preview stays pinned and the active view shows beside it;
+  // everything else collapses into the stack popover. Reports-only orgs also
+  // expose a "code" tab but get their own curated bar, so they're excluded.
   const isCodeAgent = !reportsOnly && items.some((i) => i.id === "code");
 
-  let visible: BarItem[];
-  let overflow: BarItem[];
-  if (isCodeAgent) {
-    const preview = ordered.find((i) => i.id === "preview");
-    const lead = preview ? [preview] : [];
-    const extra =
-      activeItem && !lead.some((i) => i.id === activeItem.id)
-        ? [activeItem]
-        : [];
-    visible = [...lead, ...extra];
-    const visibleIds = new Set(visible.map((i) => i.id));
-    overflow = ordered.filter((i) => !visibleIds.has(i.id));
-  } else {
-    ({ visible, overflow } = selectTabSlots(
-      ordered,
-      activeItem?.id ?? null,
-      effectiveMax,
-    ));
-  }
+  // Pure slotting (visible bar vs overflow popover) — see select-bar-slots.ts.
+  const { visible, overflow } = selectBarSlots({
+    items,
+    persisted: persistedVisible,
+    maxVisible,
+    isCodeAgent,
+  });
+
+  // Lookup for click handlers + the responsive cap for overflow-promotion.
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const effectiveMax = Math.max(1, Math.min(maxVisible, MAX_VISIBLE));
 
   // Opening an overflow item swaps it into the last visible slot and persists
   // the new arrangement so it sticks. Code agents keep their pinned Preview +

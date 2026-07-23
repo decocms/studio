@@ -370,11 +370,16 @@ export const sandbox = {
   "sandbox.postToolbar.sortTitleAZ": "Título A–Z",
   "sandbox.postToolbar.sortTitleZA": "Título Z–A",
   "sandbox.postToolbar.sortZA": "Z–A",
-  "sandbox.preview.blocks": "Blocos",
-  "sandbox.preview.blocksEditor": "Editor de blocos",
   "sandbox.preview.choosePage": "Escolher página",
   "sandbox.preview.clickElementToAsk":
     "Clique em qualquer elemento para perguntar à IA",
+  "sandbox.preview.cms": "CMS",
+  "sandbox.preview.collapseTerminal": "Recolher terminal",
+  "sandbox.preview.editContent": "Editar conteúdo",
+  "sandbox.preview.exitEditor": "Sair do editor",
+  "sandbox.preview.expandTerminal": "Expandir terminal",
+  "sandbox.preview.hideTerminal": "Ocultar terminal",
+  "sandbox.preview.showTerminal": "Mostrar terminal",
   "sandbox.preview.copyCurrentUrl": "Copiar URL atual",
   "sandbox.preview.createNewPage": "Criar nova página",
   "sandbox.preview.devServerPreviewTitle":

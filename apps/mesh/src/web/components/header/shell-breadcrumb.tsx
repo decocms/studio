@@ -37,6 +37,7 @@ import { usePanelActions } from "@/web/layouts/shell-layout";
 import { findReusableNewChat } from "@/web/lib/reusable-new-chat";
 import { authClient } from "@/web/lib/auth-client.ts";
 import { usePendingInvitations } from "@/web/hooks/use-pending-invitations";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const crumbBtnClass =
   "wco-no-drag inline-flex items-center gap-1.5 min-w-0 rounded-md pl-1 pr-2 py-1.5 text-sm text-foreground hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
@@ -224,6 +225,7 @@ export function AgentSwitcherCrumb({
  * the sidebar's own new-chat action is tucked away.
  */
 export function NewChatCrumb() {
+  const t = useT();
   const { org } = useProjectContext();
   const params = useParams({ strict: false }) as { taskId?: string };
   const search = useSearch({ strict: false }) as { virtualmcpid?: string };
@@ -255,13 +257,15 @@ export function NewChatCrumb() {
         <button
           type="button"
           onClick={handleNewChat}
-          aria-label="New chat"
+          aria-label={t("sidebar.taskGroupsList.newChat")}
           className="wco-no-drag flex shrink-0 items-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <Edit05 size={16} />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">New chat</TooltipContent>
+      <TooltipContent side="bottom">
+        {t("sidebar.taskGroupsList.newChat")}
+      </TooltipContent>
     </Tooltip>
   );
 }

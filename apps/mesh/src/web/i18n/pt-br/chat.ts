@@ -327,18 +327,6 @@ export const chat = {
   "chat.queueTray.queuedMessages": "{count} mensagem(ns) na fila",
   "chat.queueTray.removeFromQueue": "Remover da fila",
   "chat.queueTray.sendNow": "Enviar agora",
-  "chat.runtimeSwitcher.cloudSandbox": "Sandbox em nuvem",
-  "chat.runtimeSwitcher.notAvailableOnThisDeployment":
-    "Não disponível nesta implantação",
-  "chat.runtimeSwitcher.runDecocmsLinkOnYourDesktop":
-    "Execute `decocms link` em seu desktop",
-  "chat.runtimeSwitcher.runOn": "Executar em",
-  "chat.runtimeSwitcher.runningOn": "Executando em {label}",
-  "chat.runtimeSwitcher.runsInDecosCloud": "Executa na nuvem do deco",
-  "chat.runtimeSwitcher.runsOnYourMachineViaDecoLink":
-    "Executa em sua máquina via deco link",
-  "chat.runtimeSwitcher.runtime": "Tempo de execução: {label}",
-  "chat.runtimeSwitcher.thisDevice": "Dispositivo",
   "chat.selectModel.selectModel": "Selecionar modelo",
   "chat.selectVirtualMcp.chooseAgentTooltip":
     "Escolha um agente para conversar",

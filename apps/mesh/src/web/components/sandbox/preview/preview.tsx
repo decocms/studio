@@ -6,6 +6,7 @@ import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { startCmsTour } from "@/web/components/cms-tour/cms-tour";
+import { TOUR_ANCHORS } from "@/web/components/cms-tour/anchors";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { resolvePreviewDisplay } from "./preview-display";
 import { sanitizeProductionUrl } from "@/shared/deco-site-production-url";
@@ -923,26 +924,33 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       <Tooltip>
         <TooltipTrigger asChild>
           <HeaderTabButton
-            title="CMS"
+            title={t("sandbox.preview.cms")}
             icon={{ kind: "component", Component: Edit05 }}
             active={blocksActive}
             onClick={() => toggleEditingMode("blocks")}
             testId="preview-blocks-toggle"
-            dataTour="tour-edit"
+            dataTour={TOUR_ANCHORS.edit}
           />
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          {blocksActive ? "Exit editor" : "Edit content"}
+          {blocksActive
+            ? t("sandbox.preview.exitEditor")
+            : t("sandbox.preview.editContent")}
         </TooltipContent>
       </Tooltip>
       <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
       <Tooltip>
         <TooltipTrigger asChild>
-          <ToolbarIconButton onClick={handleRefresh} aria-label="Refresh">
+          <ToolbarIconButton
+            onClick={handleRefresh}
+            aria-label={t("sandbox.preview.refresh")}
+          >
             <RefreshCw01 size={16} />
           </ToolbarIconButton>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Refresh</TooltipContent>
+        <TooltipContent side="bottom">
+          {t("sandbox.preview.refresh")}
+        </TooltipContent>
       </Tooltip>
 
       <div ref={pagesContainerRef} className="relative min-w-0 w-64 shrink">
@@ -1027,7 +1035,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             type="button"
             className="flex h-full shrink-0 items-center pl-1 pr-2"
             onClick={() => setPagesOpen((prev) => !prev)}
-            aria-label="Choose page"
+            aria-label={t("sandbox.preview.choosePage")}
           >
             <ChevronDown
               size={12}
@@ -1066,7 +1074,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   setPagesSearch("");
                   navigatePreviewToPage(target);
                 }}
-                placeholder="Search pages and components..."
+                placeholder={t("sandbox.preview.searchPagesAndComponents")}
                 className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 autoFocus
               />
@@ -1084,15 +1092,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 }}
               >
                 <Plus size={16} className="shrink-0 text-muted-foreground" />
-                <span className="flex-1 font-medium">Create new page</span>
+                <span className="flex-1 font-medium">
+                  {t("sandbox.preview.createNewPage")}
+                </span>
               </button>
             </div>
             {filteredPages.length === 0 &&
             filteredGlobalSections.length === 0 ? (
               <div className="px-4 py-5 text-center text-xs text-muted-foreground">
                 {pages.length === 0 && globalSections.length === 0
-                  ? "No pages found in this site."
-                  : "No results match your search."}
+                  ? t("sandbox.preview.noPagesFound")
+                  : t("sandbox.preview.noSearchResults")}
               </div>
             ) : (
               <div className="max-h-80 overflow-y-auto overscroll-contain">
@@ -1132,7 +1142,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     )}
                   >
                     <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
-                      Global components
+                      {t("sandbox.preview.globalComponents")}
                     </div>
                     {filteredGlobalSections.map((section) => (
                       <button
@@ -1173,7 +1183,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       <Tooltip>
         <TooltipTrigger asChild>
           <ToolbarIconButton
-            aria-label="Open in new tab"
+            aria-label={t("sandbox.preview.openInNewTab")}
             onClick={() => {
               const url = iframeSrc ?? display.iframeBase;
               if (url) window.open(url, "_blank", "noopener");
@@ -1182,7 +1192,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             <LinkExternal01 size={16} />
           </ToolbarIconButton>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Open in new tab</TooltipContent>
+        <TooltipContent side="bottom">
+          {t("sandbox.preview.openInNewTab")}
+        </TooltipContent>
       </Tooltip>
     </div>
   ) : null;
@@ -1196,27 +1208,47 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       <div className="flex shrink-0 items-center">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("sandbox.preview.moreOptions")}
+            >
               <DotsHorizontal size={14} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
+            {/* The CMS/Blocks toggle also lives here so it stays reachable when
+                the center toolbar (its primary home) collapses at narrow widths
+                — the ⋯ menu is in the always-present end slot. */}
+            {showPreviewToolbar && (
+              <>
+                <DropdownMenuItem onClick={() => toggleEditingMode("blocks")}>
+                  <Edit05 size={14} />
+                  {blocksActive
+                    ? t("sandbox.preview.exitEditor")
+                    : t("sandbox.preview.editContent")}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {terminal && (
               <DropdownMenuItem
                 onClick={() => terminal.setVisible(!terminal.visible)}
               >
                 <Terminal size={14} />
-                {terminal.visible ? "Hide terminal" : "Show terminal"}
+                {terminal.visible
+                  ? t("sandbox.preview.hideTerminal")
+                  : t("sandbox.preview.showTerminal")}
               </DropdownMenuItem>
             )}
             {showPreviewToolbar && (
               <>
                 {terminal && <DropdownMenuSeparator />}
                 <DropdownMenuItem onClick={handleHardReload}>
-                  Hard Reload
+                  {t("sandbox.preview.hardReload")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleCopyUrl}>
-                  Copy Current URL
+                  {t("sandbox.preview.copyCurrentUrl")}
                 </DropdownMenuItem>
               </>
             )}
@@ -1235,7 +1267,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     }}
                   >
                     <CreditCardSearch size={14} />
-                    Edit SEO
+                    {t("sandbox.preview.editSeo")}
                   </DropdownMenuItem>
                 )}
                 {currentPageKey && (
@@ -1248,17 +1280,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           ),
                         );
                       } catch {
-                        toast.error("Invalid page block key");
+                        toast.error(t("sandbox.preview.invalidPageBlockKey"));
                       }
                     }}
                   >
                     <Code01 size={14} />
-                    View JSON
+                    {t("sandbox.preview.viewJson")}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={() => setSiteSeoOpen(true)}>
                   <CreditCardSearch size={14} />
-                  Site SEO
+                  {t("sandbox.preview.siteSeo")}
                 </DropdownMenuItem>
               </>
             )}
@@ -1274,7 +1306,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     width={14}
                     height={14}
                   />
-                  Open in VSCode
+                  {t("sandbox.preview.openInVscode")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => window.open(ideDeepLink("cursor", repoDir))}
@@ -1285,7 +1317,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     width={14}
                     height={14}
                   />
-                  Open in Cursor
+                  {t("sandbox.preview.openInCursor")}
                 </DropdownMenuItem>
               </>
             )}
@@ -1312,7 +1344,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               active={editingMode === "visual"}
               disabled={!canVisualEdit}
               className="rounded-full"
-              data-tour="tour-visual-editor"
+              data-tour={TOUR_ANCHORS.visualEditor}
             >
               <CursorClick01 size={16} />
             </ToolbarIconButton>
@@ -1329,7 +1361,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
               disabled={!canVisualEdit}
               className="rounded-full"
-              data-tour="tour-device"
+              data-tour={TOUR_ANCHORS.device}
             >
               <span
                 key={previewDeviceSize}
@@ -1350,7 +1382,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   ) : null;
 
   return (
-    <div className="flex flex-col w-full h-full">
+    <div
+      className="flex flex-col w-full h-full"
+      data-tour={TOUR_ANCHORS.previewRoot}
+    >
       {/* Auto-select the first entity for a picker param with no value yet, so
           navigating to a bare dynamic-route template lands on a real page.
           Each helper renders nothing and unmounts once its param is filled. */}
