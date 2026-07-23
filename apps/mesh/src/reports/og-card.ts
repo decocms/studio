@@ -70,12 +70,15 @@ export async function renderOgCard(
     ? await faviconDataUri(input.faviconUrl)
     : null;
 
+  // flexShrink: 0 — without it a long domain's text column squishes the
+  // fixed-size tile to ~0 width and the favicon/initial disappears.
   const faviconTile = favicon
     ? h(
         "div",
         {
           width: 84,
           height: 84,
+          flexShrink: 0,
           borderRadius: 20,
           backgroundColor: CREAM,
           display: "flex",
@@ -89,6 +92,7 @@ export async function renderOgCard(
         {
           width: 84,
           height: 84,
+          flexShrink: 0,
           borderRadius: 20,
           backgroundColor: LIME,
           color: GREEN,
