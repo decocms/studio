@@ -40,7 +40,7 @@ import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
-import { seedOrgDb } from "./org";
+import { releaseSeat, seedOrgDb } from "./org";
 import { hoistOrgLogo } from "./hoist-org-logo";
 import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "./roles";
@@ -244,6 +244,40 @@ const plugins = [
       // and MCP tool wrappers.
       beforeCreateOrganization: async ({ organization }) => {
         rejectReservedOrganizationSlug(organization.slug);
+      },
+      // Seat lifecycle (per-seat billing) at the canonical membership
+      // boundaries — these hooks cover EVERY add/remove path (tools, direct
+      // Better Auth endpoints, invitation accepts, join-request approvals),
+      // and both are fail-soft: seats must never break membership itself.
+      //
+      // afterAddMember: invites always land FREE — dropping any stale
+      // paid-seat row here means a crash between a removal and its seat
+      // release can't resurrect the seat when the user rejoins. (Between
+      // those two moments the stale row is harmless: every seat count joins
+      // against `member`, so a non-member row never bills.)
+      afterAddMember: async ({ member }) => {
+        try {
+          await releaseSeat(
+            member.organizationId,
+            member.userId,
+            "system:join",
+          );
+        } catch (err) {
+          console.error("Failed to reset seat on member join:", err);
+        }
+      },
+      // afterRemoveMember: a removed member stops counting toward the org's
+      // bill and gateway allowance.
+      afterRemoveMember: async ({ member }) => {
+        try {
+          await releaseSeat(
+            member.organizationId,
+            member.userId,
+            "system:member-removed",
+          );
+        } catch (err) {
+          console.error("Failed to release seat on member removal:", err);
+        }
       },
       // Keep base64 logos out of the org row (they bloat every
       // organization.list response). Mirrors `backfill-assets

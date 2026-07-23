@@ -1271,6 +1271,22 @@ export interface OrganizationPaidSeatTable {
 }
 
 /**
+ * Append-only seat-transition log, written in the same transaction as the
+ * organization_paid_seat change. For `invoiced` orgs this is the billing
+ * source (end-of-cycle invoicing reads who held a paid seat when); rows are
+ * appended only for ACTUAL transitions.
+ */
+export interface SeatChangeLogTable {
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  user_id: string;
+  /** "paid" | "free" — the state the seat transitioned TO. */
+  seat: string;
+  changed_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/**
  * Organization tag table definition
  * Stores normalized tag definitions per organization
  */
@@ -1809,6 +1825,7 @@ export interface Database extends PrivateRegistryDatabase {
   // Per-seat billing (dormant behind STUDIO_BILLING_ENFORCED)
   organization_billing: OrganizationBillingTable;
   organization_paid_seat: OrganizationPaidSeatTable;
+  seat_change_log: SeatChangeLogTable;
 
   // Virtual MCP plugin configs
   virtual_mcp_plugin_configs: VirtualMcpPluginConfigTable;

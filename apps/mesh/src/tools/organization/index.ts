@@ -41,3 +41,6 @@ export { ORGANIZATION_MEMBER_ADD } from "./member-add";
 export { ORGANIZATION_MEMBER_REMOVE } from "./member-remove";
 export { ORGANIZATION_MEMBER_LIST } from "./member-list";
 export { ORGANIZATION_MEMBER_UPDATE_ROLE } from "./member-update-role";
+
+// Seats (per-seat billing)
+export { ORGANIZATION_SEATS_GET, ORGANIZATION_SEATS_SET } from "./seats";

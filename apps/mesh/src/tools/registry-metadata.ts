@@ -72,6 +72,8 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_MEMBER_REMOVE",
   "ORGANIZATION_MEMBER_LIST",
   "ORGANIZATION_MEMBER_UPDATE_ROLE",
+  "ORGANIZATION_SEATS_GET",
+  "ORGANIZATION_SEATS_SET",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -405,6 +407,17 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "ORGANIZATION_MEMBER_UPDATE_ROLE",
     description: "Update member roles",
     category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_SEATS_GET",
+    description: "Get billing identity and paid seats",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_SEATS_SET",
+    description: "Set members' seats (paid/free)",
+    category: "Organizations",
+    dangerous: true,
   },
   // Connection tools
   {
@@ -1185,6 +1198,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_MEMBER_ADD",
       "ORGANIZATION_MEMBER_REMOVE",
       "ORGANIZATION_MEMBER_UPDATE_ROLE",
+      // Seats live on the members page and change who the org pays for —
+      // same trust tier as adding/removing the member itself.
+      "ORGANIZATION_SEATS_GET",
+      "ORGANIZATION_SEATS_SET",
       // Approving/denying join requests adds members, and the UI lives on the
       // members page — keep it under members:manage.
       "ORGANIZATION_JOIN_REQUEST_LIST",

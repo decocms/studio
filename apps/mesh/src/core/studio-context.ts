@@ -312,6 +312,7 @@ import { AIProviderFactory } from "@/ai-providers/factory";
 import type { FireAutomationOutcome } from "../automations/dbos-workflow";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
 import type { AgentSandboxSessionStorage } from "../storage/agent-sandbox-sessions";
+import type { OrganizationBillingStorage } from "../storage/organization-billing";
 
 // Better Auth instance type - flexible for testing
 // In production, this is the actual Better Auth instance
@@ -355,6 +356,7 @@ export interface MeshStorage {
   kv: KVStorage;
   interests: InterestsStorage;
   agentSandboxSessions: AgentSandboxSessionStorage;
+  organizationBilling: OrganizationBillingStorage;
 }
 
 // ============================================================================
