@@ -135,17 +135,25 @@ function useWindowFileDrop(
       const files = e.dataTransfer?.files;
       if (!files || files.length === 0) return;
 
-      const { from } = editor.state.selection;
-      for (const file of Array.from(files)) {
-        void processFile(
-          editor,
-          selectedModel,
-          file,
-          from,
-          onUnsupportedFile,
-          t,
-        );
-      }
+      // Process files sequentially, re-reading the selection after each
+      // insert so multiple files land in order instead of racing to insert
+      // at the same stale position (see the ProseMirror-level fix for the
+      // same race in tiptap/file/uploader.tsx).
+      const fileArray = Array.from(files);
+      void (async () => {
+        let insertPos = editor.state.selection.from;
+        for (const file of fileArray) {
+          await processFile(
+            editor,
+            selectedModel,
+            file,
+            insertPos,
+            onUnsupportedFile,
+            t,
+          );
+          insertPos = editor.state.selection.to;
+        }
+      })();
     };
 
     window.addEventListener("dragenter", onDragEnter);
