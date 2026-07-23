@@ -21,10 +21,13 @@ export function useDecofile(
     ? `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`
     : "";
   // `fetchEnabled` means the dev server is up, so the live `/.decofile` route is
-  // worth hitting. When it's down we read the committed `.deco/blocks.gen.json`
-  // straight from the working tree — a single source of truth for KEYS.decofile,
-  // so optimistic block writes (which persist to the FS) operate on a full base
-  // and the CMS stays editable even if the preview never comes up.
+  // worth hitting. When it's down we read `.deco/blocks.gen.json` straight from
+  // the working tree — and if that artifact is absent (it's commonly gitignored)
+  // the daemon regenerates it from the `.deco/blocks/*.json` sources, so the CMS
+  // is readable as soon as the FS is up, before the dev server boots. Single
+  // source of truth for KEYS.decofile, so optimistic block writes (which persist
+  // to the FS) operate on a full base and the CMS stays editable even if the
+  // preview never comes up.
   const fetchEnabled = options?.fetchEnabled ?? true;
   // Committed snapshot lives under the project's package path
   // (`metadata.runtime.path`) when the project isn't at the repo root — the
