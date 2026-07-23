@@ -24,6 +24,7 @@ import {
   Image01,
   Lock01,
   Microphone01,
+  RefreshCw01,
   Stop,
   Telescope,
   Upload01,
@@ -59,6 +60,7 @@ import {
   type TiptapInputHandle,
 } from "./tiptap/input";
 import { isTiptapDocEmpty } from "./tiptap/utils";
+import { PromptExplorerDialog } from "./prompt-explorer-dialog";
 import { ToolsPopover } from "./tools-popover";
 import { SessionStats } from "./usage-stats";
 import { authClient } from "@/web/lib/auth-client.ts";
@@ -75,6 +77,40 @@ import { resolveComposerAction } from "./composer-action";
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
 // ============================================================================
+
+/** Flatten a Tiptap doc to plain text for seeding the Prompt Explorer. */
+function tiptapDocToPlainText(doc: Metadata["tiptapDoc"] | undefined): string {
+  if (!doc?.content) return "";
+  return doc.content
+    .map((node) => {
+      if (node.type !== "paragraph") return "";
+      return (node.content ?? [])
+        .map((child) =>
+          child.type === "text"
+            ? (child.text ?? "")
+            : child.type === "hardBreak"
+              ? "\n"
+              : "",
+        )
+        .join("");
+    })
+    .join("\n")
+    .trim();
+}
+
+/** Build a minimal Tiptap doc (one paragraph per line) from plain text. */
+function plainTextToTiptapDoc(text: string): Metadata["tiptapDoc"] {
+  return {
+    type: "doc",
+    content: text
+      .split("\n")
+      .map((line) =>
+        line.length > 0
+          ? { type: "paragraph", content: [{ type: "text", text: line }] }
+          : { type: "paragraph" },
+      ),
+  };
+}
 
 function ChatInputDisabledState({ message }: { message: string }) {
   return (
@@ -325,6 +361,7 @@ export function ChatInput({
   const fullVm = useVirtualMCP(selectedVirtualMcp?.id ?? decopilotId);
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const [exploreOpen, setExploreOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
     useUnsupportedFileDialog();
 
@@ -504,6 +541,26 @@ export function ChatInput({
       track("chat_message_stopped", { thread_id: taskId });
       stop();
     }
+  };
+
+  // Send the optimized prompt produced by the Prompt Explorer modal, reusing
+  // the normal submit path (active task → stream, else home composer).
+  const handleExploreSend = (text: string) => {
+    const doc = plainTextToTiptapDoc(text);
+    if (isStreaming || isTiptapDocEmpty(doc)) return;
+    track("chat_prompt_explorer_sent", {
+      thread_id: taskId || null,
+      mode: chatMode,
+      model_id: selectedModel?.modelId ?? null,
+      virtual_mcp_id: selectedVirtualMcp?.id ?? null,
+    });
+    if (stream) {
+      void stream.sendMessage(doc);
+    } else {
+      homeSubmit({ tiptapDoc: doc, virtualMcp: selectedVirtualMcp });
+    }
+    clearChatDraft(sessionStorage, locator, draftKey);
+    setTiptapDoc(undefined);
   };
 
   if (userId && task?.created_by && task.created_by !== userId) {
@@ -730,6 +787,25 @@ export function ChatInput({
                           currentBranch={taskCtx?.currentBranch ?? null}
                         />
                       )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={isStreaming}
+                        onClick={() => {
+                          track("chat_prompt_explorer_opened", {
+                            thread_id: taskId || null,
+                          });
+                          setExploreOpen(true);
+                        }}
+                        className="h-8 gap-1.5 rounded-lg px-2 text-muted-foreground hover:text-foreground transition-colors"
+                        title="Improve — turn a rough idea into a detailed, ready-to-use prompt"
+                        aria-label="Improve prompt"
+                      >
+                        <RefreshCw01 size={16} />
+                        Improve
+                      </Button>
+
                       <TierTrigger />
 
                       {/* Microphone button — always enabled; the composer has
@@ -839,6 +915,13 @@ export function ChatInput({
       <UnsupportedFileDialog
         info={unsupportedFile}
         onClose={clearUnsupportedFile}
+      />
+
+      <PromptExplorerDialog
+        open={exploreOpen}
+        onOpenChange={setExploreOpen}
+        initialText={tiptapDocToPlainText(tiptapDoc)}
+        onSend={handleExploreSend}
       />
     </>
   );

@@ -19,6 +19,7 @@ import { createDownstreamTokenRoutes } from "./downstream-token";
 import { createFileUploadRoutes } from "./file-uploads";
 import { createKVRoutes } from "./kv";
 import { createOrgFsRoutes } from "./org-fs";
+import { createPromptExplorerRoutes } from "./prompt-explorer";
 import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
 import { createProxyRoutes } from "./proxy";
@@ -100,6 +101,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   ); // /api/:org/fs/:volume/...
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/", createHomeNextActionsRoutes());
+  app.route("/", createPromptExplorerRoutes()); // /api/:org/prompt-explorer/stream
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(
