@@ -125,15 +125,23 @@ const DECOFILE_BLOCKS_DIRNAME = "blocks";
  * to `{ [decodeURIComponent(stem)]: <file contents> }` — exactly what the deco
  * runtime emits (the filename stem is the `encodeURIComponent` of the block id).
  *
- * Non-blocking on purpose (daemon runs a single-threaded event loop): reads are
- * async and the file contents are concatenated as raw text — no per-value
- * `JSON.parse`/`JSON.stringify` (that would parse/serialize the full multi-MB
- * payload on the loop). Only the small keys are JSON-encoded. A malformed block
- * therefore isn't caught here; the client's `JSON.parse` fails and falls back to
- * "no snapshot", same as today — the write/edit handlers already gate validity.
+ * Kept off the critical path of the single-threaded event loop (daemon health
+ * probe has a ~500ms budget): reads are async, and the file contents are
+ * concatenated as raw text — no per-value `JSON.parse`/`JSON.stringify` over the
+ * merge (only the small keys are JSON-encoded). The unavoidable full-payload
+ * serialization happens once, downstream, when `jsonResponse` stringifies the
+ * result — the same ~multi-MB cost the existing committed-file read path already
+ * pays via `readFileSync` + `jsonResponse`, so this is no worse. A malformed
+ * block isn't caught here; the client's `JSON.parse` fails and falls back to "no
+ * snapshot", same as today — the write/edit handlers already gate validity.
  *
  * Returns `null` when there's no `blocks` dir (nothing to merge) so the caller
  * falls through to its normal "file not found" path.
+ *
+ * Prefer `generateDecofileFromBlocksDeduped` from request handlers: concurrent
+ * cold reads (multiple tabs/users on a shared sandbox during boot) would each
+ * rebuild the whole payload and their serialization bursts would serialize on
+ * the loop, risking a missed health probe.
  */
 export async function generateDecofileFromBlocks(
   blocksDir: string,
@@ -170,6 +178,27 @@ export async function generateDecofileFromBlocks(
   return `{${parts.join(",")}}`;
 }
 
+/**
+ * Single-flight guard around {@link generateDecofileFromBlocks}: concurrent
+ * reads for the same `blocksDir` share one in-flight rebuild instead of each
+ * doing a full multi-MB merge. Keyed by absolute dir; the entry is cleared when
+ * the build settles (resolve or reject). This is a boot-window coalescer, not a
+ * cache — the next read after settle rebuilds, so it never serves stale content.
+ */
+const decofileBuildsInFlight = new Map<string, Promise<string | null>>();
+
+export function generateDecofileFromBlocksDeduped(
+  blocksDir: string,
+): Promise<string | null> {
+  const existing = decofileBuildsInFlight.get(blocksDir);
+  if (existing) return existing;
+  const build = generateDecofileFromBlocks(blocksDir).finally(() => {
+    decofileBuildsInFlight.delete(blocksDir);
+  });
+  decofileBuildsInFlight.set(blocksDir, build);
+  return build;
+}
+
 export function makeReadHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: {
@@ -201,7 +230,7 @@ export function makeReadHandler(deps: FsDeps) {
       // un-numbered (pretty JSON never matches the `^\d+\t` line-number prefix,
       // so the client's stripLineNumbers is a no-op and JSON.parse still works).
       if (path.basename(filePath) === DECOFILE_GEN_BASENAME) {
-        const merged = await generateDecofileFromBlocks(
+        const merged = await generateDecofileFromBlocksDeduped(
           path.join(path.dirname(filePath), DECOFILE_BLOCKS_DIRNAME),
         );
         if (merged !== null) {

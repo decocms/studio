@@ -24,6 +24,16 @@ export function sanitizeProductionUrl(
 }
 
 /**
+ * Pick the site's production domain from the deco.cx `domains` list: the one
+ * flagged `production`, else the first. Returns `undefined` when there are none.
+ */
+export function pickProductionDomain(
+  domains: { domain: string; production: boolean }[] | null | undefined,
+): string | undefined {
+  return domains?.find((d) => d.production)?.domain ?? domains?.[0]?.domain;
+}
+
+/**
  * Build a production URL from a deco.cx domain. Domains come back as bare hosts
  * (e.g. `acme.com`, `acme.deco.site`), so we prepend `https://` when no scheme
  * is present, then validate. Returns `null` for empty/whitespace/invalid input.

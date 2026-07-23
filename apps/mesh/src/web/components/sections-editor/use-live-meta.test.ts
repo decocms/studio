@@ -39,6 +39,16 @@ describe("metaSourceOrder", () => {
     ).toEqual([{ kind: "committed" }, { kind: "production", baseUrl: PROD }]);
   });
 
+  it("dev up, no production: live → committed (no production tier)", () => {
+    expect(
+      metaSourceOrder({
+        fetchEnabled: true,
+        previewUrl: PREVIEW,
+        productionUrl: null,
+      }),
+    ).toEqual([{ kind: "live", baseUrl: PREVIEW }, { kind: "committed" }]);
+  });
+
   it("no production configured: committed is the only fallback", () => {
     expect(
       metaSourceOrder({

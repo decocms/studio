@@ -20,6 +20,7 @@ import {
   makeGrepHandler,
   makeGlobHandler,
   generateDecofileFromBlocks,
+  generateDecofileFromBlocksDeduped,
   collectEmptyDirectories,
   pathSegmentDepth,
   registerGlobAncestorDirectories,
@@ -838,6 +839,24 @@ describe("decofile fallback (blocks.gen.json generation)", () => {
       post("/_sandbox/read", { path: ".deco/blocks.gen.json", full: true }),
     );
     expect(res.status).toBe(400);
+  });
+
+  it("deduped: concurrent rebuilds share one in-flight promise, then reset", async () => {
+    writeBlock("Section%20One", { title: "one" });
+    const dir = join(appRoot, ".deco", "blocks");
+    // Concurrent callers coalesce onto the same build (no per-call re-merge).
+    const p1 = generateDecofileFromBlocksDeduped(dir);
+    const p2 = generateDecofileFromBlocksDeduped(dir);
+    expect(p1).toBe(p2);
+    const [a, b] = await Promise.all([p1, p2]);
+    expect(a).toBe(b);
+    expect(JSON.parse(a!)).toEqual({ "Section One": { title: "one" } });
+    // After settling it's a coalescer, not a cache: a fresh call rebuilds.
+    const p3 = generateDecofileFromBlocksDeduped(dir);
+    expect(p3).not.toBe(p1);
+    expect(JSON.parse((await p3)!)).toEqual({
+      "Section One": { title: "one" },
+    });
   });
 });
 

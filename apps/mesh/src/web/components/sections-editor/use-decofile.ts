@@ -28,6 +28,12 @@ export function useDecofile(
   // source of truth for KEYS.decofile, so optimistic block writes (which persist
   // to the FS) operate on a full base and the CMS stays editable even if the
   // preview never comes up.
+  //
+  // Unlike `useLiveMeta`, there is deliberately NO production `/.decofile`
+  // fallback: content must stay branch-accurate (the FS/daemon path reflects
+  // THIS branch), whereas production would serve deployed content and desync
+  // optimistic edits. `useLiveMeta` can safely fall back to production because
+  // the schema is branch-independent — see its `metaSourceOrder`.
   const fetchEnabled = options?.fetchEnabled ?? true;
   // Committed snapshot lives under the project's package path
   // (`metadata.runtime.path`) when the project isn't at the repo root — the
