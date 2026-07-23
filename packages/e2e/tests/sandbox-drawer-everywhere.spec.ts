@@ -54,6 +54,17 @@ test.describe("sandbox drawer is available on every main-panel tab", () => {
       { data: { virtual_mcp_id: agent.item.id } },
     );
 
+    // The bottom terminal drawer is opt-in: hidden by default, the user turns
+    // it on via "Show terminal" in the preview ⋯ menu. That choice persists in
+    // localStorage under `preview-terminal-visible:<virtualMcpId>` (see
+    // terminal-visibility.tsx). Seed it so the drawer chrome is enabled, then
+    // assert it renders below EVERY tab — the property this test guards. The
+    // key/shape is the UI's storage contract; a change here is a real signal.
+    await page.addInitScript(
+      (key) => localStorage.setItem(key, JSON.stringify({ visible: true })),
+      `preview-terminal-visible:${agent.item.id}`,
+    );
+
     // The drawer's setup tab is a <button> with visible text "sandbox" and
     // a Terminal icon (see drawer/toolbar.tsx :: SetupTab). Asserting on it
     // is the cheap proof that the drawer chrome is mounted under the tab;

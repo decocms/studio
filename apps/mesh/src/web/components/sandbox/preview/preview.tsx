@@ -5,6 +5,8 @@ import { formatCodeTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
+import { startCmsTour } from "@/web/components/cms-tour/cms-tour";
+import { TOUR_ANCHORS } from "@/web/components/cms-tour/anchors";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { resolvePreviewDisplay } from "./preview-display";
 import { sanitizeProductionUrl } from "@/shared/deco-site-production-url";
@@ -15,8 +17,10 @@ import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import {
   ChevronDown,
   Code01,
+  Compass01,
   CursorClick01,
   DotsHorizontal,
+  Edit05,
   Globe02,
   LayoutAlt01,
   LinkExternal01,
@@ -24,11 +28,11 @@ import {
   Plus,
   SearchLg,
   CreditCardSearch,
-  TextInput,
   Monitor04,
   Phone02,
   RefreshCw01,
   Tablet01,
+  Terminal,
 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.js";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -38,6 +42,13 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
+import {
+  MainPanelHeaderEndPortal,
+  MainPanelHeaderPortal,
+  useMainPanelHeaderSlot,
+} from "@/web/layouts/agent-shell-layout/panel-header";
+import { useTerminalVisibility } from "@/web/layouts/main-panel-tabs/terminal-visibility";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -187,9 +198,14 @@ function reloadIframeOrFallback(
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const isMobile = useIsMobile();
+  // Desktop: the main panel header hosts the preview controls (single top bar).
+  // Mobile / standalone (no header slot): render the toolbar inline below.
+  const headerSlot = useMainPanelHeaderSlot();
   const navigate = useNavigate();
   const { currentBranch: branch } = useChatTask();
   const workspace = useBlocksPreviewWorkspace();
+  // Toggles the bottom terminal drawer (null on surfaces without the provider).
+  const terminal = useTerminalVisibility();
 
   const goToTab = (main: string) => {
     navigate({
@@ -885,10 +901,440 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
+  // Toolbar visibility follows main's display model: shown once an iframe
+  // surface is active — the sandbox once its daemon is up, or the production
+  // fallback while the dev server is still waking (see resolvePreviewDisplay).
+  const showPreviewToolbar =
+    previewSurfaceActive && (daemonReady || display.mode === "production");
+
+  // Blocks is an editing mode on the current page, NOT a navigation view — and
+  // its editor opens on the LEFT. So its toggle lives in the floating preview
+  // pill next to the visual-editor / device controls (see below), grouped with
+  // the other edit-mode affordances rather than in the header's nav-tab row.
+  const blocksActive = editingMode === "blocks";
+
+  // Refresh + page selector + open-in-new-tab — the URL group. Sized to content
+  // (capped) rather than stretching, so it doesn't dominate the top bar.
+  const urlControls = showPreviewToolbar ? (
+    <div className="flex min-w-0 items-center gap-0.5">
+      {/* Edit (Blocks) — the primary "edit this page" action, tied to the page
+          the selector shows. Leads the group (set off by a divider) so it reads
+          as a distinct action rather than being wedged inside the URL controls.
+          Filled when the Blocks editor is open; click again for plain preview. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <HeaderTabButton
+            title={t("sandbox.preview.cms")}
+            icon={{ kind: "component", Component: Edit05 }}
+            active={blocksActive}
+            onClick={() => toggleEditingMode("blocks")}
+            testId="preview-blocks-toggle"
+            dataTour={TOUR_ANCHORS.edit}
+          />
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {blocksActive
+            ? t("sandbox.preview.exitEditor")
+            : t("sandbox.preview.editContent")}
+        </TooltipContent>
+      </Tooltip>
+      <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ToolbarIconButton
+            onClick={handleRefresh}
+            aria-label={t("sandbox.preview.refresh")}
+          >
+            <RefreshCw01 size={16} />
+          </ToolbarIconButton>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {t("sandbox.preview.refresh")}
+        </TooltipContent>
+      </Tooltip>
+
+      <div ref={pagesContainerRef} className="relative min-w-0 w-64 shrink">
+        <div className="flex h-7 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
+          {/* Not a <button>: path-template pages render `:param`
+                  inputs inline, and inputs can't nest inside a button.
+                  Keyboard toggling stays on the chevron button. */}
+          <div
+            className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 pl-2 pr-1"
+            onClick={() => setPagesOpen((prev) => !prev)}
+          >
+            {activeGlobalSection && (
+              <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                <Globe02 size={11} />
+                Global
+              </span>
+            )}
+            {/* Page name in focus, followed by the route path.
+                      Path-template segments (`:param`/`*`) stay editable
+                      inputs; plain paths render as muted text. */}
+            <span
+              className={cn(
+                "text-[13px] font-medium text-foreground",
+                // A real page name keeps priority — the route path (flex-1,
+                // below) is the first to truncate. But the name still carries
+                // `min-w-0 truncate` so, once the path is fully shed, the name
+                // clips with an ellipsis instead of sliding under the chevron.
+                currentPageName == null
+                  ? "min-w-0 flex-1 truncate"
+                  : "min-w-0 shrink truncate",
+              )}
+            >
+              {currentPageName ?? previewLabel}
+            </span>
+            {!activeGlobalSection && currentPageName != null && currentPath && (
+              <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
+                {splitPathTemplate(currentPath).map((token, i) => {
+                  if (token.type === "text") {
+                    return (
+                      <span
+                        key={`text-${i}`}
+                        className={cn(
+                          i === 0 ? "min-w-0 truncate" : "shrink-0",
+                        )}
+                      >
+                        {token.text}
+                      </span>
+                    );
+                  }
+                  const sources = pathParamSources[token.name];
+                  // Params with option sources render as a chip that
+                  // opens the modal (search or free-form value);
+                  // the rest keep the inline input.
+                  if (sources && pickerSandboxRef) {
+                    return (
+                      <PathParamPickerChip
+                        key={`${currentPageKey}:${token.name}`}
+                        sources={sources}
+                        template={currentPath}
+                        paramName={token.name}
+                        value={pathParamValues[token.name] ?? ""}
+                        sandboxRef={pickerSandboxRef}
+                        onCommit={(value) =>
+                          setPathParamValue(token.name, value)
+                        }
+                      />
+                    );
+                  }
+                  return (
+                    <PathParamInput
+                      key={`${currentPageKey}:${token.name}`}
+                      name={token.name}
+                      value={pathParamValues[token.name] ?? ""}
+                      onCommit={(value) => setPathParamValue(token.name, value)}
+                    />
+                  );
+                })}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="flex h-full shrink-0 items-center pl-1 pr-2"
+            onClick={() => setPagesOpen((prev) => !prev)}
+            aria-label={t("sandbox.preview.choosePage")}
+          >
+            <ChevronDown
+              size={12}
+              className={cn(
+                "shrink-0 text-muted-foreground transition-transform",
+                pagesOpen && "rotate-180",
+              )}
+            />
+          </button>
+        </div>
+
+        {pagesOpen && (
+          <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
+            <div className="px-2 h-10 flex items-center gap-2 border-b">
+              <SearchLg
+                size={14}
+                className="shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+              <input
+                type="text"
+                value={pagesSearch}
+                onChange={(e) => setPagesSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  const query = pagesSearch.trim();
+                  if (!query) return;
+                  // Enter only navigates when the typed path matches an
+                  // existing page exactly; otherwise it does nothing.
+                  const target = filteredPages.find(
+                    (p) => normPath(p.path) === normPath(query),
+                  );
+                  if (!target) return;
+                  e.preventDefault();
+                  setPagesOpen(false);
+                  setPagesSearch("");
+                  navigatePreviewToPage(target);
+                }}
+                placeholder={t("sandbox.preview.searchPagesAndComponents")}
+                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                autoFocus
+              />
+            </div>
+            <div className="p-1.5 border-b">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setPagesOpen(false);
+                  setPagesSearch("");
+                  setCreatePageError(undefined);
+                  setCreatePageDialogOpen(true);
+                }}
+              >
+                <Plus size={16} className="shrink-0 text-muted-foreground" />
+                <span className="flex-1 font-medium">
+                  {t("sandbox.preview.createNewPage")}
+                </span>
+              </button>
+            </div>
+            {filteredPages.length === 0 &&
+            filteredGlobalSections.length === 0 ? (
+              <div className="px-4 py-5 text-center text-xs text-muted-foreground">
+                {pages.length === 0 && globalSections.length === 0
+                  ? t("sandbox.preview.noPagesFound")
+                  : t("sandbox.preview.noSearchResults")}
+              </div>
+            ) : (
+              <div className="max-h-80 overflow-y-auto overscroll-contain">
+                {filteredPages.length > 0 && (
+                  <div className="p-1.5">
+                    {filteredPages.map((page) => (
+                      <button
+                        key={page.key}
+                        type="button"
+                        className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setPagesOpen(false);
+                          setPagesSearch("");
+                          navigatePreviewToPage(page);
+                        }}
+                      >
+                        <LayoutAlt01
+                          size={16}
+                          className="shrink-0 text-muted-foreground"
+                        />
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {page.name}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {page.path}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {filteredGlobalSections.length > 0 && (
+                  <div
+                    className={cn(
+                      "p-1.5",
+                      filteredPages.length > 0 && "border-t",
+                    )}
+                  >
+                    <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                      {t("sandbox.preview.globalComponents")}
+                    </div>
+                    {filteredGlobalSections.map((section) => (
+                      <button
+                        key={section.key}
+                        type="button"
+                        className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setPagesOpen(false);
+                          setPagesSearch("");
+                          navigatePreviewToGlobalSection(section);
+                        }}
+                      >
+                        <Globe02
+                          size={16}
+                          className="shrink-0 text-muted-foreground"
+                        />
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {section.name}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {section.resolveType
+                            .split("/")
+                            .pop()
+                            ?.replace(/\.tsx?$/, "")}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {/* View controls (refresh · page · open-in-new) stay grouped after the
+          Edit action, which leads the group above. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ToolbarIconButton
+            aria-label={t("sandbox.preview.openInNewTab")}
+            onClick={() => {
+              const url = iframeSrc ?? display.iframeBase;
+              if (url) window.open(url, "_blank", "noopener");
+            }}
+          >
+            <LinkExternal01 size={16} />
+          </ToolbarIconButton>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {t("sandbox.preview.openInNewTab")}
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  ) : null;
+
+  // Overflow menu (⋯) — sits on the right, beside the publish actions. Renders
+  // whenever there's at least one available action: the Terminal toggle is
+  // always available (so it stays reachable during boot, before the iframe is
+  // up), while reload / copy / SEO items are gated on the preview being live.
+  const moreMenu =
+    showPreviewToolbar || terminal ? (
+      <div className="flex shrink-0 items-center">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("sandbox.preview.moreOptions")}
+            >
+              <DotsHorizontal size={14} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            {/* The CMS/Blocks toggle also lives here so it stays reachable when
+                the center toolbar (its primary home) collapses at narrow widths
+                — the ⋯ menu is in the always-present end slot. */}
+            {showPreviewToolbar && (
+              <>
+                <DropdownMenuItem onClick={() => toggleEditingMode("blocks")}>
+                  <Edit05 size={14} />
+                  {blocksActive
+                    ? t("sandbox.preview.exitEditor")
+                    : t("sandbox.preview.editContent")}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            {terminal && (
+              <DropdownMenuItem
+                onClick={() => terminal.setVisible(!terminal.visible)}
+              >
+                <Terminal size={14} />
+                {terminal.visible
+                  ? t("sandbox.preview.hideTerminal")
+                  : t("sandbox.preview.showTerminal")}
+              </DropdownMenuItem>
+            )}
+            {showPreviewToolbar && (
+              <>
+                {terminal && <DropdownMenuSeparator />}
+                <DropdownMenuItem onClick={handleHardReload}>
+                  {t("sandbox.preview.hardReload")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleCopyUrl}>
+                  {t("sandbox.preview.copyCurrentUrl")}
+                </DropdownMenuItem>
+              </>
+            )}
+            {decofile && meta && (
+              <>
+                <DropdownMenuSeparator />
+                {currentPageKey && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      workspace.editSeo({
+                        kind: "page",
+                        key: currentPageKey,
+                        path: currentPath,
+                      });
+                      activateEditingMode("blocks");
+                    }}
+                  >
+                    <CreditCardSearch size={14} />
+                    {t("sandbox.preview.editSeo")}
+                  </DropdownMenuItem>
+                )}
+                {currentPageKey && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      try {
+                        goToTab(
+                          formatCodeTabId(
+                            decoBlockFileViewPath(currentPageKey),
+                          ),
+                        );
+                      } catch {
+                        toast.error(t("sandbox.preview.invalidPageBlockKey"));
+                      }
+                    }}
+                  >
+                    <Code01 size={14} />
+                    {t("sandbox.preview.viewJson")}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => setSiteSeoOpen(true)}>
+                  <CreditCardSearch size={14} />
+                  {t("sandbox.preview.siteSeo")}
+                </DropdownMenuItem>
+              </>
+            )}
+            {repoDir && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => window.open(ideDeepLink("vscode", repoDir))}
+                >
+                  <img
+                    src={VSCODE_ICON_URL}
+                    alt="VSCode"
+                    width={14}
+                    height={14}
+                  />
+                  {t("sandbox.preview.openInVscode")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => window.open(ideDeepLink("cursor", repoDir))}
+                >
+                  <img
+                    src={CURSOR_ICON_URL}
+                    alt="Cursor"
+                    width={14}
+                    height={14}
+                  />
+                  {t("sandbox.preview.openInCursor")}
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => startCmsTour(t)}>
+              <Compass01 size={14} />
+              {t("cmsTour.menuItem")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    ) : null;
+
   const canVisualEdit = display.mode === "sandbox";
   const floatingPreviewControls = canVisualEdit ? (
-    <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
-      <div className="flex items-center gap-0.5 rounded-full border bg-background/90 p-1 shadow-lg backdrop-blur-sm">
+    <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 scale-125">
+      <div className="flex items-center gap-0.5 rounded-full border bg-background/60 p-1 shadow-lg backdrop-blur-md">
         <Tooltip>
           <TooltipTrigger asChild>
             <ToolbarIconButton
@@ -897,6 +1343,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               aria-label={t("sandbox.preview.visualEditor")}
               active={editingMode === "visual"}
               disabled={!canVisualEdit}
+              className="rounded-full"
+              data-tour={TOUR_ANCHORS.visualEditor}
             >
               <CursorClick01 size={16} />
             </ToolbarIconButton>
@@ -912,6 +1360,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               onClick={handleDeviceToggle}
               aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
               disabled={!canVisualEdit}
+              className="rounded-full"
+              data-tour={TOUR_ANCHORS.device}
             >
               <span
                 key={previewDeviceSize}
@@ -932,7 +1382,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   ) : null;
 
   return (
-    <div className="flex flex-col w-full h-full">
+    <div
+      className="flex flex-col w-full h-full"
+      data-tour={TOUR_ANCHORS.previewRoot}
+    >
       {/* Auto-select the first entity for a picker param with no value yet, so
           navigating to a bare dynamic-route template lands on a real page.
           Each helper renders nothing and unmounts once its param is filled. */}
@@ -949,409 +1402,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             />
           ) : null,
         )}
-      {/* Show the preview toolbar (URL bar, device toggles, Blocks) whenever an
-          iframe surface is visible. The sandbox surface still waits for the
-          daemon; the production fallback shows it right away so the boot state
-          isn't a bare canvas — page/Blocks controls fill in once the daemon is
-          up (they read the committed snapshot, empty until then). */}
-      {previewSurfaceActive &&
-        (daemonReady || display.mode === "production") && (
-          <div className="relative flex h-12 shrink-0 items-center gap-4 border-b border-border/60 px-3 md:px-4">
-            {previewSurfaceActive && (
-              <div className="flex h-full w-full items-center justify-between gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  data-testid="preview-blocks-toggle"
-                  onClick={() => toggleEditingMode("blocks")}
-                  aria-pressed={editingMode === "blocks"}
-                  aria-label={t("sandbox.preview.blocksEditor")}
-                >
-                  <TextInput size={14} />
-                  {t("sandbox.preview.blocks")}
-                </Button>
-
-                <div className="flex w-full min-w-0 max-w-[500px] items-center gap-0.5">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleRefresh}
-                        aria-label={t("sandbox.preview.refresh")}
-                      >
-                        <RefreshCw01 size={14} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      {t("sandbox.preview.refresh")}
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <div
-                    ref={pagesContainerRef}
-                    className="relative min-w-0 flex-1"
-                  >
-                    <div className="flex h-8 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
-                      {/* Not a <button>: path-template pages render `:param`
-                        inputs inline, and inputs can't nest inside a button.
-                        Keyboard toggling stays on the chevron button. */}
-                      <div
-                        className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 pl-2 pr-1"
-                        onClick={() => setPagesOpen((prev) => !prev)}
-                      >
-                        {activeGlobalSection && (
-                          <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                            <Globe02 size={11} />
-                            Global
-                          </span>
-                        )}
-                        {/* Page name in focus, followed by the route path.
-                            Path-template segments (`:param`/`*`) stay editable
-                            inputs; plain paths render as muted text. */}
-                        <span
-                          className={cn(
-                            "text-[13px] font-medium text-foreground",
-                            // A real page name stays fully visible (the route
-                            // path truncates instead); the host fallback has no
-                            // path segment to shed, so it must truncate itself.
-                            currentPageName == null
-                              ? "min-w-0 flex-1 truncate"
-                              : "shrink-0",
-                          )}
-                        >
-                          {currentPageName ?? previewLabel}
-                        </span>
-                        {!activeGlobalSection &&
-                          currentPageName != null &&
-                          currentPath && (
-                            <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
-                              {splitPathTemplate(currentPath).map(
-                                (token, i) => {
-                                  if (token.type === "text") {
-                                    return (
-                                      <span
-                                        key={`text-${i}`}
-                                        className={cn(
-                                          i === 0
-                                            ? "min-w-0 truncate"
-                                            : "shrink-0",
-                                        )}
-                                      >
-                                        {token.text}
-                                      </span>
-                                    );
-                                  }
-                                  const sources = pathParamSources[token.name];
-                                  // Params with option sources render as a chip that
-                                  // opens the modal (search or free-form value);
-                                  // the rest keep the inline input.
-                                  if (sources && pickerSandboxRef) {
-                                    return (
-                                      <PathParamPickerChip
-                                        key={`${currentPageKey}:${token.name}`}
-                                        sources={sources}
-                                        template={currentPath}
-                                        paramName={token.name}
-                                        value={
-                                          pathParamValues[token.name] ?? ""
-                                        }
-                                        sandboxRef={pickerSandboxRef}
-                                        onCommit={(value) =>
-                                          setPathParamValue(token.name, value)
-                                        }
-                                      />
-                                    );
-                                  }
-                                  return (
-                                    <PathParamInput
-                                      key={`${currentPageKey}:${token.name}`}
-                                      name={token.name}
-                                      value={pathParamValues[token.name] ?? ""}
-                                      onCommit={(value) =>
-                                        setPathParamValue(token.name, value)
-                                      }
-                                    />
-                                  );
-                                },
-                              )}
-                            </span>
-                          )}
-                      </div>
-                      <button
-                        type="button"
-                        className="flex h-full shrink-0 items-center pl-1 pr-2"
-                        onClick={() => setPagesOpen((prev) => !prev)}
-                        aria-label={t("sandbox.preview.choosePage")}
-                      >
-                        <ChevronDown
-                          size={12}
-                          className={cn(
-                            "shrink-0 text-muted-foreground transition-transform",
-                            pagesOpen && "rotate-180",
-                          )}
-                        />
-                      </button>
-                    </div>
-
-                    {pagesOpen && (
-                      <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-lg">
-                        <div className="px-2 h-10 flex items-center gap-2 border-b">
-                          <SearchLg
-                            size={14}
-                            className="shrink-0 text-muted-foreground"
-                            aria-hidden
-                          />
-                          <input
-                            type="text"
-                            value={pagesSearch}
-                            onChange={(e) => setPagesSearch(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key !== "Enter") return;
-                              const query = pagesSearch.trim();
-                              if (!query) return;
-                              // Enter only navigates when the typed path matches an
-                              // existing page exactly; otherwise it does nothing.
-                              const target = filteredPages.find(
-                                (p) => normPath(p.path) === normPath(query),
-                              );
-                              if (!target) return;
-                              e.preventDefault();
-                              setPagesOpen(false);
-                              setPagesSearch("");
-                              navigatePreviewToPage(target);
-                            }}
-                            placeholder={t(
-                              "sandbox.preview.searchPagesAndComponents",
-                            )}
-                            className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                            autoFocus
-                          />
-                        </div>
-                        <div className="p-1.5 border-b">
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              setPagesOpen(false);
-                              setPagesSearch("");
-                              setCreatePageError(undefined);
-                              setCreatePageDialogOpen(true);
-                            }}
-                          >
-                            <Plus
-                              size={16}
-                              className="shrink-0 text-muted-foreground"
-                            />
-                            <span className="flex-1 font-medium">
-                              {t("sandbox.preview.createNewPage")}
-                            </span>
-                          </button>
-                        </div>
-                        {filteredPages.length === 0 &&
-                        filteredGlobalSections.length === 0 ? (
-                          <div className="px-4 py-5 text-center text-xs text-muted-foreground">
-                            {pages.length === 0 && globalSections.length === 0
-                              ? t("sandbox.preview.noPagesFound")
-                              : t("sandbox.preview.noSearchResults")}
-                          </div>
-                        ) : (
-                          <div className="max-h-80 overflow-y-auto overscroll-contain">
-                            {filteredPages.length > 0 && (
-                              <div className="p-1.5">
-                                {filteredPages.map((page) => (
-                                  <button
-                                    key={page.key}
-                                    type="button"
-                                    className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      setPagesOpen(false);
-                                      setPagesSearch("");
-                                      navigatePreviewToPage(page);
-                                    }}
-                                  >
-                                    <LayoutAlt01
-                                      size={16}
-                                      className="shrink-0 text-muted-foreground"
-                                    />
-                                    <span className="min-w-0 flex-1 truncate font-medium">
-                                      {page.name}
-                                    </span>
-                                    <span className="shrink-0 text-xs text-muted-foreground">
-                                      {page.path}
-                                    </span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                            {filteredGlobalSections.length > 0 && (
-                              <div
-                                className={cn(
-                                  "p-1.5",
-                                  filteredPages.length > 0 && "border-t",
-                                )}
-                              >
-                                <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
-                                  {t("sandbox.preview.globalComponents")}
-                                </div>
-                                {filteredGlobalSections.map((section) => (
-                                  <button
-                                    key={section.key}
-                                    type="button"
-                                    className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      setPagesOpen(false);
-                                      setPagesSearch("");
-                                      navigatePreviewToGlobalSection(section);
-                                    }}
-                                  >
-                                    <Globe02
-                                      size={16}
-                                      className="shrink-0 text-muted-foreground"
-                                    />
-                                    <span className="min-w-0 flex-1 truncate font-medium">
-                                      {section.name}
-                                    </span>
-                                    <span className="shrink-0 text-xs text-muted-foreground">
-                                      {section.resolveType
-                                        .split("/")
-                                        .pop()
-                                        ?.replace(/\.tsx?$/, "")}
-                                    </span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          const url = iframeSrc ?? display.iframeBase;
-                          if (url) window.open(url, "_blank", "noopener");
-                        }}
-                        aria-label={t("sandbox.preview.openInNewTab")}
-                      >
-                        <LinkExternal01 size={14} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      {t("sandbox.preview.openInNewTab")}
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                <div className="flex shrink-0 items-center">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t("sandbox.preview.moreOptions")}
-                      >
-                        <DotsHorizontal size={14} />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44">
-                      <DropdownMenuItem onClick={handleHardReload}>
-                        {t("sandbox.preview.hardReload")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleCopyUrl}>
-                        {t("sandbox.preview.copyCurrentUrl")}
-                      </DropdownMenuItem>
-                      {decofile && meta && (
-                        <>
-                          <DropdownMenuSeparator />
-                          {currentPageKey && (
-                            <DropdownMenuItem
-                              onClick={() => {
-                                workspace.editSeo({
-                                  kind: "page",
-                                  key: currentPageKey,
-                                  path: currentPath,
-                                });
-                                activateEditingMode("blocks");
-                              }}
-                            >
-                              <CreditCardSearch size={14} />
-                              {t("sandbox.preview.editSeo")}
-                            </DropdownMenuItem>
-                          )}
-                          {currentPageKey && (
-                            <DropdownMenuItem
-                              onClick={() => {
-                                try {
-                                  goToTab(
-                                    formatCodeTabId(
-                                      decoBlockFileViewPath(currentPageKey),
-                                    ),
-                                  );
-                                } catch {
-                                  toast.error(
-                                    t("sandbox.preview.invalidPageBlockKey"),
-                                  );
-                                }
-                              }}
-                            >
-                              <Code01 size={14} />
-                              {t("sandbox.preview.viewJson")}
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            onClick={() => setSiteSeoOpen(true)}
-                          >
-                            <CreditCardSearch size={14} />
-                            {t("sandbox.preview.siteSeo")}
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                      {repoDir && (
-                        <>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() =>
-                              window.open(ideDeepLink("vscode", repoDir))
-                            }
-                          >
-                            <img
-                              src={VSCODE_ICON_URL}
-                              alt="VSCode"
-                              width={14}
-                              height={14}
-                            />
-                            {t("sandbox.preview.openInVscode")}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() =>
-                              window.open(ideDeepLink("cursor", repoDir))
-                            }
-                          >
-                            <img
-                              src={CURSOR_ICON_URL}
-                              alt="Cursor"
-                              width={14}
-                              height={14}
-                            />
-                            {t("sandbox.preview.openInCursor")}
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            )}
+      {headerSlot ? (
+        <>
+          {showPreviewToolbar && (
+            <MainPanelHeaderPortal>{urlControls}</MainPanelHeaderPortal>
+          )}
+          {/* End slot renders even during boot (showPreviewToolbar false): the
+              ⋯ menu is present so its Terminal toggle stays reachable, and the
+              preview-only items join once the iframe is live. */}
+          <MainPanelHeaderEndPortal>{moreMenu}</MainPanelHeaderEndPortal>
+        </>
+      ) : (
+        (showPreviewToolbar || moreMenu) && (
+          <div className="relative flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 md:px-4">
+            {showPreviewToolbar ? urlControls : <div />}
+            {moreMenu}
           </div>
-        )}
+        )
+      )}
 
       <div className="flex-1 overflow-hidden">
         {isMobile && effectiveEditingMode === "blocks" ? (

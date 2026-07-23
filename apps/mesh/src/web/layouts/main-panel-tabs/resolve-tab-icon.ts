@@ -1,7 +1,7 @@
 import type { ComponentType, SVGProps } from "react";
 import {
   Code02,
-  Edit05,
+  File02,
   Folder,
   GitBranch01,
   Globe01,
@@ -36,7 +36,7 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   automations: Lightning01,
   preview: Globe01,
   code: Code02,
-  content: Edit05,
+  content: File02,
   git: GitBranch01,
   files: Folder,
 };

@@ -37,6 +37,7 @@ import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 import { normalizePublishPolicy, type PublishGate } from "./sandbox-git-api.ts";
 import { useT, type TFunction } from "@/web/i18n/use-t";
+import { TOUR_ANCHORS } from "@/web/components/cms-tour/anchors";
 
 interface Props {
   virtualMcpId: string;
@@ -465,6 +466,7 @@ function HeaderButtonRenderer(props: {
           size="sm"
           variant={button.variant}
           disabled={disabled}
+          data-tour={TOUR_ANCHORS.submit}
           onClick={() => {
             if (button.action) props.onActivate(button.action);
           }}
@@ -487,6 +489,7 @@ function HeaderButtonRenderer(props: {
           <Button
             size="sm"
             variant="success"
+            data-tour={TOUR_ANCHORS.publish}
             disabled={props.githubActionPending || !props.publishGate.allowed}
             onClick={props.onPublishSide}
           >

@@ -9,6 +9,7 @@ import { Spinner } from "@deco/ui/components/spinner.tsx";
 import { ChevronDown } from "@untitledui/icons";
 import { useT } from "@/web/i18n/use-t.ts";
 import { publishToBaseLabel } from "./publish-label.ts";
+import { TOUR_ANCHORS } from "@/web/components/cms-tour/anchors";
 
 interface Props {
   /** PR base branch (e.g. main) — controls publish button copy. */
@@ -39,6 +40,7 @@ export function MergeSplitButton({
         variant="success"
         className="rounded-r-none border-r border-success-foreground/20"
         disabled={disabled}
+        data-tour={TOUR_ANCHORS.publish}
         onClick={() => void onPublish()}
       >
         {loading ? <Spinner size="xs" variant="default" /> : null}

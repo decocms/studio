@@ -31,6 +31,7 @@ import { decodeHtmlEntities } from "./decode-html-entities.ts";
 import { useBranches } from "./use-branches";
 import { useT } from "@/web/i18n/use-t.ts";
 import { useOpenPrs } from "./use-pr-data.ts";
+import { TOUR_ANCHORS } from "@/web/components/cms-tour/anchors";
 
 interface Props {
   orgId: string;
@@ -178,7 +179,10 @@ export function BranchPicker({
     <Popover open={open} onOpenChange={disabled ? undefined : setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex min-w-0 shrink">
+          <span
+            className="inline-flex min-w-0 shrink"
+            data-tour={TOUR_ANCHORS.branches}
+          >
             <PopoverTrigger asChild>
               <Button
                 variant={isHeader ? "outline" : "ghost"}

@@ -362,15 +362,9 @@ export function TaskGroupsList({
               <LayoutLeft size={16} />
             </SidebarMenuButton>
           </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              aria-label={t("sidebar.taskGroupsList.newChat")}
-              tooltip={t("sidebar.taskGroupsList.newChat")}
-              onClick={() => void handleNewThread()}
-            >
-              <Edit05 size={16} />
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+          {/* New chat lives in the panel header when the sidebar is collapsed
+              (see workspace-panel-group), so it's intentionally omitted from the
+              collapsed rail to avoid duplicating it. */}
           {visibleScopedThreads.map((thread) => {
             const agent = resolveAgent(thread.virtual_mcp_id);
             return (

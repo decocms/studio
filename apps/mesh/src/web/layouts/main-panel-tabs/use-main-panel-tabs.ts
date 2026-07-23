@@ -322,8 +322,8 @@ export function useMainPanelTabs(ctx: {
   // per-agent special-case. Source tabs (Preview · Code) share one capability
   // gate via getSourceSystemTabs; Blocks is an editing mode inside Preview.
   const leadingSystemTabs: Array<{ id: string; title: string }> = [];
-  // Library is agent-independent, so it lives in the LEFT toolbar group next to
-  // the Chat toggle (see LibraryToggle), NOT in this per-agent tab bar.
+  // Library / Tasks are agent-independent overlays; MainPanelTabsBar folds them
+  // into the button row itself, so they are NOT part of this per-agent list.
   //
   // Overview (the Super Agent's home board) is agent-independent — it renders
   // in place on any shell (see MainPanelContent's `overview` branch). Reports-

@@ -12,7 +12,7 @@
  */
 import { Suspense } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { ChevronDown } from "@untitledui/icons";
+import { ChevronDown, Edit05 } from "@untitledui/icons";
 import {
   Tooltip,
   TooltipContent,
@@ -37,6 +37,7 @@ import { usePanelActions } from "@/web/layouts/shell-layout";
 import { findReusableNewChat } from "@/web/lib/reusable-new-chat";
 import { authClient } from "@/web/lib/auth-client.ts";
 import { usePendingInvitations } from "@/web/hooks/use-pending-invitations";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const crumbBtnClass =
   "wco-no-drag inline-flex items-center gap-1.5 min-w-0 rounded-md pl-1 pr-2 py-1.5 text-sm text-foreground hover:bg-accent/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
@@ -213,5 +214,58 @@ export function AgentSwitcherCrumb({
         onPick={handlePickAgent}
       />
     </Suspense>
+  );
+}
+
+/**
+ * New-chat button — starts a fresh chat with the active agent (reusing an
+ * existing empty "New chat" for it when there is one, so empties don't pile
+ * up). Sibling of {@link AgentSwitcherCrumb}: shown in the same places (the
+ * collapsed-sidebar topbar / chat header) so "new chat" stays reachable when
+ * the sidebar's own new-chat action is tucked away.
+ */
+export function NewChatCrumb() {
+  const t = useT();
+  const { org } = useProjectContext();
+  const params = useParams({ strict: false }) as { taskId?: string };
+  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
+  const { threads } = useThreads();
+  const { data: session } = authClient.useSession();
+  const { setTaskId, createNewTask } = usePanelActions();
+
+  const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  const activeAgentId = params.taskId
+    ? (search.virtualmcpid ?? decopilotId)
+    : decopilotId;
+
+  const handleNewChat = () => {
+    const existing = findReusableNewChat(
+      threads,
+      activeAgentId,
+      session?.user?.id,
+    );
+    if (existing) {
+      setTaskId(existing.id, activeAgentId);
+    } else {
+      void createNewTask(activeAgentId);
+    }
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={handleNewChat}
+          aria-label={t("sidebar.taskGroupsList.newChat")}
+          className="wco-no-drag flex shrink-0 items-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <Edit05 size={16} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {t("sidebar.taskGroupsList.newChat")}
+      </TooltipContent>
+    </Tooltip>
   );
 }
