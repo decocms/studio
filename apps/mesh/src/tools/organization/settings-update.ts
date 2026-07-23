@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/studio-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 import {
   SidebarItemSchema,
   RegistryConfigSchema,
@@ -45,7 +45,12 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
 
-    if (ctx.organization && ctx.organization.id !== input.organizationId) {
+    // `requireOrganization` throws when no org is resolved on this context —
+    // the previous `ctx.organization && ...` guard skipped the mismatch check
+    // entirely in that case, letting `input.organizationId` (client-supplied)
+    // through unvalidated instead of failing closed.
+    const organization = requireOrganization(ctx);
+    if (organization.id !== input.organizationId) {
       throw new Error("Cannot update settings for a different organization");
     }
 
