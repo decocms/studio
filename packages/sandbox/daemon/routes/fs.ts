@@ -4,6 +4,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 import { safePath } from "../paths";
+import { invalidDecofileBlockJson } from "../decofile-json";
 import { parseJsonBody, jsonResponse } from "./body-parser";
 
 /**
@@ -196,6 +197,9 @@ export function makeWriteHandler(deps: FsDeps) {
       return jsonResponse({ error: "content is required" }, 400);
     const filePath = safePath(deps.appRoot, deps.repoDir, body.path ?? "");
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
+    const jsonError = invalidDecofileBlockJson(body.path ?? "", body.content);
+    if (jsonError)
+      return jsonResponse({ error: `Refusing to write ${jsonError}` }, 400);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, body.content, "utf-8");
     deps.onWorkingTreeWrite?.(body.path ?? "");
@@ -380,6 +384,9 @@ export function makeEditHandler(deps: FsDeps) {
     const updated = replaceAll
       ? content.replaceAll(body.old_string, body.new_string)
       : content.replace(body.old_string, body.new_string);
+    const jsonError = invalidDecofileBlockJson(body.path ?? "", updated);
+    if (jsonError)
+      return jsonResponse({ error: `Refusing to write ${jsonError}` }, 400);
     fs.writeFileSync(filePath, updated, "utf-8");
     deps.onWorkingTreeWrite?.(body.path ?? "");
     return jsonResponse({
@@ -514,6 +521,11 @@ export function makeGrepHandler(deps: FsDeps) {
  *
  * Body: { path: string; url: string }
  */
+// Unlike /write and /edit, this handler streams (potentially large, binary)
+// presigned-URL payloads and deliberately does NOT validate decofile-block JSON
+// — buffering the whole body to JSON.parse it would violate the daemon's
+// no-blocking rule. publish() is the backstop that catches any invalid block
+// written by this path (or any other) at the commit boundary.
 export function makeWriteFromUrlHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { path?: string; url?: string };
