@@ -336,6 +336,45 @@ export function isSsoExemptPath(path: string): boolean {
 }
 
 /**
+ * Decide the `Access-Control-Allow-Origin` value for a request's `Origin`
+ * header. The CORS middleware below sets `credentials: true`, so reflecting
+ * every origin (the previous behavior) let any external site issue a
+ * cookie-authenticated cross-site request against this API and read the
+ * response — a permissive-CORS-with-credentials hole. Only reflect
+ * localhost/127.0.0.1 (the Vite dev server, on a different port than the
+ * API) and the deployment's own origin, falling back to the request's own
+ * origin when `baseUrl` isn't configured (same fallback already used for
+ * redirect_uri validation above).
+ */
+export function resolveCorsOrigin(
+  origin: string,
+  {
+    baseUrl,
+    requestOrigin,
+  }: { baseUrl: string | undefined; requestOrigin: string },
+): string | null {
+  let originHost: string;
+  try {
+    originHost = new URL(origin).hostname;
+  } catch {
+    return null;
+  }
+  if (originHost === "localhost" || originHost === "127.0.0.1") {
+    return origin;
+  }
+
+  const allowedOrigin = baseUrl ?? requestOrigin;
+  try {
+    if (new URL(allowedOrigin).origin === origin) {
+      return origin;
+    }
+  } catch {
+    // malformed baseUrl config — fall through to reject
+  }
+  return null;
+}
+
+/**
  * Handle OAuth-proxy requests for an MCP connection.
  *
  * On the org-scoped mount (`/api/:org/oauth-proxy/...`) `resolveOrgFromPath`
@@ -1154,14 +1193,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.use(
     "/*",
     cors({
-      origin: (origin) => {
-        // Allow localhost and configured origins
-        if (origin.includes("localhost") || origin.includes("127.0.0.1")) {
-          return origin;
-        }
-        // TODO: Configure allowed origins from environment
-        return origin;
-      },
+      origin: (origin, c) =>
+        resolveCorsOrigin(origin, {
+          baseUrl: getSettings().baseUrl,
+          requestOrigin: new URL(c.req.url).origin,
+        }),
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization", "mcp-protocol-version"],
