@@ -4,6 +4,7 @@ import { useEffectEvent, useRef, useState } from "react";
 import type { DeckSlide, TemplateDeck } from "@/reports/deck-types";
 import { isPostHogInitialized } from "@/web/lib/posthog-client";
 import { useT } from "@/web/i18n/use-t.ts";
+import { authClient } from "@/web/lib/auth-client";
 import { resolveEmailLinkToken } from "./api";
 import Icon from "./icon";
 import { onboardingUrl, trackConnectCta } from "./onboarding";
@@ -19,7 +20,13 @@ const sharerPersonId = () =>
 
 // Pure deck renderer — the deck is built server-side (format_for_view) and
 // supplied by the route; see `@/reports/to-deck` + ScanGate for the data flow.
-export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
+export default function SignalDeck({
+  deck,
+  sessionUser,
+}: {
+  deck: TemplateDeck;
+  sessionUser?: { name?: string; email?: string; image?: string };
+}) {
   const t = useT();
   const total = deck.slides.length;
   const [index, setIndex] = useState(0);
@@ -35,6 +42,8 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
   const [navVisible, setNavVisible] = useState(false);
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const [shareAnchorRect, setShareAnchorRect] = useState<DOMRect | null>(null);
   const [sharePlacement, setSharePlacement] = useState<"above" | "below">(
     "above",
@@ -319,6 +328,31 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
     };
   };
 
+  const userInitials = sessionUser?.name
+    ? sessionUser.name
+        .split(" ")
+        .slice(0, 2)
+        .map((w) => w[0])
+        .join("")
+        .toUpperCase()
+    : (sessionUser?.email?.[0]?.toUpperCase() ?? "U");
+
+  /** Close the user menu on outside pointerdown. */
+  const userMenuOutsideRef = (panel: HTMLDivElement | null) => {
+    userMenuRef.current = panel;
+    if (!panel) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(e.target as Node)
+      ) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  };
+
   /** Close the share popover on outside pointerdown — listeners live exactly
    *  as long as the popover is mounted. */
   const shareOutsideRef = (panel: HTMLDivElement | null) => {
@@ -466,7 +500,70 @@ export default function SignalDeck({ deck }: { deck: TemplateDeck }) {
             />
           </a>
 
-          <div className="ml-auto flex shrink-0 items-center">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {sessionUser && (
+              <div className="relative" ref={userMenuOutsideRef}>
+                <button
+                  type="button"
+                  aria-label={t("reports.signalDeck.userMenuLabel")}
+                  aria-expanded={userMenuOpen}
+                  onClick={() => setUserMenuOpen((o) => !o)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border text-sm font-medium transition-transform hover:scale-[1.03]"
+                  style={{
+                    borderColor: DECK.cardBorder,
+                    background: sessionUser.image
+                      ? "transparent"
+                      : DECK.surface,
+                    color: DECK.ink,
+                  }}
+                >
+                  {sessionUser.image ? (
+                    <img
+                      src={sessionUser.image}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-[11px]">{userInitials}</span>
+                  )}
+                </button>
+                {userMenuOpen && (
+                  <div
+                    className="absolute right-0 top-full z-50 mt-2 min-w-[180px] overflow-hidden rounded-xl border shadow-xl"
+                    style={{
+                      background: DECK.surface,
+                      borderColor: DECK.border,
+                    }}
+                  >
+                    {sessionUser.email && (
+                      <div
+                        className="border-b px-4 py-3"
+                        style={{ borderColor: DECK.border }}
+                      >
+                        <p
+                          className="truncate text-xs"
+                          style={{ color: DECK.muted }}
+                        >
+                          {sessionUser.email}
+                        </p>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        authClient.signOut();
+                      }}
+                      className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium transition-colors hover:bg-black/5"
+                      style={{ color: DECK.ink }}
+                    >
+                      <Icon name="logout" size="medium" />
+                      {t("reports.signalDeck.signOut")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             <button
               type="button"
               onClick={(e) => handleShareClick(e, slide)}

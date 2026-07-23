@@ -211,6 +211,7 @@ export default function ReportPage() {
       domain={domain}
       initial={initial.data}
       sessionEmail={session.data.user.email}
+      sessionUser={session.data.user}
       lang={language}
     />
   );

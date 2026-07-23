@@ -26,11 +26,13 @@ export default function ScanGate({
   domain,
   initial,
   sessionEmail,
+  sessionUser,
   lang,
 }: {
   domain: string;
   initial?: ReportState;
   sessionEmail: string;
+  sessionUser?: { name?: string; email?: string; image?: string };
   lang?: string;
 }) {
   const [deck, setDeck] = useState<TemplateDeck | null>(
@@ -60,7 +62,7 @@ export default function ScanGate({
     return () => controller.abort();
   };
 
-  if (deck) return <SignalDeck deck={deck} />;
+  if (deck) return <SignalDeck deck={deck} sessionUser={sessionUser} />;
   if (phase === "unauthorized") {
     return <ReportAuthGate domain={domain} />;
   }

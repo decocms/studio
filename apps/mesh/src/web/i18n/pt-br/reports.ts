@@ -132,6 +132,8 @@ export const reports = {
   "reports.signalDeck.shareOnLinkedIn": "Compartilhar no LinkedIn",
   "reports.signalDeck.shareOnX": "Compartilhar no X",
   "reports.signalDeck.viewFullDiagnostic": "Ver diagnóstico completo",
+  "reports.signalDeck.signOut": "Sair",
+  "reports.signalDeck.userMenuLabel": "Menu do usuário",
   "reports.commerceBanner.storeDefault": "sua loja",
   "reports.commerceBanner.generatingTitle": "Gerando seu diagnóstico",
   "reports.commerceBanner.readyTitle": "Seu relatório está pronto",
