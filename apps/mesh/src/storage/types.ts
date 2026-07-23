@@ -1220,6 +1220,57 @@ export interface ThreadMessagePartTable {
 // ============================================================================
 
 /**
+ * Per-org billing identity (see migration 137). Platform-written only:
+ * migration backfill, org-creation hook, Stripe webhooks — NEVER writable by
+ * org members (billing in the org `metadata` would be, via
+ * ORGANIZATION_UPDATE). `legacy = true` orgs are exempt from seat
+ * enforcement forever.
+ */
+export interface OrganizationBillingTable {
+  organization_id: string;
+  legacy: boolean;
+  /** "self_serve" (Stripe, charge on apply) | "invoiced" (contract orgs). */
+  billing_mode: ColumnType<string, string | undefined, string>;
+  /** Subscription status: "none" | "active" | "past_due" | "canceled". */
+  status: ColumnType<string, string | undefined, string>;
+  stripe_customer_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  stripe_subscription_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  current_period_end: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  /** The one site whose weekly report re-run the subscription includes. */
+  included_report_url: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/**
+ * Presence = this member holds a paid seat. Absence = free seat (readonly +
+ * no AI when STUDIO_BILLING_ENFORCED is on). Seats are monetization, NOT
+ * governance: orthogonal to Better Auth roles — an org owner can hold a free
+ * seat (the report-funnel onboarding case).
+ */
+export interface OrganizationPaidSeatTable {
+  organization_id: string;
+  user_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/**
  * Organization tag table definition
  * Stores normalized tag definitions per organization
  */
@@ -1715,6 +1766,10 @@ export interface Database extends PrivateRegistryDatabase {
   // Member tags tables
   organization_tags: OrganizationTagTable;
   member_tags: MemberTagTable;
+
+  // Per-seat billing (dormant behind STUDIO_BILLING_ENFORCED)
+  organization_billing: OrganizationBillingTable;
+  organization_paid_seat: OrganizationPaidSeatTable;
 
   // Virtual MCP plugin configs
   virtual_mcp_plugin_configs: VirtualMcpPluginConfigTable;

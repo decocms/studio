@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 import { rebindOrgScope } from "../../core/context-factory";
 import { isOrgArchived } from "../../core/org-archived";
+import { getSettings } from "../../settings";
 
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
@@ -143,6 +144,31 @@ export const resolveOrgFromPath: MiddlewareHandler<{
     } else {
       pathRole = membership.role;
     }
+  }
+
+  // Seat gate (per-seat billing) — members only, and only when this
+  // deployment enforces billing (STUDIO_BILLING_ENFORCED; self-hosted never
+  // turns it on). Seats are monetization, orthogonal to roles: the gate state
+  // is loaded here once per request and enforced inside AccessControl.check()
+  // BEFORE the admin/owner bypass. A missing billing row fails OPEN (treated
+  // as legacy) so an org-creation hook failure can't brick an org.
+  if (pathRole && userId && getSettings().billingEnforced) {
+    const [billing, paidSeat] = await Promise.all([
+      db
+        .selectFrom("organization_billing")
+        .select(["legacy"])
+        .where("organization_id", "=", org.id)
+        .executeTakeFirst(),
+      db
+        .selectFrom("organization_paid_seat")
+        .select(["user_id"])
+        .where("organization_id", "=", org.id)
+        .where("user_id", "=", userId)
+        .executeTakeFirst(),
+    ]);
+    ctx.access.setSeatGated(
+      billing !== undefined && !billing.legacy && paidSeat === undefined,
+    );
   }
 
   ctx.organization = {

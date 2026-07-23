@@ -72,6 +72,10 @@ export interface Settings {
 
   // Feature Flags
   enableDecoImport: boolean;
+  /** Per-seat billing enforcement (STUDIO_BILLING_ENFORCED). Default OFF —
+   *  self-hosted deployments never turn this on; with it off, every member
+   *  behaves as a paid seat and billing tables are inert. */
+  billingEnforced: boolean;
   /** MCP read/list caching. On by default in production, off in development;
    *  MCP_CACHE_ENABLED explicitly overrides either default. */
   mcpCacheEnabled: boolean;

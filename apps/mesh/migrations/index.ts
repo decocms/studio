@@ -135,6 +135,7 @@ import * as migration133dedupeduplicatemembers from "./133-dedupe-duplicate-memb
 import * as migration134droptaskboardenabled from "./134-drop-task-board-enabled.ts";
 import * as migration135taskboarditemfkcascade from "./135-task-board-item-fk-cascade.ts";
 import * as migration136taskboardimportidempotency from "./136-task-board-import-idempotency.ts";
+import * as migration137organizationbilling from "./137-organization-billing.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -295,6 +296,7 @@ const migrations: Record<string, Migration> = {
   "134-drop-task-board-enabled": migration134droptaskboardenabled,
   "135-task-board-item-fk-cascade": migration135taskboarditemfkcascade,
   "136-task-board-import-idempotency": migration136taskboardimportidempotency,
+  "137-organization-billing": migration137organizationbilling,
 };
 
 export default migrations;
