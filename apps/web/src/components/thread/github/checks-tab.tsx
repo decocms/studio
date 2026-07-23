@@ -52,8 +52,13 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
 
   if (checksQuery.isError) {
     return (
-      <div className="text-sm text-destructive">
-        {t("thread.checksTab.couldntLoadCheckRuns")}
+      <div className="flex flex-col gap-1 text-sm text-destructive">
+        <span>{t("thread.checksTab.couldntLoadCheckRuns")}</span>
+        {checksQuery.error?.message && (
+          <span className="text-xs text-muted-foreground">
+            {checksQuery.error.message}
+          </span>
+        )}
       </div>
     );
   }

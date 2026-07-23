@@ -16,7 +16,7 @@
 import { useMCPClient, useMCPToolCallQuery } from "@/sdk";
 
 import { extractPullRequestList } from "./github-pr-api.ts";
-import { extractToolJson } from "./extract-tool-json.ts";
+import { assertToolOk, extractToolJson } from "./extract-tool-json.ts";
 
 export interface PrSummary {
   number: number;
@@ -141,6 +141,7 @@ export function usePrByBranch(args: RepoArgs & { branch: string | null }) {
     refetchIntervalInBackground: false,
     staleTime: STALE,
     select: (r) => {
+      assertToolOk(r);
       const arr = extractPullRequestList(r);
       if (arr.length === 0) return null;
       return mapRawPr(arr[0]!);
@@ -180,7 +181,10 @@ export function useOpenPrs(args: RepoArgs & { enabled?: boolean }) {
       !!args.owner &&
       !!args.repo,
     staleTime: STALE,
-    select: (r) => extractPullRequestList(r).map(mapRawPr),
+    select: (r) => {
+      assertToolOk(r);
+      return extractPullRequestList(r).map(mapRawPr);
+    },
   });
 }
 
@@ -211,6 +215,7 @@ export function useChecks(
     refetchIntervalInBackground: false,
     staleTime: STALE,
     select: (r) => {
+      assertToolOk(r);
       // Accept both `{ check_runs: [...] }` envelopes and raw arrays.
       const raw = extractToolJson<
         { check_runs?: Record<string, unknown>[] } | Record<string, unknown>[]
@@ -269,6 +274,7 @@ export function usePrComments(
     refetchIntervalInBackground: false,
     staleTime: STALE,
     select: (r) => {
+      assertToolOk(r);
       const arr = extractToolJson<Record<string, unknown>[]>(r);
       if (!Array.isArray(arr)) return [];
       return arr.map((c): PrComment => {

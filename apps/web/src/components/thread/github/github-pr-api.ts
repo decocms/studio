@@ -2,6 +2,7 @@ import {
   extractToolJson,
   pullNumberFromUrl,
   pullRequestFromToolText,
+  toolErrorMessage,
 } from "./extract-tool-json.ts";
 import {
   appendCoAuthorToPullRequestBody,
@@ -15,11 +16,6 @@ type GithubMcpClient = {
     name: string;
     arguments: Record<string, unknown>;
   }) => Promise<unknown>;
-};
-
-type ToolResultLike = {
-  isError?: boolean;
-  content?: Array<{ type?: string; text?: string }>;
 };
 
 export interface CreatedPullRequest {
@@ -40,14 +36,6 @@ export interface OpenPullRequestArgs {
   body?: string;
   base: string;
   coAuthor?: CoAuthorIdentity;
-}
-
-function toolErrorMessage(result: unknown): string | null {
-  if (!result || typeof result !== "object") return null;
-  const r = result as ToolResultLike;
-  if (!r.isError) return null;
-  const text = r.content?.find((c) => c.type === "text")?.text?.trim();
-  return text || "GitHub MCP tool returned an error";
 }
 
 function assertGithubToolSuccess(result: unknown): void {
