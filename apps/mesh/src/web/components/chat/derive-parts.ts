@@ -61,6 +61,7 @@ function resourcesToParts(
   const parts: ChatMessage["parts"] = [];
 
   for (const content of contents) {
+    if (!content || typeof content !== "object") continue;
     if ("text" in content && content.text) {
       parts.push({
         type: "text",
@@ -267,7 +268,12 @@ export function derivePartsFromTiptapDoc(
           | Record<string, unknown>
           | unknown[]
           | null;
-        if (meta && !Array.isArray(meta) && "agentId" in meta) {
+        if (
+          meta &&
+          typeof meta === "object" &&
+          !Array.isArray(meta) &&
+          "agentId" in meta
+        ) {
           // Agent mention: instruct the AI to delegate via subtask
           parts.push({
             type: "text",
@@ -305,6 +311,8 @@ export function derivePartsFromTiptapDoc(
         if (
           Array.isArray(metadata) &&
           metadata.length > 0 &&
+          typeof metadata[0] === "object" &&
+          metadata[0] !== null &&
           "role" in metadata[0]
         ) {
           // Prompt messages
