@@ -1375,6 +1375,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   </div>
                 )}
 
+                {previewState.kind === "othersThread" && (
+                  <div className="absolute inset-0 z-30">
+                    <SandboxStateCard
+                      kind="othersThread"
+                      label={previewState.label}
+                      onContinue={lifecycle.acknowledgeOthersThread}
+                      onStartNewThread={() =>
+                        navigate({
+                          to: "/$org/$taskId",
+                          params: {
+                            org: org.slug,
+                            taskId: crypto.randomUUID(),
+                          },
+                          search: (prev) => ({
+                            ...prev,
+                            sidepanel: "chat" as const,
+                          }),
+                        })
+                      }
+                    />
+                  </div>
+                )}
+
                 {previewState.kind === "suspended" && (
                   <div className="absolute inset-0 z-30">
                     <SandboxStateCard
