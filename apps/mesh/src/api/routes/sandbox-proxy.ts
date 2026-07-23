@@ -845,20 +845,25 @@ export const createSandboxRoutes = () => {
     },
   );
 
-  // -- Preview fetch (CORS proxy for /.decofile) ----------------------------
+  // -- Preview fetch (CORS proxy for same-origin public preview assets) --------
   // /live/_meta is fetched directly from the preview URL by the client
-  // (the deco dev server allows CORS `*` for it). /.decofile must go through
-  // this proxy because cloud previews don't expose it cross-origin.
+  // (the deco dev server allows CORS `*` for it). These must go through this
+  // proxy because cloud previews don't expose them cross-origin:
+  //   - /.decofile   — the committed decofile snapshot (block state)
+  //   - /sprites.svg — the site's icon sprite sheet (served by the CF Assets
+  //     binding with no CORS header, read here for the icon-select picker)
+  //   - any storefront page (`/`, `/granado/...`) whose SSR HTML the path-param
+  //     picker scrapes for category/product links
+  // The preview URL is derived server-side from the authed claim (never a
+  // client param), so this stays SSRF-safe. The path is client-supplied but
+  // constrained to same-origin: it must start with `/` and cannot escape the
+  // origin (protocol-relative `//`, traversal `..`, or backslash).
   app.get("/:virtualMcpId/:branch/preview-fetch", async (c) => {
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;
 
     const { claimName } = c.get("vmClaim");
     const path = c.req.query("path");
-    // Only same-origin sandbox paths (the iframe already loads this origin):
-    // `/.decofile` (block state) and any storefront page (`/`, `/granado/...`)
-    // whose SSR HTML the path-param picker scrapes for category/product links.
-    // Reject anything that could escape the origin (protocol-relative, traversal).
     if (
       !path ||
       !path.startsWith("/") ||

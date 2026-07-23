@@ -21,6 +21,8 @@ import { Label } from "@deco/ui/components/label.tsx";
 import { KEYS } from "@/web/lib/query-keys";
 import { useT } from "@/web/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
+import { buildPreviewFetchUrl } from "../preview-fetch-url";
+import { fetchSpriteIcons } from "./icon-sprite";
 
 export interface DynamicOption {
   value: string;
@@ -28,6 +30,12 @@ export interface DynamicOption {
   image?: string;
   /** Inline SVG markup for the option preview (deco `icon-select` loaders). */
   icon?: string;
+  /**
+   * Pre-rendered preview `src` (URL or data-URI). Set by callers that can encode
+   * it once up front (e.g. sprite icons) so the render path doesn't re-encode
+   * per option; falls back to deriving from `image`/`icon` when absent.
+   */
+  previewSrc?: string;
 }
 
 export function normalizeOptions(data: unknown): DynamicOption[] {
@@ -119,16 +127,32 @@ export function svgPreviewDataUri(svg: string, color?: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(shimmed)}`;
 }
 
-/** The app's current foreground color, so icon previews match the theme. */
+/**
+ * The app's foreground token, so monochrome `currentColor` icon previews match
+ * the theme (white on the dark theme). Reads the `--foreground` design-system
+ * variable, which flips with the `.dark` class on `<html>`. Reading the raw
+ * `color` of `<html>` instead is wrong — the theme sets its foreground via this
+ * variable, not the element's `color`, so `<html>.color` stays the default black
+ * and would render every icon black (invisible on the dark theme).
+ */
 function themeForegroundColor(): string | undefined {
-  const color = getComputedStyle(document.documentElement).color;
-  return color || undefined;
+  const fg = getComputedStyle(document.documentElement)
+    .getPropertyValue("--foreground")
+    .trim();
+  return fg || undefined;
 }
 
-/** Preview image source for an option: `image` is a URL, `icon` inline SVG. */
-function optionPreviewSrc(opt: DynamicOption): string | undefined {
+/**
+ * Preview image source for an option: a pre-rendered `previewSrc`, else an
+ * `image` URL, else an inline `icon` SVG encoded with the theme `fg` color.
+ */
+function optionPreviewSrc(
+  opt: DynamicOption,
+  fg: string | undefined,
+): string | undefined {
+  if (opt.previewSrc) return opt.previewSrc;
   if (opt.image) return opt.image;
-  if (opt.icon) return svgPreviewDataUri(opt.icon, themeForegroundColor());
+  if (opt.icon) return svgPreviewDataUri(opt.icon, fg);
   return undefined;
 }
 
@@ -158,11 +182,13 @@ async function fetchDynamicOptions(
 function OptionPreview({
   option,
   className,
+  fg,
 }: {
   option: DynamicOption;
   className?: string;
+  fg: string | undefined;
 }) {
-  const src = optionPreviewSrc(option);
+  const src = optionPreviewSrc(option, fg);
   if (!src) return null;
   return (
     <img
@@ -229,6 +255,13 @@ export function DynamicOptionsField({
 
   const currentValue = typeof value === "string" ? value : "";
 
+  // icon-select works across runtimes: Deno/Fresh (and other sites that still
+  // ship the `availableIcons` loader) resolve icons through the `@options`
+  // loader as usual; on TanStack sites that loader is deleted during migration
+  // (its resolveType 404s), so we fall back to the schema `enum` for the list
+  // and the site's own `/sprites.svg` (see icon-sprite.ts) for the previews.
+  const isIconSelect = schema.format === "icon-select";
+
   const query = useQuery({
     queryKey: KEYS.sandboxInvoke(
       sandboxKey,
@@ -247,14 +280,71 @@ export function DynamicOptionsField({
     retry: 1,
   });
 
+  const loaderOptions = query.data ?? [];
+
+  // Reach for the site sprite only when the loader can't supply icons: either
+  // there's no `@options` loader (TanStack, where it's deleted) or the loader
+  // has settled with nothing. Gating on `query.isFetched` (not just an empty
+  // `loaderOptions`, which is also empty while the loader is in flight) is what
+  // keeps a working-loader site from fetching the sprite concurrently.
+  const spriteQuery = useQuery({
+    queryKey: KEYS.sandboxSprite(sandboxKey),
+    queryFn: () =>
+      fetchSpriteIcons(
+        buildPreviewFetchUrl(
+          {
+            orgSlug: sandbox!.orgSlug,
+            virtualMcpId: sandbox!.virtualMcpId,
+            branch: sandbox!.branch,
+            previewUrl,
+          },
+          "/sprites.svg",
+        ),
+      ),
+    enabled:
+      isIconSelect &&
+      !!sandbox &&
+      (open || !!currentValue) &&
+      (!loaderPath || (query.isFetched && loaderOptions.length === 0)),
+    staleTime: 300_000,
+    retry: 1,
+  });
+
   const enumFallback = enumFallbackOptions(schema.enum);
-  const options = resolveOptions(query.data ?? [], enumFallback);
+  const spriteIcons = spriteQuery.data ?? {};
+  // Read the theme foreground once per render (a getComputedStyle style read)
+  // instead of once per option inside OptionPreview.
+  const fg = themeForegroundColor();
+  // Encode each sprite icon to a data-URI exactly once. Both inputs are stable
+  // across renders (react-query's data ref + the fg string value), so the React
+  // Compiler memoizes this — without it a 100+ icon list would re-encode every
+  // SVG on every keystroke.
+  const spriteSrcByValue = Object.fromEntries(
+    Object.entries(spriteIcons).map(([name, svg]) => [
+      name,
+      svgPreviewDataUri(svg, fg),
+    ]),
+  );
+  // Enum is the fallback list; on icon-select each name carries its already
+  // encoded sprite preview so the picker shows the icon, not just the label.
+  const enumOptions =
+    isIconSelect && Object.keys(spriteSrcByValue).length > 0
+      ? enumFallback.map((opt) => ({
+          ...opt,
+          previewSrc: spriteSrcByValue[opt.value],
+        }))
+      : enumFallback;
+  // Loader wins when it returns anything (Fresh/Deno); otherwise the enum
+  // (+ sprite previews for icon-select).
+  const options = resolveOptions(loaderOptions, enumOptions);
   const visibleOptions = filterOptions(options, search);
   const selectedOption = options.find((opt) => opt.value === currentValue);
 
   // Fallback to text input only when there's no option source at all: no
   // loader/preview to fetch from AND no schema enum to list.
-  if ((!previewUrl || !loaderPath) && enumFallback.length === 0) {
+  const noOptionSource =
+    (!previewUrl || !loaderPath) && enumFallback.length === 0;
+  if (noOptionSource) {
     return (
       <div className="space-y-2">
         <FieldHeader
@@ -285,7 +375,11 @@ export function DynamicOptionsField({
           >
             {selectedOption ? (
               <span className="flex min-w-0 items-center gap-2">
-                <OptionPreview option={selectedOption} className="h-6 w-6" />
+                <OptionPreview
+                  option={selectedOption}
+                  className="h-6 w-6"
+                  fg={fg}
+                />
                 <span className="truncate">
                   {selectedOption.label ?? selectedOption.value}
                 </span>
@@ -333,6 +427,7 @@ export function DynamicOptionsField({
                       <OptionPreview
                         option={opt}
                         className={cn(opt.image ? "h-9 w-9" : "h-6 w-6")}
+                        fg={fg}
                       />
                       <span className="truncate">{opt.label ?? opt.value}</span>
                     </span>
