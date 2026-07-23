@@ -330,6 +330,22 @@ describe("git routes", () => {
     });
   });
 
+  it("diff POST returns 400 (not 500) when the base branch isn't on origin", async () => {
+    const { appRoot, repoDir } = initRepo();
+    const handler = makeGitDiffHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/diff", {
+        method: "POST",
+        body: JSON.stringify({ base: "does-not-exist" }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Base branch 'does-not-exist' not found on origin",
+    });
+  });
+
   it("publish appends operator co-author trailer", async () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir);

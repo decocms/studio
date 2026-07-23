@@ -146,6 +146,18 @@ export interface GitStatusResult {
   unpushed: number;
 }
 
+/**
+ * The requested base branch doesn't exist on origin (typo, deleted branch) —
+ * a client/data condition, not a server fault, so the route maps it to 400
+ * instead of a raw 500.
+ */
+class BaseBranchNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BaseBranchNotFoundError";
+  }
+}
+
 export interface GitDiffEntry {
   from: string | null;
   to: string | null;
@@ -364,7 +376,9 @@ export async function computeDiffAgainstBase(
     }
 
     if (!resolveLocally(upstream)) {
-      throw new Error(`Base branch '${base}' not found on origin`);
+      throw new BaseBranchNotFoundError(
+        `Base branch '${base}' not found on origin`,
+      );
     }
 
     if (hasValidHeadSha && resolveLocally(`${headSha}^{commit}`)) {
@@ -739,6 +753,9 @@ export function makeGitDiffHandler(deps: GitDeps) {
       return jsonResponse(result);
     } catch (err) {
       if (err instanceof InvalidRemoteBranchNameError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
+      if (err instanceof BaseBranchNotFoundError) {
         return jsonResponse({ error: err.message }, 400);
       }
       return jsonResponse(
