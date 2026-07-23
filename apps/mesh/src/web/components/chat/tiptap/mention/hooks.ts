@@ -12,6 +12,7 @@ import {
   useContext,
   useDeferredValue,
   useEffect,
+  useEffectEvent,
   useReducer,
   useRef,
   useState,
@@ -365,10 +366,12 @@ export function useMentionState({
     selectedItem: null,
   });
 
-  // Ref for onOpenChange to avoid stale closures in the plugin
-  const onOpenChangeRef = useRef(onOpenChange);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  onOpenChangeRef.current = onOpenChange;
+  // Always calls the latest onOpenChange, without needing the plugin
+  // registration effect below to re-run (and tear down/rebuild the plugin)
+  // whenever the caller passes a new function identity.
+  const notifyOpenChange = useEffectEvent((open: boolean) => {
+    onOpenChange?.(open);
+  });
 
   // Register the suggestion plugin here at the top level
   // This ensures it's always active even when the menu is closed
@@ -426,7 +429,7 @@ export function useMentionState({
               range: props.range,
             },
           });
-          onOpenChangeRef.current?.(true);
+          notifyOpenChange(true);
         },
 
         onUpdate: (props: SuggestionProps<BaseItem>) => {
@@ -450,7 +453,7 @@ export function useMentionState({
 
         onExit: () => {
           dispatch({ type: "ON_EXIT" });
-          onOpenChangeRef.current?.(false);
+          notifyOpenChange(false);
         },
       }),
 

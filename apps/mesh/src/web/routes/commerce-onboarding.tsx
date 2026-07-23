@@ -643,6 +643,7 @@ function CommerceSetup({
   org: CommerceOrganization;
   initialSiteUrl?: string;
 }) {
+  const t = useT();
   const { data: session } = authClient.useSession();
   const [preferences] = usePreferences();
   const meetingUrl = buildScheduleMeetingUrl({
@@ -666,7 +667,7 @@ function CommerceSetup({
                 message={
                   error instanceof Error
                     ? error.message
-                    : useT()(
+                    : t(
                         "routes.commerceOnboarding.couldNotVerifyCommerceSetting",
                       )
                 }

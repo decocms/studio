@@ -292,6 +292,10 @@ export const sandbox = {
     "Valor para {paramLabel} — clique para escolher",
   "sandbox.pathParamPickerChip.couldNotLoad":
     "Não foi possível carregar — o servidor de desenvolvimento está rodando?",
+  "sandbox.pathParamPickerChip.kindCategoryHeading": "Categorias",
+  "sandbox.pathParamPickerChip.kindCategoryNoun": "categoria",
+  "sandbox.pathParamPickerChip.kindProductHeading": "Produtos",
+  "sandbox.pathParamPickerChip.kindProductNoun": "produto",
   "sandbox.pathParamPickerChip.loading": "Carregando {noun}…",
   "sandbox.pathParamPickerChip.noResults": "Nenhum resultado.",
   "sandbox.pathParamPickerChip.pickValueHeading": "Escolha um valor para",
@@ -402,6 +406,9 @@ export const sandbox = {
   "sandbox.preview.searchPagesAndComponents":
     "Procurar páginas e componentes...",
   "sandbox.preview.siteSeo": "SEO do site",
+  "sandbox.preview.startingPreview": "Iniciando seu preview",
+  "sandbox.preview.startingPreviewHint":
+    "Você já pode fazer alterações — elas aparecem quando o preview estiver pronto.",
   "sandbox.preview.templateNoLongerExists":
     "O modelo selecionado não existe mais.",
   "sandbox.preview.urlCopiedToClipboard":
@@ -495,6 +502,10 @@ export const sandbox = {
   "sandbox.redirectEditor.typePermanent": "Permanente ({status})",
   "sandbox.redirectEditor.typePlaceholder": "Tipo",
   "sandbox.redirectEditor.typeTemporary": "Temporário ({status})",
+  "sandbox.productionUrlField.description":
+    "Exibida no preview enquanto o servidor de desenvolvimento inicia, para você já visualizar e editar.",
+  "sandbox.productionUrlField.label": "URL de produção",
+  "sandbox.productionUrlField.placeholder": "https://exemplo.com",
   "sandbox.repoRow.label": "Repositório",
   "sandbox.repoRow.noRepositoryConnected": "Nenhum repositório conectado",
   "sandbox.repoRow.tooltipContent":
@@ -583,6 +594,11 @@ export const sandbox = {
     "Selecione uma seção para editar",
   "sandbox.stateCard.githubNotAuthenticatedMessage":
     "O repositório GitHub deste agente não está autenticado. Reconecte em Conexões e tente novamente.",
+  "sandbox.stateCard.othersThreadTitle": "Você está no chat de outra pessoa",
+  "sandbox.stateCard.othersThreadMessage":
+    "Esta conversa ({label}) é de outro membro. Continuar vai iniciar um sandbox na branch dela — comece um novo chat para trabalhar no seu.",
+  "sandbox.stateCard.othersThreadContinue": "Continuar mesmo assim",
+  "sandbox.stateCard.othersThreadNewChat": "Começar novo chat",
   "sandbox.stateCard.reconnectGithub": "Reconectar GitHub",
   "sandbox.stateCard.resume": "Retomar",
   "sandbox.stateCard.resumeToContinue": "Retome para continuar.",

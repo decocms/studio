@@ -162,6 +162,18 @@ export const virtualMcp = {
     "No connections yet. Add one to get started.",
   "virtualMcp.virtualMcp.openFullscreenEditor": "Open fullscreen editor",
   "virtualMcp.virtualMcp.promptTemplate": "+ Prompt template",
+  "virtualMcp.virtualMcp.publishing": "Publishing",
+  "virtualMcp.virtualMcp.publishingDescription":
+    "Control when this agent's changes can be published directly, skipping pull-request review.",
+  "virtualMcp.virtualMcp.publishPolicySmart": "Smart review",
+  "virtualMcp.virtualMcp.publishPolicySmartDescription":
+    "AI checks each change and only asks for review when the code looks risky (new endpoints, large or backend changes). Content and design edits publish directly.",
+  "virtualMcp.virtualMcp.publishPolicyCodeReview": "Require review for code",
+  "virtualMcp.virtualMcp.publishPolicyCodeReviewDescription":
+    "Any code change must go through pull-request review before publishing. Only content and design changes publish directly.",
+  "virtualMcp.virtualMcp.publishPolicyOpen": "Publish freely",
+  "virtualMcp.virtualMcp.publishPolicyOpenDescription":
+    "Publish any change directly, without review.",
   "virtualMcp.virtualMcp.sandbox": "Sandbox",
   "virtualMcp.virtualMcp.settings": "Settings",
   "virtualMcp.virtualMcp.spaceNotFound": "Space not found",

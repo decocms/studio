@@ -30,6 +30,22 @@ export function buildPreviewInvokePath(ref: RunBlockSandboxRef): string {
 }
 
 /**
+ * Studio proxy path for a preview GET fetch:
+ * `GET /api/:org/sandbox/:virtualMcpId/:branch/preview-fetch?path=<path>`.
+ * The proxy fetches `<preview><path>` server-side so the browser stays out of
+ * CORS. `path` may be any same-origin path that can't escape the origin (the
+ * proxy rejects protocol-relative / traversal); used to read the site's
+ * homepage and listing HTML for link-based entity discovery.
+ */
+export function buildPreviewFetchPath(
+  ref: RunBlockSandboxRef,
+  path: string,
+): string {
+  const base = `/api/${ref.orgSlug}/sandbox/${encodeURIComponent(ref.virtualMcpId)}/${encodeURIComponent(ref.branch)}/preview-fetch`;
+  return `${base}?path=${encodeURIComponent(path)}`;
+}
+
+/**
  * Build the invoke URL for "Open result in new tab": a top-level GET
  * navigation to `<preview>/deco/invoke/<resolveType>` with the resolveType RAW
  * in the path (slashes intact). A navigation can't POST, so props ride in the

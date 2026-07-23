@@ -33,7 +33,7 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
-      {{- if or .Values.metrics.scrape .Values.podAnnotations }}
+      {{- if or .Values.metrics.scrape .Values.podAnnotations .Values.worker.doNotDisrupt }}
       annotations:
         {{- if .Values.metrics.scrape }}
         # Worker runs the stream pump (encode/publish) and the run executors, so
@@ -43,6 +43,17 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: {{ .Values.configMap.meshConfig.PORT | default "3000" | quote }}
         prometheus.io/path: {{ .Values.metrics.path | quote }}
+        {{- end }}
+        {{- if .Values.worker.doNotDisrupt }}
+        # Workers execute in-flight agent-loop runs (DBOS workflows, concurrency=1
+        # per thread). Workers are I/O-bound on LLM/sandbox calls, so their nodes
+        # look CPU-idle and Karpenter consolidates them ("Evicted: Underutilized")
+        # mid-run — graceful shutdown then blocks on pending workflows while the
+        # replacement pod re-recovers ~20 workflows and the interrupted run's
+        # sandbox is reaped, so decopilot chats stall. Block Karpenter VOLUNTARY
+        # disruption (consolidation/drift/expiration); deploys still roll pods
+        # normally and land them on fresh nodes, so drift is resolved each release.
+        karpenter.sh/do-not-disrupt: "true"
         {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}

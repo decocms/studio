@@ -15,7 +15,7 @@ import {
 import type { ListResourcesResult } from "@modelcontextprotocol/sdk/types.js";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Editor } from "@tiptap/react";
-import { useRef, useState } from "react";
+import { useEffectEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BaseItem, insertMention, OnSelectProps, Suggestion } from "./mention";
 import { track } from "@/web/lib/posthog-client";
@@ -59,9 +59,9 @@ export const AtMention = ({
   const resourcesQueryKey = KEYS.virtualMcpResources(virtualMcpId, org.id);
 
   const [mode, setMode] = useState<AtMode>("categories");
-  const modeRef = useRef(mode);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  modeRef.current = mode;
+  // Always reads the latest `mode` from fetchItems, which react-query calls
+  // outside of render (so a plain closure over `mode` would go stale).
+  const getMode = useEffectEvent(() => mode);
 
   // Track picker open → close outcome so we can measure abandonment.
   const pickerOpenedAtRef = useRef<number | null>(null);
@@ -139,7 +139,7 @@ export const AtMention = ({
 
   const fetchItems = async (props: { query: string }): Promise<AtItem[]> => {
     const { query } = props;
-    const currentMode = modeRef.current;
+    const currentMode = getMode();
 
     if (currentMode === "categories") {
       if (!query.trim()) return categoryItems;

@@ -85,6 +85,7 @@ function CollectionDetailsContent() {
     from: "/shell/$org/settings/connections/$appSlug/$collectionName/$itemId",
   });
 
+  const t = useT();
   const collectionName = decodeURIComponent(params.collectionName);
   const itemId = decodeURIComponent(params.itemId);
 
@@ -170,7 +171,6 @@ function CollectionDetailsContent() {
     );
   }
 
-  const t = useT();
   return (
     <ViewLayout breadcrumb={breadcrumb}>
       <EmptyState

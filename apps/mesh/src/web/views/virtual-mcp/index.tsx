@@ -35,6 +35,10 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card, CardContent } from "@deco/ui/components/card.tsx";
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "@deco/ui/components/radio-group.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import {
   Tooltip,
@@ -44,6 +48,7 @@ import {
 import {
   ENV_VAR_KEY_RE,
   StudioPackAgentId,
+  SUBMODULE_HOST_RE,
   useConnectionActions,
   useProjectContext,
   useVirtualMCP,
@@ -74,8 +79,10 @@ import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { agentHasConnectedGithub } from "@/web/lib/agent-capabilities";
 import { DevAgentSetup } from "@/web/components/dev-agent/dev-agent-setup.tsx";
 import { EnvVarsField } from "@/web/components/sandbox/runtime-card/env-vars-field";
+import { SubmoduleCredentialsField } from "@/web/components/sandbox/runtime-card/submodule-credentials-field";
 import { RepoRow } from "@/web/components/sandbox/runtime-card/repo-row";
 import { RuntimeFields } from "@/web/components/sandbox/runtime-card/runtime-fields";
+import { ProductionUrlField } from "@/web/components/sandbox/runtime-card/production-url-field";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -187,6 +194,36 @@ function stripIncompleteEnvEntries(
       runtime: {
         ...(data.metadata?.runtime ?? {}),
         env: cleaned,
+      },
+    },
+  };
+}
+
+/**
+ * Drop half-filled submodule-credential rows (no host, invalid host, or no
+ * secretId) before autosave, same rationale as `stripIncompleteEnvEntries`:
+ * the partial row stays in form state so the user keeps editing, but the
+ * request body only carries entries the server schema accepts.
+ */
+function stripIncompleteSubmoduleCredentials(
+  data: VirtualMcpFormData,
+): VirtualMcpFormData {
+  const creds = data.metadata?.runtime?.submoduleCredentials;
+  if (!creds || creds.length === 0) return data;
+  const cleaned = creds.filter((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const host = ((entry as { host?: string }).host ?? "").trim();
+    if (!host || !SUBMODULE_HOST_RE.test(host)) return false;
+    return Boolean((entry as { secretId?: string }).secretId);
+  });
+  if (cleaned.length === creds.length) return data;
+  return {
+    ...data,
+    metadata: {
+      ...data.metadata,
+      runtime: {
+        ...(data.metadata?.runtime ?? {}),
+        submoduleCredentials: cleaned,
       },
     },
   };
@@ -395,10 +432,13 @@ function VirtualMcpDetailViewWithData({
     // current form values; only _defaultValues advances.
     form.reset(formData, { keepValues: true });
 
-    // Strip in-progress env rows (no key, or kind=secret with no secretId).
-    // The partial row stays in the form state so the user keeps editing it,
-    // but the request body only carries entries the server schema accepts.
-    const payload = stripIncompleteEnvEntries(formData);
+    // Strip in-progress env rows (no key, or kind=secret with no secretId) and
+    // submodule-credential rows (no host / no secretId). The partial rows stay
+    // in form state so the user keeps editing, but the request body only
+    // carries entries the server schema accepts.
+    const payload = stripIncompleteSubmoduleCredentials(
+      stripIncompleteEnvEntries(formData),
+    );
 
     await actions.update.mutateAsync({
       id: virtualMcp.id,
@@ -1040,6 +1080,90 @@ Define step-by-step how the agent should handle requests.
             {/* Development agent section (link a dev counterpart) */}
             <DevAgentSetup virtualMcp={virtualMcp} />
 
+            {/* Publishing section (code agents only) */}
+            {hasGithubRepo && (
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-sm font-medium text-foreground">
+                    {t("virtualMcp.virtualMcp.publishing")}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {t("virtualMcp.virtualMcp.publishingDescription")}
+                  </p>
+                </div>
+                <Card className="p-6">
+                  <CardContent className="p-0">
+                    <Controller
+                      name="metadata.publishPolicy"
+                      control={form.control}
+                      render={({ field }) => (
+                        <RadioGroup
+                          value={field.value ?? "smart"}
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            flushAndSave();
+                          }}
+                          className="gap-4"
+                        >
+                          {(
+                            [
+                              {
+                                value: "smart",
+                                label: t(
+                                  "virtualMcp.virtualMcp.publishPolicySmart",
+                                ),
+                                description: t(
+                                  "virtualMcp.virtualMcp.publishPolicySmartDescription",
+                                ),
+                              },
+                              {
+                                value: "code-review",
+                                label: t(
+                                  "virtualMcp.virtualMcp.publishPolicyCodeReview",
+                                ),
+                                description: t(
+                                  "virtualMcp.virtualMcp.publishPolicyCodeReviewDescription",
+                                ),
+                              },
+                              {
+                                value: "open",
+                                label: t(
+                                  "virtualMcp.virtualMcp.publishPolicyOpen",
+                                ),
+                                description: t(
+                                  "virtualMcp.virtualMcp.publishPolicyOpenDescription",
+                                ),
+                              },
+                            ] as const
+                          ).map((option) => (
+                            <label
+                              key={option.value}
+                              htmlFor={`publish-policy-${option.value}`}
+                              className="flex cursor-pointer items-start gap-3"
+                            >
+                              <RadioGroupItem
+                                id={`publish-policy-${option.value}`}
+                                value={option.value}
+                                className="mt-0.5"
+                              />
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-sm font-medium text-foreground">
+                                  {option.label}
+                                </span>
+                                <span className="text-sm text-muted-foreground">
+                                  {option.description}
+                                </span>
+                              </div>
+                            </label>
+                          ))}
+                        </RadioGroup>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
             {/* Sandbox section */}
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
@@ -1050,12 +1174,17 @@ Define step-by-step how the agent should handle requests.
               <Card className="p-6 gap-5">
                 <CardContent className="p-0 space-y-5">
                   <RepoRow repo={runtimeCardRepo} />
+                  <ProductionUrlField control={form.control} />
                   <RuntimeFields control={form.control} />
                   <EnvVarsField
                     control={form.control}
                     form={form}
                     virtualMcpId={virtualMcp.id}
                     orgSlug={org.slug}
+                  />
+                  <SubmoduleCredentialsField
+                    control={form.control}
+                    form={form}
                   />
                 </CardContent>
               </Card>

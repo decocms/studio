@@ -242,6 +242,39 @@ const RuntimeEnvEntrySchema = z.discriminatedUnion("kind", [
 export type RuntimeEnvEntry = z.infer<typeof RuntimeEnvEntrySchema>;
 
 /**
+ * One git submodule credential on a virtual MCP. Submodules live in other
+ * repositories/orgs that the main clone's per-repo GitHub App token cannot
+ * reach, so the user supplies a PAT (stored as a vault secret) keyed by the
+ * submodule's host. mesh resolves `secretId` against the credential vault on
+ * every SANDBOX_START and posts the token to the daemon on a git-only channel
+ * (never the env bag) so `git submodule update` can authenticate. `host` is the
+ * bare hostname (e.g. "github.com"); the daemon rewrites `git@<host>:` SSH
+ * submodule URLs to HTTPS so the token applies.
+ */
+/**
+ * A bare submodule hostname with an optional port (e.g. "github.com",
+ * "gitlab.example.com:8443"). Single source of truth for the shape: the schema
+ * below enforces it, and the sandbox UI imports it. The daemon keeps its own
+ * copy (it can't depend on mesh-sdk) — see `VALID_SUBMODULE_HOST` in
+ * packages/sandbox/daemon/setup/clone.ts; keep the two in sync.
+ */
+export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
+
+const SubmoduleCredentialSchema = z.object({
+  host: z
+    .string()
+    .min(1)
+    .regex(SUBMODULE_HOST_RE)
+    .describe("Submodule host, e.g. 'github.com' (bare hostname, no scheme)."),
+  secretId: z
+    .string()
+    .min(1)
+    .describe("Vault secret id holding the PAT used to fetch this host."),
+});
+
+export type SubmoduleCredential = z.infer<typeof SubmoduleCredentialSchema>;
+
+/**
  * User-pinned runtime configuration stored under `metadata.runtime`. Empty
  * fields fall back to autodetect on the next SANDBOX_START.
  */
@@ -273,6 +306,13 @@ const RuntimeMetadataSchema = z.object({
     .optional()
     .describe(
       "Env vars injected on every SANDBOX_START. Literal entries inline their value; secret entries store a secretId that mesh resolves via the credential vault before posting /_sandbox/config.",
+    ),
+  submoduleCredentials: z
+    .array(SubmoduleCredentialSchema)
+    .nullable()
+    .optional()
+    .describe(
+      "Git submodule credentials injected on every SANDBOX_START. Each entry maps a host to a vault secret (PAT) that mesh resolves before posting /_sandbox/config; the daemon uses it to authenticate `git submodule update` for submodules on that host.",
     ),
 });
 
@@ -542,6 +582,25 @@ const knowledgeMetadataField = z
   );
 
 /**
+ * Controls when a code agent's changes may be published directly (squash-merged
+ * to base) instead of going through pull-request review.
+ * - `smart` (default): a cheap AI judges each change — code that looks risky
+ *   (new endpoints, large or backend changes) needs review; content/design and
+ *   small frontend edits publish directly.
+ * - `code-review`: any code change requires review; only CMS/design changes
+ *   publish directly.
+ * - `open`: every change publishes directly, no review required.
+ */
+const PublishPolicySchema = z.enum(["smart", "code-review", "open"]);
+export type PublishPolicy = z.infer<typeof PublishPolicySchema>;
+
+const publishPolicyMetadataField = PublishPolicySchema.nullable()
+  .optional()
+  .describe(
+    "Controls when this code agent's changes may be published directly vs. requiring PR review. 'smart' (default) uses AI to judge per change; 'code-review' requires review for any code; 'open' allows direct publish always.",
+  );
+
+/**
  * Virtual MCP entity schema - single source of truth
  * Compliant with collections binding pattern
  */
@@ -610,6 +669,14 @@ export const VirtualMCPEntitySchema = z.object({
         .nullable()
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
+      publishPolicy: publishPolicyMetadataField,
+      productionUrl: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
+        ),
     })
     .loose()
     .describe("Metadata"),
@@ -708,6 +775,14 @@ export const VirtualMCPCreateDataSchema = z.object({
         .nullable()
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
+      publishPolicy: publishPolicyMetadataField,
+      productionUrl: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
+        ),
     })
     .loose()
     .nullable()
@@ -787,6 +862,14 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .nullable()
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
+      publishPolicy: publishPolicyMetadataField,
+      productionUrl: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
+        ),
     })
     .loose()
     .nullable()

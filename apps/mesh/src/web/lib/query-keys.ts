@@ -523,6 +523,9 @@ export const KEYS = {
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   sandboxRepoDir: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["sandbox-repo-dir", orgSlug, virtualMcpId, branch] as const,
+  // icon-select previews: the site's /sprites.svg, fetched via the preview proxy
+  sandboxSprite: (sandboxKey: string) =>
+    ["sandbox-sprite", sandboxKey] as const,
 
   // Link daemon status (user-scoped; the cluster derives the userSub
   // from the bearer session, so we don't include it in the key).

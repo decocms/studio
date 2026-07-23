@@ -10,6 +10,7 @@ import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Container } from "@untitledui/icons";
 import type { EnrichedMonitoringLog } from "./types.tsx";
 import { TableCell, TableRow } from "@deco/ui/components/table.tsx";
+import { useT } from "@/web/i18n/use-t";
 
 // ============================================================================
 // Types
@@ -42,6 +43,7 @@ export function LogRow({
   onClick,
   lastLogRef,
 }: LogRowProps) {
+  const t = useT();
   const timestamp = new Date(log.timestamp);
   const dateStr = timestamp.toLocaleDateString("en-US", {
     month: "short",
@@ -131,7 +133,9 @@ export function LogRow({
             variant={log.isError ? "destructive" : "success"}
             className="px-1.5 md:px-2 py-0.5 md:py-1"
           >
-            {log.isError ? "Error" : "OK"}
+            {log.isError
+              ? t("monitoring.logRow.statusError")
+              : t("monitoring.logRow.statusOk")}
           </Badge>
         </div>
       </TableCell>

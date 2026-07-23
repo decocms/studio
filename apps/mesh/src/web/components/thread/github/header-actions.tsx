@@ -35,22 +35,24 @@ import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-eve
 import { usePublishGate } from "@/web/components/sandbox/hooks/use-publish-gate.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
-import type { PublishGate } from "./sandbox-git-api.ts";
+import { normalizePublishPolicy, type PublishGate } from "./sandbox-git-api.ts";
 import { useT, type TFunction } from "@/web/i18n/use-t";
 
 interface Props {
   virtualMcpId: string;
 }
 
-// Note: LOADING_BRANCH_BUTTON is module-scope and not component-rendered text directly;
-// will be replaced with i18n in HeaderActions component
-const LOADING_BRANCH_BUTTON: HeaderButton = {
-  label: "Loading branch…",
-  disabled: true,
-  loading: true,
-  variant: "outline",
-  tooltip: "Waiting for sandbox branch",
-};
+// Sentinel for the branch-not-yet-selected state; labels are filled in
+// at render time using the translated versions from the component.
+function makeBranchLoadingButton(t: TFunction): HeaderButton {
+  return {
+    label: t("thread.headerActions.loadingBranch"),
+    disabled: true,
+    loading: true,
+    variant: "outline",
+    tooltip: t("thread.headerActions.waitingForSandboxBranchTooltip"),
+  };
+}
 
 /**
  * HeaderActions renders the next-action button for the current branch + PR
@@ -160,6 +162,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     effectiveBranchMeta.kind === "ready"
       ? `${effectiveBranchMeta.headSha}:${effectiveBranchMeta.workingTreeDirty}:${effectiveBranchMeta.unpushed}:${effectiveBranchMeta.aheadOfBase}`
       : "unknown";
+  const publishPolicy = normalizePublishPolicy(vm?.metadata?.publishPolicy);
   const { gate: publishGate } = usePublishGate({
     orgSlug: org.slug,
     virtualMcpId,
@@ -168,6 +171,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     headSha:
       effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.headSha : null,
     signature: publishGateSignature,
+    policy: publishPolicy,
     enabled: publishGateEnabled,
   });
 
@@ -204,8 +208,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
         checks: checksQuery.data ?? [],
         reviews: reviewsQuery.data ?? null,
         loading: isPrStateActivelyLoading(prQuery),
+        t,
       })
-    : LOADING_BRANCH_BUTTON;
+    : makeBranchLoadingButton(t);
 
   const debugKey = JSON.stringify({
     label: button.label,
@@ -383,6 +388,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
           owner={githubRepo.owner}
           repo={githubRepo.name}
           previewUrl={previewUrl}
+          publishPolicy={publishPolicy}
           dialogIntent={publishDialogIntent}
           headSha={
             effectiveBranchMeta.kind === "ready"
@@ -470,8 +476,12 @@ function HeaderButtonRenderer(props: {
       {props.showPublishSide ? (
         <WithTooltip
           label={
-            props.publishGate.reason ??
-            t("thread.headerActions.publishDirectlySkipReview")
+            props.publishGate.pending
+              ? t("thread.headerActions.reviewingChanges")
+              : props.publishGate.allowed
+                ? t("thread.headerActions.publishDirectlySkipReview")
+                : (props.publishGate.reason ??
+                  t("thread.headerActions.publishNeedsReview"))
           }
         >
           <Button
@@ -480,6 +490,9 @@ function HeaderButtonRenderer(props: {
             disabled={props.githubActionPending || !props.publishGate.allowed}
             onClick={props.onPublishSide}
           >
+            {props.publishGate.pending ? (
+              <Spinner size="xs" variant="default" />
+            ) : null}
             {t("thread.headerActions.publish")}
           </Button>
         </WithTooltip>

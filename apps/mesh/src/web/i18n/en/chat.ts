@@ -428,6 +428,7 @@ export const chat = {
   "chat.userAskQuestion.customChoiceInputAriaLabel": "Custom choice input",
   "chat.userAskQuestion.preparingQuestion": "Preparing question...",
   "chat.userAskQuestion.question": "Question",
+  "chat.userAskQuestion.questionCount": "{current} of {total}",
   "chat.userAskQuestion.questionPending": "Question pending",
   "chat.userAskQuestion.selectOption": "Select {option}",
   "chat.userAskQuestion.skip": "Skip",

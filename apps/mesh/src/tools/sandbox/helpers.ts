@@ -10,6 +10,7 @@ import {
   ENV_VAR_KEY_RE,
   type RuntimeEnvEntry,
   type SandboxRecord,
+  type SubmoduleCredential,
 } from "@decocms/mesh-sdk";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
@@ -29,6 +30,7 @@ export type RuntimeConfigMeta = {
     port?: string | null;
     path?: string | null;
     env?: RuntimeEnvEntry[] | null;
+    submoduleCredentials?: SubmoduleCredential[] | null;
   } | null;
 };
 
@@ -63,6 +65,36 @@ export function readValidatedRuntimeEnv(
       e.secretId.length > 0
     ) {
       out.push({ key: e.key, kind: "secret", secretId: e.secretId });
+    }
+  }
+  return out.length === 0 ? null : out;
+}
+
+/**
+ * Defensive reader for `metadata.runtime.submoduleCredentials`. Same rationale
+ * as `readValidatedRuntimeEnv`: the JSON metadata column is untrusted, so drop
+ * any entry missing a string `host`/`secretId` rather than trusting the cast.
+ */
+export function readValidatedSubmoduleCredentials(
+  metadata: Record<string, unknown> | null | undefined,
+): SubmoduleCredential[] | null {
+  if (!metadata) return null;
+  const runtime = (metadata as { runtime?: unknown }).runtime;
+  if (!runtime || typeof runtime !== "object") return null;
+  const creds = (runtime as { submoduleCredentials?: unknown })
+    .submoduleCredentials;
+  if (!Array.isArray(creds)) return null;
+  const out: SubmoduleCredential[] = [];
+  for (const item of creds) {
+    if (!item || typeof item !== "object") continue;
+    const c = item as Record<string, unknown>;
+    if (
+      typeof c.host === "string" &&
+      c.host.length > 0 &&
+      typeof c.secretId === "string" &&
+      c.secretId.length > 0
+    ) {
+      out.push({ host: c.host, secretId: c.secretId });
     }
   }
   return out.length === 0 ? null : out;

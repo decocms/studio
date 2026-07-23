@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { Fragment, useRef, useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { ArrowRight, SearchSm } from "@untitledui/icons";
 import {
   Command,
@@ -15,10 +15,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
-import { fillPathTemplate } from "@/web/components/sections-editor/page-path-utils";
+import {
+  fillPathTemplate,
+  stripSurroundingSlashes,
+} from "@/web/components/sections-editor/page-path-utils";
 import { KEYS } from "@/web/lib/query-keys";
 import { useT } from "@/web/i18n/use-t.ts";
 import {
+  buildPreviewFetchPath,
   buildPreviewInvokePath,
   type RunBlockSandboxRef,
 } from "@/web/components/sandbox/content/use-run-block";
@@ -34,10 +38,20 @@ import {
 
 const PICKER_FETCH_TIMEOUT_MS = 10_000;
 
-const KIND_LABELS: Record<PathParamKind, { noun: string; heading: string }> = {
-  product: { noun: "product", heading: "Products" },
-  category: { noun: "category", heading: "Categories" },
-};
+function kindLabels(
+  t: ReturnType<typeof useT>,
+): Record<PathParamKind, { noun: string; heading: string }> {
+  return {
+    product: {
+      noun: t("sandbox.pathParamPickerChip.kindProductNoun"),
+      heading: t("sandbox.pathParamPickerChip.kindProductHeading"),
+    },
+    category: {
+      noun: t("sandbox.pathParamPickerChip.kindCategoryNoun"),
+      heading: t("sandbox.pathParamPickerChip.kindCategoryHeading"),
+    },
+  };
+}
 
 /**
  * Invoke a loader via the studio preview-invoke proxy (same-origin,
@@ -62,6 +76,57 @@ async function invokeLoader(
 }
 
 /**
+ * Fetch a storefront page's SSR HTML through the preview-fetch proxy
+ * (same-origin, server-side — the preview origin isn't CORS-reachable). Used by
+ * the homepage-links fallback source to discover real category/product URLs.
+ */
+async function fetchPreviewPage(
+  ref: RunBlockSandboxRef,
+  path: string,
+): Promise<string> {
+  const res = await fetch(buildPreviewFetchPath(ref, path), {
+    signal: AbortSignal.timeout(PICKER_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch page: ${res.status}`);
+  }
+  return res.text();
+}
+
+/**
+ * Discover options for the homepage-links source. The homepage yields the nav
+ * categories, but its (cookie-less) SSR often omits shelf products — so we drill
+ * into the first discovered listing, whose SSR embeds the product JSON, and
+ * merge. Two fetches at most; a failed drill-in still returns the categories.
+ */
+async function fetchSiteLinkOptions(
+  ref: RunBlockSandboxRef,
+  source: OptionSource,
+  ctx: OptionPayloadContext,
+): Promise<PathParamOption[]> {
+  const home = source.optionsFromPayload(await fetchPreviewPage(ref, "/"), ctx);
+  // Drill into the first CATEGORY (a listing page whose SSR embeds shelf
+  // products) — not home[0], which is a product when the homepage embeds shelves
+  // (products are emitted before categories), and a PDP has no shelf to scrape.
+  const firstListing = home.find((o) => o.kind === "category");
+  if (!firstListing) return home;
+  const listingPath = fillPathTemplate(ctx.template, {
+    [ctx.paramName]: firstListing.value,
+  });
+  if (listingPath === "/") return home;
+  try {
+    // The listing page contributes PRODUCTS only — categories stay the clean
+    // homepage nav, not the drilled page's (much longer) subcategory list.
+    const products = source
+      .optionsFromPayload(await fetchPreviewPage(ref, listingPath), ctx)
+      .filter((o) => o.kind === "product");
+    return mergePickerOptions([home, products]);
+  } catch {
+    return home;
+  }
+}
+
+/**
  * react-query key for a source + term. clientFilter sources fetch once (whole
  * tree, filtered locally) so their key ignores the term; both the chip's modal
  * query and preview.tsx's auto-fill query use this, sharing one cache entry.
@@ -79,8 +144,9 @@ function pickerInvokeKey(
 
 /**
  * Fetch and map options for one source. A term can fan out to several loader
- * calls (e.g. product ids + name query); they run in parallel and merge in
- * order, deduped. Partial failures are tolerated as long as one call succeeds.
+ * calls (e.g. product ids + name query, or the generic-seed variants); they run
+ * in parallel and merge in order, deduped. Partial failures are tolerated as
+ * long as one call succeeds.
  */
 async function fetchOptions(
   ref: RunBlockSandboxRef,
@@ -88,7 +154,10 @@ async function fetchOptions(
   term: string,
   ctx: OptionPayloadContext,
 ): Promise<PathParamOption[]> {
-  const requests = source.buildRequests(term);
+  if (source.homepageLinks) {
+    return fetchSiteLinkOptions(ref, source, ctx);
+  }
+  const requests = source.buildRequests?.(term) ?? [];
   if (requests.length === 0) return [];
   const settled = await Promise.allSettled(
     requests.map((request) => invokeLoader(ref, request)),
@@ -109,91 +178,80 @@ async function fetchOptions(
   );
 }
 
-/** One source's fetched options rendered as a labelled command group. */
-function PickerSourceGroup({
-  source,
-  sandboxRef,
-  template,
-  paramName,
-  open,
-  search,
-  debouncedSearch,
-  showHeading,
-  onSelect,
-}: {
-  source: OptionSource;
-  sandboxRef: RunBlockSandboxRef;
-  template: string;
-  paramName: string;
-  open: boolean;
-  search: string;
-  debouncedSearch: string;
-  showHeading: boolean;
-  onSelect: (value: string) => void;
-}) {
-  const t = useT();
-  const query = useQuery({
-    queryKey: pickerInvokeKey(sandboxRef, source, debouncedSearch),
-    queryFn: () =>
-      fetchOptions(sandboxRef, source, debouncedSearch, {
-        template,
-        paramName,
-      }),
-    enabled: open,
+/** query options shared by the chip's modal and the headless auto-fill. */
+function pickerQuery(
+  ref: RunBlockSandboxRef,
+  source: OptionSource,
+  term: string,
+  ctx: OptionPayloadContext,
+  enabled: boolean,
+) {
+  return {
+    queryKey: pickerInvokeKey(ref, source, term),
+    queryFn: () => fetchOptions(ref, source, term, ctx),
+    enabled,
     staleTime: 60_000,
     retry: 1,
-  });
+  };
+}
 
-  const { noun, heading } = KIND_LABELS[source.kind];
-  const options = source.clientFilter
-    ? filterPickerOptions(query.data ?? [], search)
-    : (query.data ?? []);
-
-  const status = query.isLoading
-    ? t("sandbox.pathParamPickerChip.loading", { noun })
-    : query.isError
-      ? t("sandbox.pathParamPickerChip.couldNotLoad")
-      : null;
-
-  if (!status && options.length === 0) return null;
-
+/** A labelled list of options (presentational). Renders nothing when empty. */
+function OptionGroup({
+  heading,
+  iconKind,
+  options,
+  template,
+  paramName,
+  keyPrefix,
+  onSelect,
+}: {
+  heading?: string;
+  iconKind: PathParamKind;
+  options: PathParamOption[];
+  template: string;
+  paramName: string;
+  keyPrefix: string;
+  onSelect: (value: string) => void;
+}) {
+  if (options.length === 0) return null;
   return (
-    <CommandGroup heading={showHeading ? heading : undefined}>
-      {status ? (
-        <div className="px-2 py-2 text-xs text-muted-foreground">{status}</div>
-      ) : (
-        options.map((opt) => (
-          <CommandItem
-            key={`${source.id}:${opt.value}`}
-            value={`${source.id}:${opt.value}`}
-            className="gap-3 py-2"
-            onSelect={() => onSelect(opt.value)}
-          >
-            {source.kind === "product" && (
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
-                {opt.image ? (
-                  <img
-                    src={opt.image}
-                    alt=""
-                    referrerPolicy="no-referrer"
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <SearchSm size={14} className="text-muted-foreground" />
-                )}
-              </span>
-            )}
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm">{opt.label}</span>
-              <span className="block truncate text-xs text-muted-foreground">
-                {fillPathTemplate(template, { [paramName]: opt.value })}
-              </span>
+    <CommandGroup heading={heading}>
+      {options.map((opt) => (
+        <CommandItem
+          key={`${keyPrefix}:${opt.value}`}
+          value={`${keyPrefix}:${opt.value}`}
+          className="gap-3 py-2"
+          onSelect={() => onSelect(opt.value)}
+        >
+          {iconKind === "product" && (
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
+              {opt.image ? (
+                <img
+                  src={opt.image}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <SearchSm size={14} className="text-muted-foreground" />
+              )}
             </span>
-          </CommandItem>
-        ))
-      )}
+          )}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm">{opt.label}</span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {fillPathTemplate(template, { [paramName]: opt.value })}
+            </span>
+          </span>
+        </CommandItem>
+      ))}
     </CommandGroup>
   );
+}
+
+/** Loading / error status line for a source's query. */
+function StatusRow({ text }: { text: string }) {
+  return <div className="px-2 py-2 text-xs text-muted-foreground">{text}</div>;
 }
 
 /**
@@ -226,10 +284,81 @@ export function PathParamPickerChip({
 
   // The `*` catch-all reads badly in the URL bar; show a friendly word instead.
   const paramLabel = paramName === "*" ? "path" : `:${paramName}`;
-  const nouns = [...new Set(sources.map((s) => KIND_LABELS[s.kind].noun))];
+  const labels = kindLabels(t);
+  const nouns = [...new Set(sources.map((s) => labels[s.kind].noun))];
   const placeholder = t("sandbox.pathParamPickerChip.searchPlaceholder", {
     options: nouns.join(" or "),
   });
+
+  const ctx: OptionPayloadContext = { template, paramName };
+  const toState = (
+    source: OptionSource,
+    query: { data?: PathParamOption[]; isLoading: boolean; isError: boolean },
+  ) => ({
+    source,
+    query,
+    options: source.clientFilter
+      ? filterPickerOptions(query.data ?? [], search)
+      : (query.data ?? []),
+  });
+
+  // Primaries are queried on open; fallbacks (the homepage-links source) are
+  // only queried once the primaries have settled with no options — so opening
+  // the picker on a healthy loader-backed page never fires the homepage fetch.
+  const primarySources = sources.filter((s) => !s.isFallback);
+  const fallbackSources = sources.filter((s) => s.isFallback);
+  const primaryQueries = useQueries({
+    queries: primarySources.map((source) =>
+      pickerQuery(sandboxRef, source, debouncedSearch, ctx, open),
+    ),
+  });
+  const primaryStates = primarySources.map((source, i) =>
+    toState(source, primaryQueries[i]!),
+  );
+  const primariesExhausted =
+    primaryStates.length === 0 ||
+    primaryStates.every(
+      (s) => !s.query.isLoading && (s.query.isError || s.options.length === 0),
+    );
+  const fallbackQueries = useQueries({
+    queries: fallbackSources.map((source) =>
+      pickerQuery(
+        sandboxRef,
+        source,
+        debouncedSearch,
+        ctx,
+        open && primariesExhausted,
+      ),
+    ),
+  });
+  const fallbackStates = fallbackSources.map((source, i) =>
+    toState(source, fallbackQueries[i]!),
+  );
+
+  // Fallbacks REPLACE the primaries once every primary has settled with no
+  // options (or there are none) — a loader's "couldn't load" / empty result
+  // quietly gives way to the fallback instead of rendering alongside it.
+  const visible = primariesExhausted ? fallbackStates : primaryStates;
+
+  // The homepage-links source carries both categories and products. When it's
+  // the sole view and both are present, lay them out side by side (Categorias |
+  // Produtos); otherwise fall back to the stacked single-column rendering.
+  const siteState =
+    visible.length === 1 && visible[0]?.source.homepageLinks
+      ? visible[0]
+      : null;
+  const siteReady =
+    siteState && !siteState.query.isLoading && !siteState.query.isError;
+  const siteData = siteReady ? (siteState?.query.data ?? []) : [];
+  const siteCats = filterPickerOptions(
+    siteData.filter((o) => o.kind !== "product"),
+    search,
+  );
+  const siteProds = filterPickerOptions(
+    siteData.filter((o) => o.kind === "product"),
+    search,
+  );
+  const twoColumn = siteCats.length > 0 && siteProds.length > 0;
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
@@ -255,7 +384,7 @@ export function PathParamPickerChip({
 
   // Strip surrounding slashes so a typed `/sabonetes/x` fills as `sabonetes/x`
   // (the template supplies the leading slash; a `*` value keeps inner slashes).
-  const rawTerm = search.trim().replace(/^\/+|\/+$/g, "");
+  const rawTerm = stripSurroundingSlashes(search);
   const rawPath = fillPathTemplate(template, { [paramName]: rawTerm });
 
   return (
@@ -306,12 +435,12 @@ export function PathParamPickerChip({
               value={search}
               onValueChange={handleSearchChange}
             />
-            <CommandList className="max-h-none flex-1">
+            <CommandList className="flex max-h-none min-h-0 flex-1 flex-col overflow-hidden">
               <CommandEmpty>
                 {t("sandbox.pathParamPickerChip.noResults")}
               </CommandEmpty>
               {rawTerm && (
-                <CommandGroup>
+                <CommandGroup className="shrink-0">
                   <CommandItem
                     value={`__raw__:${rawTerm}`}
                     className="gap-3 py-2"
@@ -334,20 +463,104 @@ export function PathParamPickerChip({
                   </CommandItem>
                 </CommandGroup>
               )}
-              {sources.map((source) => (
-                <PickerSourceGroup
-                  key={source.id}
-                  source={source}
-                  sandboxRef={sandboxRef}
-                  template={template}
-                  paramName={paramName}
-                  open={open}
-                  search={search}
-                  debouncedSearch={debouncedSearch}
-                  showHeading={sources.length > 1}
-                  onSelect={commit}
-                />
-              ))}
+              {twoColumn ? (
+                // Categories | Products, side by side, each scrolling on its own.
+                <div className="flex min-h-0 flex-1">
+                  <div className="min-w-0 flex-1 overflow-y-auto border-r border-border">
+                    <OptionGroup
+                      heading={labels.category.heading}
+                      iconKind="category"
+                      options={siteCats}
+                      template={template}
+                      paramName={paramName}
+                      keyPrefix={`${siteState?.source.id}:cat`}
+                      onSelect={commit}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1 overflow-y-auto">
+                    <OptionGroup
+                      heading={labels.product.heading}
+                      iconKind="product"
+                      options={siteProds}
+                      template={template}
+                      paramName={paramName}
+                      keyPrefix={`${siteState?.source.id}:prod`}
+                      onSelect={commit}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {visible.map(({ source, query, options }) => {
+                    const { noun } = labels[source.kind];
+                    if (query.isLoading)
+                      return (
+                        <StatusRow
+                          key={source.id}
+                          text={t("sandbox.pathParamPickerChip.loading", {
+                            noun,
+                          })}
+                        />
+                      );
+                    if (query.isError)
+                      return (
+                        <StatusRow
+                          key={source.id}
+                          text={t("sandbox.pathParamPickerChip.couldNotLoad")}
+                        />
+                      );
+                    // Homepage-links source with only one kind present: render
+                    // the non-empty group single-column (two-column handled above).
+                    if (source.homepageLinks) {
+                      const all = query.data ?? [];
+                      return (
+                        <Fragment key={source.id}>
+                          <OptionGroup
+                            heading={labels.category.heading}
+                            iconKind="category"
+                            options={filterPickerOptions(
+                              all.filter((o) => o.kind !== "product"),
+                              search,
+                            )}
+                            template={template}
+                            paramName={paramName}
+                            keyPrefix={`${source.id}:cat`}
+                            onSelect={commit}
+                          />
+                          <OptionGroup
+                            heading={labels.product.heading}
+                            iconKind="product"
+                            options={filterPickerOptions(
+                              all.filter((o) => o.kind === "product"),
+                              search,
+                            )}
+                            template={template}
+                            paramName={paramName}
+                            keyPrefix={`${source.id}:prod`}
+                            onSelect={commit}
+                          />
+                        </Fragment>
+                      );
+                    }
+                    return (
+                      <OptionGroup
+                        key={source.id}
+                        heading={
+                          visible.length > 1
+                            ? labels[source.kind].heading
+                            : undefined
+                        }
+                        iconKind={source.kind}
+                        options={options}
+                        template={template}
+                        paramName={paramName}
+                        keyPrefix={source.id}
+                        onSelect={commit}
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </CommandList>
           </Command>
         </DialogContent>
@@ -359,39 +572,51 @@ export function PathParamPickerChip({
 /**
  * Renders nothing; fetches the first option for a picker param that has no
  * value yet and commits it, so navigating to a bare dynamic-route template
- * lands on a real entity instead of an empty page. Mounted by preview.tsx only
- * while the param is empty (unmounts the instant the value is filled), so it
- * never overwrites a user/restored value and can't loop. Shares the chip's
- * react-query cache (same key/fetch).
+ * lands on a real entity instead of an empty page. Tries the ordered sources
+ * in priority order (waiting for a higher-priority source before falling to a
+ * lower one), so a failing category tree gives way to product search. Mounted
+ * by preview.tsx only while the param is empty (unmounts the instant the value
+ * is filled), so it never overwrites a user/restored value and can't loop.
+ * Shares the chip's react-query cache (same key/fetch).
  */
 export function PathParamAutoFill({
-  source,
+  sources,
   template,
   paramName,
   sandboxRef,
   onFill,
 }: {
-  source: OptionSource;
+  sources: OptionSource[];
   template: string;
   paramName: string;
   sandboxRef: RunBlockSandboxRef;
   onFill: (value: string) => void;
 }) {
-  const query = useQuery({
-    queryKey: pickerInvokeKey(sandboxRef, source, ""),
-    queryFn: () =>
-      fetchOptions(sandboxRef, source, "", { template, paramName }),
-    staleTime: 60_000,
-    retry: 1,
+  const ctx: OptionPayloadContext = { template, paramName };
+  // Only PRIMARY sources auto-fill: a fallback (e.g. product search standing in
+  // for a category param) must never silently commit — that would drop a product
+  // slug into a Category param and land on the wrong page. A fallback only
+  // surfaces when the user opens the modal and the primaries came up empty.
+  const primarySources = sources.filter((source) => !source.isFallback);
+  const queries = useQueries({
+    queries: primarySources.map((source) =>
+      pickerQuery(sandboxRef, source, "", ctx, true),
+    ),
   });
   // Render-time guard (the codebase's run-once pattern). Setting own state
   // during render is allowed; the parent commit is deferred to a microtask so
   // it doesn't update a different component mid-render.
   const [filled, setFilled] = useState(false);
-  if (!filled && query.data && query.data.length > 0) {
-    setFilled(true);
-    const value = query.data[0]!.value;
-    queueMicrotask(() => onFill(value));
+  if (!filled) {
+    for (const query of queries) {
+      if (query.isLoading) break; // wait for a higher-priority source
+      const first = query.data?.[0];
+      if (first) {
+        setFilled(true);
+        queueMicrotask(() => onFill(first.value));
+        break;
+      }
+    }
   }
   return null;
 }

@@ -148,12 +148,16 @@ export async function buildClusterSandboxFs(
   // reap + respawn rather than surface a sticky failure.
   const canAutoRestart =
     vm.branch === "ephemeral" || providerKind === "user-desktop";
-  const invalidateHandle = async () => {
+  const invalidateHandle = async (opts?: { force?: boolean }) => {
     // Capture before clearing — we need the dead handle to flush the captured
     // runner's cache below.
     const lastHandlePromise = cached;
     cached = null;
-    if (!canAutoRestart) return;
+    // `force` (set by the retry layer when the daemon reported the sandbox is
+    // provably GONE — 404) reaps + respawns even for non-auto-restart branches:
+    // a reaped sandbox has no working tree left to preserve, so recovering an
+    // in-flight run beats surfacing a sticky failure after infra dropped it.
+    if (!canAutoRestart && !opts?.force) return;
     // Reap the vmMap entry so the next `ensureSandbox` provisions fresh rather
     // than returning the dead vmId from the fast path.
     try {

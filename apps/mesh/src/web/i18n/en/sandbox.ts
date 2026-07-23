@@ -284,6 +284,10 @@ export const sandbox = {
     "Value for {paramLabel} — click to pick",
   "sandbox.pathParamPickerChip.couldNotLoad":
     "Couldn't load — is the dev server running?",
+  "sandbox.pathParamPickerChip.kindCategoryHeading": "Categories",
+  "sandbox.pathParamPickerChip.kindCategoryNoun": "category",
+  "sandbox.pathParamPickerChip.kindProductHeading": "Products",
+  "sandbox.pathParamPickerChip.kindProductNoun": "product",
   "sandbox.pathParamPickerChip.loading": "Loading {noun}…",
   "sandbox.pathParamPickerChip.noResults": "No results.",
   "sandbox.pathParamPickerChip.pickValueHeading": "Pick a value for",
@@ -384,6 +388,9 @@ export const sandbox = {
   "sandbox.preview.refresh": "Refresh",
   "sandbox.preview.searchPagesAndComponents": "Search pages and components...",
   "sandbox.preview.siteSeo": "Site SEO",
+  "sandbox.preview.startingPreview": "Starting your preview",
+  "sandbox.preview.startingPreviewHint":
+    "You can make changes now — they'll appear once the preview is ready.",
   "sandbox.preview.templateNoLongerExists":
     "Selected template no longer exists.",
   "sandbox.preview.urlCopiedToClipboard": "URL copied to clipboard",
@@ -474,6 +481,10 @@ export const sandbox = {
   "sandbox.redirectEditor.typePermanent": "Permanent ({status})",
   "sandbox.redirectEditor.typePlaceholder": "Type",
   "sandbox.redirectEditor.typeTemporary": "Temporary ({status})",
+  "sandbox.productionUrlField.description":
+    "Shown in the preview while the dev server is starting, so you can view and edit right away.",
+  "sandbox.productionUrlField.label": "Production URL",
+  "sandbox.productionUrlField.placeholder": "https://example.com",
   "sandbox.repoRow.label": "Repository",
   "sandbox.repoRow.noRepositoryConnected": "No repository connected",
   "sandbox.repoRow.tooltipContent":
@@ -558,6 +569,11 @@ export const sandbox = {
   "sandbox.sectionsRightPane.selectSectionTitle": "Select a section to edit",
   "sandbox.stateCard.githubNotAuthenticatedMessage":
     "This agent's GitHub repo isn't authenticated. Reconnect it in Connections, then retry.",
+  "sandbox.stateCard.othersThreadTitle": "You're in someone else's chat",
+  "sandbox.stateCard.othersThreadMessage":
+    "This conversation ({label}) belongs to another member. Continuing will start a sandbox on their branch — start a new chat to work on your own instead.",
+  "sandbox.stateCard.othersThreadContinue": "Continue anyway",
+  "sandbox.stateCard.othersThreadNewChat": "Start new chat",
   "sandbox.stateCard.reconnectGithub": "Reconnect GitHub",
   "sandbox.stateCard.resume": "Resume",
   "sandbox.stateCard.resumeToContinue": "Resume to continue.",

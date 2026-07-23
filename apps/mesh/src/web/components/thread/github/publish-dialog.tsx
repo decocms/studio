@@ -36,8 +36,8 @@ import {
 import type { PrSummary } from "./use-pr-data.ts";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { publishToBaseLabel } from "./publish-label.ts";
+import { useResolvedPublishGate } from "@/web/components/sandbox/hooks/use-publish-gate.ts";
 import {
-  canPublishDirectly,
   combinePublishDiffs,
   countGitChanges,
   discardGitFiles,
@@ -54,6 +54,7 @@ import {
   shouldUseBaseDiff,
   type GitDiffResult,
   type GitStatus,
+  type PublishPolicy,
 } from "./sandbox-git-api.ts";
 
 class PublishFlowError extends Error {
@@ -81,6 +82,8 @@ export interface PublishDialogProps {
   owner: string;
   repo: string;
   previewUrl?: string | null;
+  /** The code agent's publish policy — gates the direct Publish button. */
+  publishPolicy: PublishPolicy;
   /**
    * `open-pr` — push local work and open a PR for review (default).
    * `publish-only` — direct publish to base; single green Publish button.
@@ -128,6 +131,7 @@ function PublishDialogBody({
   owner,
   repo,
   previewUrl,
+  publishPolicy,
   dialogIntent = "open-pr",
   headSha = null,
   openPullRequest = null,
@@ -270,7 +274,7 @@ function PublishDialogBody({
   }
 
   const githubHeadBranch = readGitHeadBranch(gitStatus) ?? branch;
-  const publishLabel = publishToBaseLabel(baseBranch);
+  const publishLabel = publishToBaseLabel(baseBranch, t);
 
   const regenerateSuggestion = () => {
     if (!gitStatus || !gitDiff) return;
@@ -292,14 +296,33 @@ function PublishDialogBody({
   const changesCount = countGitChanges(gitStatus);
   const diffCount = gitDiff ? Object.keys(gitDiff.diffs).length : changesCount;
 
+  // The direct Publish button is only shown in publish-only intent, so only
+  // spend an AI judge call there (`judgeEnabled`). Shared with the header gate.
+  const { gate: publishGate } = useResolvedPublishGate({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    status: gitStatus,
+    diff: gitDiff,
+    policy: publishPolicy,
+    judgeEnabled: isPublishOnly,
+  });
+
   const hasLocalUnpublished = openPrFromCommits
     ? hasLocalWorkToPush(gitStatus)
     : hasUnpublishedWork(gitStatus, gitDiff);
   const canSubmit =
     !isLoadingGitDiff && (hasLocalUnpublished || openPrFromCommits);
-  const publishGate = canPublishDirectly(gitDiff);
   const canPublish = canSubmit && publishGate.allowed;
-  const publishDisabledReason = canSubmit ? publishGate.reason : null;
+  // The gate's `reason` is the AI judge's explanation, written in the UI
+  // language (see useSmartReviewVerdict); show it when present, else a
+  // localized generic message.
+  const publishDisabledReason =
+    !canSubmit || publishGate.allowed
+      ? null
+      : publishGate.pending
+        ? t("thread.publishDialog.reviewingChanges")
+        : (publishGate.reason ?? t("thread.publishDialog.publishNeedsReview"));
 
   /** There is committed or uncommitted local work that can be pushed + PR'd. */
   const showSubmitForReviewButton =
@@ -575,7 +598,7 @@ function PublishDialogBody({
                   {t("thread.publishDialog.description")}
                 </TabsTrigger>
                 <TabsTrigger value="changes" className="px-3 text-xs">
-                  {t("thread.publishDialog.changes")}
+                  {t("thread.publishDialog.changesTab")}
                 </TabsTrigger>
               </TabsList>
               {diffCount > 0 && !openPrFromCommits && (

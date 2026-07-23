@@ -5,6 +5,9 @@ import { formatCodeTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
+import { useInsetContext } from "@/web/layouts/agent-shell-layout";
+import { resolvePreviewDisplay } from "./preview-display";
+import { sanitizeProductionUrl } from "@/shared/deco-site-production-url";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { useT } from "@/web/i18n/use-t.ts";
 import type { TranslationKey } from "@/web/i18n/use-t.ts";
@@ -18,6 +21,7 @@ import {
   Globe02,
   LayoutAlt01,
   LinkExternal01,
+  Loading01,
   Plus,
   SearchLg,
   CreditCardSearch,
@@ -411,30 +415,51 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewState = lifecycle.previewState;
   const userStopped = lifecycle.userStopped;
 
+  // Live production URL of the linked site, persisted on the agent's
+  // `metadata.productionUrl` at import time (deco.cx reports the real domain,
+  // which can be a custom one — so we store it rather than guess it). Used as a
+  // Lovable-style fallback: while the sandbox dev server is still waking, paint
+  // the published site in the iframe (non-blocking) instead of a blank overlay,
+  // then swap to the sandbox preview once it's up. `null` (no field, or a site
+  // imported before this was persisted) → the original blocking overlay is kept.
+  const inset = useInsetContext();
+  const productionUrl =
+    inset?.entity?.id === virtualMcpId
+      ? sanitizeProductionUrl(inset.entity.metadata?.productionUrl)
+      : null;
+
   // The recorded previewUrl flips previewState to "iframe" as soon as the
-  // sandbox handle exists — well before the public preview proxy is routable
-  // and actually serving, so the iframe renders blank during the initial boot.
-  // Keep the booting visual overlaid (absolute, z-30, above the warming iframe)
-  // until the dev server has come up. `progress.status === "doing"` is true for
-  // exactly the forward boot phases (provision → clone → install → starting);
-  // it flips to "done" at `running` and "failed" on a terminal error, so both
-  // the live app and the daemon's auto-reloading status/crash page still fall
-  // through to the iframe unobscured.
-  const showBootingOverlay =
-    previewState.kind === "starting" ||
-    (previewState.kind === "iframe" && progress.status === "doing");
+  // sandbox handle exists — well before the public preview proxy is routable —
+  // so the sandbox surface is gated on `progress.status` (boot no longer in
+  // progress), not on `previewUrl` alone. `resolvePreviewDisplay` decides what
+  // to paint: the sandbox iframe, the production fallback + a waking pill, or
+  // (no production URL) today's blocking booting overlay.
+  const display = resolvePreviewDisplay({
+    previewState,
+    progressStatus: progress.status,
+    productionUrl,
+  });
+  const previewSurfaceActive = display.mode !== "none";
+  const showBootingOverlay = display.showBlockingOverlay;
 
   const iframeSrc =
-    previewState.kind === "iframe"
+    display.mode === "sandbox"
       ? withVariantMatcherOverride(
           withDeviceHint(
-            directPreviewUrl ??
-              new URL(resolvedPath, previewState.previewUrl).href,
+            directPreviewUrl ?? new URL(resolvedPath, display.iframeBase!).href,
             previewDeviceSize,
           ),
           workspace.state.variantOverride ?? [],
         )
-      : null;
+      : display.mode === "production"
+        ? // Production is a different origin: no sandbox-only overrides
+          // (directPreviewUrl / variant matcher) apply. Load the current path
+          // best-effort; the published site serves its own committed pages.
+          withDeviceHint(
+            new URL(resolvedPath, display.iframeBase!).href,
+            previewDeviceSize,
+          )
+        : null;
 
   // Last visited page (incl. `:param` values), persisted per project+branch.
   const previewStorageKey =
@@ -550,10 +575,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     !appPaused &&
     (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
 
-  // Visual mode requires a live iframe. Blocks can stay open while the
-  // sandbox restarts so its loading/error state remains actionable.
+  // Visual mode requires the live sandbox iframe — the production fallback is a
+  // different origin we can't inject into. Blocks can stay open while the
+  // sandbox restarts (or wakes) so its loading/error state remains actionable
+  // and the panel keeps reading the committed snapshot.
   const effectiveEditingMode: PreviewEditingMode =
-    previewState.kind !== "iframe" && editingMode === "visual"
+    display.mode !== "sandbox" && editingMode === "visual"
       ? "preview"
       : editingMode;
 
@@ -871,7 +898,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
-  const showPreviewToolbar = daemonReady && previewState.kind === "iframe";
+  // Toolbar visibility follows main's display model: shown once an iframe
+  // surface is active — the sandbox once its daemon is up, or the production
+  // fallback while the dev server is still waking (see resolvePreviewDisplay).
+  const showPreviewToolbar =
+    previewSurfaceActive && (daemonReady || display.mode === "production");
 
   // Blocks is an editing mode on the current page, NOT a navigation view — and
   // its editor opens on the LEFT. So its toggle lives in the floating preview
@@ -1123,7 +1154,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <ToolbarIconButton
             aria-label="Open in new tab"
             onClick={() => {
-              const url = iframeSrc ?? previewState.previewUrl;
+              const url = iframeSrc ?? display.iframeBase;
               if (url) window.open(url, "_blank", "noopener");
             }}
           >
@@ -1260,7 +1291,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       </div>
     ) : null;
 
-  const canVisualEdit = previewState.kind === "iframe";
+  const canVisualEdit = display.mode === "sandbox";
   const floatingPreviewControls = canVisualEdit ? (
     <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 scale-125">
       <div className="flex items-center gap-0.5 rounded-full border bg-background/60 p-1 shadow-lg backdrop-blur-md">
@@ -1318,7 +1349,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           (pathParamValues[name] ?? "") === "" ? (
             <PathParamAutoFill
               key={`${currentPageKey}:${name}`}
-              source={sources[0]!}
+              sources={sources}
               template={currentPath}
               paramName={name}
               sandboxRef={pickerSandboxRef}
@@ -1388,11 +1419,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 className={cn(
                   "h-full relative overflow-hidden",
                   previewDeviceSize !== "desktop" &&
-                    previewState.kind === "iframe" &&
+                    previewSurfaceActive &&
                     "flex justify-center bg-muted/30",
                 )}
               >
-                {navigating && previewState.kind === "iframe" && (
+                {navigating && previewSurfaceActive && (
                   <div className="absolute inset-x-0 top-0 z-40 h-0.5 overflow-hidden bg-primary/15">
                     <div className="absolute inset-y-0 w-2/5 rounded-full bg-primary animate-preview-nav" />
                   </div>
@@ -1404,6 +1435,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       kind="starting"
                       progress={progress}
                       claimPhase={claimPhase}
+                    />
+                  </div>
+                )}
+
+                {previewState.kind === "othersThread" && (
+                  <div className="absolute inset-0 z-30">
+                    <SandboxStateCard
+                      kind="othersThread"
+                      label={previewState.label}
+                      onContinue={lifecycle.acknowledgeOthersThread}
+                      onStartNewThread={() =>
+                        navigate({
+                          to: "/$org/$taskId",
+                          params: {
+                            org: org.slug,
+                            taskId: crypto.randomUUID(),
+                          },
+                          search: (prev) => ({
+                            ...prev,
+                            sidepanel: "chat" as const,
+                          }),
+                        })
+                      }
                     />
                   </div>
                 )}
@@ -1428,6 +1482,23 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   </div>
                 )}
 
+                {display.showWakingPill && (
+                  <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl border border-border bg-muted px-4 py-3 shadow-lg pointer-events-none select-none">
+                    <Loading01
+                      size={18}
+                      className="mt-0.5 shrink-0 animate-spin text-muted-foreground"
+                    />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium text-foreground">
+                        {t("sandbox.preview.startingPreview")}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {t("sandbox.preview.startingPreviewHint")}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {effectiveEditingMode === "visual" && !visualElement && (
                   <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-violet-400/40 bg-violet-500/90 px-3 py-1 text-xs font-medium text-white shadow-md backdrop-blur-sm pointer-events-none select-none">
                     <CursorClick01 size={12} />
@@ -1443,7 +1514,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
                 {floatingPreviewControls}
 
-                {previewState.kind === "iframe" && iframeSrc && (
+                {previewSurfaceActive && iframeSrc && (
                   <div
                     className={cn(
                       "h-full transition-[width] duration-250 [transition-timing-function:var(--ease-in-out-cubic)]",
@@ -1458,9 +1529,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     }}
                   >
                     <iframe
-                      // Key on previewUrl: remount when the VM base URL changes (branch
-                      // switch). Path navigation is driven by `iframeSrc` state.
-                      key={previewState.previewUrl}
+                      // Key on the iframe base: remount when the base URL changes
+                      // (branch switch, or the production→sandbox swap once the dev
+                      // server is up). Path navigation is driven by `iframeSrc`.
+                      key={display.iframeBase}
                       ref={previewIframeRef}
                       src={iframeSrc}
                       className="w-full h-full border-0"
@@ -1469,6 +1541,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         // The page finished loading — always clear the navigation
                         // indicator first, before any of the early returns below.
                         endNavigation();
+                        // The production fallback is a view-only, cross-origin frame:
+                        // skip the sandbox-only load handling (analytics, path sync,
+                        // editor injection) — none of it applies to it.
+                        if (display.mode !== "sandbox") return;
                         // This is the VM dev-server preview (sandboxed running app),
                         // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
                         track("vm_preview_loaded", {

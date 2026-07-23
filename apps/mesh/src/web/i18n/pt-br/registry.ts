@@ -126,6 +126,8 @@ export const registry = {
     '"{title}" está acessível. Você pode autenticar novamente se necessário.',
   "registry.monitorConnectionsPanel.connectionsSynced":
     "Conexões sincronizadas (loja + solicitações pendentes)",
+  "registry.monitorConnectionsPanel.connectionUnreachable":
+    'Não foi possível alcançar "{title}": {error}',
   "registry.monitorConnectionsPanel.couldNotReachConnection":
     'Não foi possível alcançar "{title}". O MCP remoto pode estar inativo.',
   "registry.monitorConnectionsPanel.description1":
@@ -201,6 +203,7 @@ export const registry = {
     "Token/autenticação manual",
   "registry.monitorConnectionsPanel.tokenSaved": 'Token salvo para "{title}"!',
   "registry.monitorConnectionsPanel.unknownError": "Erro desconhecido",
+  "registry.monitorConnectionsPanel.unreachable": "Inacessível",
   "registry.monitorConnectionsPanel.visibilityOnlyForStore":
     "Os controles de visibilidade estão disponíveis apenas para itens da loja.",
   "registry.monitorConnectionsPanel.visibilityUpdated":

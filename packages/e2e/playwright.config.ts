@@ -35,7 +35,13 @@ const commerceMockKey = "e2e-commerce-key";
 // run rule). The second admin exists so an admin-impersonating-an-admin test can
 // reach the 409 re-impersonation guard — impersonating a NON-admin is rejected
 // by requireDeploymentAdmin first, before that guard runs.
-const webServerCommand = `MCP_CACHE_ENABLED=true COMMERCE_DISCOVERY_INTERNAL_API_URL=${commerceMockOrigin} COMMERCE_DISCOVERY_INTERNAL_API_KEY=${commerceMockKey} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev:servers`;
+// Shared internal service bearer for the service-token routes (credential
+// vault, task-board import, commerce-diagnostic share-invite). Kept in sync by
+// hand with the literal in commerce-diagnostic-share.spec.ts (no shared import:
+// the config isn't a spec module).
+const vaultServiceToken = "e2e-vault-service-token";
+
+const webServerCommand = `MCP_CACHE_ENABLED=true VAULT_SERVICE_TOKEN=${vaultServiceToken} COMMERCE_DISCOVERY_INTERNAL_API_URL=${commerceMockOrigin} COMMERCE_DISCOVERY_INTERNAL_API_KEY=${commerceMockKey} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev:servers`;
 
 export default defineConfig({
   testDir: "./tests",

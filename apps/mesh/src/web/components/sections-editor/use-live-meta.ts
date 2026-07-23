@@ -4,6 +4,7 @@ import { exponentialBackoffWithJitter } from "@decocms/std";
 import { KEYS } from "@/web/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { readCommittedJson } from "./read-committed-file";
+import { sanitizeProductionUrl } from "@/shared/deco-site-production-url";
 import type { LiveMeta } from "./resolve-schema";
 
 interface UseLiveMetaParams {
@@ -11,6 +12,41 @@ interface UseLiveMetaParams {
   virtualMcpId: string;
   branch: string;
   previewUrl?: string | null;
+}
+
+/** Where to look for the CMS schema, in priority order. */
+export type MetaSource =
+  /** Sandbox dev server's `/live/_meta` (branch, live). */
+  | { kind: "live"; baseUrl: string }
+  /** Committed `.deco/meta.gen.json` snapshot — branch-accurate. */
+  | { kind: "committed" }
+  /** Linked production site's `/live/_meta` — a live deco runtime that serves
+   *  the same route, so Fresh/Deno sites (which never persist meta to the FS)
+   *  still get a schema before the sandbox dev server is up. */
+  | { kind: "production"; baseUrl: string };
+
+/**
+ * Ordered schema sources. Pure so the priority is unit-tested without mocks.
+ *
+ * The committed snapshot always beats production: it reflects THIS branch's
+ * schema, whereas production reflects whatever is deployed. Production is the
+ * last resort — it only matters for sites with no committed `meta.gen.json`
+ * (e.g. Fresh/Deco sites), unblocking the CMS before the runtime boots.
+ */
+export function metaSourceOrder(input: {
+  fetchEnabled: boolean;
+  previewUrl: string | null | undefined;
+  productionUrl: string | null;
+}): MetaSource[] {
+  const sources: MetaSource[] = [];
+  if (input.fetchEnabled && input.previewUrl) {
+    sources.push({ kind: "live", baseUrl: input.previewUrl });
+  }
+  sources.push({ kind: "committed" });
+  if (input.productionUrl) {
+    sources.push({ kind: "production", baseUrl: input.productionUrl });
+  }
+  return sources;
 }
 
 export function useLiveMeta(
@@ -28,42 +64,54 @@ export function useLiveMeta(
   // Committed snapshot lives under the project's package path
   // (`metadata.runtime.path`) when the project isn't at the repo root; the live
   // `/live/_meta` route already resolves relative to the dev-server cwd.
-  const packagePath =
-    useVirtualMCP(params?.virtualMcpId)?.metadata?.runtime?.path ?? null;
+  const virtualMcp = useVirtualMCP(params?.virtualMcpId);
+  const packagePath = virtualMcp?.metadata?.runtime?.path ?? null;
+  const productionUrl = sanitizeProductionUrl(
+    virtualMcp?.metadata?.productionUrl,
+  );
   return useQuery({
+    // productionUrl is appended so a settings edit re-fetches; invalidators key
+    // on the (org, vm, branch) prefix, which still matches (variadic key).
     queryKey: params
       ? KEYS.liveMeta(
           params.orgSlug,
           params.virtualMcpId,
           params.branch,
           previewUrl ?? "",
+          productionUrl ?? "",
         )
       : KEYS.liveMeta(""),
     queryFn: async () => {
+      const fetchMeta = async (baseUrl: string): Promise<LiveMeta | null> => {
+        const url = new URL("/live/_meta", baseUrl).href;
+        const res = await fetch(url, { cache: "no-store" }).catch(() => null);
+        return res?.ok ? ((await res.json()) as LiveMeta) : null;
+      };
       const readCommitted = () =>
         readCommittedJson<LiveMeta>(
           params!,
           decoRepoPath(packagePath, ".deco/meta.gen.json"),
         );
-      // Prefer the live `/live/_meta` when the dev server is up; otherwise (or on
-      // failure) read the committed `.deco/meta.gen.json` snapshot so the CMS
-      // schema is available even without a working preview.
-      if (fetchEnabled && previewUrl) {
-        const url = new URL("/live/_meta", previewUrl).href;
-        const res = await fetch(url, { cache: "no-store" }).catch(() => null);
-        if (res?.ok) return (await res.json()) as LiveMeta;
-        const committed = await readCommitted();
-        if (committed) return committed;
-        const err = new Error(
-          `Failed to fetch live meta: ${res?.status ?? "network error"}`,
-        );
-        (err as { status?: number }).status = res?.status ?? 502;
-        throw err;
+
+      // Walk the sources in priority order; first hit wins. Falling all the way
+      // through means neither a live/production runtime nor a committed snapshot
+      // is reachable yet — surface 502 so the query waits for the sandbox
+      // lifecycle to re-invalidate (see sandbox-events-context) instead of
+      // hammering a known-down endpoint.
+      const sources = metaSourceOrder({
+        fetchEnabled,
+        previewUrl,
+        productionUrl,
+      });
+      for (const source of sources) {
+        const meta =
+          source.kind === "committed"
+            ? await readCommitted()
+            : await fetchMeta(source.baseUrl);
+        if (meta) return meta;
       }
-      const committed = await readCommitted();
-      if (committed) return committed;
       const err = new Error(
-        "live meta unavailable (preview down, no committed snapshot)",
+        "live meta unavailable (dev server down, no committed snapshot, no production fallback)",
       );
       (err as { status?: number }).status = 502;
       throw err;
@@ -72,9 +120,9 @@ export function useLiveMeta(
     refetchInterval: options?.refetchInterval,
     refetchIntervalInBackground: false,
     staleTime: 300_000,
-    // 502 = preview unreachable / nothing available yet. The sandbox lifecycle
-    // re-invalidates this query when the dev server comes up (see
-    // sandbox-events-context), so retrying just hammers a known-down endpoint.
+    // 502 = nothing reachable yet. The sandbox lifecycle re-invalidates this
+    // query when the dev server comes up (see sandbox-events-context), so
+    // retrying just hammers a known-down endpoint.
     retry: (failureCount, error) =>
       (error as { status?: number }).status !== 502 && failureCount < 3,
     retryDelay: (attempt) =>

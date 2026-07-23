@@ -24,8 +24,13 @@ import {
   requireOrganization,
   type StudioContext,
 } from "../../core/studio-context";
-import { resolveRuntimeConfig, type RuntimeConfigMeta } from "./helpers";
+import {
+  readValidatedSubmoduleCredentials,
+  resolveRuntimeConfig,
+  type RuntimeConfigMeta,
+} from "./helpers";
 import { resolveAndPushEnv } from "./resolve-env";
+import { resolveSubmoduleCredentials } from "./resolve-submodule-creds";
 import {
   readSandboxMap,
   removeSandboxMapEntry,
@@ -330,6 +335,7 @@ async function provisionSandbox(
         userEmail: string;
         branch: string;
         displayName: string;
+        submoduleCredentials?: { host: string; token: string }[];
       }
     | undefined;
 
@@ -410,6 +416,17 @@ async function provisionSandbox(
     const gitBranch = branch.startsWith("thread:")
       ? syntheticBranchToGitRef(branch)
       : branch;
+
+    // Private submodules live in repos the per-repo clone token can't reach;
+    // resolve the user's per-host PATs here so they ride the initial daemon
+    // config (the clone + `git submodule update` run during provisioning).
+    const submoduleCredentials = await resolveSubmoduleCredentials({
+      ctx,
+      orgId,
+      userId,
+      entries: readValidatedSubmoduleCredentials(metadata),
+    });
+
     repoOpts = {
       cloneUrl,
       // Persisted so the runner can re-mint on recovery; absent for anonymous.
@@ -420,6 +437,7 @@ async function provisionSandbox(
       userEmail: gitUserEmail,
       branch: gitBranch,
       displayName: `${githubRepo.owner}/${githubRepo.name}`,
+      ...(submoduleCredentials.length > 0 ? { submoduleCredentials } : {}),
     };
   }
 

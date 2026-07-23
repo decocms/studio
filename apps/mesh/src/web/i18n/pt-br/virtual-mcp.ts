@@ -165,6 +165,18 @@ export const virtualMcp = {
     "Nenhuma conexão ainda. Adicione uma para começar.",
   "virtualMcp.virtualMcp.openFullscreenEditor": "Abrir editor em tela cheia",
   "virtualMcp.virtualMcp.promptTemplate": "+ Modelo de prompt",
+  "virtualMcp.virtualMcp.publishing": "Publicação",
+  "virtualMcp.virtualMcp.publishingDescription":
+    "Controle quando as alterações deste agente podem ser publicadas diretamente, sem revisão por pull request.",
+  "virtualMcp.virtualMcp.publishPolicySmart": "Revisão inteligente",
+  "virtualMcp.virtualMcp.publishPolicySmartDescription":
+    "A IA analisa cada alteração e só pede revisão quando o código parece arriscado (novos endpoints, mudanças grandes ou de backend). Ajustes de conteúdo e design são publicados diretamente.",
+  "virtualMcp.virtualMcp.publishPolicyCodeReview": "Exigir revisão de código",
+  "virtualMcp.virtualMcp.publishPolicyCodeReviewDescription":
+    "Qualquer alteração de código precisa passar por revisão via pull request antes de publicar. Só mudanças de conteúdo e design são publicadas diretamente.",
+  "virtualMcp.virtualMcp.publishPolicyOpen": "Publicar sem revisão",
+  "virtualMcp.virtualMcp.publishPolicyOpenDescription":
+    "Publica qualquer alteração diretamente, sem revisão.",
   "virtualMcp.virtualMcp.sandbox": "Sandbox",
   "virtualMcp.virtualMcp.settings": "Configurações",
   "virtualMcp.virtualMcp.spaceNotFound": "Espaço não encontrado",

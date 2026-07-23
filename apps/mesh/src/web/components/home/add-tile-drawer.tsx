@@ -475,10 +475,12 @@ function HomeAgentRow({
               .removeAgent(agent.id)
               .catch(() => toast.error(t("home.addTileDrawer.removeError")))
           }
-          aria-label={t("home.addTileDrawer.removeFromHome", {
+          aria-label={t("home.addTileDrawer.removeAgentFromHome", {
             name: agent.title ?? agent.id,
           })}
-          title={t("home.addTileDrawer.removeFromHomeTitle")}
+          title={t("home.addTileDrawer.removeAgentFromHome", {
+            name: agent.title ?? agent.id,
+          })}
           className="shrink-0 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
         >
           <X size={14} />
@@ -635,6 +637,7 @@ function AgentToolList({
   connectionIds: string[];
   pinnedTiles: VirtualMcpHomeTile[];
 }) {
+  const t = useT();
   const studio = useStudioTools();
 
   const { data, isLoading } = useQuery({
@@ -720,8 +723,6 @@ function AgentToolList({
   };
 
   const hasPinned = pinnedTiles.some((tile) => !!resolveToolForTile(tile));
-
-  const t = useT();
 
   return (
     <div className="flex flex-col gap-2">
