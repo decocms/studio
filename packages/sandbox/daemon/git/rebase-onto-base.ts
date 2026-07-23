@@ -33,6 +33,18 @@ export class RebaseBlockedError extends Error {
   }
 }
 
+/**
+ * The requested base branch doesn't exist on origin (typo, deleted branch) —
+ * a client/data condition, not a server fault, mirroring
+ * BaseBranchNotFoundError in routes/git.ts's diff-against-base path.
+ */
+export class RebaseBaseBranchNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RebaseBaseBranchNotFoundError";
+  }
+}
+
 function gitEnv(repoDir: string): Record<string, string> {
   return { ...process.env, GIT_CEILING_DIRECTORIES: repoDir };
 }
@@ -349,7 +361,13 @@ function rebaseOntoBaseInner(
     );
   }
 
-  runGit(repoDir, ["fetch", "-p", "origin", base, branch]);
+  // Fetch base and branch as separate requests: `git fetch <a> <b>` fails the
+  // whole command if either ref is missing on origin, which would otherwise
+  // turn a bad `base` (typo, deleted branch) into a raw fetch error before we
+  // get a chance to report it as RebaseBaseBranchNotFoundError below, and would
+  // also skip fetching `branch` (needed for the force-push lease).
+  tryGit(repoDir, ["fetch", "-p", "origin", base]);
+  runGit(repoDir, ["fetch", "-p", "origin", branch]);
   const leaseSha = remoteBranchSha(repoDir, branch);
 
   tryGit(repoDir, [
@@ -363,7 +381,9 @@ function rebaseOntoBaseInner(
 
   const upstream = `origin/${base}`;
   if (tryGit(repoDir, ["rev-parse", "--verify", upstream]) === null) {
-    throw new Error(`Base branch '${base}' not found on origin`);
+    throw new RebaseBaseBranchNotFoundError(
+      `Base branch '${base}' not found on origin`,
+    );
   }
 
   commitBeforeRebase(repoDir, operator);

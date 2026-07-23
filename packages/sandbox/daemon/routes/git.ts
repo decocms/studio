@@ -5,7 +5,11 @@ import { appendCoAuthorTrailer } from "../../git-co-author";
 import { computeBranchDivergence } from "../git/branch-divergence";
 import { parsePorcelainFiles } from "../git/porcelain";
 import { protectedBranches } from "../git/protect-branch";
-import { RebaseBlockedError, rebaseOntoBase } from "../git/rebase-onto-base";
+import {
+  RebaseBaseBranchNotFoundError,
+  RebaseBlockedError,
+  rebaseOntoBase,
+} from "../git/rebase-onto-base";
 import {
   cloneUrlHasCredentials,
   syncOriginRemote,
@@ -849,6 +853,12 @@ export function makeGitRebaseHandler(deps: GitDeps) {
       );
     } catch (err) {
       if (err instanceof InvalidRemoteBranchNameError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
+      // The requested base branch doesn't exist on origin — a client/data
+      // condition, not a server fault (mirrors BaseBranchNotFoundError in the
+      // diff-against-base path above).
+      if (err instanceof RebaseBaseBranchNotFoundError) {
         return jsonResponse({ error: err.message }, 400);
       }
       // A detached HEAD / protected-branch refusal is a conflict with the

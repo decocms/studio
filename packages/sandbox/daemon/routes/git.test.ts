@@ -743,6 +743,34 @@ describe("git routes", () => {
     });
   });
 
+  it("rebase route returns 400 (not 500) when the base branch isn't on origin", async () => {
+    const { appRoot, repoDir } = initRepo();
+    onFeatureBranch(repoDir);
+    const bareOrigin = mkdtempSync(join(tmpdir(), "git-route-origin-"));
+    gitSync(["init", "--bare", bareOrigin], { cwd: bareOrigin, asUser: false });
+    gitSync(["remote", "add", "origin", bareOrigin], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    gitSync(["push", "-u", "origin", "feature/x"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+
+    const handler = makeGitRebaseHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/rebase", {
+        method: "POST",
+        body: JSON.stringify({ base: "does-not-exist" }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Base branch 'does-not-exist' not found on origin",
+    });
+  });
+
   it("rebase route returns 409 (not 500) for a protected-branch refusal", async () => {
     const { appRoot, repoDir } = initRepo(); // initRepo checks out main
     const handler = makeGitRebaseHandler({ appRoot, repoDir });
