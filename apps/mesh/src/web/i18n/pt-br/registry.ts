@@ -116,6 +116,8 @@ export const registry = {
   "registry.monitorConnectionsPanel.actionsFor": "Ações para {title}",
   "registry.monitorConnectionsPanel.authError": "Erro: {error}",
   "registry.monitorConnectionsPanel.authenticated": "Autenticado",
+  "registry.monitorConnectionsPanel.cancelReplaceToken":
+    "Cancelar substituição do token",
   "registry.monitorConnectionsPanel.checking": "Verificando...",
   "registry.monitorConnectionsPanel.checkingAuth":
     "Verificando autenticação...",

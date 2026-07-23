@@ -578,6 +578,9 @@ function ConnectionRow({
               size="sm"
               variant="ghost"
               className="h-8 text-xs"
+              aria-label={t(
+                "registry.monitorConnectionsPanel.cancelReplaceToken",
+              )}
               onClick={() => {
                 setIsReplacingToken(false);
                 setTokenValue("");
