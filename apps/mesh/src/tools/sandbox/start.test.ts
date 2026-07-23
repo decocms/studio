@@ -523,6 +523,11 @@ describe("SANDBOX_START", () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
+    const fetchedUrls: string[] = [];
+    globalThis.fetch = mock(async (input) => {
+      fetchedUrls.push(String(input));
+      return new Response("{}", { status: 404 });
+    }) as unknown as typeof fetch;
 
     await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
 
@@ -537,6 +542,15 @@ describe("SANDBOX_START", () => {
       port: null,
       path: null,
     });
+    const runtimeProbeUrls = fetchedUrls.filter((url) =>
+      url.includes("/contents/"),
+    );
+    expect(runtimeProbeUrls.length).toBeGreaterThan(0);
+    expect(
+      runtimeProbeUrls.every(
+        (url) => new URL(url).searchParams.get("ref") === "main",
+      ),
+    ).toBe(true);
   });
 
   it("returns isNewVm=false when runner.ensure resumes the shared session", async () => {
@@ -568,16 +582,14 @@ describe("SANDBOX_START", () => {
     expect(result.isNewVm).toBe(false);
   });
 
-  it("generates a <creator-slug>-<timestamp> branch when input.branch is omitted and threads it into the ref", async () => {
+  it("uses staging when input.branch is omitted and threads it into the ref", async () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
     const result = await SANDBOX_START.handler({ virtualMcpId: VMCP_ID }, ctx);
 
-    // <creator-slug>-<base36-timestamp>, no namespace prefix. Test user is "Test".
-    expect(result.branch).toMatch(/^test-[0-9a-z]+$/);
-    expect(result.branch.includes("/")).toBe(false);
+    expect(result.branch).toBe("staging");
     const [id] = mockEnsure.mock.calls[0]! as [SandboxId];
     expect(id.projectRef).toBe(
       composeSandboxRef({

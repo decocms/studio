@@ -26,7 +26,7 @@ interface MinimalMcpClient {
 
 export interface SandboxStartArgs {
   virtualMcpId: string;
-  /** Optional — SANDBOX_START generates one when omitted. */
+  /** Optional — SANDBOX_START uses `staging` when omitted. */
   branch?: string;
   /**
    * Optional explicit sandbox provider kind. When omitted the server picks

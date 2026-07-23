@@ -12,7 +12,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
     await env.close();
   });
 
-  it("assigns a generated branch when the vMCP has a github repo", async () => {
+  it("assigns staging when the vMCP has a github repo", async () => {
     const vmcp = await env.ctx.storage.virtualMcps.create(
       env.orgId,
       env.userId,
@@ -38,8 +38,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
       env.ctx,
     );
 
-    // <creator-slug>-<base36-timestamp>; the test user's name is "T".
-    expect(result.item.branch).toMatch(/^t-[0-9a-z]+$/);
+    expect(result.item.branch).toBe("staging");
     expect(result.item.virtual_mcp_id).toBe(vmcp.id);
   });
 
@@ -119,7 +118,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
     expect(result.item.branch).toBeNull();
   });
 
-  it("picks the most-recently-touched sandboxMap branch when no input branch + github vMCP", async () => {
+  it("uses staging instead of a warm sandboxMap branch", async () => {
     const vmcp = await env.ctx.storage.virtualMcps.create(
       env.orgId,
       env.userId,
@@ -163,7 +162,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
       env.ctx,
     );
 
-    expect(result.item.branch).toBe("deco/new-branch");
+    expect(result.item.branch).toBe("staging");
   });
 
   it("is idempotent: creating with the same id twice returns the same row", async () => {

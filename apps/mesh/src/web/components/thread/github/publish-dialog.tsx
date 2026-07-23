@@ -95,8 +95,6 @@ export interface PublishDialogProps {
   openPullRequest?: PrSummary | null;
   /** Called after commit/push or PR open/merge so the header can refresh. */
   onPullRequestChanged?: () => void | Promise<void>;
-  /** Called after a successful publish (squash-merge to base). */
-  onPublished?: () => void | Promise<void>;
 }
 
 export function PublishDialog(props: PublishDialogProps) {
@@ -136,7 +134,6 @@ function PublishDialogBody({
   headSha = null,
   openPullRequest = null,
   onPullRequestChanged,
-  onPublished,
 }: PublishDialogProps) {
   const t = useT();
   const githubClient = useMCPClient({
@@ -417,7 +414,6 @@ function PublishDialogBody({
       setPublishTitle("");
       setPublishBody("");
       await onPullRequestChanged?.();
-      await onPublished?.();
     } catch (error) {
       if (
         error instanceof PublishFlowError &&

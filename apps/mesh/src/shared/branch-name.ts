@@ -1,9 +1,6 @@
 /**
- * Branch-name generator used as a fallback when SANDBOX_START is invoked without
- * an explicit branch. Lives in shared/ because it runs on both sides: the web
- * "New branch" button calls it in the browser, while the orchestrator calls it
- * server-side so it — not the sandbox — decides the branch name and can persist
- * it to sandboxMap before the daemon ever sees it.
+ * Branch-name generator for the branch picker's explicit "New branch" action.
+ * Lives in shared/ because branch names are part of the client/server contract.
  *
  * Format: `<user-slug>-<base36-timestamp>` (e.g. `joao-silva-mabc1x9z`). The
  * slug attributes the branch to whoever created it; the base36-encoded
