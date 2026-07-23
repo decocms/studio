@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -108,6 +109,96 @@ function resolveReadPath(
   return safePath(appRoot, repoDir, userPath);
 }
 
+/**
+ * On-disk name of the merged decofile artifact and its source directory.
+ * `.deco/blocks.gen.json` is the runtime's merge of every `.deco/blocks/*.json`;
+ * many repos gitignore it (it's a multi-MB single line that conflicts on every
+ * content PR and is regenerated on dev cold-start), so a fresh sandbox has the
+ * block sources but not the merged file.
+ */
+const DECOFILE_GEN_BASENAME = "blocks.gen.json";
+const DECOFILE_BLOCKS_DIRNAME = "blocks";
+
+/**
+ * Rebuild `.deco/blocks.gen.json` from the sibling `.deco/blocks/*.json` files
+ * so the CMS is readable before the dev server is up. The merge maps each file
+ * to `{ [decodeURIComponent(stem)]: <file contents> }` — exactly what the deco
+ * runtime emits (the filename stem is the `encodeURIComponent` of the block id).
+ *
+ * Kept off the critical path of the single-threaded event loop (daemon health
+ * probe has a ~500ms budget): reads are async, and the file contents are
+ * concatenated as raw text — no per-value `JSON.parse`/`JSON.stringify` over the
+ * merge (only the small keys are JSON-encoded). The unavoidable full-payload
+ * serialization happens once, downstream, when `jsonResponse` stringifies the
+ * result — the same ~multi-MB cost the existing committed-file read path already
+ * pays via `readFileSync` + `jsonResponse`, so this is no worse. A malformed
+ * block isn't caught here; the client's `JSON.parse` fails and falls back to "no
+ * snapshot", same as today — the write/edit handlers already gate validity.
+ *
+ * Returns `null` when there's no `blocks` dir (nothing to merge) so the caller
+ * falls through to its normal "file not found" path.
+ *
+ * Prefer `generateDecofileFromBlocksDeduped` from request handlers: concurrent
+ * cold reads (multiple tabs/users on a shared sandbox during boot) would each
+ * rebuild the whole payload and their serialization bursts would serialize on
+ * the loop, risking a missed health probe.
+ */
+export async function generateDecofileFromBlocks(
+  blocksDir: string,
+): Promise<string | null> {
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = await readdir(blocksDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const names = entries
+    .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".json"))
+    .map((e) => e.name)
+    // Stable output order so byte-for-byte the artifact is deterministic.
+    .sort();
+  if (names.length === 0) return null;
+
+  const parts: string[] = [];
+  for (const name of names) {
+    const stem = name.slice(0, -".json".length);
+    let key: string;
+    try {
+      key = decodeURIComponent(stem);
+    } catch {
+      // A stem that isn't valid percent-encoding keeps its literal form,
+      // mirroring the frontend's decoBlockKeyFromFileStem fallback.
+      key = stem;
+    }
+    const raw = (await readFile(path.join(blocksDir, name), "utf-8")).trim();
+    // Skip empty files — `"key":` with no value would break the merged JSON.
+    if (!raw) continue;
+    parts.push(`${JSON.stringify(key)}:${raw}`);
+  }
+  return `{${parts.join(",")}}`;
+}
+
+/**
+ * Single-flight guard around {@link generateDecofileFromBlocks}: concurrent
+ * reads for the same `blocksDir` share one in-flight rebuild instead of each
+ * doing a full multi-MB merge. Keyed by absolute dir; the entry is cleared when
+ * the build settles (resolve or reject). This is a boot-window coalescer, not a
+ * cache — the next read after settle rebuilds, so it never serves stale content.
+ */
+const decofileBuildsInFlight = new Map<string, Promise<string | null>>();
+
+export function generateDecofileFromBlocksDeduped(
+  blocksDir: string,
+): Promise<string | null> {
+  const existing = decofileBuildsInFlight.get(blocksDir);
+  if (existing) return existing;
+  const build = generateDecofileFromBlocks(blocksDir).finally(() => {
+    decofileBuildsInFlight.delete(blocksDir);
+  });
+  decofileBuildsInFlight.set(blocksDir, build);
+  return build;
+}
+
 export function makeReadHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: {
@@ -133,6 +224,20 @@ export function makeReadHandler(deps: FsDeps) {
     try {
       stat = fs.statSync(filePath);
     } catch {
+      // Decofile fallback: when `.deco/blocks.gen.json` is absent (commonly
+      // gitignored), regenerate it on the fly from the sibling `.deco/blocks/`
+      // sources so the CMS is readable before the dev server boots. Returned
+      // un-numbered (pretty JSON never matches the `^\d+\t` line-number prefix,
+      // so the client's stripLineNumbers is a no-op and JSON.parse still works).
+      if (path.basename(filePath) === DECOFILE_GEN_BASENAME) {
+        const merged = await generateDecofileFromBlocksDeduped(
+          path.join(path.dirname(filePath), DECOFILE_BLOCKS_DIRNAME),
+        );
+        if (merged !== null) {
+          // lineCount is advisory here; the decofile is consumed as one blob.
+          return jsonResponse({ kind: "text", content: merged, lineCount: 1 });
+        }
+      }
       return jsonResponse({ error: `File not found: ${body.path}` }, 400);
     }
     if (stat.isDirectory()) {

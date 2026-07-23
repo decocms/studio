@@ -19,6 +19,8 @@ import {
   makeEditHandler,
   makeGrepHandler,
   makeGlobHandler,
+  generateDecofileFromBlocks,
+  generateDecofileFromBlocksDeduped,
   collectEmptyDirectories,
   pathSegmentDepth,
   registerGlobAncestorDirectories,
@@ -745,3 +747,123 @@ describe("fs handlers", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("decofile fallback (blocks.gen.json generation)", () => {
+  let appRoot = "";
+  beforeEach(() => {
+    appRoot = mkdtempSync(join(tmpdir(), "decofile-gen-"));
+  });
+  afterEach(() => {
+    rmSync(appRoot, { recursive: true, force: true });
+  });
+
+  const writeBlock = (stem: string, value: unknown) => {
+    const dir = join(appRoot, ".deco", "blocks");
+    mkdirSync(dir, { recursive: true });
+    // Pretty-printed, like the runtime writes them.
+    writeFileSync(join(dir, `${stem}.json`), JSON.stringify(value, null, 2));
+  };
+
+  it("generateDecofileFromBlocks: merges files keyed by decoded stem", async () => {
+    // %20 in the stem decodes to a space in the block id.
+    writeBlock("Banner%20Home", { banners: [{ alt: "a" }] });
+    writeBlock("pages%2FHome", { __resolveType: "page" });
+    const merged = await generateDecofileFromBlocks(
+      join(appRoot, ".deco", "blocks"),
+    );
+    expect(merged).not.toBeNull();
+    const parsed = JSON.parse(merged!) as Record<string, unknown>;
+    expect(parsed).toEqual({
+      "Banner Home": { banners: [{ alt: "a" }] },
+      "pages/Home": { __resolveType: "page" },
+    });
+  });
+
+  it("generateDecofileFromBlocks: returns null with no blocks dir", async () => {
+    expect(await generateDecofileFromBlocks(join(appRoot, "nope"))).toBeNull();
+  });
+
+  it("generateDecofileFromBlocks: returns null for an empty blocks dir", async () => {
+    mkdirSync(join(appRoot, ".deco", "blocks"), { recursive: true });
+    expect(
+      await generateDecofileFromBlocks(join(appRoot, ".deco", "blocks")),
+    ).toBeNull();
+  });
+
+  it("generateDecofileFromBlocks: ignores non-.json and empty files", async () => {
+    writeBlock("Real", { ok: true });
+    const dir = join(appRoot, ".deco", "blocks");
+    writeFileSync(join(dir, "README.md"), "not a block");
+    writeFileSync(join(dir, "Empty.json"), "   ");
+    const merged = await generateDecofileFromBlocks(dir);
+    expect(JSON.parse(merged!)).toEqual({ Real: { ok: true } });
+  });
+
+  it("read: generates blocks.gen.json on the fly when it is absent", async () => {
+    writeBlock("Section%20One", { title: "one" });
+    const h = makeReadHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/read", { path: ".deco/blocks.gen.json", full: true }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { kind: string; content: string };
+    expect(body.kind).toBe("text");
+    // Un-numbered: the client's stripLineNumbers (which strips `^\d+\t`) is a
+    // no-op on pretty JSON, so the raw content JSON.parses directly.
+    expect(JSON.parse(body.content)).toEqual({
+      "Section One": { title: "one" },
+    });
+  });
+
+  it("read: prefers the committed blocks.gen.json when it exists", async () => {
+    writeBlock("Section%20One", { title: "from-blocks-dir" });
+    // A committed artifact that intentionally disagrees with the sources.
+    writeFileSync(
+      join(appRoot, ".deco", "blocks.gen.json"),
+      JSON.stringify({ "Section One": { title: "committed" } }),
+    );
+    const h = makeReadHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/read", { path: ".deco/blocks.gen.json", full: true }),
+    );
+    const body = (await res.json()) as { content: string };
+    expect(JSON.parse(stripLineNumbers(body.content))).toEqual({
+      "Section One": { title: "committed" },
+    });
+  });
+
+  it("read: still 400s for blocks.gen.json when there is no blocks dir", async () => {
+    mkdirSync(join(appRoot, ".deco"), { recursive: true });
+    const h = makeReadHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/read", { path: ".deco/blocks.gen.json", full: true }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("deduped: concurrent rebuilds share one in-flight promise, then reset", async () => {
+    writeBlock("Section%20One", { title: "one" });
+    const dir = join(appRoot, ".deco", "blocks");
+    // Concurrent callers coalesce onto the same build (no per-call re-merge).
+    const p1 = generateDecofileFromBlocksDeduped(dir);
+    const p2 = generateDecofileFromBlocksDeduped(dir);
+    expect(p1).toBe(p2);
+    const [a, b] = await Promise.all([p1, p2]);
+    expect(a).toBe(b);
+    expect(JSON.parse(a!)).toEqual({ "Section One": { title: "one" } });
+    // After settling it's a coalescer, not a cache: a fresh call rebuilds.
+    const p3 = generateDecofileFromBlocksDeduped(dir);
+    expect(p3).not.toBe(p1);
+    expect(JSON.parse((await p3)!)).toEqual({
+      "Section One": { title: "one" },
+    });
+  });
+});
+
+/** Mirrors the frontend's stripLineNumbers so the test asserts the same contract. */
+function stripLineNumbers(content: string): string {
+  return content
+    .split("\n")
+    .map((line) => line.replace(/^\d+\t/, ""))
+    .join("\n");
+}

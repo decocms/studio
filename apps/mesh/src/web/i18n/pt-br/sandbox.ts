@@ -406,6 +406,9 @@ export const sandbox = {
   "sandbox.preview.searchPagesAndComponents":
     "Procurar páginas e componentes...",
   "sandbox.preview.siteSeo": "SEO do site",
+  "sandbox.preview.startingPreview": "Iniciando seu preview",
+  "sandbox.preview.startingPreviewHint":
+    "Você já pode fazer alterações — elas aparecem quando o preview estiver pronto.",
   "sandbox.preview.templateNoLongerExists":
     "O modelo selecionado não existe mais.",
   "sandbox.preview.urlCopiedToClipboard":
@@ -499,6 +502,10 @@ export const sandbox = {
   "sandbox.redirectEditor.typePermanent": "Permanente ({status})",
   "sandbox.redirectEditor.typePlaceholder": "Tipo",
   "sandbox.redirectEditor.typeTemporary": "Temporário ({status})",
+  "sandbox.productionUrlField.description":
+    "Exibida no preview enquanto o servidor de desenvolvimento inicia, para você já visualizar e editar.",
+  "sandbox.productionUrlField.label": "URL de produção",
+  "sandbox.productionUrlField.placeholder": "https://exemplo.com",
   "sandbox.repoRow.label": "Repositório",
   "sandbox.repoRow.noRepositoryConnected": "Nenhum repositório conectado",
   "sandbox.repoRow.tooltipContent":
