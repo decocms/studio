@@ -12,6 +12,8 @@ export interface PathParamOption {
   value: string;
   label: string;
   image?: string;
+  /** What the option represents — drives grouping/icon in the picker. */
+  kind?: PathParamKind;
 }
 
 export interface PickerLoaderRequest {
@@ -38,12 +40,30 @@ export interface OptionSource {
   resolveType: string;
   /** Options fetched once (term-independent) and filtered client-side. */
   clientFilter: boolean;
-  buildRequests: (term: string) => PickerLoaderRequest[];
+  /**
+   * A safety net rendered only when every non-fallback source came up empty or
+   * errored (or there are no primary sources at all) — e.g. the homepage-links
+   * source standing in for a category tree/search that returned nothing.
+   * Primary sources always render.
+   */
+  isFallback: boolean;
+  /**
+   * Universal, loader-independent source: options are scraped from the site's
+   * homepage HTML (internal `<a href>` matched against the route template),
+   * fetched via the preview-fetch proxy rather than a loader invoke. When set,
+   * `buildRequests` is unused and `optionsFromPayload` receives the HTML string.
+   */
+  homepageLinks?: boolean;
+  /** Loader requests to enumerate options; absent for homepage-link sources. */
+  buildRequests?: (term: string) => PickerLoaderRequest[];
   optionsFromPayload: (
     payload: unknown,
     ctx: OptionPayloadContext,
   ) => PathParamOption[];
 }
+
+/** Stable id / cache discriminator for the homepage-links fallback source. */
+export const SITE_LINKS_SOURCE_ID = "site-links";
 
 /**
  * Loaders whose presence on a page classify its dynamic param. Matched against
@@ -95,6 +115,29 @@ export function classifyParamKinds(
     kinds.add("category");
   }
   return kinds;
+}
+
+/**
+ * Universal seed terms for a product search with no term yet (initial open /
+ * autofill): most engines return nothing for an empty query, so we seed with
+ * color words — present in essentially every catalog (clothing, perfume,
+ * luggage, soap). PT + EN, since stores serve both markets.
+ */
+export const GENERIC_SEED_TERMS = ["rosa", "preto", "pink", "black"];
+
+/**
+ * Expand a single-term request builder over the generic seeds when the user
+ * hasn't typed anything, so the picker lands on real products in any store;
+ * a non-empty term is used verbatim (one builder call). The fanned-out seed
+ * requests run in parallel and merge/dedupe downstream (see `fetchOptions`).
+ */
+function withGenericSeeds(
+  build: (term: string) => PickerLoaderRequest[],
+  term: string,
+): PickerLoaderRequest[] {
+  const trimmed = term.trim();
+  if (trimmed) return build(trimmed);
+  return GENERIC_SEED_TERMS.flatMap((seed) => build(seed));
 }
 
 /**
@@ -196,7 +239,8 @@ const OPTION_SOURCE_CANDIDATES: OptionSourceCandidate[] = [
     kind: "product",
     test: (rt) => rt === "vtex/loaders/intelligentSearch/productList.ts",
     clientFilter: false,
-    buildRequests: vtexProductRequests,
+    buildRequests: (resolveType, term) =>
+      withGenericSeeds((t) => vtexProductRequests(resolveType, t), term),
     optionsFromPayload: productOptionsFromPayload,
   },
   {
@@ -208,12 +252,16 @@ const OPTION_SOURCE_CANDIDATES: OptionSourceCandidate[] = [
     kind: "product",
     test: (rt) => /magento\/.*products?\/list(\.tsx?)?$/i.test(rt),
     clientFilter: false,
-    buildRequests: (resolveType, term) => [
-      {
-        resolveType,
-        props: { props: { search: term.trim(), pageSize: 10, currentPage: 1 } },
-      },
-    ],
+    buildRequests: (resolveType, term) =>
+      withGenericSeeds(
+        (t) => [
+          {
+            resolveType,
+            props: { props: { search: t, pageSize: 10, currentPage: 1 } },
+          },
+        ],
+        term,
+      ),
     optionsFromPayload: productOptionsFromPayload,
   },
   {
@@ -222,9 +270,11 @@ const OPTION_SOURCE_CANDIDATES: OptionSourceCandidate[] = [
     test: (rt) =>
       /algolia\/.*products?\/(list|suggestions)(\.tsx?)?$/i.test(rt),
     clientFilter: false,
-    buildRequests: (resolveType, term) => [
-      { resolveType, props: { term: term.trim(), hitsPerPage: 10 } },
-    ],
+    buildRequests: (resolveType, term) =>
+      withGenericSeeds(
+        (t) => [{ resolveType, props: { term: t, hitsPerPage: 10 } }],
+        term,
+      ),
     optionsFromPayload: productOptionsFromPayload,
   },
   {
@@ -233,17 +283,16 @@ const OPTION_SOURCE_CANDIDATES: OptionSourceCandidate[] = [
     kind: "product",
     test: (rt) => /products?\/list(\.tsx?)?$/i.test(rt),
     clientFilter: false,
-    buildRequests: (resolveType, term) => [
-      {
-        resolveType,
-        props: {
-          query: term.trim(),
-          term: term.trim(),
-          count: 10,
-          hitsPerPage: 10,
-        },
-      },
-    ],
+    buildRequests: (resolveType, term) =>
+      withGenericSeeds(
+        (t) => [
+          {
+            resolveType,
+            props: { query: t, term: t, count: 10, hitsPerPage: 10 },
+          },
+        ],
+        term,
+      ),
     optionsFromPayload: productOptionsFromPayload,
   },
   // Category — a term-independent tree, filtered client-side.
@@ -263,6 +312,13 @@ const OPTION_SOURCE_CANDIDATES: OptionSourceCandidate[] = [
  * manifest into a concrete {@link OptionSource}. Kinds with no available loader
  * are dropped (the free-text "Use …" row and the plain inline input still let
  * the user type a value). Preserves candidate order = priority.
+ *
+ * Any classified param also gets a universal **homepage-links fallback**
+ * ({@link siteLinksSource}): options scraped from the site's homepage HTML,
+ * matched against the route template. It's app-agnostic (no loader/index
+ * config) and is rendered only when the loader-based primary sources come up
+ * empty/errored — so Granado (empty Algolia) and Bagaggio (failing category
+ * tree) still surface real categories/products to pick from.
  */
 export function resolveOptionSources(
   kinds: ReadonlySet<PathParamKind>,
@@ -270,12 +326,11 @@ export function resolveOptionSources(
   platforms: ReadonlySet<string> = new Set(),
 ): OptionSource[] {
   const loaders = [...manifestLoaders];
-  const sources: OptionSource[] = [];
-  for (const kind of ["product", "category"] as const) {
-    if (!kinds.has(kind)) continue;
-    // Collect every candidate that resolves to an allowed loader, in candidate
-    // order, then prefer one from the page's own platform (Magento's native
-    // search over a neutral Algolia index) — otherwise take the first.
+
+  // Best allowed candidate for a kind: collect every candidate resolving to an
+  // allowed loader in candidate order, then prefer one from the page's own
+  // platform (Magento's native search over a neutral Algolia index).
+  const chooseCandidate = (kind: PathParamKind) => {
     const matches: { cand: OptionSourceCandidate; resolveType: string }[] = [];
     for (const cand of OPTION_SOURCE_CANDIDATES) {
       if (cand.kind !== kind) continue;
@@ -284,21 +339,59 @@ export function resolveOptionSources(
       );
       if (resolveType) matches.push({ cand, resolveType });
     }
-    const chosen =
+    return (
       matches.find((m) => platforms.has(loaderVendor(m.resolveType))) ??
-      matches[0];
-    if (!chosen) continue;
-    const { cand, resolveType } = chosen;
-    sources.push({
-      kind,
-      id: `${kind}:${resolveType}`,
-      resolveType,
-      clientFilter: cand.clientFilter,
-      buildRequests: (term) => cand.buildRequests(resolveType, term),
-      optionsFromPayload: cand.optionsFromPayload,
-    });
+      matches[0]
+    );
+  };
+
+  const bind = (
+    cand: OptionSourceCandidate,
+    resolveType: string,
+    isFallback: boolean,
+  ): OptionSource => ({
+    kind: cand.kind,
+    id: `${cand.kind}:${resolveType}${isFallback ? ":fallback" : ""}`,
+    resolveType,
+    clientFilter: cand.clientFilter,
+    isFallback,
+    buildRequests: (term) => cand.buildRequests(resolveType, term),
+    optionsFromPayload: cand.optionsFromPayload,
+  });
+
+  const sources: OptionSource[] = [];
+  for (const kind of ["product", "category"] as const) {
+    if (!kinds.has(kind)) continue;
+    const chosen = chooseCandidate(kind);
+    if (chosen) sources.push(bind(chosen.cand, chosen.resolveType, false));
   }
+
+  // Universal homepage-links fallback for any classified param (see doc above).
+  if (kinds.size > 0) {
+    sources.push(
+      siteLinksSource(kinds.has("category") ? "category" : "product"),
+    );
+  }
+
   return sources;
+}
+
+/**
+ * The homepage-links fallback source: enumerates entities by scraping the
+ * site's homepage HTML for internal links that match the route template. Fetched
+ * via the preview-fetch proxy (not a loader invoke), fetched once and filtered
+ * client-side. `kind` only drives the label/icon.
+ */
+function siteLinksSource(kind: PathParamKind): OptionSource {
+  return {
+    kind,
+    id: SITE_LINKS_SOURCE_ID,
+    resolveType: SITE_LINKS_SOURCE_ID,
+    clientFilter: true,
+    isFallback: true,
+    homepageLinks: true,
+    optionsFromPayload: (payload, ctx) => linkOptionsFromHtml(payload, ctx),
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -524,6 +617,170 @@ export function categoryOptionsFromPayload(data: unknown): PathParamOption[] {
   };
   if (Array.isArray(data)) {
     for (const node of data) walk(node, []);
+  }
+  return options;
+}
+
+/**
+ * First path segments that are storefront utility pages, never product
+ * categories — filtered out of the category signal so a category picker isn't
+ * polluted with login/account/checkout/help links from the site nav & footer.
+ */
+const NON_CATEGORY_SEGMENTS = new Set([
+  "login",
+  "logout",
+  "signin",
+  "sign-in",
+  "signup",
+  "sign-up",
+  "register",
+  "account",
+  "myaccount",
+  "my-account",
+  "minha-conta",
+  "conta",
+  "cart",
+  "carrinho",
+  "checkout",
+  "wishlist",
+  "favoritos",
+  "favorites",
+  "orders",
+  "pedidos",
+  "help",
+  "hc",
+  "sac",
+  "atendimento",
+  "contato",
+  "contact",
+  "institucional",
+  "newsletter",
+  "customer",
+  "sales",
+  "catalogsearch",
+  "search",
+  "busca",
+  "privacy-policy-cookie-restriction-mode",
+]);
+
+/** Humanize a value's last path segment for a link label ("casa/vela" → "Vela"). */
+function deslugLabel(value: string): string {
+  const last = value.split("/").filter(Boolean).pop() ?? value;
+  return last
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Internal `<a href>` links with their visible text, parsed from raw HTML. */
+export function parseHomepageAnchors(
+  html: unknown,
+): { href: string; text: string }[] {
+  if (typeof html !== "string" || !html) return [];
+  const anchors: { href: string; text: string }[] = [];
+  const re = /<a\b[^>]*?\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  let guard = 0;
+  while ((m = re.exec(html)) !== null && guard++ < 5000) {
+    const href = m[1] ?? "";
+    const text = (m[2] ?? "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    anchors.push({ href, text });
+  }
+  return anchors;
+}
+
+/**
+ * Products embedded as schema.org JSON in a page's SSR HTML (shelves / listing
+ * data), so a homepage with no product `<a href>` still yields real PDPs. Each
+ * Product marker is anchored to its nearest `url` + `name`, handling both quoted
+ * JSON (`"url":"…","name":"…"`) and the RSC-streamed unquoted-key form
+ * (`url:"…",name:"…"`) deco/TanStack pages emit. URLs may be absolute
+ * production-domain — {@link valueFromEntityUrl} matches on the pathname anyway.
+ */
+export function parseEmbeddedProducts(
+  html: unknown,
+): { url: string; name: string; image?: string }[] {
+  if (typeof html !== "string" || !html) return [];
+  const out: { url: string; name: string; image?: string }[] = [];
+  const seen = new Set<string>();
+  const re =
+    /"@type":"Product"[\s\S]{0,600}?(?:"url"|\burl):"([^"]+)"[\s\S]{0,300}?(?:"name"|\bname):"([^"]+)"/g;
+  // First image URL inside the product's `image` array, searched in a bounded
+  // window after the match (optional — a product without one still resolves).
+  const imgRe =
+    /(?:"image"|\bimage):\s*\[\s*\{[\s\S]{0,400}?(?:"url"|\burl):"([^"]+)"/;
+  let m: RegExpExecArray | null;
+  let guard = 0;
+  while ((m = re.exec(html)) !== null && guard++ < 3000) {
+    const url = (m[1] ?? "").replace(/\\\//g, "/");
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    const image = html
+      .slice(m.index, m.index + 900)
+      .match(imgRe)?.[1]
+      ?.replace(/\\\//g, "/");
+    out.push({ url, name: m[2] ?? "", image: image || undefined });
+  }
+  return out;
+}
+
+/**
+ * Options from the site's homepage HTML — the universal, loader-independent
+ * source. Two signals, matched against the route template
+ * ({@link valueFromEntityUrl}): internal `<a href>` links (the nav → categories)
+ * and embedded schema.org products (shelves → PDPs). So a catch-all page that
+ * serves both PLP and PDP surfaces both. For a catch-all (`*`) param,
+ * product-detail links (VTEX `…/p`) are dropped so a category picker isn't
+ * polluted with PDPs, and utility pages (login/account/…) are filtered from the
+ * category signal. Each option is tagged `kind` so the picker groups them into
+ * Categories / Products. Label prefers the link/product text, else a humanized
+ * slug. Capped to bound the list.
+ */
+export function linkOptionsFromHtml(
+  html: unknown,
+  ctx: OptionPayloadContext,
+): PathParamOption[] {
+  const options: PathParamOption[] = [];
+  const seen = new Set<string>();
+  const add = (
+    rawUrl: string,
+    label: string,
+    kind: PathParamKind,
+    image?: string,
+  ) => {
+    if (options.length >= 200) return;
+    const value = valueFromEntityUrl(rawUrl, ctx.template, ctx.paramName);
+    if (!value || seen.has(value)) return;
+    // Catch-all category picker: drop product-detail links (…/p) so the list is
+    // categories, not PDPs (the /p is only ambiguous for the `*` template).
+    if (ctx.paramName === "*" && /(^|\/)p$/.test(value)) return;
+    // Nav links: keep only category-like paths, not utility pages.
+    if (
+      kind === "category" &&
+      NON_CATEGORY_SEGMENTS.has(value.split("/")[0] ?? "")
+    )
+      return;
+    seen.add(value);
+    options.push({
+      value,
+      label: label && label.length <= 80 ? label : deslugLabel(value),
+      kind,
+      image,
+    });
+  };
+  // Embedded products FIRST: on a listing page the product cards are also
+  // `<a href>` anchors, so if nav links were processed first they'd claim the
+  // product URLs as "category". Products claim their URLs here; duplicate nav
+  // anchors are then skipped, leaving only genuine category links.
+  for (const { url, name, image } of parseEmbeddedProducts(html))
+    add(url, name, "product", image);
+  for (const { href, text } of parseHomepageAnchors(html)) {
+    if (href.startsWith("/") && !href.startsWith("//"))
+      add(href, text, "category");
   }
   return options;
 }
