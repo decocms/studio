@@ -53,7 +53,12 @@ export function QueueTray({ taskId }: { taskId: string }) {
     <div className="mb-1 overflow-hidden rounded-2xl border border-border bg-card dark:bg-muted">
       <div className="flex items-center justify-between gap-2 border-b border-border py-1.5 pr-2 pl-3 text-xs text-muted-foreground">
         <span>
-          {t("chat.queueTray.queuedMessages", { count: queued.length })}
+          {t(
+            queued.length === 1
+              ? "chat.queueTray.queuedMessage"
+              : "chat.queueTray.queuedMessages",
+            { count: queued.length },
+          )}
         </span>
         <Tooltip delayDuration={400}>
           <TooltipTrigger asChild>
