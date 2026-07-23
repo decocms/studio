@@ -480,6 +480,10 @@ export const sandbox = {
   "sandbox.redirectEditor.typePermanent": "Permanent ({status})",
   "sandbox.redirectEditor.typePlaceholder": "Type",
   "sandbox.redirectEditor.typeTemporary": "Temporary ({status})",
+  "sandbox.productionUrlField.description":
+    "Shown in the preview while the dev server is starting, so you can view and edit right away.",
+  "sandbox.productionUrlField.label": "Production URL",
+  "sandbox.productionUrlField.placeholder": "https://example.com",
   "sandbox.repoRow.label": "Repository",
   "sandbox.repoRow.noRepositoryConnected": "No repository connected",
   "sandbox.repoRow.tooltipContent":

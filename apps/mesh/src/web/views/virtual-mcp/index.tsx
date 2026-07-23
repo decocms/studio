@@ -80,6 +80,7 @@ import { DevAgentSetup } from "@/web/components/dev-agent/dev-agent-setup.tsx";
 import { EnvVarsField } from "@/web/components/sandbox/runtime-card/env-vars-field";
 import { RepoRow } from "@/web/components/sandbox/runtime-card/repo-row";
 import { RuntimeFields } from "@/web/components/sandbox/runtime-card/runtime-fields";
+import { ProductionUrlField } from "@/web/components/sandbox/runtime-card/production-url-field";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -1138,6 +1139,7 @@ Define step-by-step how the agent should handle requests.
               <Card className="p-6 gap-5">
                 <CardContent className="p-0 space-y-5">
                   <RepoRow repo={runtimeCardRepo} />
+                  <ProductionUrlField control={form.control} />
                   <RuntimeFields control={form.control} />
                   <EnvVarsField
                     control={form.control}
