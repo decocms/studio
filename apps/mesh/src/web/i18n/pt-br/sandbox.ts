@@ -203,6 +203,17 @@ export const sandbox = {
   "sandbox.fileExplorer.selectFileToEdit": "Selecione um arquivo para editar",
   "sandbox.fileExplorer.send": "Enviar",
   "sandbox.fileExplorer.textCopied": "{label} copiado",
+  "sandbox.fileExplorerDeleteDialog.cancel": "Cancelar",
+  "sandbox.fileExplorerDeleteDialog.delete": "Excluir",
+  "sandbox.fileExplorerDeleteDialog.description":
+    "Isso excluirá permanentemente",
+  "sandbox.fileExplorerDeleteDialog.folderSuffix": " e tudo dentro dela.",
+  "sandbox.fileExplorerDeleteDialog.titleFile": "Excluir arquivo?",
+  "sandbox.fileExplorerDeleteDialog.titleFolder": "Excluir pasta?",
+  "sandbox.fileExplorerDeleteDialog.unsavedChangesMany":
+    "{count} arquivos abertos têm alterações não salvas que serão perdidas.",
+  "sandbox.fileExplorerDeleteDialog.unsavedChangesOne":
+    "Um arquivo aberto tem alterações não salvas que serão perdidas.",
   "sandbox.fileExplorerNameDialog.cancel": "Cancelar",
   "sandbox.fileExplorerNameDialog.location": "Local",
   "sandbox.fileExplorerNameDialog.name": "Nome",
@@ -370,6 +381,7 @@ export const sandbox = {
   "sandbox.postToolbar.sortTitleAZ": "Título A–Z",
   "sandbox.postToolbar.sortTitleZA": "Título Z–A",
   "sandbox.postToolbar.sortZA": "Z–A",
+  "sandbox.preview.catchAllParamLabel": "caminho",
   "sandbox.preview.choosePage": "Escolher página",
   "sandbox.preview.clickElementToAsk":
     "Clique em qualquer elemento para perguntar à IA",
@@ -601,7 +613,7 @@ export const sandbox = {
     "O repositório GitHub deste agente não está autenticado. Reconecte em Conexões e tente novamente.",
   "sandbox.stateCard.othersThreadTitle": "Você está no chat de outra pessoa",
   "sandbox.stateCard.othersThreadMessage":
-    "Esta conversa ({label}) é de outro membro. Continuar vai iniciar um sandbox na branch dela — comece um novo chat para trabalhar no seu.",
+    "Esta conversa ({label}) é de outro membro. Continuar aqui significa dar sequência ao trabalho dela — comece um novo chat para trabalhar no seu.",
   "sandbox.stateCard.othersThreadContinue": "Continuar mesmo assim",
   "sandbox.stateCard.othersThreadNewChat": "Começar novo chat",
   "sandbox.stateCard.reconnectGithub": "Reconectar GitHub",

@@ -217,6 +217,19 @@ describe("git routes", () => {
     expect(body.diffs["README.md"]?.to).toContain("hello world");
   });
 
+  it("diff shows the original content for a renamed file, not null", async () => {
+    const { appRoot, repoDir } = initRepo();
+    gitSync(["mv", "README.md", "GUIDE.md"], { cwd: repoDir, asUser: false });
+    const handler = makeGitDiffHandler({ appRoot, repoDir });
+    const res = await handler(new Request("http://x/git/diff"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      diffs: Record<string, { from: string | null; to: string | null }>;
+    };
+    expect(body.diffs["GUIDE.md"]?.from).toContain("hello");
+    expect(body.diffs["GUIDE.md"]?.to).toContain("hello");
+  });
+
   it("diff against base returns committed branch changes", async () => {
     const { appRoot, repoDir } = initRepo();
     gitSync(["checkout", "-b", "feature"], { cwd: repoDir, asUser: false });
@@ -387,6 +400,21 @@ describe("git routes", () => {
       asUser: false,
     });
     expect(log.trim()).toBe("init");
+  });
+
+  it("publish route returns 409 (not 500) for a protected-branch refusal", async () => {
+    const { appRoot, repoDir } = initRepo(); // initRepo checks out main
+    writeFileSync(join(repoDir, "README.md"), "changed\n");
+    const handler = makeGitPublishHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/publish", {
+        method: "POST",
+        body: JSON.stringify({ message: "from main" }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/protected branch "main"/);
   });
 
   it("publish() does not commit org-fs mount content excluded via .git/info/exclude", () => {
@@ -646,7 +674,7 @@ describe("git routes", () => {
       }),
     );
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
       error: "Invalid path: ../outside-secret.txt",
     });

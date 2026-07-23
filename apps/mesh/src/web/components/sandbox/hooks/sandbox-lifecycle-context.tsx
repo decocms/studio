@@ -159,7 +159,7 @@ import {
 } from "@decocms/mesh-sdk";
 import type { SandboxMap } from "@decocms/mesh-sdk/types";
 import { useQueryClient } from "@tanstack/react-query";
-import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
+import { KEYS, invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { useChatTask } from "@/web/components/chat/context";
 import {
   sandboxUserStop,
@@ -216,6 +216,8 @@ export function SandboxLifecycleProvider({
   hasActiveGithubRepo,
   sandboxMap,
   sandboxProviderKind,
+  sharedDesiredState,
+  sharedLifecyclePending,
   othersThreadLabel,
   othersThreadId,
   children,
@@ -229,6 +231,8 @@ export function SandboxLifecycleProvider({
    *  (unlocked). When non-null, entry selection and SANDBOX_START are scoped to
    *  this kind so the preview never silently shows a different-provider sibling. */
   sandboxProviderKind: SandboxProviderKind | null;
+  sharedDesiredState: "running" | "stopped" | null;
+  sharedLifecyclePending: boolean;
   /** Non-null when the active thread belongs to another member: label to show
    *  in the confirmation gate (its branch, or title). While set and not yet
    *  acknowledged, auto-start is held back so we never silently boot a sandbox
@@ -288,9 +292,10 @@ export function SandboxLifecycleProvider({
     : selectVmEntry(branchMap);
   const previewUrl = vmEntry?.previewUrl ?? null;
   const userStopped =
-    !!virtualMcpId &&
-    !!branch &&
-    sandboxUserStop.isStopped(virtualMcpId, branch);
+    sharedDesiredState === "stopped" ||
+    (!!virtualMcpId &&
+      !!branch &&
+      sandboxUserStop.isStopped(virtualMcpId, branch));
   const appPaused = events.status.state === "paused";
   const startError =
     startVm.isError && startVm.error
@@ -324,7 +329,7 @@ export function SandboxLifecycleProvider({
     branch,
     vmEntry,
     userStopped,
-    isPending: startVm.isPending,
+    isPending: startVm.isPending || sharedLifecyclePending,
     attempted,
     autoStartBlocked,
   });
@@ -363,7 +368,7 @@ export function SandboxLifecycleProvider({
     deadVmId,
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside effect after firing
     lastDeadVmId: reprovisionedForVmIdRef.current,
-    isPending: startVm.isPending,
+    isPending: startVm.isPending || sharedLifecyclePending,
     userStopped,
     autoStartBlocked,
   });
@@ -431,6 +436,11 @@ export function SandboxLifecycleProvider({
       // Best effort
     }
     invalidateVirtualMcpQueries(queryClient);
+    if (branch) {
+      queryClient.invalidateQueries({
+        queryKey: KEYS.agentSandboxSession(org.slug, virtualMcpId, branch),
+      });
+    }
   };
 
   const restart = async () => {

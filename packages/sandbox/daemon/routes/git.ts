@@ -116,6 +116,8 @@ export interface GitStatusFile {
   path: string;
   index: string;
   working_dir: string;
+  /** Pre-rename path, present only for R/C entries. */
+  origPath?: string;
 }
 
 export interface GitStatusResult {
@@ -274,7 +276,14 @@ async function computeDiff(repoDir: string): Promise<GitDiffResult> {
       const index = file?.index ?? " ";
       const working = file?.working_dir ?? " ";
       const isDeleted = index === "D" || working === "D";
-      const head = await readRefFileAsync(repoDir, "HEAD", filePath);
+      // A renamed file's HEAD content lives under its pre-rename path — reading
+      // HEAD:filePath would 404 (the new name never existed at HEAD) and the
+      // rename would render as a brand-new file with no "from" content.
+      const head = await readRefFileAsync(
+        repoDir,
+        "HEAD",
+        file?.origPath ?? filePath,
+      );
       const isNew =
         (index === "?" && working === "?") ||
         index === "A" ||
@@ -451,14 +460,34 @@ function changedPathsFromStatus(status: { files: GitStatusFile[] }): string[] {
   ];
 }
 
+/** A discard request path that escapes the repo — a client/data condition, not a server fault. */
+class InvalidDiscardPathError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidDiscardPathError";
+  }
+}
+
+/**
+ * publish() refused because of the sandbox's current git state (detached HEAD,
+ * or the checked-out branch is protected) — a conflict with the request, not a
+ * server fault, so the route maps it to 409 like repoNotReadyResponse().
+ */
+class PublishBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PublishBlockedError";
+  }
+}
+
 function resolveRepoRelativePath(deps: GitDeps, userPath: string): string {
   const abs = safePath(deps.appRoot, deps.repoDir, userPath);
   if (!abs) {
-    throw new Error(`Invalid path: ${userPath}`);
+    throw new InvalidDiscardPathError(`Invalid path: ${userPath}`);
   }
   const rel = path.relative(deps.repoDir, abs);
   if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    throw new Error(`Invalid path: ${userPath}`);
+    throw new InvalidDiscardPathError(`Invalid path: ${userPath}`);
   }
   return rel;
 }
@@ -518,14 +547,14 @@ export function publish(
   }
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
-    throw new Error("Cannot publish from a detached HEAD");
+    throw new PublishBlockedError("Cannot publish from a detached HEAD");
   }
   // The pre-push hook (protect-branch.ts) also guards this, but the push below
   // runs with --no-verify and skips it — so the block MUST live in code too.
   // Refuse before committing so we never leave a stray commit on a protected
   // branch either. Changes reach the default branch via PR, never a direct push.
   if (protectedBranches(repoDir).has(branch)) {
-    throw new Error(
+    throw new PublishBlockedError(
       `Refusing to push to protected branch "${branch}" from a sandbox. Work on a feature branch; changes reach the default branch via PR.`,
     );
   }
@@ -719,6 +748,11 @@ export function makeGitPublishHandler(deps: GitDeps) {
       if (err instanceof InvalidDecofileBlockError) {
         return jsonResponse({ error: err.message }, 400);
       }
+      // A detached HEAD / protected-branch refusal is a conflict with the
+      // sandbox's current state, not a server fault.
+      if (err instanceof PublishBlockedError) {
+        return jsonResponse({ error: err.message }, 409);
+      }
       return jsonResponse({ error: formatGitError(err) }, 500);
     }
   };
@@ -743,6 +777,9 @@ export function makeGitDiscardHandler(deps: GitDeps) {
       discard(deps, filepaths);
       return jsonResponse({ success: true });
     } catch (err) {
+      if (err instanceof InvalidDiscardPathError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
       return jsonResponse(
         { error: err instanceof Error ? err.message : String(err) },
         500,

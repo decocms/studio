@@ -45,6 +45,7 @@ const createMockContext = (
     organizationJoinRequests: null as never,
     kv: null as never,
     interests: null as never,
+    agentSandboxSessions: null as never,
   },
   vault: null as never,
   authInstance: null as never,

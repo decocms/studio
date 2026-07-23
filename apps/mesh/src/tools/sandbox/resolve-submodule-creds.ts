@@ -10,6 +10,7 @@ interface ResolveParams {
   orgId: string;
   userId: string;
   entries: SubmoduleCredential[] | null | undefined;
+  organizationSecretsOnly?: boolean;
 }
 
 /**
@@ -28,17 +29,23 @@ export async function resolveSubmoduleCredentials({
   orgId,
   userId,
   entries,
+  organizationSecretsOnly = false,
 }: ResolveParams): Promise<{ host: string; token: string }[]> {
   if (!entries || entries.length === 0) return [];
 
   const resolved: { host: string; token: string }[] = [];
   for (const entry of entries) {
     try {
-      const { value } = await ctx.storage.secrets.resolveById(
+      const { info, value } = await ctx.storage.secrets.resolveById(
         entry.secretId,
         orgId,
         userId,
       );
+      if (organizationSecretsOnly && info.scope !== "organization") {
+        throw new Error(
+          `Shared agent sandboxes require organization-scoped submodule credentials (${entry.host})`,
+        );
+      }
       resolved.push({ host: entry.host, token: value });
     } catch (err) {
       if (

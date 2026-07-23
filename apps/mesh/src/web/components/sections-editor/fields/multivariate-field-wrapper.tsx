@@ -18,36 +18,21 @@ import {
   type MatcherEntry,
 } from "../matcher-picker";
 import { formatMatcher } from "../format-matcher";
-import {
-  resolveSchema,
-  type SchemaProperty,
-  type LiveMeta,
-} from "../resolve-schema";
+import type { LiveMeta } from "../resolve-schema";
 import { SchemaForm } from "../schema-form";
 import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
+import { cachedResolveSchema } from "./resolved-schema-cache";
 
-// Cache expensive computations that depend on stable inputs.
-// `meta` changes only on page load; `resolveType` changes only on rule picker selection.
+// `meta` changes only on page load; `resolveType` changes only on rule picker
+// selection — cache the matcher list per meta instance (WeakMap, so a stale
+// meta's entries GC with it).
 const matchersCache = new WeakMap<LiveMeta, MatcherEntry[]>();
-const schemaCache = new Map<string, SchemaProperty | null>();
 
 function cachedExtractMatchers(meta: LiveMeta): MatcherEntry[] {
   let result = matchersCache.get(meta);
   if (!result) {
     result = extractMatchers(meta);
     matchersCache.set(meta, result);
-  }
-  return result;
-}
-
-function cachedResolveSchema(
-  resolveType: string,
-  meta: LiveMeta,
-): SchemaProperty | null {
-  let result = schemaCache.get(resolveType);
-  if (result === undefined) {
-    result = resolveSchema(resolveType, meta);
-    schemaCache.set(resolveType, result);
   }
   return result;
 }

@@ -42,6 +42,13 @@ async function syncToolsCatalog(
   handle: string,
   vm: { virtualMcpId: string; providerKind: SandboxProviderKind },
 ): Promise<void> {
+  // A tool-scripting endpoint is a user-bound API key. Persisting it inside a
+  // shared workspace would let another collaborator act as the user who
+  // happened to sync last. Shared hosted sandboxes therefore keep tool calls
+  // in the outer harness and do not materialize user credentials on disk.
+  if (vm.providerKind === "agent-sandbox") {
+    return;
+  }
   try {
     const organization = ctx.organization;
     if (!organization) return;
@@ -105,6 +112,7 @@ export async function buildClusterSandboxFs(
     {
       userId: vm.userId,
       branch: vm.branch,
+      virtualMcpId: vm.virtualMcpId,
       virtualMcpMetadata: null,
     },
   );
@@ -179,6 +187,37 @@ export async function buildClusterSandboxFs(
     if (lastHandlePromise && typeof runner.forgetHandle === "function") {
       try {
         const lastHandle = await lastHandlePromise;
+        if (providerKind === "agent-sandbox") {
+          const virtualMcp = await ctx.storage.virtualMcps.findById(
+            vm.virtualMcpId,
+          );
+          if (virtualMcp) {
+            const locator = {
+              organizationId: virtualMcp.organization_id,
+              virtualMcpId: vm.virtualMcpId,
+              branch: vm.branch,
+            };
+            const reaping = await ctx.storage.agentSandboxSessions.withLock(
+              locator,
+              (sessions) => sessions.beginReap(locator, lastHandle),
+            );
+            if (!reaping) return;
+            try {
+              await runner.forgetHandle(lastHandle);
+            } finally {
+              await ctx.storage.agentSandboxSessions.withLock(
+                locator,
+                (sessions) =>
+                  sessions.completeReap(
+                    locator,
+                    reaping.generation,
+                    lastHandle,
+                  ),
+              );
+            }
+            return;
+          }
+        }
         await runner.forgetHandle(lastHandle);
       } catch (err) {
         console.warn("[cluster-sandbox-fs] forgetHandle failed", err);

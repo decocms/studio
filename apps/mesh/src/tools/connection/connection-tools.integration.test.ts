@@ -100,6 +100,7 @@ describe("Connection Tools", () => {
             updatedAt: new Date().toISOString(),
           }),
         } as never,
+        agentSandboxSessions: null as never,
         monitoring: null as never,
         threads: null as never,
         asyncResearchJobs: null as never,
