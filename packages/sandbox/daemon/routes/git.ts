@@ -460,14 +460,22 @@ function changedPathsFromStatus(status: { files: GitStatusFile[] }): string[] {
   ];
 }
 
+/** A discard request path that escapes the repo — a client/data condition, not a server fault. */
+class InvalidDiscardPathError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidDiscardPathError";
+  }
+}
+
 function resolveRepoRelativePath(deps: GitDeps, userPath: string): string {
   const abs = safePath(deps.appRoot, deps.repoDir, userPath);
   if (!abs) {
-    throw new Error(`Invalid path: ${userPath}`);
+    throw new InvalidDiscardPathError(`Invalid path: ${userPath}`);
   }
   const rel = path.relative(deps.repoDir, abs);
   if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    throw new Error(`Invalid path: ${userPath}`);
+    throw new InvalidDiscardPathError(`Invalid path: ${userPath}`);
   }
   return rel;
 }
@@ -752,6 +760,9 @@ export function makeGitDiscardHandler(deps: GitDeps) {
       discard(deps, filepaths);
       return jsonResponse({ success: true });
     } catch (err) {
+      if (err instanceof InvalidDiscardPathError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
       return jsonResponse(
         { error: err instanceof Error ? err.message : String(err) },
         500,

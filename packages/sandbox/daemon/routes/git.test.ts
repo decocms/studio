@@ -659,7 +659,7 @@ describe("git routes", () => {
       }),
     );
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
       error: "Invalid path: ../outside-secret.txt",
     });
