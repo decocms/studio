@@ -103,6 +103,29 @@ describe("resolveConfig database pool max", () => {
   );
 });
 
+describe("resolveConfig duckdb threads", () => {
+  it("defaults to undefined when unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.duckdbThreads).toBeUndefined();
+  });
+
+  it("uses DUCKDB_THREADS when set", () => {
+    const result = resolveConfig(flags, { DUCKDB_THREADS: "4" });
+
+    expect(result.settings.duckdbThreads).toBe(4);
+  });
+
+  it.each(["abc", "0", "-1", "1.5", "Infinity"])(
+    "throws for invalid thread count %p",
+    (value) => {
+      expect(() => resolveConfig(flags, { DUCKDB_THREADS: value })).toThrow(
+        "DUCKDB_THREADS must be a positive integer",
+      );
+    },
+  );
+});
+
 describe("resolveConfig deployment admin emails", () => {
   it("defaults to an empty list when unset", () => {
     const result = resolveConfig(flags, {});

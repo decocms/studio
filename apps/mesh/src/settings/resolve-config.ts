@@ -57,6 +57,19 @@ function toPositiveIntegerOrDefault(
   return numberValue;
 }
 
+function toPositiveIntegerOrUndefined(
+  name: string,
+  value: string | undefined,
+): number | undefined {
+  if (value === undefined || value === "") return undefined;
+
+  const numberValue = Number(value);
+  if (!Number.isSafeInteger(numberValue) || numberValue <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return numberValue;
+}
+
 /** Tri-state flag: unset/empty → `fallback`, otherwise parse as boolean. */
 function toBoolWithDefault(
   value: string | undefined,
@@ -219,9 +232,10 @@ export function resolveConfig(
     duckdbExtensionDirectory:
       envVars.DUCKDB_EXTENSION_DIRECTORY || "/opt/duckdb/extensions",
     duckdbMemoryLimit: envVars.DUCKDB_MEMORY_LIMIT || undefined,
-    duckdbThreads: envVars.DUCKDB_THREADS
-      ? Number(envVars.DUCKDB_THREADS)
-      : undefined,
+    duckdbThreads: toPositiveIntegerOrUndefined(
+      "DUCKDB_THREADS",
+      envVars.DUCKDB_THREADS,
+    ),
 
     // Runtime flags
     isCli: true,
