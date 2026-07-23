@@ -58,6 +58,7 @@ import {
 } from "../storage/registry";
 import type { PrivateRegistryDatabase } from "../storage/registry/types";
 import { TagStorage } from "../storage/tags";
+import { OrganizationBillingStorage } from "../storage/organization-billing";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
 import { AgentSandboxSessionStorage } from "../storage/agent-sandbox-sessions";
@@ -391,7 +392,9 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       removeMember: async (data) => {
-        await auth.api.removeMember({
+        // Return Better Auth's result: it carries the removed member's userId,
+        // which the tool needs to release the member's paid seat.
+        return auth.api.removeMember({
           headers,
           body: data,
         });
@@ -1340,6 +1343,7 @@ export async function createStudioContextFactory(
     agentSandboxSessions: new AgentSandboxSessionStorage(config.db),
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
+    organizationBilling: new OrganizationBillingStorage(config.db),
     virtualMcpPluginConfigs: new VirtualMcpPluginConfigsStorage(config.db),
     aiProviderKeys: new AIProviderKeyStorage(
       config.db,

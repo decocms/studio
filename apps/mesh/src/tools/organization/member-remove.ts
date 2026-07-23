@@ -56,7 +56,7 @@ export const ORGANIZATION_MEMBER_REMOVE = defineTool({
     }
 
     // Remove member via Better Auth
-    await ctx.boundAuth.organization.removeMember({
+    const removed = await ctx.boundAuth.organization.removeMember({
       organizationId,
       memberIdOrEmail: input.memberIdOrEmail,
     });
@@ -66,6 +66,23 @@ export const ORGANIZATION_MEMBER_REMOVE = defineTool({
     // for removed members since the DB row is gone.
 
     const actorId = getUserId(ctx);
+
+    // Release the member's paid seat (lifecycle pairing with membership):
+    // without this, a removed member's seat keeps counting toward the org's
+    // bill and gateway allowance forever. Fail-soft: seat release must never
+    // make the (already completed) removal report failure.
+    const removedUserId = removed?.member?.userId;
+    if (removedUserId) {
+      try {
+        await ctx.storage.organizationBilling.releaseSeatOnMemberRemoval(
+          organizationId,
+          removedUserId,
+          actorId ?? "system",
+        );
+      } catch (err) {
+        console.error("Failed to release paid seat on member removal:", err);
+      }
+    }
     if (actorId) {
       posthog.capture({
         distinctId: actorId,

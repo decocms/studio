@@ -101,6 +101,7 @@ describe("Connection Tools", () => {
           }),
         } as never,
         agentSandboxSessions: null as never,
+        organizationBilling: null as never,
         monitoring: null as never,
         threads: null as never,
         asyncResearchJobs: null as never,

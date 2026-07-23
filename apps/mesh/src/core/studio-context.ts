@@ -47,6 +47,9 @@ export type ListOrganizationsResult = Awaited<
   ReturnType<BetterAuthApi["listOrganizations"]>
 >;
 export type AddMemberResult = Awaited<ReturnType<BetterAuthApi["addMember"]>>;
+export type RemoveMemberResult = Awaited<
+  ReturnType<BetterAuthApi["removeMember"]>
+>;
 export type ListMembersResult = Awaited<
   ReturnType<BetterAuthApi["listMembers"]>
 >;
@@ -136,7 +139,7 @@ export interface BoundAuthClient {
     removeMember(data: {
       memberIdOrEmail: string;
       organizationId?: string;
-    }): Promise<void>;
+    }): Promise<RemoveMemberResult>;
 
     listMembers(options?: {
       organizationId?: string;
@@ -312,6 +315,7 @@ import { AIProviderFactory } from "@/ai-providers/factory";
 import type { FireAutomationOutcome } from "../automations/dbos-workflow";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
 import type { AgentSandboxSessionStorage } from "../storage/agent-sandbox-sessions";
+import type { OrganizationBillingStorage } from "../storage/organization-billing";
 
 // Better Auth instance type - flexible for testing
 // In production, this is the actual Better Auth instance
@@ -355,6 +359,7 @@ export interface MeshStorage {
   kv: KVStorage;
   interests: InterestsStorage;
   agentSandboxSessions: AgentSandboxSessionStorage;
+  organizationBilling: OrganizationBillingStorage;
 }
 
 // ============================================================================
