@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  enumFallbackOptions,
   filterOptions,
   normalizeOptions,
+  resolveOptions,
   svgPreviewDataUri,
 } from "./dynamic-options-field";
 
@@ -142,5 +144,44 @@ describe("svgPreviewDataUri", () => {
   test("leaves markup without an svg tag unchanged (besides encoding)", () => {
     const uri = svgPreviewDataUri("<div>not svg</div>");
     expect(decodeURIComponent(uri.split(",")[1]!)).toBe("<div>not svg</div>");
+  });
+});
+
+describe("enumFallbackOptions", () => {
+  test("maps string enum literals to value/label options", () => {
+    expect(enumFallbackOptions(["user", "chat", "earth"])).toEqual([
+      { value: "user", label: "user" },
+      { value: "chat", label: "chat" },
+      { value: "earth", label: "earth" },
+    ]);
+  });
+
+  test("ignores non-string enum entries", () => {
+    expect(enumFallbackOptions(["a", 1, null, { x: 1 }, "b"])).toEqual([
+      { value: "a", label: "a" },
+      { value: "b", label: "b" },
+    ]);
+  });
+
+  test("returns empty array for undefined or non-array input", () => {
+    expect(enumFallbackOptions(undefined)).toEqual([]);
+    expect(enumFallbackOptions([])).toEqual([]);
+  });
+});
+
+describe("resolveOptions", () => {
+  const loader = [{ value: "activity", icon: "<svg/>" }];
+  const fallback = [{ value: "user", label: "user" }];
+
+  test("prefers loader options when the loader returned any", () => {
+    expect(resolveOptions(loader, fallback)).toBe(loader);
+  });
+
+  test("falls back to enum options when the loader returned nothing", () => {
+    expect(resolveOptions([], fallback)).toBe(fallback);
+  });
+
+  test("returns empty when neither source has options", () => {
+    expect(resolveOptions([], [])).toEqual([]);
   });
 });
