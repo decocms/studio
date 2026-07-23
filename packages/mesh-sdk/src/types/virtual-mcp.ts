@@ -551,7 +551,7 @@ const knowledgeMetadataField = z
  *   publish directly.
  * - `open`: every change publishes directly, no review required.
  */
-export const PublishPolicySchema = z.enum(["smart", "code-review", "open"]);
+const PublishPolicySchema = z.enum(["smart", "code-review", "open"]);
 export type PublishPolicy = z.infer<typeof PublishPolicySchema>;
 
 const publishPolicyMetadataField = PublishPolicySchema.nullable()
