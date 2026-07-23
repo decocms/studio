@@ -366,7 +366,7 @@ export function FileExplorer({
     await fetchFileTree();
     await refreshGitStatus();
     setNameDialog(null);
-    handleFileClick(filePath);
+    openFileGuarded(filePath);
   }
 
   async function handleCreateFolder(t: ReturnType<typeof useT>, name: string) {
@@ -502,13 +502,7 @@ export function FileExplorer({
     const pathToOpen = openPath;
     queueMicrotask(() => {
       if (isSafeExplorerOpenPath(pathToOpen)) {
-        void handleFileClick(pathToOpen).catch((err) => {
-          toast.error(
-            err instanceof Error
-              ? err.message
-              : t("sandbox.fileExplorer.failedToOpenFile"),
-          );
-        });
+        openFileGuarded(pathToOpen);
       }
     });
   }
@@ -794,7 +788,7 @@ export function FileExplorer({
     pendingRevealRef.current = { path: match.path, line: match.line };
     const alreadyOpen =
       selectedFile === match.path && buffers.get(match.path)?.loaded;
-    void handleFileClick(match.path);
+    openFileGuarded(match.path);
     // Same file already mounted → no remount fires, so reveal immediately.
     if (alreadyOpen && editorRef.current) applyPendingReveal(editorRef.current);
   }
@@ -908,6 +902,21 @@ export function FileExplorer({
       return next;
     });
     openFile(path);
+  }
+
+  /**
+   * Fire-and-forget `handleFileClick`, surfacing a toast if it rejects (e.g.
+   * `ensureAncestorsLoaded` throwing on a truncated folder listing) instead of
+   * leaving an unhandled rejection with no user-facing feedback.
+   */
+  function openFileGuarded(path: string) {
+    void handleFileClick(path).catch((err) => {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sandbox.fileExplorer.failedToOpenFile"),
+      );
+    });
   }
 
   function getCreateParentDir(): string {
@@ -1094,7 +1103,7 @@ export function FileExplorer({
                       if (isDir) {
                         void handleDirectoryOpen(node.path, isExpanded);
                       } else {
-                        void handleFileClick(node.path);
+                        openFileGuarded(node.path);
                       }
                     }}
                     onNewFile={() =>
@@ -1160,7 +1169,7 @@ export function FileExplorer({
                     <button
                       key={path}
                       type="button"
-                      onClick={() => void handleFileClick(path)}
+                      onClick={() => openFileGuarded(path)}
                       title={path}
                       className={cn(
                         "flex w-full items-center gap-1.5 px-3 py-1 text-left text-xs hover:bg-accent",
