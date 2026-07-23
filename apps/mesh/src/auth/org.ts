@@ -10,6 +10,7 @@ import { CredentialVault } from "@/encryption/credential-vault";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { ConnectionStorage } from "@/storage/connection";
 import { OrganizationBillingStorage } from "@/storage/organization-billing";
+import { syncOrgBenefits } from "@/billing/sync-org-benefits";
 import { Permission } from "@/storage/types";
 import { fetchToolsFromMCP } from "@/tools/connection/fetch-tools";
 import {
@@ -94,11 +95,25 @@ export async function releaseSeat(
   changedBy: string,
 ): Promise<void> {
   const database = getDb();
-  await new OrganizationBillingStorage(database.db).releaseSeat(
-    organizationId,
-    userId,
-    changedBy,
-  );
+  const storage = new OrganizationBillingStorage(database.db);
+  const released = await storage.releaseSeat(organizationId, userId, changedBy);
+  if (!released) return;
+
+  // The paid-seat count just changed, so the benefits it buys change too.
+  // released=true implies the org actually sells seats (only seat-managed
+  // orgs ever have paid rows), so no billing-mode guard is needed. Fail-soft:
+  // a failed grant self-heals on the next seat apply.
+  try {
+    const paidSeatCount = (await storage.listPaidSeatUserIds(organizationId))
+      .length;
+    await syncOrgBenefits({
+      organizationId,
+      paidSeatCount,
+      referenceId: `seat-release:${organizationId}:${crypto.randomUUID()}`,
+    });
+  } catch (err) {
+    console.error("Failed to sync org benefits after seat release:", err);
+  }
 }
 
 /**

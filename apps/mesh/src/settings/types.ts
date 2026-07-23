@@ -69,6 +69,11 @@ export interface Settings {
   // AI Gateway
   aiGatewayEnabled: boolean;
   aiGatewayUrl: string;
+  /** Bearer for the gateway's /api/admin/* (allowance grants). Absent →
+   *  benefit sync is skipped (self-hosted deployments have no gateway admin). */
+  aiGatewayAdminToken: string | undefined;
+  /** Monthly AI-gateway allowance per PAID SEAT, in cents (default $5). */
+  seatAllowanceCents: number;
 
   // Feature Flags
   enableDecoImport: boolean;

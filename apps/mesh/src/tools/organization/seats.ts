@@ -13,6 +13,7 @@
  */
 
 import { z } from "zod";
+import { syncOrgBenefits } from "../../billing/sync-org-benefits";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, getUserId } from "../../core/studio-context";
 import { SeatTargetNotMemberError } from "../../storage/organization-billing";
@@ -97,6 +98,10 @@ export const ORGANIZATION_SEATS_SET = defineTool({
       z.object({ userId: z.string(), seat: z.enum(["paid", "free"]) }),
     ),
     paidSeatCount: z.number(),
+    /** Whether the gateway allowance grant succeeded. false = seats saved
+     *  but the benefit sync failed/was skipped — the NEXT apply re-grants
+     *  the full current amount, so the state self-heals. */
+    benefitsSynced: z.boolean(),
   }),
 
   handler: async (input, ctx) => {
@@ -126,20 +131,40 @@ export const ORGANIZATION_SEATS_SET = defineTool({
       );
     }
 
+    let result: Awaited<
+      ReturnType<typeof ctx.storage.organizationBilling.setSeats>
+    >;
     try {
-      const result = await ctx.storage.organizationBilling.setSeats(
+      result = await ctx.storage.organizationBilling.setSeats(
         organizationId,
         input.seats,
         changedBy,
       );
-      // TODO(billing/2.8): syncOrgBenefits(organizationId) — gateway
-      // allowance (paid_seats × $5) + reports weekly-run schedule.
-      return result;
     } catch (err) {
       if (err instanceof SeatTargetNotMemberError) {
         throw new Error(err.message);
       }
       throw err;
     }
+
+    // Benefits ride the seat change but never fail it: the seats are already
+    // committed (they're the billing truth), and a failed grant self-heals on
+    // the next apply (every call re-grants the full current amount). One
+    // referenceId per applied change-set keeps gateway retries deduped.
+    let benefitsSynced = false;
+    if (result.applied.length > 0) {
+      try {
+        const sync = await syncOrgBenefits({
+          organizationId,
+          paidSeatCount: result.paidSeatCount,
+          referenceId: `seats:${organizationId}:${crypto.randomUUID()}`,
+        });
+        benefitsSynced = sync.allowanceSynced;
+      } catch (err) {
+        console.error("Failed to sync org benefits after seat change:", err);
+      }
+    }
+
+    return { ...result, benefitsSynced };
   },
 });
