@@ -65,39 +65,32 @@ const PILLS: Pill[] = [
   },
 ];
 
-// The scored areas shown inside the report card (from the attached spec).
+// The scored areas shown inside the report card — the report's 5 business
+// macrotemas (see .claude/DECISION-TREE.md in commerce-skills; the real
+// `categorias` slide renders these from live data). Colors + order mirror the
+// MCP-app area palette so the illustrative card matches the real report.
 type ReportArea = { labelKey: TranslationKey; score: number; color: string };
 const REPORT_AREAS: ReportArea[] = [
+  { labelKey: "reports.ctaTemplate.area.funnel", score: 42, color: "#f0b613" },
   {
-    labelKey: "reports.ctaTemplate.area.conversion",
-    score: 42,
+    labelKey: "reports.ctaTemplate.area.technical",
+    score: 46,
+    color: "#5fb0a0",
+  },
+  {
+    labelKey: "reports.ctaTemplate.area.dataTagging",
+    score: 60,
+    color: "#a595ff",
+  },
+  {
+    labelKey: "reports.ctaTemplate.area.acquisition",
+    score: 67,
     color: "#6e9fdb",
   },
   {
-    labelKey: "reports.ctaTemplate.area.performance",
-    score: 35,
-    color: "#a595ff",
-  },
-  { labelKey: "reports.ctaTemplate.area.seo", score: 54, color: "#f0b613" },
-  {
-    labelKey: "reports.ctaTemplate.area.aiSearchGeo",
-    score: 67,
-    color: "#14b8a6",
-  },
-  {
-    labelKey: "reports.ctaTemplate.area.accessibility",
-    score: 48,
-    color: "#8aa9ff",
-  },
-  {
-    labelKey: "reports.ctaTemplate.area.security",
-    score: 31,
-    color: "#f0846b",
-  },
-  {
-    labelKey: "reports.ctaTemplate.area.analytics",
+    labelKey: "reports.ctaTemplate.area.retention",
     score: 75,
-    color: "#8caa25",
+    color: "#e07a5f",
   },
 ];
 
