@@ -64,6 +64,29 @@ export function slugify(input: string): string {
 }
 
 /**
+ * Short, stable namespace code for a connection key.
+ *
+ * The aggregated tool name is `${namespaceCode(key)}_${toolName}`. Downstream
+ * clients often add their OWN prefix on top (e.g. Hermes prepends
+ * `mcp_<server>_`, ~21 chars), and tool names are capped at 64 chars by the
+ * Anthropic API (`^[A-Za-z0-9_-]{1,64}$`). Using the full slugified connection
+ * id (~26 chars) as the prefix blew the budget once a second prefix was added.
+ *
+ * This produces a 7-char code (`a` + 6 base36 chars of an FNV-1a hash) with NO
+ * underscore, so `resolveToolTarget`'s split on the first `_` still cleanly
+ * separates the prefix from the (possibly `_`-containing) tool name. Collisions
+ * are astronomically unlikely for a handful of connections and, if they ever
+ * happen, the GatewayClient constructor throws on a duplicate code.
+ */
+export function namespaceCode(input: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    h = Math.imul(h ^ input.charCodeAt(i), 0x01000193);
+  }
+  return `a${(h >>> 0).toString(36).padStart(6, "0").slice(-6)}`;
+}
+
+/**
  * Extract `gatewayClientId` from an item's `_meta` object.
  * Returns `undefined` when the field is absent or not a string.
  */
@@ -89,7 +112,7 @@ export function stripToolNamespace(
   clientId?: string,
 ): string {
   if (!clientId) return namespacedName;
-  const prefix = `${slugify(clientId)}_`;
+  const prefix = `${namespaceCode(clientId)}_`;
   return namespacedName.startsWith(prefix)
     ? namespacedName.slice(prefix.length)
     : namespacedName;
@@ -151,10 +174,10 @@ export class GatewayClient extends Client {
     });
     this.clients = clients;
     for (const key of Object.keys(clients)) {
-      const slug = slugify(key);
+      const slug = namespaceCode(key);
       if (this.slugToKey.has(slug)) {
         throw new Error(
-          `GatewayClient: duplicate slug "${slug}" from keys "${this.slugToKey.get(slug)}" and "${key}"`,
+          `GatewayClient: duplicate namespace code "${slug}" from keys "${this.slugToKey.get(slug)}" and "${key}"`,
         );
       }
       this.slugToKey.set(slug, key);
@@ -166,7 +189,7 @@ export class GatewayClient extends Client {
   // ---------------------------------------------------------------------------
 
   private namespace(clientKey: string, name: string): string {
-    return `${slugify(clientKey)}_${name}`;
+    return `${namespaceCode(clientKey)}_${name}`;
   }
 
   /**
@@ -270,10 +293,20 @@ export class GatewayClient extends Client {
     }
 
     const clientOrFactory = entry.client;
-    const promise =
-      typeof clientOrFactory === "function"
-        ? Promise.resolve(clientOrFactory())
-        : Promise.resolve(clientOrFactory);
+    let promise: Promise<IClient>;
+    try {
+      promise =
+        typeof clientOrFactory === "function"
+          ? Promise.resolve(clientOrFactory())
+          : Promise.resolve(clientOrFactory);
+    } catch (err) {
+      // A factory that throws synchronously (vs. returning a rejected
+      // promise) must still surface as a rejection — resolveClient's
+      // Promise<IClient> contract otherwise breaks for sync callers like
+      // getResolvedClient(), which would throw instead of returning a
+      // rejected promise.
+      return Promise.reject(err);
+    }
 
     // Remove from cache on failure so subsequent calls retry
     const guarded = promise.catch((err) => {

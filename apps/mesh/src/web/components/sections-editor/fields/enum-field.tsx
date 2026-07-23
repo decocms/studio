@@ -1,3 +1,4 @@
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   Select,
   SelectContent,
@@ -21,6 +22,7 @@ export function EnumField({
   path,
   label,
 }: FieldProps) {
+  const t = useT();
   const options = schema.enum ?? [];
   const selectValue = formValueToSelectValue(value, options);
 
@@ -39,7 +41,9 @@ export function EnumField({
         onValueChange={(v) => onChange(selectValueToEnumOption(v, options))}
       >
         <SelectTrigger className="h-10">
-          <SelectValue placeholder="Select..." />
+          <SelectValue
+            placeholder={t("sectionsEditor.enumField.selectPlaceholder")}
+          />
         </SelectTrigger>
         <SelectContent>
           {options.map((opt) => {

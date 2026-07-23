@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
+import { useT } from "@/web/i18n/use-t.ts";
 import { ScrollFade } from "./scroll-fade";
 import {
   Activity,
@@ -145,6 +146,7 @@ export function TaskGroupsList({
 }: {
   onNavigate?: () => void;
 } = {}) {
+  const t = useT();
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
   const { org } = useProjectContext();
@@ -353,8 +355,8 @@ export function TaskGroupsList({
         <SidebarMenu className="mt-2 min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <SidebarMenuItem>
             <SidebarMenuButton
-              aria-label="Toggle sidebar"
-              tooltip="Toggle sidebar"
+              aria-label={t("sidebar.taskGroupsList.toggleSidebar")}
+              tooltip={t("sidebar.taskGroupsList.toggleSidebar")}
               onClick={toggleSidebar}
             >
               <LayoutLeft size={16} />
@@ -362,20 +364,24 @@ export function TaskGroupsList({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="New chat"
+              aria-label={t("sidebar.taskGroupsList.newChat")}
+              tooltip={t("sidebar.taskGroupsList.newChat")}
               onClick={() => void handleNewThread()}
             >
               <Edit05 size={16} />
             </SidebarMenuButton>
           </SidebarMenuItem>
-          {visibleScopedThreads.map((t) => {
-            const agent = resolveAgent(t.virtual_mcp_id);
+          {visibleScopedThreads.map((thread) => {
+            const agent = resolveAgent(thread.virtual_mcp_id);
             return (
-              <SidebarMenuItem key={t.id}>
+              <SidebarMenuItem key={thread.id}>
                 <SidebarMenuButton
-                  tooltip={t.title || "New chat"}
-                  isActive={t.id === activeTaskId}
-                  onClick={() => handleSelectTask(t)}
+                  aria-label={
+                    thread.title || t("sidebar.taskGroupsList.newChat")
+                  }
+                  tooltip={thread.title || t("sidebar.taskGroupsList.newChat")}
+                  isActive={thread.id === activeTaskId}
+                  onClick={() => handleSelectTask(thread)}
                 >
                   <AgentAvatar
                     icon={agent?.icon ?? null}
@@ -400,7 +406,7 @@ export function TaskGroupsList({
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <ToolbarIconButton
-              aria-label="Filter chats"
+              aria-label={t("sidebar.taskGroupsList.filterChats")}
               active={filtersActive}
               className="md:size-[34px] rounded-lg"
             >
@@ -411,41 +417,54 @@ export function TaskGroupsList({
             </ToolbarIconButton>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Filter chats</TooltipContent>
+        <TooltipContent side="bottom">
+          {t("sidebar.taskGroupsList.filterChats")}
+        </TooltipContent>
       </Tooltip>
       <PopoverContent align="start" className="w-64 flex flex-col gap-3 p-3">
         <FilterRow
-          label="View"
+          label={t("sidebar.taskGroupsList.filterView")}
           value={groupBy}
           onChange={(v) => {
             track("tasks_panel_group_by_changed", { to_value: v });
             setGroupBy(v);
           }}
           options={[
-            { value: "flat", label: "List", icon: <Rows01 size={13} /> },
-            { value: "status", label: "Status", icon: <Activity size={13} /> },
+            {
+              value: "flat",
+              label: t("sidebar.taskGroupsList.viewList"),
+              icon: <Rows01 size={13} />,
+            },
+            {
+              value: "status",
+              label: t("sidebar.taskGroupsList.viewStatus"),
+              icon: <Activity size={13} />,
+            },
           ]}
         />
         <FilterRow
-          label="Type"
+          label={t("sidebar.taskGroupsList.filterType")}
           value={typeFilter}
           onChange={(v) => {
             track("tasks_panel_filter_changed", { to_value: v });
             setTypeFilter(v);
           }}
           options={[
-            { value: "all", label: "All" },
-            { value: "manual", label: "Chats" },
-            { value: "automation", label: "Auto" },
+            { value: "all", label: t("sidebar.taskGroupsList.typeAll") },
+            { value: "manual", label: t("sidebar.taskGroupsList.typeChats") },
+            {
+              value: "automation",
+              label: t("sidebar.taskGroupsList.typeAuto"),
+            },
           ]}
         />
         <FilterRow
-          label="Scope"
+          label={t("sidebar.taskGroupsList.filterScope")}
           value={showAll ? "team" : "mine"}
           onChange={(v) => setShowAll(v === "team")}
           options={[
-            { value: "mine", label: "Mine" },
-            { value: "team", label: "Team" },
+            { value: "mine", label: t("sidebar.taskGroupsList.scopeMine") },
+            { value: "team", label: t("sidebar.taskGroupsList.scopeTeam") },
           ]}
         />
       </PopoverContent>
@@ -470,7 +489,7 @@ export function TaskGroupsList({
         {/* Right: search + new thread. */}
         <div className="flex items-center gap-0.5">
           <ToolbarTooltipButton
-            label="Search chats"
+            label={t("sidebar.taskGroupsList.searchChats")}
             onClick={() => {
               track("tasks_panel_search_opened");
               setSearchEverOpened(true);
@@ -480,7 +499,7 @@ export function TaskGroupsList({
             <SearchSm size={16} />
           </ToolbarTooltipButton>
           <ToolbarTooltipButton
-            label="New chat"
+            label={t("sidebar.taskGroupsList.newChat")}
             onClick={() => void handleNewThread()}
           >
             <Edit05 size={16} />

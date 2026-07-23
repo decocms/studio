@@ -63,8 +63,10 @@ export function useMonitorRunStart() {
       }),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: KEYS.monitorRuns() }),
-        queryClient.invalidateQueries({ queryKey: KEYS.monitorResults() }),
+        queryClient.invalidateQueries({ queryKey: KEYS.monitorRuns(org.id) }),
+        queryClient.invalidateQueries({
+          queryKey: KEYS.monitorResults(org.id),
+        }),
       ]);
     },
   });
@@ -86,8 +88,10 @@ export function useMonitorRunCancel() {
       }),
     onSuccess: async (_res, runId) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: KEYS.monitorRuns() }),
-        queryClient.invalidateQueries({ queryKey: KEYS.monitorRun(runId) }),
+        queryClient.invalidateQueries({ queryKey: KEYS.monitorRuns(org.id) }),
+        queryClient.invalidateQueries({
+          queryKey: KEYS.monitorRun(org.id, runId),
+        }),
       ]);
     },
   });
@@ -102,7 +106,7 @@ export function useMonitorRuns(status?: MonitorRunStatus) {
   });
 
   return useQuery({
-    queryKey: KEYS.monitorRunsList(status),
+    queryKey: KEYS.monitorRunsList(org.id, status),
     queryFn: async () =>
       callTool<MonitorRunListResponse>(client, "REGISTRY_MONITOR_RUN_LIST", {
         status,
@@ -121,7 +125,7 @@ export function useMonitorRun(runId?: string) {
   });
 
   return useQuery({
-    queryKey: KEYS.monitorRun(runId),
+    queryKey: KEYS.monitorRun(org.id, runId),
     queryFn: async () =>
       callTool<{ run: MonitorRun | null }>(client, "REGISTRY_MONITOR_RUN_GET", {
         runId,
@@ -147,7 +151,7 @@ export function useMonitorResults(
   });
 
   return useQuery({
-    queryKey: KEYS.monitorResultsList(runId, status),
+    queryKey: KEYS.monitorResultsList(org.id, runId, status),
     queryFn: async () =>
       callTool<MonitorResultListResponse>(
         client,
@@ -174,7 +178,7 @@ export function useMonitorConnections() {
   });
 
   return useQuery({
-    queryKey: KEYS.monitorConnections(),
+    queryKey: KEYS.monitorConnections(org.id),
     queryFn: async () =>
       callTool<MonitorConnectionListResponse>(
         client,
@@ -203,7 +207,7 @@ export function useSyncMonitorConnections() {
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: KEYS.monitorConnections(),
+        queryKey: KEYS.monitorConnections(org.id),
       });
     },
   });
@@ -233,7 +237,7 @@ export function useUpdateMonitorConnectionAuth() {
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: KEYS.monitorConnections(),
+        queryKey: KEYS.monitorConnections(org.id),
       });
     },
   });

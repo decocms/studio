@@ -6,6 +6,7 @@ import { UserCircle } from "@untitledui/icons";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { ToolCallShell, LatencyLabel } from "./common.tsx";
 import { getEffectiveState, unwrapResult } from "./utils.tsx";
@@ -27,6 +28,7 @@ const prefersReducedMotion =
     : null;
 
 export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
+  const t = useT();
   const navigateToAgent = useNavigateToAgent();
   const state = getEffectiveState(part.state);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -76,7 +78,7 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
     return (
       <ToolCallShell
         icon={<UserCircle className="animate-pulse" />}
-        title="Creating agent"
+        title={t("chat.agentCreate.creating")}
         state="loading"
         defaultOpen
       />
@@ -85,7 +87,11 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
 
   if (state === "approval") {
     return (
-      <ToolCallShell icon={<UserCircle />} title="Create agent" state="idle" />
+      <ToolCallShell
+        icon={<UserCircle />}
+        title={t("chat.agentCreate.createAgent")}
+        state="idle"
+      />
     );
   }
 
@@ -95,8 +101,8 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
         icon={<UserCircle />}
         title={
           part.state === "output-denied"
-            ? "Agent creation cancelled"
-            : "Couldn't create agent"
+            ? t("chat.agentCreate.cancelled")
+            : t("chat.agentCreate.couldntCreate")
         }
         state="error"
         trailing={<LatencyLabel latency={latency} />}
@@ -110,7 +116,7 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
     return (
       <ToolCallShell
         icon={<UserCircle />}
-        title="Agent created"
+        title={t("chat.agentCreate.created")}
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
       />
@@ -123,7 +129,7 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
     <>
       <ToolCallShell
         icon={<UserCircle className="text-success" />}
-        title={`Agent created: ${agent.title}`}
+        title={t("chat.agentCreate.agentCreated", { name: agent.title })}
         state="idle"
         trailing={<LatencyLabel latency={latency} />}
       />
@@ -231,9 +237,11 @@ export function AgentCreatePart({ part, latency }: AgentCreatePartProps) {
                 size="sm"
                 className="h-7"
                 onClick={() => navigateToAgent(agent.id)}
-                aria-label={`See agent: ${agent.title}`}
+                aria-label={t("chat.agentCreate.seeAgentLabel", {
+                  name: agent.title,
+                })}
               >
-                See agent
+                {t("chat.agentCreate.seeAgent")}
               </Button>
             </div>
           </div>

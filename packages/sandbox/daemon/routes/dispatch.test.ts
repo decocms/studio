@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { fixtures } from "../../dispatch/index";
-import { handleCancelRequest, handleDispatchRequest } from "./dispatch";
+import {
+  getTombstoneCountForTests,
+  handleCancelRequest,
+  handleDispatchRequest,
+  resetDispatchStateForTests,
+} from "./dispatch";
 
 const DAEMON_TOKEN = "test-daemon-token-32-chars-min-aaaa";
 
@@ -301,6 +306,86 @@ describe("POST /_sandbox/dispatch", () => {
     await reader.cancel();
   });
 
+  it("does not log an aborted run's AbortError via console.error (#3763)", async () => {
+    // A cancelled run (DELETE /_sandbox/runs/:id) aborts the injected signal,
+    // which makes the harness's in-flight fetch/streamText throw an AbortError
+    // — expected control flow, not a crash. It must not flood error tracking.
+    const runId = "run-abort-no-error-log";
+    let capturedSignal: AbortSignal | undefined;
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((r) => {
+      releaseGate = r;
+    });
+
+    const deps = makeDeps({
+      lookupHarness: (_id, input) => {
+        capturedSignal = (input as { signal?: AbortSignal }).signal;
+        return {
+          async *stream() {
+            yield { type: "start", id: "m1" } as const;
+            await gate;
+            throw new DOMException("The operation was aborted.", "AbortError");
+          },
+        };
+      },
+    });
+
+    const body = JSON.stringify({
+      runId,
+      harnessId: "fake",
+      input: {
+        ...fixtures.FIXTURE_MINIMAL_INPUT,
+        threadId: "thread-abort-no-error-log",
+      },
+    });
+
+    const errorArgs: unknown[][] = [];
+    const logArgs: unknown[][] = [];
+    const originalConsoleError = console.error;
+    const originalConsoleLog = console.log;
+    console.error = (...args: unknown[]) => {
+      errorArgs.push(args);
+    };
+    console.log = (...args: unknown[]) => {
+      logArgs.push(args);
+    };
+
+    try {
+      const res = await handleDispatchRequest(authedDispatch(body), deps);
+      const reader = res.body!.getReader();
+
+      await reader.read(); // consume "start" chunk → lookupHarness ran
+
+      await handleCancelRequest(authedCancel(runId), {
+        daemonToken: DAEMON_TOKEN,
+      });
+      expect(capturedSignal?.aborted).toBe(true);
+
+      releaseGate(); // let the harness throw the AbortError now
+
+      // Once aborted, `write()` is a deliberate no-op (the consumer is gone —
+      // see the guard above `streamHarnessRun`'s catch), so no further SSE
+      // frames arrive; just drain until the controller closes.
+      for (;;) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    } finally {
+      console.error = originalConsoleError;
+      console.log = originalConsoleLog;
+    }
+
+    const crashLogged = errorArgs.some((args) =>
+      args.some((a) => typeof a === "string" && a.includes("harness crashed")),
+    );
+    expect(crashLogged).toBe(false);
+
+    const abortLogged = logArgs.some((args) =>
+      args.some((a) => typeof a === "string" && a.includes("harness aborted")),
+    );
+    expect(abortLogged).toBe(true);
+  });
+
   it("rebases symbolic workspace.cwd onto the daemon's sandbox root before the harness sees it", async () => {
     // The wire carries the symbolic value "/repo"; the daemon must rebase it
     // onto its own sandbox root (daemonAppRoot()) before handing the input to
@@ -421,5 +506,32 @@ describe("DELETE /_sandbox/runs/:runId", () => {
       { daemonToken: DAEMON_TOKEN },
     );
     expect(res.status).toBe(401);
+  });
+
+  it("sweeps expired tombstones instead of growing forever", async () => {
+    // Most cancelled runs are never re-dispatched, so the only other read
+    // site (the dispatch handler's own-runId check) never fires for them.
+    // Without a sweep, every cancel the daemon ever handles leaks one entry
+    // for the lifetime of the process.
+    resetDispatchStateForTests();
+    const originalNow = Date.now;
+    try {
+      let now = 1_000_000;
+      Date.now = () => now;
+
+      await handleCancelRequest(authedCancel("run-leak-1"), {
+        daemonToken: DAEMON_TOKEN,
+      });
+      expect(getTombstoneCountForTests()).toBe(1);
+
+      now += 61_000; // past the 60s tombstone TTL
+      await handleCancelRequest(authedCancel("run-leak-2"), {
+        daemonToken: DAEMON_TOKEN,
+      });
+      // run-leak-1's entry expired and was swept; only the fresh one remains.
+      expect(getTombstoneCountForTests()).toBe(1);
+    } finally {
+      Date.now = originalNow;
+    }
   });
 });

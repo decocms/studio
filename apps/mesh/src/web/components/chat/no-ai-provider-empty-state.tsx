@@ -19,6 +19,7 @@ import { ConnectDesktopDialog } from "./connect-desktop-dialog";
 import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 import { useOptionalChatPrefs } from "./context";
 import type { AgentOption } from "./pills/agent-options";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface NoAiProviderEmptyStateProps {
   title?: string;
@@ -80,6 +81,7 @@ export function NoAiProviderEmptyState({
   description,
   onLocalRuntimePicked,
 }: NoAiProviderEmptyStateProps = {}) {
+  const t = useT();
   const { org } = useProjectContext();
   const { localMode } = useAuthConfig();
   const brand = useDefaultBrand();
@@ -134,15 +136,15 @@ export function NoAiProviderEmptyState({
   const heading =
     title ??
     (orgName
-      ? `${orgName} is ready for agents`
-      : "Your agents are almost ready");
+      ? t("chat.noAiProviderEmptyState.headingWithOrg", { org: orgName })
+      : t("chat.noAiProviderEmptyState.headingDefault"));
   const subtitle =
     description ??
     (hasLocalOptions
-      ? "Your desktop is linked — start now with a local coding agent, or connect a cloud provider for hosted models."
+      ? t("chat.noAiProviderEmptyState.subtitleWithDesktop")
       : localMode
-        ? "Connect a provider, or run `bunx decocms@latest link` on your desktop for Claude Code, Codex, and local files."
-        : "Connect a provider — or run `bunx decocms@latest link` on your desktop to use Claude Code, Codex, or your local files.");
+        ? t("chat.noAiProviderEmptyState.subtitleLocalMode")
+        : t("chat.noAiProviderEmptyState.subtitleDefault"));
 
   // Badge styles: use brand color if available, otherwise a neutral muted background
   const hasBrandStyle = !!(brandIcon || primaryColor);
@@ -171,7 +173,11 @@ export function NoAiProviderEmptyState({
           <button
             type="button"
             onClick={() => setDesktopDialogOpen(true)}
-            aria-label={link.online ? "Desktop linked" : "Connect your desktop"}
+            aria-label={
+              link.online
+                ? t("chat.noAiProviderEmptyState.desktopLinkedLabel")
+                : t("chat.noAiProviderEmptyState.connectDesktopLabel")
+            }
             className={cn(
               badgeClass,
               "cursor-pointer transition-colors hover:bg-accent",
@@ -212,13 +218,13 @@ export function NoAiProviderEmptyState({
                 }}
               >
                 {o.icon}
-                Use {o.label}
+                {t("chat.noAiProviderEmptyState.useLabel", { label: o.label })}
               </Button>
             ))}
           </div>
           <div className="flex items-center gap-3 w-full max-w-xs text-xs text-muted-foreground">
             <span className="h-px flex-1 bg-border" />
-            or connect a cloud provider
+            {t("chat.noAiProviderEmptyState.orConnectProvider")}
             <span className="h-px flex-1 bg-border" />
           </div>
         </div>

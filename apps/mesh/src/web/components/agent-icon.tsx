@@ -240,6 +240,18 @@ export function humanizeIconName(name: string): string {
     .toLowerCase();
 }
 
+/** Filter icon names by search term, matching raw and humanized forms. */
+export function filterIconNames(names: string[], search: string): string[] {
+  const trimmed = search.trim();
+  if (!trimmed) return names;
+  const searchLower = trimmed.toLowerCase();
+  return names.filter(
+    (name) =>
+      humanizeIconName(name).includes(searchLower) ||
+      name.toLowerCase().includes(searchLower),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Hash utility
 // ---------------------------------------------------------------------------
@@ -268,6 +280,11 @@ const SIZES = {
 
 export type AgentAvatarSize = keyof typeof SIZES;
 
+/** Corner radius class for a given avatar size — kept in sync with `SIZES`. */
+export function getSizeRadius(size: AgentAvatarSize): string {
+  return SIZES[size].radius;
+}
+
 // ---------------------------------------------------------------------------
 // AgentAvatar
 // ---------------------------------------------------------------------------
@@ -278,7 +295,6 @@ interface AgentAvatarProps {
   size?: AgentAvatarSize;
   className?: string;
   "aria-label"?: string;
-  role?: string;
 }
 
 /** Colored background + centered icon — shared by all icon-rendering paths. */
@@ -288,14 +304,12 @@ function IconAvatar({
   size,
   className,
   "aria-label": ariaLabel,
-  role,
 }: {
   Icon: IconComponent;
   color: AgentIconColor;
   size: AgentAvatarSize;
   className?: string;
   "aria-label"?: string;
-  role?: string;
 }) {
   const sizeConfig = SIZES[size];
   return (
@@ -309,7 +323,6 @@ function IconAvatar({
         className,
       )}
       aria-label={ariaLabel}
-      role={role}
     >
       <Icon size={sizeConfig.icon} />
     </div>
@@ -322,7 +335,6 @@ export function AgentAvatar({
   size = "md",
   className,
   "aria-label": ariaLabel,
-  role,
 }: AgentAvatarProps) {
   const parsed = parseIconString(icon);
 
@@ -338,7 +350,6 @@ export function AgentAvatar({
         size={size}
         className={className}
         aria-label={ariaLabel}
-        role={role}
       />
     );
   }
@@ -346,13 +357,15 @@ export function AgentAvatar({
   if (parsed.type === "url") {
     return (
       <AgentAvatarImage
+        // Remount on URL change so a prior load failure doesn't stick
+        // around as a permanent fallback once the user picks a new image.
+        key={parsed.url}
         url={parsed.url}
         color={parsed.color}
         name={name}
         size={size}
         className={className}
         aria-label={ariaLabel}
-        role={role}
       />
     );
   }
@@ -367,7 +380,6 @@ export function AgentAvatar({
       size={size}
       className={className}
       aria-label={ariaLabel}
-      role={role}
     />
   );
 }
@@ -376,9 +388,19 @@ export function AgentAvatar({
 // Image sub-component (handles load errors)
 // ---------------------------------------------------------------------------
 
+// Special-case brand colors that aren't part of the selectable palette.
 const URL_COLOR_BG: Record<string, string> = {
   "brand-green": "bg-[var(--brand-green-light)]",
 };
+
+/** Resolve the background class for a URL icon's encoded color: special
+ * brand colors first, falling back to the shared picker palette so a color
+ * chosen in `IconPicker` (e.g. for an uploaded image) actually renders. */
+function resolveUrlBgClass(color: string | undefined): string {
+  if (!color) return "";
+  if (URL_COLOR_BG[color]) return URL_COLOR_BG[color];
+  return COLOR_MAP.has(color) ? getIconColor(color).bg : "";
+}
 
 function AgentAvatarImage({
   url,
@@ -387,7 +409,6 @@ function AgentAvatarImage({
   size = "md",
   className,
   "aria-label": ariaLabel,
-  role,
 }: {
   url: string;
   color?: string;
@@ -395,11 +416,10 @@ function AgentAvatarImage({
   size?: AgentAvatarSize;
   className?: string;
   "aria-label"?: string;
-  role?: string;
 }) {
   const [errored, setErrored] = useState(false);
   const sizeConfig = SIZES[size];
-  const bgClass = color ? (URL_COLOR_BG[color] ?? "") : "";
+  const bgClass = resolveUrlBgClass(color);
 
   if (errored) {
     const { IconComp, color } = getDeterministicIcon(name);
@@ -410,7 +430,6 @@ function AgentAvatarImage({
         size={size}
         className={className}
         aria-label={ariaLabel}
-        role={role}
       />
     );
   }
@@ -425,14 +444,13 @@ function AgentAvatarImage({
         className,
       )}
       aria-label={ariaLabel}
-      role={role}
     >
       <img
         src={url}
         alt={name}
         className={cn(
           "h-full w-full",
-          bgClass ? "object-contain p-3" : "object-cover",
+          bgClass ? "object-contain" : "object-cover",
         )}
         onError={() => setErrored(true)}
       />

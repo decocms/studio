@@ -23,6 +23,7 @@ import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-life
 import { useSandboxRepoDir } from "@/web/components/sandbox/hooks/use-sandbox-repo-dir";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import { ideDeepLink } from "@/web/components/sandbox/ide-deep-link";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const VSCODE_ICON_URL =
   "https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png";
@@ -36,6 +37,7 @@ const FileExplorer = lazy(() =>
 );
 
 export function CodeTab({ openPath }: { openPath: string | null }) {
+  const t = useT();
   const inset = useInsetContext();
   const { org } = useProjectContext();
   const { currentBranch: branch } = useChatTask();
@@ -58,7 +60,7 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
   if (!virtualMcpId || !branch) {
     return (
       <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-        No sandbox to browse.
+        {t("mainPanelTabs.codeTab.noSandboxToBrowse")}
       </div>
     );
   }
@@ -73,7 +75,7 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label="Open in VSCode"
+                  aria-label={t("mainPanelTabs.codeTab.openInVscode")}
                   onClick={() => window.open(ideDeepLink("vscode", repoDir))}
                 >
                   <img
@@ -84,14 +86,16 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
                   />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Open in VSCode</TooltipContent>
+              <TooltipContent side="bottom">
+                {t("mainPanelTabs.codeTab.openInVscode")}
+              </TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label="Open in Cursor"
+                  aria-label={t("mainPanelTabs.codeTab.openInCursor")}
                   onClick={() => window.open(ideDeepLink("cursor", repoDir))}
                 >
                   <img
@@ -102,7 +106,9 @@ export function CodeTab({ openPath }: { openPath: string | null }) {
                   />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Open in Cursor</TooltipContent>
+              <TooltipContent side="bottom">
+                {t("mainPanelTabs.codeTab.openInCursor")}
+              </TooltipContent>
             </Tooltip>
           </div>
         </div>

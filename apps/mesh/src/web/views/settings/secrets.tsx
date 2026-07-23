@@ -327,12 +327,13 @@ function SecretsContent() {
 }
 
 export function OrgSecretsPage() {
+  const t = useT();
   return (
     <Page>
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>Secrets</Page.Title>
+            <Page.Title>{t("settings.nav.secrets")}</Page.Title>
             <ErrorBoundary
               fallback={({ error }) => (
                 <ErrorFallback

@@ -82,11 +82,20 @@ worker:
     requests:
       cpu: "1"
       memory: 1Gi
+    limits:
+      cpu: "1.5"
+      memory: 1Gi
   autoscaling:
     enabled: true
     minReplicas: 2
     maxReplicas: 30
     targetCPUUtilizationPercentage: 65
+  # Stamp `karpenter.sh/do-not-disrupt: "true"` on worker pods so Karpenter does
+  # not consolidate/drift-evict a worker mid-run (see worker-deployment.yaml).
+  # Default on; set false where Karpenter isn't the node provisioner. (A
+  # PodDisruptionBudget for forced/involuntary eviction is deployed alongside,
+  # in the deco-apps-cd wrapper chart, next to the existing mesh PDB.)
+  doNotDisrupt: true
   # Extra env for worker pods only (merged after the shared envFrom).
   env: []
 
@@ -100,6 +109,7 @@ nginx:
       cpu: "500m"
       memory: "128Mi"
     limits:
+      cpu: "1"
       memory: "256Mi"
   securityContext:
     runAsNonRoot: true

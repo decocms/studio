@@ -97,8 +97,13 @@ export interface SandboxFsHooksLifecycle {
    * underlying sandbox map entry) so the next `ensureHandle` provisions a fresh
    * sandbox. Used by the retry layer when the daemon proxy reports the sandbox
    * is unreachable.
+   *
+   * `force: true` reaps the map entry even for non-auto-restart branches — the
+   * retry layer sets it when the sandbox is provably GONE (404), where there is
+   * no live working tree to preserve, so an in-flight run can survive infra
+   * reaping (e.g. a worker eviction that dropped the sandbox).
    */
-  invalidateHandle(): Promise<void>;
+  invalidateHandle(opts?: { force?: boolean }): Promise<void>;
   /**
    * When true, the call wrapper retries once on `DaemonUnreachableError` (after
    * invalidating the handle). Enabled for ephemeral agents (no server-button UI
@@ -167,8 +172,20 @@ function abortable<T>(signal: AbortSignal, promise: Promise<T>): Promise<T> {
  */
 class DaemonUnreachableError extends Error {
   readonly code = "DAEMON_UNREACHABLE" as const;
-  constructor(cause: unknown) {
+  /**
+   * True when the daemon definitively reported the sandbox is GONE — a 404
+   * `sandbox not found`, i.e. the record was reaped (housekeeper GC, or a worker
+   * eviction that dropped the sandbox mid-run). A reaped sandbox has no working
+   * tree left to preserve, so respawning is always safe — the retry layer honors
+   * this even when `canAutoRestart` is false. Left false for AMBIGUOUS failures
+   * (transport threw / 5xx): those can be a transient blip on a still-live
+   * sandbox, where a respawn would abandon its working tree, so they stay gated
+   * behind `canAutoRestart`.
+   */
+  readonly gone: boolean;
+  constructor(cause: unknown, gone = false) {
     super(cause instanceof Error ? cause.message : "Daemon proxy failed");
+    this.gone = gone;
     if (cause instanceof Error) {
       this.cause = cause;
     }
@@ -262,7 +279,9 @@ async function daemonRequest(
       (json as { error?: string }).error ??
       `Daemon ${path} failed (${res.status})`;
     if (res.status === 404 && errorMessage === "sandbox not found") {
-      throw new DaemonUnreachableError(new Error(errorMessage));
+      // `gone: true` — the sandbox is provably reaped (never a user pause), so
+      // the retry layer respawns even for persistent branches.
+      throw new DaemonUnreachableError(new Error(errorMessage), true);
     }
     throw new Error(errorMessage);
   }
@@ -332,18 +351,20 @@ export function createSandboxFsHooks(
       // Only retry on daemon-unreachable (sandbox dead). HTTP-level errors
       // from a live daemon (4xx/5xx) are surfaced as-is — a retry would
       // just repeat the same failure.
-      if (!(firstErr instanceof DaemonUnreachableError) || !canAutoRestart) {
-        if (firstErr instanceof DaemonUnreachableError) {
-          throw new Error(formatUnreachableMessage(firstErr.cause ?? firstErr));
-        }
-        throw firstErr;
+      if (!(firstErr instanceof DaemonUnreachableError)) throw firstErr;
+      // Respawn when the branch opts into auto-restart, OR when the sandbox is
+      // provably GONE (404) — a reaped sandbox has nothing to preserve, so even
+      // persistent branches recover instead of surfacing a sticky failure when
+      // infra (a worker eviction / housekeeper GC) drops the sandbox mid-run.
+      if (!canAutoRestart && !firstErr.gone) {
+        throw new Error(formatUnreachableMessage(firstErr.cause ?? firstErr));
       }
       console.warn(
         `[sandbox-fs-hooks] daemon ${daemonPath} unreachable — reaping sandbox and retrying once`,
         firstErr.cause ?? firstErr,
       );
       try {
-        await invalidateHandle();
+        await invalidateHandle({ force: firstErr.gone });
       } catch (reapErr) {
         console.warn("[sandbox-fs-hooks] invalidateHandle failed", reapErr);
       }

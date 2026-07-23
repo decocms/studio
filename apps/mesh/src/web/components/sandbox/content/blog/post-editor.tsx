@@ -32,6 +32,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
+import { usePackagePath } from "@/web/components/sections-editor/use-package-path";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -42,6 +43,7 @@ import {
   RemoveButton,
   str,
 } from "./blocks/primitives";
+import { useT } from "@/web/i18n/use-t.ts";
 
 type ExtraProp = { key: string; value: string };
 
@@ -79,7 +81,13 @@ export function PostEditor({
   meta: LiveMeta;
   previewBaseUrl?: string | null;
 }) {
-  const save = useSaveBlogBlock({ orgSlug, virtualMcpId, branch });
+  const t = useT();
+  const save = useSaveBlogBlock({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    packagePath: usePackagePath(virtualMcpId),
+  });
   const initial = getBlogPayload(block, "posts");
 
   const [post, setPost] = useAutosave(initial, (next) => {
@@ -100,15 +108,20 @@ export function PostEditor({
 
   const missing = missingPostFields(post);
   const hasErrors = missing.length > 0;
-  const missingLabel = `Missing required ${
-    missing.length === 1 ? "field" : "fields"
-  }: ${missing.join(", ")}`;
+  const missingLabel =
+    missing.length === 1
+      ? t("sandbox.postEditor.missingFieldSingular", {
+          fields: missing.join(", "),
+        })
+      : t("sandbox.postEditor.missingFieldPlural", {
+          fields: missing.join(", "),
+        });
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
         <span className="truncate text-sm font-medium">
-          {str(post.title) || "Untitled post"}
+          {str(post.title) || t("sandbox.postEditor.untitledPost")}
         </span>
         <div className="flex shrink-0 items-center gap-3">
           {hasErrors && (
@@ -116,7 +129,10 @@ export function PostEditor({
               <TooltipTrigger asChild>
                 <span className="flex items-center gap-1.5 text-xs font-medium text-destructive">
                   <AlertCircle size={14} />
-                  {missing.length} {missing.length === 1 ? "issue" : "issues"}
+                  {missing.length}{" "}
+                  {missing.length === 1
+                    ? t("sandbox.postEditor.issueSingular")
+                    : t("sandbox.postEditor.issuePlural")}
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom">{missingLabel}</TooltipContent>
@@ -132,8 +148,8 @@ export function PostEditor({
               hasErrors
                 ? missingLabel
                 : previewUrl
-                  ? "Open the post preview in a new tab"
-                  : "Set the post slug (and its category) plus the blog app's pageSlug to preview"
+                  ? t("sandbox.postEditor.previewTooltip")
+                  : t("sandbox.postEditor.previewRequiresSlugAndCategory")
             }
             onClick={() => {
               if (previewUrl && !hasErrors) {
@@ -142,7 +158,7 @@ export function PostEditor({
             }}
           >
             <LinkExternal01 size={14} />
-            See preview
+            {t("sandbox.postEditor.seePreview")}
           </Button>
         </div>
       </div>
@@ -153,7 +169,7 @@ export function PostEditor({
           <EditableText
             value={str(post.title)}
             onChange={(v) => setField("title", v)}
-            placeholder="Post title"
+            placeholder={t("sandbox.postEditor.postTitlePlaceholder")}
             className="py-1 text-4xl font-bold text-foreground"
           />
 
@@ -162,11 +178,11 @@ export function PostEditor({
             <TabsList>
               <TabsTrigger value="content">
                 <Pilcrow01 />
-                Content
+                {t("sandbox.postEditor.contentTab")}
               </TabsTrigger>
               <TabsTrigger value="settings">
                 <Settings01 />
-                Settings
+                {t("sandbox.postEditor.settingsTab")}
               </TabsTrigger>
             </TabsList>
 
@@ -177,7 +193,7 @@ export function PostEditor({
                   onChange={(next) => setField("sections", next)}
                   meta={meta}
                   sandboxRef={{ orgSlug, virtualMcpId, branch }}
-                  emptyMessage="This post has no content yet. Use ⊕ to add your first block."
+                  emptyMessage={t("sandbox.postEditor.noContentYet")}
                 />
               </div>
             </TabsContent>
@@ -207,10 +223,13 @@ function PostSettings({
   decofile: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
 }) {
+  const t = useT();
   return (
     <div className="space-y-5">
       <div className="space-y-2">
-        <Label htmlFor="post-excerpt">Excerpt</Label>
+        <Label htmlFor="post-excerpt">
+          {t("sandbox.postEditor.excerptLabel")}
+        </Label>
         <Textarea
           id="post-excerpt"
           value={str(post.excerpt)}
@@ -220,34 +239,42 @@ function PostSettings({
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="post-slug">Slug</Label>
+          <Label htmlFor="post-slug">{t("sandbox.postEditor.slugLabel")}</Label>
           <Input
             id="post-slug"
             value={str(post.slug)}
             onChange={(e) => onChange("slug", e.target.value)}
-            placeholder="my-post"
+            placeholder={t("sandbox.postEditor.slugPlaceholder")}
             className="h-10"
           />
         </div>
         <StringField
-          schema={{ type: "string", format: "date", title: "Date" }}
+          schema={{
+            type: "string",
+            format: "date",
+            title: t("sandbox.postEditor.dateLabel"),
+          }}
           value={str(post.date)}
           onChange={(v) => onChange("date", v)}
           path="post-date"
-          label="Date"
+          label={t("sandbox.postEditor.dateLabel")}
         />
       </div>
       <ImageField
-        schema={{ type: "string", format: "image-uri", title: "Cover image" }}
+        schema={{
+          type: "string",
+          format: "image-uri",
+          title: t("sandbox.postEditor.coverImageLabel"),
+        }}
         value={post.image}
         onChange={(v) => onChange("image", v)}
         path="post-image"
-        label="Cover image"
+        label={t("sandbox.postEditor.coverImageLabel")}
       />
       {/* Authors denormalize their FULL record onto the post — the blog app
           renders the author box (type, job title, company, avatar) from it. */}
       <RelationSelect
-        label="Authors"
+        label={t("sandbox.postEditor.authorsLabel")}
         decofile={decofile}
         kind="authors"
         valueField="email"
@@ -258,7 +285,7 @@ function PostSettings({
       {/* Categories denormalize only `{ name, slug }` — copying the category's
           own body (description, sections) onto every post would bloat them. */}
       <RelationSelect
-        label="Categories"
+        label={t("sandbox.postEditor.categoriesLabel")}
         decofile={decofile}
         kind="categories"
         valueField="slug"
@@ -284,13 +311,14 @@ function ExtraPropsField({
   value: unknown;
   onChange: (value: ExtraProp[]) => void;
 }) {
+  const t = useT();
   const items = asExtraProps(value);
   const set = (i: number, patch: Partial<ExtraProp>) =>
     onChange(items.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
 
   return (
     <div className="space-y-2">
-      <Label>Extra props</Label>
+      <Label>{t("sandbox.postEditor.extraPropsLabel")}</Label>
       {items.length > 0 && (
         <ul className="space-y-2">
           {items.map((prop, i) => (
@@ -298,17 +326,17 @@ function ExtraPropsField({
               <Input
                 value={prop.key}
                 onChange={(e) => set(i, { key: e.target.value })}
-                placeholder="key"
+                placeholder={t("sandbox.postEditor.keyPlaceholder")}
                 className="h-9 flex-1"
               />
               <Input
                 value={prop.value}
                 onChange={(e) => set(i, { value: e.target.value })}
-                placeholder="value"
+                placeholder={t("sandbox.postEditor.valuePlaceholder")}
                 className="h-9 flex-1"
               />
               <RemoveButton
-                label="Remove prop"
+                label={t("sandbox.postEditor.removePropLabel")}
                 onClick={() => onChange(items.filter((_, idx) => idx !== i))}
               />
             </li>
@@ -316,7 +344,7 @@ function ExtraPropsField({
         </ul>
       )}
       <AddButton
-        label="Add prop"
+        label={t("sandbox.postEditor.addPropLabel")}
         onClick={() => onChange([...items, { key: "", value: "" }])}
       />
     </div>
@@ -344,6 +372,7 @@ function RelationSelect({
   selected: unknown;
   onChange: (value: unknown[]) => void;
 }) {
+  const t = useT();
   const { options, selectedValues, refsForValues } = relationPickerState({
     records: listBlogPayloads(decofile, kind),
     selected,
@@ -351,20 +380,26 @@ function RelationSelect({
     toRef,
   });
 
+  const noItemsMsg =
+    kind === "authors"
+      ? t("sandbox.postEditor.noAuthorsYet")
+      : t("sandbox.postEditor.noCategoriesYet");
+  const selectPlaceholder =
+    kind === "authors"
+      ? t("sandbox.postEditor.selectAuthorsPlaceholder")
+      : t("sandbox.postEditor.selectCategoriesPlaceholder");
+
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
       {options.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          No {label.toLowerCase()} yet — create some in the{" "}
-          {label.toLowerCase()} collection.
-        </p>
+        <p className="text-xs text-muted-foreground">{noItemsMsg}</p>
       ) : (
         <MultiSelect
           options={options}
           defaultValue={selectedValues}
           onValueChange={(values) => onChange(refsForValues(values))}
-          placeholder={`Select ${label.toLowerCase()}`}
+          placeholder={selectPlaceholder}
           maxCount={4}
         />
       )}

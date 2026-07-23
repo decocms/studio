@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
+import { decoRepoPath } from "./deco-repo-path";
 import { KEYS } from "@/web/lib/query-keys";
 
 /** Debounce window for form-driven block autosaves (ms). */
@@ -19,6 +21,12 @@ export function useSaveBlock({
   branch,
 }: UseSaveBlockParams) {
   const queryClient = useQueryClient();
+  // Block writes target `.deco/blocks/<key>.json` under the project's package
+  // path (`metadata.runtime.path`) — the daemon resolves against the repo root,
+  // so a subdir project needs the prefix or the dev server (watching its own
+  // `.deco/`) never regenerates and the committed read won't see the write.
+  const packagePath =
+    useVirtualMCP(virtualMcpId)?.metadata?.runtime?.path ?? null;
 
   return useMutation({
     mutationFn: async ({
@@ -28,7 +36,7 @@ export function useSaveBlock({
       blockKey: string;
       data: unknown;
     }) => {
-      const path = decoBlockFilePath(blockKey);
+      const path = decoRepoPath(packagePath, decoBlockFilePath(blockKey));
       const content = JSON.stringify(data, null, 2);
       const res = await fetch(
         `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/write`,

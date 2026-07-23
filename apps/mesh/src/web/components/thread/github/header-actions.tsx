@@ -35,19 +35,24 @@ import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-eve
 import { usePublishGate } from "@/web/components/sandbox/hooks/use-publish-gate.ts";
 import { useChecks, usePrByBranch } from "./use-pr-data.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
-import type { PublishGate } from "./sandbox-git-api.ts";
+import { normalizePublishPolicy, type PublishGate } from "./sandbox-git-api.ts";
+import { useT, type TFunction } from "@/web/i18n/use-t";
 
 interface Props {
   virtualMcpId: string;
 }
 
-const LOADING_BRANCH_BUTTON: HeaderButton = {
-  label: "Loading branch…",
-  disabled: true,
-  loading: true,
-  variant: "outline",
-  tooltip: "Waiting for sandbox branch",
-};
+// Sentinel for the branch-not-yet-selected state; labels are filled in
+// at render time using the translated versions from the component.
+function makeBranchLoadingButton(t: TFunction): HeaderButton {
+  return {
+    label: t("thread.headerActions.loadingBranch"),
+    disabled: true,
+    loading: true,
+    variant: "outline",
+    tooltip: t("thread.headerActions.waitingForSandboxBranchTooltip"),
+  };
+}
 
 /**
  * HeaderActions renders the next-action button for the current branch + PR
@@ -61,6 +66,7 @@ const LOADING_BRANCH_BUTTON: HeaderButton = {
  * detached it renders a reconnect pill rather than nothing.
  */
 export function HeaderActions({ virtualMcpId }: Props) {
+  const t = useT();
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
@@ -156,6 +162,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     effectiveBranchMeta.kind === "ready"
       ? `${effectiveBranchMeta.headSha}:${effectiveBranchMeta.workingTreeDirty}:${effectiveBranchMeta.unpushed}:${effectiveBranchMeta.aheadOfBase}`
       : "unknown";
+  const publishPolicy = normalizePublishPolicy(vm?.metadata?.publishPolicy);
   const { gate: publishGate } = usePublishGate({
     orgSlug: org.slug,
     virtualMcpId,
@@ -164,6 +171,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     headSha:
       effectiveBranchMeta.kind === "ready" ? effectiveBranchMeta.headSha : null,
     signature: publishGateSignature,
+    policy: publishPolicy,
     enabled: publishGateEnabled,
   });
 
@@ -172,9 +180,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // (a stale/mid-mutation aggregation must never leave the header blank).
   if (attachment.status === "detached") {
     return (
-      <WithTooltip label="GitHub connection was removed — relink the repository in Settings to save changes">
+      <WithTooltip label={t("thread.headerActions.githubConnectionRemoved")}>
         <Button size="sm" variant="outline" disabled>
-          Reconnect GitHub
+          {t("thread.headerActions.reconnectGithub")}
         </Button>
       </WithTooltip>
     );
@@ -200,8 +208,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
         checks: checksQuery.data ?? [],
         reviews: reviewsQuery.data ?? null,
         loading: isPrStateActivelyLoading(prQuery),
+        t,
       })
-    : LOADING_BRANCH_BUTTON;
+    : makeBranchLoadingButton(t);
 
   const debugKey = JSON.stringify({
     label: button.label,
@@ -276,12 +285,16 @@ export function HeaderActions({ virtualMcpId }: Props) {
         pullNumber,
         coAuthor,
       });
-      toast.success(`Published PR #${pullNumber}`);
+      toast.success(
+        t("thread.headerActions.publishedPr", { prNumber: String(pullNumber) }),
+      );
       await refreshPrState();
       await switchToFreshBranch();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to merge pull request",
+        err instanceof Error
+          ? err.message
+          : t("thread.headerActions.failedToMergePullRequest"),
       );
     } finally {
       setGithubActionPending(false);
@@ -342,6 +355,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   return (
     <>
       <HeaderButtonRenderer
+        t={t}
         button={button}
         actionBusy={actionBusy}
         githubActionPending={githubActionPending}
@@ -374,6 +388,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
           owner={githubRepo.owner}
           repo={githubRepo.name}
           previewUrl={previewUrl}
+          publishPolicy={publishPolicy}
           dialogIntent={publishDialogIntent}
           headSha={
             effectiveBranchMeta.kind === "ready"
@@ -396,6 +411,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 }
 
 function HeaderButtonRenderer(props: {
+  t: TFunction;
   button: HeaderButton;
   actionBusy: boolean;
   githubActionPending: boolean;
@@ -408,7 +424,7 @@ function HeaderButtonRenderer(props: {
   onSquashMerge: (pullNumber: number) => void | Promise<void>;
   onReview?: () => void;
 }) {
-  const { button, actionBusy, githubActionPending } = props;
+  const { t, button, actionBusy, githubActionPending } = props;
   const chatBlocksAction =
     actionBusy &&
     button.action !== "create-pr" &&
@@ -421,7 +437,7 @@ function HeaderButtonRenderer(props: {
     Boolean(button.loading) ||
     (githubActionPending && button.action === "merge-split");
   const tooltipLabel = chatBlocksAction
-    ? "Chat is running"
+    ? t("thread.headerActions.chatIsRunning")
     : (button.tooltip ?? null);
 
   if (
@@ -460,7 +476,12 @@ function HeaderButtonRenderer(props: {
       {props.showPublishSide ? (
         <WithTooltip
           label={
-            props.publishGate.reason ?? "Publish directly, skipping review"
+            props.publishGate.pending
+              ? t("thread.headerActions.reviewingChanges")
+              : props.publishGate.allowed
+                ? t("thread.headerActions.publishDirectlySkipReview")
+                : (props.publishGate.reason ??
+                  t("thread.headerActions.publishNeedsReview"))
           }
         >
           <Button
@@ -469,7 +490,10 @@ function HeaderButtonRenderer(props: {
             disabled={props.githubActionPending || !props.publishGate.allowed}
             onClick={props.onPublishSide}
           >
-            Publish
+            {props.publishGate.pending ? (
+              <Spinner size="xs" variant="default" />
+            ) : null}
+            {t("thread.headerActions.publish")}
           </Button>
         </WithTooltip>
       ) : null}

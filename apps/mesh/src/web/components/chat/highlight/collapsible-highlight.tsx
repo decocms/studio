@@ -27,6 +27,7 @@
 import { useState, type ReactNode } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ChevronDown, X } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 
 // ease-in-out-cubic — on-screen morph per animation guide
 const EASE = "cubic-bezier(0.645, 0.045, 0.355, 1)";
@@ -108,6 +109,7 @@ export function CollapsibleHighlight({
   variant = "default",
   onClose,
 }: CollapsibleHighlightProps) {
+  const t = useT();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [closed, setClosed] = useState(false);
 
@@ -173,8 +175,8 @@ export function CollapsibleHighlight({
           role="button"
           tabIndex={0}
           data-testid="collapsible-highlight-close"
-          aria-label="Close"
-          title="Close"
+          aria-label={t("chat.collapsibleHighlight.closeLabel")}
+          title={t("chat.collapsibleHighlight.closeTitle")}
           onClick={(e) => {
             e.stopPropagation();
             handleClose();
@@ -203,34 +205,39 @@ export function CollapsibleHighlight({
       >
         <div style={{ overflow: "hidden", minHeight: 0 }}>
           <div
+            className="flex flex-col"
             style={{
               opacity: expanded ? 1 : 0,
               transition: `opacity 120ms ${EASE}`,
+              // Cap the card so a long question can't grow off the top of the
+              // screen (it floats above the composer). Title + options scroll;
+              // the footer stays pinned so Skip/Next are always reachable.
+              maxHeight: "60vh",
             }}
           >
-            {title ? (
-              <div className="flex items-start gap-2 px-4 pt-4 pb-5 border-t border-dashed border-border/60">
-                <p className="flex-1 text-base font-medium text-foreground min-w-0">
-                  {title}
-                </p>
-              </div>
-            ) : (
-              <div className="border-t border-dashed border-border/60" />
-            )}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {title ? (
+                <div className="flex items-start gap-2 px-4 pt-4 pb-5 border-t border-dashed border-border/60">
+                  <p className="flex-1 text-base font-medium text-foreground min-w-0">
+                    {title}
+                  </p>
+                </div>
+              ) : (
+                <div className="border-t border-dashed border-border/60" />
+              )}
 
-            {/* When a title is present, the title block's `pt-4` already
-                provides the 16px gap from the dashed divider to the first
-                body element. When no title is present (e.g. TodosHighlight),
-                the children must carry that top padding themselves so every
-                card has the same chip → body distance. */}
-            {children ? (
-              <div className={cn("overflow-clip pb-4", !title && "pt-4")}>
-                {children}
-              </div>
-            ) : null}
+              {/* When a title is present, the title block's `pt-4` already
+                  provides the 16px gap from the dashed divider to the first
+                  body element. When no title is present (e.g. TodosHighlight),
+                  the children must carry that top padding themselves so every
+                  card has the same chip → body distance. */}
+              {children ? (
+                <div className={cn("pb-4", !title && "pt-4")}>{children}</div>
+              ) : null}
+            </div>
 
             {footerLeft || footerRight ? (
-              <div className="border-t border-border px-3 py-3 pb-6">
+              <div className="shrink-0 border-t border-border px-3 py-3 pb-6">
                 <div className="flex items-center justify-between">
                   <div>{footerLeft}</div>
                   <div className="flex items-center gap-2">{footerRight}</div>

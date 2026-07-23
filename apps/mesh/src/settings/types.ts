@@ -86,7 +86,6 @@ export interface Settings {
    *  (DISABLE_ORGFS_MOUNTS). org-fs is otherwise always mounted; this is
    *  for low-level mount debugging, not a supported org-fs-off mode. */
   orgFsMountsDisabled: boolean;
-
   // Object Storage (S3-compatible)
   s3Endpoint: string | undefined;
   s3Bucket: string | undefined;

@@ -1,10 +1,11 @@
 "use client";
 
 import { Button } from "@deco/ui/components/button.tsx";
-import { Check, ClipboardCheck } from "@untitledui/icons";
+import { ClipboardCheck } from "@untitledui/icons";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { MessageTextPart } from "../message/parts/text-part.tsx";
 import { selectActivePlan, type PendingPlan } from "./extract-pending-plans";
+import { useT } from "@/web/i18n/use-t.ts";
 export {
   extractPendingPlans,
   selectActivePlan,
@@ -26,6 +27,7 @@ function ProposePlanPrompt({
   onApprove,
   onDismiss,
 }: ProposePlanPromptProps) {
+  const t = useT();
   const handleApprove = () => {
     onApprove(plan.plan);
   };
@@ -39,7 +41,7 @@ function ProposePlanPrompt({
         className="h-7 px-2.5 text-xs text-muted-foreground [@media(hover:hover)]:hover:text-foreground active:scale-[0.97] transition-transform"
         onClick={onDismiss}
       >
-        Keep iterating
+        {t("chat.proposePlan.keepIterating")}
       </Button>
       <Button
         type="button"
@@ -47,7 +49,7 @@ function ProposePlanPrompt({
         className="h-7 px-2.5 text-xs bg-purple-600 hover:bg-purple-700 text-white active:scale-[0.97] transition-transform"
         onClick={handleApprove}
       >
-        Let&apos;s go
+        {t("chat.proposePlan.letsGo")}
       </Button>
     </>
   );
@@ -55,8 +57,8 @@ function ProposePlanPrompt({
   return (
     <CollapsibleHighlight
       icon={<ClipboardCheck size={14} />}
-      label="Plan ready"
-      title="Implementation Plan"
+      label={t("chat.proposePlan.planReady")}
+      title={t("chat.proposePlan.implementationPlan")}
       defaultExpanded={true}
       footerRight={footerRight}
     >
@@ -73,39 +75,22 @@ function ProposePlanPrompt({
 }
 
 // ============================================================================
-// ProposePlanLoadingUI
-// ============================================================================
-
-function ProposePlanLoadingUI() {
-  return (
-    <div className="flex items-center gap-2 p-4 border border-dashed border-purple-500/30 rounded-lg bg-purple-500/5 w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2">
-      <Check className="size-5 text-purple-500 shimmer" />
-      <span className="text-sm text-muted-foreground shimmer">
-        Preparing plan...
-      </span>
-    </div>
-  );
-}
-
-// ============================================================================
 // ProposePlanHighlight - wrapper for ChatHighlight
 // ============================================================================
 
 export function ProposePlanHighlight({
   plans,
-  isStreaming,
   onApprove,
   onDismiss,
 }: {
   plans: PendingPlan[];
+  // The caller only ever mounts this component once a plan already exists
+  // (see `flags.hasPlans` in ChatHighlight), so `plans` is never empty here.
+  // Kept in the props contract for symmetry with the other highlight cards.
   isStreaming: boolean;
   onApprove: (planText: string) => void;
   onDismiss: () => void;
 }) {
-  if (isStreaming && plans.length === 0) {
-    return <ProposePlanLoadingUI />;
-  }
-
   // Show only the last pending plan
   const activePlan = selectActivePlan(plans);
   if (!activePlan) {

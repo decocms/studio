@@ -24,13 +24,25 @@ import type { Database } from "./types";
 
 type Executor = Kysely<Database>;
 
+function requireUserScopedId(
+  id: SandboxId,
+): Extract<SandboxId, { scope: "user" }> {
+  if (id.scope !== "user") {
+    throw new Error(
+      "KyselySandboxProviderStateStore only accepts user-scoped sandbox ids",
+    );
+  }
+  return id;
+}
+
 /**
  * Hash `(userId, projectRef, kind)` to a signed int64 for
  * `pg_advisory_xact_lock` — cast so the range fits pg's `bigint`.
  */
 function lockKey(id: SandboxId, kind: string): bigint {
+  const userId = requireUserScopedId(id).userId;
   const h = createHash("sha256")
-    .update(id.userId)
+    .update(userId)
     .update("\x00")
     .update(id.projectRef)
     .update("\x00")
@@ -44,10 +56,11 @@ async function getRow(
   id: SandboxId,
   kind: string,
 ): Promise<RunnerStateRecord | null> {
+  const userId = requireUserScopedId(id).userId;
   const row = await exec
     .selectFrom("sandbox_runner_state")
     .select(["handle", "state", "updated_at"])
-    .where("user_id", "=", id.userId)
+    .where("user_id", "=", userId)
     .where("project_ref", "=", id.projectRef)
     .where("sandbox_provider_kind", "=", kind)
     .executeTakeFirst();
@@ -72,7 +85,11 @@ async function getByHandleRow(
     .executeTakeFirst();
   if (!row) return null;
   return {
-    id: { userId: row.user_id, projectRef: row.project_ref },
+    id: {
+      scope: "user",
+      userId: row.user_id,
+      projectRef: row.project_ref,
+    },
     handle: row.handle,
     state: row.state as Record<string, unknown>,
     updatedAt: row.updated_at as Date,
@@ -85,12 +102,13 @@ async function putRow(
   kind: string,
   entry: RunnerStatePut,
 ): Promise<void> {
+  const userId = requireUserScopedId(id).userId;
   const stateJson = JSON.stringify(entry.state);
   const now = new Date().toISOString();
   await exec
     .insertInto("sandbox_runner_state")
     .values({
-      user_id: id.userId,
+      user_id: userId,
       project_ref: id.projectRef,
       sandbox_provider_kind: kind,
       handle: entry.handle,
@@ -114,9 +132,10 @@ async function deleteRow(
   id: SandboxId,
   kind: string,
 ): Promise<void> {
+  const userId = requireUserScopedId(id).userId;
   await exec
     .deleteFrom("sandbox_runner_state")
-    .where("user_id", "=", id.userId)
+    .where("user_id", "=", userId)
     .where("project_ref", "=", id.projectRef)
     .where("sandbox_provider_kind", "=", kind)
     .execute();
@@ -188,6 +207,7 @@ export class KyselySandboxProviderStateStore implements RunnerStateStore {
     kind: string,
     fn: (store: RunnerStateStoreOps) => Promise<T>,
   ): Promise<T> {
+    const userId = requireUserScopedId(id).userId;
     const key = lockKey(id, kind);
     return this.db.transaction().execute(async (trx) => {
       try {
@@ -198,7 +218,7 @@ export class KyselySandboxProviderStateStore implements RunnerStateStore {
       } catch (err) {
         if (isStatementTimeoutError(err)) {
           throw new Error(
-            `sandbox advisory lock busy >${LOCK_WAIT_MS}ms for user=${id.userId} projectRef=${id.projectRef} kind=${kind} — provisioner is slow or stuck; retry shortly`,
+            `sandbox advisory lock busy >${LOCK_WAIT_MS}ms for user=${userId} projectRef=${id.projectRef} kind=${kind} — provisioner is slow or stuck; retry shortly`,
           );
         }
         throw err;

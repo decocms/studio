@@ -1,4 +1,5 @@
 import { formatDistanceToNow } from "date-fns";
+import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { useChatStream } from "@/web/components/chat/context";
@@ -7,6 +8,8 @@ import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { User } from "@/web/components/user/user";
+import { useT } from "@/web/i18n/use-t.ts";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 
 import {
   authenticateMcp,
@@ -32,6 +35,10 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card, CardContent } from "@deco/ui/components/card.tsx";
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "@deco/ui/components/radio-group.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import {
   Tooltip,
@@ -41,6 +48,7 @@ import {
 import {
   ENV_VAR_KEY_RE,
   StudioPackAgentId,
+  SUBMODULE_HOST_RE,
   useConnectionActions,
   useProjectContext,
   useVirtualMCP,
@@ -71,8 +79,10 @@ import { getActiveGithubRepo } from "@/web/lib/github-repo";
 import { agentHasConnectedGithub } from "@/web/lib/agent-capabilities";
 import { DevAgentSetup } from "@/web/components/dev-agent/dev-agent-setup.tsx";
 import { EnvVarsField } from "@/web/components/sandbox/runtime-card/env-vars-field";
+import { SubmoduleCredentialsField } from "@/web/components/sandbox/runtime-card/submodule-credentials-field";
 import { RepoRow } from "@/web/components/sandbox/runtime-card/repo-row";
 import { RuntimeFields } from "@/web/components/sandbox/runtime-card/runtime-fields";
+import { ProductionUrlField } from "@/web/components/sandbox/runtime-card/production-url-field";
 
 type DialogState = {
   shareDialogOpen: boolean;
@@ -189,6 +199,36 @@ function stripIncompleteEnvEntries(
   };
 }
 
+/**
+ * Drop half-filled submodule-credential rows (no host, invalid host, or no
+ * secretId) before autosave, same rationale as `stripIncompleteEnvEntries`:
+ * the partial row stays in form state so the user keeps editing, but the
+ * request body only carries entries the server schema accepts.
+ */
+function stripIncompleteSubmoduleCredentials(
+  data: VirtualMcpFormData,
+): VirtualMcpFormData {
+  const creds = data.metadata?.runtime?.submoduleCredentials;
+  if (!creds || creds.length === 0) return data;
+  const cleaned = creds.filter((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const host = ((entry as { host?: string }).host ?? "").trim();
+    if (!host || !SUBMODULE_HOST_RE.test(host)) return false;
+    return Boolean((entry as { secretId?: string }).secretId);
+  });
+  if (cleaned.length === creds.length) return data;
+  return {
+    ...data,
+    metadata: {
+      ...data.metadata,
+      runtime: {
+        ...(data.metadata?.runtime ?? {}),
+        submoduleCredentials: cleaned,
+      },
+    },
+  };
+}
+
 async function extractEmailFromTokenInfo(
   tokenInfo: {
     idToken: string | null;
@@ -261,6 +301,9 @@ function VirtualMcpDetailViewWithData({
   virtualMcp: VirtualMCPEntity;
   hideOwnTitle?: boolean;
 }) {
+  const t = useT();
+  const [preferences] = usePreferences();
+  const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
   const { org } = useProjectContext();
   const actions = useVirtualMCPActions();
   const { data: lastUsedMap } = useVirtualMCPsLastUsed([virtualMcp.id]);
@@ -389,10 +432,13 @@ function VirtualMcpDetailViewWithData({
     // current form values; only _defaultValues advances.
     form.reset(formData, { keepValues: true });
 
-    // Strip in-progress env rows (no key, or kind=secret with no secretId).
-    // The partial row stays in the form state so the user keeps editing it,
-    // but the request body only carries entries the server schema accepts.
-    const payload = stripIncompleteEnvEntries(formData);
+    // Strip in-progress env rows (no key, or kind=secret with no secretId) and
+    // submodule-credential rows (no host / no secretId). The partial rows stay
+    // in form state so the user keeps editing, but the request body only
+    // carries entries the server schema accepts.
+    const payload = stripIncompleteSubmoduleCredentials(
+      stripIncompleteEnvEntries(formData),
+    );
 
     await actions.update.mutateAsync({
       id: virtualMcp.id,
@@ -485,7 +531,7 @@ function VirtualMcpDetailViewWithData({
     const current = form.getValues("connections");
     // Prevent switching to an instance already used in this agent
     if (current.some((c) => c.connection_id === newId)) {
-      toast.error("This instance is already added to the agent");
+      toast.error(t("virtualMcp.virtualMcp.instanceAlreadyAdded"));
       return;
     }
     form.setValue(
@@ -553,10 +599,10 @@ function VirtualMcpDetailViewWithData({
 
       // Switch to the new instance
       handleSwitchInstance(connectionId, newId);
-      toast.success("New instance created");
+      toast.success(t("virtualMcp.virtualMcp.newInstanceCreated"));
     } catch (err) {
       console.error("Failed to create instance:", err);
-      toast.error("Failed to create instance");
+      toast.error(t("virtualMcp.virtualMcp.failedToCreateInstance"));
     }
   };
 
@@ -573,7 +619,9 @@ function VirtualMcpDetailViewWithData({
       scope: "offline_access",
     });
     if (error || !token) {
-      toast.error(`Authentication failed: ${error}`);
+      toast.error(
+        t("virtualMcp.virtualMcp.authenticationFailed", { error: error ?? "" }),
+      );
       return null;
     }
 
@@ -639,39 +687,14 @@ function VirtualMcpDetailViewWithData({
       queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
     });
 
-    toast.success("Authentication successful");
+    toast.success(t("virtualMcp.virtualMcp.authenticationSuccessful"));
 
     return extractEmailFromTokenInfo(tokenInfo, token);
   };
 
   const handleInsertTemplate = () => {
     const current = form.getValues("metadata.instructions") ?? "";
-    const template = `<role>
-Define who this agent is and what it specializes in.
-Example: You are a support triage agent for B2B merchants.
-</role>
-
-<capabilities>
-List what this agent can do using its connected tools.
-- Investigate issues using connected data sources.
-- Summarize findings and recommend next steps.
-</capabilities>
-
-<constraints>
-Set clear boundaries on what the agent must not do.
-- Do not perform destructive actions without confirmation.
-- Escalate to a human when the request is outside your expertise.
-</constraints>
-
-<workflows>
-Define step-by-step how the agent should handle requests.
-
-## Default workflow
-1. Read the user's request and gather context.
-2. Use the appropriate tools to investigate or act.
-3. Summarize the result and propose next steps.
-4. Ask for confirmation before making any changes.
-</workflows>`;
+    const template = t("virtualMcp.virtualMcp.promptTemplateContent");
     const next = current.trim() ? `${current}\n\n${template}` : template;
     form.setValue("metadata.instructions", next, { shouldDirty: true });
   };
@@ -688,7 +711,9 @@ Define step-by-step how the agent should handle requests.
         agent_id: virtualMcp.id,
         source: "agent_detail",
       });
-      toast.success(`Deleted "${virtualMcp.title}"`);
+      toast.success(
+        t("virtualMcp.virtualMcp.agentDeleted", { title: virtualMcp.title }),
+      );
       navigate({ to: "/$org", params: { org: org.slug } });
     } catch {
       // Error toast handled by mutation
@@ -710,7 +735,7 @@ Define step-by-step how the agent should handle requests.
                       onClick={handleTestAgent}
                     >
                       <Play size={14} className="size-[14px]!" />
-                      Test Agent
+                      {t("virtualMcp.virtualMcp.testAgent")}
                     </Button>
                     <Button
                       variant="ghost"
@@ -723,7 +748,7 @@ Define step-by-step how the agent should handle requests.
                   </div>
                 }
               >
-                Settings
+                {t("virtualMcp.virtualMcp.settings")}
               </Page.Title>
             )}
 
@@ -769,7 +794,9 @@ Define step-by-step how the agent should handle requests.
                         flushAndSave();
                       }}
                       disabled={hasGithubRepo}
-                      placeholder="Agent name"
+                      placeholder={t(
+                        "virtualMcp.virtualMcp.agentNamePlaceholder",
+                      )}
                       className="text-lg font-medium leading-tight text-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate disabled:hover:bg-transparent disabled:focus:bg-transparent disabled:opacity-50"
                     />
                   )}
@@ -790,7 +817,9 @@ Define step-by-step how the agent should handle requests.
                         flushAndSave();
                       }}
                       disabled={hasGithubRepo}
-                      placeholder="Add a description..."
+                      placeholder={t(
+                        "virtualMcp.virtualMcp.descriptionPlaceholder",
+                      )}
                       className="text-sm text-muted-foreground bg-transparent border-none outline-none px-1 -mx-1 rounded hover:bg-input/25 focus:bg-input/25 transition-colors w-full truncate disabled:hover:bg-transparent disabled:focus:bg-transparent disabled:opacity-50"
                     />
                   )}
@@ -829,7 +858,7 @@ Define step-by-step how the agent should handle requests.
                     />
                   </span>
                 </span>
-                Connect
+                {t("virtualMcp.virtualMcp.connect")}
               </Button>
             </div>
 
@@ -842,7 +871,7 @@ Define step-by-step how the agent should handle requests.
               />
               <span className="text-muted-foreground/50">·</span>
               <span>
-                Created{" "}
+                {t("virtualMcp.virtualMcp.created")}{" "}
                 {new Date(virtualMcp.created_at).toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
@@ -852,8 +881,13 @@ Define step-by-step how the agent should handle requests.
               <span className="text-muted-foreground/50">·</span>
               <span>
                 {lastUsedAt
-                  ? `Last used ${formatDistanceToNow(new Date(lastUsedAt), { addSuffix: true })}`
-                  : "Never used"}
+                  ? t("virtualMcp.virtualMcp.lastUsed", {
+                      time: formatDistanceToNow(new Date(lastUsedAt), {
+                        addSuffix: true,
+                        locale,
+                      }),
+                    })
+                  : t("virtualMcp.virtualMcp.neverUsed")}
               </span>
             </div>
 
@@ -861,7 +895,7 @@ Define step-by-step how the agent should handle requests.
             <section className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-medium text-foreground">
-                  Connections
+                  {t("virtualMcp.virtualMcp.connections")}
                 </h2>
                 {connections.length > 0 && (
                   <Button
@@ -870,7 +904,7 @@ Define step-by-step how the agent should handle requests.
                     onClick={handleOpenAddDialog}
                   >
                     <Plus size={14} />
-                    Add connection
+                    {t("virtualMcp.virtualMcp.addConnection")}
                   </Button>
                 )}
               </div>
@@ -885,7 +919,7 @@ Define step-by-step how the agent should handle requests.
                       <Plus size={16} />
                     </div>
                     <span className="text-sm text-muted-foreground">
-                      No connections yet. Add one to get started.
+                      {t("virtualMcp.virtualMcp.noConnectionsYet")}
                     </span>
                   </button>
                 ) : (
@@ -921,7 +955,7 @@ Define step-by-step how the agent should handle requests.
             <section className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-medium text-foreground">
-                  Instructions
+                  {t("virtualMcp.virtualMcp.instructions")}
                 </h2>
                 <div className="flex items-center gap-2">
                   {!form.watch("metadata.instructions")?.trim() && (
@@ -930,7 +964,7 @@ Define step-by-step how the agent should handle requests.
                       size="sm"
                       onClick={handleInsertTemplate}
                     >
-                      + Prompt template
+                      {t("virtualMcp.virtualMcp.promptTemplate")}
                     </Button>
                   )}
                   <Button
@@ -943,7 +977,7 @@ Define step-by-step how the agent should handle requests.
                     onClick={handleImprovePrompt}
                   >
                     <Stars01 size={13} />
-                    Improve
+                    {t("virtualMcp.virtualMcp.improve")}
                   </Button>
                 </div>
               </div>
@@ -962,7 +996,9 @@ Define step-by-step how the agent should handle requests.
                         field.onBlur();
                         flushAndSave();
                       }}
-                      placeholder="Define how this agent should behave, what tone to use, any constraints or guidelines..."
+                      placeholder={t(
+                        "virtualMcp.virtualMcp.instructionsPlaceholder",
+                      )}
                       className="min-h-[200px] max-h-[360px] overflow-auto resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed border-0 shadow-none px-4 py-3 pr-11 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent"
                       style={{ boxShadow: "none" }}
                     />
@@ -974,12 +1010,16 @@ Define step-by-step how the agent should handle requests.
                           size="icon"
                           className="absolute top-2 right-2 h-7 w-7 text-muted-foreground"
                           onClick={() => setInstructionsFullscreen(true)}
-                          aria-label="Open fullscreen editor"
+                          aria-label={t(
+                            "virtualMcp.virtualMcp.openFullscreenEditor",
+                          )}
                         >
                           <Maximize01 size={14} />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent side="left">Fullscreen</TooltipContent>
+                      <TooltipContent side="left">
+                        {t("virtualMcp.virtualMcp.fullscreen")}
+                      </TooltipContent>
                     </Tooltip>
                   </div>
                 )}
@@ -995,7 +1035,7 @@ Define step-by-step how the agent should handle requests.
                 fallback={
                   <section className="flex flex-col gap-3">
                     <h2 className="text-sm font-medium text-foreground">
-                      Sub-agents
+                      {t("virtualMcp.virtualMcp.subAgents")}
                     </h2>
                     <div className="h-16 rounded-lg border border-dashed border-border animate-pulse" />
                   </section>
@@ -1015,20 +1055,111 @@ Define step-by-step how the agent should handle requests.
             {/* Development agent section (link a dev counterpart) */}
             <DevAgentSetup virtualMcp={virtualMcp} />
 
+            {/* Publishing section (code agents only) */}
+            {hasGithubRepo && (
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-sm font-medium text-foreground">
+                    {t("virtualMcp.virtualMcp.publishing")}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {t("virtualMcp.virtualMcp.publishingDescription")}
+                  </p>
+                </div>
+                <Card className="p-6">
+                  <CardContent className="p-0">
+                    <Controller
+                      name="metadata.publishPolicy"
+                      control={form.control}
+                      render={({ field }) => (
+                        <RadioGroup
+                          value={field.value ?? "smart"}
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            flushAndSave();
+                          }}
+                          className="gap-4"
+                        >
+                          {(
+                            [
+                              {
+                                value: "smart",
+                                label: t(
+                                  "virtualMcp.virtualMcp.publishPolicySmart",
+                                ),
+                                description: t(
+                                  "virtualMcp.virtualMcp.publishPolicySmartDescription",
+                                ),
+                              },
+                              {
+                                value: "code-review",
+                                label: t(
+                                  "virtualMcp.virtualMcp.publishPolicyCodeReview",
+                                ),
+                                description: t(
+                                  "virtualMcp.virtualMcp.publishPolicyCodeReviewDescription",
+                                ),
+                              },
+                              {
+                                value: "open",
+                                label: t(
+                                  "virtualMcp.virtualMcp.publishPolicyOpen",
+                                ),
+                                description: t(
+                                  "virtualMcp.virtualMcp.publishPolicyOpenDescription",
+                                ),
+                              },
+                            ] as const
+                          ).map((option) => (
+                            <label
+                              key={option.value}
+                              htmlFor={`publish-policy-${option.value}`}
+                              className="flex cursor-pointer items-start gap-3"
+                            >
+                              <RadioGroupItem
+                                id={`publish-policy-${option.value}`}
+                                value={option.value}
+                                className="mt-0.5"
+                              />
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-sm font-medium text-foreground">
+                                  {option.label}
+                                </span>
+                                <span className="text-sm text-muted-foreground">
+                                  {option.description}
+                                </span>
+                              </div>
+                            </label>
+                          ))}
+                        </RadioGroup>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
             {/* Sandbox section */}
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-medium text-foreground">Sandbox</h2>
+                <h2 className="text-sm font-medium text-foreground">
+                  {t("virtualMcp.virtualMcp.sandbox")}
+                </h2>
               </div>
               <Card className="p-6 gap-5">
                 <CardContent className="p-0 space-y-5">
                   <RepoRow repo={runtimeCardRepo} />
+                  <ProductionUrlField control={form.control} />
                   <RuntimeFields control={form.control} />
                   <EnvVarsField
                     control={form.control}
                     form={form}
                     virtualMcpId={virtualMcp.id}
                     orgSlug={org.slug}
+                  />
+                  <SubmoduleCredentialsField
+                    control={form.control}
+                    form={form}
                   />
                 </CardContent>
               </Card>
@@ -1037,9 +1168,11 @@ Define step-by-step how the agent should handle requests.
             {/* Danger zone */}
             <section className="flex items-center justify-between border-t border-border pt-6">
               <div>
-                <p className="text-sm font-medium">Delete agent</p>
+                <p className="text-sm font-medium">
+                  {t("virtualMcp.virtualMcp.deleteAgent")}
+                </p>
                 <p className="text-sm text-muted-foreground">
-                  Permanently delete this agent and all its data.
+                  {t("virtualMcp.virtualMcp.deleteAgentDescription")}
                 </p>
               </div>
               <Button
@@ -1049,7 +1182,7 @@ Define step-by-step how the agent should handle requests.
                 onClick={() => setDeleteDialogOpen(true)}
               >
                 <Trash01 size={14} />
-                Delete agent
+                {t("virtualMcp.virtualMcp.deleteAgent")}
               </Button>
             </section>
           </div>
@@ -1060,22 +1193,24 @@ Define step-by-step how the agent should handle requests.
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Agent?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("virtualMcp.virtualMcp.deleteAgentConfirm")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete{" "}
-              <span className="font-medium text-foreground">
-                {virtualMcp.title}
-              </span>
-              .
+              {t("virtualMcp.virtualMcp.deleteAgentConfirmDescription", {
+                title: virtualMcp.title,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("virtualMcp.virtualMcp.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("virtualMcp.virtualMcp.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1118,7 +1253,7 @@ Define step-by-step how the agent should handle requests.
       >
         <DialogContent className="w-[90vw] sm:max-w-6xl h-[85vh] flex flex-col p-0 gap-0">
           <DialogHeader className="px-6 pt-6 pb-3 border-b border-border shrink-0">
-            <DialogTitle>Instructions</DialogTitle>
+            <DialogTitle>{t("virtualMcp.virtualMcp.instructions")}</DialogTitle>
           </DialogHeader>
           <div className="flex-1 min-h-0 p-6">
             <Controller
@@ -1136,7 +1271,9 @@ Define step-by-step how the agent should handle requests.
                     flushAndSave();
                   }}
                   disabled={hasGithubRepo}
-                  placeholder="Define how this agent should behave, what tone to use, any constraints or guidelines..."
+                  placeholder={t(
+                    "virtualMcp.virtualMcp.instructionsPlaceholder",
+                  )}
                   className="w-full h-full resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed rounded-xl card-shadow px-4 py-3 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 bg-card border-0"
                   style={{ boxShadow: "none" }}
                 />
@@ -1160,6 +1297,7 @@ export function VirtualMcpDetailView({
   virtualMcpId: string;
   hideOwnTitle?: boolean;
 }) {
+  const t = useT();
   const navigate = useNavigate();
   const { org } = useProjectContext();
 
@@ -1168,8 +1306,8 @@ export function VirtualMcpDetailView({
     return (
       <div className="flex h-full w-full bg-background">
         <EmptyState
-          title="Space not found"
-          description="This space may have been deleted or you may not have access."
+          title={t("virtualMcp.virtualMcp.spaceNotFound")}
+          description={t("virtualMcp.virtualMcp.spaceNotFoundDescription")}
           actions={
             <Button
               variant="outline"
@@ -1180,7 +1318,7 @@ export function VirtualMcpDetailView({
                 })
               }
             >
-              Back to spaces
+              {t("virtualMcp.virtualMcp.backToSpaces")}
             </Button>
           }
         />

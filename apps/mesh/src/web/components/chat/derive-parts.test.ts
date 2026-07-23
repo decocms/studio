@@ -204,3 +204,32 @@ describe("derivePartsFromTiptapDoc — task ref mention", () => {
     expect(texts.some((t) => t.includes("Broken on Safari."))).toBe(true);
   });
 });
+
+describe("derivePartsFromTiptapDoc — malformed mention metadata", () => {
+  // A doc's tiptapDoc is persisted JSON and can be created/edited outside the
+  // slash/agent-mention UI (e.g. via the thread API), so `metadata` can't be
+  // trusted to always hold the object shape the UI would have produced.
+  test("does not throw when a '/' mention's metadata array holds a non-object", () => {
+    expect(() =>
+      joinText(skillDoc({ name: "foo", metadata: [null] })),
+    ).not.toThrow();
+  });
+
+  test("does not throw when an '@' mention's metadata is a bare primitive", () => {
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "mention",
+              attrs: { char: "@", name: "bot", metadata: "oops" },
+            },
+          ],
+        },
+      ],
+    };
+    expect(() => joinText(doc)).not.toThrow();
+  });
+});

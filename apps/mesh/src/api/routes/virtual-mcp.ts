@@ -22,7 +22,6 @@ import { getUserId, type StudioContext } from "../../core/studio-context";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import { createVirtualClientFrom } from "../../mcp-clients/virtual-mcp";
 import { resolveDevConnection } from "./dev-connection";
-import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { Env } from "../hono-env";
 import { serveMcpRequest } from "../utils/serve-mcp";
@@ -47,7 +46,13 @@ export async function handleVirtualMcpRequest(
   const ctx = c.get("studioContext");
 
   try {
-    // Prefer x-org-id header (no DB lookup) over x-org-slug (requires DB lookup)
+    // Prefer x-org-id header (no DB lookup) over x-org-slug (requires DB lookup).
+    // External MCP clients (Claude Code/Desktop) send NEITHER — the org is in
+    // the URL path (`/api/:org/mcp`), already resolved into `ctx.organization`
+    // by the resolveOrgFromPath middleware. Fall back to it so the aggregate
+    // (Decopilot) endpoint works without the internal UI's x-org-* headers;
+    // otherwise organizationId stays null and the request 400s with
+    // "Agent ID or organization ID is required".
     const orgId = c.req.header("x-org-id");
     const orgSlug = c.req.header("x-org-slug");
 
@@ -60,7 +65,7 @@ export async function handleVirtualMcpRequest(
             .where("slug", "=", orgSlug)
             .executeTakeFirst()
             .then((org) => org?.id)
-        : null;
+        : (ctx.organization?.id ?? null);
 
     const virtualId = virtualMcpId
       ? virtualMcpId
@@ -150,11 +155,7 @@ export async function handleVirtualMcpRequest(
     // binding: it only resolves a sandbox the acting user themselves started.
     const actingUserId = getUserId(ctx);
     let devConnection: ConnectionEntity | null = null;
-    if (
-      virtualMcp.id &&
-      actingUserId &&
-      readSandboxMap(virtualMcp.metadata)[actingUserId]
-    ) {
+    if (virtualMcp.id && actingUserId) {
       devConnection = await resolveDevConnection(
         ctx,
         virtualMcp.id,

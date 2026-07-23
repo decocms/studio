@@ -22,6 +22,7 @@ import { PluginKey } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import type { Ref } from "react";
 import { PropsWithChildren, Suspense } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   BaseItem,
   OnSelectProps,
@@ -190,6 +191,7 @@ const MentionItemList = <T extends BaseItem>({
   queryFn,
   onSelect,
 }: MentionItemListProps<T>) => {
+  const t = useT();
   const {
     items,
     selectedIndex,
@@ -205,7 +207,7 @@ const MentionItemList = <T extends BaseItem>({
   if (!items.length) {
     return (
       <div className="min-w-[360px] max-w-[520px] bg-popover text-popover-foreground rounded-md border shadow-md p-3 text-sm">
-        No items found
+        {t("chat.mention.noItemsFound")}
       </div>
     );
   }

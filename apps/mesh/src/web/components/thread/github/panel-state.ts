@@ -5,6 +5,7 @@ import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
 import { publishToBaseLabel } from "./publish-label.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
+import type { TFunction } from "@/web/i18n/use-t.ts";
 
 /**
  * Header copy for claim-phase variants while lifecycle is still `idle`.
@@ -90,6 +91,7 @@ export interface SelectHeaderButtonInput {
   checks: CheckRun[];
   reviews: PrReviewSignals | null;
   loading?: boolean;
+  t: TFunction;
 }
 
 export function isPrStateActivelyLoading(query: {
@@ -102,15 +104,15 @@ export function isPrStateActivelyLoading(query: {
 export function selectHeaderButton(
   input: SelectHeaderButtonInput,
 ): HeaderButton {
-  const { lifecycle, branch, pr, checks, reviews, loading } = input;
+  const { lifecycle, branch, pr, checks, reviews, loading, t } = input;
 
   if (loading) {
     return {
-      label: "Loading…",
+      label: t("thread.headerActions.loading"),
       disabled: true,
       loading: true,
       variant: "outline",
-      tooltip: "Loading branch and pull request status",
+      tooltip: t("thread.headerActions.loadingBranchTooltip"),
     };
   }
 
@@ -125,37 +127,43 @@ export function selectHeaderButton(
     case "idle": {
       const label =
         (input.claimPhase && idleClaimCopy(input.claimPhase.kind)) ||
-        "Starting sandbox…";
+        t("thread.headerActions.startingSandbox");
       return {
         label,
         disabled: true,
         loading: true,
         variant: "outline",
-        tooltip: "Waiting for the sandbox daemon to come online",
+        tooltip: t("thread.headerActions.waitingForDaemonTooltip"),
       };
     }
     case "cloning":
       return {
-        label: "Cloning repo…",
+        label: t("thread.headerActions.cloningRepo"),
         disabled: true,
         loading: true,
         variant: "outline",
-        tooltip: "Cloning the project repository",
+        tooltip: t("thread.headerActions.cloningRepoTooltip"),
       };
     case "clone-failed":
       return {
-        label: "Clone failed",
+        label: t("thread.headerActions.cloneFailed"),
         disabled: true,
         variant: "outline",
-        tooltip: lifecycle.error || "git clone failed — see setup logs",
+        tooltip:
+          lifecycle.error ||
+          t("thread.headerActions.cloneFailedDefaultTooltip"),
       };
     case "checking-out":
       return {
-        label: `Switching to ${lifecycle.to}…`,
+        label: t("thread.headerActions.switchingTo", {
+          branch: lifecycle.to,
+        }),
         disabled: true,
         loading: true,
         variant: "outline",
-        tooltip: `Checking out ${lifecycle.to}`,
+        tooltip: t("thread.headerActions.checkingOutTooltip", {
+          branch: lifecycle.to,
+        }),
       };
     // installing / starting / running / install-failed / start-failed /
     // crashed: intentionally fall through to git/PR logic below.
@@ -166,21 +174,24 @@ export function selectHeaderButton(
   // the daemon emits it within a few hundred ms of checkout.
   if (branch.kind !== "ready") {
     return {
-      label: "Loading branch…",
+      label: t("thread.headerActions.loadingBranch"),
       disabled: true,
       loading: true,
       variant: "outline",
-      tooltip: "Waiting for branch metadata from the sandbox daemon",
+      tooltip: t("thread.headerActions.waitingForBranchTooltip"),
     };
   }
   const ready = branch;
 
   if (ready.workingTreeDirty) {
     return {
-      label: "Submit for review",
+      label: t("thread.headerActions.submitForReview"),
       action: "create-pr",
       variant: "default",
-      tooltip: `Push and open a PR for ${ready.branch} → ${ready.base}`,
+      tooltip: t("thread.headerActions.pushAndOpenPrTooltip", {
+        branch: ready.branch,
+        base: ready.base,
+      }),
       showPublishSide: true,
     };
   }
@@ -196,18 +207,23 @@ export function selectHeaderButton(
   if (trulyUnpushed) {
     if (!pr) {
       return {
-        label: "Submit for review",
+        label: t("thread.headerActions.submitForReview"),
         action: "create-pr",
         variant: "default",
-        tooltip: `Push and open a PR for ${ready.branch} → ${ready.base}`,
+        tooltip: t("thread.headerActions.pushAndOpenPrTooltip", {
+          branch: ready.branch,
+          base: ready.base,
+        }),
         showPublishSide: true,
       };
     }
     return {
-      label: "Submit for review",
+      label: t("thread.headerActions.submitForReview"),
       action: "create-pr",
       variant: "default",
-      tooltip: `Push local commits to PR #${pr.number}`,
+      tooltip: t("thread.headerActions.pushLocalCommitsTooltip", {
+        prNumber: String(pr.number),
+      }),
       showPublishSide: true,
     };
   }
@@ -235,36 +251,44 @@ export function selectHeaderButton(
       !!ready.headSha && !!pr.headSha && ready.headSha !== pr.headSha;
     if (branchAdvanced) {
       return {
-        label: "Continue",
+        label: t("thread.headerActions.continue"),
         action: "create-pr",
         variant: "special",
-        tooltip: "Open a new PR with the latest commits",
+        tooltip: t("thread.headerActions.openNewPrTooltip"),
         showPublishSide: true,
       };
     }
     return {
-      label: "Published",
+      label: t("thread.headerActions.published"),
       disabled: true,
       variant: "outline",
-      tooltip: `PR #${pr.number} merged into ${pr.base}`,
+      tooltip: t("thread.headerActions.prMergedTooltip", {
+        prNumber: String(pr.number),
+        base: pr.base,
+      }),
     };
   }
 
   if (ready.aheadOfBase > 0) {
     if (pr && pr.state === "closed" && !pr.merged) {
       return {
-        label: "Reopen",
+        label: t("thread.headerActions.reopen"),
         action: "reopen",
         variant: "default",
-        tooltip: `Reopen PR #${pr.number}`,
+        tooltip: t("thread.headerActions.reopenPrTooltip", {
+          prNumber: String(pr.number),
+        }),
       };
     }
     if (!pr) {
       return {
-        label: "Submit for review",
+        label: t("thread.headerActions.submitForReview"),
         action: "create-pr",
         variant: "default",
-        tooltip: `Open a PR for ${ready.branch} → ${ready.base}`,
+        tooltip: t("thread.headerActions.openPrForBranchTooltip", {
+          branch: ready.branch,
+          base: ready.base,
+        }),
         showPublishSide: true,
       };
     }
@@ -274,20 +298,24 @@ export function selectHeaderButton(
 
     if (mergeableState === "dirty") {
       return {
-        label: `Sync with ${pr.base}`,
+        label: t("thread.headerActions.syncWith", { base: pr.base }),
         action: "rebase",
         variant: "default",
-        tooltip: `Resolve conflicts with ${pr.base} before merging`,
+        tooltip: t("thread.headerActions.resolveConflictsTooltip", {
+          base: pr.base,
+        }),
       };
     }
 
     const failing = checks.filter(isCheckFailed).map((c) => c.name);
     if (failing.length > 0) {
       return {
-        label: "Fix tests",
+        label: t("thread.headerActions.fixTests"),
         action: "fix-checks",
         variant: "default",
-        tooltip: `Failing: ${failing.join(", ")}`,
+        tooltip: t("thread.headerActions.failingChecksTooltip", {
+          checks: failing.join(", "),
+        }),
         meta: { failingChecks: failing },
       };
     }
@@ -295,58 +323,63 @@ export function selectHeaderButton(
     const inProgress = checks.filter(isCheckInProgress);
     if (inProgress.length > 0) {
       return {
-        label: "Running tests…",
+        label: t("thread.headerActions.runningTests"),
         disabled: true,
         loading: true,
         variant: "outline",
-        tooltip: `Waiting on ${inProgress.length} check${
-          inProgress.length === 1 ? "" : "s"
-        } to finish`,
+        tooltip: t("thread.headerActions.waitingOnChecksTooltip", {
+          count: String(inProgress.length),
+        }),
       };
     }
 
     if (reviews?.draft) {
       return {
-        label: "Mark ready",
+        label: t("thread.headerActions.markReady"),
         action: "mark-ready",
         variant: "default",
-        tooltip: "Mark draft PR ready for review",
+        tooltip: t("thread.headerActions.markDraftReadyTooltip"),
       };
     }
 
     const unresolved = reviews?.unresolvedConversations ?? 0;
     if (unresolved > 0) {
       return {
-        label: "Address feedback",
+        label: t("thread.headerActions.addressFeedback"),
         action: "resolve-comments",
         variant: "default",
-        tooltip: `${unresolved} unresolved conversation${
-          unresolved === 1 ? "" : "s"
-        }`,
+        tooltip: t("thread.headerActions.unresolvedConversationsTooltip", {
+          count: String(unresolved),
+        }),
       };
     }
 
     if (reviews?.missingRequiredApprovals) {
       return {
-        label: "Awaiting review",
+        label: t("thread.headerActions.awaitingReview"),
         disabled: true,
         variant: "outline",
-        tooltip: "Waiting for required approvals",
+        tooltip: t("thread.headerActions.waitingForApprovalsTooltip"),
       };
     }
 
     return {
-      label: publishToBaseLabel(pr.base),
+      label: publishToBaseLabel(pr.base, t),
       action: "merge-split",
       variant: "success",
-      tooltip: `Squash-merge PR #${pr.number} into ${pr.base}`,
+      tooltip: t("thread.headerActions.squashMergeTooltip", {
+        prNumber: String(pr.number),
+        base: pr.base,
+      }),
     };
   }
 
   return {
-    label: "Up to date",
+    label: t("thread.headerActions.upToDate"),
     disabled: true,
     variant: "outline",
-    tooltip: `Branch is in sync with ${ready.base}`,
+    tooltip: t("thread.headerActions.branchInSyncTooltip", {
+      base: ready.base,
+    }),
   };
 }

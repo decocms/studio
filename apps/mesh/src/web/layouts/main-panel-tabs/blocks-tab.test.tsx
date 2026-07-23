@@ -1,10 +1,23 @@
 import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
 
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render as renderBare } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { describe, expect, test } from "bun:test";
 import { BlocksEmptyState, BlocksErrorState } from "./blocks-tab-states";
+
+// These states resolve copy via useT(), which reads the language preference
+// through TanStack Query — renders need a QueryClientProvider.
+function wrapper({ children }: { children: ReactNode }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+  });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+const render = (ui: Parameters<typeof renderBare>[0]) =>
+  renderBare(ui, { wrapper });
 
 describe("Blocks tab states", () => {
   test("offers non-technical Blocks setup guidance", () => {

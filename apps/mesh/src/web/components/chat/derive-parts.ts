@@ -61,6 +61,7 @@ function resourcesToParts(
   const parts: ChatMessage["parts"] = [];
 
   for (const content of contents) {
+    if (!content || typeof content !== "object") continue;
     if ("text" in content && content.text) {
       parts.push({
         type: "text",
@@ -245,11 +246,15 @@ export function derivePartsFromTiptapDoc(
         const meta = node.attrs.metadata as {
           title?: string;
           description?: string | null;
+          // Prebuilt at chat-start (buildTaskChatContext): title + description
+          // plus the task's linked PRs and other chats. Older drafts lack it,
+          // so fall back to title + description.
+          context?: string;
         } | null;
         const title = meta?.title ?? (node.attrs.name as string) ?? "";
-        const body = [title, meta?.description?.trim()]
-          .filter(Boolean)
-          .join("\n\n");
+        const body =
+          meta?.context?.trim() ||
+          [title, meta?.description?.trim()].filter(Boolean).join("\n\n");
         if (body) parts.push({ type: "text", text: body });
         return;
       }
@@ -263,7 +268,12 @@ export function derivePartsFromTiptapDoc(
           | Record<string, unknown>
           | unknown[]
           | null;
-        if (meta && !Array.isArray(meta) && "agentId" in meta) {
+        if (
+          meta &&
+          typeof meta === "object" &&
+          !Array.isArray(meta) &&
+          "agentId" in meta
+        ) {
           // Agent mention: instruct the AI to delegate via subtask
           parts.push({
             type: "text",
@@ -301,6 +311,8 @@ export function derivePartsFromTiptapDoc(
         if (
           Array.isArray(metadata) &&
           metadata.length > 0 &&
+          typeof metadata[0] === "object" &&
+          metadata[0] !== null &&
           "role" in metadata[0]
         ) {
           // Prompt messages

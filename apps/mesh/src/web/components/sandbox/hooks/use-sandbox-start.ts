@@ -12,7 +12,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
-import { invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
+import { KEYS, invalidateVirtualMcpQueries } from "@/web/lib/query-keys";
 import { callSandboxTool } from "./call-sandbox-tool";
 
 const SANDBOX_START_MUTATION_KEY = ["SANDBOX_START"] as const;
@@ -46,7 +46,7 @@ export interface SandboxStartResult {
 
 const inflightStarts = new Map<string, Promise<SandboxStartResult>>();
 const startKey = (args: SandboxStartArgs) =>
-  `${args.virtualMcpId}::${args.branch ?? ""}`;
+  `${args.virtualMcpId}::${args.branch ?? ""}::${args.sandboxProviderKind ?? ""}`;
 
 // Tracks (virtualMcpId, branch) pairs explicitly stopped by the user.
 // Prevents self-heal from restarting a sandbox the user just stopped: the SSE
@@ -92,6 +92,9 @@ export function useSandboxStart(client: MinimalMcpClient) {
     // Per-call onSuccess (via `mutate(args, { onSuccess })`) runs AFTER this.
     onSuccess: () => {
       invalidateVirtualMcpQueries(queryClient);
+      queryClient.invalidateQueries({
+        queryKey: KEYS.agentSandboxSessionsPrefix(),
+      });
     },
   });
 }

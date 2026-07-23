@@ -45,6 +45,16 @@ export const ORGANIZATION_MEMBER_REMOVE = defineTool({
       );
     }
 
+    // `ctx.access.check()` above only verified the caller can remove members
+    // in `ctx.organization` (the path-resolved org). Without this check, a
+    // caller could pass a *different* `input.organizationId` and remove a
+    // member from an org they have no membership in at all.
+    if (organizationId !== ctx.organization?.id) {
+      throw new Error(
+        "Organization ID does not match authenticated organization",
+      );
+    }
+
     // Remove member via Better Auth
     await ctx.boundAuth.organization.removeMember({
       organizationId,

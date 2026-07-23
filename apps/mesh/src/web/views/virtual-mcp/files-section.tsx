@@ -37,6 +37,7 @@ import {
 } from "@untitledui/icons";
 import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import { FileTypeIcon } from "@/web/components/file-type-icon.tsx";
 import {
   type OrgFsRecentEntry,
@@ -74,6 +75,7 @@ function basename(path: string): string {
 }
 
 export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
+  const t = useT();
   const { upload } = useOrgFsMutations(KNOWLEDGE_VOLUME);
   const fileUrl = useOrgFsFileUrl();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -107,7 +109,9 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
       await upload.mutateAsync({ dir: KNOWLEDGE_DIR, files: toUpload });
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to upload file.",
+        error instanceof Error
+          ? error.message
+          : t("virtualMcp.filesSection.failedUploadFile"),
       );
       return;
     }
@@ -199,12 +203,12 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
           }}
         >
           <Paperclip size={16} />
-          Upload file
+          {t("virtualMcp.filesSection.uploadFile")}
         </DropdownMenuItem>
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="gap-2 [&_svg:not([class*='text-'])]:text-muted-foreground">
             <Folder size={16} />
-            Select file or folder
+            {t("virtualMcp.filesSection.selectFileOrFolder")}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-72 p-0">
             <div className="flex items-center gap-2 border-b px-3">
@@ -213,14 +217,16 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Search files..."
+                placeholder={t(
+                  "virtualMcp.filesSection.searchFilesPlaceholder",
+                )}
                 className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
             </div>
             <div className="max-h-64 overflow-y-auto p-1">
               {filteredRecent.length === 0 ? (
                 <p className="px-2 py-3 text-center text-sm text-muted-foreground">
-                  No files found.
+                  {t("virtualMcp.filesSection.noFilesFound")}
                 </p>
               ) : (
                 filteredRecent.map((obj) => (
@@ -249,7 +255,7 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="gap-2 [&_svg:not([class*='text-'])]:text-muted-foreground">
             <Stars01 size={16} />
-            Select skill
+            {t("virtualMcp.filesSection.selectSkill")}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-72 p-0">
             <div className="flex items-center gap-2 border-b px-3">
@@ -258,14 +264,16 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Search skills..."
+                placeholder={t(
+                  "virtualMcp.filesSection.searchSkillsPlaceholder",
+                )}
                 className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
             </div>
             <div className="max-h-64 overflow-y-auto p-1">
               {filteredSkills.length === 0 ? (
                 <p className="px-2 py-3 text-center text-sm text-muted-foreground">
-                  No skills found.
+                  {t("virtualMcp.filesSection.noSkillsFound")}
                 </p>
               ) : (
                 filteredSkills.map((skill) => (
@@ -292,17 +300,17 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h2 className="text-sm font-medium text-foreground">
-            Files and skills
+            {t("virtualMcp.filesSection.filesAndSkills")}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Attach files and skills the agent can always reference.
+            {t("virtualMcp.filesSection.description")}
           </p>
         </div>
         {files.length > 0 &&
           renderPicker(
             <Button variant="outline" size="sm" disabled={upload.isPending}>
               {upload.isPending ? <Spinner size="xs" /> : <Plus size={14} />}
-              Add
+              {t("virtualMcp.filesSection.add")}
             </Button>,
           )}
       </div>
@@ -344,7 +352,7 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
                   <Plus size={16} />
                 </div>
                 <span className="text-sm text-muted-foreground flex-1">
-                  No files or skills yet. Add one or drag and drop here.
+                  {t("virtualMcp.filesSection.noFilesOrSkillsYet")}
                 </span>
               </button>,
             )
@@ -367,17 +375,19 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
                   <p className="text-sm font-medium truncate">{file.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {file.kind === "skill"
-                      ? "Skill"
+                      ? t("virtualMcp.filesSection.kindSkill")
                       : file.size != null
                         ? formatSize(file.size)
-                        : "File"}
+                        : t("virtualMcp.filesSection.kindFile")}
                   </p>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => handleRemove(file.id)}
-                  aria-label={`Remove ${file.name}`}
+                  aria-label={t("virtualMcp.filesSection.removeAriaLabel", {
+                    name: file.name,
+                  })}
                 >
                   <Trash01 size={16} />
                 </Button>

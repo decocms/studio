@@ -5,6 +5,7 @@ import type {
 } from "@/web/components/unified-auth-form";
 import { faviconForDomain } from "@/shared/report-seo";
 import { isPostHogInitialized } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 import { ReportSocialProof } from "./report-social-proof";
 import {
   beginReportAuthAttempt,
@@ -15,28 +16,33 @@ import {
 } from "./track";
 import { DECK } from "./templates/tokens";
 
-const REPORT_AUTH_COPY = {
-  otpSendFailed: "Não foi possível enviar o código",
-  invalidCode: "Código inválido",
-  invalidEmail: "Digite um email válido",
-  networkError: "Erro de conexão. Tente novamente.",
-  tooManyAttempts: "Muitas tentativas. Aguarde um momento e tente novamente.",
-  invalidOrExpiredCode: "Código inválido ou expirado. Tente novamente.",
-  genericError: "Algo deu errado. Tente novamente.",
-  verificationCodeTitle: "Digite o código",
-  codeSentTo: (email: string) => `Enviamos um código para ${email}`,
-  continueWith: (provider: string) => `Continuar com ${provider}`,
-  divider: "ou",
-  emailLabel: "Email",
-  emailPlaceholder: "seu@email.com",
-  sending: "Enviando...",
-  sendCode: "Continuar",
-  verificationCodeLabel: "Código de verificação",
-  enterCodePlaceholder: "Digite o código",
-  verifying: "Verificando...",
-  verify: "Entrar",
-  useDifferentEmail: "Usar outro email",
-} satisfies Partial<UnifiedAuthFormCopy>;
+function getReportAuthCopy(
+  t: ReturnType<typeof useT>,
+): Partial<UnifiedAuthFormCopy> {
+  return {
+    otpSendFailed: t("reports.authGate.otpSendFailed"),
+    invalidCode: t("reports.authGate.invalidCode"),
+    invalidEmail: t("reports.authGate.invalidEmail"),
+    networkError: t("reports.authGate.networkError"),
+    tooManyAttempts: t("reports.authGate.tooManyAttempts"),
+    invalidOrExpiredCode: t("reports.authGate.invalidOrExpiredCode"),
+    genericError: t("reports.authGate.genericError"),
+    verificationCodeTitle: t("reports.authGate.verificationCodeTitle"),
+    codeSentTo: (email: string) => t("reports.authGate.codeSentTo", { email }),
+    continueWith: (provider: string) =>
+      t("reports.authGate.continueWith", { provider }),
+    divider: t("reports.authGate.divider"),
+    emailLabel: t("reports.authGate.emailLabel"),
+    emailPlaceholder: t("reports.authGate.emailPlaceholder"),
+    sending: t("reports.authGate.sending"),
+    sendCode: t("reports.authGate.sendCode"),
+    verificationCodeLabel: t("reports.authGate.verificationCodeLabel"),
+    enterCodePlaceholder: t("reports.authGate.enterCodePlaceholder"),
+    verifying: t("reports.authGate.verifying"),
+    verify: t("reports.authGate.verify"),
+    useDifferentEmail: t("reports.authGate.useDifferentEmail"),
+  };
+}
 
 function callbackUrl(domain: string): string {
   const path = `/report/${encodeURIComponent(domain)}`;
@@ -45,13 +51,14 @@ function callbackUrl(domain: string): string {
 }
 
 // Mock findings mirroring the deck cover's clickable TOC.
-const BACKDROP_FINDINGS = [
-  "Velocidade de carregamento abaixo do ideal",
-  "Meta tags de SEO incompletas",
-  "Checkout com etapas em excesso",
-  "Imagens de produto sem otimização",
-  "Concorrentes com melhor cobertura",
-] as const;
+// Initialized in component to use translation context
+const getBackdropFindings = (t: ReturnType<typeof useT>): readonly string[] => [
+  t("reports.authGate.finding1"),
+  t("reports.authGate.finding2"),
+  t("reports.authGate.finding3"),
+  t("reports.authGate.finding4"),
+  t("reports.authGate.finding5"),
+];
 
 const BACKDROP_SCORE = 72;
 
@@ -62,6 +69,7 @@ const BACKDROP_SCORE = 72;
  *  rail, and the footer bar. It's a mock, but it reads as the same product —
  *  just wider — so the auth gate sits on the report it unlocks. */
 export function ReportBackdrop({ domain }: { domain: string }) {
+  const t = useT();
   const ringSize = 104;
   const ringW = 10;
   const r = (ringSize - ringW) / 2;
@@ -101,7 +109,7 @@ export function ReportBackdrop({ domain }: { domain: string }) {
             className="ml-auto flex h-9 w-24 items-center justify-center rounded-full text-sm font-medium"
             style={{ background: DECK.primary, color: DECK.primaryFg }}
           >
-            Share
+            {t("reports.authGate.share")}
           </span>
         </div>
       </div>
@@ -142,7 +150,7 @@ export function ReportBackdrop({ domain }: { domain: string }) {
                   className="shrink-0 text-[11px] font-medium uppercase tracking-[0.04em]"
                   style={{ color: DECK.soft }}
                 >
-                  Relatório
+                  {t("reports.authGate.report")}
                 </span>
               </div>
 
@@ -191,7 +199,7 @@ export function ReportBackdrop({ domain }: { domain: string }) {
                     className="text-[12px] font-medium uppercase tracking-[0.04em]"
                     style={{ color: DECK.soft }}
                   >
-                    Deco Score
+                    {t("reports.authGate.decoScore")}
                   </span>
                 </div>
               </div>
@@ -200,15 +208,15 @@ export function ReportBackdrop({ domain }: { domain: string }) {
                 className="mt-4 max-w-[24ch] text-[1.7rem] font-normal leading-[1.16] tracking-[-0.02em]"
                 style={{ color: DECK.ink }}
               >
-                Uma visão completa da sua loja e onde crescer primeiro.
+                {t("reports.authGate.headline")}
               </h1>
 
               <ul className="mt-auto flex flex-col pt-4">
-                {BACKDROP_FINDINGS.map((title, i) => (
+                {getBackdropFindings(t).map((title, i) => (
                   <li
-                    key={title}
+                    key={i}
                     style={
-                      i < BACKDROP_FINDINGS.length - 1
+                      i < getBackdropFindings(t).length - 1
                         ? { borderBottom: `1px solid ${DECK.border}` }
                         : undefined
                     }
@@ -332,13 +340,13 @@ export function ReportBackdrop({ domain }: { domain: string }) {
               background: DECK.surface,
             }}
           >
-            Compartilhar
+            {t("reports.authGate.shareButton")}
           </span>
           <span
             className="flex h-12 items-center rounded-full px-6 text-sm font-medium"
             style={{ background: DECK.primary, color: DECK.primaryFg }}
           >
-            Próximo
+            {t("reports.authGate.nextButton")}
           </span>
         </div>
       </footer>
@@ -353,6 +361,7 @@ export function ReportAuthGate({
   domain: string;
   loading?: boolean;
 }) {
+  const t = useT();
   const handleAuthEvent = (event: AuthFlowEvent) => {
     const provider = "provider" in event ? event.provider : undefined;
     const authMode = "mode" in event ? event.mode : undefined;
@@ -418,19 +427,19 @@ export function ReportAuthGate({
         {loading ? (
           <div
             className="h-[330px] w-full max-w-[440px] animate-pulse rounded-3xl bg-white card-shadow"
-            aria-label="Carregando sessão"
+            aria-label={t("reports.authGate.loadingSession")}
           />
         ) : (
           <section
             role="dialog"
             aria-modal="true"
-            aria-label="Acesse seu relatório"
+            aria-label={t("reports.authGate.accessYourReport")}
             className="w-full max-w-[440px] rounded-2xl bg-white px-6 py-6 card-shadow sm:rounded-3xl sm:px-8 sm:py-8"
           >
             <AuthEntry
               callbackUrl={callbackUrl(domain)}
-              title="Acesse seu relatório"
-              subtitle="Entre ou crie sua conta para ver a análise completa."
+              title={t("reports.authGate.accessYourReport")}
+              subtitle={t("reports.authGate.authSubtitle")}
               variant="compact"
               allowedSocialProviders={["google"]}
               allowPassword={false}
@@ -460,10 +469,10 @@ export function ReportAuthGate({
                   />
                 </div>
               }
-              copy={REPORT_AUTH_COPY}
+              copy={getReportAuthCopy(t)}
             />
             <p className="mt-4 text-xs leading-5" style={{ color: DECK.faint }}>
-              Acesso gratuito. Leva menos de um minuto.
+              {t("reports.authGate.freeAccess")}
             </p>
             <ReportSocialProof compact />
           </section>

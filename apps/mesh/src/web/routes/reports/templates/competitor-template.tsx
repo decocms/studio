@@ -4,6 +4,7 @@ import { trackConnectCta } from "../onboarding";
 import { useReportCtaHref } from "../use-report-cta-href";
 import { DECK, TONE_COLOR } from "./tokens";
 import type { CompetitorProps } from "@/reports/deck-types";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /** A domain-like competitor name → a favicon URL (Google's S2 service resolves
  *  any host; falls back to a globe, which we replace with an initial on error). */
@@ -67,6 +68,7 @@ export default function CompetitorTemplate({
   domain,
   active,
 }: CompetitorProps) {
+  const t = useT();
   const ctaHref = useReportCtaHref(domain);
   return (
     <div className="flex h-full flex-col">
@@ -83,7 +85,9 @@ export default function CompetitorTemplate({
           className="flex items-center gap-3 px-4 pb-2 text-[11px] font-medium uppercase tracking-[0.04em]"
           style={{ color: DECK.muted }}
         >
-          <span className="flex-1">Concorrente</span>
+          <span className="flex-1">
+            {t("reports.competitorTemplate.competitor")}
+          </span>
           {metricLabel && <span>{metricLabel}</span>}
         </div>
 
@@ -147,7 +151,7 @@ export default function CompetitorTemplate({
               background: DECK.surface,
             }}
           >
-            Editar meus concorrentes
+            {t("reports.competitorTemplate.editMyCompetitors")}
           </a>
         </div>
       </div>

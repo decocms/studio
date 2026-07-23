@@ -22,23 +22,26 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import type { PostSort } from "./content-browser";
 
 // Sentinel for the "no filter" radio option (Radix forbids empty values).
 const ALL_FILTER = "__all__";
 
-const POST_SORT_LABELS: Record<PostSort, string> = {
-  "date-desc": "Newest first",
-  "date-asc": "Oldest first",
-  az: "Title A–Z",
-  za: "Title Z–A",
+// ponytail: sort labels keyed by PostSort type for runtime translation
+const POST_SORT_LABELS_KEYS: Record<PostSort, TranslationKey> = {
+  "date-desc": "sandbox.postToolbar.sortNewestFirst",
+  "date-asc": "sandbox.postToolbar.sortOldestFirst",
+  az: "sandbox.postToolbar.sortTitleAZ",
+  za: "sandbox.postToolbar.sortTitleZA",
 };
 
-const POST_SORT_SHORT: Record<PostSort, string> = {
-  "date-desc": "Newest",
-  "date-asc": "Oldest",
-  az: "A–Z",
-  za: "Z–A",
+const POST_SORT_SHORT_KEYS: Record<PostSort, TranslationKey> = {
+  "date-desc": "sandbox.postToolbar.sortNewest",
+  "date-asc": "sandbox.postToolbar.sortOldest",
+  az: "sandbox.postToolbar.sortAZ",
+  za: "sandbox.postToolbar.sortZA",
 };
 
 type CategoryOption = { slug: string; name: string; count: number };
@@ -107,10 +110,14 @@ export function PostFilterBar({
   onAuthorFilterChange: (email: string | null) => void;
   onSortChange: (sort: PostSort) => void;
 }) {
+  const t = useT();
   const activeCategory = categories.find((c) => c.slug === categoryFilter);
   const activeAuthor = authors.find((a) => a.email === authorFilter);
   const hasFilter = !!(categoryFilter || authorFilter);
-  const activeLabel = activeCategory?.name ?? activeAuthor?.name ?? "Filter";
+  const activeLabel =
+    activeCategory?.name ??
+    activeAuthor?.name ??
+    t("sandbox.postToolbar.filterLabel");
   // One filter at a time: encode both dimensions into a single radio value.
   const activeValue = categoryFilter
     ? `cat:${categoryFilter}`
@@ -148,17 +155,19 @@ export function PostFilterBar({
           align="start"
           className="max-h-96 w-60 overflow-y-auto"
         >
-          <DropdownMenuLabel>Filter by</DropdownMenuLabel>
+          <DropdownMenuLabel>
+            {t("sandbox.postToolbar.filterBy")}
+          </DropdownMenuLabel>
           <DropdownMenuRadioGroup
             value={activeValue}
             onValueChange={handleFilterChange}
           >
             <DropdownMenuRadioItem value={ALL_FILTER}>
-              All posts
+              {t("sandbox.postToolbar.allPosts")}
             </DropdownMenuRadioItem>
             {categories.length > 0 && (
               <DropdownMenuLabel className="text-muted-foreground/70">
-                Category
+                {t("sandbox.postToolbar.categoryLabel")}
               </DropdownMenuLabel>
             )}
             {categories.map((c) => (
@@ -172,7 +181,7 @@ export function PostFilterBar({
             ))}
             {authors.length > 0 && (
               <DropdownMenuLabel className="text-muted-foreground/70">
-                Author
+                {t("sandbox.postToolbar.authorLabel")}
               </DropdownMenuLabel>
             )}
             {authors.map((a) => (
@@ -188,7 +197,10 @@ export function PostFilterBar({
         </DropdownMenuContent>
       </DropdownMenu>
       {hasFilter && (
-        <FilterClearButton label="Clear filter" onClick={clearFilter} />
+        <FilterClearButton
+          label={t("sandbox.postToolbar.clearFilter")}
+          onClick={clearFilter}
+        />
       )}
 
       <div className="ml-auto shrink-0">
@@ -197,20 +209,24 @@ export function PostFilterBar({
             <FilterChipTrigger
               icon={SwitchVertical01}
               active
-              value={POST_SORT_SHORT[sort]}
+              value={t(POST_SORT_SHORT_KEYS[sort])}
             />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+            <DropdownMenuLabel>
+              {t("sandbox.postToolbar.sortBy")}
+            </DropdownMenuLabel>
             <DropdownMenuRadioGroup
               value={sort}
               onValueChange={(v) => onSortChange(v as PostSort)}
             >
-              {(Object.keys(POST_SORT_LABELS) as PostSort[]).map((value) => (
-                <DropdownMenuRadioItem key={value} value={value}>
-                  {POST_SORT_LABELS[value]}
-                </DropdownMenuRadioItem>
-              ))}
+              {(Object.keys(POST_SORT_LABELS_KEYS) as PostSort[]).map(
+                (value) => (
+                  <DropdownMenuRadioItem key={value} value={value}>
+                    {t(POST_SORT_LABELS_KEYS[value])}
+                  </DropdownMenuRadioItem>
+                ),
+              )}
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -249,6 +265,7 @@ function SelectAllControl({
   disabled?: boolean;
   onToggle: () => void;
 }) {
+  const t = useT();
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -260,12 +277,18 @@ function SelectAllControl({
             checked={checked}
             disabled={disabled}
             onCheckedChange={() => onToggle()}
-            aria-label={checked ? "Deselect all posts" : "Select all posts"}
+            aria-label={
+              checked
+                ? t("sandbox.postToolbar.deselectAllPosts")
+                : t("sandbox.postToolbar.selectAllPosts")
+            }
           />
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom">
-        {checked ? "Deselect all" : "Select all"}
+        {checked
+          ? t("sandbox.postToolbar.deselectAll")
+          : t("sandbox.postToolbar.selectAll")}
       </TooltipContent>
     </Tooltip>
   );
@@ -284,10 +307,13 @@ export function PostSelectionToolbar({
   onDelete: () => void;
   onExit: () => void;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-0.5 border-b bg-accent/40 px-2 py-1.5">
       <SelectAllControl checked={allSelected} onToggle={onToggleSelectAll} />
-      <span className="text-xs font-medium tabular-nums">{count} selected</span>
+      <span className="text-xs font-medium tabular-nums">
+        {t("sandbox.postToolbar.itemsSelected", { count })}
+      </span>
       <div className="ml-auto flex items-center gap-0.5">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -298,12 +324,14 @@ export function PostSelectionToolbar({
               className="h-7 w-7 text-destructive hover:text-destructive"
               disabled={count === 0}
               onClick={onDelete}
-              aria-label="Delete selected posts"
+              aria-label={t("sandbox.postToolbar.deleteSelectedPosts")}
             >
               <Trash01 size={14} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Delete selected</TooltipContent>
+          <TooltipContent side="bottom">
+            {t("sandbox.postToolbar.deleteSelected")}
+          </TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -313,12 +341,14 @@ export function PostSelectionToolbar({
               size="icon"
               className="h-7 w-7"
               onClick={onExit}
-              aria-label="Exit selection"
+              aria-label={t("sandbox.postToolbar.exitSelection")}
             >
               <X size={14} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Exit selection</TooltipContent>
+          <TooltipContent side="bottom">
+            {t("sandbox.postToolbar.exitSelection")}
+          </TooltipContent>
         </Tooltip>
       </div>
     </div>

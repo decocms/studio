@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { resolveMobileMainPanelTabSelectLabel } from "./mobile-main-panel-tab-select";
+import { en } from "@/web/i18n/en/index.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
+
+const t = (key: TranslationKey) => en[key];
 
 const tabs = [
   { id: "preview", title: "Preview" },
@@ -13,6 +17,7 @@ describe("resolveMobileMainPanelTabSelectLabel", () => {
         tabs,
         activeTab: "settings",
         mainOpen: true,
+        t,
       }),
     ).toBe("Settings");
   });
@@ -23,6 +28,7 @@ describe("resolveMobileMainPanelTabSelectLabel", () => {
         tabs,
         activeTab: "file:model-output%2Fpreview.pdf",
         mainOpen: true,
+        t,
       }),
     ).toBe("Main view");
   });
@@ -33,6 +39,7 @@ describe("resolveMobileMainPanelTabSelectLabel", () => {
         tabs,
         activeTab: "settings",
         mainOpen: false,
+        t,
       }),
     ).toBe("Settings");
   });
@@ -43,6 +50,7 @@ describe("resolveMobileMainPanelTabSelectLabel", () => {
         tabs,
         activeTab: "git",
         mainOpen: false,
+        t,
       }),
     ).toBe("Preview");
   });
@@ -53,6 +61,7 @@ describe("resolveMobileMainPanelTabSelectLabel", () => {
         tabs: [],
         activeTab: "settings",
         mainOpen: false,
+        t,
       }),
     ).toBe("Main view");
   });

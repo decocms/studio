@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface DeleteConfirmDialogProps {
   open: boolean;
@@ -24,20 +25,26 @@ export function DeleteConfirmDialog({
   isDeleting = false,
   onConfirm,
 }: DeleteConfirmDialogProps) {
+  const t = useT();
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete registry item?</AlertDialogTitle>
+          <AlertDialogTitle>
+            {t("registry.deleteConfirmDialog.title")}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            This action cannot be undone. Item <strong>{title}</strong> will be
-            permanently removed from this private registry.
+            {t("registry.deleteConfirmDialog.description", { title })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isDeleting}>
+            {t("registry.deleteConfirmDialog.cancel")}
+          </AlertDialogCancel>
           <AlertDialogAction disabled={isDeleting} onClick={onConfirm}>
-            {isDeleting ? "Deleting..." : "Delete"}
+            {isDeleting
+              ? t("registry.deleteConfirmDialog.deleting")
+              : t("registry.deleteConfirmDialog.delete")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -4,6 +4,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Building02 } from "@untitledui/icons";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface AutoDomainJoinScreenProps {
   orgName: string;
@@ -18,6 +19,7 @@ export function AutoDomainJoinScreen({
   orgLogo,
   domain,
 }: AutoDomainJoinScreenProps) {
+  const t = useT();
   const joinMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/auth/custom/domain-join", {
@@ -32,7 +34,9 @@ export function AutoDomainJoinScreen({
         error?: string;
       };
       if (!res.ok || !data.success) {
-        throw new Error(data.error ?? "Failed to join organization");
+        throw new Error(
+          data.error ?? t("common.autoDomainJoinScreen.joinError"),
+        );
       }
       return data;
     },
@@ -41,7 +45,9 @@ export function AutoDomainJoinScreen({
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Failed to join organization",
+        error instanceof Error
+          ? error.message
+          : t("common.autoDomainJoinScreen.joinError"),
       );
     },
   });
@@ -66,10 +72,11 @@ export function AutoDomainJoinScreen({
         </div>
       )}
       <div className="space-y-2">
-        <h3 className="text-lg font-medium">Join {orgName}?</h3>
+        <h3 className="text-lg font-medium">
+          {t("common.autoDomainJoinScreen.joinPrompt", { orgName })}
+        </h3>
         <p className="text-sm text-muted-foreground">
-          Anyone with an <strong>@{domain}</strong> email can join this
-          organization.
+          {t("common.autoDomainJoinScreen.joinDescription", { domain })}
         </p>
       </div>
       <div className="flex flex-col gap-2 w-full">
@@ -77,14 +84,16 @@ export function AutoDomainJoinScreen({
           onClick={() => joinMutation.mutate()}
           disabled={joinMutation.isPending}
         >
-          {joinMutation.isPending ? "Joining…" : `Enter ${orgName}`}
+          {joinMutation.isPending
+            ? t("common.autoDomainJoinScreen.joining")
+            : t("common.autoDomainJoinScreen.enterOrg", { orgName })}
         </Button>
         <Button
           variant="ghost"
           onClick={handleGoHome}
           disabled={joinMutation.isPending}
         >
-          Go to home
+          {t("common.autoDomainJoinScreen.goHome")}
         </Button>
       </div>
     </AccessScreenLayout>

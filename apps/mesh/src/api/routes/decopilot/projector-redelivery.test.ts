@@ -322,6 +322,25 @@ describe("projector workflow — StreamGapError terminal mapping", () => {
     expect(calls.some((c) => c.kind === "record-fail")).toBe(true);
     expect(calls.some((c) => c.kind === "purge")).toBe(true);
   });
+
+  test("gap on an already-settled same fence: benign, clears bubble, no fail", async () => {
+    // A purge (terminal or next-turn dispatch-start) racing an in-flight or
+    // redelivered projection on the shared per-thread subject beheads chunks and
+    // surfaces a gap AFTER the run already reached terminal for this fence. That
+    // is not a truncation — drop the spurious "missing seq" bubble the fold just
+    // wrote and return cleanly instead of stamping a failure over a settled run.
+    const { rt, calls } = makeRuntime({ status: "completed" });
+    const projectFn = async () => {
+      throw new StreamGapError(61, null);
+    };
+    await expect(
+      runProjectorWorkflowBody(input, rt, projectFn),
+    ).resolves.toBeUndefined();
+    expect(calls.filter((c) => c.kind === "fail")).toEqual([]);
+    expect(calls.some((c) => c.kind === "record-fail")).toBe(false);
+    expect(calls.some((c) => c.kind === "clear-error")).toBe(true);
+    expect(calls.some((c) => c.kind === "purge")).toBe(true);
+  });
 });
 
 describe("projector workflow — stale synthesized error cleanup", () => {

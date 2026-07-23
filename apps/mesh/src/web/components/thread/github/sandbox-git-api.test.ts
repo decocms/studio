@@ -2,12 +2,16 @@ import { describe, expect, test } from "bun:test";
 import {
   canPublishDirectly,
   combinePublishDiffs,
+  DEFAULT_PUBLISH_POLICY,
   hasGitLocalWork,
   hasLocalWorkToPush,
   hasUnpublishedWork,
   isDecoOnlyDiff,
-  PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
+  needsSmartReviewJudgment,
+  normalizePublishPolicy,
+  reviewDiffSignature,
   shouldUseBaseDiff,
+  smartReviewGate,
   stripGeneratedFilesFromDiff,
   type GitDiffResult,
   type GitStatus,
@@ -117,6 +121,36 @@ describe("isDecoOnlyDiff", () => {
       diffs: {
         ".deco/blocks/foo.json": { from: "{}", to: "{}" },
         "routes/index.tsx": { from: "a", to: "b" },
+      },
+    };
+    expect(isDecoOnlyDiff(diff)).toBe(false);
+  });
+
+  test("true for a subdir package path (`<pkg>/.deco/...` + generated assets)", () => {
+    const diff: GitDiffResult = {
+      diffs: {
+        "eitri-shopping-monte-carlo-shared/.deco/blocks/foo.json": {
+          from: "{}",
+          to: "{}",
+        },
+        "eitri-shopping-monte-carlo-shared/.deco/blocks.gen.json": {
+          from: "{}",
+          to: '{"foo":{}}',
+        },
+        "eitri-shopping-monte-carlo-shared/static/tailwind.css": {
+          from: "a",
+          to: "b",
+        },
+      },
+    };
+    expect(isDecoOnlyDiff(diff)).toBe(true);
+  });
+
+  test("false when subdir code changes alongside `<pkg>/.deco`", () => {
+    const diff: GitDiffResult = {
+      diffs: {
+        "pkg/.deco/blocks/foo.json": { from: "{}", to: "{}" },
+        "pkg/routes/index.tsx": { from: "a", to: "b" },
       },
     };
     expect(isDecoOnlyDiff(diff)).toBe(false);
@@ -259,14 +293,160 @@ describe("canPublishDirectly", () => {
     expect(gate.reason).toBeNull();
   });
 
-  test("blocks a payload containing code", () => {
+  test("blocks a payload containing code (reason localized in UI)", () => {
     const gate = canPublishDirectly(codeDiff);
     expect(gate.allowed).toBe(false);
-    expect(gate.reason).toBe(PUBLISH_REQUIRES_SUBMIT_TOOLTIP);
+    // No inline reason: the deterministic code-review block is rendered as a
+    // localized generic tooltip at the component level.
+    expect(gate.reason).toBeNull();
   });
 
   test("blocks an empty diff", () => {
     expect(canPublishDirectly({ diffs: {} }).allowed).toBe(false);
+  });
+
+  test("defaults to code-review behavior (deco allowed, code blocked)", () => {
+    expect(canPublishDirectly(decoDiff, "code-review").allowed).toBe(true);
+    expect(canPublishDirectly(codeDiff, "code-review").allowed).toBe(false);
+  });
+
+  test("open policy allows code directly", () => {
+    const gate = canPublishDirectly(codeDiff, "open");
+    expect(gate.allowed).toBe(true);
+    expect(gate.reason).toBeNull();
+  });
+
+  test("smart policy allows a deco-only payload without the judge", () => {
+    expect(canPublishDirectly(decoDiff, "smart").allowed).toBe(true);
+  });
+});
+
+describe("reviewDiffSignature", () => {
+  test("is stable for the same diff", () => {
+    const diff: GitDiffResult = {
+      diffs: { "routes/a.tsx": { from: "a", to: "b" } },
+    };
+    expect(reviewDiffSignature(diff)).toBe(reviewDiffSignature(diff));
+  });
+
+  test("is order-independent across paths", () => {
+    const a: GitDiffResult = {
+      diffs: {
+        "a.tsx": { from: "1", to: "2" },
+        "b.tsx": { from: "3", to: "4" },
+      },
+    };
+    const b: GitDiffResult = {
+      diffs: {
+        "b.tsx": { from: "3", to: "4" },
+        "a.tsx": { from: "1", to: "2" },
+      },
+    };
+    expect(reviewDiffSignature(a)).toBe(reviewDiffSignature(b));
+  });
+
+  // The safety case: a length-preserving edit deep in a file (past a short
+  // prefix) must still change the signature, or a stale "allowed" verdict would
+  // be reused for code that now needs review (fail-open).
+  test("changes for a length-preserving deep edit", () => {
+    const prefix = "x".repeat(80);
+    const before: GitDiffResult = {
+      diffs: { "routes/api.tsx": { from: "", to: `${prefix}LIMIT=1000` } },
+    };
+    const after: GitDiffResult = {
+      diffs: { "routes/api.tsx": { from: "", to: `${prefix}LIMIT=5000` } },
+    };
+    expect(reviewDiffSignature(before)).not.toBe(reviewDiffSignature(after));
+  });
+
+  test("changes when a path is added or removed", () => {
+    const one: GitDiffResult = { diffs: { "a.tsx": { from: "1", to: "2" } } };
+    const two: GitDiffResult = {
+      diffs: {
+        "a.tsx": { from: "1", to: "2" },
+        "b.tsx": { from: null, to: "3" },
+      },
+    };
+    expect(reviewDiffSignature(one)).not.toBe(reviewDiffSignature(two));
+  });
+
+  test("distinguishes a from/to swap of equal-length content", () => {
+    const a: GitDiffResult = { diffs: { "a.tsx": { from: "ab", to: "cd" } } };
+    const b: GitDiffResult = { diffs: { "a.tsx": { from: "cd", to: "ab" } } };
+    expect(reviewDiffSignature(a)).not.toBe(reviewDiffSignature(b));
+  });
+});
+
+describe("normalizePublishPolicy", () => {
+  test("defaults unknown/absent values to smart", () => {
+    expect(DEFAULT_PUBLISH_POLICY).toBe("smart");
+    expect(normalizePublishPolicy(undefined)).toBe("smart");
+    expect(normalizePublishPolicy(null)).toBe("smart");
+    expect(normalizePublishPolicy("bogus")).toBe("smart");
+  });
+
+  test("passes through valid values", () => {
+    expect(normalizePublishPolicy("smart")).toBe("smart");
+    expect(normalizePublishPolicy("code-review")).toBe("code-review");
+    expect(normalizePublishPolicy("open")).toBe("open");
+  });
+});
+
+describe("needsSmartReviewJudgment", () => {
+  const decoDiff: GitDiffResult = {
+    diffs: { ".deco/blocks/home.json": { from: "{}", to: "{}" } },
+  };
+  const codeDiff: GitDiffResult = {
+    diffs: { "routes/index.tsx": { from: "a", to: "b" } },
+  };
+
+  test("only smart policy with code needs the judge", () => {
+    expect(needsSmartReviewJudgment(codeDiff, "smart")).toBe(true);
+    expect(needsSmartReviewJudgment(decoDiff, "smart")).toBe(false);
+    expect(needsSmartReviewJudgment(codeDiff, "code-review")).toBe(false);
+    expect(needsSmartReviewJudgment(codeDiff, "open")).toBe(false);
+  });
+
+  test("empty/null diffs never need the judge", () => {
+    expect(needsSmartReviewJudgment(null, "smart")).toBe(false);
+    expect(needsSmartReviewJudgment({ diffs: {} }, "smart")).toBe(false);
+  });
+});
+
+describe("smartReviewGate", () => {
+  test("blocks (pending) while the judge is still running", () => {
+    const gate = smartReviewGate(null, true);
+    expect(gate.allowed).toBe(false);
+    expect(gate.pending).toBe(true);
+    // Copy is i18n'd at the component level, so no inline reason here.
+    expect(gate.reason).toBeNull();
+  });
+
+  test("permissive when the judge is unavailable (no verdict)", () => {
+    const gate = smartReviewGate(null, false);
+    expect(gate.allowed).toBe(true);
+    expect(gate.pending).toBeUndefined();
+  });
+
+  test("allows when the verdict says no review needed", () => {
+    const gate = smartReviewGate({ requiresReview: false, reason: "" }, false);
+    expect(gate.allowed).toBe(true);
+    expect(gate.reason).toBeNull();
+  });
+
+  test("blocks with the AI reason when review is required", () => {
+    const gate = smartReviewGate(
+      { requiresReview: true, reason: "New API endpoint added" },
+      false,
+    );
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe("New API endpoint added");
+  });
+
+  test("blocks with a null reason when the AI gives no reason (UI localizes)", () => {
+    const gate = smartReviewGate({ requiresReview: true, reason: "" }, false);
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBeNull();
   });
 });
 
@@ -311,6 +491,6 @@ describe("combinePublishDiffs (full publish payload = committed ∪ working)", (
       combinePublishDiffs(committedCode, workingDeco),
     );
     expect(gate.allowed).toBe(false);
-    expect(gate.reason).toBe(PUBLISH_REQUIRES_SUBMIT_TOOLTIP);
+    expect(gate.reason).toBeNull();
   });
 });

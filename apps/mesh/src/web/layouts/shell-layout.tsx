@@ -4,6 +4,7 @@ import { SplashScreen } from "@/web/components/splash-screen";
 import { FloatingReleaseCard } from "@/web/components/release-channel/floating-release-card";
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
 import { VersionCheckDialog } from "@/web/components/version-check-dialog";
+import { LanguageAnnouncementDialog } from "@/web/components/language-announcement-dialog";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { authClient } from "@/web/lib/auth-client";
@@ -375,6 +376,8 @@ function ShellLayoutContent() {
         open={shortcutsDialogOpen}
         onOpenChange={setShortcutsDialogOpen}
       />
+
+      <LanguageAnnouncementDialog />
     </ShellProjectProvider>
   );
 }

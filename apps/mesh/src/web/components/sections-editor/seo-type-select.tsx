@@ -6,6 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { SeoTypeOption } from "./seo-schema";
 
 interface SeoTypeSelectProps {
@@ -19,14 +20,19 @@ export function SeoTypeSelect({
   value,
   onChange,
 }: SeoTypeSelectProps) {
+  const t = useT();
   if (options.length <= 1) return null;
 
   return (
     <div className="mb-4 flex flex-col gap-1.5">
-      <Label className="text-xs text-muted-foreground">SEO type</Label>
+      <Label className="text-xs text-muted-foreground">
+        {t("sectionsEditor.seoTypeSelect.label")}
+      </Label>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="w-full">
-          <SelectValue placeholder="Select SEO type" />
+          <SelectValue
+            placeholder={t("sectionsEditor.seoTypeSelect.placeholder")}
+          />
         </SelectTrigger>
         <SelectContent>
           {options

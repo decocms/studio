@@ -8,6 +8,7 @@ import { CollectionSearch } from "@/web/components/collections/collection-search
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Suspense, useDeferredValue, useState } from "react";
 import { useDebouncedValue } from "@/web/hooks/use-debounced-value.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   useMutation,
   useQuery,
@@ -32,6 +33,7 @@ import { KEYS } from "@/web/lib/query-keys";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  LinkExternal01,
   Loading01,
   Lock01,
   LockUnlocked01,
@@ -84,8 +86,12 @@ export function GitHubRepoPicker({
    */
   mode?: "agent" | "connection";
 }) {
+  const t = useT();
   const resolvedTitle =
-    title ?? (mode === "connection" ? "Add repo" : "Import from GitHub");
+    title ??
+    (mode === "connection"
+      ? t("common.githubRepoPicker.addRepo")
+      : t("common.githubRepoPicker.importFromGitHub"));
   const [selectedInstallation, setSelectedInstallation] =
     useState<GitHubInstallation | null>(null);
 
@@ -102,7 +108,7 @@ export function GitHubRepoPicker({
                 type="button"
                 onClick={() => setSelectedInstallation(null)}
                 className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                aria-label="Back to accounts"
+                aria-label={t("common.githubRepoPicker.backToAccounts")}
               >
                 <ArrowLeft size={16} />
               </button>
@@ -165,6 +171,7 @@ function PickerContent({
   onImportComplete?: (payload: GitHubImportPayload) => void;
   mode?: "agent" | "connection";
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigateToAgent = useNavigateToAgent();
@@ -370,7 +377,9 @@ function PickerContent({
       if (mode === "connection" || !virtualMcpId || !item) {
         invalidateVirtualMcpQueries(queryClient, org.id);
         invalidateConnectionQueries(queryClient, org.id);
-        toast.success(`Added ${repo.name}`);
+        toast.success(
+          t("common.githubRepoPicker.addedRepo", { name: repo.name }),
+        );
         onComplete();
         return;
       }
@@ -393,15 +402,21 @@ function PickerContent({
         return;
       }
 
-      toast.success(`Imported ${repo.name} from GitHub`);
+      toast.success(
+        t("common.githubRepoPicker.importedRepo", { name: repo.name }),
+      );
       onComplete();
       localStorage.setItem("mesh:sidebar-open", JSON.stringify(false));
       navigateToAgent(virtualMcpId);
     },
     onError: (error) => {
       toast.error(
-        "Failed to import repo: " +
-          (error instanceof Error ? error.message : "Unknown error"),
+        t("common.githubRepoPicker.failedImport", {
+          error:
+            error instanceof Error
+              ? error.message
+              : t("common.githubRepoPicker.unknownError"),
+        }),
       );
     },
   });
@@ -444,7 +459,7 @@ function PickerContent({
       <div className="flex flex-col py-2">
         <div className="px-4 py-2">
           <p className="text-xs font-medium text-muted-foreground">
-            Select a connection
+            {t("common.githubRepoPicker.selectConnection")}
           </p>
         </div>
         {orgGithubConnections.map((conn) => (
@@ -514,6 +529,7 @@ function InstallationPicker({
   showBackButton: boolean;
   onBack: () => void;
 }) {
+  const t = useT();
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId,
@@ -560,8 +576,12 @@ function InstallationPicker({
     },
     onError: (err) => {
       toast.error(
-        "Failed to reconnect GitHub: " +
-          (err instanceof Error ? err.message : "Unknown error"),
+        t("common.githubRepoPicker.failedReconnect", {
+          error:
+            err instanceof Error
+              ? err.message
+              : t("common.githubRepoPicker.unknownError"),
+        }),
       );
     },
   });
@@ -578,10 +598,10 @@ function InstallationPicker({
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="text-sm text-destructive">
-          Failed to load GitHub accounts
+          {t("common.githubRepoPicker.failedLoadAccounts")}
         </p>
         <p className="text-xs text-muted-foreground max-w-[280px] leading-relaxed">
-          Your GitHub connection may have expired. Reconnect to restore access.
+          {t("common.githubRepoPicker.connectionExpiredMessage")}
         </p>
         <Button
           type="button"
@@ -595,7 +615,7 @@ function InstallationPicker({
           ) : (
             <GitHubIcon className="size-3.5" />
           )}
-          Reconnect GitHub
+          {t("common.githubRepoPicker.reconnectGitHub")}
         </Button>
       </div>
     );
@@ -603,6 +623,72 @@ function InstallationPicker({
 
   const data = installationsQuery.data;
   if (!data) return null;
+
+  const installUrl = data.appSlug
+    ? `https://github.com/apps/${data.appSlug}/installations/new`
+    : "https://github.com/settings/installations";
+
+  if (data.installations.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {showBackButton && (
+          <div className="flex items-center gap-1 px-4 pt-3 pb-1 shrink-0">
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft size={12} />
+              {t("common.githubRepoPicker.changeConnection")}
+            </button>
+          </div>
+        )}
+
+        <div className="flex-1 flex flex-col items-center justify-center px-8 py-6 text-center">
+          <div className="size-16 rounded-2xl bg-muted flex items-center justify-center">
+            <GitHubIcon className="size-8 text-foreground" />
+          </div>
+
+          <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-success">
+            <span className="size-1.5 rounded-full bg-success" />
+            {t("common.githubRepoPicker.githubConnected")}
+          </div>
+
+          <h2 className="mt-2 text-base font-semibold text-foreground">
+            {t("common.githubRepoPicker.setupRepositoriesTitle")}
+          </h2>
+          <p className="mt-1.5 max-w-[360px] text-xs leading-relaxed text-muted-foreground">
+            {t("common.githubRepoPicker.noRepositoriesShared")}
+          </p>
+
+          <div className="mt-5 flex items-center gap-2">
+            <Button asChild size="sm">
+              <a href={installUrl} target="_blank" rel="noopener noreferrer">
+                {t("common.githubRepoPicker.chooseRepositories")}
+                <LinkExternal01 size={14} />
+              </a>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void installationsQuery.refetch()}
+              disabled={installationsQuery.isFetching}
+            >
+              {installationsQuery.isFetching && (
+                <Loading01 size={14} className="animate-spin" />
+              )}
+              {t("common.githubRepoPicker.checkAgain")}
+            </Button>
+          </div>
+
+          <p className="mt-4 max-w-[360px] rounded-lg bg-muted/50 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+            {t("common.githubRepoPicker.repositoryAccessNote")}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -614,7 +700,7 @@ function InstallationPicker({
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft size={12} />
-            Change connection
+            {t("common.githubRepoPicker.changeConnection")}
           </button>
         </div>
       )}
@@ -638,12 +724,12 @@ function InstallationPicker({
               </span>
               {inst.type === "User" && (
                 <span className="text-xs text-muted-foreground mt-1">
-                  Personal account
+                  {t("common.githubRepoPicker.personalAccount")}
                 </span>
               )}
             </div>
             <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              Select →
+              {t("common.githubRepoPicker.select")} →
             </span>
           </button>
         ))}
@@ -651,18 +737,14 @@ function InstallationPicker({
 
       <div className="px-4 py-3 border-t border-border shrink-0">
         <a
-          href={
-            data.appSlug
-              ? `https://github.com/apps/${data.appSlug}/installations/new`
-              : "https://github.com/settings/installations"
-          }
+          href={installUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          Account not listed?{" "}
+          {t("common.githubRepoPicker.accountNotListed")}{" "}
           <span className="underline underline-offset-2">
-            Install the GitHub App
+            {t("common.githubRepoPicker.installGitHubApp")}
           </span>
         </a>
       </div>
@@ -685,6 +767,7 @@ function RepoBrowser({
   onSelectRepo: (repo: Repo) => void;
   isSaving: boolean;
 }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 300);
   const deferredQuery = useDeferredValue(debouncedQuery);
@@ -693,7 +776,7 @@ function RepoBrowser({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <CollectionSearch
-        placeholder="Search repositories..."
+        placeholder={t("common.githubRepoPicker.searchRepositories")}
         value={query}
         onChange={setQuery}
         isSearching={isStale}
@@ -747,6 +830,7 @@ function RepoList({
   onSelectRepo: (repo: Repo) => void;
   isSaving: boolean;
 }) {
+  const t = useT();
   const githubClient = useMCPClient({ connectionId, orgId, orgSlug });
 
   const qualifier = installation.type === "User" ? "user" : "org";
@@ -798,10 +882,12 @@ function RepoList({
   if (repos.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-1">
-        <p className="text-sm text-muted-foreground">No repositories found</p>
+        <p className="text-sm text-muted-foreground">
+          {t("common.githubRepoPicker.noRepositoriesFound")}
+        </p>
         {query && (
           <p className="text-xs text-muted-foreground/60">
-            Try a different search term
+            {t("common.githubRepoPicker.tryDifferentSearchTerm")}
           </p>
         )}
       </div>
@@ -824,7 +910,9 @@ function RepoList({
           </div>
           <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground border border-border rounded px-1.5 py-0.5 shrink-0 leading-none">
             {repo.private ? <Lock01 size={10} /> : <LockUnlocked01 size={10} />}
-            {repo.private ? "Private" : "Public"}
+            {repo.private
+              ? t("common.githubRepoPicker.private")
+              : t("common.githubRepoPicker.public")}
           </span>
         </button>
       ))}
@@ -841,6 +929,7 @@ function AutoInstallGitHubUI({
   error: string | null;
   retry: () => void;
 }) {
+  const t = useT();
   if (status === "error") {
     return (
       <div className="flex flex-col items-center gap-4 px-6 py-10">
@@ -848,9 +937,11 @@ function AutoInstallGitHubUI({
           <GitHubIcon className="size-5 text-destructive" />
         </div>
         <div className="flex flex-col items-center gap-1 text-center">
-          <p className="text-sm font-medium">Connection failed</p>
+          <p className="text-sm font-medium">
+            {t("common.githubRepoPicker.connectionFailed")}
+          </p>
           <p className="text-xs text-muted-foreground max-w-[260px] leading-relaxed">
-            {error ?? "Something went wrong while connecting to GitHub."}
+            {error ?? t("common.githubRepoPicker.somethingWentWrong")}
           </p>
         </div>
         <button
@@ -858,7 +949,7 @@ function AutoInstallGitHubUI({
           onClick={retry}
           className="text-xs font-medium text-foreground border border-border rounded-md px-3 py-1.5 hover:bg-accent transition-colors"
         >
-          Try again
+          {t("common.githubRepoPicker.tryAgain")}
         </button>
       </div>
     );
@@ -879,13 +970,13 @@ function AutoInstallGitHubUI({
       <div className="flex flex-col items-center gap-1 text-center">
         <p className="text-sm font-medium">
           {isAuthenticating
-            ? "Authenticating with GitHub"
-            : "Setting up GitHub"}
+            ? t("common.githubRepoPicker.authenticatingGitHub")
+            : t("common.githubRepoPicker.settingUpGitHub")}
         </p>
         <p className="text-xs text-muted-foreground">
           {isAuthenticating
-            ? "Complete the OAuth flow in your browser"
-            : "Installing the GitHub connection..."}
+            ? t("common.githubRepoPicker.completeOAuthFlow")
+            : t("common.githubRepoPicker.installingGitHubConnection")}
         </p>
       </div>
       <div className="flex items-center gap-1.5">

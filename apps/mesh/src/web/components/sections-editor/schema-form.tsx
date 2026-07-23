@@ -244,8 +244,14 @@ export function renderField(props: FieldProps) {
     return <MapField key={props.path} {...props} />;
   }
 
-  // dynamic-options → DynamicOptionsField (select with options from a loader)
-  if (schema.format === "dynamic-options" && schema.options) {
+  // dynamic-options / icon-select → DynamicOptionsField.
+  // dynamic-options needs an `@options` loader; icon-select draws its list from
+  // the schema enum and its previews from the site's `/sprites.svg`, so it
+  // routes here even when the (now-deleted) `availableIcons` loader is absent.
+  if (
+    schema.format === "icon-select" ||
+    (schema.format === "dynamic-options" && schema.options)
+  ) {
     return <DynamicOptionsField key={props.path} {...props} />;
   }
 

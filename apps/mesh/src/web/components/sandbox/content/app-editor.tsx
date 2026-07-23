@@ -17,6 +17,7 @@ import { buildSectionBlockFromCatalogEntry } from "./section-create";
 import { SchemaForm } from "@/web/components/sections-editor/schema-form";
 import { breadcrumbsForHeaderClick } from "@/web/components/sections-editor/schema-form-breadcrumb";
 import { SaveStatus } from "./blog/save-status";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export function AppEditor({
   orgSlug,
@@ -44,6 +45,7 @@ export function AppEditor({
   schemaPending?: boolean;
   previewBaseUrl?: string | null;
 }) {
+  const t = useT();
   const resolveType =
     typeof block?.__resolveType === "string" ? block.__resolveType : "";
   const schema = resolveAppEditorSchema(resolveType, meta, excludeFields);
@@ -107,12 +109,14 @@ export function AppEditor({
         decofile,
       );
       await saveBlock.mutateAsync({ blockKey: newKey, data });
-      toast.success(`Created section "${newKey}"`);
+      toast.success(t("sandbox.appEditor.createdSection", { name: newKey }));
       append({ __resolveType: newKey });
       flush();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Could not add section";
+        err instanceof Error
+          ? err.message
+          : t("sandbox.appEditor.failedAddSection");
       toast.error(message);
       throw err;
     }
@@ -146,7 +150,7 @@ export function AppEditor({
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
         {headerCrumbs.length > 0 ? (
           <nav
-            aria-label="Editing breadcrumb"
+            aria-label={t("sandbox.appEditor.editingBreadcrumb")}
             className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
           >
             {headerCrumbs.map((crumb, index) => {
@@ -212,11 +216,11 @@ export function AppEditor({
             ) : schemaPending ? (
               <div className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted-foreground">
                 <Loading01 size={16} className="animate-spin" />
-                Loading app schema…
+                {t("sandbox.appEditor.loadingSchema")}
               </div>
             ) : (
               <div className="py-6 text-center text-xs text-muted-foreground">
-                No editable schema found for this app.
+                {t("sandbox.appEditor.noEditableSchema")}
               </div>
             )}
           </div>

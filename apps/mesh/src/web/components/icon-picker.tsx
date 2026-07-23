@@ -17,14 +17,17 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { Edit05, SearchMd, Shuffle01, Upload01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   AGENT_ICON_COLORS,
   AgentAvatar,
   buildIconString,
   buildImageIconString,
+  filterIconNames,
   getIconColor,
   getIconComponent,
   getIconNames,
+  getSizeRadius,
   humanizeIconName,
   parseIconString,
   type AgentAvatarSize,
@@ -67,6 +70,7 @@ export function IconPicker({
   showHoverOverlay = true,
   disabled = false,
 }: IconPickerProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<PickerTab>("icons");
   const [search, setSearch] = useState("");
@@ -109,26 +113,18 @@ export function IconPicker({
     onChange(buildIconString(randomName, selectedColor));
   };
 
-  const sizeRadius: Record<string, string> = {
-    xs: "rounded-md",
-    sm: "rounded-lg",
-    "sm+": "rounded-xl",
-    md: "rounded-xl",
-    lg: "rounded-2xl",
-    xl: "rounded-2xl",
-  };
-
   return (
     <Popover open={disabled ? false : open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
           data-testid="icon-picker-trigger"
+          aria-label="Change icon"
           disabled={disabled}
           className={cn(
             "relative group overflow-hidden",
             disabled ? "cursor-default opacity-50" : "cursor-pointer",
-            sizeRadius[size],
+            getSizeRadius(size),
             className,
           )}
         >
@@ -157,9 +153,25 @@ export function IconPicker({
           </div>
 
           {/* Tab bar */}
-          <div className="flex items-center border-b border-border px-3">
+          <div
+            role="tablist"
+            aria-label="Icon source"
+            className="flex items-center border-b border-border px-3"
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              e.preventDefault();
+              const nextTab = tab === "icons" ? "upload" : "icons";
+              setTab(nextTab);
+              document.getElementById(`icon-picker-tab-${nextTab}`)?.focus();
+            }}
+          >
             <button
+              id="icon-picker-tab-icons"
               type="button"
+              role="tab"
+              aria-selected={tab === "icons"}
+              aria-controls="icon-picker-panel-icons"
+              tabIndex={tab === "icons" ? 0 : -1}
               onClick={() => setTab("icons")}
               className={cn(
                 "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
@@ -168,10 +180,15 @@ export function IconPicker({
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              Icons
+              {t("common.iconPicker.iconsTab")}
             </button>
             <button
+              id="icon-picker-tab-upload"
               type="button"
+              role="tab"
+              aria-selected={tab === "upload"}
+              aria-controls="icon-picker-panel-upload"
+              tabIndex={tab === "upload" ? 0 : -1}
               onClick={() => setTab("upload")}
               className={cn(
                 "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
@@ -180,26 +197,38 @@ export function IconPicker({
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              Upload
+              {t("common.iconPicker.uploadTab")}
             </button>
             <div className="flex-1" />
           </div>
 
           {/* Tab content */}
           {tab === "icons" ? (
-            <IconsTab
-              search={search}
-              onSearchChange={setSearch}
-              selectedColor={selectedColor}
-              onColorChange={handleColorChange}
-              onSelectIcon={handleSelectIcon}
-              onRandom={handleRandomIcon}
-              currentIconName={
-                parsedValue.type === "icon" ? parsedValue.name : null
-              }
-            />
+            <div
+              id="icon-picker-panel-icons"
+              role="tabpanel"
+              aria-labelledby="icon-picker-tab-icons"
+            >
+              <IconsTab
+                search={search}
+                onSearchChange={setSearch}
+                selectedColor={selectedColor}
+                onColorChange={handleColorChange}
+                onSelectIcon={handleSelectIcon}
+                onRandom={handleRandomIcon}
+                currentIconName={
+                  parsedValue.type === "icon" ? parsedValue.name : null
+                }
+              />
+            </div>
           ) : (
-            <UploadTab onUpload={handleUpload} />
+            <div
+              id="icon-picker-panel-upload"
+              role="tabpanel"
+              aria-labelledby="icon-picker-tab-upload"
+            >
+              <UploadTab onUpload={handleUpload} />
+            </div>
           )}
         </div>
       </PopoverContent>
@@ -218,6 +247,7 @@ function ColorPickerDropdown({
   selectedColor: string;
   onColorChange: (color: string) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const color = getIconColor(selectedColor);
 
@@ -231,7 +261,8 @@ function ColorPickerDropdown({
             color.dot,
             "ring-foreground/20",
           )}
-          title="Change color"
+          title={t("common.iconPicker.changeColor")}
+          aria-label={t("common.iconPicker.changeColor")}
         />
       </PopoverTrigger>
       <PopoverContent
@@ -258,6 +289,7 @@ function ColorPickerDropdown({
                   : "hover:scale-110",
               )}
               title={c.name}
+              aria-label={c.name}
             />
           ))}
         </div>
@@ -283,19 +315,10 @@ function IconsTab({
   onRandom: () => void;
   currentIconName: string | null;
 }) {
+  const t = useT();
   const allNames = getIconNames();
   const color = getIconColor(selectedColor);
-
-  const filteredNames = search.trim()
-    ? allNames.filter((name) => {
-        const humanized = humanizeIconName(name);
-        const searchLower = search.toLowerCase();
-        return (
-          humanized.includes(searchLower) ||
-          name.toLowerCase().includes(searchLower)
-        );
-      })
-    : allNames;
+  const filteredNames = filterIconNames(allNames, search);
 
   return (
     <div className="flex flex-col">
@@ -309,7 +332,7 @@ function IconsTab({
           <Input
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Filter..."
+            placeholder={t("common.iconPicker.filterPlaceholder")}
             className="h-8 text-xs pl-7"
           />
         </div>
@@ -317,7 +340,8 @@ function IconsTab({
           type="button"
           onClick={onRandom}
           className="h-8 w-8 flex items-center justify-center rounded-md border border-border hover:bg-accent transition-colors shrink-0"
-          title="Random icon"
+          title={t("common.iconPicker.randomIcon")}
+          aria-label={t("common.iconPicker.randomIcon")}
         >
           <Shuffle01 size={14} className="text-muted-foreground" />
         </button>
@@ -346,6 +370,7 @@ function IconsTab({
                     : cn(color.text, "hover:bg-accent"),
                 )}
                 title={iconName}
+                aria-label={humanizeIconName(iconName)}
               >
                 <IconComp size={18} />
               </button>
@@ -354,7 +379,7 @@ function IconsTab({
         </div>
         {filteredNames.length === 0 && (
           <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-            No icons found
+            {t("common.iconPicker.noIconsFound")}
           </div>
         )}
       </ScrollArea>
@@ -367,6 +392,7 @@ function IconsTab({
 // ---------------------------------------------------------------------------
 
 function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
+  const t = useT();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -374,14 +400,14 @@ function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("Image must be smaller than 2MB");
+      toast.error(t("common.iconPicker.imageTooLarge"));
       event.target.value = "";
       return;
     }
 
     const reader = new FileReader();
     reader.onerror = () => {
-      toast.error("Failed to read image file");
+      toast.error(t("common.iconPicker.failedToReadImage"));
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
     reader.onloadend = () => {
@@ -419,11 +445,13 @@ function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
         className="h-24 rounded-lg border-2 border-dashed border-border hover:border-foreground/50 hover:bg-accent/50 transition-colors flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground"
       >
         <Upload01 size={20} />
-        <span className="text-xs">Click to upload an image (max 2MB)</span>
+        <span className="text-xs">{t("common.iconPicker.uploadHint")}</span>
       </button>
 
       <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">or</span>
+        <span className="text-xs text-muted-foreground">
+          {t("common.iconPicker.or")}
+        </span>
         <div className="flex-1 h-px bg-border" />
       </div>
 
@@ -431,7 +459,7 @@ function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
         <Input
           value={pasteUrl}
           onChange={(e) => setPasteUrl(e.target.value)}
-          placeholder="Paste image URL..."
+          placeholder={t("common.iconPicker.pasteUrlPlaceholder")}
           className="h-8 text-xs flex-1"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -447,7 +475,7 @@ function UploadTab({ onUpload }: { onUpload: (dataUrl: string) => void }) {
           onClick={handleApplyUrl}
           disabled={!pasteUrl.trim()}
         >
-          Apply
+          {t("common.iconPicker.apply")}
         </Button>
       </div>
     </div>

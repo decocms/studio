@@ -116,6 +116,24 @@ export function resetDispatchStateForTests(): void {
   tombstones.clear();
 }
 
+/** Test-visible peek at the tombstone map size — see `sweepExpiredTombstones`. */
+export function getTombstoneCountForTests(): number {
+  return tombstones.size;
+}
+
+/** Drop expired tombstone entries. A cancelled run whose runId is never
+ *  re-dispatched (the common case — most cancels are final) otherwise sits
+ *  in `tombstones` for the lifetime of the daemon process, since the only
+ *  other read site deletes by that exact runId. Called on every cancel so
+ *  the map stays bounded by "cancels within the last `TOMBSTONE_MS`", not by
+ *  total cancels ever issued. */
+function sweepExpiredTombstones(): void {
+  const now = Date.now();
+  for (const [runId, expiry] of tombstones) {
+    if (expiry <= now) tombstones.delete(runId);
+  }
+}
+
 /** SSE response headers. Shared by both the synchronous (non-offload) and the
  *  deferred (offload) paths so the cluster's dispatcher sees the identical
  *  first frame regardless of which path served the request. */
@@ -164,10 +182,22 @@ async function streamHarnessRun(
       `[dispatch] done harness=${harnessId} runId=${runId} chunks=${chunkCount} aborted=${ctrl.signal.aborted}`,
     );
   } catch (err) {
-    console.error(
-      `[dispatch] harness crashed harness=${harnessId} runId=${runId} chunks=${chunkCount}:`,
-      err,
-    );
+    // An aborted run (DELETE /_sandbox/runs/:id, or a daemon-side timeout
+    // aborting `ctrl`) makes the harness's in-flight fetch/streamText throw
+    // "The operation was aborted." — expected control flow, not a crash.
+    // Logging it via console.error floods error tracking with noise on every
+    // cancelled run. `harness_crashed` still fires below so cluster-side
+    // cleanup is unchanged.
+    if (ctrl.signal.aborted) {
+      console.log(
+        `[dispatch] harness aborted harness=${harnessId} runId=${runId} chunks=${chunkCount}`,
+      );
+    } else {
+      console.error(
+        `[dispatch] harness crashed harness=${harnessId} runId=${runId} chunks=${chunkCount}:`,
+        err,
+      );
+    }
     const code: LinkErrorCode = "harness_crashed";
     write({
       type: "error",
@@ -504,6 +534,7 @@ export async function handleCancelRequest(
 
   const ctrl = activeRuns.get(runId);
   if (ctrl) ctrl.abort();
+  sweepExpiredTombstones();
   tombstones.set(runId, Date.now() + TOMBSTONE_MS);
 
   // Idempotent: 204 whether or not the runId was active. The caller fires

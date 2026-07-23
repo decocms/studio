@@ -13,6 +13,7 @@ import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useChatStream, useChatTask, useChatPrefs } from "./context";
 import type { ChatMessage, SubtaskToolPart } from "./types";
 import { Suspense, useState } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 
 // ============================================================================
 // Helpers
@@ -86,6 +87,7 @@ function ContextBreakdownBar({
   assistantTokens: number;
   otherTokens: number;
 }) {
+  const t = useT();
   const total = userTokens + assistantTokens + otherTokens;
 
   const userPct = total > 0 ? (userTokens / total) * 100 : 0;
@@ -115,20 +117,24 @@ function ContextBreakdownBar({
         <div className="flex items-center gap-1.5">
           <span className="inline-block h-2 w-2 rounded-sm bg-chart-1 shrink-0" />
           <span className="text-xs text-muted-foreground">
-            User {userPct.toFixed(1)}%
+            {t("chat.contextPanel.userPercent", { pct: userPct.toFixed(1) })}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-block h-2 w-2 rounded-sm bg-chart-2 shrink-0" />
           <span className="text-xs text-muted-foreground">
-            Assistant {assistantPct.toFixed(1)}%
+            {t("chat.contextPanel.assistantPercent", {
+              pct: assistantPct.toFixed(1),
+            })}
           </span>
         </div>
         {otherTokens > 0 && (
           <div className="flex items-center gap-1.5">
             <span className="inline-block h-2 w-2 rounded-sm bg-muted-foreground/30 shrink-0" />
             <span className="text-xs text-muted-foreground">
-              Other {otherPct.toFixed(1)}%
+              {t("chat.contextPanel.otherPercent", {
+                pct: otherPct.toFixed(1),
+              })}
             </span>
           </div>
         )}
@@ -172,11 +178,13 @@ function SubtaskAgentInfo({
 }
 
 function SubtaskAgentInfoFallback({ isError }: { isError: boolean }) {
+  const t = useT();
+  const subtaskLabel = t("chat.contextPanel.subtask");
   return (
     <>
       <IntegrationIcon
         icon={null}
-        name="Subtask"
+        name={subtaskLabel}
         size="xs"
         className="size-6 rounded-md shrink-0"
       />
@@ -186,7 +194,7 @@ function SubtaskAgentInfoFallback({ isError }: { isError: boolean }) {
           isError ? "text-destructive" : "text-foreground",
         )}
       >
-        Subtask
+        {subtaskLabel}
       </span>
     </>
   );
@@ -246,6 +254,7 @@ export function ChatContextPanel({
   back,
   className,
 }: ChatContextPanelProps) {
+  const t = useT();
   const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(
     null,
   );
@@ -339,44 +348,56 @@ export function ChatContextPanel({
   const agentTitle = selectedVirtualMcp?.title ?? "Super Agent";
 
   const allStats: StatItem[] = [
-    { label: "Session", value: activeTask?.title ?? "New chat" },
-    { label: "Messages", value: visibleMessages.length },
-    { label: "Agent", value: agentTitle },
-    { label: "Model", value: modelLabel },
     {
-      label: "Context Limit",
+      label: t("chat.contextPanel.sessionLabel"),
+      value: activeTask?.title ?? t("chat.contextPanel.newChat"),
+    },
+    {
+      label: t("chat.contextPanel.messagesLabel"),
+      value: visibleMessages.length,
+    },
+    { label: t("chat.contextPanel.agentLabel"), value: agentTitle },
+    { label: t("chat.contextPanel.modelLabel"), value: modelLabel },
+    {
+      label: t("chat.contextPanel.contextLimitLabel"),
       value: contextWindow ? formatTokens(contextWindow) : "—",
     },
     {
-      label: "Session Tokens (billed)",
+      label: t("chat.contextPanel.sessionTokensLabel"),
       value: stats.totalTokens > 0 ? formatTokens(stats.totalTokens) : "0",
     },
     {
-      label: "Usage",
+      label: t("chat.contextPanel.usageLabel"),
       value: usagePct !== null ? `${usagePct}%` : "—",
     },
     {
-      label: "Input Tokens",
+      label: t("chat.contextPanel.inputTokensLabel"),
       value: stats.inputTokens > 0 ? formatTokens(stats.inputTokens) : "0",
     },
     {
-      label: "Output Tokens",
+      label: t("chat.contextPanel.outputTokensLabel"),
       value: stats.outputTokens > 0 ? formatTokens(stats.outputTokens) : "0",
     },
     {
-      label: "Reasoning Tokens",
+      label: t("chat.contextPanel.reasoningTokensLabel"),
       value:
         stats.reasoningTokens > 0 ? formatTokens(stats.reasoningTokens) : "0",
     },
     {
-      label: "Cost",
+      label: t("chat.contextPanel.costLabel"),
       value:
         stats.cost > 0
           ? `$${stats.cost < 0.001 ? stats.cost.toFixed(6) : stats.cost.toFixed(4)}`
           : "$0.00",
     },
-    { label: "Session Created", value: formatDate(sessionCreated) },
-    { label: "Last Activity", value: formatDate(lastActivity) },
+    {
+      label: t("chat.contextPanel.sessionCreatedLabel"),
+      value: formatDate(sessionCreated),
+    },
+    {
+      label: t("chat.contextPanel.lastActivityLabel"),
+      value: formatDate(lastActivity),
+    },
   ];
 
   if (!activeTask && visibleMessages.length === 0) {
@@ -388,7 +409,9 @@ export function ChatContextPanel({
         )}
       >
         <div className="h-11 px-4 flex items-center justify-between shrink-0 border-b border-border/50">
-          <span className="text-sm font-medium text-foreground">Context</span>
+          <span className="text-sm font-medium text-foreground">
+            {t("chat.contextPanel.title")}
+          </span>
           <button
             type="button"
             onClick={onClose}
@@ -403,7 +426,7 @@ export function ChatContextPanel({
         </div>
         <div className="flex-1 flex items-center justify-center px-4 text-center">
           <p className="text-xs text-muted-foreground">
-            Start a conversation to see context
+            {t("chat.contextPanel.emptyState")}
           </p>
         </div>
       </div>
@@ -419,7 +442,9 @@ export function ChatContextPanel({
     >
       {/* Header */}
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/50 px-4">
-        <span className="text-sm font-medium text-foreground">Context</span>
+        <span className="text-sm font-medium text-foreground">
+          {t("chat.contextPanel.title")}
+        </span>
         <button
           type="button"
           onClick={onClose}
@@ -434,7 +459,9 @@ export function ChatContextPanel({
         {/* Subtasks / subagents */}
         {subtaskParts.length > 0 && (
           <div className="flex flex-col gap-3">
-            <span className="text-xs text-muted-foreground">Subtasks</span>
+            <span className="text-xs text-muted-foreground">
+              {t("chat.contextPanel.subtasksSection")}
+            </span>
             <div className="flex flex-col gap-1">
               {subtaskParts.map((part, i) => (
                 <SubtaskRow key={i} part={part} />
@@ -449,7 +476,7 @@ export function ChatContextPanel({
         {/* Context Breakdown */}
         <div className="flex flex-col gap-3">
           <span className="text-xs text-muted-foreground">
-            Context Breakdown
+            {t("chat.contextPanel.contextBreakdownSection")}
           </span>
           <ContextBreakdownBar
             userTokens={userTokens}
@@ -461,7 +488,9 @@ export function ChatContextPanel({
         {/* Raw messages */}
         {visibleMessages.length > 0 && (
           <div className="flex flex-col gap-3">
-            <span className="text-xs text-muted-foreground">Raw messages</span>
+            <span className="text-xs text-muted-foreground">
+              {t("chat.contextPanel.rawMessagesSection")}
+            </span>
             <div className="flex flex-col gap-1">
               {visibleMessages.map((m) => {
                 const createdAt = (
@@ -528,23 +557,23 @@ export function ChatContextPanel({
                               <div className="border-t border-border/50 px-3 py-2.5 text-xs space-y-2.5">
                                 <div className="flex items-center justify-between">
                                   <span className="font-medium text-foreground">
-                                    Request
+                                    {t("chat.contextPanel.requestLabel")}
                                   </span>
                                   <span className="text-muted-foreground tabular-nums">
                                     {req.activeTools ?? 0} / {req.tools ?? 0}{" "}
-                                    tools active
+                                    {t("chat.contextPanel.toolsActive")}
                                   </span>
                                 </div>
                                 {sections.length > 0 && (
                                   <div className="space-y-1.5">
                                     <div className="text-muted-foreground">
-                                      System prompt{" "}
+                                      {t("chat.contextPanel.systemPromptLabel")}{" "}
                                       <span className="tabular-nums">
                                         ~
                                         {Math.round(
                                           totalChars / 4,
                                         ).toLocaleString()}{" "}
-                                        tok
+                                        {t("chat.contextPanel.tokAbbrev")}
                                       </span>
                                     </div>
                                     {sections.map((s, i) => {
@@ -560,7 +589,8 @@ export function ChatContextPanel({
                                               {tag}
                                             </span>
                                             <span className="text-muted-foreground tabular-nums shrink-0">
-                                              ~{tok.toLocaleString()} tok
+                                              ~{tok.toLocaleString()}{" "}
+                                              {t("chat.contextPanel.tokAbbrev")}
                                             </span>
                                           </div>
                                           <div className="h-1 w-full rounded-full bg-muted overflow-hidden">

@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export function BulkDeleteDialog({
   open,
@@ -20,25 +21,35 @@ export function BulkDeleteDialog({
   count: number;
   onConfirm: () => void;
 }) {
+  const t = useT();
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            Delete {count} connection{count !== 1 ? "s" : ""}?
+            {t("orgs.bulkDeleteDialog.deleteTitle", {
+              count,
+              plural: count !== 1 ? "s" : "",
+            })}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            This will permanently delete the selected connection
-            {count !== 1 ? "s" : ""}. This action cannot be undone.
+            {t("orgs.bulkDeleteDialog.deleteDescription", {
+              plural: count !== 1 ? "s" : "",
+            })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>
+            {t("orgs.bulkDeleteDialog.cancelButton")}
+          </AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Delete {count} connection{count !== 1 ? "s" : ""}
+            {t("orgs.bulkDeleteDialog.deleteButton", {
+              count,
+              plural: count !== 1 ? "s" : "",
+            })}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

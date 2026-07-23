@@ -1,3 +1,4 @@
+import { useT } from "@/web/i18n/use-t.ts";
 import { AccessScreenLayout } from "@/web/components/access-screen-layout";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -12,6 +13,7 @@ export function RequestPendingScreen({
   orgName,
   orgLogo,
 }: RequestPendingScreenProps) {
+  const t = useT();
   return (
     <AccessScreenLayout>
       {orgLogo ? (
@@ -28,10 +30,11 @@ export function RequestPendingScreen({
         </div>
       )}
       <div className="space-y-2">
-        <h3 className="text-lg font-medium">Request pending</h3>
+        <h3 className="text-lg font-medium">
+          {t("common.requestPendingScreen.title")}
+        </h3>
         <p className="text-sm text-muted-foreground">
-          Your request to join <strong>{orgName}</strong> is waiting for an
-          admin to approve it. You&apos;ll get access once it&apos;s approved.
+          {t("common.requestPendingScreen.description", { orgName })}
         </p>
       </div>
       <Button
@@ -40,7 +43,7 @@ export function RequestPendingScreen({
           window.location.href = "/";
         }}
       >
-        Go to home
+        {t("common.requestPendingScreen.goHome")}
       </Button>
     </AccessScreenLayout>
   );

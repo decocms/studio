@@ -1,6 +1,8 @@
 import { normalizeReportsSiteUrl, siteUrlToHost } from "@/reports/site-url";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { authClient } from "@/web/lib/auth-client";
+import { useT } from "@/web/i18n/use-t.ts";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { track } from "@/web/lib/posthog-client";
 import { KEYS } from "@/web/lib/query-keys";
@@ -49,6 +51,7 @@ import { SiteBadge } from "./site-badge.tsx";
 export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
+  const t = useT();
 
   // Completing the connect step opens the diagnostic report in a fresh thread.
   // That navigation also drops the `?connect=1` param, which unmounts this modal
@@ -86,14 +89,13 @@ export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
           className="bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 flex h-[calc(100dvh-1rem)] w-full max-w-[calc(100%-1rem)] translate-x-[-50%] translate-y-[-50%] flex-col overflow-hidden rounded-2xl border p-0 shadow-md duration-200 sm:max-w-lg md:h-auto md:max-h-[calc(100dvh-2rem)] lg:max-h-[calc(100dvh-4rem)] lg:max-w-5xl"
         >
           <DialogTitle className="sr-only">
-            Conecte suas ferramentas para ver o diagnóstico completo
+            {t("routes.commerceOnboarding.connectModal.dialogTitle")}
           </DialogTitle>
           <ErrorBoundary
             fallback={() => (
               <div className="grid gap-4 p-6">
                 <p className="text-sm text-muted-foreground">
-                  Não foi possível carregar as integrações. Você pode continuar
-                  e abrir o relatório mesmo assim.
+                  {t("routes.commerceOnboarding.connectModal.loadError")}
                 </p>
                 <Button
                   type="button"
@@ -101,7 +103,7 @@ export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
                   className="w-full"
                   onClick={goToReport}
                 >
-                  Continuar
+                  {t("routes.commerceOnboarding.connectModal.continueButton")}
                   <ArrowRight size={18} />
                 </Button>
               </div>
@@ -127,6 +129,8 @@ function CommerceConnectModalContent({
   siteUrlFromUrl?: string;
   onComplete: () => void;
 }) {
+  const t = useT();
+  const [preferences] = usePreferences();
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
@@ -190,6 +194,7 @@ function CommerceConnectModalContent({
   const meetingUrl = buildScheduleMeetingUrl({
     siteUrl,
     email: session?.user?.email,
+    locale: preferences.language,
   });
 
   const openReport = async () => {
@@ -227,7 +232,7 @@ function CommerceConnectModalContent({
             error: runResult.reason ?? "not_triggered",
           });
           setRunError(
-            "Não foi possível gerar o relatório para este site. Recarregue a página e tente novamente.",
+            t("routes.commerceOnboarding.connectModal.couldNotGenerateReport"),
           );
           return;
         }
@@ -238,7 +243,7 @@ function CommerceConnectModalContent({
           error: err instanceof Error ? err.message : String(err),
         });
         setRunError(
-          "Algo deu errado ao gerar seu relatório. Tente novamente em instantes.",
+          t("routes.commerceOnboarding.connectModal.somethingWentWrong"),
         );
         return;
       }
@@ -283,10 +288,12 @@ function CommerceConnectModalContent({
             disabled={runMutation.isPending || !hasConnectedSource}
           >
             {runMutation.isPending
-              ? "Abrindo relatório..."
+              ? t("routes.commerceOnboarding.connectModal.openingReport")
               : !hasConnectedSource
-                ? "Conecte uma ferramenta para continuar"
-                : "Ver relatório completo"}
+                ? t(
+                    "routes.commerceOnboarding.connectModal.connectToolToContinue",
+                  )
+                : t("routes.commerceOnboarding.connectModal.viewFullReport")}
             {!runMutation.isPending && hasConnectedSource ? (
               <ArrowRight size={18} />
             ) : null}

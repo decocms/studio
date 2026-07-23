@@ -1,6 +1,7 @@
 import { useLocalStorage } from "./use-local-storage.ts";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys.ts";
 import { detectLocale, VALID_LOCALES, type Locale } from "@/web/i18n/locale.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 
 export type ToolApprovalLevel = "auto" | "readonly";
 export type ThemeMode = "light" | "dark" | "system";
@@ -24,11 +25,19 @@ const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
 
 export const APPROVAL_LEVEL_OPTIONS: {
   value: ToolApprovalLevel;
-  label: string;
-  short: string;
+  labelKey: TranslationKey;
+  shortKey: TranslationKey;
 }[] = [
-  { value: "readonly", label: "Ask before edit", short: "Ask" },
-  { value: "auto", label: "Auto approve", short: "Auto" },
+  {
+    value: "readonly",
+    labelKey: "settings.preferences.toolApprovalAsk",
+    shortKey: "settings.preferences.toolApprovalAskShort",
+  },
+  {
+    value: "auto",
+    labelKey: "settings.preferences.toolApprovalAuto",
+    shortKey: "settings.preferences.toolApprovalAutoShort",
+  },
 ];
 
 const VALID_THEME_MODES: ThemeMode[] = ["light", "dark", "system"];

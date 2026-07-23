@@ -22,6 +22,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { VirtualMCPSelector } from "@/web/components/chat/select-virtual-mcp";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface McpConfigurationFormProps {
   formKey: string;
@@ -149,6 +150,7 @@ function BindingSelector({
   onAddNew,
   className,
 }: BindingSelectorProps) {
+  const t = useT();
   const [isLocalInstalling, setIsLocalInstalling] = useState(false);
   const { installByBinding, isInstalling: isGlobalInstalling } =
     useInstallFromRegistry();
@@ -191,7 +193,9 @@ function BindingSelector({
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        toast.error(`Failed to connect MCP: ${message}`);
+        toast.error(
+          t("details.mcpConfigurationForm.failedToConnectMcp", { message }),
+        );
       } finally {
         setIsLocalInstalling(false);
       }
@@ -209,7 +213,7 @@ function BindingSelector({
       <SelectContent>
         {connections.length === 0 ? (
           <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-            No connections found
+            {t("details.mcpConfigurationForm.noConnectionsFound")}
           </div>
         ) : (
           connections.map((connection) => (
@@ -247,15 +251,13 @@ function BindingSelector({
               {isInstalling ? (
                 <>
                   <Loading01 size={16} className="animate-spin" />
-                  <span>Connecting...</span>
+                  <span>{t("details.mcpConfigurationForm.connecting")}</span>
                 </>
               ) : (
                 <>
                   <Plus size={16} />
                   <span>
-                    {canInstallInline
-                      ? "Custom Connection"
-                      : "Custom Connection"}
+                    {t("details.mcpConfigurationForm.customConnection")}
                   </span>
                 </>
               )}
@@ -268,6 +270,7 @@ function BindingSelector({
 }
 
 function CustomObjectFieldTemplate(props: ObjectFieldTemplateProps) {
+  const t = useT();
   const { schema, formData, title, description, registry } = props;
   const formContext = registry.formContext as FormContext | undefined;
 
@@ -350,7 +353,9 @@ function CustomObjectFieldTemplate(props: ObjectFieldTemplateProps) {
           bindingType={bindingType}
           currentValue={currentValue}
           onValueChange={handleBindingChange}
-          placeholder={`Select ${displayTitle.toLowerCase()}...`}
+          placeholder={t("details.mcpConfigurationForm.selectPlaceholder", {
+            title: displayTitle.toLowerCase(),
+          })}
           onAddNew={() => formContext?.onAddNew()}
           className="w-[200px] shrink-0"
         />

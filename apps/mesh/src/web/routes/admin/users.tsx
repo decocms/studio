@@ -15,6 +15,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { formatDate } from "@/web/lib/format-time";
 import { getInitials } from "@/web/lib/get-initials";
 import { KEYS } from "@/web/lib/query-keys";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface DeploymentAdminUser {
   id: string;
@@ -26,6 +27,7 @@ interface DeploymentAdminUser {
 }
 
 export default function AdminUsersPage() {
+  const t = useT();
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search.trim(), 300);
   const { data: session } = authClient.useSession();
@@ -55,7 +57,9 @@ export default function AdminUsersPage() {
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Failed to impersonate user",
+        error instanceof Error
+          ? error.message
+          : t("admin.users.failedToImpersonate"),
       );
     },
   });
@@ -65,7 +69,7 @@ export default function AdminUsersPage() {
   const columns: TableColumn<DeploymentAdminUser>[] = [
     {
       id: "user",
-      header: "User",
+      header: t("admin.users.columnUser"),
       render: (user) => (
         <div className="flex items-center gap-3">
           <Avatar
@@ -76,7 +80,7 @@ export default function AdminUsersPage() {
           />
           <div className="min-w-0">
             <div className="text-sm font-medium text-foreground truncate">
-              {user.name || "Unknown"}
+              {user.name || t("admin.users.unknown")}
             </div>
             <div className="text-sm text-muted-foreground truncate">
               {user.email}
@@ -88,22 +92,22 @@ export default function AdminUsersPage() {
     },
     {
       id: "verified",
-      header: "Email",
+      header: t("admin.users.columnEmail"),
       render: (user) =>
         user.emailVerified ? (
           <Badge variant="outline" className="text-success border-success/20">
-            Verified
+            {t("admin.users.verified")}
           </Badge>
         ) : (
           <Badge variant="outline" className="text-muted-foreground">
-            Unverified
+            {t("admin.users.unverified")}
           </Badge>
         ),
       cellClassName: "w-28 shrink-0",
     },
     {
       id: "created",
-      header: "Created",
+      header: t("admin.users.columnCreated"),
       render: (user) => (
         <span className="text-sm text-foreground">
           {formatDate(user.createdAt)}
@@ -121,7 +125,7 @@ export default function AdminUsersPage() {
           disabled={user.id === currentUserId || impersonateMutation.isPending}
           onClick={() => impersonateMutation.mutate(user.id)}
         >
-          Impersonate
+          {t("admin.users.impersonate")}
         </Button>
       ),
       cellClassName: "w-32 shrink-0",
@@ -136,7 +140,7 @@ export default function AdminUsersPage() {
             <SearchInput
               value={search}
               onChange={setSearch}
-              placeholder="Search users by email or name..."
+              placeholder={t("admin.users.searchPlaceholder")}
               className="w-full md:w-[375px]"
             />
             <CollectionTableWrapper
@@ -146,16 +150,18 @@ export default function AdminUsersPage() {
               emptyState={
                 isError ? (
                   <EmptyState
-                    title="Failed to load users"
-                    description="Something went wrong. Refresh to try again."
+                    title={t("admin.users.failedToLoadTitle")}
+                    description={t("admin.users.failedToLoadDescription")}
                   />
                 ) : (
                   <EmptyState
-                    title="No users found"
+                    title={t("admin.users.noUsersFoundTitle")}
                     description={
                       debouncedSearch
-                        ? `No users match "${debouncedSearch}"`
-                        : "No users yet."
+                        ? t("admin.users.noUsersMatchSearch", {
+                            search: debouncedSearch,
+                          })
+                        : t("admin.users.noUsersYet")
                     }
                   />
                 )

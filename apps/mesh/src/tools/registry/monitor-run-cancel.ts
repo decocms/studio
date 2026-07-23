@@ -15,8 +15,15 @@ export const REGISTRY_MONITOR_RUN_CANCEL = defineTool({
   handler: async (input, ctx) => {
     const organization = requireOrganization(ctx);
     await ctx.access.check();
-    cancelMonitorRun(input.runId);
     const storage = ctx.storage.registry;
+    const existing = await storage.monitorRuns.findById(
+      organization.id,
+      input.runId,
+    );
+    if (!existing) {
+      throw new Error(`Monitor run not found: ${input.runId}`);
+    }
+    cancelMonitorRun(input.runId);
     const run = await storage.monitorRuns.update(organization.id, input.runId, {
       status: "cancelled",
       current_item_id: null,

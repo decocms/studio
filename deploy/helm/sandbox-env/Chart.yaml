@@ -9,6 +9,11 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.9.14: sandbox pod memory request 1Gi -> 2Gi (= measured p95 of per-pod peak
+# working-set; 7d). At 1Gi the scheduler bin-packed on less than half of real
+# usage and prod nodes hit memory-pressure eviction (0 per-pod OOMs — the 4Gi
+# limit was never reached). Sizes the request to real usage; trades packing
+# density for the elimination of node-pressure evictions. Limit unchanged.
 # 0.9.6: default studio-sandbox image tag bumped to 1.17.8 — catches the chart
 # up to the current sandbox image (the tag lockstep had drifted from 1.12.0,
 # missing 5 minors of image changes, incl. the slides deck-as-theme CSS fix
@@ -40,7 +45,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.9.7
+version: 0.9.17
 # appVersion tracks the studio-sandbox image version (image.tag default).
-appVersion: "1.18.0"
+appVersion: "1.21.1"
 kubeVersion: ">=1.30.0-0"

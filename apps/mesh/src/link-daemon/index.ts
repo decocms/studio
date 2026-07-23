@@ -197,6 +197,10 @@ export async function startLinkDaemon(
             repository: {
               cloneUrl: config.repo.cloneUrl,
               branch: config.repo.branch,
+              ...(config.repo.submoduleCredentials &&
+              config.repo.submoduleCredentials.length > 0
+                ? { submoduleCredentials: config.repo.submoduleCredentials }
+                : {}),
             },
             ...(config.repo.userName && config.repo.userEmail
               ? {

@@ -43,6 +43,7 @@ import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sa
 import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
+import { createSwappableFs } from "./swappable-fs";
 import { createLoadRepoTool } from "./load-repo";
 import { createSubtaskTool, SubtaskInputSchema } from "./subtask";
 import { userAskTool } from "@decocms/harness/decopilot/built-in-tools/user-ask";
@@ -236,14 +237,19 @@ async function buildAllTools(
     // layer) are built by the cluster glue so the portable tools never import
     // `@decocms/sandbox` (spec §4.3). Provisioning stays lazy inside the hooks —
     // `ensureSandbox` runs on the first VM-tool call, not here.
-    const fs = await buildClusterSandboxFs(ctx, {
+    const initialFs = await buildClusterSandboxFs(ctx, {
       virtualMcpId: vmContext.virtualMcpId,
       branch: vmContext.branch,
       userId: vmContext.userId,
       syncTools: vmContext.syncTools,
     });
+    // The VM tools are built once and close over the fs. `load_repo` switches
+    // the thread's repo mid-run onto a new sandbox branch — so the tools call
+    // through a swappable forwarder that `load_repo` re-points after the clone
+    // lands, making the repo usable THIS turn instead of only the next message.
+    const swappableFs = createSwappableFs(initialFs);
     vmTools = createVmTools({
-      fs,
+      fs: swappableFs.fs,
       htmlArtifactBuffer,
       toolOutputMap,
       needsApproval: vmNeedsApproval,
@@ -263,6 +269,19 @@ async function buildAllTools(
       userId: vmContext.userId,
       threadId: vmContext.threadId,
       writer,
+      // Re-point the live fs tools at the newly-cloned repo sandbox. Built with
+      // the same syncTools flag so the switched-in sandbox also materializes the
+      // tool catalog. Provisioning stays lazy — the next VM-tool call ensures it.
+      rebindFs: async (branch) => {
+        swappableFs.swap(
+          await buildClusterSandboxFs(ctx, {
+            virtualMcpId: vmContext.virtualMcpId,
+            branch,
+            userId: vmContext.userId,
+            syncTools: vmContext.syncTools,
+          }),
+        );
+      },
     });
     if (loadRepo) tools.load_repo = loadRepo;
   }

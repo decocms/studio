@@ -1,6 +1,6 @@
 {
   "name": "@decocms/mcp-utils",
-  "version": "1.0.13",
+  "version": "1.1.0",
   "description": "Primitives for building MCP proxies, gateways, and sandboxes",
   "type": "module",
   "main": "./src/index.ts",

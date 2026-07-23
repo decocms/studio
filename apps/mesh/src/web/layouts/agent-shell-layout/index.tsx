@@ -58,6 +58,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { EmptyState } from "@/web/components/empty-state";
 import { useWorkspaceLayoutState } from "@/web/hooks/use-layout-state";
 import { getActiveGithubRepo } from "@/web/lib/github-repo";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Toolbar } from "./toolbar";
 import { WorkspacePanelGroup } from "./workspace-panel-group";
 import { ToggleButtons } from "./toggle-buttons";
@@ -69,6 +70,7 @@ import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-ev
 import {
   SandboxLifecycleProvider,
   selectVmEntry,
+  deriveOthersThreadLabel,
   type BranchMapEntryLike,
 } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
@@ -77,6 +79,7 @@ import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/web/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/web/components/sandbox/blocks/blocks-preview-workspace-context";
 import { SidePanel } from "./side-panel";
+import { useAgentSandboxSession } from "@/web/hooks/use-agent-sandbox-session";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -98,11 +101,12 @@ export function useInsetContext(): InsetContextValue | null {
 // ---------------------------------------------------------------------------
 
 function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
+  const t = useT();
   return (
     <ErrorBoundary
       fallback={
         <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-          Something went wrong loading the chat. Try refreshing.
+          {t("agentShellLayout.agentShellLayout.chatLoadingError")}
         </div>
       }
     >
@@ -149,9 +153,15 @@ function VmEventsBridge({
   children: ReactNode;
 }) {
   const { currentBranch, activeTask } = useChatTask();
+  const { org } = useProjectContext();
   const { pendingSandboxProviderKind } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
+  const { data: agentSandboxSession } = useAgentSandboxSession(
+    org.slug,
+    virtualMcpId,
+    currentBranch,
+  );
 
   // Overlay the thread's own sandbox record for the current branch. `load_repo`
   // binds a repo to the thread and persists its sandbox there (the ephemeral
@@ -160,7 +170,7 @@ function VmEventsBridge({
   const threadSandboxMap = activeTask?.metadata?.sandboxMap as
     | SandboxMap
     | undefined;
-  const effectiveSandboxMap: SandboxMap | undefined =
+  const threadEffectiveSandboxMap: SandboxMap | undefined =
     userId && currentBranch && threadSandboxMap?.[userId]?.[currentBranch]
       ? {
           ...(sandboxMap ?? {}),
@@ -170,8 +180,44 @@ function VmEventsBridge({
           },
         }
       : sandboxMap;
+  const effectiveSandboxMap: SandboxMap | undefined =
+    userId &&
+    currentBranch &&
+    agentSandboxSession?.desiredState === "running" &&
+    agentSandboxSession.status === "ready" &&
+    agentSandboxSession.sandboxHandle
+      ? {
+          ...(threadEffectiveSandboxMap ?? {}),
+          [userId]: {
+            ...(threadEffectiveSandboxMap?.[userId] ?? {}),
+            [currentBranch]: {
+              ...parseBranchMap(
+                threadEffectiveSandboxMap?.[userId]?.[currentBranch],
+              ),
+              "agent-sandbox": {
+                sandboxHandle: agentSandboxSession.sandboxHandle,
+                previewUrl: agentSandboxSession.previewUrl,
+                sandboxApiUrl: agentSandboxSession.sandboxApiUrl,
+                sandboxProviderKind: "agent-sandbox",
+                startedWith: agentSandboxSession.startedWith ?? undefined,
+              },
+            },
+          },
+        }
+      : threadEffectiveSandboxMap;
   const effectiveHasGithubRepo =
     hasActiveGithubRepo || agentHasClonableSource(activeTask?.metadata);
+
+  // Someone else's thread: hold auto-start behind a confirmation gate so the
+  // sandbox doesn't silently boot on the creator's branch (mirrors the chat
+  // composer's read-only banner). Ownership rule lives in the pure, tested
+  // deriveOthersThreadLabel; own thread → null (no gate).
+  const othersThreadLabel = deriveOthersThreadLabel({
+    userId: userId ?? null,
+    createdBy: activeTask?.created_by,
+    branch: activeTask?.branch,
+    title: activeTask?.title,
+  });
 
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
@@ -198,7 +244,11 @@ function VmEventsBridge({
         | undefined) ?? null)
     : selectVmEntry(branchMap);
   const previewUrl = vmEntry?.previewUrl ?? null;
-  const shouldConnect = Object.keys(branchMap).length > 0 || isStartPending;
+  const shouldConnect =
+    Object.keys(branchMap).length > 0 ||
+    isStartPending ||
+    agentSandboxSession?.status === "provisioning" ||
+    agentSandboxSession?.status === "reaping";
 
   return (
     <SandboxEventsProvider
@@ -214,6 +264,13 @@ function VmEventsBridge({
         hasActiveGithubRepo={effectiveHasGithubRepo}
         sandboxMap={effectiveSandboxMap}
         sandboxProviderKind={pendingSandboxProviderKind}
+        sharedDesiredState={agentSandboxSession?.desiredState ?? null}
+        sharedLifecyclePending={
+          agentSandboxSession?.status === "provisioning" ||
+          agentSandboxSession?.status === "reaping"
+        }
+        othersThreadLabel={othersThreadLabel}
+        othersThreadId={activeTask?.id ?? null}
       >
         <BlocksPreviewWorkspaceProvider
           key={`${virtualMcpId}:${currentBranch ?? "no-branch"}`}
@@ -295,6 +352,7 @@ function MobileTaskWorkspace({
   layout: TaskLayout;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
 }) {
+  const t = useT();
   const mobileSurface = layout.mainOpen ? "main" : (layout.sidePanel ?? "chat");
 
   return (
@@ -318,7 +376,7 @@ function MobileTaskWorkspace({
             <ErrorBoundary
               fallback={
                 <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-                  Something went wrong. Try refreshing.
+                  {t("agentShellLayout.agentShellLayout.somethingWentWrong")}
                 </div>
               }
             >
@@ -355,6 +413,7 @@ function MobileTaskWorkspace({
 // ---------------------------------------------------------------------------
 
 function AgentInsetProvider() {
+  const t = useT();
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { org } = useProjectContext();
@@ -425,7 +484,7 @@ function AgentInsetProvider() {
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
           <div className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground">
             <Loading01 className="size-4 animate-spin mr-2" />
-            Creating task…
+            {t("agentShellLayout.agentShellLayout.creatingTask")}
           </div>
         </div>
       </InsetContext>
@@ -437,7 +496,9 @@ function AgentInsetProvider() {
       <InsetContext value={insetContextValue}>
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
           <div className="flex flex-col h-full items-center justify-center gap-2 bg-background card-shadow rounded-[0.75rem] p-8 text-sm">
-            <div className="font-medium">Task unavailable</div>
+            <div className="font-medium">
+              {t("agentShellLayout.agentShellLayout.taskUnavailable")}
+            </div>
             <div className="text-muted-foreground">
               {ensureState.error.message}
             </div>
@@ -456,8 +517,11 @@ function AgentInsetProvider() {
               image={
                 <AlertCircle size={48} className="text-muted-foreground" />
               }
-              title="Agent not found"
-              description={`The agent "${virtualMcpId}" does not exist in this organization.`}
+              title={t("agentShellLayout.agentShellLayout.agentNotFound")}
+              description={t(
+                "agentShellLayout.agentShellLayout.agentNotFoundDescription",
+                { virtualMcpId },
+              )}
               actions={
                 <Button
                   variant="outline"
@@ -465,7 +529,7 @@ function AgentInsetProvider() {
                     navigate({ to: "/$org", params: { org: orgSlug } })
                   }
                 >
-                  Go to organization home
+                  {t("agentShellLayout.agentShellLayout.goToOrgHome")}
                 </Button>
               }
             />

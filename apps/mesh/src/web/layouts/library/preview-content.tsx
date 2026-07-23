@@ -21,6 +21,7 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { Download01, LinkExternal01, XClose } from "@untitledui/icons";
 import { useParams } from "@tanstack/react-router";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   FilePreview,
   FilePreviewShimmer,
@@ -50,6 +51,7 @@ export interface LibraryPreviewProps {
 }
 
 function CloseButton({ onClose }: { onClose: () => void }) {
+  const t = useT();
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -57,7 +59,9 @@ function CloseButton({ onClose }: { onClose: () => void }) {
           <XClose size={14} />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">Close</TooltipContent>
+      <TooltipContent side="bottom">
+        {t("library.previewContent.close")}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -68,6 +72,7 @@ export function LibraryFilePreview({
   showSeeInLibrary = false,
   variant,
 }: LibraryPreviewProps & { variant: LibraryPreviewVariant }) {
+  const t = useT();
   const location = parseLibraryPath(previewPath);
   const { volume, dirPath: filePath } = location;
   const { data: entry, isPending } = useOrgFsStat(volume, filePath);
@@ -172,7 +177,9 @@ export function LibraryFilePreview({
                   </a>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Download</TooltipContent>
+              <TooltipContent side="bottom">
+                {t("library.previewContent.download")}
+              </TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -186,7 +193,9 @@ export function LibraryFilePreview({
                   <LinkExternal01 size={14} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Open in new tab</TooltipContent>
+              <TooltipContent side="bottom">
+                {t("library.previewContent.openInNewTab")}
+              </TooltipContent>
             </Tooltip>
           </>
         )}
@@ -201,7 +210,7 @@ export function LibraryFilePreview({
           <div className="flex h-full flex-col items-center justify-center gap-2">
             <FileTypeIcon filename={filename} className="h-7.5 w-6" />
             <span className="text-sm text-muted-foreground">
-              This file is no longer available.
+              {t("library.previewContent.fileNotAvailable")}
             </span>
           </div>
         )}

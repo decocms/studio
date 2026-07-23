@@ -23,6 +23,8 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { formatTimeAgo } from "@/web/lib/format-time";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 import {
   Tooltip,
   TooltipContent,
@@ -69,7 +71,7 @@ const RECENT_CONVERSATIONS_TILE_ID = "recent-conversations";
 
 export interface NativeTileDef {
   id: string;
-  title: string;
+  titleKey: TranslationKey;
   defaultSize: { w: number; h: number };
   minSize: { w: number; h: number };
   /** When true, the tile is NOT on the default board — it only appears once
@@ -84,37 +86,37 @@ export interface NativeTileDef {
 export const NATIVE_TILES: NativeTileDef[] = [
   {
     id: PAGEVIEWS_TILE_ID,
-    title: "Pageviews",
+    titleKey: "home.nativeTiles.pageviews",
     defaultSize: { w: 2, h: 3 },
     minSize: { w: 1, h: 2 },
   },
   {
     id: SESSIONS_TILE_ID,
-    title: "Sessions",
+    titleKey: "home.nativeTiles.sessions",
     defaultSize: { w: 2, h: 3 },
     minSize: { w: 1, h: 2 },
   },
   {
     id: ORDERS_TILE_ID,
-    title: "Orders",
+    titleKey: "home.nativeTiles.orders",
     defaultSize: { w: 2, h: 3 },
     minSize: { w: 1, h: 2 },
   },
   {
     id: REVENUE_TILE_ID,
-    title: "Revenue",
+    titleKey: "home.nativeTiles.revenue",
     defaultSize: { w: 3, h: 3 },
     minSize: { w: 2, h: 2 },
   },
   {
     id: CODING_TILE_ID,
-    title: "Coding",
+    titleKey: "home.nativeTiles.coding",
     defaultSize: { w: 3, h: 3 },
     minSize: { w: 2, h: 2 },
   },
   {
     id: RECENT_CONVERSATIONS_TILE_ID,
-    title: "Recent conversations",
+    titleKey: "home.nativeTiles.recentConversations",
     // Full width (grid is 6 cols) × 4 rows.
     defaultSize: { w: 6, h: 4 },
     minSize: { w: 2, h: 2 },
@@ -229,11 +231,15 @@ const METRIC_CONFIG: Record<string, MetricConfig> = {
   },
 };
 
-function toPoints(data: number[]): MetricPoint[] {
+function toPoints(data: number[], t: TFunction): MetricPoint[] {
   return data.map((value, i) => {
     const daysAgo = data.length - 1 - i;
     const label =
-      daysAgo === 0 ? "Today" : daysAgo === 1 ? "Yesterday" : `${daysAgo}d ago`;
+      daysAgo === 0
+        ? t("home.nativeTiles.today")
+        : daysAgo === 1
+          ? t("home.nativeTiles.yesterday")
+          : t("home.nativeTiles.daysAgo", { days: daysAgo });
     return { label, value };
   });
 }
@@ -275,6 +281,7 @@ function contribLevelClass(count: number): string {
 }
 
 function ContributionsGrid({ grid }: { grid?: ContribGrid }) {
+  const t = useT();
   return (
     <TooltipProvider delayDuration={0}>
       <div
@@ -299,8 +306,8 @@ function ContributionsGrid({ grid }: { grid?: ContribGrid }) {
                   </TooltipTrigger>
                   <TooltipContent>
                     {count === 0
-                      ? "No commits"
-                      : `${count} commit${count === 1 ? "" : "s"}`}
+                      ? t("home.nativeTiles.noCommits")
+                      : t("home.nativeTiles.commits", { count })}
                   </TooltipContent>
                 </Tooltip>
               );
@@ -342,11 +349,12 @@ function ConnectOverlay({
 /** Connected but the source's reporting isn't wired yet. Honest placeholder,
  *  never a fabricated number. */
 function ConnectedSoon({ label }: { label: string }) {
+  const t = useT();
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
       <CheckCircle className="size-6 text-success/60" />
       <p className="text-xs text-muted-foreground">
-        {label} connected. Live data coming soon.
+        {t("home.nativeTiles.connectedSoon", { label })}
       </p>
     </div>
   );
@@ -361,6 +369,7 @@ function AnalyticsMetricTile({
 }: {
   metricKey: keyof typeof METRIC_CONFIG;
 }) {
+  const t = useT();
   const connected = useConnections({ slug: "google-analytics" }).length > 0;
   const { connect, isConnecting } = useConnectApp("deco/google-analytics");
   const cfg = METRIC_CONFIG[metricKey];
@@ -368,11 +377,11 @@ function AnalyticsMetricTile({
   return (
     <div className="relative flex h-full flex-col">
       <div className="min-h-0 flex-1">
-        <MetricChart points={toPoints(cfg.series)} metricLabel={metricKey} />
+        <MetricChart points={toPoints(cfg.series, t)} metricLabel={metricKey} />
       </div>
       <MetricValue value={cfg.value} delta={cfg.delta} />
       <ConnectOverlay
-        label="Connect Google Analytics"
+        label={t("home.nativeTiles.connectGoogleAnalytics")}
         icon={<BarChart10 className="size-4" />}
         onConnect={connect}
         pending={isConnecting}
@@ -390,9 +399,10 @@ function CommerceMetricTile({
 }: {
   metricKey: keyof typeof METRIC_CONFIG;
 }) {
-  const connected =
-    useConnections({ slug: "vtex" }).length > 0 ||
-    useConnections({ slug: "shopify" }).length > 0;
+  const t = useT();
+  const vtexConnections = useConnections({ slug: "vtex" });
+  const shopifyConnections = useConnections({ slug: "shopify" });
+  const connected = vtexConnections.length > 0 || shopifyConnections.length > 0;
   const [open, setOpen] = useState(false);
   const cfg = METRIC_CONFIG[metricKey];
   if (connected || !cfg) return <ConnectedSoon label="Commerce" />;
@@ -400,11 +410,14 @@ function CommerceMetricTile({
     <>
       <div className="relative flex h-full flex-col">
         <div className="min-h-0 flex-1">
-          <MetricChart points={toPoints(cfg.series)} metricLabel={metricKey} />
+          <MetricChart
+            points={toPoints(cfg.series, t)}
+            metricLabel={metricKey}
+          />
         </div>
         <MetricValue value={cfg.value} delta={cfg.delta} />
         <ConnectOverlay
-          label="Connect commerce platform"
+          label={t("home.nativeTiles.connectCommercePlatform")}
           icon={<ShoppingCart01 className="size-4" />}
           onConnect={() => setOpen(true)}
         />
@@ -437,6 +450,7 @@ function CodingTileBody() {
 }
 
 function CodingDisconnected() {
+  const t = useT();
   const { connect, isConnecting } = useConnectApp("deco/mcp-github");
   return (
     <div className="relative flex h-full flex-col">
@@ -444,7 +458,7 @@ function CodingDisconnected() {
         <ContributionsGrid />
       </div>
       <ConnectOverlay
-        label="Connect GitHub"
+        label={t("home.nativeTiles.connectGithub")}
         icon={<GitHubIcon className="size-4" />}
         onConnect={connect}
         pending={isConnecting}
@@ -454,6 +468,7 @@ function CodingDisconnected() {
 }
 
 function CodingConnected({ connectionId }: { connectionId: string }) {
+  const t = useT();
   const { data, isLoading } = useGithubRecentPrs(connectionId);
   const { data: grid } = useGithubContributions(connectionId);
   return (
@@ -470,7 +485,7 @@ function CodingConnected({ connectionId }: { connectionId: string }) {
         </div>
       ) : !data || data.repos.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No recent pull requests.
+          {t("home.nativeTiles.noRecentPullRequests")}
         </p>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
@@ -513,12 +528,30 @@ function CodingConnected({ connectionId }: { connectionId: string }) {
 // Recent conversations
 // ---------------------------------------------------------------------------
 
-const STATUS_LABEL: Record<string, { label: string; className: string }> = {
-  completed: { label: "Completed", className: "text-success" },
-  in_progress: { label: "Running", className: "text-foreground" },
-  requires_action: { label: "Needs input", className: "text-foreground" },
-  failed: { label: "Failed", className: "text-destructive" },
-  expired: { label: "Expired", className: "text-muted-foreground" },
+const STATUS_LABEL: Record<
+  string,
+  { labelKey: TranslationKey; className: string }
+> = {
+  completed: {
+    labelKey: "home.nativeTiles.statusCompleted",
+    className: "text-success",
+  },
+  in_progress: {
+    labelKey: "home.nativeTiles.statusRunning",
+    className: "text-foreground",
+  },
+  requires_action: {
+    labelKey: "home.nativeTiles.statusNeedsInput",
+    className: "text-foreground",
+  },
+  failed: {
+    labelKey: "home.nativeTiles.statusFailed",
+    className: "text-destructive",
+  },
+  expired: {
+    labelKey: "home.nativeTiles.statusExpired",
+    className: "text-muted-foreground",
+  },
 };
 
 interface OverviewThread {
@@ -536,6 +569,7 @@ interface OrgMember {
 }
 
 function RecentConversationsList() {
+  const t = useT();
   const { org, locator } = useProjectContext();
   const studio = useStudioTools();
   const navigate = useNavigate();
@@ -559,7 +593,7 @@ function RecentConversationsList() {
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
         <MessageChatCircle className="size-6 text-muted-foreground/50" />
         <p className="text-xs text-muted-foreground">
-          No conversations yet. Start one and it'll show up here for your team.
+          {t("home.nativeTiles.noConversationsYet")}
         </p>
       </div>
     );
@@ -598,7 +632,7 @@ function RecentConversationsList() {
             />
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-sm font-medium text-foreground">
-                {thread.title || "Untitled conversation"}
+                {thread.title || t("home.nativeTiles.untitledConversation")}
               </span>
               <span className="truncate text-xs text-muted-foreground">
                 {authorName}
@@ -607,7 +641,7 @@ function RecentConversationsList() {
             </div>
             {status && (
               <span className={cn("shrink-0 text-xs", status.className)}>
-                {status.label}
+                {t(status.labelKey)}
               </span>
             )}
           </button>
@@ -653,11 +687,12 @@ function NativeTileBody({ nativeId }: { nativeId: string }) {
  * Unknown ids render nothing (the tile still occupies its cell).
  */
 export function NativeTile({ nativeId }: { nativeId: string }) {
+  const t = useT();
   const def = NATIVE_TILES.find((t) => t.id === nativeId);
   return (
     <div className="flex h-full flex-col overflow-hidden p-4">
       <span className="shrink-0 text-xs font-medium text-muted-foreground">
-        {def?.title ?? "Tile"}
+        {def?.titleKey ? t(def.titleKey) : t("home.nativeTiles.tile")}
       </span>
       <div className="relative mt-2 min-h-0 flex-1">
         <NativeTileBody nativeId={nativeId} />

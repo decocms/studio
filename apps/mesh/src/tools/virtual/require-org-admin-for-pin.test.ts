@@ -21,6 +21,12 @@ describe("requireOrgAdminForPinnedField", () => {
     ).not.toThrow();
   });
 
+  test("allows a comma-joined multi-role owner/admin", () => {
+    expect(() =>
+      requireOrgAdminForPinnedField(ctxWithRole("admin,billing-manager")),
+    ).not.toThrow();
+  });
+
   test("rejects member and missing role", () => {
     expect(() => requireOrgAdminForPinnedField(ctxWithRole("user"))).toThrow(
       ForbiddenError,

@@ -58,6 +58,7 @@ import { toast } from "sonner";
 
 import { DeleteConnectionDialogs } from "@/web/components/delete-connection-dialogs";
 import { useDeleteConnection } from "@/web/hooks/use-delete-connection";
+import { useT } from "@/web/i18n/use-t";
 import { ViewLayout } from "../layout";
 import { ConnectionActivity } from "./connection-activity.tsx";
 import { ConnectionAgentsPanel } from "./connection-agents-panel.tsx";
@@ -238,6 +239,7 @@ function ConnectionInspectorViewWithConnection({
   resources: Array<{ name: string; description?: string; uri?: string }>;
   siblings: ConnectionEntity[];
 }) {
+  const t = useT();
   const navigate = useNavigate({ from: "/$org/settings/connections/$appSlug" });
   const queryClient = useQueryClient();
   const connectionActions = useConnectionActions();
@@ -304,13 +306,22 @@ function ConnectionInspectorViewWithConnection({
   };
 
   const handleAuthenticateForId = async (connId: string) => {
+    // Only request scopes the connection has explicitly configured. Do NOT
+    // hardcode "offline_access": it's an OIDC-ism many MCP providers don't
+    // advertise, and passing it into Dynamic Client Registration makes strict
+    // servers reject the registration outright (e.g. Pipedrive returns HTTP 400
+    // on /register). Refresh tokens are already requested via grant_types, so
+    // omitting scope lets such servers grant their default scope set.
+    const configuredScopes = connection.configuration_scopes?.length
+      ? connection.configuration_scopes.join(" ")
+      : undefined;
     const { token, tokenInfo, error } = await authenticateMcp({
       connectionId: connId,
       orgSlug: projectOrg.slug,
-      scope: "offline_access",
+      ...(configuredScopes ? { scope: configuredScopes } : {}),
     });
     if (error || !token) {
-      toast.error(`Authentication failed: ${error}`);
+      toast.error(t("details.connection.authFailed", { error: error ?? "" }));
       return;
     }
 
@@ -379,7 +390,7 @@ function ConnectionInspectorViewWithConnection({
       queryKey: KEYS.mcpClientPrefix(),
     });
 
-    toast.success("Authentication successful");
+    toast.success(t("details.connection.authSuccess"));
   };
 
   const handleAuthenticate = () => handleAuthenticateForId(connection.id);
@@ -396,7 +407,9 @@ function ConnectionInspectorViewWithConnection({
 
       if (!response.ok) {
         const errorText = await response.text();
-        toast.error(`Failed to remove OAuth: ${errorText}`);
+        toast.error(
+          t("details.connection.failedRemoveOAuth", { error: errorText }),
+        );
         return;
       }
 
@@ -408,12 +421,10 @@ function ConnectionInspectorViewWithConnection({
         queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
       });
 
-      toast.success(
-        "OAuth removed. You can now re-authenticate with a different account.",
-      );
+      toast.success(t("details.connection.oauthRemoved"));
     } catch (err) {
       console.error("Error removing OAuth token:", err);
-      toast.error("Failed to remove OAuth");
+      toast.error(t("details.connection.failedRemoveOAuthError"));
     }
   };
 
@@ -437,12 +448,12 @@ function ConnectionInspectorViewWithConnection({
               {configureInstance?.title ?? connection.title}
             </SheetTitle>
             <SheetDescription className="text-xs">
-              Update URL, authentication, and other settings
+              {t("details.connection.settingsDescription")}
             </SheetDescription>
             {instanceCreator && (
               <div className="flex items-center gap-1.5 pt-1">
                 <span className="text-xs text-muted-foreground">
-                  Connected by
+                  {t("details.connection.connectedBy")}
                 </span>
                 <Avatar
                   url={instanceCreator.user?.image ?? undefined}
@@ -468,7 +479,7 @@ function ConnectionInspectorViewWithConnection({
                   name="title"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Name</FormLabel>
+                      <FormLabel>{t("details.connection.nameLabel")}</FormLabel>
                       <FormControl>
                         <Input {...field} />
                       </FormControl>
@@ -481,7 +492,9 @@ function ConnectionInspectorViewWithConnection({
                   name="description"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Description</FormLabel>
+                      <FormLabel>
+                        {t("details.connection.descriptionLabel")}
+                      </FormLabel>
                       <FormControl>
                         <Input {...field} value={field.value || ""} />
                       </FormControl>
@@ -514,11 +527,13 @@ function ConnectionInspectorViewWithConnection({
                 disabled={!hasAnyChanges || isUpdating}
                 className="flex-1"
               >
-                {isUpdating ? "Saving…" : "Save changes"}
+                {isUpdating
+                  ? t("details.connection.savingButton")
+                  : t("details.connection.saveButton")}
               </Button>
               {hasAnyChanges && (
                 <Button variant="outline" onClick={handleUndo}>
-                  Undo
+                  {t("details.connection.undoButton")}
                 </Button>
               )}
               <Button
@@ -531,7 +546,7 @@ function ConnectionInspectorViewWithConnection({
                 }}
               >
                 <Trash01 size={15} />
-                Delete
+                {t("details.connection.deleteButton")}
               </Button>
             </div>
           </Form>
@@ -569,11 +584,13 @@ function ConnectionInspectorViewWithConnection({
                       });
                       toast.success(
                         status === "active"
-                          ? "Connection enabled"
-                          : "Connection disabled",
+                          ? t("details.connection.connectionEnabled")
+                          : t("details.connection.connectionDisabled"),
                       );
                     } catch {
-                      toast.error("Failed to update connection");
+                      toast.error(
+                        t("details.connection.failedUpdateConnection"),
+                      );
                     }
                   }}
                   isAdding={isAddingInstance}
@@ -650,6 +667,7 @@ function ConnectionInspectorViewWithConnection({
 }
 
 function ConnectionInspectorViewContent() {
+  const t = useT();
   const navigate = useNavigate({ from: "/$org/settings/connections/$appSlug" });
   const { appSlug, org } = useParams({
     from: "/shell/$org/settings/connections/$appSlug",
@@ -754,8 +772,8 @@ function ConnectionInspectorViewContent() {
     return (
       <div className="flex h-full w-full bg-background">
         <EmptyState
-          title="Connection not found"
-          description="This connection may have been deleted or you may not have access."
+          title={t("details.connection.notFoundTitle")}
+          description={t("details.connection.notFoundDescription")}
           actions={
             <Button
               variant="outline"
@@ -768,7 +786,7 @@ function ConnectionInspectorViewContent() {
                 })
               }
             >
-              Back to connections
+              {t("details.connection.backButton")}
             </Button>
           }
         />

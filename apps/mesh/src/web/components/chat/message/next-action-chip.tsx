@@ -19,8 +19,10 @@ import {
 import { createMentionDoc } from "../tiptap/mention/node";
 import { useChatStream, useOptionalChatTask } from "../context.tsx";
 import { useHomeNextActions } from "@/web/hooks/use-home-next-actions";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export function NextActionChip() {
+  const t = useT();
   const task = useOptionalChatTask();
   const { sendMessage, isStreaming, messages } = useChatStream();
   const { org } = useProjectContext();
@@ -60,7 +62,7 @@ export function NextActionChip() {
 
   const send = async (prompt: Prompt, args?: PromptArgumentValues) => {
     if (!client) {
-      toast.error("MCP client not available");
+      toast.error(t("chat.nextActionChip.mcpClientNotAvailable"));
       return;
     }
     try {
@@ -91,7 +93,7 @@ export function NextActionChip() {
       });
     } catch (error) {
       console.error("[next-action-chip] failed", error);
-      toast.error("Failed to load prompt. Please try again.");
+      toast.error(t("chat.nextActionChip.failedLoadPrompt"));
     }
   };
 
@@ -118,7 +120,9 @@ export function NextActionChip() {
         className="group mt-3 flex items-center gap-2 self-start rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 hover:text-foreground"
       >
         <Stars02 size={12} className="shrink-0 text-purple-500" />
-        <span className="font-medium text-foreground/80">Next:</span>
+        <span className="font-medium text-foreground/80">
+          {t("chat.nextActionChip.next")}
+        </span>
         <span className="truncate">{next.title}</span>
         <ArrowRight
           size={12}

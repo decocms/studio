@@ -10,6 +10,7 @@ import {
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Loading01 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export function MakeReusableModal({
   open,
@@ -47,27 +48,32 @@ export function MakeReusableModal({
     await onSubmit(trimmed);
   };
 
+  const t = useT();
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Save as global</DialogTitle>
+            <DialogTitle>
+              {t("sectionsEditor.makeReusableModal.title")}
+            </DialogTitle>
             <DialogDescription>
-              Save this section as a global block so it can be reused on other
-              pages.
+              {t("sectionsEditor.makeReusableModal.description")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4 space-y-2">
             <label htmlFor="block-id" className="text-sm font-medium">
-              Block name
+              {t("sectionsEditor.makeReusableModal.blockNameLabel")}
             </label>
             <Input
               id="block-id"
               value={blockId}
               onChange={(e) => setBlockId(e.target.value)}
-              placeholder="MyNewBlock"
+              placeholder={t(
+                "sectionsEditor.makeReusableModal.blockNamePlaceholder",
+              )}
               autoFocus
               disabled={isPending}
             />
@@ -80,16 +86,16 @@ export function MakeReusableModal({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {t("sectionsEditor.makeReusableModal.cancel")}
             </Button>
             <Button type="submit" disabled={!blockId.trim() || isPending}>
               {isPending ? (
                 <>
                   <Loading01 size={14} className="animate-spin" />
-                  Saving…
+                  {t("sectionsEditor.makeReusableModal.saving")}
                 </>
               ) : (
-                "Save"
+                t("sectionsEditor.makeReusableModal.save")
               )}
             </Button>
           </DialogFooter>

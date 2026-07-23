@@ -15,6 +15,7 @@ import { useConnections } from "@decocms/mesh-sdk";
 import { Loading01, XClose, Zap } from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import { track } from "@/web/lib/posthog-client";
 
 export function EventTriggerForm({
@@ -24,6 +25,7 @@ export function EventTriggerForm({
   automationId: string;
   onDone: () => void;
 }) {
+  const t = useT();
   const triggerConnections = useConnections({ binding: "TRIGGER" });
   const [connectionId, setConnectionId] = useState<string | undefined>();
   const [eventType, setEventType] = useState<string | undefined>();
@@ -52,10 +54,10 @@ export function EventTriggerForm({
         connection_id: connectionId,
         event_type: eventType,
       });
-      toast.success("Event trigger added");
+      toast.success(t("automations.eventTriggerForm.successAdded"));
       onDone();
     } catch {
-      toast.error("Failed to add event trigger");
+      toast.error(t("automations.eventTriggerForm.errorFailed"));
     }
   };
 
@@ -63,7 +65,9 @@ export function EventTriggerForm({
     <div className="flex flex-col gap-3 px-3 py-3 rounded-lg border border-border bg-background">
       <div className="flex items-center gap-2">
         <Zap size={14} className="text-muted-foreground shrink-0" />
-        <span className="text-sm font-medium">Event trigger</span>
+        <span className="text-sm font-medium">
+          {t("automations.eventTriggerForm.title")}
+        </span>
         <button
           type="button"
           className="ml-auto shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground"
@@ -83,12 +87,16 @@ export function EventTriggerForm({
         }}
       >
         <SelectTrigger className="w-full">
-          <SelectValue placeholder="Select connection..." />
+          <SelectValue
+            placeholder={t(
+              "automations.eventTriggerForm.selectConnectionPlaceholder",
+            )}
+          />
         </SelectTrigger>
         <SelectContent>
           {triggerConnections.length === 0 ? (
             <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-              No connections with trigger support
+              {t("automations.eventTriggerForm.noConnectionsWithTrigger")}
             </div>
           ) : (
             triggerConnections.map((conn) => (
@@ -113,11 +121,16 @@ export function EventTriggerForm({
             {isLoadingTriggers ? (
               <span className="flex items-center gap-2 text-muted-foreground">
                 <Loading01 size={13} className="animate-spin" />
-                Loading events...
+                {t("automations.eventTriggerForm.loadingEvents")}
               </span>
             ) : (
-              <SelectValue placeholder="Select event type...">
-                {eventType ?? "Select event type..."}
+              <SelectValue
+                placeholder={t(
+                  "automations.eventTriggerForm.selectEventTypePlaceholder",
+                )}
+              >
+                {eventType ??
+                  t("automations.eventTriggerForm.selectEventTypePlaceholder")}
               </SelectValue>
             )}
           </SelectTrigger>
@@ -160,7 +173,12 @@ export function EventTriggerForm({
                       }
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder={`Select ${key}...`} />
+                        <SelectValue
+                          placeholder={t(
+                            "automations.eventTriggerForm.selectParamPlaceholder",
+                            { key },
+                          )}
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         {schema.enum.map((val) => (
@@ -197,7 +215,7 @@ export function EventTriggerForm({
           {addTrigger.isPending ? (
             <Loading01 size={13} className="animate-spin" />
           ) : (
-            "Add trigger"
+            t("automations.eventTriggerForm.addTriggerButton")
           )}
         </Button>
       )}

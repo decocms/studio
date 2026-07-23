@@ -1,6 +1,7 @@
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
 import { Zap } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /**
  * Resolves a virtualMCP by id and renders its avatar.
@@ -15,6 +16,7 @@ export function McpAvatar({
   size?: "xs" | "sm" | "md";
   showAutomationBadge?: boolean;
 }) {
+  const t = useT();
   return (
     <div className="relative shrink-0">
       {virtualMcpId ? (
@@ -24,7 +26,7 @@ export function McpAvatar({
       )}
       {showAutomationBadge && (
         <span
-          aria-label="Automation-triggered"
+          aria-label={t("tasksPanel.mcpAvatar.automationTriggered")}
           className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-blue-500 border border-blue-600 text-white"
         >
           <Zap size={10} className="text-white" />

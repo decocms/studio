@@ -4,6 +4,19 @@ import type { ClaimPhase } from "@/web/components/sandbox/hooks/sandbox-events-c
 import { selectHeaderButton } from "./panel-state";
 import type { CheckRun, PrSummary } from "./use-pr-data";
 import type { PrReviewSignals } from "./use-pr-reviews";
+import type { TFunction, TranslationKey } from "@/web/i18n/use-t.ts";
+import type { InterpolationVars } from "@/web/i18n/interpolate.ts";
+import { thread as threadEn } from "@/web/i18n/en/thread.ts";
+
+const mockT: TFunction = (key: TranslationKey, vars?: InterpolationVars) => {
+  const template =
+    (threadEn as Record<string, string>)[key as string] ?? (key as string);
+  if (!vars) return template;
+  return Object.entries(vars).reduce(
+    (s, [k, v]) => s.replace(`{${k}}`, String(v)),
+    template,
+  );
+};
 
 type ReadyBranch = Extract<BranchMeta, { kind: "ready" }>;
 
@@ -35,6 +48,7 @@ interface BaseInput {
   checks: CheckRun[];
   reviews: PrReviewSignals | null;
   loading?: boolean;
+  t: TFunction;
 }
 
 function happyInput(over: Partial<BaseInput> = {}): BaseInput {
@@ -45,6 +59,7 @@ function happyInput(over: Partial<BaseInput> = {}): BaseInput {
     pr: null,
     checks: [],
     reviews: null,
+    t: mockT,
     ...over,
   };
 }
@@ -60,6 +75,7 @@ function pr(over: Partial<PrSummary> = {}): PrSummary {
     base: "main",
     head: "feat/x",
     headSha: "abc123",
+    headRepoFullName: "acme/web",
     htmlUrl: "https://github.com/acme/web/pull/42",
     author: "me",
     ...over,
@@ -337,6 +353,7 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Publish to production");
     expect(r.action).toBe("merge-split");
     expect(r.variant).toBe("success");
+    expect(r.tooltip).toBe("Squash-merge PR #42 into main");
   });
 
   test("ahead of base + closed non-merged PR → Reopen PR", () => {

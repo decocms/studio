@@ -24,6 +24,7 @@ import { createSsoRoutes } from "./org-sso";
 import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
 import { createHomeNextActionsRoutes } from "./home-next-actions";
+import { createCommerceDiagnosticShareRoutes } from "./commerce-diagnostic-share";
 import { createTaskBoardImportRoutes } from "./task-board-import";
 import { createObjectStorageRoutes } from "./object-storage";
 import { createThreadOutputsRoutes } from "./thread-outputs";
@@ -31,6 +32,7 @@ import { createToolsRestRoutes } from "./tools-rest";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
+import { createAgentSandboxSessionRoutes } from "./agent-sandbox-sessions";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
@@ -87,6 +89,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
   app.route("/", createCredentialVaultRoutes()); // /api/:org/vault/connections/:connectionId/access-token
   app.route("/", createTaskBoardImportRoutes()); // /api/:org/internal/task-board/import — service-token batch import
+  app.route("/", createCommerceDiagnosticShareRoutes()); // /api/:org/internal/commerce-diagnostic/share-invite — service-token share invite
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
   app.route("/tools", createToolsRestRoutes()); // /api/:org/tools[/:toolName] — REST builtin-tool dispatch
   app.route("/", createObjectStorageRoutes()); // /api/:org/object-storage/*
@@ -97,6 +100,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     createOrgFsRoutes({ getConnection: deps.getNatsConnection }),
   ); // /api/:org/fs/:volume/...
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
+  app.route("/agent-sandbox-sessions", createAgentSandboxSessionRoutes());
   app.route("/", createHomeNextActionsRoutes());
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
@@ -133,6 +137,18 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   // Mounted BEFORE the proxy routes for the same reason.
   app.get(
     "/mcp/:gateway?/:connectionId/.well-known/oauth-protected-resource/*",
+    deps.betterAuthProtectedResourceHandler,
+  );
+
+  // Aggregate (Decopilot) MCP endpoint at `/api/:org/mcp` has no connectionId,
+  // so its OAuth resource is Studio itself — the Better Auth MCP authorization
+  // server (with Dynamic Client Registration). This lets external MCP clients
+  // (e.g. Claude Desktop) register their own redirect_uri and log in against
+  // Studio, instead of the connection `oauth-proxy` which only accepts Studio's
+  // own origin. Mounted BEFORE the proxy catch-all so the well-known suffix is
+  // not swallowed as a `:connectionId`.
+  app.get(
+    "/mcp/.well-known/oauth-protected-resource",
     deps.betterAuthProtectedResourceHandler,
   );
 

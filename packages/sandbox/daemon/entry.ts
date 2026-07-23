@@ -932,9 +932,14 @@ async function shutdown(): Promise<void> {
   const branch = store.read()?.git?.repository?.branch;
   if (branch) {
     try {
+      // "skip" (not "throw"): an invalid decofile block must not abort the whole
+      // shutdown sync — that would silently lose the user's other valid work when
+      // the sandbox is torn down. Sync everything else; the bad block stays
+      // uncommitted and is discarded on the next re-clone.
       publish(
         gitDeps,
         "chore(daemon): sync all local changes to remote on shutdown",
+        { onInvalidBlock: "skip" },
       );
     } catch (err) {
       console.warn("[daemon] shutdown publish failed", err);

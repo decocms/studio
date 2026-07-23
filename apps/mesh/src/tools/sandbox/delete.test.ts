@@ -95,15 +95,37 @@ function makeCtx(overrides: {
   userId?: string;
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
+  agentSandboxEntry?: SandboxRecord | null;
 }): StudioContext {
   const {
     orgId = "org_1",
     userId = "user-1",
     virtualMcp,
     updateSpy = mock(async () => {}),
+    agentSandboxEntry = null,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
+  let agentSandboxSessions: StudioContext["storage"]["agentSandboxSessions"];
+  agentSandboxSessions = {
+    withLock: mock(
+      async (
+        _locator: unknown,
+        fn: (
+          storage: StudioContext["storage"]["agentSandboxSessions"],
+        ) => Promise<unknown>,
+      ) => fn(agentSandboxSessions),
+    ),
+    beginStop: mock(async () =>
+      agentSandboxEntry
+        ? {
+            generation: 1,
+            sandboxHandle: agentSandboxEntry.sandboxHandle,
+          }
+        : null,
+    ),
+    completeStop: mock(async () => {}),
+  } as never;
 
   return {
     auth: {
@@ -123,6 +145,7 @@ function makeCtx(overrides: {
     },
     storage: {
       virtualMcps: { findById, update: updateSpy },
+      agentSandboxSessions,
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
@@ -165,7 +188,7 @@ describe("SANDBOX_DELETE", () => {
     lastRequestedKind.value = null;
   });
 
-  it("calls runner.delete with the entry's handle and removes sandboxMap entry", async () => {
+  it("calls runner.delete with the shared session handle and completes the stop", async () => {
     const metadata: Metadata = {
       sandboxMap: makeSandboxMap(
         "user-1",
@@ -176,7 +199,11 @@ describe("SANDBOX_DELETE", () => {
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy });
+    const ctx = makeCtx({
+      virtualMcp,
+      updateSpy,
+      agentSandboxEntry: HOSTED_ENTRY,
+    });
 
     const result = await SANDBOX_DELETE.handler(
       {
@@ -192,12 +219,10 @@ describe("SANDBOX_DELETE", () => {
     expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
     expect(lastRequestedKind.value).toBe("agent-sandbox");
 
-    expect(updateSpy).toHaveBeenCalledTimes(1);
-    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
-      .metadata;
-    // After removal, the user bucket should be gone entirely.
-    expect(updated.sandboxMap["user-1"]).toBeUndefined();
+    expect(ctx.storage.agentSandboxSessions.completeStop).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 
   it("dispatches to the agent-sandbox runner when input.sandboxProviderKind is 'agent-sandbox'", async () => {
@@ -210,7 +235,10 @@ describe("SANDBOX_DELETE", () => {
       ),
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
-    const ctx = makeCtx({ virtualMcp });
+    const ctx = makeCtx({
+      virtualMcp,
+      agentSandboxEntry: HOSTED_ENTRY,
+    });
 
     await SANDBOX_DELETE.handler(
       {
@@ -268,7 +296,11 @@ describe("SANDBOX_DELETE", () => {
     };
     const virtualMcp = makeVirtualMcp("org_1", metadata);
     const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy });
+    const ctx = makeCtx({
+      virtualMcp,
+      updateSpy,
+      agentSandboxEntry: HOSTED_ENTRY,
+    });
 
     await SANDBOX_DELETE.handler(
       {
@@ -281,7 +313,7 @@ describe("SANDBOX_DELETE", () => {
 
     expect(mockDelete).toHaveBeenCalledWith(HOSTED_ENTRY.sandboxHandle);
     expect(lastRequestedKind.value).toBe("agent-sandbox");
-    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 
   // Regression guard: a pod that flipped STUDIO_SANDBOX_PROVIDER between start
@@ -301,7 +333,10 @@ describe("SANDBOX_DELETE", () => {
         ),
       };
       const virtualMcp = makeVirtualMcp("org_1", metadata);
-      const ctx = makeCtx({ virtualMcp });
+      const ctx = makeCtx({
+        virtualMcp,
+        agentSandboxEntry: HOSTED_ENTRY,
+      });
 
       await SANDBOX_DELETE.handler(
         {
@@ -320,8 +355,8 @@ describe("SANDBOX_DELETE", () => {
     }
   });
 
-  it("skips runner.delete and DB update when no sandboxMap entry for (user, branch, kind)", async () => {
-    // Entry exists for a different user — this user has no entry.
+  it("skips runner.delete when no shared session exists", async () => {
+    // Legacy sandboxMap rows no longer determine agent-sandbox lifecycle.
     const metadata: Metadata = {
       sandboxMap: makeSandboxMap(
         "other-user",

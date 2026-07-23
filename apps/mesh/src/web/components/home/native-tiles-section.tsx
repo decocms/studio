@@ -11,6 +11,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { useHomeEdit } from "./home-edit-context";
 import { NATIVE_TILES, nativeCandidateId } from "./native-tiles";
 import { SectionHeader } from "./section-header";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const NATIVE_TILE_ICON: Record<string, typeof MessageChatCircle> = {
   tasks: CheckCircle,
@@ -27,13 +28,14 @@ const NATIVE_TILE_ICON: Record<string, typeof MessageChatCircle> = {
  * into the same edit draft the rest of the board uses.
  */
 export function NativeTilesSection() {
+  const t = useT();
   const { layout, commitLayout } = useHomeEdit();
   const hidden = new Set(layout.hidden);
   const shown = new Set(layout.shown ?? []);
 
   return (
     <div className="flex flex-col gap-1.5">
-      <SectionHeader title="Built-in tiles" />
+      <SectionHeader title={t("home.nativeTilesSection.builtInTiles")} />
       {NATIVE_TILES.map((tile) => {
         const candidateId = nativeCandidateId(tile.id);
         const onHome = tile.defaultHidden
@@ -71,7 +73,7 @@ export function NativeTilesSection() {
               <Icon size={16} />
             </span>
             <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-              {tile.title}
+              {t(tile.titleKey)}
             </span>
             <Button
               type="button"
@@ -81,7 +83,9 @@ export function NativeTilesSection() {
               onClick={toggle}
             >
               {onHome ? <Minus size={14} /> : <Plus size={14} />}
-              {onHome ? "Remove" : "Add"}
+              {onHome
+                ? t("home.nativeTilesSection.remove")
+                : t("home.nativeTilesSection.add")}
             </Button>
           </div>
         );

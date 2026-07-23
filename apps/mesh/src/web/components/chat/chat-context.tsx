@@ -60,6 +60,7 @@ import {
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t";
 
 import {
   useAiProviderKeys,
@@ -772,6 +773,7 @@ export function ActiveTaskProvider({
   taskId,
   children,
 }: PropsWithChildren<{ taskId: string }>) {
+  const t = useT();
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
 
   // Fire chat_opened once per (page session × taskId). Runs during render, but
@@ -796,9 +798,7 @@ export function ActiveTaskProvider({
   } = useChatPrefs();
   const internals = useContext(TaskInternalsCtx);
   if (!internals) {
-    throw new Error(
-      "ActiveTaskProvider must be used within ChatContextProvider",
-    );
+    throw new Error(t("chat.chatContext.activeTaskProviderMissingContext"));
   }
 
   const { user, contextPrompt, preferences, rawNavigateToTask } = internals;
@@ -1234,7 +1234,9 @@ export function ActiveTaskProvider({
           removeMessage(capturedTaskId, message.id);
           setChatError(err instanceof Error ? err : new Error(String(err)));
           toast.error(
-            err instanceof Error ? err.message : "Failed to queue message",
+            err instanceof Error
+              ? err.message
+              : t("chat.chatContext.failedToQueueMessage"),
           );
         }
         // Reconcile the optimistic row against the gate's authoritative list.
@@ -1303,7 +1305,7 @@ export function ActiveTaskProvider({
     // belt-and-braces guard — but report it honestly rather than resolving
     // as if the edit happened.
     if (sendInFlight.has(taskId)) {
-      toast.info("Still sending your previous message — try again in a moment");
+      toast.info(t("chat.chatContext.stillSendingPreviousMessage"));
       return false;
     }
     sendInFlight.add(taskId);
@@ -1311,7 +1313,7 @@ export function ActiveTaskProvider({
     const ok = await queueActions.cancel(taskId, messageId);
     if (!ok) {
       sendInFlight.delete(taskId);
-      toast.error("Couldn't remove the original message");
+      toast.error(t("chat.chatContext.couldNotRemoveOriginalMessage"));
       return false;
     }
     dropPendingBody(taskId, messageId);
@@ -1343,7 +1345,9 @@ export function ActiveTaskProvider({
       return await dispatchUserMessage(edited);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to send edited message",
+        err instanceof Error
+          ? err.message
+          : t("chat.chatContext.failedToSendEditedMessage"),
       );
       return false;
     }
@@ -1363,10 +1367,16 @@ export function ActiveTaskProvider({
         const data = (await res.json().catch(() => ({}))) as {
           message?: string;
         };
-        throw new Error(data.message ?? `Cancel failed: ${res.status}`);
+        throw new Error(
+          data.message ??
+            t("chat.chatContext.cancelFailedStatus", { status: res.status }),
+        );
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to cancel";
+      const msg =
+        err instanceof Error
+          ? err.message
+          : t("chat.chatContext.failedToCancel");
       toast.error(msg);
       console.error("[chat] cancelRun", err);
     }
@@ -1438,9 +1448,9 @@ export function ActiveTaskProvider({
 // ============================================================================
 
 export function useChatStream(): ChatStreamContextValue {
+  const t = useT();
   const ctx = useContext(ChatStreamCtx);
-  if (!ctx)
-    throw new Error("useChatStream must be used within ActiveTaskProvider");
+  if (!ctx) throw new Error(t("chat.chatContext.useChatStreamMissingContext"));
   return ctx;
 }
 
@@ -1449,16 +1459,16 @@ export function useOptionalChatStream(): ChatStreamContextValue | null {
 }
 
 export function useChatTask(): ChatTaskContextValue {
+  const t = useT();
   const ctx = useContext(ChatTaskCtx);
-  if (!ctx)
-    throw new Error("useChatTask must be used within ChatContextProvider");
+  if (!ctx) throw new Error(t("chat.chatContext.useChatTaskMissingContext"));
   return ctx;
 }
 
 export function useChatPrefs(): ChatPrefsContextValue {
+  const t = useT();
   const ctx = useContext(ChatPrefsCtx);
-  if (!ctx)
-    throw new Error("useChatPrefs must be used within ChatContextProvider");
+  if (!ctx) throw new Error(t("chat.chatContext.useChatPrefsMissingContext"));
   return ctx;
 }
 

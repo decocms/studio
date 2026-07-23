@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export function ItemActions({
   onDuplicate,
@@ -30,12 +31,13 @@ export function ItemActions({
   onViewJson?: () => void;
   onDelete: () => void;
 }) {
+  const t = useT();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label="More actions"
+          aria-label={t("sandbox.itemActions.moreActions")}
           className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground cursor-pointer"
           onClick={(e) => e.stopPropagation()}
         >
@@ -46,13 +48,13 @@ export function ItemActions({
         {onRename && (
           <DropdownMenuItem onClick={onRename}>
             <Edit01 size={14} />
-            Rename
+            {t("sandbox.itemActions.rename")}
           </DropdownMenuItem>
         )}
         {onDuplicate && (
           <DropdownMenuItem onClick={onDuplicate}>
             <Copy01 size={14} />
-            Duplicate
+            {t("sandbox.itemActions.duplicate")}
           </DropdownMenuItem>
         )}
         {onAddVariant && (
@@ -63,7 +65,7 @@ export function ItemActions({
               className="cursor-pointer text-success focus:text-success"
             >
               <Flag01 size={14} />
-              Add variant
+              {t("sandbox.itemActions.addVariant")}
             </DropdownMenuItem>
           </>
         )}
@@ -73,13 +75,13 @@ export function ItemActions({
             {onEditSeo && (
               <DropdownMenuItem onClick={onEditSeo}>
                 <CreditCardSearch size={14} />
-                Edit SEO
+                {t("sandbox.itemActions.editSeo")}
               </DropdownMenuItem>
             )}
             {onViewJson && (
               <DropdownMenuItem onClick={onViewJson}>
                 <Code01 size={14} />
-                View JSON
+                {t("sandbox.itemActions.viewJson")}
               </DropdownMenuItem>
             )}
           </>
@@ -90,7 +92,7 @@ export function ItemActions({
           className="text-destructive focus:text-destructive"
         >
           <Trash01 size={14} />
-          Delete
+          {t("sandbox.itemActions.delete")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

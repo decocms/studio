@@ -29,6 +29,7 @@ import {
 import { KEYS } from "@/web/lib/registry/query-keys";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useRegistryMutations } from "@/web/hooks/registry/use-registry";
+import { useT } from "@/web/i18n/use-t.ts";
 import type {
   MonitorConnectionAuthStatus,
   MonitorConnectionListItem,
@@ -48,15 +49,46 @@ function authBadgeStyle(status: MonitorConnectionAuthStatus) {
   }
 }
 
-function authBadgeLabel(status: MonitorConnectionAuthStatus) {
+function authBadgeLabel(
+  status: MonitorConnectionAuthStatus,
+  t: ReturnType<typeof useT>,
+) {
   switch (status) {
     case "authenticated":
-      return "Authenticated";
+      return t("registry.monitorConnectionsPanel.authenticated");
     case "needs_auth":
-      return "Needs Auth";
+      return t("registry.monitorConnectionsPanel.needsAuth");
     default:
-      return "Not checked";
+      return t("registry.monitorConnectionsPanel.notChecked");
   }
+}
+
+export function ConnectionIcon({
+  icon,
+  title,
+}: {
+  icon: string | null;
+  title: string;
+}) {
+  const [iconFailed, setIconFailed] = useState(false);
+
+  return (
+    <div className="size-10 rounded-lg border border-border bg-muted/20 overflow-hidden shrink-0 flex items-center justify-center">
+      {icon && !iconFailed ? (
+        <img
+          src={icon}
+          alt={title}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={() => setIconFailed(true)}
+        />
+      ) : (
+        <span className="text-xs font-semibold text-muted-foreground">
+          {title.charAt(0).toUpperCase()}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function ConnectionRow({
@@ -74,6 +106,7 @@ function ConnectionRow({
   const [tokenValue, setTokenValue] = useState("");
   const [isReplacingToken, setIsReplacingToken] = useState(false);
 
+  const t = useT();
   const updateAuth = useUpdateMonitorConnectionAuth();
   const { updateMutation } = useRegistryMutations();
   const { org } = useProjectContext();
@@ -87,7 +120,7 @@ function ConnectionRow({
   const isUnlisted = entry.item?.is_unlisted ?? false;
   const isRequestSource = entry.source === "request";
   const probeQuery = useQuery({
-    queryKey: KEYS.monitorConnectionAuthProbe(connectionId),
+    queryKey: KEYS.monitorConnectionAuthProbe(org.id, connectionId),
     queryFn: async () =>
       isConnectionAuthenticated({
         url: `/api/${org.slug}/mcp/${connectionId}`,
@@ -104,28 +137,48 @@ function ConnectionRow({
   const hasOAuthToken = probeResult?.hasOAuthToken ?? false;
   const isServerError = probeResult?.isServerError ?? false;
   const probeIsAuthenticated = probeResult?.isAuthenticated ?? false;
+  // A non-server-error `error` means the probe request itself failed (network,
+  // DNS, CORS) — distinct from "not authenticated yet", which otherwise falls
+  // through to the misleading "token required" flavor below.
+  const probeError = !isServerError ? probeResult?.error : undefined;
   const authFlavor = isProbeLoading
     ? "checking"
     : isServerError
       ? "server_error"
-      : supportsOAuth
-        ? probeIsAuthenticated
-          ? hasOAuthToken
-            ? "oauth_connected"
-            : "connected"
-          : "oauth_available"
-        : probeIsAuthenticated
-          ? "connected"
-          : "token_required";
+      : probeError
+        ? "unreachable"
+        : supportsOAuth
+          ? probeIsAuthenticated
+            ? hasOAuthToken
+              ? "oauth_connected"
+              : "connected"
+            : "oauth_available"
+          : probeIsAuthenticated
+            ? "connected"
+            : "token_required";
 
   const markAuthenticated = () => {
     updateAuth.mutate(
       { connectionId, authStatus: "authenticated" },
       {
-        onSuccess: () => onAuthChanged(),
+        onSuccess: () => {
+          onAuthChanged();
+          // Auth changed → upstream may return different content; drop cached
+          // UI HTML for this connection (IDB + in-memory query) so it re-reads
+          // fresh, regardless of whether auth happened via OAuth or a token.
+          void clearHtmlResourceCacheForConnection(connectionId);
+          queryClient.invalidateQueries({
+            predicate: (query) =>
+              query.queryKey[1] === UI_RESOURCE_HTML_KEY &&
+              query.queryKey[3] === connectionId,
+          });
+        },
         onError: (err) =>
           toast.error(
-            `Failed to save auth status for "${title}": ${err instanceof Error ? err.message : String(err)}`,
+            t("registry.monitorConnectionsPanel.failedToSaveAuthStatus", {
+              title,
+              error: err instanceof Error ? err.message : String(err),
+            }),
           ),
       },
     );
@@ -138,31 +191,51 @@ function ConnectionRow({
       const probe = await probeQuery.refetch();
       const status = probe.data;
       if (!status) {
-        toast.error(`Could not reach "${title}". The remote MCP may be down.`);
+        toast.error(
+          t("registry.monitorConnectionsPanel.couldNotReachConnection", {
+            title,
+          }),
+        );
         return;
       }
 
       if (status.isAuthenticated) {
         toast.success(
-          `"${title}" is reachable. You can re-authenticate if needed.`,
+          t("registry.monitorConnectionsPanel.connectionReachable", { title }),
         );
         return;
       }
 
       if (status.isServerError) {
-        toast.error(`Server error for "${title}". The remote MCP may be down.`);
+        toast.error(
+          t("registry.monitorConnectionsPanel.serverErrorConnection", {
+            title,
+          }),
+        );
+        return;
+      }
+
+      if (status.error) {
+        toast.error(
+          t("registry.monitorConnectionsPanel.connectionUnreachable", {
+            title,
+            error: status.error,
+          }),
+        );
         return;
       }
 
       if (!status.supportsOAuth) {
         toast.warning(
-          `"${title}" does not support OAuth. Use the Token field to paste an API key.`,
+          t("registry.monitorConnectionsPanel.noOAuthSupport", { title }),
         );
         return;
       }
 
       // Server supports OAuth — trigger the flow
-      toast.info(`Opening authentication window for "${title}"...`);
+      toast.info(
+        t("registry.monitorConnectionsPanel.openingAuthWindow", { title }),
+      );
       const authResult = await authenticateMcp({
         connectionId,
         orgSlug: org.slug,
@@ -172,7 +245,12 @@ function ConnectionRow({
       });
 
       if (authResult.error) {
-        toast.error(`OAuth failed for "${title}": ${authResult.error}`);
+        toast.error(
+          t("registry.monitorConnectionsPanel.oauthFailed", {
+            title,
+            error: authResult.error,
+          }),
+        );
         return;
       }
 
@@ -202,7 +280,11 @@ function ConnectionRow({
           if (authResult.token) {
             await saveTokenInternal(authResult.token);
           } else {
-            toast.error(`Failed to save OAuth tokens for "${title}".`);
+            toast.error(
+              t("registry.monitorConnectionsPanel.failedToSaveOAuthTokens", {
+                title,
+              }),
+            );
             return;
           }
         }
@@ -210,12 +292,20 @@ function ConnectionRow({
         await saveTokenInternal(authResult.token);
       }
 
-      toast.success(`"${title}" authenticated!`);
+      toast.success(
+        t("registry.monitorConnectionsPanel.connectionAuthenticated", {
+          title,
+        }),
+      );
       markAuthenticated();
       await probeQuery.refetch();
     } catch (err) {
       console.error("[MonitorConnectionsPanel] Auth error:", err);
-      toast.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(
+        t("registry.monitorConnectionsPanel.authError", {
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
     } finally {
       setBusy(false);
     }
@@ -230,28 +320,24 @@ function ConnectionRow({
 
   const handleSaveToken = async () => {
     if (!tokenValue.trim()) {
-      toast.error("Token cannot be empty.");
+      toast.error(t("registry.monitorConnectionsPanel.tokenCannotBeEmpty"));
       return;
     }
     setBusy(true);
     try {
       await saveTokenInternal(tokenValue);
-      toast.success(`Token saved for "${title}"!`);
+      toast.success(
+        t("registry.monitorConnectionsPanel.tokenSaved", { title }),
+      );
       setIsReplacingToken(false);
       setTokenValue("");
       markAuthenticated();
-      // Auth changed → upstream may return different content; drop cached UI
-      // HTML for this connection (IDB + in-memory query) so it re-reads fresh.
-      void clearHtmlResourceCacheForConnection(connectionId);
-      queryClient.invalidateQueries({
-        predicate: (query) =>
-          query.queryKey[1] === UI_RESOURCE_HTML_KEY &&
-          query.queryKey[3] === connectionId,
-      });
       await probeQuery.refetch();
     } catch (err) {
       toast.error(
-        `Error saving token: ${err instanceof Error ? err.message : String(err)}`,
+        t("registry.monitorConnectionsPanel.errorSavingToken", {
+          error: err instanceof Error ? err.message : String(err),
+        }),
       );
     } finally {
       setBusy(false);
@@ -274,11 +360,11 @@ function ConnectionRow({
     is_unlisted?: boolean;
   }) => {
     if (isRequestSource) {
-      toast.info("Visibility controls are available only for store items.");
+      toast.info(t("registry.monitorConnectionsPanel.visibilityOnlyForStore"));
       return;
     }
     if (!entry.item) {
-      toast.error("Registry item not found for this connection.");
+      toast.error(t("registry.monitorConnectionsPanel.registryItemNotFound"));
       return;
     }
     try {
@@ -286,11 +372,13 @@ function ConnectionRow({
         id: entry.item.id,
         data: patch,
       });
-      toast.success("Visibility updated");
+      toast.success(t("registry.monitorConnectionsPanel.visibilityUpdated"));
       onAuthChanged();
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update visibility",
+        error instanceof Error
+          ? error.message
+          : t("registry.monitorConnectionsPanel.failedToUpdateVisibility"),
       );
     }
   };
@@ -299,20 +387,9 @@ function ConnectionRow({
     <Card className="p-3 space-y-3 h-full">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
-          <div className="size-10 rounded-lg border border-border bg-muted/20 overflow-hidden shrink-0 flex items-center justify-center">
-            {icon ? (
-              <img
-                src={icon}
-                alt={title}
-                className="h-full w-full object-cover"
-                loading="lazy"
-              />
-            ) : (
-              <span className="text-xs font-semibold text-muted-foreground">
-                {title.charAt(0).toUpperCase()}
-              </span>
-            )}
-          </div>
+          {/* Remount on icon URL change so a prior load failure doesn't stick
+              around as a permanent fallback once a new icon is synced in. */}
+          <ConnectionIcon key={icon ?? title} icon={icon} title={title} />
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">{title}</p>
             <p className="text-xs text-muted-foreground break-all">
@@ -323,22 +400,26 @@ function ConnectionRow({
                 variant="outline"
                 className={cn("text-[10px]", authBadgeStyle(authStatus))}
               >
-                {authBadgeLabel(authStatus)}
+                {authBadgeLabel(authStatus, t)}
               </Badge>
               <Badge
                 variant={isPublic ? "default" : "secondary"}
                 className="text-[10px]"
               >
-                {isPublic ? "Public" : "Not public"}
+                {isPublic
+                  ? t("registry.monitorConnectionsPanel.public")
+                  : t("registry.monitorConnectionsPanel.notPublic")}
               </Badge>
               <Badge variant="outline" className="text-[10px]">
-                {isRequestSource ? "Request" : "Store"}
+                {isRequestSource
+                  ? t("registry.monitorConnectionsPanel.request")
+                  : t("registry.monitorConnectionsPanel.store")}
               </Badge>
               <Badge
                 variant="outline"
                 className={cn(
                   "text-[10px]",
-                  authFlavor === "server_error"
+                  authFlavor === "server_error" || authFlavor === "unreachable"
                     ? "border-destructive/40 text-destructive"
                     : authFlavor === "oauth_connected"
                       ? "border-success/30 text-success"
@@ -349,22 +430,32 @@ function ConnectionRow({
                           : "text-muted-foreground",
                 )}
               >
-                {authFlavor === "checking" && "Checking auth..."}
-                {authFlavor === "server_error" && "Server error"}
-                {authFlavor === "oauth_connected" && "OAuth connected"}
-                {authFlavor === "oauth_available" && "OAuth available"}
-                {authFlavor === "token_required" && "Token/manual auth"}
-                {authFlavor === "connected" && "Connected"}
+                {authFlavor === "checking" &&
+                  t("registry.monitorConnectionsPanel.checkingAuth")}
+                {authFlavor === "server_error" &&
+                  t("registry.monitorConnectionsPanel.serverError")}
+                {authFlavor === "unreachable" &&
+                  t("registry.monitorConnectionsPanel.unreachable")}
+                {authFlavor === "oauth_connected" &&
+                  t("registry.monitorConnectionsPanel.oauthConnected")}
+                {authFlavor === "oauth_available" &&
+                  t("registry.monitorConnectionsPanel.oauthAvailable")}
+                {authFlavor === "token_required" &&
+                  t("registry.monitorConnectionsPanel.tokenManualAuth")}
+                {authFlavor === "connected" &&
+                  t("registry.monitorConnectionsPanel.connected")}
               </Badge>
               {isUnlisted && (
                 <Badge variant="outline" className="text-[10px]">
-                  Hidden in private
+                  {t("registry.monitorConnectionsPanel.hiddenInPrivate")}
                 </Badge>
               )}
               {(failedResultCount > 0 || failedToolsCount > 0) && (
                 <Badge variant="destructive" className="text-[10px]">
-                  {failedResultCount} failed MCP / {failedToolsCount} failed
-                  tools
+                  {t("registry.monitorConnectionsPanel.failedCount", {
+                    mcpCount: failedResultCount,
+                    toolsCount: failedToolsCount,
+                  })}
                 </Badge>
               )}
             </div>
@@ -377,7 +468,9 @@ function ConnectionRow({
                 variant="ghost"
                 size="sm"
                 className="h-8 w-8 p-0"
-                aria-label={`Actions for ${title}`}
+                aria-label={t("registry.monitorConnectionsPanel.actionsFor", {
+                  title,
+                })}
               >
                 <DotsVertical size={16} />
               </Button>
@@ -385,26 +478,26 @@ function ConnectionRow({
             <DropdownMenuContent align="end">
               {isRequestSource ? (
                 <DropdownMenuItem disabled>
-                  Request item (no store visibility controls)
+                  {t("registry.monitorConnectionsPanel.requestItemNoControls")}
                 </DropdownMenuItem>
               ) : (
                 <>
                   <DropdownMenuItem
                     onClick={() => applyVisibility({ is_public: false })}
                   >
-                    Hide from public store
+                    {t("registry.monitorConnectionsPanel.hideFromPublicStore")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => applyVisibility({ is_unlisted: true })}
                   >
-                    Hide from private store
+                    {t("registry.monitorConnectionsPanel.hideFromPrivateStore")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() =>
                       applyVisibility({ is_public: true, is_unlisted: false })
                     }
                   >
-                    Show in both stores
+                    {t("registry.monitorConnectionsPanel.showInBothStores")}
                   </DropdownMenuItem>
                 </>
               )}
@@ -416,7 +509,11 @@ function ConnectionRow({
       <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
         {supportsOAuth && (
           <Button size="sm" onClick={handleAuthenticate} disabled={busy}>
-            {busy ? "..." : hasOAuthToken ? "Re-auth OAuth" : "OAuth"}
+            {busy
+              ? "..."
+              : hasOAuthToken
+                ? t("registry.monitorConnectionsPanel.reAuthOAuth")
+                : t("registry.monitorConnectionsPanel.oauth")}
           </Button>
         )}
         <Button
@@ -425,17 +522,19 @@ function ConnectionRow({
           onClick={() => probeQuery.refetch()}
           disabled={busy || isProbeLoading}
         >
-          {isProbeLoading ? "Checking..." : "Re-check"}
+          {isProbeLoading
+            ? t("registry.monitorConnectionsPanel.checking")
+            : t("registry.monitorConnectionsPanel.reCheck")}
         </Button>
       </div>
 
       <div className="space-y-1">
         <p className="text-[10px] text-muted-foreground">
-          Token/API key (for MCPs that require manual auth)
+          {t("registry.monitorConnectionsPanel.tokenApiKeyDescription")}
         </p>
         {isCheckingTokenField ? (
           <div className="h-8 px-3 flex items-center rounded-md border border-border bg-muted/30 text-muted-foreground text-xs">
-            Checking auth...
+            {t("registry.monitorConnectionsPanel.checkingAuth")}
           </div>
         ) : showMaskedToken ? (
           <div className="relative group">
@@ -446,16 +545,18 @@ function ConnectionRow({
               type="button"
               onClick={() => setIsReplacingToken(true)}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted"
-              title="Replace token"
+              title={t("registry.monitorConnectionsPanel.replaceToken")}
             >
-              Edit
+              {t("registry.monitorConnectionsPanel.edit")}
             </button>
           </div>
         ) : (
           <div className="flex items-center gap-2">
             <Input
               type="password"
-              placeholder="Paste API token / key..."
+              placeholder={t(
+                "registry.monitorConnectionsPanel.pasteApiTokenPlaceholder",
+              )}
               value={tokenValue}
               onChange={(e) => setTokenValue(e.target.value)}
               className="h-8 text-xs flex-1"
@@ -471,12 +572,15 @@ function ConnectionRow({
               onClick={handleSaveToken}
               disabled={busy || !tokenValue.trim()}
             >
-              Save
+              {t("registry.monitorConnectionsPanel.save")}
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="h-8 text-xs"
+              aria-label={t(
+                "registry.monitorConnectionsPanel.cancelReplaceToken",
+              )}
               onClick={() => {
                 setIsReplacingToken(false);
                 setTokenValue("");
@@ -492,6 +596,7 @@ function ConnectionRow({
 }
 
 export function MonitorConnectionsPanel() {
+  const t = useT();
   const listQuery = useMonitorConnections();
   const runsQuery = useMonitorRuns("completed");
   const latestRun = runsQuery.data?.items?.[0];
@@ -533,16 +638,17 @@ export function MonitorConnectionsPanel() {
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold">QA Connections</h3>
+          <h3 className="text-sm font-semibold">
+            {t("registry.monitorConnectionsPanel.title")}
+          </h3>
           <p className="text-[10px] text-muted-foreground">
-            We auto-detect auth type. Use OAuth when available, or always paste
-            a Token/API key for manual auth MCPs.
+            {t("registry.monitorConnectionsPanel.description1")}
           </p>
           <p className="text-[10px] text-muted-foreground mt-1">
-            Listing tools alone does not imply authenticated status.
+            {t("registry.monitorConnectionsPanel.description2")}
           </p>
           <p className="text-[10px] text-muted-foreground mt-1">
-            Cards show MCP icon, auth status, and latest failed test counters.
+            {t("registry.monitorConnectionsPanel.description3")}
           </p>
           <div className="mt-2 inline-flex rounded-lg border border-border p-0.5">
             <button
@@ -555,7 +661,7 @@ export function MonitorConnectionsPanel() {
               )}
               onClick={() => setSourceFilter("all")}
             >
-              All
+              {t("registry.monitorConnectionsPanel.filterAll")}
             </button>
             <button
               type="button"
@@ -567,7 +673,7 @@ export function MonitorConnectionsPanel() {
               )}
               onClick={() => setSourceFilter("store")}
             >
-              Store
+              {t("registry.monitorConnectionsPanel.filterStore")}
             </button>
             <button
               type="button"
@@ -579,7 +685,7 @@ export function MonitorConnectionsPanel() {
               )}
               onClick={() => setSourceFilter("request")}
             >
-              Requests
+              {t("registry.monitorConnectionsPanel.filterRequests")}
             </button>
           </div>
         </div>
@@ -589,41 +695,68 @@ export function MonitorConnectionsPanel() {
           onClick={() => {
             syncMutation.mutate(undefined, {
               onSuccess: () =>
-                toast.success("Connections synced (store + pending requests)"),
-              onError: (err) => toast.error(`Sync failed: ${err.message}`),
+                toast.success(
+                  t("registry.monitorConnectionsPanel.connectionsSynced"),
+                ),
+              onError: (err) =>
+                toast.error(
+                  t("registry.monitorConnectionsPanel.syncFailed", {
+                    error: err.message,
+                  }),
+                ),
             });
           }}
           disabled={syncMutation.isPending}
         >
-          {syncMutation.isPending ? "Syncing..." : "Sync"}
+          {syncMutation.isPending
+            ? t("registry.monitorConnectionsPanel.syncing")
+            : t("registry.monitorConnectionsPanel.sync")}
         </Button>
       </div>
       <div className="space-y-2">
-        {filteredItems.length === 0 && (
+        {listQuery.isLoading ? (
           <p className="text-xs text-muted-foreground text-center py-3">
-            No QA connections for this filter. Click &quot;Sync&quot; to create
-            mappings from store items and pending requests.
+            {t("registry.monitorConnectionsPanel.loadingConnections")}
           </p>
-        )}
-        {filteredItems.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filteredItems.map((entry) => {
-              const counts = failuresByItem[entry.mapping.item_id] ?? {
-                failedTools: 0,
-                failedResults: 0,
-              };
-              return (
-                <ConnectionRow
-                  key={entry.mapping.id}
-                  entry={entry}
-                  onAuthChanged={() => listQuery.refetch()}
-                  failedToolsCount={counts.failedTools}
-                  failedResultCount={counts.failedResults}
-                />
-              );
-            })}
+        ) : listQuery.isError ? (
+          <div className="p-8 text-center rounded-lg border border-border">
+            <p className="text-sm text-destructive">
+              {t("registry.monitorConnectionsPanel.loadFailed")}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {listQuery.error instanceof Error
+                ? listQuery.error.message
+                : t("registry.monitorConnectionsPanel.unknownError")}
+            </p>
           </div>
+        ) : (
+          filteredItems.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-3">
+              {t("registry.monitorConnectionsPanel.noConnectionsForFilter")}
+            </p>
+          )
         )}
+        {!listQuery.isLoading &&
+          !listQuery.isError &&
+          filteredItems.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {filteredItems.map((entry) => {
+                const counts = failuresByItem[entry.mapping.item_id] ?? {
+                  failedTools: 0,
+                  failedResults: 0,
+                };
+                return (
+                  <ConnectionRow
+                    key={entry.mapping.id}
+                    entry={entry}
+                    onAuthChanged={() => listQuery.refetch()}
+                    failedToolsCount={counts.failedTools}
+                    failedResultCount={counts.failedResults}
+                  />
+                );
+              })}
+            </div>
+          )}
       </div>
     </Card>
   );

@@ -1,4 +1,10 @@
-import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "bun:test";
@@ -211,6 +217,19 @@ describe("git routes", () => {
     expect(body.diffs["README.md"]?.to).toContain("hello world");
   });
 
+  it("diff shows the original content for a renamed file, not null", async () => {
+    const { appRoot, repoDir } = initRepo();
+    gitSync(["mv", "README.md", "GUIDE.md"], { cwd: repoDir, asUser: false });
+    const handler = makeGitDiffHandler({ appRoot, repoDir });
+    const res = await handler(new Request("http://x/git/diff"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      diffs: Record<string, { from: string | null; to: string | null }>;
+    };
+    expect(body.diffs["GUIDE.md"]?.from).toContain("hello");
+    expect(body.diffs["GUIDE.md"]?.to).toContain("hello");
+  });
+
   it("diff against base returns committed branch changes", async () => {
     const { appRoot, repoDir } = initRepo();
     gitSync(["checkout", "-b", "feature"], { cwd: repoDir, asUser: false });
@@ -383,6 +402,21 @@ describe("git routes", () => {
     expect(log.trim()).toBe("init");
   });
 
+  it("publish route returns 409 (not 500) for a protected-branch refusal", async () => {
+    const { appRoot, repoDir } = initRepo(); // initRepo checks out main
+    writeFileSync(join(repoDir, "README.md"), "changed\n");
+    const handler = makeGitPublishHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/publish", {
+        method: "POST",
+        body: JSON.stringify({ message: "from main" }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/protected branch "main"/);
+  });
+
   it("publish() does not commit org-fs mount content excluded via .git/info/exclude", () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir); // publish() refuses the protected default branch
@@ -412,6 +446,144 @@ describe("git routes", () => {
     expect(files).toContain("README.md");
     expect(files).not.toContain("ver27-performance.html");
     expect(files).not.toContain("org/");
+  });
+
+  it("publish() refuses to commit an invalid decofile block and leaves HEAD untouched", () => {
+    const { appRoot, repoDir } = initRepo();
+    onFeatureBranch(repoDir);
+    // The block already exists and is tracked (git reports edits to individual
+    // tracked files) — mirrors the real corruption, which mutated an existing
+    // page block already in the working tree.
+    mkdirSync(join(repoDir, ".deco", "blocks"), { recursive: true });
+    const block = join(repoDir, ".deco", "blocks", "pages-home.json");
+    writeFileSync(block, '{ "__resolveType": "site/pages/Home.tsx" }');
+    gitSync(["add", "--", ".deco/blocks/pages-home.json"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    gitSync(["commit", "-m", "add block"], { cwd: repoDir, asUser: false });
+    const headBefore = gitSync(["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    // now corrupt it: the exact shape — a dangling key inside an array + brace
+    writeFileSync(
+      block,
+      '{ "benefits": [ { "label": "x" }, "rule": { "a": 1 } } ]',
+    );
+    // a valid tracked change too — publish must block the WHOLE commit, not just
+    // skip the bad file
+    writeFileSync(join(repoDir, "README.md"), "changed\n");
+
+    expect(() => publish({ appRoot, repoDir }, "shutdown sync")).toThrow(
+      /Refusing to publish.*invalid JSON.*pages-home\.json/,
+    );
+    // nothing committed — HEAD is exactly where it was
+    expect(
+      gitSync(["rev-parse", "HEAD"], { cwd: repoDir, asUser: false }),
+    ).toBe(headBefore);
+  });
+
+  it("publish() commits a valid decofile block", () => {
+    const { appRoot, repoDir } = initRepo();
+    onFeatureBranch(repoDir);
+    mkdirSync(join(repoDir, ".deco", "blocks"), { recursive: true });
+    writeFileSync(
+      join(repoDir, ".deco", "blocks", "pages-home.json"),
+      '{\n  "__resolveType": "site/pages/Home.tsx"\n}',
+    );
+    // No remote configured → the push throws, but the commit lands first.
+    try {
+      publish({ appRoot, repoDir }, "shutdown sync");
+    } catch {
+      // expected: push fails without a remote
+    }
+    const files = gitSync(["show", "--name-only", "--pretty=", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    expect(files).toContain(".deco/blocks/pages-home.json");
+  });
+
+  it("publish() commits a deleted block without trying to parse it", () => {
+    const { appRoot, repoDir } = initRepo();
+    onFeatureBranch(repoDir);
+    mkdirSync(join(repoDir, ".deco", "blocks"), { recursive: true });
+    const rel = ".deco/blocks/pages-home.json";
+    writeFileSync(join(repoDir, rel), '{ "a": 1 }');
+    gitSync(["add", "--", rel], { cwd: repoDir, asUser: false });
+    gitSync(["commit", "-m", "add block"], { cwd: repoDir, asUser: false });
+    // delete it — the guard must skip (read fails), not throw
+    rmSync(join(repoDir, rel));
+    try {
+      publish({ appRoot, repoDir }, "shutdown sync");
+    } catch {
+      // expected: push fails without a remote; the commit lands first
+    }
+    const files = gitSync(["show", "--name-only", "--pretty=", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    expect(files).toContain(rel); // the deletion was committed
+  });
+
+  it("publish() validates every changed block, not just the first", () => {
+    const { appRoot, repoDir } = initRepo();
+    onFeatureBranch(repoDir);
+    mkdirSync(join(repoDir, ".deco", "blocks"), { recursive: true });
+    const a = ".deco/blocks/a.json";
+    const b = ".deco/blocks/b.json";
+    writeFileSync(join(repoDir, a), '{ "a": 1 }');
+    writeFileSync(join(repoDir, b), '{ "b": 2 }');
+    gitSync(["add", "--", a, b], { cwd: repoDir, asUser: false });
+    gitSync(["commit", "-m", "add blocks"], { cwd: repoDir, asUser: false });
+    // first stays valid, second is corrupted → error must point at the second
+    writeFileSync(join(repoDir, b), "{ broken");
+    expect(() => publish({ appRoot, repoDir }, "sync")).toThrow(/b\.json/);
+  });
+
+  it("publish() commits an invalid NON-block .json (out of scope) without throwing", () => {
+    const { appRoot, repoDir } = initRepo();
+    onFeatureBranch(repoDir);
+    // a plain .json outside .deco/blocks is not gated — invalid content is fine
+    writeFileSync(join(repoDir, "data.json"), "{ not valid json");
+    try {
+      publish({ appRoot, repoDir }, "sync");
+    } catch {
+      // expected: push fails without a remote; the commit lands first
+    }
+    const files = gitSync(["show", "--name-only", "--pretty=", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    expect(files).toContain("data.json");
+  });
+
+  it("publish() with onInvalidBlock:skip syncs valid work and drops the bad block", () => {
+    const { appRoot, repoDir } = initRepo();
+    onFeatureBranch(repoDir);
+    mkdirSync(join(repoDir, ".deco", "blocks"), { recursive: true });
+    const block = ".deco/blocks/pages-home.json";
+    writeFileSync(join(repoDir, block), '{ "__resolveType": "Home.tsx" }');
+    gitSync(["add", "--", block], { cwd: repoDir, asUser: false });
+    gitSync(["commit", "-m", "add block"], { cwd: repoDir, asUser: false });
+    // corrupt the block AND make a valid change elsewhere
+    writeFileSync(join(repoDir, block), "{ broken");
+    writeFileSync(join(repoDir, "README.md"), "changed\n");
+    // skip mode must NOT throw on the bad block
+    try {
+      publish({ appRoot, repoDir }, "shutdown sync", {
+        onInvalidBlock: "skip",
+      });
+    } catch {
+      // expected: push fails without a remote; the commit lands first
+    }
+    const files = gitSync(["show", "--name-only", "--pretty=", "HEAD"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    expect(files).toContain("README.md"); // valid work synced
+    expect(files).not.toContain(block); // corrupt block NOT committed
   });
 
   it("publish() rejects a tokenless github origin with a clear error", () => {
@@ -502,7 +674,7 @@ describe("git routes", () => {
       }),
     );
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
       error: "Invalid path: ../outside-secret.txt",
     });

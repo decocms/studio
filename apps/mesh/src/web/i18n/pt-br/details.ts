@@ -1,0 +1,156 @@
+import type { details as detailsEn } from "../en/details.ts";
+
+export const details = {
+  "details.connection.authFailed": "Falha na autenticação: {error}",
+  "details.connection.authSuccess": "Autenticação bem-sucedida",
+  "details.connection.backButton": "Voltar para conexões",
+  "details.connection.connectedBy": "Conectado por",
+  "details.connection.connectionDisabled": "Conexão desabilitada",
+  "details.connection.connectionEnabled": "Conexão habilitada",
+  "details.connection.deleteButton": "Excluir",
+  "details.connection.descriptionLabel": "Descrição",
+  "details.connection.failedRemoveOAuth": "Falha ao remover OAuth: {error}",
+  "details.connection.failedRemoveOAuthError": "Falha ao remover OAuth",
+  "details.connection.failedUpdateConnection": "Falha ao atualizar conexão",
+  "details.connection.nameLabel": "Nome",
+  "details.connection.notFoundDescription":
+    "Esta conexão pode ter sido excluída ou você pode não ter acesso.",
+  "details.connection.notFoundTitle": "Conexão não encontrada",
+  "details.connection.oauthRemoved":
+    "OAuth removido. Agora você pode se autenticar novamente com uma conta diferente.",
+  "details.connection.saveButton": "Salvar alterações",
+  "details.connection.savingButton": "Salvando…",
+  "details.connection.settingsDescription":
+    "Atualize URL, autenticação e outras configurações",
+  "details.connection.undoButton": "Desfazer",
+  "details.connectionActivity.activity": "Atividade",
+  "details.connectionActivity.avgLatency": "Latência média",
+  "details.connectionActivity.errorRatePercentage":
+    "{errorRate}% das chamadas falharam",
+  "details.connectionActivity.errors": "Erros",
+  "details.connectionActivity.noActivityInThisPeriod":
+    "Nenhuma atividade neste período",
+  "details.connectionActivity.toolCalls": "Chamadas de ferramenta",
+  "details.connectionActivity.topErrors": "Principais erros",
+  "details.connectionCapabilities.capabilities": "Capacidades",
+  "details.connectionCapabilities.noCapabilitiesDiscovered":
+    "Nenhuma capacidade descoberta ainda. A conexão ainda pode estar se conectando.",
+  "details.connectionCapabilities.noItemsAvailable":
+    "Nenhum {item} disponível.",
+  "details.connectionCapabilities.promptsTab": "Prompts",
+  "details.connectionCapabilities.resourcesTab": "Recursos",
+  "details.connectionCapabilities.toolsTab": "Ferramentas ({count})",
+  "details.connectionCapabilities.uiTab": "UI",
+  "details.connectionInstancesPanel.addInstance": "Adicionar instância",
+  "details.connectionInstancesPanel.authorize": "Autorizar",
+  "details.connectionInstancesPanel.configure": "Configurar",
+  "details.connectionInstancesPanel.delete": "Excluir",
+  "details.connectionInstancesPanel.disable": "Desativar",
+  "details.connectionInstancesPanel.disabled": "Desativado",
+  "details.connectionInstancesPanel.disabledError": "Desativado (erro)",
+  "details.connectionInstancesPanel.enable": "Ativar",
+  "details.connectionInstancesPanel.instance": "Instância",
+  "details.connectionInstancesPanel.instances": "Instâncias",
+  "details.connectionInstancesPanel.needsAuthorization": "Requer autorização",
+  "details.connectionSidebar.arguments": "Argumentos",
+  "details.connectionSidebar.argumentsPlaceholder": "arg1 arg2 --flag value",
+  "details.connectionSidebar.authenticatedViaOAuth": "Autenticado via OAuth",
+  "details.connectionSidebar.clearAndReplaceToken": "Limpar e substituir token",
+  "details.connectionSidebar.command": "Comando",
+  "details.connectionSidebar.commandPlaceholder": "node, bun, python...",
+  "details.connectionSidebar.connection": "Conexão",
+  "details.connectionSidebar.createAPatAt": "Crie um PAT em",
+  "details.connectionSidebar.customCommand": "Comando Personalizado",
+  "details.connectionSidebar.enterAccessToken": "Digite o token de acesso...",
+  "details.connectionSidebar.environmentVariables": "Variáveis de Ambiente",
+  "details.connectionSidebar.githubPersonalAccessToken":
+    "Token de Acesso Pessoal do GitHub",
+  "details.connectionSidebar.http": "HTTP",
+  "details.connectionSidebar.npmPackage": "Pacote NPM",
+  "details.connectionSidebar.npmPackagePlaceholder":
+    "@perplexity-ai/mcp-server",
+  "details.connectionSidebar.npxPackage": "Pacote NPX",
+  "details.connectionSidebar.pasteYourGitHubPat": "Cole seu PAT do GitHub",
+  "details.connectionSidebar.reauthenticate": "Reautenticar",
+  "details.connectionSidebar.removeOAuth": "Remover OAuth",
+  "details.connectionSidebar.spaceSeparatedArguments":
+    "Argumentos separados por espaço",
+  "details.connectionSidebar.sse": "SSE",
+  "details.connectionSidebar.token": "Token",
+  "details.connectionSidebar.type": "Tipo",
+  "details.connectionSidebar.urlPlaceholder": "https://example.com/mcp",
+  "details.connectionSidebar.virtualMcp": "MCP Virtual",
+  "details.connectionSidebar.virtualMcpDescription":
+    "Esta conexão referencia um MCP Virtual. Ferramentas e recursos são agregados dinamicamente das conexões subjacentes do MCP Virtual.",
+  "details.connectionSidebar.virtualMcpId": "ID do MCP Virtual",
+  "details.connectionSidebar.websocket": "Websocket",
+  "details.connectionSidebar.workingDirectory": "Diretório de Trabalho",
+  "details.connectionSidebar.workingDirectoryPlaceholder":
+    "/path/para/projeto (opcional)",
+  "details.connectionUiTab.adjustSearchTerms":
+    "Tente ajustar os termos de pesquisa",
+  "details.connectionUiTab.noAppsAvailable": "Nenhum app disponível",
+  "details.connectionUiTab.noAppsFound": "Nenhum app encontrado",
+  "details.connectionUiTab.noInteractiveUis":
+    "Esta conexão ainda não possui ferramentas com UIs interativas.",
+  "details.connectionUiTab.searchAppsPlaceholder": "Pesquisar apps...",
+  "details.mcpConfigurationForm.connecting": "Conectando...",
+  "details.mcpConfigurationForm.customConnection": "Conexão Personalizada",
+  "details.mcpConfigurationForm.failedToConnectMcp":
+    "Falha ao conectar MCP: {message}",
+  "details.mcpConfigurationForm.noConnectionsFound":
+    "Nenhuma conexão encontrada",
+  "details.mcpConfigurationForm.selectPlaceholder": "Selecionar {title}...",
+  "details.prompt.bodyPlaceholder": "Escreva a mensagem do prompt…",
+  "details.prompt.description": "Descrição",
+  "details.prompt.descriptionPlaceholder": "Adicione uma descrição…",
+  "details.prompt.details": "Detalhes",
+  "details.prompt.message": "Mensagem",
+  "details.prompt.messageDescription":
+    "Isso se torna a mensagem do usuário no prompt.",
+  "details.prompt.missingConnectionDescription":
+    "Informações de conexão ausentes na rota atual.",
+  "details.prompt.notFoundDescription":
+    "Este prompt pode ter sido excluído ou você pode não ter acesso a ele.",
+  "details.prompt.notFoundTitle": "Prompt não encontrado",
+  "details.prompt.title": "Título",
+  "details.prompt.titlePlaceholder": "Prompt sem título",
+  "details.settingsTab.authenticationRequired": "Autenticação Obrigatória",
+  "details.settingsTab.manualAuthenticationDescription":
+    "Este servidor requer uma chave de API ou token que deve ser configurado manualmente. Verifique a documentação do servidor para instruções sobre como obter credenciais.",
+  "details.settingsTab.manualAuthenticationRequired":
+    "Autenticação Manual Obrigatória",
+  "details.settingsTab.noAdditionalConfigurationNeeded":
+    "Nenhuma configuração adicional é necessária. Tudo está pronto para começar.",
+  "details.settingsTab.oauthAuthenticationDescription":
+    "Esta conexão requer autenticação OAuth para acessar recursos.",
+  "details.settingsTab.serverAllSet": "Este servidor está pronto!",
+  "details.settingsTab.serverError": "Erro no Servidor",
+  "details.settingsTab.serverErrorDescription":
+    "O servidor MCP está enfrentando problemas no momento. Tente novamente mais tarde ou verifique o status do servidor.",
+  "details.settingsTab.viewReadme": "Ver README",
+  "details.tool.cancel": "Cancelar",
+  "details.tool.connectionNotFound": "Conexão não encontrada",
+  "details.tool.connectionNotFoundMessage":
+    "Esta conexão pode ter sido excluída ou você pode não ter acesso a ela.",
+  "details.tool.connections": "Conexões",
+  "details.tool.copiedToClipboard": "Copiado para a área de transferência",
+  "details.tool.enter": "Insira {key}...",
+  "details.tool.enterAsJson": "Insira {key} como JSON...",
+  "details.tool.executeTool": "Executar Ferramenta",
+  "details.tool.executionFailed": "Execução Falhou",
+  "details.tool.goBackToAuthenticate": "Voltar para autenticar",
+  "details.tool.instance": "Instância",
+  "details.tool.interactiveView": "Visualização interativa",
+  "details.tool.jsonView": "Visualização JSON",
+  "details.tool.loadingApp": "Carregando aplicativo...",
+  "details.tool.noParametersRequired": "Nenhum parâmetro obrigatório",
+  "details.tool.parameters": "Parâmetros",
+  "details.tool.rawJsonExample": 'ex. { "foo": "bar" }',
+  "details.tool.rawJsonInput": "Entrada JSON Bruta",
+  "details.tool.required": "Obrigatório",
+  "details.tool.result": "Resultado",
+  "details.tool.runToolToSeeResults":
+    "Execute a ferramenta para ver os resultados",
+  "details.tool.selectTrueOrFalse": "Selecione verdadeiro ou falso...",
+} satisfies Record<keyof typeof detailsEn, string>;

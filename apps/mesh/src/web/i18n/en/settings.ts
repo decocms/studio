@@ -46,9 +46,11 @@ export const settings = {
   "settings.preferences.toolApprovalDescription":
     "Control how tools are approved before execution.",
   "settings.preferences.toolApprovalAsk": "Ask before edit",
+  "settings.preferences.toolApprovalAskShort": "Ask",
   "settings.preferences.toolApprovalAskDescription":
     "Auto-approve read-only tools",
   "settings.preferences.toolApprovalAuto": "Auto approve",
+  "settings.preferences.toolApprovalAutoShort": "Auto",
   "settings.preferences.toolApprovalAutoDescription":
     "Execute all without approval",
   "settings.automations.browseAgentsButton": "Browse agents",
@@ -97,7 +99,7 @@ export const settings = {
   "settings.buckets.addBucket": "Add bucket",
   "settings.buckets.addBucketButton": "Add bucket",
   "settings.buckets.addS3Bucket": "Add S3 bucket",
-  "settings.buckets.addingButton": "Adding\u2026",
+  "settings.buckets.addingButton": "Adding…",
   "settings.buckets.apiKeyHelperText":
     "Sent as the x-api-key header on each refresh call.",
   "settings.buckets.apiKeyLabel": "API key",
@@ -158,7 +160,7 @@ export const settings = {
     "This deletes the encrypted credentials for {name}. The bucket itself is not affected. This cannot be undone.",
   "settings.buckets.removeBucketTitle": "Remove bucket configuration?",
   "settings.buckets.removeButton": "Remove",
-  "settings.buckets.removingButton": "Removing\u2026",
+  "settings.buckets.removingButton": "Removing…",
   "settings.buckets.secretAccessKeyLabel": "Secret access key",
   "settings.buckets.staticKeyHelperText":
     "A long-lived access key ID and secret, used as-is.",
@@ -198,14 +200,14 @@ export const settings = {
   "settings.connectProviderDialog.defaultProviderName": "Provider",
   "settings.connectProviderDialog.defaultTitle": "Connect an AI provider",
   "settings.connectProviderDialog.gridDescription":
-    "Pick a provider \u2014 we'll handle the rest.",
+    "Pick a provider — we'll handle the rest.",
   "settings.connectProviderDialog.oauthFailedMessage":
     "OAuth connection failed: {error}",
   "settings.connectProviderDialog.oauthPendingMessage":
     "Authorize the connection in the popup window. This dialog will close once authorization completes.",
   "settings.connectProviderDialog.oauthSuccessMessage":
     "{provider} connected successfully",
-  "settings.connectProviderDialog.provisionPendingMessage": "Connecting\u2026",
+  "settings.connectProviderDialog.provisionPendingMessage": "Connecting…",
   "settings.connectProviderDialog.provisionSuccessMessage":
     "{provider} connected successfully",
   "settings.connectProviderDialog.retryButton": "Retry",
@@ -237,10 +239,10 @@ export const settings = {
   "settings.decoCreditsHero.title": "Deco AI Gateway",
   "settings.decoCreditsHero.topUpFailed": "Top-up failed: {message}",
   "settings.decoNudgeCard.connectDeco": "Connect Deco",
-  "settings.decoNudgeCard.connecting": "Connecting\u2026",
+  "settings.decoNudgeCard.connecting": "Connecting…",
   "settings.decoNudgeCard.decoAiGateway": "Deco AI Gateway",
   "settings.decoNudgeCard.description":
-    "100+ models, one connection \u2014 pay as you go, no API keys to juggle.",
+    "100+ models, one connection — pay as you go, no API keys to juggle.",
   "settings.decoNudgeCard.recommended": "Recommended",
   "settings.deleteOrganizationSection.cancel": "Cancel",
   "settings.deleteOrganizationSection.dangerZone": "Danger Zone",
@@ -255,7 +257,7 @@ export const settings = {
     "Delete organization",
   "settings.deleteOrganizationSection.deleteWarning":
     "This will permanently delete all data associated with {organizationName}. This action cannot be undone.",
-  "settings.deleteOrganizationSection.deleting": "Deleting\u2026",
+  "settings.deleteOrganizationSection.deleting": "Deleting…",
   "settings.deleteOrganizationSection.failedToDeleteOrganization":
     "Failed to delete organization",
   "settings.deleteOrganizationSection.irreversibleActionsDescription":
@@ -267,7 +269,7 @@ export const settings = {
   "settings.domainSettings.addDnsRecordInstruction":
     "Add the DNS record below, then verify.",
   "settings.domainSettings.addDomain": "Add domain",
-  "settings.domainSettings.adding": "Adding\u2026",
+  "settings.domainSettings.adding": "Adding…",
   "settings.domainSettings.copied": "Copied",
   "settings.domainSettings.dnsInstructions":
     "Add this TXT record at your DNS provider, then click Verify:",
@@ -287,7 +289,7 @@ export const settings = {
   "settings.domainSettings.joinModeHelpAuto":
     "Anyone with a verified @{domain} email joins automatically.",
   "settings.domainSettings.joinModeHelpOff":
-    "Not discoverable \u2014 no one can find or join through this domain.",
+    "Not discoverable — no one can find or join through this domain.",
   "settings.domainSettings.joinModeHelpRequest":
     "People with a verified @{domain} email can request to join; an admin approves.",
   "settings.domainSettings.joinModeOff": "Off",
@@ -297,11 +299,13 @@ export const settings = {
   "settings.domainSettings.remove": "Remove",
   "settings.domainSettings.txt": "TXT",
   "settings.domainSettings.txtRecordNotFound":
-    "TXT record not found yet \u2014 DNS can take a few minutes.",
+    "TXT record not found yet — DNS can take a few minutes.",
   "settings.domainSettings.value": "value",
   "settings.domainSettings.verified": "Verified",
   "settings.domainSettings.verify": "Verify",
   "settings.editProviderDialog.apiKey": "API key",
+  "settings.editProviderDialog.apiKeyRequiredForBaseUrlChange":
+    "Enter the API key again to confirm changing the base URL",
   "settings.editProviderDialog.baseUrl": "Base URL",
   "settings.editProviderDialog.baseUrlPlaceholder": "http://localhost:4000/v1",
   "settings.editProviderDialog.cancel": "Cancel",
@@ -392,6 +396,7 @@ export const settings = {
   "settings.orgRoleDetail.owner": "Owner",
   "settings.orgRoleDetail.ownerMembershipCannotBeChanged":
     "Owner membership cannot be changed",
+  "settings.orgRoleDetail.removeMember": "Remove {name} from role",
   "settings.orgRoleDetail.roleCreatedSuccessfully":
     "Role created successfully!",
   "settings.orgRoleDetail.roleName": "Role name",
@@ -410,7 +415,7 @@ export const settings = {
   "settings.orgRoleDetail.somethingWentWrong": "Something went wrong",
   "settings.orgRoleDetail.unknown": "Unknown",
   "settings.orgRoleDetail.userIsDefaultRoleMessage":
-    "User is the default role \u2014 members can't be removed from it; assign another role to change their access",
+    "User is the default role — members can't be removed from it; assign another role to change their access",
   "settings.orgSso.cancelButton": "Cancel",
   "settings.orgSso.clientIdLabel": "Client ID",
   "settings.orgSso.clientIdPlaceholder": "your-client-id",
@@ -423,7 +428,7 @@ export const settings = {
   "settings.orgSso.configurationSavedSuccess": "SSO configuration saved",
   "settings.orgSso.configureSsoButton": "Configure SSO",
   "settings.orgSso.discoveryEndpointDescription":
-    "Optional \u2014 auto-detected from issuer if omitted.",
+    "Optional — auto-detected from issuer if omitted.",
   "settings.orgSso.discoveryEndpointLabel": "Discovery Endpoint",
   "settings.orgSso.discoveryEndpointPlaceholder": "Auto-detected from issuer",
   "settings.orgSso.domainLabel": "Domain",
@@ -467,10 +472,10 @@ export const settings = {
   "settings.orgStore.communityRegistryDescription":
     "Community MCP registry with thousands of handy MCPs",
   "settings.orgStore.communityRegistryNotAdded":
-    "Community MCP registry \u2014 not yet added",
+    "Community MCP registry — not yet added",
   "settings.orgStore.communitySection": "Community",
   "settings.orgStore.connectionNotFound":
-    "Connection not found \u2014 will be created automatically.",
+    "Connection not found — will be created automatically.",
   "settings.orgStore.decoStoreDescription":
     "Official deco MCP registry with curated integrations",
   "settings.orgStore.decoStoreName": "Deco Store",
@@ -509,8 +514,6 @@ export const settings = {
   "settings.providerKeyRow.cancel": "Cancel",
   "settings.providerKeyRow.delete": "Delete",
   "settings.providerKeyRow.deleteApiKey": "Delete API key",
-  "settings.providerKeyRow.deleteApiKeyWarning":
-    "This action cannot be undone. This will permanently delete {label}.",
   "settings.providerKeyRow.deleteProviderKey": "Delete provider key",
   "settings.providerKeyRow.editProviderKey": "Edit provider key",
   "settings.providerKeyRow.failedToDeleteKey": "Failed to delete key: {error}",
@@ -547,7 +550,7 @@ export const settings = {
   "settings.roles.searchPlaceholder": "Search roles...",
   "settings.secrets.cancelButton": "Cancel",
   "settings.secrets.createButton": "Create secret",
-  "settings.secrets.creatingButton": "Creating\u2026",
+  "settings.secrets.creatingButton": "Creating…",
   "settings.secrets.descriptionLabel": "Description (optional)",
   "settings.secrets.descriptionPlaceholder": "What is this secret used for?",
   "settings.secrets.emptyDescription":
@@ -566,10 +569,9 @@ export const settings = {
   "settings.secrets.scopeLabel": "Scope",
   "settings.secrets.scopeOrganization": "Organization",
   "settings.secrets.scopeOrganizationDescription":
-    "Organization \u2014 visible to all members",
+    "Organization — visible to all members",
   "settings.secrets.scopePrivate": "Private",
-  "settings.secrets.scopePrivateDescription":
-    "Private \u2014 only visible to me",
+  "settings.secrets.scopePrivateDescription": "Private — only visible to me",
   "settings.secrets.secretCreated": 'Secret "{name}" created',
   "settings.secrets.secretsCount": "{count} secret{plural} stored",
   "settings.secrets.sectionOrganization": "Organization",
@@ -583,7 +585,7 @@ export const settings = {
     "Not available with current provider",
   "settings.simpleModeSection.pickModel": "Pick model",
   "settings.simpleModeSection.saved": "Saved",
-  "settings.simpleModeSection.saving": "Saving\u2026",
+  "settings.simpleModeSection.saving": "Saving…",
   "settings.simpleModeSection.tierDeepResearch": "Deep research",
   "settings.simpleModeSection.tierDeepResearchDesc":
     "In-depth, multi-source research reports",
@@ -600,4 +602,10 @@ export const settings = {
   "settings.simpleModeSection.tierWebSearch": "Web search",
   "settings.simpleModeSection.tierWebSearchDesc":
     "Quick, up-to-date answers from the web",
+  "settings.aiProviders.recommended":
+    "Recommended — 100+ models, pay as you go",
+  "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
+  "settings.aiProviders.customOpenAiDescription":
+    "Bring your own model server (advanced)",
+  "settings.aiProviders.moreProviders": "{count} more provider{plural}",
 } as const;

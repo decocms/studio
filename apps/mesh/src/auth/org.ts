@@ -94,7 +94,7 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
 
     // Billing identity FIRST (cheapest, most load-bearing): orgs created from
     // now on are legacy = false — the per-seat plan applies to them once
-    // STUDIO_BILLING_ENFORCED turns on. Orgs that predate migration 137 were
+    // STUDIO_BILLING_ENFORCED turns on. Orgs that predate migration 139 were
     // backfilled legacy = true there. If this insert (or this whole hook)
     // fails, the missing row fails OPEN in resolveOrgFromPath (treated as
     // legacy) — never bricks the org.

@@ -13,6 +13,7 @@ interface ResolveAndPushParams {
   orgId: string;
   userId: string;
   entries: RuntimeEnvEntry[] | null | undefined;
+  organizationSecretsOnly?: boolean;
 }
 
 /**
@@ -32,6 +33,7 @@ export async function resolveAndPushEnv({
   orgId,
   userId,
   entries,
+  organizationSecretsOnly = false,
 }: ResolveAndPushParams): Promise<void> {
   if (!entries || entries.length === 0) return;
 
@@ -42,11 +44,16 @@ export async function resolveAndPushEnv({
       continue;
     }
     try {
-      const { value } = await ctx.storage.secrets.resolveById(
+      const { info, value } = await ctx.storage.secrets.resolveById(
         entry.secretId,
         orgId,
         userId,
       );
+      if (organizationSecretsOnly && info.scope !== "organization") {
+        throw new Error(
+          `Shared agent sandboxes require organization-scoped secrets (${entry.key})`,
+        );
+      }
       env[entry.key] = value;
     } catch (err) {
       if (

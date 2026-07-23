@@ -216,6 +216,20 @@ function isTailwindCssPath(path: string): boolean {
   );
 }
 
+/**
+ * CMS artifacts live under a `.deco/` directory. The `/.deco/` (and `/.deco`)
+ * forms also match projects whose package path isn't the repo root
+ * (`<pkg>/.deco/...`), matching how block writes are addressed elsewhere.
+ */
+function isDecoPath(path: string): boolean {
+  return (
+    path === ".deco" ||
+    path.endsWith("/.deco") ||
+    path.startsWith(".deco/") ||
+    path.includes("/.deco/")
+  );
+}
+
 /** Publish (squash-merge) is only allowed for CMS JSON under `.deco/` (plus generated assets). */
 export function isDecoOnlyDiff(
   diff: GitDiffResult | null | undefined,
@@ -224,16 +238,94 @@ export function isDecoOnlyDiff(
   const paths = Object.keys(diff.diffs);
   if (paths.length === 0) return false;
   return paths.every(
-    (p) =>
-      p === ".deco" ||
-      p.startsWith(".deco/") ||
-      isBlocksGenJsonPath(p) ||
-      isTailwindCssPath(p),
+    (p) => isDecoPath(p) || isBlocksGenJsonPath(p) || isTailwindCssPath(p),
   );
 }
 
-export const PUBLISH_REQUIRES_SUBMIT_TOOLTIP =
-  "Code changes can't be published directly — use Submit for review";
+/**
+ * Per-code-agent policy controlling when a direct publish is allowed:
+ * - `smart` (default): a cheap AI judges whether the code needs review.
+ * - `code-review`: any code change requires review (only deco/design publishes).
+ * - `open`: everything publishes directly.
+ * Mirrors `PublishPolicy` in `@decocms/mesh-sdk` (kept local to avoid pulling
+ * the SDK into this browser module).
+ */
+export type PublishPolicy = "smart" | "code-review" | "open";
+
+export const DEFAULT_PUBLISH_POLICY: PublishPolicy = "smart";
+
+/** Coerce an untrusted `metadata.publishPolicy` value into a valid policy. */
+export function normalizePublishPolicy(value: unknown): PublishPolicy {
+  return value === "code-review" || value === "open" || value === "smart"
+    ? value
+    : DEFAULT_PUBLISH_POLICY;
+}
+
+/** Verdict from the cheap AI judge on whether a code diff needs human review. */
+export interface ReviewVerdict {
+  requiresReview: boolean;
+  reason: string;
+}
+
+/**
+ * Stable content fingerprint of a diff, used to cache the AI review verdict per
+ * distinct set of changes. Hashes every path plus its FULL from/to content, so
+ * any change to the diff yields a different signature. This matters for safety:
+ * the verdict is cached with `staleTime: Infinity`, so a fingerprint that
+ * collided on two different diffs could reuse a stale "publish allowed" verdict
+ * for code that actually needs review — failing open. A full-content djb2 hash
+ * avoids that (unlike a length+prefix fingerprint, which a length-preserving
+ * edit deep in a file can collide). Cheap: O(diff size), memoized by the React
+ * compiler on the stable diff reference.
+ */
+export function reviewDiffSignature(diff: GitDiffResult): string {
+  let hash = 5381;
+  const mix = (s: string) => {
+    for (let i = 0; i < s.length; i++) {
+      hash = ((hash << 5) + hash + s.charCodeAt(i)) | 0;
+    }
+  };
+  for (const path of Object.keys(diff.diffs).sort()) {
+    const entry = diff.diffs[path];
+    mix(path);
+    mix(" from:");
+    mix(entry?.from ?? "");
+    mix(" to:");
+    mix(entry?.to ?? "");
+    mix("  ");
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/**
+ * Ask the server-side cheap-model judge whether this publish payload needs
+ * review. Only meaningful for `smart` policy on a diff that contains code
+ * (see `needsSmartReviewJudgment`). Generated files are stripped to keep the
+ * payload under the endpoint's body limit.
+ */
+export async function fetchReviewVerdict(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+  payload: { status: GitStatus; diff: GitDiffResult; language?: string },
+): Promise<ReviewVerdict> {
+  const res = await sandboxFetch(
+    buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "judge-review"),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        status: payload.status,
+        diff: stripGeneratedFilesFromDiff(payload.diff),
+        // The `reason` is shown to the user, so ask the model to write it in
+        // the UI language. This is a deliberate exception to "don't thread
+        // locale to the server" — it applies only to this displayed AI text.
+        ...(payload.language ? { language: payload.language } : {}),
+      }),
+    },
+  );
+  return parseJson<ReviewVerdict>(res);
+}
 
 export async function discardGitFiles(
   orgSlug: string,
@@ -342,6 +434,13 @@ export function shouldUseBaseDiff(
 export interface PublishGate {
   allowed: boolean;
   reason: string | null;
+  /**
+   * `smart` policy only: the AI judge is still running, so the decision isn't
+   * known yet. The button should be disabled (not optimistically enabled) with
+   * a "reviewing" tooltip until the verdict arrives. `reason` is null here
+   * because the tooltip copy is i18n'd at the component level.
+   */
+  pending?: boolean;
 }
 
 /**
@@ -363,15 +462,62 @@ export function combinePublishDiffs(
 }
 
 /**
- * Whether the changes may be squash-merged straight to base, bypassing review.
- * `diff` must be the full publish payload (see `combinePublishDiffs`) so the
- * gate sees every file — committed and uncommitted. Only deco-only payloads
- * publish directly; anything with code must go through Submit for review.
+ * Whether the changes may be squash-merged straight to base, bypassing review,
+ * for the given publish policy. `diff` must be the full publish payload (see
+ * `combinePublishDiffs`) so the gate sees every file — committed and
+ * uncommitted.
+ *
+ * This is the SYNCHRONOUS decision and covers every case except `smart` with
+ * code in the diff — that one needs the async AI verdict, so callers must first
+ * check `needsSmartReviewJudgment` and use `smartReviewGate` when it's true.
+ * (Calling this for that case falls back to the safe `code-review` behavior.)
  */
 export function canPublishDirectly(
   diff: GitDiffResult | null | undefined,
+  policy: PublishPolicy = "code-review",
 ): PublishGate {
+  if (policy === "open") return { allowed: true, reason: null };
+  // `smart` deco-only diffs (and all `code-review`) fall through to the
+  // deco-only rule: content/design publishes, code is blocked. Reason is left
+  // null — the component renders a localized generic tooltip for this case.
   return isDecoOnlyDiff(diff)
     ? { allowed: true, reason: null }
-    : { allowed: false, reason: PUBLISH_REQUIRES_SUBMIT_TOOLTIP };
+    : { allowed: false, reason: null };
+}
+
+/**
+ * True when deciding the gate requires the async AI judge: `smart` policy on a
+ * non-empty diff that contains code. Deco-only diffs never need the judge
+ * (they always publish), and `code-review`/`open` are fully synchronous.
+ */
+export function needsSmartReviewJudgment(
+  diff: GitDiffResult | null | undefined,
+  policy: PublishPolicy,
+): boolean {
+  if (policy !== "smart") return false;
+  if (!diff || Object.keys(diff.diffs).length === 0) return false;
+  return !isDecoOnlyDiff(diff);
+}
+
+/**
+ * Resolve the gate for `smart` policy from the AI verdict.
+ * - While the judge is still running: block (`pending`) so the button can't be
+ *   clicked before the decision is known — the component shows a "reviewing"
+ *   tooltip.
+ * - When the judge is unavailable (no model provider, error → no verdict):
+ *   permissive, allow the direct publish rather than blocking on the AI.
+ * - Otherwise honour the verdict.
+ */
+export function smartReviewGate(
+  verdict: ReviewVerdict | null | undefined,
+  loading: boolean,
+): PublishGate {
+  if (loading) return { allowed: false, reason: null, pending: true };
+  if (!verdict) return { allowed: true, reason: null };
+  if (!verdict.requiresReview) return { allowed: true, reason: null };
+  // The AI reason is localized (the judge is asked to write in the UI
+  // language); show it. Fall back to null so the component renders its own
+  // localized generic message when the model returned no reason.
+  const reason = verdict.reason?.trim();
+  return { allowed: false, reason: reason ? reason : null };
 }

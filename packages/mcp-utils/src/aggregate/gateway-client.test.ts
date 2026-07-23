@@ -3,9 +3,13 @@ import type { IClient } from "../client-like.ts";
 import {
   GatewayClient,
   displayToolName,
+  namespaceCode,
   slugify,
   stripToolNamespace,
 } from "./gateway-client.ts";
+
+// Namespaced tool name for a client key, mirroring GatewayClient's scheme.
+const ns = (key: string, tool: string) => `${namespaceCode(key)}_${tool}`;
 
 function createMockClient(
   tools: { name: string }[] = [],
@@ -74,7 +78,7 @@ describe("slugify", () => {
 
 describe("stripToolNamespace", () => {
   it("strips clientId prefix", () => {
-    expect(stripToolNamespace("my-conn_SOME_TOOL", "my-conn")).toBe(
+    expect(stripToolNamespace(ns("my-conn", "SOME_TOOL"), "my-conn")).toBe(
       "SOME_TOOL",
     );
   });
@@ -90,18 +94,16 @@ describe("stripToolNamespace", () => {
   });
 
   it("strips real connection ID prefix", () => {
-    expect(
-      stripToolNamespace(
-        "conn-dvitqc2ooobdzmrd5ky24_hello_world",
-        "conn-dvitqc2ooobdzmrd5ky24",
-      ),
-    ).toBe("hello_world");
+    const cid = "conn-dvitqc2ooobdzmrd5ky24";
+    expect(stripToolNamespace(ns(cid, "hello_world"), cid)).toBe("hello_world");
   });
 });
 
 describe("displayToolName", () => {
   it("strips clientId prefix and formats for display", () => {
-    expect(displayToolName("my-conn_SOME_TOOL", "my-conn")).toBe("some tool");
+    expect(displayToolName(ns("my-conn", "SOME_TOOL"), "my-conn")).toBe(
+      "some tool",
+    );
   });
 
   it("returns formatted name when no clientId", () => {
@@ -111,7 +113,7 @@ describe("displayToolName", () => {
 
 describe("GatewayClient", () => {
   describe("tool namespacing", () => {
-    it("prefixes tool names with slugified client key", async () => {
+    it("prefixes tool names with the client key namespace code", async () => {
       const clientA = createMockClient([{ name: "toolA" }]);
       const clientB = createMockClient([{ name: "toolB" }]);
 
@@ -123,8 +125,17 @@ describe("GatewayClient", () => {
 
       expect(result.tools).toHaveLength(2);
       const names = result.tools.map((t) => t.name);
-      expect(names).toContain("a_toolA");
-      expect(names).toContain("b_toolB");
+      expect(names).toContain(ns("a", "toolA"));
+      expect(names).toContain(ns("b", "toolB"));
+    });
+
+    it("keeps namespaced tool names short (fits 64-char limit under a second prefix)", () => {
+      // conn ids are ~26 chars; the namespace code must be short so a
+      // downstream client can add its own prefix and still stay <= 64.
+      expect(namespaceCode("conn_MMGhTBDv1JmlGbsdHmSn5").length).toBeLessThan(
+        9,
+      );
+      expect(namespaceCode("conn_MMGhTBDv1JmlGbsdHmSn5")).not.toContain("_");
     });
 
     it("tags tools with _meta.gatewayClientId", async () => {
@@ -132,7 +143,7 @@ describe("GatewayClient", () => {
       const gw = new GatewayClient({ myKey: { client: clientA } });
       const result = await gw.listTools();
 
-      expect(result.tools[0].name).toBe("mykey_toolA");
+      expect(result.tools[0].name).toBe(ns("myKey", "toolA"));
       expect((result.tools[0]._meta as any).gatewayClientId).toBe("myKey");
     });
 
@@ -147,18 +158,15 @@ describe("GatewayClient", () => {
       const result = await gw.listTools();
 
       expect(result.tools).toHaveLength(2);
-      expect(result.tools.map((t) => t.name)).toEqual(["a_search", "b_search"]);
+      expect(result.tools.map((t) => t.name)).toEqual([
+        ns("a", "search"),
+        ns("b", "search"),
+      ]);
     });
 
-    it("throws on duplicate slugified keys", () => {
-      const client = createMockClient();
-      expect(
-        () =>
-          new GatewayClient({
-            "My Server": { client },
-            "my--server": { client },
-          }),
-      ).toThrow(/duplicate slug/);
+    it("gives distinct keys distinct namespace codes", () => {
+      expect(namespaceCode("alpha")).not.toBe(namespaceCode("beta"));
+      expect(namespaceCode("conn_a")).not.toBe(namespaceCode("conn_b"));
     });
   });
 
@@ -177,7 +185,9 @@ describe("GatewayClient", () => {
       });
       const result = await gw.listTools();
 
-      expect(result.tools.map((t) => t.name)).toEqual(["healthy_ok_tool"]);
+      expect(result.tools.map((t) => t.name)).toEqual([
+        ns("healthy", "ok_tool"),
+      ]);
     });
 
     it("skips a connection whose lazy factory throws on resolve", async () => {
@@ -193,7 +203,9 @@ describe("GatewayClient", () => {
       });
       const result = await gw.listTools();
 
-      expect(result.tools.map((t) => t.name)).toEqual(["healthy_ok_tool"]);
+      expect(result.tools.map((t) => t.name)).toEqual([
+        ns("healthy", "ok_tool"),
+      ]);
     });
 
     it("degrades resources and prompts the same way", async () => {
@@ -219,7 +231,7 @@ describe("GatewayClient", () => {
         "res://ok",
       ]);
       expect((await gw.listPrompts()).prompts.map((p) => p.name)).toEqual([
-        "healthy_ok_prompt",
+        ns("healthy", "ok_prompt"),
       ]);
     });
   });
@@ -230,7 +242,7 @@ describe("GatewayClient", () => {
       const gw = new GatewayClient({ server: { client } });
       const result = await gw.listPrompts();
 
-      expect(result.prompts[0].name).toBe("server_greet");
+      expect(result.prompts[0].name).toBe(ns("server", "greet"));
     });
   });
 
@@ -244,7 +256,7 @@ describe("GatewayClient", () => {
         b: { client: clientB },
       });
 
-      await gw.callTool({ name: "b_toolB", arguments: {} });
+      await gw.callTool({ name: ns("b", "toolB"), arguments: {} });
       expect(clientB.callTool).toHaveBeenCalledWith(
         { name: "toolB", arguments: {} },
         undefined,
@@ -257,7 +269,7 @@ describe("GatewayClient", () => {
       const client = createMockClient([{ name: "doStuff" }]);
       const gw = new GatewayClient({ srv: { client } });
 
-      await gw.callTool({ name: "srv_doStuff", arguments: { x: 1 } });
+      await gw.callTool({ name: ns("srv", "doStuff"), arguments: { x: 1 } });
       expect(client.callTool).toHaveBeenCalledWith(
         { name: "doStuff", arguments: { x: 1 } },
         undefined,
@@ -295,7 +307,7 @@ describe("GatewayClient", () => {
         b: { client: clientB },
       });
 
-      await gw.getPrompt({ name: "b_promptB", arguments: {} });
+      await gw.getPrompt({ name: ns("b", "promptB"), arguments: {} });
       expect(clientB.getPrompt).toHaveBeenCalledWith({
         name: "promptB",
         arguments: {},
@@ -366,7 +378,7 @@ describe("GatewayClient", () => {
       const result = await gw.listTools();
 
       expect(result.tools).toHaveLength(1);
-      expect(result.tools[0].name).toBe("async_async_tool");
+      expect(result.tools[0].name).toBe(ns("async", "async_tool"));
     });
   });
 
@@ -385,9 +397,9 @@ describe("GatewayClient", () => {
       const result = await gw.listTools();
       expect(result.tools).toHaveLength(2);
       const names = result.tools.map((t) => t.name);
-      expect(names).toContain("c_toolA");
-      expect(names).toContain("c_toolC");
-      expect(names).not.toContain("c_toolB");
+      expect(names).toContain(ns("c", "toolA"));
+      expect(names).toContain(ns("c", "toolC"));
+      expect(names).not.toContain(ns("c", "toolB"));
     });
 
     it("empty tools array blocks all tools", async () => {
@@ -400,7 +412,7 @@ describe("GatewayClient", () => {
       });
 
       const result = await gw.listTools();
-      expect(result.tools.map((t) => t.name)).toEqual(["b_t2"]);
+      expect(result.tools.map((t) => t.name)).toEqual([ns("b", "t2")]);
     });
 
     it("filters resources by selected URIs", async () => {
@@ -448,7 +460,7 @@ describe("GatewayClient", () => {
 
       const result = await gw.listPrompts();
       expect(result.prompts).toHaveLength(1);
-      expect(result.prompts[0].name).toBe("c_p2");
+      expect(result.prompts[0].name).toBe(ns("c", "p2"));
     });
 
     it("per-client selection across multiple clients", async () => {
@@ -464,7 +476,10 @@ describe("GatewayClient", () => {
       });
 
       const result = await gw.listTools();
-      expect(result.tools.map((t) => t.name)).toEqual(["a_a1", "b_b2"]);
+      expect(result.tools.map((t) => t.name)).toEqual([
+        ns("a", "a1"),
+        ns("b", "b2"),
+      ]);
     });
   });
 
@@ -478,6 +493,26 @@ describe("GatewayClient", () => {
     it("throws for unknown key", async () => {
       const gw = new GatewayClient({});
       await expect(gw.getResolvedClient("x")).rejects.toThrow();
+    });
+
+    it("rejects (does not throw synchronously) when the factory throws synchronously", async () => {
+      const gw = new GatewayClient({
+        broken: {
+          client: () => {
+            throw new Error("Unauthorized: Authentication required");
+          },
+        },
+      });
+
+      // Must not throw here — resolveClient's Promise<IClient> contract
+      // requires a rejected promise, not a synchronous exception.
+      let result: Promise<IClient> | undefined;
+      expect(() => {
+        result = gw.getResolvedClient("broken");
+      }).not.toThrow();
+      await expect(result).rejects.toThrow(
+        "Unauthorized: Authentication required",
+      );
     });
   });
 
