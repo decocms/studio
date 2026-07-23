@@ -70,7 +70,7 @@ export class OrgScopedThreadStorage {
     return this.organizationId;
   }
 
-  create(data: Partial<Thread>): Promise<Thread> {
+  create(data: Partial<Thread>): Promise<Thread & { isNew: boolean }> {
     const orgId = this.requireOrg();
     return this.inner.create({ ...data, organization_id: orgId });
   }
@@ -268,7 +268,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
   // Thread Operations
   // ==========================================================================
 
-  async create(data: Partial<Thread>): Promise<Thread> {
+  async create(data: Partial<Thread>): Promise<Thread & { isNew: boolean }> {
     const id = data.id ?? generatePrefixedId("thrd");
     const now = new Date().toISOString();
 
@@ -313,7 +313,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .executeTakeFirst();
 
     if (inserted) {
-      return this.threadFromDbRow(inserted);
+      return { ...this.threadFromDbRow(inserted), isNew: true };
     }
 
     // Conflict — another caller already inserted this id. Return the row that won.
@@ -324,7 +324,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("organization_id", "=", data.organization_id)
       .executeTakeFirstOrThrow();
 
-    return this.threadFromDbRow(existing);
+    return { ...this.threadFromDbRow(existing), isNew: false };
   }
 
   async get(id: string, organizationId: string): Promise<Thread | null> {

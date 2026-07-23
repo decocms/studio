@@ -47,7 +47,10 @@ export type ThreadUpdateData = Partial<Thread> & {
 };
 
 export interface ThreadStoragePort {
-  create(data: Partial<Thread>): Promise<Thread>;
+  /** `isNew` is false when `data.id` collided with an existing row (the
+   *  insert is `ON CONFLICT DO NOTHING`) — callers use it to skip
+   *  create-only side effects (e.g. analytics) on a replayed/idempotent call. */
+  create(data: Partial<Thread>): Promise<Thread & { isNew: boolean }>;
   get(id: string, organizationId: string): Promise<Thread | null>;
   update(
     id: string,
