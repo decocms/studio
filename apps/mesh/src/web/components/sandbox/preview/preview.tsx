@@ -1382,10 +1382,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   ) : null;
 
   return (
-    <div
-      className="flex flex-col w-full h-full"
-      data-tour={TOUR_ANCHORS.previewRoot}
-    >
+    <div className="flex flex-col w-full h-full">
       {/* Auto-select the first entity for a picker param with no value yet, so
           navigating to a bare dynamic-route template lands on a real page.
           Each helper renders nothing and unmounts once its param is filled. */}
