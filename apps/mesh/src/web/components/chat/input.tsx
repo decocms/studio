@@ -241,6 +241,52 @@ function FileDropZone({
 }
 
 // ============================================================================
+// ModeDismissPill - "you're in mode X" pill with a dismiss (X) affordance,
+// shown for plan/gen-image/web-search/deep-research modes.
+// ============================================================================
+
+function ModeDismissPill({
+  onClick,
+  label,
+  icon,
+  colorClass,
+  maxWidthClass,
+}: {
+  onClick: () => void;
+  label: string;
+  icon: React.ReactNode;
+  colorClass: string;
+  maxWidthClass: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={cn(
+        "flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium group min-w-0 shrink animate-in fade-in duration-200",
+        colorClass,
+      )}
+    >
+      {icon}
+      <span
+        className={cn(
+          "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:opacity-100",
+          maxWidthClass,
+        )}
+      >
+        {label}
+      </span>
+      <X
+        size={14}
+        className="shrink-0 hidden group-hover:block group-disabled:hidden"
+      />
+    </button>
+  );
+}
+
+// ============================================================================
 // ChatInput - Merged component with virtual MCP wrapper, banners, and selectors
 // ============================================================================
 
@@ -431,6 +477,16 @@ export function ChatInput({
 
   const isPlanMode = chatMode === "plan";
 
+  const dismissChatMode = (fromMode: string) => {
+    playSwitchSound();
+    track("chat_mode_changed", {
+      from_mode: fromMode,
+      to_mode: "default",
+      source: "pill_dismiss",
+    });
+    setChatMode("default");
+  };
+
   // Focus chat input on Cmd+L, toggle plan mode on Cmd+Shift+L
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
@@ -609,108 +665,40 @@ export function ChatInput({
                         onUnsupportedFile={onUnsupportedFile}
                       />
                       {isPlanMode && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSwitchSound();
-                            track("chat_mode_changed", {
-                              from_mode: "plan",
-                              to_mode: "default",
-                              source: "pill_dismiss",
-                            });
-                            setChatMode("default");
-                          }}
-                          title={t("chat.input.planMode")}
-                          aria-label={t("chat.input.planMode")}
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group min-w-0 shrink animate-in fade-in duration-200"
-                        >
-                          <BookOpen01 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100">
-                            {t("chat.input.planMode")}
-                          </span>
-                          <X
-                            size={14}
-                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
-                          />
-                        </button>
+                        <ModeDismissPill
+                          onClick={() => dismissChatMode("plan")}
+                          label={t("chat.input.planMode")}
+                          icon={<BookOpen01 size={14} className="shrink-0" />}
+                          colorClass="text-violet-600 dark:text-violet-400 hover:bg-violet-500/10"
+                          maxWidthClass="@[320px]/chat-bottom:max-w-32"
+                        />
                       )}
                       {chatMode === "gen-image" && imageModel && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSwitchSound();
-                            track("chat_mode_changed", {
-                              from_mode: "gen-image",
-                              to_mode: "default",
-                              source: "pill_dismiss",
-                            });
-                            setChatMode("default");
-                          }}
-                          title={t("chat.input.createImage")}
-                          aria-label={t("chat.input.createImage")}
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                        >
-                          <Image01 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
-                            {t("chat.input.createImage")}
-                          </span>
-                          <X
-                            size={14}
-                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
-                          />
-                        </button>
+                        <ModeDismissPill
+                          onClick={() => dismissChatMode("gen-image")}
+                          label={t("chat.input.createImage")}
+                          icon={<Image01 size={14} className="shrink-0" />}
+                          colorClass="text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
+                        />
                       )}
                       {chatMode === "web-search" && webSearchModel && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSwitchSound();
-                            track("chat_mode_changed", {
-                              from_mode: "web-search",
-                              to_mode: "default",
-                              source: "pill_dismiss",
-                            });
-                            setChatMode("default");
-                          }}
-                          title={t("chat.input.webSearch")}
-                          aria-label={t("chat.input.webSearch")}
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                        >
-                          <Globe02 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
-                            {t("chat.input.webSearch")}
-                          </span>
-                          <X
-                            size={14}
-                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
-                          />
-                        </button>
+                        <ModeDismissPill
+                          onClick={() => dismissChatMode("web-search")}
+                          label={t("chat.input.webSearch")}
+                          icon={<Globe02 size={14} className="shrink-0" />}
+                          colorClass="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
+                        />
                       )}
                       {chatMode === "deep-research" && deepResearchModel && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSwitchSound();
-                            track("chat_mode_changed", {
-                              from_mode: "deep-research",
-                              to_mode: "default",
-                              source: "pill_dismiss",
-                            });
-                            setChatMode("default");
-                          }}
-                          title={t("chat.input.deepResearch")}
-                          aria-label={t("chat.input.deepResearch")}
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                        >
-                          <Telescope size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
-                            {t("chat.input.deepResearch")}
-                          </span>
-                          <X
-                            size={14}
-                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
-                          />
-                        </button>
+                        <ModeDismissPill
+                          onClick={() => dismissChatMode("deep-research")}
+                          label={t("chat.input.deepResearch")}
+                          icon={<Telescope size={14} className="shrink-0" />}
+                          colorClass="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
+                        />
                       )}
                       {contextWindow && lastTotalTokens > 0 && (
                         <SessionStats
