@@ -1,13 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { stripSurroundingSlashes } from "@/web/components/sections-editor/page-path-utils";
 import {
   categoryOptionsFromPayload,
   classifyParamKinds,
   collectPageLoaderResolveTypes,
   commercePlatformsFromLoaders,
   filterPickerOptions,
+  GENERIC_SEED_TERMS,
+  linkOptionsFromHtml,
   mergePickerOptions,
+  parseEmbeddedProducts,
+  parseHomepageAnchors,
   productOptionsFromPayload,
   resolveOptionSources,
+  SITE_LINKS_SOURCE_ID,
   valueFromEntityUrl,
   type PathParamKind,
 } from "./path-param-picker";
@@ -104,11 +110,11 @@ describe("resolveOptionSources", () => {
       kinds("product"),
       new Set([VTEX_PRODUCT]),
     );
-    expect(source?.buildRequests("123")).toEqual([
+    expect(source?.buildRequests?.("123")).toEqual([
       { resolveType: VTEX_PRODUCT, props: { ids: ["123"] } },
       { resolveType: VTEX_PRODUCT, props: { query: "123", count: 10 } },
     ]);
-    expect(source?.buildRequests("torrada-multigraos")).toEqual([
+    expect(source?.buildRequests?.("torrada-multigraos")).toEqual([
       {
         resolveType: VTEX_PRODUCT,
         props: { query: "torrada multigraos", count: 10 },
@@ -122,7 +128,7 @@ describe("resolveOptionSources", () => {
       new Set([ALGOLIA_LIST]),
     );
     expect(source?.resolveType).toBe(ALGOLIA_LIST);
-    expect(source?.buildRequests("torrada")).toEqual([
+    expect(source?.buildRequests?.("torrada")).toEqual([
       {
         resolveType: ALGOLIA_LIST,
         props: { term: "torrada", hitsPerPage: 10 },
@@ -145,7 +151,7 @@ describe("resolveOptionSources", () => {
     );
     expect(source?.kind).toBe("category");
     expect(source?.clientFilter).toBe(true);
-    expect(source?.buildRequests("anything")).toEqual([
+    expect(source?.buildRequests?.("anything")).toEqual([
       { resolveType: VTEX_TREE, props: {} },
     ]);
   });
@@ -160,7 +166,7 @@ describe("resolveOptionSources", () => {
       new Set(["magento"]),
     );
     expect(product?.resolveType).toBe(magentoList);
-    expect(product?.buildRequests("sabonete")).toEqual([
+    expect(product?.buildRequests?.("sabonete")).toEqual([
       {
         resolveType: magentoList,
         props: { props: { search: "sabonete", pageSize: 10, currentPage: 1 } },
@@ -170,8 +176,8 @@ describe("resolveOptionSources", () => {
 
   test("skips a competing vendor's loader for the page's platform", () => {
     // Magento store that also has the VTEX app installed: product must resolve
-    // to the neutral Algolia loader, NOT vtex; category must NOT invoke a vtex
-    // category-tree loader that merely exists in the manifest.
+    // to the neutral Algolia loader, NOT vtex; a competing vtex category-tree
+    // loader must NOT bind — leaving only the universal homepage-links fallback.
     const magento = new Set(["magento"]);
     const [product] = resolveOptionSources(
       kinds("product"),
@@ -179,13 +185,12 @@ describe("resolveOptionSources", () => {
       magento,
     );
     expect(product?.resolveType).toBe(ALGOLIA_LIST);
-    expect(
-      resolveOptionSources(
-        kinds("category"),
-        new Set(["vtex/loaders/catalog/getCategoryTree"]),
-        magento,
-      ),
-    ).toEqual([]);
+    const category = resolveOptionSources(
+      kinds("category"),
+      new Set(["vtex/loaders/catalog/getCategoryTree"]),
+      magento,
+    );
+    expect(category.map((s) => s.id)).toEqual([SITE_LINKS_SOURCE_ID]);
   });
 
   test("commercePlatformsFromLoaders picks vendor namespaces only", () => {
@@ -199,14 +204,239 @@ describe("resolveOptionSources", () => {
     ).toEqual(new Set(["magento"]));
   });
 
-  test("a kind with no available loader yields no source", () => {
-    // Granado: product (Algolia) resolves, category has no tree loader.
+  test("every classified param gets a homepage-links fallback appended", () => {
     const sources = resolveOptionSources(
-      kinds("product", "category"),
-      new Set([ALGOLIA_LIST]),
+      kinds("product"),
+      new Set([VTEX_PRODUCT]),
     );
-    expect(sources.map((s) => s.kind)).toEqual(["product"]);
-    expect(resolveOptionSources(kinds("product"), new Set())).toEqual([]);
+    expect(sources.map((s) => [s.kind, s.isFallback])).toEqual([
+      ["product", false],
+      ["product", true],
+    ]);
+    const links = sources[1]!;
+    expect(links.id).toBe(SITE_LINKS_SOURCE_ID);
+    expect(links.homepageLinks).toBe(true);
+    expect(links.clientFilter).toBe(true);
+  });
+
+  test("category with a tree loader keeps it primary; homepage-links is fallback", () => {
+    // Bagaggio: the tree binds; homepage links ride along, rendered only if the
+    // tree comes up empty/errored (decided in the chip).
+    const sources = resolveOptionSources(
+      kinds("category"),
+      new Set([VTEX_TREE]),
+    );
+    expect(
+      sources.map((s) => [s.kind, s.isFallback, Boolean(s.homepageLinks)]),
+    ).toEqual([
+      ["category", false, false],
+      ["category", true, true],
+    ]);
+    expect(sources[0]?.clientFilter).toBe(true);
+  });
+
+  test("category with no tree loader → only the homepage-links fallback", () => {
+    // Granado catch-all classified `category`, no tree loader available: the
+    // modal still appears, backed by homepage-link discovery.
+    const sources = resolveOptionSources(kinds("category"), new Set());
+    expect(sources.map((s) => s.id)).toEqual([SITE_LINKS_SOURCE_ID]);
+    expect(sources[0]?.kind).toBe("category");
+  });
+
+  test("a param with no matching loader still gets the fallback (never empty)", () => {
+    expect(
+      resolveOptionSources(kinds("product"), new Set()).map((s) => s.id),
+    ).toEqual([SITE_LINKS_SOURCE_ID]);
+    // An unclassified param gets nothing (keeps the plain free-text input).
+    expect(resolveOptionSources(new Set(), new Set([VTEX_PRODUCT]))).toEqual(
+      [],
+    );
+  });
+
+  test("empty term seeds product search with generic color terms", () => {
+    const [source] = resolveOptionSources(
+      kinds("product"),
+      new Set([VTEX_PRODUCT]),
+    );
+    const requests = source!.buildRequests!("");
+    expect(requests).toHaveLength(GENERIC_SEED_TERMS.length);
+    expect(requests.map((r) => r.props.query)).toEqual(GENERIC_SEED_TERMS);
+    // A real user term is used verbatim (no seeding).
+    expect(source!.buildRequests!("mochila")).toEqual([
+      { resolveType: VTEX_PRODUCT, props: { query: "mochila", count: 10 } },
+    ]);
+  });
+
+  test("empty term seeds the Magento search loader too", () => {
+    const magentoList = "magento/loaders/product/list.ts";
+    const [source] = resolveOptionSources(
+      kinds("product"),
+      new Set([magentoList]),
+      new Set(["magento"]),
+    );
+    const requests = source!.buildRequests!("");
+    expect(requests).toHaveLength(GENERIC_SEED_TERMS.length);
+    expect(requests[0]).toEqual({
+      resolveType: magentoList,
+      props: { props: { search: "rosa", pageSize: 10, currentPage: 1 } },
+    });
+  });
+});
+
+describe("linkOptionsFromHtml (homepage-links fallback)", () => {
+  const html = `
+    <nav>
+      <a href="/granado/perfumaria">Perfumaria</a>
+      <a href="/granado/sabonetes"><span>Sabonetes</span></a>
+      <a href="/granado/casa/vela">Vela</a>
+      <a href="/granado/perfumaria">Perfumaria dup</a>
+      <a href="https://instagram.com/granado">Instagram</a>
+      <a href="/mala-detroit/p">Mala Detroit</a>
+    </nav>`;
+
+  test("extracts internal template-matching links, deduped, text label", () => {
+    const opts = linkOptionsFromHtml(html, {
+      template: "/granado/*",
+      paramName: "*",
+    });
+    expect(opts).toEqual([
+      { value: "perfumaria", label: "Perfumaria", kind: "category" },
+      { value: "sabonetes", label: "Sabonetes", kind: "category" },
+      { value: "casa/vela", label: "Vela", kind: "category" },
+    ]);
+  });
+
+  test("drops product-detail (…/p) links from a catch-all category picker", () => {
+    const opts = linkOptionsFromHtml(
+      '<a href="/malas">Malas</a><a href="/mochila-x/p">Mochila</a>',
+      { template: "/*", paramName: "*" },
+    );
+    expect(opts.map((o) => o.value)).toEqual(["malas"]);
+  });
+
+  test("keeps /p links for a product (/p) template, slug extracted", () => {
+    const opts = linkOptionsFromHtml(
+      '<a href="/mochila-x/p">Mochila X</a><a href="/malas">Malas</a>',
+      { template: "/:slug/p", paramName: "slug" },
+    );
+    expect(opts).toEqual([
+      { value: "mochila-x", label: "Mochila X", kind: "category" },
+    ]);
+  });
+
+  test("falls back to a humanized slug when the link has no text", () => {
+    const opts = linkOptionsFromHtml(
+      '<a href="/granado/corpo-e-banho"><img src="x"/></a>',
+      { template: "/granado/*", paramName: "*" },
+    );
+    expect(opts).toEqual([
+      { value: "corpo-e-banho", label: "Corpo E Banho", kind: "category" },
+    ]);
+  });
+
+  test("parseHomepageAnchors strips inner tags from link text", () => {
+    expect(parseHomepageAnchors('<a href="/x"><b>Hi</b> there</a>')).toEqual([
+      { href: "/x", text: "Hi there" },
+    ]);
+    expect(parseHomepageAnchors(null)).toEqual([]);
+  });
+
+  test("parseEmbeddedProducts reads quoted JSON and RSC unquoted-key formats", () => {
+    // Quoted JSON (preview-origin URL) + RSC-streamed (unquoted keys,
+    // production-domain URL, escaped slashes) — both yield url + name.
+    const html = `
+      {"@type":"Product","productID":"1","sku":"x","url":"http://127.0.0.1:50153/granado/perfume-figo-75ml","name":"Perfume Figo 75ml"}
+      $R[9]={"@type":"Product",productID:"2",sku:"y",url:"https:\\/\\/loja.granado.com.br\\/granado\\/eau-suede-100ml",name:"Eau Suede 100ml"}`;
+    expect(parseEmbeddedProducts(html)).toEqual([
+      {
+        url: "http://127.0.0.1:50153/granado/perfume-figo-75ml",
+        name: "Perfume Figo 75ml",
+      },
+      {
+        url: "https://loja.granado.com.br/granado/eau-suede-100ml",
+        name: "Eau Suede 100ml",
+      },
+    ]);
+    expect(parseEmbeddedProducts(null)).toEqual([]);
+  });
+
+  test("parseEmbeddedProducts captures the first image url when present", () => {
+    const html = `{"@type":"Product","url":"/granado/perfume-x","name":"Perfume X","image":[{"@type":"ImageObject","alternateName":"x","url":"https://cdn.granado.com.br/perfume-x.jpg"}]}`;
+    expect(parseEmbeddedProducts(html)).toEqual([
+      {
+        url: "/granado/perfume-x",
+        name: "Perfume X",
+        image: "https://cdn.granado.com.br/perfume-x.jpg",
+      },
+    ]);
+  });
+
+  test("merges nav categories AND embedded products, tagged by kind", () => {
+    // Granado: nav links (categories) + shelf products, both under /granado/*.
+    const html = `
+      <a href="/granado/perfumaria">Perfumaria</a>
+      <a href="/granado/sabonetes">Sabonetes</a>
+      {"@type":"Product","url":"https://loja.granado.com.br/granado/perfume-figo-75ml","name":"Perfume Figo 75ml"}`;
+    const opts = linkOptionsFromHtml(html, {
+      template: "/granado/*",
+      paramName: "*",
+    });
+    // Embedded products are emitted before nav categories (products claim their
+    // URLs first so listing-page product anchors aren't mislabeled as categories).
+    expect(opts).toEqual([
+      {
+        value: "perfume-figo-75ml",
+        label: "Perfume Figo 75ml",
+        kind: "product",
+      },
+      { value: "perfumaria", label: "Perfumaria", kind: "category" },
+      { value: "sabonetes", label: "Sabonetes", kind: "category" },
+    ]);
+  });
+
+  test("a product's <a href> on a listing page is tagged product, not category", () => {
+    // The product card is BOTH an embedded Product and an <a href> anchor —
+    // the embedded signal wins so it lands under Products.
+    const html = `
+      <a href="/granado/perfume-figo-75ml">Perfume Figo</a>
+      <a href="/granado/perfumaria">Perfumaria</a>
+      {"@type":"Product","url":"/granado/perfume-figo-75ml","name":"Perfume Figo 75ml"}`;
+    const opts = linkOptionsFromHtml(html, {
+      template: "/granado/*",
+      paramName: "*",
+    });
+    expect(opts).toEqual([
+      {
+        value: "perfume-figo-75ml",
+        label: "Perfume Figo 75ml",
+        kind: "product",
+      },
+      { value: "perfumaria", label: "Perfumaria", kind: "category" },
+    ]);
+  });
+
+  test("filters utility (non-category) nav links from the category signal", () => {
+    // Bagaggio nav: real categories stay, login/account/checkout are dropped.
+    const html = `
+      <a href="/malas">Malas</a>
+      <a href="/outlet">Outlet</a>
+      <a href="/login">Entrar</a>
+      <a href="/myaccount">Minha conta</a>
+      <a href="/checkout">Checkout</a>`;
+    const opts = linkOptionsFromHtml(html, { template: "/*", paramName: "*" });
+    expect(opts.map((o) => o.value)).toEqual(["malas", "outlet"]);
+  });
+});
+
+describe("stripSurroundingSlashes", () => {
+  test("strips leading and trailing slashes, keeps inner ones", () => {
+    expect(stripSurroundingSlashes("/perfumaasdria/colonia")).toBe(
+      "perfumaasdria/colonia",
+    );
+    expect(stripSurroundingSlashes("//x//")).toBe("x");
+    expect(stripSurroundingSlashes("  /a/b/  ")).toBe("a/b");
+    expect(stripSurroundingSlashes("sabonete")).toBe("sabonete");
+    expect(stripSurroundingSlashes("")).toBe("");
   });
 });
 
