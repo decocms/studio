@@ -423,8 +423,15 @@ function OrgMembersContent() {
   const { data: seatState } = useOrganizationSeats();
   const setSeatsMutation = useSetSeats();
   const [stagedSeats, setStagedSeats] = useState<Record<string, SeatKind>>({});
-  const seatsApply = !!seatState?.billing && !seatState.billing.legacy;
-  const seatsEditable = seatState?.billing?.billingMode === "invoiced";
+  // Column only for orgs EXPLICITLY put on invoiced (contract) billing — the
+  // per-org opt-in is the rollout switch. Without this, any org created after
+  // the billing migration (legacy=false, self_serve by default) would grow a
+  // disabled Seat column before checkout/paywall exist. self_serve gets the
+  // column with the Stripe flow (phase 3).
+  const seatsApply =
+    !!seatState?.billing &&
+    !seatState.billing.legacy &&
+    seatState.billing.billingMode === "invoiced";
   const paidSeatSet = new Set(seatState?.paidSeatUserIds ?? []);
   const baseSeat = (userId: string): SeatKind =>
     paidSeatSet.has(userId) ? "paid" : "free";
@@ -757,11 +764,10 @@ function OrgMembersContent() {
               const userId = row.data.userId;
               const seat = effectiveSeat(userId);
               const isStaged = userId in stagedSeats;
-              const button = (
+              return (
                 <Button
                   variant={seat === "paid" ? "secondary" : "outline"}
                   size="xs"
-                  disabled={!seatsEditable}
                   onClick={() => toggleSeat(userId)}
                   className={cn(isStaged && "ring-2 ring-primary/60")}
                 >
@@ -769,19 +775,6 @@ function OrgMembersContent() {
                     ? t("orgs.seats.paid")
                     : t("orgs.seats.free")}
                 </Button>
-              );
-              if (seatsEditable) return button;
-              return (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span>{button}</span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {t("orgs.seats.selfServeSoon")}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
               );
             },
             cellClassName: "w-24 shrink-0",

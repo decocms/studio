@@ -185,8 +185,6 @@ export const orgs = {
   "orgs.seats.paid": "Pago",
   "orgs.seats.pendingChanges":
     "{count} mudança(s) de seat pendente(s) — {paid} seat(s) pago(s) após aplicar",
-  "orgs.seats.selfServeSoon":
-    "Mudanças de seat para planos self-serve chegam em breve",
   "orgs.monitoring.addFilter": "Adicionar filtro",
   "orgs.monitoring.agents": "Agentes",
   "orgs.monitoring.allAgents": "Todos os agentes",

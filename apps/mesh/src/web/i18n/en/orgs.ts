@@ -177,8 +177,6 @@ export const orgs = {
   "orgs.seats.paid": "Paid",
   "orgs.seats.pendingChanges":
     "{count} pending seat change(s) — {paid} paid seat(s) after applying",
-  "orgs.seats.selfServeSoon":
-    "Seat changes for self-serve plans are coming soon",
   "orgs.members.title": "Members",
   "orgs.members.toolCount": "{count} tool{plural}",
   "orgs.members.unknown": "Unknown",
