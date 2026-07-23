@@ -96,9 +96,10 @@ export function ConnectDesktopDialog({
               variant="ghost"
               size="icon-sm"
               onClick={() => {
-                navigator.clipboard.writeText(INSTALL_SNIPPET);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
+                navigator.clipboard.writeText(INSTALL_SNIPPET).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                });
               }}
             >
               {copied ? <Check size={14} /> : <Copy01 size={14} />}
