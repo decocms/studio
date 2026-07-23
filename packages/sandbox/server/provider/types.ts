@@ -79,6 +79,14 @@ export interface EnsureOptions {
     branch?: string;
     /** Human-readable label for logs/UI; no functional effect. */
     displayName?: string;
+    /**
+     * Resolved per-host PATs for fetching private git submodules whose remotes
+     * the main clone's per-repo token can't reach. Delivered to the daemon on
+     * the git-only config channel (never the env bag). Absent/empty → submodules
+     * are only fetched if public. Like `cloneUrl`, these are resolved fresh on
+     * every ensure.
+     */
+    submoduleCredentials?: { host: string; token: string }[];
   };
   /** Image override. Non-image runners MUST ignore. */
   image?: string;

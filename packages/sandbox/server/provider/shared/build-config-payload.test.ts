@@ -37,4 +37,55 @@ describe("buildConfigPayload", () => {
       operator: { userName: "Jane Doe" },
     });
   });
+
+  it("builds git.repository from a repo and derives repoName from the clone URL", () => {
+    const payload = buildConfigPayload({
+      runtime: "node",
+      packageManager: null,
+      repo: {
+        cloneUrl: "https://github.com/acme/widgets.git",
+        userName: "Jane",
+        userEmail: "jane@example.com",
+        branch: "main",
+      },
+    });
+
+    expect(payload?.git?.repository).toEqual({
+      cloneUrl: "https://github.com/acme/widgets.git",
+      repoName: "acme/widgets",
+      branch: "main",
+    });
+  });
+
+  it("forwards submoduleCredentials into git.repository when present", () => {
+    const payload = buildConfigPayload({
+      runtime: "node",
+      packageManager: null,
+      repo: {
+        cloneUrl: "https://github.com/acme/widgets.git",
+        userName: "Jane",
+        userEmail: "jane@example.com",
+        submoduleCredentials: [{ host: "github.com", token: "ghp_x" }],
+      },
+    });
+
+    expect(payload?.git?.repository.submoduleCredentials).toEqual([
+      { host: "github.com", token: "ghp_x" },
+    ]);
+  });
+
+  it("omits submoduleCredentials when the array is empty", () => {
+    const payload = buildConfigPayload({
+      runtime: "node",
+      packageManager: null,
+      repo: {
+        cloneUrl: "https://github.com/acme/widgets.git",
+        userName: "Jane",
+        userEmail: "jane@example.com",
+        submoduleCredentials: [],
+      },
+    });
+
+    expect(payload?.git?.repository).not.toHaveProperty("submoduleCredentials");
+  });
 });
