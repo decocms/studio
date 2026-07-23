@@ -133,7 +133,7 @@ async function _buildRequestHeaders(
     : [null, new Error("User ID required to issue configuration token")];
 
   if (error) {
-    console.error("Failed to issue configuration token:", configurationToken);
+    console.error("Failed to issue configuration token:", error);
   }
 
   const callerConnectionId = ctx.auth.user?.connectionId;
