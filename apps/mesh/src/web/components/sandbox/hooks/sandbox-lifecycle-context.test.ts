@@ -55,10 +55,15 @@ describe("shouldAutoStart", () => {
     userStopped: false,
     isPending: false,
     attempted: false,
+    autoStartBlocked: false,
   };
 
   test("all conditions met → true", () => {
     expect(shouldAutoStart(base)).toBe(true);
+  });
+
+  test("blocked on another member's thread → false", () => {
+    expect(shouldAutoStart({ ...base, autoStartBlocked: true })).toBe(false);
   });
 
   test("no github repo → false", () => {
@@ -173,5 +178,11 @@ describe("computeDrawerStatus", () => {
         error: { code: null, message: "boom" },
       }),
     ).toBe("errored");
+  });
+
+  test("othersThread → idle", () => {
+    expect(computeDrawerStatus({ kind: "othersThread", label: "main" })).toBe(
+      "idle",
+    );
   });
 });

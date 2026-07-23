@@ -1,9 +1,12 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   AlertTriangle,
+  Eye,
   PauseCircle,
   Play,
+  Plus,
   RefreshCw01,
+  Users01,
 } from "@untitledui/icons";
 import { SANDBOX_START_ERROR_CODES } from "@/shared/sandbox-start-errors";
 import { BootingVisual } from "./booting-visual";
@@ -26,10 +29,43 @@ export type SandboxStateCardProps =
       onRetry: () => void;
       /** Link to the org's Connections page, for the GitHub-auth case. */
       connectionsHref?: string;
+    }
+  | {
+      kind: "othersThread";
+      /** Identifies the other member's thread (its branch, or title). */
+      label: string;
+      onContinue: () => void;
+      onStartNewChat: () => void;
     };
 
 export function SandboxStateCard(props: SandboxStateCardProps) {
   const t = useT();
+
+  if (props.kind === "othersThread") {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-background p-6">
+        <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
+          <Users01 className="size-12 text-muted-foreground" />
+          <h3 className="text-lg font-medium">
+            {t("sandbox.stateCard.othersThreadTitle")}
+          </h3>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            {t("sandbox.stateCard.othersThreadMessage", { label: props.label })}
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <Button variant="outline" onClick={props.onContinue}>
+              <Eye className="size-4" />{" "}
+              {t("sandbox.stateCard.othersThreadContinue")}
+            </Button>
+            <Button onClick={props.onStartNewChat}>
+              <Plus className="size-4" />{" "}
+              {t("sandbox.stateCard.othersThreadNewChat")}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (props.kind === "starting") {
     return (

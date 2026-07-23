@@ -64,4 +64,23 @@ describe("computePreviewState", () => {
       }),
     ).toEqual({ kind: "suspended" });
   });
+
+  test("othersThreadGate with no previewUrl → othersThread (before starting)", () => {
+    expect(
+      computePreviewState({
+        ...base,
+        previewUrl: null,
+        othersThreadGate: { label: "tavano-321312" },
+      }),
+    ).toEqual({ kind: "othersThread", label: "tavano-321312" });
+  });
+
+  test("othersThreadGate but a live previewUrl → iframe (acknowledged, VM is running)", () => {
+    expect(
+      computePreviewState({
+        ...base,
+        othersThreadGate: { label: "tavano-321312" },
+      }),
+    ).toEqual({ kind: "iframe", previewUrl: "http://localhost:5173" });
+  });
 });

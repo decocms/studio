@@ -175,6 +175,16 @@ function VmEventsBridge({
   const effectiveHasGithubRepo =
     hasActiveGithubRepo || agentHasClonableSource(activeTask?.metadata);
 
+  // Someone else's thread: hold auto-start behind a confirmation gate so the
+  // sandbox doesn't silently boot on the creator's branch (mirrors the chat
+  // composer's read-only banner). Label it by branch (encodes the owner), or
+  // title as a fallback. Own thread → null (no gate).
+  const isOthersThread =
+    !!userId && !!activeTask?.created_by && activeTask.created_by !== userId;
+  const othersThreadLabel = isOthersThread
+    ? (activeTask?.branch ?? activeTask?.title ?? null)
+    : null;
+
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
   // Gate instead on a registered sandboxMap entry, or an in-flight
@@ -216,6 +226,7 @@ function VmEventsBridge({
         hasActiveGithubRepo={effectiveHasGithubRepo}
         sandboxMap={effectiveSandboxMap}
         sandboxProviderKind={pendingSandboxProviderKind}
+        othersThreadLabel={othersThreadLabel}
       >
         <BlocksPreviewWorkspaceProvider
           key={`${virtualMcpId}:${currentBranch ?? "no-branch"}`}

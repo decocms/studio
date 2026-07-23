@@ -308,6 +308,11 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
         : null,
   });
 
+  // The others-thread gate only applies on the Preview surface (which owns
+  // auto-start); Content is gated behind lifecycle.phase === "running" and
+  // never passes `othersThreadGate`, so this state is unreachable here.
+  if (sandboxState.kind === "othersThread") return null;
+
   if (sandboxState.kind !== "iframe") {
     return (
       <SandboxStateRenderer
