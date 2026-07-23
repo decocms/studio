@@ -522,7 +522,7 @@ function ConnectionDetailsContent({
         {activeTab === "active" && (
           <ErrorBoundary
             fallback={createMethodNotFoundFallback(
-              "Tools not supported by this server",
+              t("virtualMcp.dependencySelectionDialog.toolsNotSupported"),
               t,
             )}
           >
@@ -542,7 +542,7 @@ function ConnectionDetailsContent({
         {activeTab === "tools" && (
           <ErrorBoundary
             fallback={createMethodNotFoundFallback(
-              "Tools not supported by this server",
+              t("virtualMcp.dependencySelectionDialog.toolsNotSupported"),
               t,
             )}
           >
@@ -564,7 +564,7 @@ function ConnectionDetailsContent({
         {activeTab === "resources" && (
           <ErrorBoundary
             fallback={createMethodNotFoundFallback(
-              "Resources not supported by this server",
+              t("virtualMcp.dependencySelectionDialog.resourcesNotSupported"),
               t,
             )}
           >
@@ -584,7 +584,7 @@ function ConnectionDetailsContent({
         {activeTab === "prompts" && (
           <ErrorBoundary
             fallback={createMethodNotFoundFallback(
-              "Prompts not supported by this server",
+              t("virtualMcp.dependencySelectionDialog.promptsNotSupported"),
               t,
             )}
           >
