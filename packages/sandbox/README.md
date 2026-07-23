@@ -61,15 +61,14 @@ require a bearer token.
 - `STUDIO_SANDBOX_PROVIDER` — pin the provider: `agent-sandbox` or `user-desktop`.
   Defaults to `user-desktop`. Setting it explicitly is required for production
   deploys.
-- `SHARED_AGENT_SANDBOXES_ENABLED` — default-off rollout flag. When `true`,
-  agent-sandbox uses the org-scoped session registry and shares a branch across
-  authorized collaborators. It does not change user-desktop identity. Enabling
-  it does not migrate a running per-user hosted workspace, so drain those
-  sandboxes (and commit any working-tree changes) before rollout. Shared claims
-  remain cleanup-capable if the flag is later disabled.
 - `SANDBOX_ROOT_URL` — production template for the pod URL. Either a bare
   base (`https://sandboxes.example.com` → handle becomes leading subdomain)
   or a `{handle}` template (`https://{handle}.sandboxes.example.com`).
+
+Agent sandboxes use the org-scoped session registry and share a branch across
+authorized collaborators. User-desktop identity remains user-scoped. Upgrading
+does not migrate an already-running per-user hosted workspace; commit its work
+and drain those claims before deploying this change.
 
 ## Design follow-ups
 

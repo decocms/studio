@@ -23,7 +23,6 @@ import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { removeSandboxMapEntry } from "@/tools/sandbox/sandbox-map";
-import { getSettings } from "@/settings";
 import type { SandboxFsHooks } from "@decocms/harness/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
 
 /**
@@ -47,10 +46,7 @@ async function syncToolsCatalog(
   // shared workspace would let another collaborator act as the user who
   // happened to sync last. Shared hosted sandboxes therefore keep tool calls
   // in the outer harness and do not materialize user credentials on disk.
-  if (
-    vm.providerKind === "agent-sandbox" &&
-    getSettings().sharedAgentSandboxesEnabled
-  ) {
+  if (vm.providerKind === "agent-sandbox") {
     return;
   }
   try {
@@ -191,10 +187,7 @@ export async function buildClusterSandboxFs(
     if (lastHandlePromise && typeof runner.forgetHandle === "function") {
       try {
         const lastHandle = await lastHandlePromise;
-        if (
-          providerKind === "agent-sandbox" &&
-          getSettings().sharedAgentSandboxesEnabled
-        ) {
+        if (providerKind === "agent-sandbox") {
           const virtualMcp = await ctx.storage.virtualMcps.findById(
             vm.virtualMcpId,
           );

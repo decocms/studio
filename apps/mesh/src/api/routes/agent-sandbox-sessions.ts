@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
-import { getSettings } from "../../settings";
 import type { Env } from "../hono-env";
 
 interface SessionCursor {
@@ -47,10 +46,6 @@ export function createAgentSandboxSessionRoutes() {
     const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
     if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
       return c.json({ error: "Virtual MCP not found" }, 404);
-    }
-
-    if (!getSettings().sharedAgentSandboxesEnabled) {
-      return c.json({ items: [], nextCursor: null });
     }
 
     const branch = c.req.query("branch");

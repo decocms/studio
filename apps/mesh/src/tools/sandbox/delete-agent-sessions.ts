@@ -1,7 +1,7 @@
 import { composeSandboxRef, sharedSandboxId } from "@decocms/sandbox/provider";
 import type { StudioContext } from "../../core/studio-context";
 import type { AgentSandboxSession } from "../../storage/agent-sandbox-sessions";
-import { getSharedAgentSandboxProvider } from "../../sandbox/lifecycle";
+import { getSandboxProviderByKind } from "../../sandbox/lifecycle";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 
 const DELETE_CONCURRENCY = 20;
@@ -12,7 +12,7 @@ export async function deleteAgentSandboxSessions(
 ): Promise<void> {
   if (sessions.length === 0) return;
 
-  const runner = await getSharedAgentSandboxProvider(ctx);
+  const runner = await getSandboxProviderByKind(ctx, "agent-sandbox");
   for (let offset = 0; offset < sessions.length; offset += DELETE_CONCURRENCY) {
     const batch = sessions.slice(offset, offset + DELETE_CONCURRENCY);
     await Promise.all(

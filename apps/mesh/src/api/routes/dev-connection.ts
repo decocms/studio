@@ -34,7 +34,6 @@ import {
 } from "../../storage/secrets";
 import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
 import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
-import { getSettings } from "../../settings";
 import {
   type BranchMapEntryLike,
   selectVmEntry,
@@ -116,18 +115,16 @@ export async function resolveDevConnection(
 
   const metadata = (vm.metadata ?? {}) as Record<string, unknown>;
   const userMap = readSandboxMap(metadata)[actingUserId];
-  const sharedSession = getSettings().sharedAgentSandboxesEnabled
-    ? branch
-      ? await ctx.storage.agentSandboxSessions.find({
-          organizationId: orgId,
-          virtualMcpId: agentId,
-          branch,
-        })
-      : await ctx.storage.agentSandboxSessions.findLatestReadyByVirtualMcp(
-          orgId,
-          agentId,
-        )
-    : null;
+  const sharedSession = branch
+    ? await ctx.storage.agentSandboxSessions.find({
+        organizationId: orgId,
+        virtualMcpId: agentId,
+        branch,
+      })
+    : await ctx.storage.agentSandboxSessions.findLatestReadyByVirtualMcp(
+        orgId,
+        agentId,
+      );
   const sharedEntry =
     sharedSession?.desiredState === "running" &&
     sharedSession.status === "ready" &&

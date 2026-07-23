@@ -57,7 +57,6 @@ import {
 } from "../../core/studio-context";
 import { readSandboxMap, resolveVm } from "../../tools/sandbox/sandbox-map";
 import type { Env } from "../hono-env";
-import { getSettings } from "../../settings";
 
 /**
  * Cap on how long we keep the SSE open if a claim never materializes (e.g.
@@ -141,8 +140,7 @@ export const createVmEventsRoutes = () => {
     }
 
     const sandboxId: SandboxId =
-      providerKind === "agent-sandbox" &&
-      getSettings().sharedAgentSandboxesEnabled
+      providerKind === "agent-sandbox"
         ? sharedSandboxId(projectRef)
         : userSandboxId(userId, projectRef);
     const claimName = computeClaimHandle(sandboxId, branch);
