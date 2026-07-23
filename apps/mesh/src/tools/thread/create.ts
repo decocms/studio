@@ -28,7 +28,6 @@ import { normalizeThreadForResponse } from "./helpers";
 import { ThreadCreateDataSchema, ThreadEntitySchema } from "./schema";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { generateBranchName } from "@/shared/branch-name";
-import { getSettings } from "../../settings";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -125,14 +124,12 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     const githubRepo = metadata?.githubRepo;
     let branch: string | null = null;
     if (githubRepo) {
-      const sharedWarmBranch = getSettings().sharedAgentSandboxesEnabled
-        ? (
-            await ctx.storage.agentSandboxSessions.findLatestReadyByVirtualMcp(
-              organization.id,
-              data.virtual_mcp_id,
-            )
-          )?.branch
-        : undefined;
+      const sharedWarmBranch = (
+        await ctx.storage.agentSandboxSessions.findLatestReadyByVirtualMcp(
+          organization.id,
+          data.virtual_mcp_id,
+        )
+      )?.branch;
       branch =
         data.branch ??
         sharedWarmBranch ??

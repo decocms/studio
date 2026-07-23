@@ -53,7 +53,6 @@ import {
   parseGithubRepoFromMetadata,
   refreshSandboxGitCredentials,
 } from "../../tools/sandbox/sync-git-credentials";
-import { getSettings } from "../../settings";
 
 // ---- Middleware types -------------------------------------------------------
 
@@ -207,8 +206,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   }
 
   const sandboxId =
-    providerKind === "agent-sandbox" &&
-    getSettings().sharedAgentSandboxesEnabled
+    providerKind === "agent-sandbox"
       ? sharedSandboxId(projectRef)
       : userSandboxId(userId, projectRef);
   const claimName = computeClaimHandle(sandboxId, branch);

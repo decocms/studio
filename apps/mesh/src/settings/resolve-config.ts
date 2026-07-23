@@ -191,8 +191,6 @@ export function resolveConfig(
     ),
     orgFsPublicSetsJson: envVars.ORGFS_PUBLIC_SETS,
     orgFsMountsDisabled: toBool(envVars.DISABLE_ORGFS_MOUNTS),
-    sharedAgentSandboxesEnabled: toBool(envVars.SHARED_AGENT_SANDBOXES_ENABLED),
-
     // Object Storage (S3-compatible)
     s3Endpoint: envVars.S3_ENDPOINT,
     s3Bucket: envVars.S3_BUCKET,

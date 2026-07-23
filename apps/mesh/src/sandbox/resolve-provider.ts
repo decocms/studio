@@ -37,7 +37,6 @@ import {
 import type { StudioContext } from "../core/studio-context";
 import { readSandboxMap } from "../tools/sandbox/sandbox-map";
 import { buildDesktopProvider, getSandboxProviderByKind } from "./lifecycle";
-import { getSettings } from "../settings";
 
 export interface ResolveSandboxProviderArgs {
   /** User whose sandboxMap cell to read and (for `desktop`) whose link to bind. */
@@ -148,9 +147,8 @@ async function readRecordedKinds(
   const parsed = cell ? parseBranchMap(cell) : {};
   const recorded = Object.keys(parsed) as SandboxProviderKind[];
 
-  if (!getSettings().sharedAgentSandboxesEnabled) return recorded;
-
-  // Legacy hosted metadata is deliberately ignored while shared mode is on.
+  // Legacy hosted metadata is deliberately ignored. Agent sandboxes use the
+  // first-class org-scoped session registry.
   // Keep user-desktop entries intact and add hosted presence from the
   // first-class org-scoped session registry.
   const kinds: SandboxProviderKind[] = recorded.filter(

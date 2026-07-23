@@ -1,7 +1,8 @@
 /**
  * Test scaffolding for thread tool tests. Mirrors the manual context
  * construction in `connection/connection-tools.test.ts`, but only wires the
- * storage modules the thread tools touch (threads, virtualMcps).
+ * storage modules the thread tools touch (threads, virtualMcps, sandbox
+ * sessions).
  */
 
 import { vi } from "bun:test";
@@ -18,6 +19,7 @@ import {
   OrgScopedThreadStorage,
 } from "../../storage/threads";
 import { VirtualMCPStorage } from "../../storage/virtual";
+import { AgentSandboxSessionStorage } from "../../storage/agent-sandbox-sessions";
 import type { BoundAuthClient, StudioContext } from "../../core/studio-context";
 
 const ORG_ID = "org_test";
@@ -62,6 +64,7 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
   const sqlThreads = new SqlThreadStorage(database.db);
   const threads = new OrgScopedThreadStorage(sqlThreads, ORG_ID);
   const virtualMcps = new VirtualMCPStorage(database.db);
+  const agentSandboxSessions = new AgentSandboxSessionStorage(database.db);
 
   const ctx = {
     timings: {
@@ -79,6 +82,7 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
     storage: {
       threads,
       virtualMcps,
+      agentSandboxSessions,
       // Stub the rest — thread tools don't touch these.
       connections: null as never,
       organizationSettings: null as never,

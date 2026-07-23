@@ -75,8 +75,8 @@ type GithubRepoMeta = {
   githubRepo?: GithubRepo | null;
 };
 
-function usesSharedAgentSession(kind: SandboxProviderKind): boolean {
-  return kind === "agent-sandbox" && getSettings().sharedAgentSandboxesEnabled;
+function usesAgentSandboxSession(kind: SandboxProviderKind): boolean {
+  return kind === "agent-sandbox";
 }
 
 function sessionToSandboxRecord(
@@ -183,7 +183,7 @@ export const SANDBOX_START = defineTool({
         explicitKind,
       });
 
-    const existing: SandboxRecord | null = usesSharedAgentSession(providerKind)
+    const existing: SandboxRecord | null = usesAgentSandboxSession(providerKind)
       ? sessionToSandboxRecord(
           await ctx.storage.agentSandboxSessions.find({
             organizationId: organization.id,
@@ -265,7 +265,7 @@ export async function ensureSandbox(
   }
   const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
   const providerKind = input.sandboxProviderKind;
-  const existing: SandboxRecord | null = usesSharedAgentSession(providerKind)
+  const existing: SandboxRecord | null = usesAgentSandboxSession(providerKind)
     ? sessionToSandboxRecord(
         await ctx.storage.agentSandboxSessions.find({
           organizationId: organization.id,
@@ -291,7 +291,7 @@ export async function ensureSandbox(
   // daemon first — a relinked daemon has an empty sandbox map and answers the
   // liveness probe with 404, which means we must reap the stale entry and
   // re-provision (runner.ensure spawns a fresh sandbox on the new daemon).
-  if (existing && !usesSharedAgentSession(providerKind)) {
+  if (existing && !usesAgentSandboxSession(providerKind)) {
     if (providerKind !== "user-desktop") return existing;
     const alive = await runner.alive(existing.sandboxHandle).catch(() => false);
     if (alive) return existing;
@@ -353,7 +353,7 @@ type StartParams = {
 async function provisionSandbox(
   params: StartParams,
 ): Promise<{ entry: SandboxRecord; isNewVm: boolean }> {
-  if (!usesSharedAgentSession(params.providerKind)) {
+  if (!usesAgentSandboxSession(params.providerKind)) {
     return provisionSandboxInner(params, null);
   }
 

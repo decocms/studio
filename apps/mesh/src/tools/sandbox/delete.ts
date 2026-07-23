@@ -19,7 +19,6 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
-import { getSettings } from "../../settings";
 
 const sandboxProviderKindInputSchema = z.enum([
   "agent-sandbox",
@@ -59,7 +58,7 @@ export const SANDBOX_DELETE = defineTool({
     // going through schema parsing.
     const kind = normalizeSandboxProviderKind(input.sandboxProviderKind);
 
-    if (kind === "agent-sandbox" && getSettings().sharedAgentSandboxesEnabled) {
+    if (kind === "agent-sandbox") {
       requireAuth(ctx);
       const organization = requireOrganization(ctx);
       await ctx.access.check();

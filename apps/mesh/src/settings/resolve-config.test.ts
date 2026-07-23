@@ -10,20 +10,6 @@ const flags: CliFlags = {
 };
 
 describe("resolveConfig sandbox provider kind", () => {
-  it("keeps shared agent sandboxes off by default", () => {
-    expect(resolveConfig(flags, {}).settings.sharedAgentSandboxesEnabled).toBe(
-      false,
-    );
-  });
-
-  it("enables shared agent sandboxes independently", () => {
-    expect(
-      resolveConfig(flags, {
-        SHARED_AGENT_SANDBOXES_ENABLED: "true",
-      }).settings.sharedAgentSandboxesEnabled,
-    ).toBe(true);
-  });
-
   it("accepts canonical agent-sandbox", () => {
     const result = resolveConfig(flags, {
       STUDIO_SANDBOX_PROVIDER: "agent-sandbox",
