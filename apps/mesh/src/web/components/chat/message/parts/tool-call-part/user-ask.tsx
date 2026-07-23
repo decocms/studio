@@ -2,6 +2,7 @@
 
 import { cn } from "@deco/ui/lib/utils.ts";
 import { MessageQuestionCircle } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { UserAskToolPart } from "../../../types.ts";
 import { getToolPartErrorText } from "../utils.ts";
 
@@ -12,20 +13,22 @@ interface UserAskPartProps {
 }
 
 export function UserAskPart({ part }: UserAskPartProps) {
+  const t = useT();
   // Only render after user has responded
   if (!part.state.startsWith("output-")) {
     return null;
   }
 
-  const question = part.input?.prompt?.trim() || "Question";
+  const question =
+    part.input?.prompt?.trim() || t("chat.userAskQuestion.question");
   const isError =
     part.state === "output-error" || part.state === "output-denied";
   const isDenied = part.state === "output-denied";
 
   const answer: string = isDenied
-    ? "Skipped"
+    ? t("chat.userAskQuestion.skippedAnswer")
     : part.state === "output-error"
-      ? (getToolPartErrorText(part) ?? "Error")
+      ? (getToolPartErrorText(part) ?? t("chat.subtask.errorLabel"))
       : (part.output?.response ?? "");
 
   return (
