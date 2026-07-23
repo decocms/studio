@@ -406,6 +406,7 @@ export const sandbox = {
   "sandbox.preview.searchPagesAndComponents":
     "Procurar páginas e componentes...",
   "sandbox.preview.siteSeo": "SEO do site",
+  "sandbox.preview.startingPreview": "Iniciando seu preview",
   "sandbox.preview.templateNoLongerExists":
     "O modelo selecionado não existe mais.",
   "sandbox.preview.urlCopiedToClipboard":
@@ -413,8 +414,6 @@ export const sandbox = {
   "sandbox.preview.valueForParam": "Valor de {label}",
   "sandbox.preview.viewJson": "Visualizar JSON",
   "sandbox.preview.visualEditor": "Editor visual",
-  "sandbox.preview.wakingShowingProduction":
-    "Iniciando seu preview — exibindo o site publicado",
   "sandbox.productBlocks.addProductIdButton": "Adicionar ID do produto",
   "sandbox.productBlocks.addProductsButton": "Adicionar produtos",
   "sandbox.productBlocks.addProductsDescription":
