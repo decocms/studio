@@ -46,10 +46,16 @@ image:
 
 # ── sandbox pod resources (per SandboxClaim) ───────────────────────────
 # Prod ceilings. Adjust per measured workload.
+# memory request = observed p95 of per-pod peak working-set (~2Gi over 7d;
+# 2d raw p90 2.2Gi, p95 2.4Gi). It was 1Gi — but busy pods spend ~100% of
+# their life above 1Gi, so the scheduler bin-packed on a request less than
+# half of real usage and prod nodes hit memory-pressure eviction (never
+# per-pod OOM: 0 pods reach the 4Gi limit). Sizing the request to real p95
+# stops the node-pressure evictions at the cost of lower packing density.
 resources:
   requests:
     cpu: 500m
-    memory: 1Gi
+    memory: 2Gi
   limits:
     cpu: "2"
     memory: 4Gi
