@@ -21,44 +21,49 @@ export type BlocksTabState =
   | { kind: "empty" }
   | { kind: "error"; source: "sandbox" | "data" };
 
-const TERMINAL_LIFECYCLE_PHASES = new Set<LifecycleState["phase"]>([
-  "clone-failed",
-  "install-failed",
-  "start-failed",
-  "crashed",
-]);
+type PhaseClass =
+  /** Setup failed for good — surface a sandbox error card. */
+  | "terminal-error"
+  /** Daemon not serving reads yet (no clone / no daemon) — show loading. */
+  | "booting"
+  /**
+   * Daemon reachable AND repo cloned, so the committed `.deco/*.gen.json`
+   * snapshot is readable — even before the dev server reaches `running`. This
+   * is what lets Blocks open during boot (mirroring Content, which renders as
+   * soon as the sandbox handle exists). `crashed` (dev server died, daemon
+   * alive) is here too: the snapshot stays editable, only the live preview is
+   * broken until the dev server is back.
+   */
+  | "snapshot-readable";
 
-// Phases where the daemon is reachable AND the repo is already cloned, so the
-// committed `.deco/*.gen.json` snapshot is readable even before the dev server
-// is up. Blocks edits persist to the FS, so the editor stays usable throughout
-// boot — mirroring Content, which renders as soon as the sandbox handle exists
-// rather than waiting for the dev server to reach `running`. `crashed` (dev
-// server died but daemon alive) is included for the same reason. `idle` and
-// `cloning` are excluded: the daemon isn't serving the snapshot yet, so we show
-// loading rather than a false "empty" from a 404 on a not-yet-cloned file.
-const SNAPSHOT_READABLE_PHASES = new Set<LifecycleState["phase"]>([
-  "checking-out",
-  "installing",
-  "starting",
-  "running",
-  "crashed",
-]);
+// Exhaustive over `LifecycleState["phase"]`: the switch has no `default`, so
+// adding a phase to the union is a compile error here rather than a silent
+// fall-through to the wrong state.
+function classifyPhase(phase: LifecycleState["phase"]): PhaseClass {
+  switch (phase) {
+    case "clone-failed":
+    case "install-failed":
+    case "start-failed":
+      return "terminal-error";
+    case "idle":
+    case "cloning":
+      return "booting";
+    case "checking-out":
+    case "installing":
+    case "starting":
+    case "running":
+    case "crashed":
+      return "snapshot-readable";
+  }
+}
 
 export function resolveBlocksTabState(
   input: BlocksTabStateInput,
 ): BlocksTabState {
-  // Genuine setup failures stay terminal. `crashed` is recoverable (see
-  // SNAPSHOT_READABLE_PHASES) — the committed snapshot is still editable, only
-  // the live preview is broken until the dev server is back.
-  if (
-    TERMINAL_LIFECYCLE_PHASES.has(input.lifecyclePhase) &&
-    input.lifecyclePhase !== "crashed"
-  ) {
+  const phaseClass = classifyPhase(input.lifecyclePhase);
+  if (phaseClass === "terminal-error")
     return { kind: "error", source: "sandbox" };
-  }
-  if (!SNAPSHOT_READABLE_PHASES.has(input.lifecyclePhase)) {
-    return { kind: "loading" };
-  }
+  if (phaseClass === "booting") return { kind: "loading" };
 
   const blocksFrameworkMissing = [input.decofile, input.meta].some(
     (query) =>
@@ -69,7 +74,18 @@ export function resolveBlocksTabState(
   const initialDataFailed =
     (input.decofile.status === "error" && !input.decofile.hasData) ||
     (input.meta.status === "error" && !input.meta.hasData);
-  if (initialDataFailed) return { kind: "error", source: "data" };
+  if (initialDataFailed) {
+    // While booting, the committed snapshot may not be written yet, and an
+    // absent file surfaces as a synthetic 502 from the read fallback (see
+    // `use-decofile`), NOT a 404 — so it can't be classified as "framework
+    // missing" above. Treat it as loading instead of a hard data error: the
+    // `→running` lifecycle transition re-invalidates both queries and resolves
+    // content/empty authoritatively. Only surface the error once the dev
+    // server has settled (running/crashed), where the failure is real.
+    const devSettled =
+      input.lifecyclePhase === "running" || input.lifecyclePhase === "crashed";
+    return devSettled ? { kind: "error", source: "data" } : { kind: "loading" };
+  }
 
   if (!input.decofile.hasData || !input.meta.hasData) {
     return { kind: "loading" };

@@ -46,6 +46,53 @@ describe("resolveBlocksTabState", () => {
     },
   );
 
+  test.each(["checking-out", "installing", "starting"] as const)(
+    "keeps loading (not a data error) when the snapshot is absent while booting (%s)",
+    (lifecyclePhase) => {
+      // An absent committed snapshot surfaces as a synthetic 502 from the read
+      // fallback, not a 404. Before the dev server settles we must not flash a
+      // red data-error card — the `→running` transition will resolve it.
+      expect(
+        resolveBlocksTabState(
+          input({
+            lifecyclePhase,
+            decofile: { status: "error", hasData: false, errorStatus: 502 },
+            meta: { status: "error", hasData: false, errorStatus: 502 },
+          }),
+        ),
+      ).toEqual({ kind: "loading" });
+    },
+  );
+
+  test("surfaces a data error once the dev server has settled (running)", () => {
+    expect(
+      resolveBlocksTabState(
+        input({
+          lifecyclePhase: "running",
+          meta: { status: "error", hasData: false, errorStatus: 502 },
+        }),
+      ),
+    ).toEqual({ kind: "error", source: "data" });
+  });
+
+  test("loads while the snapshot is still pending during boot (starting)", () => {
+    expect(
+      resolveBlocksTabState(
+        input({
+          lifecyclePhase: "starting",
+          decofile: { status: "pending", hasData: false },
+          meta: { status: "pending", hasData: false },
+        }),
+      ),
+    ).toEqual({ kind: "loading" });
+  });
+
+  test("renders empty when the booting snapshot has no editable content (installing)", () => {
+    expect(
+      resolveBlocksTabState(input({ lifecyclePhase: "installing" })),
+    ).toEqual({ kind: "empty" });
+  });
+
   test("loads while initial Deco data is pending", () => {
     expect(
       resolveBlocksTabState(
