@@ -633,6 +633,19 @@ export function SectionsEditor({
     options?: { onSuccess?: () => void },
   ) => {
     if (!activePageKey) return;
+    // Cancel pending field/rule autosave timers — they capture a section index
+    // at schedule time and write into `rawSections[index]` (read fresh via
+    // latestRef) when they fire. Restructuring the array here (delete,
+    // duplicate, reorder, hide/show, ...) shifts what's at that index, so a
+    // still-pending timer would land its stale write on the wrong section.
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    if (sectionRuleDebounceRef.current) {
+      clearTimeout(sectionRuleDebounceRef.current);
+      sectionRuleDebounceRef.current = null;
+    }
     const fullPageData = buildPageDataWithSections(
       decofile,
       activePageKey,
