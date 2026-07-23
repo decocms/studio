@@ -698,6 +698,21 @@ describe("git routes", () => {
     });
   });
 
+  it("discard returns 400 (not 500) when filepaths contains a non-string entry", async () => {
+    const { appRoot, repoDir } = initRepo();
+
+    const handler = makeGitDiscardHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/discard", {
+        method: "POST",
+        body: JSON.stringify({ filepaths: ["README.md", 123] }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "filepaths is required" });
+  });
+
   it("discard on a renamed file restores the original instead of deleting both", async () => {
     const { appRoot, repoDir } = initRepo();
     writeFileSync(join(repoDir, "old.txt"), "important content\n");
