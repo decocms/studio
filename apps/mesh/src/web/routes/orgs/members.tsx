@@ -769,6 +769,7 @@ function OrgMembersContent() {
                   variant={seat === "paid" ? "secondary" : "outline"}
                   size="xs"
                   onClick={() => toggleSeat(userId)}
+                  disabled={setSeatsMutation.isPending}
                   className={cn(isStaged && "ring-2 ring-primary/60")}
                 >
                   {seat === "paid"
