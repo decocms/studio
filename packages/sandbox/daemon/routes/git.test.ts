@@ -217,6 +217,19 @@ describe("git routes", () => {
     expect(body.diffs["README.md"]?.to).toContain("hello world");
   });
 
+  it("diff shows the original content for a renamed file, not null", async () => {
+    const { appRoot, repoDir } = initRepo();
+    gitSync(["mv", "README.md", "GUIDE.md"], { cwd: repoDir, asUser: false });
+    const handler = makeGitDiffHandler({ appRoot, repoDir });
+    const res = await handler(new Request("http://x/git/diff"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      diffs: Record<string, { from: string | null; to: string | null }>;
+    };
+    expect(body.diffs["GUIDE.md"]?.from).toContain("hello");
+    expect(body.diffs["GUIDE.md"]?.to).toContain("hello");
+  });
+
   it("diff against base returns committed branch changes", async () => {
     const { appRoot, repoDir } = initRepo();
     gitSync(["checkout", "-b", "feature"], { cwd: repoDir, asUser: false });
