@@ -77,6 +77,17 @@ export async function handleVirtualMcpRequest(
       return c.json({ error: "Agent ID or organization ID is required" }, 400);
     }
 
+    // A specific virtual MCP id was requested but no organization context
+    // could be resolved (legacy /mcp/gateway|virtual-mcp route hit without
+    // x-org-id/x-org-slug headers and no path-resolved org — e.g. a
+    // multi-org member whose session has no deterministic active org). The
+    // ownership checks below only run when organizationId is truthy, so
+    // without this guard the lookup falls through with no org scoping at
+    // all and would serve whichever org happens to own that id.
+    if (virtualMcpId && !organizationId) {
+      return c.json({ error: "Organization context is required" }, 400);
+    }
+
     const virtualMcp = await ctx.tracer.startActiveSpan(
       "studio.virtual_mcp.lookup",
       { attributes: { "virtual_mcp.id": virtualId } },
