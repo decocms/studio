@@ -402,6 +402,21 @@ describe("git routes", () => {
     expect(log.trim()).toBe("init");
   });
 
+  it("publish route returns 409 (not 500) for a protected-branch refusal", async () => {
+    const { appRoot, repoDir } = initRepo(); // initRepo checks out main
+    writeFileSync(join(repoDir, "README.md"), "changed\n");
+    const handler = makeGitPublishHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/publish", {
+        method: "POST",
+        body: JSON.stringify({ message: "from main" }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/protected branch "main"/);
+  });
+
   it("publish() does not commit org-fs mount content excluded via .git/info/exclude", () => {
     const { appRoot, repoDir } = initRepo();
     onFeatureBranch(repoDir); // publish() refuses the protected default branch
