@@ -80,6 +80,29 @@ describe("resolveConfig NATS tunnel settings", () => {
   );
 });
 
+describe("resolveConfig database pool max", () => {
+  it("defaults to 5 when unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.databasePoolMax).toBe(5);
+  });
+
+  it("uses DATABASE_POOL_MAX when set", () => {
+    const result = resolveConfig(flags, { DATABASE_POOL_MAX: "20" });
+
+    expect(result.settings.databasePoolMax).toBe(20);
+  });
+
+  it.each(["abc", "0", "-1", "1.5", "Infinity"])(
+    "throws for invalid pool max %p",
+    (value) => {
+      expect(() => resolveConfig(flags, { DATABASE_POOL_MAX: value })).toThrow(
+        "DATABASE_POOL_MAX must be a positive integer",
+      );
+    },
+  );
+});
+
 describe("resolveConfig deployment admin emails", () => {
   it("defaults to an empty list when unset", () => {
     const result = resolveConfig(flags, {});
