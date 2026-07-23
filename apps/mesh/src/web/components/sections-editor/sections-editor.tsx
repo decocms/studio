@@ -1829,6 +1829,12 @@ export function SectionsEditor({
       : editingBreadcrumbs;
   const handleAddPageVariant = () => {
     if (!activePageKey) return;
+    // Cancel a pending rule-autosave timer — it writes into
+    // `variants[latestVariantIndex]` (read fresh via latestRef) when it fires,
+    // and appending a variant here doesn't change that index, but a stale save
+    // firing after this mutation would clobber the newly-saved data with an
+    // outdated variants array.
+    cancelPendingRuleSaves();
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
     const updatedSections = appendPageVariantSections(
       fullPageData.sections,
@@ -1874,6 +1880,11 @@ export function SectionsEditor({
     orphanMatcherBlockKey?: string | null,
   ) => {
     if (!activePageKey) return;
+    // Cancel a pending rule-autosave timer — it writes into
+    // `variants[latestVariantIndex]` (read fresh via latestRef) when it fires,
+    // so reordering/deleting/duplicating variants here would land that stale
+    // write on the wrong (or now-missing) variant.
+    cancelPendingRuleSaves();
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
     const current = fullPageData.sections;
     if (!current || typeof current !== "object" || Array.isArray(current))
