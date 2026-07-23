@@ -19,6 +19,7 @@ import {
   setReportReviewerMode,
 } from "./reports/track";
 import { useT } from "@/web/i18n/use-t.ts";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import "./reports/reports.css";
 
 const route = getRouteApi("/report/$domain");
@@ -134,6 +135,9 @@ export default function ReportPage() {
   const domain = normalizeDomain(rawDomain);
   const session = authClient.useSession();
   const authenticated = Boolean(session.data?.user);
+  // Render the deck in the viewer's Studio locale (same source as the rest of
+  // the UI's i18n), so a language switch reflects in the report too.
+  const [{ language }] = usePreferences();
 
   // Reviewer sessions (?key=) flag every event with report_preview — set at
   // render (module state, so it lands before any child capture) and cleared
@@ -141,8 +145,8 @@ export default function ReportPage() {
   setReportReviewerMode(Boolean(key));
 
   const initial = useQuery({
-    queryKey: KEYS.report(domain, key),
-    queryFn: () => getReport(domain, key),
+    queryKey: KEYS.report(domain, key, language),
+    queryFn: () => getReport(domain, key, language),
     enabled: authenticated,
     staleTime: Infinity,
     retry: (failureCount, error) =>
@@ -208,6 +212,7 @@ export default function ReportPage() {
       initial={initial.data}
       sessionEmail={session.data.user.email}
       sessionUser={session.data.user}
+      lang={language}
     />
   );
 

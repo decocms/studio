@@ -33,10 +33,15 @@ async function fetchReport(
   // forwarded as ?pw=, the engine bypasses ONLY its publish gate and returns
   // exactly what the public will see once approved.
   key?: string,
+  // Viewer locale, forwarded as ?lang= so the engine renders that language.
+  lang?: string,
 ): Promise<ReportState> {
+  const params = new URLSearchParams();
+  if (key) params.set("pw", key);
+  if (lang) params.set("lang", lang);
+  const qs = params.toString() ? `?${params.toString()}` : "";
   const res = await engineFetch(
-    `/api/v2/public/diagnostics/${encodeURIComponent(domain)}` +
-      (key ? `?pw=${encodeURIComponent(key)}` : ""),
+    `/api/v2/public/diagnostics/${encodeURIComponent(domain)}${qs}`,
     { headers: { Accept: "application/json" } },
   );
   if (res.status === 404)
@@ -85,8 +90,9 @@ app.get("/site/:domain", async (c) => {
   const domain = c.req.param("domain").trim();
   if (!domain) return c.json({ error: "domain is required" }, 400);
   const key = c.req.query("key")?.trim() || undefined;
+  const lang = c.req.query("lang")?.trim() || undefined;
   try {
-    const state = await fetchReport(domain, key);
+    const state = await fetchReport(domain, key, lang);
     // Never cached: the deck carries short-lived signed screenshot URLs.
     c.header("Cache-Control", "private, no-store");
     return c.json(state);
