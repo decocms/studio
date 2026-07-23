@@ -222,7 +222,6 @@ export function createSSESubscription(
       conn.channel = channel;
     }
 
-    requestLeadership(conn);
     return conn;
   }
 
@@ -254,10 +253,15 @@ export function createSSESubscription(
 
   return {
     subscribe(key, handler, onReconnect) {
+      const isNew = !connections.has(key);
       const conn = getOrCreate(key);
       conn.refCount++;
       conn.handlers.add(handler);
       if (onReconnect) conn.reconnectHandlers.add(onReconnect);
+      // Leadership is requested only after refCount reflects this subscriber —
+      // the non-crossTab path elects synchronously, and becomeLeader bails
+      // when refCount is still 0.
+      if (isNew) requestLeadership(conn);
 
       let unsubscribed = false;
       return () => {
