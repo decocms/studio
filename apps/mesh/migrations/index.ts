@@ -137,6 +137,7 @@ import * as migration135taskboarditemfkcascade from "./135-task-board-item-fk-ca
 import * as migration136taskboardimportidempotency from "./136-task-board-import-idempotency.ts";
 import * as migration137agentsandboxrunnerstate from "./137-agent-sandbox-runner-state.ts";
 import * as migration138agentsandboxsessions from "./138-agent-sandbox-sessions.ts";
+import * as migration139organizationbilling from "./139-organization-billing.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -299,6 +300,7 @@ const migrations: Record<string, Migration> = {
   "136-task-board-import-idempotency": migration136taskboardimportidempotency,
   "137-agent-sandbox-runner-state": migration137agentsandboxrunnerstate,
   "138-agent-sandbox-sessions": migration138agentsandboxsessions,
+  "139-organization-billing": migration139organizationbilling,
 };
 
 export default migrations;

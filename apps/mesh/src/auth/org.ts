@@ -91,6 +91,19 @@ export async function seedOrgDb(organizationId: string, createdBy: string) {
   try {
     const database = getDb();
     const settings = getSettings();
+
+    // Billing identity FIRST (cheapest, most load-bearing): orgs created from
+    // now on are legacy = false — the per-seat plan applies to them once
+    // STUDIO_BILLING_ENFORCED turns on. Orgs that predate migration 139 were
+    // backfilled legacy = true there. If this insert (or this whole hook)
+    // fails, the missing row fails OPEN in resolveOrgFromPath (treated as
+    // legacy) — never bricks the org.
+    await database.db
+      .insertInto("organization_billing")
+      .values({ organization_id: organizationId, legacy: false })
+      .onConflict((oc) => oc.column("organization_id").doNothing())
+      .execute();
+
     const vault = new CredentialVault(settings.encryptionKey);
     const connectionStorage = new ConnectionStorage(database.db, vault);
     const defaultOrgMcps = getDefaultOrgMcps(organizationId);
