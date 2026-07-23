@@ -914,7 +914,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           (pathParamValues[name] ?? "") === "" ? (
             <PathParamAutoFill
               key={`${currentPageKey}:${name}`}
-              source={sources[0]!}
+              sources={sources}
               template={currentPath}
               paramName={name}
               sandboxRef={pickerSandboxRef}

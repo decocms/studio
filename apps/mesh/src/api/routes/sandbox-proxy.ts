@@ -774,7 +774,17 @@ export const createSandboxRoutes = () => {
 
     const { claimName } = c.get("vmClaim");
     const path = c.req.query("path");
-    if (path !== "/.decofile") {
+    // Only same-origin sandbox paths (the iframe already loads this origin):
+    // `/.decofile` (block state) and any storefront page (`/`, `/granado/...`)
+    // whose SSR HTML the path-param picker scrapes for category/product links.
+    // Reject anything that could escape the origin (protocol-relative, traversal).
+    if (
+      !path ||
+      !path.startsWith("/") ||
+      path.startsWith("//") ||
+      path.includes("..") ||
+      path.includes("\\")
+    ) {
       return c.json({ error: "Path not allowed" }, 403);
     }
 

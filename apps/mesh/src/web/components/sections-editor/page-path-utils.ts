@@ -3,6 +3,15 @@ export function normalizePagePath(path: string): string {
   return path.replace(/\/+$/, "") || "/";
 }
 
+/**
+ * Trim surrounding slashes from a path-param value: the template supplies the
+ * leading `/`, so a typed `/sabonetes/x` fills as `sabonetes/x`. Internal
+ * slashes are kept (a catch-all value can be multi-segment).
+ */
+export function stripSurroundingSlashes(value: string): string {
+  return value.trim().replace(/^\/+|\/+$/g, "");
+}
+
 /** Reject protocol-relative paths, parent segments, and non-path values. */
 export function isValidPagePath(path: string): boolean {
   const trimmed = path.trim();

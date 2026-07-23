@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { CornerDownLeft } from "@untitledui/icons";
+import { stripSurroundingSlashes } from "@/web/components/sections-editor/page-path-utils";
 import { useT } from "@/web/i18n/use-t.ts";
 
 /**
@@ -57,8 +58,10 @@ export function PathParamInput({
               return;
             }
             // Blank values are not accepted: clearing the input reverts to the
-            // bare `:param` token (placeholder) and the template URL.
-            const next = draft.trim();
+            // bare `:param` token (placeholder) and the template URL. Surrounding
+            // slashes are stripped (the template supplies the leading `/`), so a
+            // pasted `/perfumaasdria/colonia` commits as `perfumaasdria/colonia`.
+            const next = stripSurroundingSlashes(draft);
             setDraft(next);
             if (next !== value) onCommit(next);
           }}
