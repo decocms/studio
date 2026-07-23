@@ -413,6 +413,8 @@ export const sandbox = {
   "sandbox.preview.valueForParam": "Valor de {label}",
   "sandbox.preview.viewJson": "Visualizar JSON",
   "sandbox.preview.visualEditor": "Editor visual",
+  "sandbox.preview.wakingShowingProduction":
+    "Iniciando seu preview — exibindo o site publicado",
   "sandbox.productBlocks.addProductIdButton": "Adicionar ID do produto",
   "sandbox.productBlocks.addProductsButton": "Adicionar produtos",
   "sandbox.productBlocks.addProductsDescription":

@@ -394,6 +394,8 @@ export const sandbox = {
   "sandbox.preview.valueForParam": "Value for {label}",
   "sandbox.preview.viewJson": "View JSON",
   "sandbox.preview.visualEditor": "Visual editor",
+  "sandbox.preview.wakingShowingProduction":
+    "Starting your preview — showing the published site",
   "sandbox.productBlocks.addProductIdButton": "Add product ID",
   "sandbox.productBlocks.addProductsButton": "Add products",
   "sandbox.productBlocks.addProductsDescription":
