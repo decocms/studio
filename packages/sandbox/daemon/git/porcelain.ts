@@ -16,6 +16,8 @@ export interface PorcelainFileStatus {
   path: string;
   index: string;
   working_dir: string;
+  /** Pre-rename path, present only for R/C entries (`-z` emits it as the next null-separated field). */
+  origPath?: string;
 }
 
 /** Parse full `-z` porcelain output into per-file index/worktree status. */
@@ -27,14 +29,17 @@ export function parsePorcelainFiles(out: string): PorcelainFileStatus[] {
     if (!entry) continue;
     const parsed = parsePorcelainEntry(entry);
     if (!parsed) continue;
-    files.push({
+    const file: PorcelainFileStatus = {
       path: parsed.path,
       index: parsed.index,
       working_dir: parsed.working,
-    });
+    };
     if (parsed.index === "R" || parsed.index === "C") {
       i++;
+      const origPath = parts[i];
+      if (origPath) file.origPath = origPath;
     }
+    files.push(file);
   }
   return files;
 }

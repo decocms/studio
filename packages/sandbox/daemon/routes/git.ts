@@ -116,6 +116,8 @@ export interface GitStatusFile {
   path: string;
   index: string;
   working_dir: string;
+  /** Pre-rename path, present only for R/C entries. */
+  origPath?: string;
 }
 
 export interface GitStatusResult {
@@ -274,7 +276,14 @@ async function computeDiff(repoDir: string): Promise<GitDiffResult> {
       const index = file?.index ?? " ";
       const working = file?.working_dir ?? " ";
       const isDeleted = index === "D" || working === "D";
-      const head = await readRefFileAsync(repoDir, "HEAD", filePath);
+      // A renamed file's HEAD content lives under its pre-rename path — reading
+      // HEAD:filePath would 404 (the new name never existed at HEAD) and the
+      // rename would render as a brand-new file with no "from" content.
+      const head = await readRefFileAsync(
+        repoDir,
+        "HEAD",
+        file?.origPath ?? filePath,
+      );
       const isNew =
         (index === "?" && working === "?") ||
         index === "A" ||
