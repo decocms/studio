@@ -914,6 +914,25 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // (capped) rather than stretching, so it doesn't dominate the top bar.
   const urlControls = showPreviewToolbar ? (
     <div className="flex min-w-0 items-center gap-0.5">
+      {/* Edit (Blocks) — the primary "edit this page" action, tied to the page
+          the selector shows. Leads the group (set off by a divider) so it reads
+          as a distinct action rather than being wedged inside the URL controls.
+          Filled when the Blocks editor is open; click again for plain preview. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <HeaderTabButton
+            title="Edit"
+            icon={{ kind: "component", Component: Edit05 }}
+            active={blocksActive}
+            onClick={() => toggleEditingMode("blocks")}
+            testId="preview-blocks-toggle"
+          />
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {blocksActive ? "Exit editor" : "Edit content"}
+        </TooltipContent>
+      </Tooltip>
+      <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
       <Tooltip>
         <TooltipTrigger asChild>
           <ToolbarIconButton onClick={handleRefresh} aria-label="Refresh">
@@ -1146,9 +1165,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           </div>
         )}
       </div>
-      {/* View controls (refresh · page · open-in-new) stay grouped; the Edit
-          action is set off after a divider so it reads as a distinct action
-          rather than being wedged inside the URL group. */}
+      {/* View controls (refresh · page · open-in-new) stay grouped after the
+          Edit action, which leads the group above. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <ToolbarIconButton
@@ -1162,24 +1180,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           </ToolbarIconButton>
         </TooltipTrigger>
         <TooltipContent side="bottom">Open in new tab</TooltipContent>
-      </Tooltip>
-      <div className="mx-0.5 h-5 w-px shrink-0 bg-border" />
-      {/* Edit (Blocks) — the primary "edit this page" action, tied to the page
-          the selector shows. Filled when the Blocks editor is open; click again
-          to return to plain preview. */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <HeaderTabButton
-            title="Edit"
-            icon={{ kind: "component", Component: Edit05 }}
-            active={blocksActive}
-            onClick={() => toggleEditingMode("blocks")}
-            testId="preview-blocks-toggle"
-          />
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {blocksActive ? "Exit editor" : "Edit content"}
-        </TooltipContent>
       </Tooltip>
     </div>
   ) : null;

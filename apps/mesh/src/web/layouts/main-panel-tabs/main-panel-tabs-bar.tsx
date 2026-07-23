@@ -183,17 +183,42 @@ export function MainPanelTabsBar({
   const effectiveMax = Math.max(1, Math.min(maxVisible, MAX_VISIBLE));
 
   const activeItem = items.find((i) => i.active);
-  const { visible, overflow } = selectTabSlots(
-    ordered,
-    activeItem?.id ?? null,
-    effectiveMax,
-  );
+
+  // Code agents (a clonable-source repo, surfaced by a "code" view tab) keep a
+  // minimal bar: Preview stays pinned and the active editing view (Code /
+  // Content / Library / …) shows beside it; everything else collapses into the
+  // stack popover. Reports-only orgs also expose a "code" tab but get their own
+  // curated bar, so they're excluded.
+  const isCodeAgent = !reportsOnly && items.some((i) => i.id === "code");
+
+  let visible: BarItem[];
+  let overflow: BarItem[];
+  if (isCodeAgent) {
+    const preview = ordered.find((i) => i.id === "preview");
+    const lead = preview ? [preview] : [];
+    const extra =
+      activeItem && !lead.some((i) => i.id === activeItem.id)
+        ? [activeItem]
+        : [];
+    visible = [...lead, ...extra];
+    const visibleIds = new Set(visible.map((i) => i.id));
+    overflow = ordered.filter((i) => !visibleIds.has(i.id));
+  } else {
+    ({ visible, overflow } = selectTabSlots(
+      ordered,
+      activeItem?.id ?? null,
+      effectiveMax,
+    ));
+  }
 
   // Opening an overflow item swaps it into the last visible slot and persists
-  // the new arrangement so it sticks.
+  // the new arrangement so it sticks. Code agents keep their pinned Preview +
+  // active-view layout, so the click just activates the view (no promotion).
   const openFromOverflow = (id: string) => {
-    const kept = visible.slice(0, effectiveMax - 1).map((i) => i.id);
-    setPersistedVisible([...kept, id]);
+    if (!isCodeAgent) {
+      const kept = visible.slice(0, effectiveMax - 1).map((i) => i.id);
+      setPersistedVisible([...kept, id]);
+    }
     byId.get(id)?.onSelect();
   };
 
