@@ -403,6 +403,13 @@ export function shouldUseBaseDiff(
 export interface PublishGate {
   allowed: boolean;
   reason: string | null;
+  /**
+   * `smart` policy only: the AI judge is still running, so the decision isn't
+   * known yet. The button should be disabled (not optimistically enabled) with
+   * a "reviewing" tooltip until the verdict arrives. `reason` is null here
+   * because the tooltip copy is i18n'd at the component level.
+   */
+  pending?: boolean;
 }
 
 /**
@@ -461,16 +468,20 @@ export function needsSmartReviewJudgment(
 }
 
 /**
- * Resolve the gate for `smart` policy from the AI verdict. Deliberately
- * permissive: while the judge is still running, or when it's unavailable
- * (no model provider, error), we DON'T block — only an explicit
- * `requiresReview` verdict disables direct publish.
+ * Resolve the gate for `smart` policy from the AI verdict.
+ * - While the judge is still running: block (`pending`) so the button can't be
+ *   clicked before the decision is known — the component shows a "reviewing"
+ *   tooltip.
+ * - When the judge is unavailable (no model provider, error → no verdict):
+ *   permissive, allow the direct publish rather than blocking on the AI.
+ * - Otherwise honour the verdict.
  */
 export function smartReviewGate(
   verdict: ReviewVerdict | null | undefined,
   loading: boolean,
 ): PublishGate {
-  if (loading || !verdict) return { allowed: true, reason: null };
+  if (loading) return { allowed: false, reason: null, pending: true };
+  if (!verdict) return { allowed: true, reason: null };
   if (!verdict.requiresReview) return { allowed: true, reason: null };
   const reason = verdict.reason?.trim();
   return {

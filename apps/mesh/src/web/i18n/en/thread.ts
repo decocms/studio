@@ -82,6 +82,7 @@ export const thread = {
   "thread.headerActions.pushLocalCommitsTooltip":
     "Push local commits to PR #{prNumber}",
   "thread.headerActions.reconnectGithub": "Reconnect GitHub",
+  "thread.headerActions.reviewingChanges": "Reviewing changes…",
   "thread.headerActions.reopen": "Reopen",
   "thread.headerActions.reopenPrTooltip": "Reopen PR #{prNumber}",
   "thread.headerActions.resolveConflictsTooltip":
@@ -146,6 +147,7 @@ export const thread = {
   "thread.publishDialog.publishedTo": "Published to {baseBranch}",
   "thread.publishDialog.pullRequest": "Pull request",
   "thread.publishDialog.regenerate": "Regenerate",
+  "thread.publishDialog.reviewingChanges": "Reviewing changes…",
   "thread.publishDialog.squashMergesInto":
     "{publishLabel} squash-merges into {baseBranch}.",
   "thread.publishDialog.submitForReview": "Submit for review",

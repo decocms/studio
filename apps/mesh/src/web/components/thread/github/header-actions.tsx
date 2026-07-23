@@ -476,8 +476,10 @@ function HeaderButtonRenderer(props: {
       {props.showPublishSide ? (
         <WithTooltip
           label={
-            props.publishGate.reason ??
-            t("thread.headerActions.publishDirectlySkipReview")
+            props.publishGate.pending
+              ? t("thread.headerActions.reviewingChanges")
+              : (props.publishGate.reason ??
+                t("thread.headerActions.publishDirectlySkipReview"))
           }
         >
           <Button
@@ -486,6 +488,9 @@ function HeaderButtonRenderer(props: {
             disabled={props.githubActionPending || !props.publishGate.allowed}
             onClick={props.onPublishSide}
           >
+            {props.publishGate.pending ? (
+              <Spinner size="xs" variant="default" />
+            ) : null}
             {t("thread.headerActions.publish")}
           </Button>
         </WithTooltip>

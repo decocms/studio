@@ -356,12 +356,18 @@ describe("needsSmartReviewJudgment", () => {
 });
 
 describe("smartReviewGate", () => {
-  test("permissive while judging (no block on absence)", () => {
-    expect(smartReviewGate(null, true).allowed).toBe(true);
+  test("blocks (pending) while the judge is still running", () => {
+    const gate = smartReviewGate(null, true);
+    expect(gate.allowed).toBe(false);
+    expect(gate.pending).toBe(true);
+    // Copy is i18n'd at the component level, so no inline reason here.
+    expect(gate.reason).toBeNull();
   });
 
   test("permissive when the judge is unavailable (no verdict)", () => {
-    expect(smartReviewGate(null, false).allowed).toBe(true);
+    const gate = smartReviewGate(null, false);
+    expect(gate.allowed).toBe(true);
+    expect(gate.pending).toBeUndefined();
   });
 
   test("allows when the verdict says no review needed", () => {

@@ -321,7 +321,11 @@ function PublishDialogBody({
     ? smartReviewGate(verdict, judging)
     : canPublishDirectly(gitDiff, publishPolicy);
   const canPublish = canSubmit && publishGate.allowed;
-  const publishDisabledReason = canSubmit ? publishGate.reason : null;
+  const publishDisabledReason = !canSubmit
+    ? null
+    : publishGate.pending
+      ? t("thread.publishDialog.reviewingChanges")
+      : publishGate.reason;
 
   /** There is committed or uncommitted local work that can be pushed + PR'd. */
   const showSubmitForReviewButton =
