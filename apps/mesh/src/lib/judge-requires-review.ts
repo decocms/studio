@@ -42,6 +42,20 @@ When unsure between the two, lean toward NOT requiring review for small frontend
 Respond with the structured verdict and a short reason.`;
 
 /**
+ * Map a UI locale to a language name for the model. The `reason` is shown to
+ * the user, so it should be written in their language. Unknown locales fall
+ * back to English.
+ */
+function languageInstruction(language: string | undefined): string {
+  switch (language) {
+    case "pt-BR":
+      return "Write the `reason` in Brazilian Portuguese (pt-BR).";
+    default:
+      return "Write the `reason` in English.";
+  }
+}
+
+/**
  * Permissive fallback: when we can't run the judge (no org, no model provider,
  * or an error), do NOT block the user — allow the direct publish. This matches
  * the product decision that the AI's absence must never gate publishing.
@@ -57,6 +71,7 @@ export async function judgeRequiresReviewWithLlm(
   ctx: StudioContext,
   status: GitStatusLike,
   diff: GitDiffLike,
+  language?: string,
 ): Promise<ReviewVerdict> {
   const orgId = ctx.organization?.id;
   if (!orgId) return ALLOW_FALLBACK;
@@ -70,7 +85,7 @@ export async function judgeRequiresReviewWithLlm(
     const { object } = await generateObject({
       model,
       schema: ReviewVerdictSchema,
-      system: REVIEW_JUDGE_SYSTEM,
+      system: `${REVIEW_JUDGE_SYSTEM}\n\n${languageInstruction(language)}`,
       prompt: summary,
       temperature: 0,
     });

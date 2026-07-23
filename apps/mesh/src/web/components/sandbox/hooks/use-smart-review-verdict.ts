@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import {
   fetchReviewVerdict,
   isSandboxUnreachable,
@@ -19,6 +20,7 @@ function smartReviewVerdictQueryKey(
   virtualMcpId: string,
   branch: string,
   signature: string,
+  language: string,
 ) {
   return [
     "smart-review-verdict",
@@ -26,6 +28,7 @@ function smartReviewVerdictQueryKey(
     virtualMcpId,
     branch,
     signature,
+    language,
   ] as const;
 }
 
@@ -57,6 +60,7 @@ export function useSmartReviewVerdict(args: {
   enabled: boolean;
 }): { verdict: ReviewVerdict | null; loading: boolean } {
   const { orgSlug, virtualMcpId, branch, status, diff, enabled } = args;
+  const [{ language }] = usePreferences();
   const signature = diff ? reviewDiffSignature(diff) : "";
   const canRun = enabled && !!branch && !!status && !!diff && signature !== "";
 
@@ -66,11 +70,13 @@ export function useSmartReviewVerdict(args: {
       virtualMcpId,
       branch,
       signature,
+      language,
     ),
     queryFn: () =>
       fetchReviewVerdict(orgSlug, virtualMcpId, branch, {
         status: status!,
         diff: diff!,
+        language,
       }),
     enabled: canRun,
     staleTime: Infinity,

@@ -480,7 +480,8 @@ function HeaderButtonRenderer(props: {
               ? t("thread.headerActions.reviewingChanges")
               : props.publishGate.allowed
                 ? t("thread.headerActions.publishDirectlySkipReview")
-                : t("thread.headerActions.publishNeedsReview")
+                : (props.publishGate.reason ??
+                  t("thread.headerActions.publishNeedsReview"))
           }
         >
           <Button

@@ -9,7 +9,6 @@ import {
   isDecoOnlyDiff,
   needsSmartReviewJudgment,
   normalizePublishPolicy,
-  PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
   shouldUseBaseDiff,
   smartReviewGate,
   stripGeneratedFilesFromDiff,
@@ -293,10 +292,12 @@ describe("canPublishDirectly", () => {
     expect(gate.reason).toBeNull();
   });
 
-  test("blocks a payload containing code", () => {
+  test("blocks a payload containing code (reason localized in UI)", () => {
     const gate = canPublishDirectly(codeDiff);
     expect(gate.allowed).toBe(false);
-    expect(gate.reason).toBe(PUBLISH_REQUIRES_SUBMIT_TOOLTIP);
+    // No inline reason: the deterministic code-review block is rendered as a
+    // localized generic tooltip at the component level.
+    expect(gate.reason).toBeNull();
   });
 
   test("blocks an empty diff", () => {
@@ -385,10 +386,10 @@ describe("smartReviewGate", () => {
     expect(gate.reason).toBe("New API endpoint added");
   });
 
-  test("falls back to the default tooltip when the AI gives no reason", () => {
+  test("blocks with a null reason when the AI gives no reason (UI localizes)", () => {
     const gate = smartReviewGate({ requiresReview: true, reason: "" }, false);
     expect(gate.allowed).toBe(false);
-    expect(gate.reason).toBe(PUBLISH_REQUIRES_SUBMIT_TOOLTIP);
+    expect(gate.reason).toBeNull();
   });
 });
 
@@ -433,6 +434,6 @@ describe("combinePublishDiffs (full publish payload = committed ∪ working)", (
       combinePublishDiffs(committedCode, workingDeco),
     );
     expect(gate.allowed).toBe(false);
-    expect(gate.reason).toBe(PUBLISH_REQUIRES_SUBMIT_TOOLTIP);
+    expect(gate.reason).toBeNull();
   });
 });

@@ -242,9 +242,6 @@ export function isDecoOnlyDiff(
   );
 }
 
-export const PUBLISH_REQUIRES_SUBMIT_TOOLTIP =
-  "Code changes can't be published directly — use Submit for review";
-
 /**
  * Per-code-agent policy controlling when a direct publish is allowed:
  * - `smart` (default): a cheap AI judges whether the code needs review.
@@ -280,7 +277,7 @@ export async function fetchReviewVerdict(
   orgSlug: string,
   virtualMcpId: string,
   branch: string,
-  payload: { status: GitStatus; diff: GitDiffResult },
+  payload: { status: GitStatus; diff: GitDiffResult; language?: string },
 ): Promise<ReviewVerdict> {
   const res = await sandboxFetch(
     buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "judge-review"),
@@ -290,6 +287,10 @@ export async function fetchReviewVerdict(
       body: JSON.stringify({
         status: payload.status,
         diff: stripGeneratedFilesFromDiff(payload.diff),
+        // The `reason` is shown to the user, so ask the model to write it in
+        // the UI language. This is a deliberate exception to "don't thread
+        // locale to the server" — it applies only to this displayed AI text.
+        ...(payload.language ? { language: payload.language } : {}),
       }),
     },
   );
@@ -447,10 +448,11 @@ export function canPublishDirectly(
 ): PublishGate {
   if (policy === "open") return { allowed: true, reason: null };
   // `smart` deco-only diffs (and all `code-review`) fall through to the
-  // deco-only rule: content/design publishes, code is blocked.
+  // deco-only rule: content/design publishes, code is blocked. Reason is left
+  // null — the component renders a localized generic tooltip for this case.
   return isDecoOnlyDiff(diff)
     ? { allowed: true, reason: null }
-    : { allowed: false, reason: PUBLISH_REQUIRES_SUBMIT_TOOLTIP };
+    : { allowed: false, reason: null };
 }
 
 /**
@@ -483,9 +485,9 @@ export function smartReviewGate(
   if (loading) return { allowed: false, reason: null, pending: true };
   if (!verdict) return { allowed: true, reason: null };
   if (!verdict.requiresReview) return { allowed: true, reason: null };
+  // The AI reason is localized (the judge is asked to write in the UI
+  // language); show it. Fall back to null so the component renders its own
+  // localized generic message when the model returned no reason.
   const reason = verdict.reason?.trim();
-  return {
-    allowed: false,
-    reason: reason ? reason : PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
-  };
+  return { allowed: false, reason: reason ? reason : null };
 }

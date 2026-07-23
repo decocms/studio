@@ -792,6 +792,7 @@ export const createSandboxRoutes = () => {
         const body = (await c.req.json().catch(() => ({}))) as {
           status?: GitStatusLike;
           diff?: GitDiffLike;
+          language?: string;
         };
 
         const clientStatus = body.status;
@@ -820,7 +821,12 @@ export const createSandboxRoutes = () => {
                   { userId, projectRef },
                 ),
               ]);
-        const verdict = await judgeRequiresReviewWithLlm(ctx, status, diff);
+        const verdict = await judgeRequiresReviewWithLlm(
+          ctx,
+          status,
+          diff,
+          typeof body.language === "string" ? body.language : undefined,
+        );
         return c.json(verdict, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

@@ -321,14 +321,15 @@ function PublishDialogBody({
     ? smartReviewGate(verdict, judging)
     : canPublishDirectly(gitDiff, publishPolicy);
   const canPublish = canSubmit && publishGate.allowed;
-  // The gate's `reason` carries the server/AI-generated (English) explanation;
-  // we don't render it directly so the tooltip stays in the user's language.
+  // The gate's `reason` is the AI judge's explanation, written in the UI
+  // language (see useSmartReviewVerdict); show it when present, else a
+  // localized generic message.
   const publishDisabledReason =
     !canSubmit || publishGate.allowed
       ? null
       : publishGate.pending
         ? t("thread.publishDialog.reviewingChanges")
-        : t("thread.publishDialog.publishNeedsReview");
+        : (publishGate.reason ?? t("thread.publishDialog.publishNeedsReview"));
 
   /** There is committed or uncommitted local work that can be pushed + PR'd. */
   const showSubmitForReviewButton =
