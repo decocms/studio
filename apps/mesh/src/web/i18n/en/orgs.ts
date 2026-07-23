@@ -167,6 +167,18 @@ export const orgs = {
   "orgs.members.sortJoined": "Joined",
   "orgs.members.sortName": "Name",
   "orgs.members.sortRole": "Role",
+  "orgs.seats.apply": "Apply",
+  "orgs.seats.applyError": "Failed to update seats",
+  "orgs.seats.applySuccess": "Seats updated",
+  "orgs.seats.applying": "Applying...",
+  "orgs.seats.column": "Seat",
+  "orgs.seats.discard": "Discard",
+  "orgs.seats.free": "Free",
+  "orgs.seats.paid": "Paid",
+  "orgs.seats.pendingChanges":
+    "{count} pending seat change(s) — {paid} paid seat(s) after applying",
+  "orgs.seats.selfServeSoon":
+    "Seat changes for self-serve plans are coming soon",
   "orgs.members.title": "Members",
   "orgs.members.toolCount": "{count} tool{plural}",
   "orgs.members.unknown": "Unknown",

@@ -12,6 +12,11 @@ import { getInitials } from "@/web/lib/get-initials";
 import { useT } from "@/web/i18n/use-t.ts";
 import { useMembers } from "@/web/hooks/use-members";
 import {
+  useOrganizationSeats,
+  useSetSeats,
+  type SeatKind,
+} from "@/web/hooks/use-organization-seats";
+import {
   useInvitations,
   useInvitationActions,
 } from "@/web/hooks/use-invitations";
@@ -411,6 +416,54 @@ function OrgMembersContent() {
 
   const members = data?.data?.members;
 
+  // Per-seat billing: staged toggles applied in one batch. The column only
+  // renders when the org actually has seats (billing row exists and is not
+  // legacy); toggling is enabled for invoiced (contract) orgs — self-serve
+  // waits for the Stripe checkout flow.
+  const { data: seatState } = useOrganizationSeats();
+  const setSeatsMutation = useSetSeats();
+  const [stagedSeats, setStagedSeats] = useState<Record<string, SeatKind>>({});
+  const seatsApply = !!seatState?.billing && !seatState.billing.legacy;
+  const seatsEditable = seatState?.billing?.billingMode === "invoiced";
+  const paidSeatSet = new Set(seatState?.paidSeatUserIds ?? []);
+  const baseSeat = (userId: string): SeatKind =>
+    paidSeatSet.has(userId) ? "paid" : "free";
+  const effectiveSeat = (userId: string): SeatKind =>
+    stagedSeats[userId] ?? baseSeat(userId);
+  const toggleSeat = (userId: string) => {
+    const next: SeatKind = effectiveSeat(userId) === "paid" ? "free" : "paid";
+    setStagedSeats((prev) => {
+      const copy = { ...prev };
+      if (next === baseSeat(userId)) delete copy[userId];
+      else copy[userId] = next;
+      return copy;
+    });
+  };
+  const stagedCount = Object.keys(stagedSeats).length;
+  const stagedPaidCount =
+    (seatState?.paidSeatUserIds.length ?? 0) +
+    Object.entries(stagedSeats).reduce(
+      (sum, [, seat]) => sum + (seat === "paid" ? 1 : -1),
+      0,
+    );
+  const applySeats = () => {
+    setSeatsMutation.mutate(
+      Object.entries(stagedSeats).map(([userId, seat]) => ({ userId, seat })),
+      {
+        onSuccess: () => {
+          track("seats_updated", { changes: stagedCount });
+          setStagedSeats({});
+          toast.success(t("orgs.seats.applySuccess"));
+        },
+        onError: (error) => {
+          toast.error(
+            error instanceof Error ? error.message : t("orgs.seats.applyError"),
+          );
+        },
+      },
+    );
+  };
+
   const handleSort = (key: string) => {
     if (sortKey === key) {
       setSortDirection((prev) =>
@@ -692,6 +745,49 @@ function OrgMembersContent() {
       cellClassName: "w-36 shrink-0",
       sortable: true,
     },
+    ...(seatsApply
+      ? ([
+          {
+            id: "seat",
+            header: t("orgs.seats.column"),
+            render: (row) => {
+              if (row.type !== "member") {
+                return <span className="text-xs text-muted-foreground">-</span>;
+              }
+              const userId = row.data.userId;
+              const seat = effectiveSeat(userId);
+              const isStaged = userId in stagedSeats;
+              const button = (
+                <Button
+                  variant={seat === "paid" ? "secondary" : "outline"}
+                  size="xs"
+                  disabled={!seatsEditable}
+                  onClick={() => toggleSeat(userId)}
+                  className={cn(isStaged && "ring-2 ring-primary/60")}
+                >
+                  {seat === "paid"
+                    ? t("orgs.seats.paid")
+                    : t("orgs.seats.free")}
+                </Button>
+              );
+              if (seatsEditable) return button;
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>{button}</span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {t("orgs.seats.selfServeSoon")}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            },
+            cellClassName: "w-24 shrink-0",
+          },
+        ] satisfies TableColumn<MemberRow>[])
+      : []),
     {
       id: "tags",
       header: t("orgs.members.columnTags"),
@@ -872,6 +968,35 @@ function OrgMembersContent() {
               </div>
               {ctaButton}
             </div>
+            {stagedCount > 0 && (
+              <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <span className="text-sm text-foreground">
+                  {t("orgs.seats.pendingChanges", {
+                    count: stagedCount,
+                    paid: stagedPaidCount,
+                  })}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setStagedSeats({})}
+                    disabled={setSeatsMutation.isPending}
+                  >
+                    {t("orgs.seats.discard")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={applySeats}
+                    disabled={setSeatsMutation.isPending}
+                  >
+                    {setSeatsMutation.isPending
+                      ? t("orgs.seats.applying")
+                      : t("orgs.seats.apply")}
+                  </Button>
+                </div>
+              </Card>
+            )}
             {viewMode === "cards" ? (
               <div>
                 {allRows.length === 0 ? (
