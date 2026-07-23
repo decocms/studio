@@ -31,6 +31,7 @@ Require review (requiresReview = true) when the changes:
 - change the database, migrations, environment variables, or secrets
 - add or change server-side integrations, jobs, or webhooks
 - are large or sweeping: many files changed, or large/complex code edits
+- look OBVIOUSLY broken or incomplete in the shown diff — e.g. a removed closing bracket/parenthesis/brace, an unterminated string or comment, a dangling/unbalanced expression, or a deletion that clearly leaves the code syntactically invalid. You only see diff snippets, not whole files, so flag this ONLY when the breakage is plainly visible in the changed lines; do NOT guess about code you can't see.
 
 Do NOT require review (requiresReview = false) when the changes are low-risk, such as:
 - frontend-only presentation: UI components, styling/CSS, layout, copy/text
