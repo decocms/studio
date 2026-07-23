@@ -248,12 +248,24 @@ export function TaskBoardPage() {
   const { items, isLoading } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const reportsOnly = useReportsOnly();
-  // Auto-fix hands the task to the Super Agent, which opens a PR — so it needs
-  // an org-level GitHub connection. If the org has none, prompt to connect
+  // Handing a task to the Super Agent makes it open a PR — so it needs an
+  // org-level GitHub connection. Every path that assigns to the Super Agent
+  // (Auto-fix, the lane assignee picker, the task dialog) prompts to connect
   // instead of enqueueing a run that can't push.
   const hasGithub =
     getOrgGithubConnections(useConnections({ slug: "mcp-github" })).length > 0;
   const [connectGithubOpen, setConnectGithubOpen] = useState(false);
+  // Returns true if the assignment was blocked (connect prompt opened) so the
+  // caller stops before dispatching.
+  const blockSuperAgentWithoutGithub = (
+    assigneeId: string | null | undefined,
+  ) => {
+    if (assigneeId === SUPER_AGENT_ASSIGNEE_ID && !hasGithub) {
+      setConnectGithubOpen(true);
+      return true;
+    }
+    return false;
+  };
   const { data: membersData } = useMembers();
   const members = (membersData?.data?.members ?? []) as Member[];
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
@@ -477,16 +489,15 @@ export function TaskBoardPage() {
           onOpen={openTask}
           onCreate={openCreateInLane}
           onMove={(id, status) => actions.update.mutate({ id, status })}
-          onAssign={(id, userId) =>
-            actions.update.mutate({ id, assigneeId: userId ?? undefined })
-          }
+          onAssign={(id, userId) => {
+            if (blockSuperAgentWithoutGithub(userId)) return;
+            actions.update.mutate({ id, assigneeId: userId ?? undefined });
+          }}
           onAutoFix={
             reportsOnly
               ? (item) => {
-                  if (!hasGithub) {
-                    setConnectGithubOpen(true);
+                  if (blockSuperAgentWithoutGithub(SUPER_AGENT_ASSIGNEE_ID))
                     return;
-                  }
                   actions.update.mutate({
                     id: item.id,
                     assigneeId: SUPER_AGENT_ASSIGNEE_ID,
@@ -531,6 +542,10 @@ export function TaskBoardPage() {
         defaultStatus={createStatus ?? undefined}
         isSaving={actions.create.isPending || actions.update.isPending}
         onSubmit={(input) => {
+          if (blockSuperAgentWithoutGithub(input.assigneeId)) {
+            closeDialog();
+            return;
+          }
           if (activeItem) {
             actions.update.mutate({ id: activeItem.id, ...input });
           } else {
