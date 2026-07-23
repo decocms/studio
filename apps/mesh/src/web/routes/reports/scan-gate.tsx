@@ -26,10 +26,12 @@ export default function ScanGate({
   domain,
   initial,
   sessionEmail,
+  lang,
 }: {
   domain: string;
   initial?: ReportState;
   sessionEmail: string;
+  lang?: string;
 }) {
   const [deck, setDeck] = useState<TemplateDeck | null>(
     initial?.status === "ready" ? initial.deck : null,
@@ -45,10 +47,16 @@ export default function ScanGate({
     if (initial) reportDrops(domain, initial.drops);
     if (initial?.status === "ready") return;
     const controller = new AbortController();
-    orchestrateScan(domain, distinctId(), controller.signal, {
-      onPhase: setPhase,
-      onDeck: setDeck,
-    });
+    orchestrateScan(
+      domain,
+      distinctId(),
+      controller.signal,
+      {
+        onPhase: setPhase,
+        onDeck: setDeck,
+      },
+      lang,
+    );
     return () => controller.abort();
   };
 

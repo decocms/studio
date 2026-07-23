@@ -24,9 +24,17 @@ async function json<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** Read the deck for an already-scanned domain (instant). */
-export function getReport(domain: string, key?: string): Promise<ReportState> {
-  const qs = key ? `?key=${encodeURIComponent(key)}` : "";
+/** Read the deck for an already-scanned domain (instant). `lang` renders it in
+ *  the viewer's locale (e.g. "pt-BR", "en"); omitted → the site default. */
+export function getReport(
+  domain: string,
+  key?: string,
+  lang?: string,
+): Promise<ReportState> {
+  const params = new URLSearchParams();
+  if (key) params.set("key", key);
+  if (lang) params.set("lang", lang);
+  const qs = params.toString() ? `?${params.toString()}` : "";
   return fetch(`/api/_reports/site/${encodeURIComponent(domain)}${qs}`).then(
     (r) => json<ReportState>(r),
   );

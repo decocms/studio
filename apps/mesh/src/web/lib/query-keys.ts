@@ -51,9 +51,10 @@ export const KEYS = {
   homeGithubContributions: (orgId: string, connectionId: string) =>
     ["home-github-contributions", orgId, connectionId] as const,
 
-  // Authenticated report deck for a scanned domain (/report/:domain).
-  report: (domain: string, key?: string) =>
-    ["report", domain, key ?? ""] as const,
+  // Authenticated report deck for a scanned domain (/report/:domain). `lang`
+  // (the viewer's locale) is part of the key so switching language refetches.
+  report: (domain: string, key?: string, lang?: string) =>
+    ["report", domain, key ?? "", lang ?? ""] as const,
 
   commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "connection", orgId, connectionId] as const,
