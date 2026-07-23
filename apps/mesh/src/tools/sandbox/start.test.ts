@@ -7,7 +7,8 @@ import type {
   SandboxId,
   SandboxProvider,
 } from "@decocms/sandbox/provider";
-import { composeSandboxRef } from "@decocms/sandbox/provider";
+import { composeSandboxRef, sharedSandboxId } from "@decocms/sandbox/provider";
+import { computeClaimHandle } from "../../sandbox/claim-handle";
 
 // Pin provider kind — the dev env flips STUDIO_SANDBOX_PROVIDER and SANDBOX_START
 // reads it at handler time.
@@ -65,6 +66,7 @@ mock.module("../../sandbox/lifecycle", () => ({
   // runner under test.
   buildDesktopProvider: async () => mockDesktopRunner,
   getOrInitSharedRunner: async () => mockClusterRunner,
+  getSharedAgentSandboxProvider: async () => mockClusterRunner,
   // Bun's mock.module persists across test files in the same shard. Other
   // tests in the shard (e.g. oauth-proxy.e2e.test.ts) load app.ts which
   // imports subscribeLifecycle from this module — keep the export shape
@@ -73,8 +75,12 @@ mock.module("../../sandbox/lifecycle", () => ({
   __resetSharedLifecyclesForTesting: () => {},
 }));
 
+let sharedAgentSandboxesEnabled = false;
 mock.module("../../settings", () => ({
-  getSettings: () => ({ nodeEnv: "test" }),
+  getSettings: () => ({
+    nodeEnv: "test",
+    sharedAgentSandboxesEnabled,
+  }),
 }));
 
 const { DownstreamTokenStorage: RealDownstreamTokenStorage } = await import(
@@ -214,6 +220,30 @@ function makeCtx(overrides: {
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
+  let agentSandboxSessions: StudioContext["storage"]["agentSandboxSessions"];
+  agentSandboxSessions = {
+    find: mock(async () => null),
+    beginStart: mock(async () => ({
+      generation: 1,
+      desiredState: "running",
+      status: "provisioning",
+    })),
+    recordProvisioningHandle: mock(async () => {}),
+    completeStart: mock(async () => ({
+      generation: 1,
+      desiredState: "running",
+      status: "ready",
+    })),
+    failStart: mock(async () => {}),
+    withLock: mock(
+      async (
+        _locator: unknown,
+        fn: (
+          storage: StudioContext["storage"]["agentSandboxSessions"],
+        ) => Promise<unknown>,
+      ) => fn(agentSandboxSessions),
+    ),
+  } as never;
 
   return {
     auth: {
@@ -246,6 +276,7 @@ function makeCtx(overrides: {
         get: mock(async (_id: string) => null),
         update: mock(async () => {}),
       },
+      agentSandboxSessions,
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
@@ -283,6 +314,7 @@ function makeCtx(overrides: {
 
 describe("SANDBOX_START", () => {
   beforeEach(() => {
+    sharedAgentSandboxesEnabled = false;
     globalThis.fetch = mock(
       async () => new Response("{}", { status: 404 }),
     ) as unknown as typeof fetch;
@@ -337,7 +369,11 @@ describe("SANDBOX_START", () => {
     expect(mockTokenGet).toHaveBeenCalledWith("conn_github_1");
     expect(mockEnsure).toHaveBeenCalledTimes(1);
     const [id, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
-    expect(id).toEqual({ userId: USER_ID, projectRef: EXPECTED_REF });
+    expect(id).toEqual({
+      scope: "user",
+      userId: USER_ID,
+      projectRef: EXPECTED_REF,
+    });
     expect(opts.repo?.cloneUrl).toContain("acme/app");
     expect(opts.repo?.branch).toBe(BRANCH);
     expect(opts.repo?.displayName).toBe("acme/app");
@@ -346,6 +382,38 @@ describe("SANDBOX_START", () => {
       packageManager: "npm",
       devPort: 3000,
     });
+  });
+
+  it("uses a user-independent id and skips sandboxMap in shared agent mode", async () => {
+    sharedAgentSandboxesEnabled = true;
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy });
+
+    await SANDBOX_START.handler(
+      {
+        virtualMcpId: VMCP_ID,
+        branch: BRANCH,
+        sandboxProviderKind: "agent-sandbox",
+      },
+      ctx,
+    );
+
+    const [id] = mockEnsure.mock.calls[0]! as [SandboxId];
+    const expectedId = sharedSandboxId(EXPECTED_REF);
+    expect(id).toEqual(expectedId);
+    expect(
+      ctx.storage.agentSandboxSessions.recordProvisioningHandle,
+    ).toHaveBeenCalledWith(
+      {
+        organizationId: ORG_ID,
+        virtualMcpId: VMCP_ID,
+        branch: BRANCH,
+      },
+      1,
+      computeClaimHandle(expectedId, BRANCH),
+    );
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 
   it("sends a real git branch for a synthetic thread branch, keeping the ref synthetic", async () => {

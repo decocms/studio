@@ -135,6 +135,8 @@ import * as migration133dedupeduplicatemembers from "./133-dedupe-duplicate-memb
 import * as migration134droptaskboardenabled from "./134-drop-task-board-enabled.ts";
 import * as migration135taskboarditemfkcascade from "./135-task-board-item-fk-cascade.ts";
 import * as migration136taskboardimportidempotency from "./136-task-board-import-idempotency.ts";
+import * as migration137agentsandboxrunnerstate from "./137-agent-sandbox-runner-state.ts";
+import * as migration138agentsandboxsessions from "./138-agent-sandbox-sessions.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -295,6 +297,8 @@ const migrations: Record<string, Migration> = {
   "134-drop-task-board-enabled": migration134droptaskboardenabled,
   "135-task-board-item-fk-cascade": migration135taskboarditemfkcascade,
   "136-task-board-import-idempotency": migration136taskboardimportidempotency,
+  "137-agent-sandbox-runner-state": migration137agentsandboxrunnerstate,
+  "138-agent-sandbox-sessions": migration138agentsandboxsessions,
 };
 
 export default migrations;

@@ -37,11 +37,14 @@ import {
 import type { StudioContext } from "../core/studio-context";
 import { readSandboxMap } from "../tools/sandbox/sandbox-map";
 import { buildDesktopProvider, getSandboxProviderByKind } from "./lifecycle";
+import { getSettings } from "../settings";
 
 export interface ResolveSandboxProviderArgs {
   /** User whose sandboxMap cell to read and (for `desktop`) whose link to bind. */
   userId: string;
   branch: string;
+  /** Required to discover a first-class shared agent-sandbox session. */
+  virtualMcpId?: string;
   /** Raw `virtualmcp.metadata` JSON column. May be null. */
   virtualMcpMetadata: Record<string, unknown> | null;
   /**
@@ -63,7 +66,8 @@ export async function resolveSandboxProvider(
   ctx: StudioContext,
   args: ResolveSandboxProviderArgs,
 ): Promise<ResolvedSandboxProvider> {
-  const { userId, branch, virtualMcpMetadata, explicitKind } = args;
+  const { userId, branch, virtualMcpId, virtualMcpMetadata, explicitKind } =
+    args;
 
   // 1. Caller override.
   if (explicitKind) {
@@ -102,11 +106,12 @@ export async function resolveSandboxProvider(
   //    path consistently picks the one matching current intent
   //    (link online → `desktop`, else env kind) instead of whatever
   //    `Object.keys` happens to enumerate first.
-  const [firstRecorded, ...restRecorded] = readRecordedKinds(
+  const [firstRecorded, ...restRecorded] = await readRecordedKinds(ctx, {
     virtualMcpMetadata,
+    virtualMcpId,
     userId,
     branch,
-  );
+  });
   if (firstRecorded) {
     const preferred =
       restRecorded.length === 0
@@ -128,15 +133,38 @@ export async function resolveSandboxProvider(
  * `setSandboxMapEntry` preserves siblings. Callers that need exactly one kind
  * (`readRecordedKind`) tiebreak against the default policy.
  */
-function readRecordedKinds(
-  metadata: Record<string, unknown> | null,
-  userId: string,
-  branch: string,
-): SandboxProviderKind[] {
-  const cell = readSandboxMap(metadata)[userId]?.[branch];
-  if (!cell) return [];
-  const parsed = parseBranchMap(cell);
-  return Object.keys(parsed) as SandboxProviderKind[];
+async function readRecordedKinds(
+  ctx: StudioContext,
+  args: {
+    virtualMcpMetadata: Record<string, unknown> | null;
+    virtualMcpId?: string;
+    userId: string;
+    branch: string;
+  },
+): Promise<SandboxProviderKind[]> {
+  const cell = readSandboxMap(args.virtualMcpMetadata)[args.userId]?.[
+    args.branch
+  ];
+  const parsed = cell ? parseBranchMap(cell) : {};
+  const recorded = Object.keys(parsed) as SandboxProviderKind[];
+
+  if (!getSettings().sharedAgentSandboxesEnabled) return recorded;
+
+  // Legacy hosted metadata is deliberately ignored while shared mode is on.
+  // Keep user-desktop entries intact and add hosted presence from the
+  // first-class org-scoped session registry.
+  const kinds: SandboxProviderKind[] = recorded.filter(
+    (kind) => kind !== "agent-sandbox",
+  );
+  const organizationId = ctx.organization?.id;
+  if (!organizationId || !args.virtualMcpId) return kinds;
+  const session = await ctx.storage.agentSandboxSessions.find({
+    organizationId,
+    virtualMcpId: args.virtualMcpId,
+    branch: args.branch,
+  });
+  if (session) kinds.unshift("agent-sandbox");
+  return kinds;
 }
 
 /**

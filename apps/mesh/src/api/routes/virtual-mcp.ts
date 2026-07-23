@@ -26,6 +26,7 @@ import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { Env } from "../hono-env";
 import { serveMcpRequest } from "../utils/serve-mcp";
+import { getSettings } from "../../settings";
 
 // ============================================================================
 // Route Handler (shared between /gateway and /virtual-mcp endpoints for backward compat)
@@ -159,7 +160,8 @@ export async function handleVirtualMcpRequest(
     if (
       virtualMcp.id &&
       actingUserId &&
-      readSandboxMap(virtualMcp.metadata)[actingUserId]
+      (getSettings().sharedAgentSandboxesEnabled ||
+        readSandboxMap(virtualMcp.metadata)[actingUserId])
     ) {
       devConnection = await resolveDevConnection(
         ctx,

@@ -60,6 +60,7 @@ import type { PrivateRegistryDatabase } from "../storage/registry/types";
 import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
+import { AgentSandboxSessionStorage } from "../storage/agent-sandbox-sessions";
 import { AccessControl } from "./access-control";
 import { buildWildcardPermission } from "./permission-wildcard";
 import { isOrgArchived } from "./org-archived";
@@ -1336,6 +1337,7 @@ export async function createStudioContextFactory(
       metricsFromLogs,
     ),
     virtualMcps: new VirtualMCPStorage(config.db),
+    agentSandboxSessions: new AgentSandboxSessionStorage(config.db),
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
     virtualMcpPluginConfigs: new VirtualMcpPluginConfigsStorage(config.db),

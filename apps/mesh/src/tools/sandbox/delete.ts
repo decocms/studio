@@ -5,11 +5,21 @@
  */
 
 import { z } from "zod";
-import { normalizeSandboxProviderKind } from "@decocms/sandbox/provider";
+import {
+  composeSandboxRef,
+  normalizeSandboxProviderKind,
+  sharedSandboxId,
+} from "@decocms/sandbox/provider";
 import { defineTool } from "../../core/define-tool";
 import { requireVmEntry } from "./helpers";
 import { removeSandboxMapEntry } from "./sandbox-map";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+import {
+  getUserId,
+  requireAuth,
+  requireOrganization,
+} from "../../core/studio-context";
+import { getSettings } from "../../settings";
 
 const sandboxProviderKindInputSchema = z.enum([
   "agent-sandbox",
@@ -48,6 +58,61 @@ export const SANDBOX_DELETE = defineTool({
     // Normalize here too because direct unit tests call handler() without
     // going through schema parsing.
     const kind = normalizeSandboxProviderKind(input.sandboxProviderKind);
+
+    if (kind === "agent-sandbox" && getSettings().sharedAgentSandboxesEnabled) {
+      requireAuth(ctx);
+      const organization = requireOrganization(ctx);
+      await ctx.access.check();
+      const userId = getUserId(ctx);
+      if (!userId) throw new Error("User ID required");
+      const virtualMcp = await ctx.storage.virtualMcps.findById(
+        input.virtualMcpId,
+      );
+      if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
+        return { success: true };
+      }
+
+      const locator = {
+        organizationId: organization.id,
+        virtualMcpId: input.virtualMcpId,
+        branch: input.branch,
+      };
+      const { provider: runner } = await resolveSandboxProvider(ctx, {
+        userId,
+        branch: input.branch,
+        virtualMcpMetadata:
+          (virtualMcp.metadata as Record<string, unknown> | null) ?? null,
+        explicitKind: "agent-sandbox",
+      });
+      const projectRef = composeSandboxRef({
+        orgId: organization.id,
+        virtualMcpId: input.virtualMcpId,
+        branch: input.branch,
+      });
+      const entry = await ctx.storage.agentSandboxSessions.withLock(
+        locator,
+        (sessions) => sessions.beginStop(locator, userId),
+      );
+      if (!entry) return { success: true };
+      try {
+        if (entry.sandboxHandle) {
+          await runner
+            .delete(entry.sandboxHandle, sharedSandboxId(projectRef))
+            .catch((error) =>
+              console.error(
+                `[SANDBOX_DELETE] agent-sandbox ${entry.sandboxHandle}: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              ),
+            );
+        }
+      } finally {
+        await ctx.storage.agentSandboxSessions.withLock(locator, (sessions) =>
+          sessions.completeStop(locator, entry.generation),
+        );
+      }
+      return { success: true };
+    }
 
     let vmEntry: Awaited<ReturnType<typeof requireVmEntry>>;
     try {

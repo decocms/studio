@@ -2008,7 +2008,7 @@ export async function prepareLinkWorkDispatch(
  *
  * Mirrors the formula used by `ensureSandbox` / `provisionSandbox`:
  *   projectRef = composeSandboxRef({ orgId, virtualMcpId: agentId, branch })
- *   handle     = computeClaimHandle({ userId, projectRef }, branch)
+ *   handle     = computeClaimHandle(userSandboxId(userId, projectRef), branch)
  *
  * This is the SAME handle the daemon receives in `WorkItem.sandbox.handle`
  * (set by `resolveLinkSandboxConfig`) and that the daemon derives via
@@ -2032,5 +2032,8 @@ export function computeDesktopSandboxHandle(input: {
     virtualMcpId: input.agentId,
     branch: input.branch,
   });
-  return computeClaimHandle({ userId: input.userId, projectRef }, input.branch);
+  return computeClaimHandle(
+    { scope: "user", userId: input.userId, projectRef },
+    input.branch,
+  );
 }

@@ -24,6 +24,7 @@ describe("KyselySandboxProviderStateStore", () => {
 
   // Each test uses a unique id to avoid cross-test pollution.
   const mkId = (tag: string): SandboxId => ({
+    scope: "user",
     userId: `user-${tag}`,
     projectRef: `proj-${tag}`,
   });
@@ -70,7 +71,7 @@ describe("KyselySandboxProviderStateStore", () => {
     const { rows } = await database.pool.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM sandbox_runner_state
          WHERE user_id = $1 AND project_ref = $2 AND sandbox_provider_kind = $3`,
-      [id.userId, id.projectRef, "agent-sandbox"],
+      [id.scope === "user" ? id.userId : "", id.projectRef, "agent-sandbox"],
     );
     expect(rows[0]!.count).toBe("1");
   });
