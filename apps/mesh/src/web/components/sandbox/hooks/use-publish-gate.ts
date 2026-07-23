@@ -6,9 +6,14 @@ import {
   fetchGitStatus,
   hasGitLocalWork,
   isSandboxUnreachable,
+  needsSmartReviewJudgment,
+  smartReviewGate,
   type GitDiffResult,
+  type GitStatus,
   type PublishGate,
+  type PublishPolicy,
 } from "../../thread/github/sandbox-git-api.ts";
+import { useSmartReviewVerdict } from "./use-smart-review-verdict.ts";
 
 function publishGateQueryKey(
   orgSlug: string,
@@ -45,6 +50,7 @@ export function usePublishGate(args: {
   base: string;
   headSha?: string | null;
   signature: string;
+  policy: PublishPolicy;
   enabled?: boolean;
 }): { gate: PublishGate; ready: boolean } {
   const {
@@ -54,10 +60,11 @@ export function usePublishGate(args: {
     base,
     headSha,
     signature,
+    policy,
     enabled = true,
   } = args;
 
-  const query = useQuery<GitDiffResult>({
+  const query = useQuery<{ status: GitStatus; diff: GitDiffResult }>({
     queryKey: publishGateQueryKey(
       orgSlug,
       virtualMcpId,
@@ -77,7 +84,7 @@ export function usePublishGate(args: {
       const workingDiff = hasGitLocalWork(status)
         ? await fetchGitDiff(orgSlug, virtualMcpId, branch)
         : null;
-      return combinePublishDiffs(baseDiff, workingDiff);
+      return { status, diff: combinePublishDiffs(baseDiff, workingDiff) };
     },
     enabled: enabled && !!branch,
     refetchInterval: 10_000,
@@ -85,10 +92,27 @@ export function usePublishGate(args: {
     retry: (count, error) => !isSandboxUnreachable(error) && count < 2,
   });
 
+  const status = query.data?.status ?? null;
+  const diff = query.data?.diff ?? null;
+  const needsJudge = needsSmartReviewJudgment(diff, policy);
+
+  // In `smart` policy with code in the diff, defer to the cheap AI judge (cached
+  // per diff content, no polling). Deco-only / non-smart cases skip it entirely.
+  const { verdict, loading } = useSmartReviewVerdict({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    status,
+    diff,
+    enabled: needsJudge,
+  });
+
   // While the diff is still loading (or the sandbox is unreachable) don't gate
   // the button — let the click fall through to the dialog, which does its own
   // loading + gating. Only enforce the gate once we actually have the diff.
   if (!query.data)
     return { gate: { allowed: true, reason: null }, ready: false };
-  return { gate: canPublishDirectly(query.data), ready: true };
+  if (!needsJudge)
+    return { gate: canPublishDirectly(diff, policy), ready: true };
+  return { gate: smartReviewGate(verdict, loading), ready: !loading };
 }

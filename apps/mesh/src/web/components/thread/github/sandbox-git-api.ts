@@ -245,6 +245,57 @@ export function isDecoOnlyDiff(
 export const PUBLISH_REQUIRES_SUBMIT_TOOLTIP =
   "Code changes can't be published directly — use Submit for review";
 
+/**
+ * Per-code-agent policy controlling when a direct publish is allowed:
+ * - `smart` (default): a cheap AI judges whether the code needs review.
+ * - `code-review`: any code change requires review (only deco/design publishes).
+ * - `open`: everything publishes directly.
+ * Mirrors `PublishPolicy` in `@decocms/mesh-sdk` (kept local to avoid pulling
+ * the SDK into this browser module).
+ */
+export type PublishPolicy = "smart" | "code-review" | "open";
+
+export const DEFAULT_PUBLISH_POLICY: PublishPolicy = "smart";
+
+/** Coerce an untrusted `metadata.publishPolicy` value into a valid policy. */
+export function normalizePublishPolicy(value: unknown): PublishPolicy {
+  return value === "code-review" || value === "open" || value === "smart"
+    ? value
+    : DEFAULT_PUBLISH_POLICY;
+}
+
+/** Verdict from the cheap AI judge on whether a code diff needs human review. */
+export interface ReviewVerdict {
+  requiresReview: boolean;
+  reason: string;
+}
+
+/**
+ * Ask the server-side cheap-model judge whether this publish payload needs
+ * review. Only meaningful for `smart` policy on a diff that contains code
+ * (see `needsSmartReviewJudgment`). Generated files are stripped to keep the
+ * payload under the endpoint's body limit.
+ */
+export async function fetchReviewVerdict(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+  payload: { status: GitStatus; diff: GitDiffResult },
+): Promise<ReviewVerdict> {
+  const res = await sandboxFetch(
+    buildSandboxGitUrl(orgSlug, virtualMcpId, branch, "judge-review"),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        status: payload.status,
+        diff: stripGeneratedFilesFromDiff(payload.diff),
+      }),
+    },
+  );
+  return parseJson<ReviewVerdict>(res);
+}
+
 export async function discardGitFiles(
   orgSlug: string,
   virtualMcpId: string,
@@ -373,15 +424,57 @@ export function combinePublishDiffs(
 }
 
 /**
- * Whether the changes may be squash-merged straight to base, bypassing review.
- * `diff` must be the full publish payload (see `combinePublishDiffs`) so the
- * gate sees every file — committed and uncommitted. Only deco-only payloads
- * publish directly; anything with code must go through Submit for review.
+ * Whether the changes may be squash-merged straight to base, bypassing review,
+ * for the given publish policy. `diff` must be the full publish payload (see
+ * `combinePublishDiffs`) so the gate sees every file — committed and
+ * uncommitted.
+ *
+ * This is the SYNCHRONOUS decision and covers every case except `smart` with
+ * code in the diff — that one needs the async AI verdict, so callers must first
+ * check `needsSmartReviewJudgment` and use `smartReviewGate` when it's true.
+ * (Calling this for that case falls back to the safe `code-review` behavior.)
  */
 export function canPublishDirectly(
   diff: GitDiffResult | null | undefined,
+  policy: PublishPolicy = "code-review",
 ): PublishGate {
+  if (policy === "open") return { allowed: true, reason: null };
+  // `smart` deco-only diffs (and all `code-review`) fall through to the
+  // deco-only rule: content/design publishes, code is blocked.
   return isDecoOnlyDiff(diff)
     ? { allowed: true, reason: null }
     : { allowed: false, reason: PUBLISH_REQUIRES_SUBMIT_TOOLTIP };
+}
+
+/**
+ * True when deciding the gate requires the async AI judge: `smart` policy on a
+ * non-empty diff that contains code. Deco-only diffs never need the judge
+ * (they always publish), and `code-review`/`open` are fully synchronous.
+ */
+export function needsSmartReviewJudgment(
+  diff: GitDiffResult | null | undefined,
+  policy: PublishPolicy,
+): boolean {
+  if (policy !== "smart") return false;
+  if (!diff || Object.keys(diff.diffs).length === 0) return false;
+  return !isDecoOnlyDiff(diff);
+}
+
+/**
+ * Resolve the gate for `smart` policy from the AI verdict. Deliberately
+ * permissive: while the judge is still running, or when it's unavailable
+ * (no model provider, error), we DON'T block — only an explicit
+ * `requiresReview` verdict disables direct publish.
+ */
+export function smartReviewGate(
+  verdict: ReviewVerdict | null | undefined,
+  loading: boolean,
+): PublishGate {
+  if (loading || !verdict) return { allowed: true, reason: null };
+  if (!verdict.requiresReview) return { allowed: true, reason: null };
+  const reason = verdict.reason?.trim();
+  return {
+    allowed: false,
+    reason: reason ? reason : PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
+  };
 }

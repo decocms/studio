@@ -35,6 +35,10 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card, CardContent } from "@deco/ui/components/card.tsx";
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "@deco/ui/components/radio-group.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import {
   Tooltip,
@@ -1039,6 +1043,90 @@ Define step-by-step how the agent should handle requests.
 
             {/* Development agent section (link a dev counterpart) */}
             <DevAgentSetup virtualMcp={virtualMcp} />
+
+            {/* Publishing section (code agents only) */}
+            {hasGithubRepo && (
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-sm font-medium text-foreground">
+                    {t("virtualMcp.virtualMcp.publishing")}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {t("virtualMcp.virtualMcp.publishingDescription")}
+                  </p>
+                </div>
+                <Card className="p-6">
+                  <CardContent className="p-0">
+                    <Controller
+                      name="metadata.publishPolicy"
+                      control={form.control}
+                      render={({ field }) => (
+                        <RadioGroup
+                          value={field.value ?? "smart"}
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            flushAndSave();
+                          }}
+                          className="gap-4"
+                        >
+                          {(
+                            [
+                              {
+                                value: "smart",
+                                label: t(
+                                  "virtualMcp.virtualMcp.publishPolicySmart",
+                                ),
+                                description: t(
+                                  "virtualMcp.virtualMcp.publishPolicySmartDescription",
+                                ),
+                              },
+                              {
+                                value: "code-review",
+                                label: t(
+                                  "virtualMcp.virtualMcp.publishPolicyCodeReview",
+                                ),
+                                description: t(
+                                  "virtualMcp.virtualMcp.publishPolicyCodeReviewDescription",
+                                ),
+                              },
+                              {
+                                value: "open",
+                                label: t(
+                                  "virtualMcp.virtualMcp.publishPolicyOpen",
+                                ),
+                                description: t(
+                                  "virtualMcp.virtualMcp.publishPolicyOpenDescription",
+                                ),
+                              },
+                            ] as const
+                          ).map((option) => (
+                            <label
+                              key={option.value}
+                              htmlFor={`publish-policy-${option.value}`}
+                              className="flex cursor-pointer items-start gap-3"
+                            >
+                              <RadioGroupItem
+                                id={`publish-policy-${option.value}`}
+                                value={option.value}
+                                className="mt-0.5"
+                              />
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-sm font-medium text-foreground">
+                                  {option.label}
+                                </span>
+                                <span className="text-sm text-muted-foreground">
+                                  {option.description}
+                                </span>
+                              </div>
+                            </label>
+                          ))}
+                        </RadioGroup>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
             {/* Sandbox section */}
             <div className="flex flex-col gap-3">

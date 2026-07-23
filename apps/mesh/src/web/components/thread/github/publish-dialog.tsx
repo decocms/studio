@@ -36,6 +36,7 @@ import {
 import type { PrSummary } from "./use-pr-data.ts";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { publishToBaseLabel } from "./publish-label.ts";
+import { useSmartReviewVerdict } from "@/web/components/sandbox/hooks/use-smart-review-verdict.ts";
 import {
   canPublishDirectly,
   combinePublishDiffs,
@@ -48,12 +49,15 @@ import {
   hasLocalWorkToPush,
   hasUnpublishedWork,
   isSandboxUnreachable,
+  needsSmartReviewJudgment,
   publishGitChanges,
   readGitHeadBranch,
   rebaseGitBranch,
   shouldUseBaseDiff,
+  smartReviewGate,
   type GitDiffResult,
   type GitStatus,
+  type PublishPolicy,
 } from "./sandbox-git-api.ts";
 
 class PublishFlowError extends Error {
@@ -81,6 +85,8 @@ export interface PublishDialogProps {
   owner: string;
   repo: string;
   previewUrl?: string | null;
+  /** The code agent's publish policy — gates the direct Publish button. */
+  publishPolicy: PublishPolicy;
   /**
    * `open-pr` — push local work and open a PR for review (default).
    * `publish-only` — direct publish to base; single green Publish button.
@@ -128,6 +134,7 @@ function PublishDialogBody({
   owner,
   repo,
   previewUrl,
+  publishPolicy,
   dialogIntent = "open-pr",
   headSha = null,
   openPullRequest = null,
@@ -292,12 +299,27 @@ function PublishDialogBody({
   const changesCount = countGitChanges(gitStatus);
   const diffCount = gitDiff ? Object.keys(gitDiff.diffs).length : changesCount;
 
+  // The direct Publish button is only shown in publish-only intent; only judge
+  // (spend an AI call) there, and only for a smart-policy diff that has code.
+  const needsJudge =
+    isPublishOnly && needsSmartReviewJudgment(gitDiff, publishPolicy);
+  const { verdict, loading: judging } = useSmartReviewVerdict({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    status: gitStatus,
+    diff: gitDiff,
+    enabled: needsJudge,
+  });
+
   const hasLocalUnpublished = openPrFromCommits
     ? hasLocalWorkToPush(gitStatus)
     : hasUnpublishedWork(gitStatus, gitDiff);
   const canSubmit =
     !isLoadingGitDiff && (hasLocalUnpublished || openPrFromCommits);
-  const publishGate = canPublishDirectly(gitDiff);
+  const publishGate = needsJudge
+    ? smartReviewGate(verdict, judging)
+    : canPublishDirectly(gitDiff, publishPolicy);
   const canPublish = canSubmit && publishGate.allowed;
   const publishDisabledReason = canSubmit ? publishGate.reason : null;
 

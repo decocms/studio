@@ -2,12 +2,16 @@ import { describe, expect, test } from "bun:test";
 import {
   canPublishDirectly,
   combinePublishDiffs,
+  DEFAULT_PUBLISH_POLICY,
   hasGitLocalWork,
   hasLocalWorkToPush,
   hasUnpublishedWork,
   isDecoOnlyDiff,
+  needsSmartReviewJudgment,
+  normalizePublishPolicy,
   PUBLISH_REQUIRES_SUBMIT_TOOLTIP,
   shouldUseBaseDiff,
+  smartReviewGate,
   stripGeneratedFilesFromDiff,
   type GitDiffResult,
   type GitStatus,
@@ -297,6 +301,88 @@ describe("canPublishDirectly", () => {
 
   test("blocks an empty diff", () => {
     expect(canPublishDirectly({ diffs: {} }).allowed).toBe(false);
+  });
+
+  test("defaults to code-review behavior (deco allowed, code blocked)", () => {
+    expect(canPublishDirectly(decoDiff, "code-review").allowed).toBe(true);
+    expect(canPublishDirectly(codeDiff, "code-review").allowed).toBe(false);
+  });
+
+  test("open policy allows code directly", () => {
+    const gate = canPublishDirectly(codeDiff, "open");
+    expect(gate.allowed).toBe(true);
+    expect(gate.reason).toBeNull();
+  });
+
+  test("smart policy allows a deco-only payload without the judge", () => {
+    expect(canPublishDirectly(decoDiff, "smart").allowed).toBe(true);
+  });
+});
+
+describe("normalizePublishPolicy", () => {
+  test("defaults unknown/absent values to smart", () => {
+    expect(DEFAULT_PUBLISH_POLICY).toBe("smart");
+    expect(normalizePublishPolicy(undefined)).toBe("smart");
+    expect(normalizePublishPolicy(null)).toBe("smart");
+    expect(normalizePublishPolicy("bogus")).toBe("smart");
+  });
+
+  test("passes through valid values", () => {
+    expect(normalizePublishPolicy("smart")).toBe("smart");
+    expect(normalizePublishPolicy("code-review")).toBe("code-review");
+    expect(normalizePublishPolicy("open")).toBe("open");
+  });
+});
+
+describe("needsSmartReviewJudgment", () => {
+  const decoDiff: GitDiffResult = {
+    diffs: { ".deco/blocks/home.json": { from: "{}", to: "{}" } },
+  };
+  const codeDiff: GitDiffResult = {
+    diffs: { "routes/index.tsx": { from: "a", to: "b" } },
+  };
+
+  test("only smart policy with code needs the judge", () => {
+    expect(needsSmartReviewJudgment(codeDiff, "smart")).toBe(true);
+    expect(needsSmartReviewJudgment(decoDiff, "smart")).toBe(false);
+    expect(needsSmartReviewJudgment(codeDiff, "code-review")).toBe(false);
+    expect(needsSmartReviewJudgment(codeDiff, "open")).toBe(false);
+  });
+
+  test("empty/null diffs never need the judge", () => {
+    expect(needsSmartReviewJudgment(null, "smart")).toBe(false);
+    expect(needsSmartReviewJudgment({ diffs: {} }, "smart")).toBe(false);
+  });
+});
+
+describe("smartReviewGate", () => {
+  test("permissive while judging (no block on absence)", () => {
+    expect(smartReviewGate(null, true).allowed).toBe(true);
+  });
+
+  test("permissive when the judge is unavailable (no verdict)", () => {
+    expect(smartReviewGate(null, false).allowed).toBe(true);
+  });
+
+  test("allows when the verdict says no review needed", () => {
+    const gate = smartReviewGate({ requiresReview: false, reason: "" }, false);
+    expect(gate.allowed).toBe(true);
+    expect(gate.reason).toBeNull();
+  });
+
+  test("blocks with the AI reason when review is required", () => {
+    const gate = smartReviewGate(
+      { requiresReview: true, reason: "New API endpoint added" },
+      false,
+    );
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe("New API endpoint added");
+  });
+
+  test("falls back to the default tooltip when the AI gives no reason", () => {
+    const gate = smartReviewGate({ requiresReview: true, reason: "" }, false);
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe(PUBLISH_REQUIRES_SUBMIT_TOOLTIP);
   });
 });
 
