@@ -20,7 +20,8 @@ export function PathParamInput({
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
   const cancelledRef = useRef(false);
-  const label = name === "*" ? "path" : `:${name}`;
+  const label =
+    name === "*" ? t("sandbox.preview.catchAllParamLabel") : `:${name}`;
   const sizer = draft || label;
   return (
     <>

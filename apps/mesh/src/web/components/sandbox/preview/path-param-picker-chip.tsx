@@ -283,7 +283,10 @@ export function PathParamPickerChip({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // The `*` catch-all reads badly in the URL bar; show a friendly word instead.
-  const paramLabel = paramName === "*" ? "path" : `:${paramName}`;
+  const paramLabel =
+    paramName === "*"
+      ? t("sandbox.preview.catchAllParamLabel")
+      : `:${paramName}`;
   const labels = kindLabels(t);
   const nouns = [...new Set(sources.map((s) => labels[s.kind].noun))];
   const placeholder = t("sandbox.pathParamPickerChip.searchPlaceholder", {
