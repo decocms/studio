@@ -6,6 +6,7 @@ import {
   Loading02,
 } from "@untitledui/icons";
 import type { ToolOutput } from "@/tools/io-types";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 
 export { SUPER_AGENT_ASSIGNEE_ID } from "@/shared/task-board";
 
@@ -47,30 +48,30 @@ export const STATUSES: TaskBoardItemStatus[] = [
 
 export const STATUS_CONFIG: Record<
   TaskBoardItemStatus,
-  { label: string; icon: typeof Circle; iconClassName: string }
+  { labelKey: TranslationKey; icon: typeof Circle; iconClassName: string }
 > = {
   triage: {
-    label: "Backlog",
+    labelKey: "taskBoard.config.statusBacklog",
     icon: AlertCircle,
     iconClassName: "text-muted-foreground",
   },
   todo: {
-    label: "To Do",
+    labelKey: "taskBoard.config.statusTodo",
     icon: Circle,
     iconClassName: "text-muted-foreground",
   },
   in_progress: {
-    label: "In Progress",
+    labelKey: "taskBoard.config.statusInProgress",
     icon: Loading02,
     iconClassName: "text-primary",
   },
   in_review: {
-    label: "In Review",
+    labelKey: "taskBoard.config.statusInReview",
     icon: Eye,
     iconClassName: "text-warning",
   },
   done: {
-    label: "Done",
+    labelKey: "taskBoard.config.statusDone",
     icon: CheckCircle,
     iconClassName: "text-success",
   },
@@ -87,33 +88,33 @@ export const PRIORITIES: TaskBoardItemPriority[] = [
 export const PRIORITY_CONFIG: Record<
   TaskBoardItemPriority,
   {
-    label: string;
+    labelKey: TranslationKey;
     flagClassName: string;
     dotClassName: string;
   }
 > = {
   none: {
-    label: "No priority",
+    labelKey: "taskBoard.config.priorityNone",
     flagClassName: "text-muted-foreground",
     dotClassName: "border border-muted-foreground/50",
   },
   low: {
-    label: "Low",
+    labelKey: "taskBoard.config.priorityLow",
     flagClassName: "text-muted-foreground",
     dotClassName: "bg-muted-foreground/40",
   },
   medium: {
-    label: "Medium",
+    labelKey: "taskBoard.config.priorityMedium",
     flagClassName: "text-blue-500",
     dotClassName: "bg-blue-500",
   },
   high: {
-    label: "High",
+    labelKey: "taskBoard.config.priorityHigh",
     flagClassName: "text-warning",
     dotClassName: "bg-warning",
   },
   urgent: {
-    label: "Urgent",
+    labelKey: "taskBoard.config.priorityUrgent",
     flagClassName: "text-destructive",
     dotClassName: "bg-destructive",
   },

@@ -12,6 +12,7 @@ import { injectCSP } from "./csp-injector.ts";
 import type { McpUiResourceCsp } from "./types.ts";
 import { useAppBridge } from "./use-app-bridge.ts";
 import { track } from "../web/lib/posthog-client";
+import { usePreferences } from "../web/hooks/use-preferences.ts";
 
 // Module-level dedup so a given MCP app resource fires `mcp_app_opened` at
 // most once per page session. Different resources still fire their own events.
@@ -106,12 +107,19 @@ function MCPAppFrame({
     });
   }
 
+  // Feed Studio's UI language into the iframe's host context so the embedded
+  // MCP app localizes to match Studio (not the raw browser locale). Reactive:
+  // changing the language re-renders here, useAppBridge detects the new locale
+  // and pushes a host-context-changed notification to the live iframe.
+  const [preferences] = usePreferences();
+
   const { height, isLoading, error, iframeRef } = useAppBridge({
     client,
     displayMode,
     minHeight,
     maxHeight,
     orgId,
+    locale: preferences.language,
     toolInfo,
     toolInput,
     toolResult,

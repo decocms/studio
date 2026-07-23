@@ -31,11 +31,7 @@ export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
     id: z.string(),
     organizationId: z.string(),
     userId: z.string(),
-    role: z.union([
-      z.literal("admin"),
-      z.literal("member"),
-      z.literal("owner"),
-    ]),
+    role: z.union([z.string(), z.array(z.string())]), // Better Auth can return string or array
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     user: z.object({
       email: z.string(),
@@ -59,11 +55,22 @@ export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
       );
     }
 
-    // Validate the caller is allowed to assign the target role.
+    // Validate the caller is allowed to assign every target role. `organizationId`
+    // may be an explicit override (not the session's active org), and
+    // `ctx.auth.user?.role` only ever reflects the active-org role — using it here
+    // would let an owner/admin of a DIFFERENT org assign "owner" in this one.
+    // Look up the caller's real membership row in the TARGET org instead.
     // Admins cannot assign "owner" — only owners can.
-    const targetRole = Array.isArray(input.role) ? input.role[0] : input.role;
-    if (targetRole && !canAssignRole(ctx.auth.user?.role, targetRole)) {
-      throw new Error(`Insufficient privileges to assign role "${targetRole}"`);
+    const callerMembership = await ctx.db
+      .selectFrom("member")
+      .select(["role"])
+      .where("userId", "=", getUserId(ctx) ?? "")
+      .where("organizationId", "=", organizationId)
+      .executeTakeFirst();
+    if (!canAssignRole(callerMembership?.role, input.role)) {
+      throw new Error(
+        `Insufficient privileges to assign role "${input.role.join(",")}"`,
+      );
     }
 
     // Update member role via bound auth client

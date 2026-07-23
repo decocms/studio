@@ -8,6 +8,7 @@ import {
   useAiProviderKeys,
   useAiProviders,
 } from "@/web/hooks/collections/use-ai-providers";
+import { useT } from "@/web/i18n/use-t.ts";
 import { SimpleModeSection } from "./simple-mode-section";
 import { DecoCreditsHero } from "./deco-credits-hero";
 import { DecoNudgeCard } from "./deco-nudge-card";
@@ -72,12 +73,13 @@ function OrgAiProvidersContent() {
 }
 
 export function OrgAiProvidersPage() {
+  const t = useT();
   return (
     <Page>
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>AI Providers</Page.Title>
+            <Page.Title>{t("settings.nav.aiProviders")}</Page.Title>
             <ErrorBoundary
               fallback={({ error }) => (
                 <ErrorFallback

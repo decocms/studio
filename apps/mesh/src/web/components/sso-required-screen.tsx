@@ -1,6 +1,7 @@
 import { AccessScreenLayout } from "@/web/components/access-screen-layout";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Lock01 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface SsoRequiredScreenProps {
   orgId: string;
@@ -14,6 +15,8 @@ export function SsoRequiredScreen({
   orgName,
   domain,
 }: SsoRequiredScreenProps) {
+  const t = useT();
+
   const handleSsoLogin = () => {
     window.location.href = `/api/${encodeURIComponent(orgSlug)}/sso/authorize`;
   };
@@ -28,22 +31,30 @@ export function SsoRequiredScreen({
         <Lock01 className="h-6 w-6 text-primary" />
       </div>
       <div className="space-y-2">
-        <h3 className="text-lg font-medium">SSO Authentication Required</h3>
+        <h3 className="text-lg font-medium">
+          {t("common.ssoRequiredScreen.title")}
+        </h3>
         <p className="text-sm text-muted-foreground">
           {orgName ? (
             <>
-              <strong>{orgName}</strong> requires SSO authentication
-              {domain ? ` via ${domain}` : ""}.
+              <strong>{orgName}</strong>{" "}
+              {t("common.ssoRequiredScreen.requiresSsoAuth")}
+              {domain
+                ? ` ${t("common.ssoRequiredScreen.via", { domain })}`
+                : ""}
+              .
             </>
           ) : (
-            "This organization requires SSO authentication to access."
+            t("common.ssoRequiredScreen.orgRequiresSsoAuth")
           )}
         </p>
       </div>
       <div className="flex flex-col gap-2 w-full">
-        <Button onClick={handleSsoLogin}>Sign in with SSO</Button>
+        <Button onClick={handleSsoLogin}>
+          {t("common.ssoRequiredScreen.signInWithSso")}
+        </Button>
         <Button variant="ghost" onClick={handleGoBack}>
-          Go back
+          {t("common.ssoRequiredScreen.goBack")}
         </Button>
       </div>
     </AccessScreenLayout>

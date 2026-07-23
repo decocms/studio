@@ -10,6 +10,7 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { homeDisplayName } from "@/file-storage/home-mount";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   type OrgFsEntry,
   type ShareMode,
@@ -61,9 +62,21 @@ function publicStateOf(e: {
  *  deliberately absent — they live in versioned repos (public sets), not as
  *  an editable cloud volume. */
 export const VOLUMES = [
-  { id: "home", description: "Your organization's home folder", glyph: Home01 },
-  { id: "uploads", description: "Files your team uploads", glyph: Upload01 },
-  { id: "outputs", description: "Agent run outputs", glyph: Stars01 },
+  {
+    id: "home",
+    descriptionKey: "library.libraryViews.volumeHomeDescription" as const,
+    glyph: Home01,
+  },
+  {
+    id: "uploads",
+    descriptionKey: "library.libraryViews.volumeUploadsDescription" as const,
+    glyph: Upload01,
+  },
+  {
+    id: "outputs",
+    descriptionKey: "library.libraryViews.volumeOutputsDescription" as const,
+    glyph: Stars01,
+  },
 ] as const;
 
 const RECENTLY_ADDED_COUNT = 6;
@@ -118,23 +131,28 @@ function EmptyNote({ children }: { children: React.ReactNode }) {
 function VolumeFolderCard({
   volume,
   displayName,
-  description,
+  descriptionKey,
   glyph,
   onOpen,
 }: {
   volume: string;
   /** Card label when it differs from the volume id (home shows the slug). */
   displayName?: string;
-  description: string;
+  descriptionKey: string;
   glyph?: ComponentType<SVGProps<SVGSVGElement>>;
   onOpen: () => void;
 }) {
+  const t = useT();
   const usage = useOrgFsUsage(volume);
   return (
     <FolderCard
       name={displayName ?? volume}
-      meta={usage.data ? `${usage.data.files} files` : undefined}
-      subtitle={description}
+      meta={
+        usage.data
+          ? t("library.libraryViews.filesCount", { count: usage.data.files })
+          : undefined
+      }
+      subtitle={t(descriptionKey as any)}
       glyph={glyph}
       onOpen={onOpen}
     />
@@ -148,6 +166,7 @@ export function Breadcrumbs({
   segments: string[];
   onNavigate: (path: string) => void;
 }) {
+  const t = useT();
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
       <button
@@ -155,7 +174,7 @@ export function Breadcrumbs({
         className="text-muted-foreground hover:text-foreground hover:underline"
         onClick={() => onNavigate("")}
       >
-        Library
+        {t("library.libraryViews.library")}
       </button>
       {segments.map((seg, i) => {
         const prefix = segments.slice(0, i + 1).join("/");
@@ -204,6 +223,7 @@ export function SearchResultsView({
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const fileUrl = useOrgFsFileUrl();
   const search = useOrgFsSearch(query);
@@ -221,7 +241,9 @@ export function SearchResultsView({
   if (search.isPending) return <GridSkeleton rows={2} />;
   const results = search.data ?? [];
   if (results.length === 0) {
-    return <EmptyNote>No files match “{query}”.</EmptyNote>;
+    return (
+      <EmptyNote>{t("library.libraryViews.noFilesMatch", { query })}</EmptyNote>
+    );
   }
   return (
     <div
@@ -232,7 +254,7 @@ export function SearchResultsView({
       )}
     >
       <SectionLabel>
-        {results.length} {results.length === 1 ? "result" : "results"}
+        {t("library.libraryViews.searchResults", { count: results.length })}
       </SectionLabel>
       <CardsGrid>
         {results.map((e) => {
@@ -274,6 +296,7 @@ export function RootView({
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const recent = useOrgFsRecent();
   const publicSets = useOrgFsPublicSets();
@@ -295,12 +318,12 @@ export function RootView({
     <>
       {recent.isPending ? (
         <div className="flex flex-col gap-3">
-          <SectionLabel>Recently added</SectionLabel>
+          <SectionLabel>{t("library.libraryViews.recentlyAdded")}</SectionLabel>
           <GridSkeleton />
         </div>
       ) : recentlyAdded.length > 0 ? (
         <div className="flex flex-col gap-3">
-          <SectionLabel>Recently added</SectionLabel>
+          <SectionLabel>{t("library.libraryViews.recentlyAdded")}</SectionLabel>
           <CardsGrid>
             {recentlyAdded.map((e) => (
               <RecentFileCard
@@ -321,13 +344,11 @@ export function RootView({
           </CardsGrid>
         </div>
       ) : (
-        <EmptyNote>
-          No files yet — upload one, or ask an agent to produce something.
-        </EmptyNote>
+        <EmptyNote>{t("library.libraryViews.noFilesYet")}</EmptyNote>
       )}
 
       <div className="flex flex-col gap-3">
-        <SectionLabel>Folders</SectionLabel>
+        <SectionLabel>{t("library.libraryViews.folders")}</SectionLabel>
         <CardsGrid>
           {VOLUMES.map((v) => (
             <VolumeFolderCard
@@ -340,7 +361,7 @@ export function RootView({
               displayName={
                 v.id === "home" ? homeDisplayName(org.slug) : undefined
               }
-              description={v.description}
+              descriptionKey={v.descriptionKey}
               glyph={v.glyph}
               onOpen={() => onOpenDir(v.id)}
             />
@@ -348,8 +369,10 @@ export function RootView({
           {(publicSets.data?.length ?? 0) > 0 && (
             <FolderCard
               name="public"
-              meta={`${publicSets.data?.length} sets`}
-              subtitle="Curated skill sets — read-only"
+              meta={t("library.libraryViews.skillSetsCount", {
+                count: publicSets.data?.length ?? 0,
+              })}
+              subtitle={t("library.libraryViews.curatedSkillSetsReadOnly")}
               glyph={Globe01}
               readOnly
               onOpen={() => onOpenDir("public")}
@@ -367,11 +390,16 @@ export function PublicSetsView({
 }: {
   onOpenDir: (path: string) => void;
 }) {
+  const t = useT();
   const publicSets = useOrgFsPublicSets();
   if (publicSets.isPending) return <GridSkeleton />;
   const sets = publicSets.data ?? [];
   if (sets.length === 0) {
-    return <EmptyNote>No public skill sets are configured.</EmptyNote>;
+    return (
+      <EmptyNote>
+        {t("library.libraryViews.noPublicSkillSetsConfigured")}
+      </EmptyNote>
+    );
   }
   return (
     <CardsGrid>
@@ -379,7 +407,7 @@ export function PublicSetsView({
         <FolderCard
           key={set}
           name={set}
-          subtitle="Read-only"
+          subtitle={t("library.libraryViews.readOnly")}
           readOnly
           onOpen={() => onOpenDir(`public/${set}`)}
         />
@@ -406,6 +434,7 @@ export function VolumeView({
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
+  const t = useT();
   const volume = location.volume ?? "";
   const listing = useOrgFsList(volume, location.dirPath);
   const fileUrl = useOrgFsFileUrl();
@@ -416,7 +445,7 @@ export function VolumeView({
       <p className="text-sm text-destructive">
         {listing.error instanceof Error
           ? listing.error.message
-          : "Failed to load"}
+          : t("library.libraryViews.failedToLoad")}
       </p>
     );
   }
@@ -436,8 +465,8 @@ export function VolumeView({
     return (
       <EmptyNote>
         {location.readOnly
-          ? "Empty — this read-only set syncs from its GitHub source."
-          : "Empty folder — upload a file or create a folder to get started."}
+          ? t("library.libraryViews.emptyReadOnlySet")
+          : t("library.libraryViews.emptyFolder")}
       </EmptyNote>
     );
   }
@@ -468,7 +497,7 @@ export function VolumeView({
     <>
       {skills.length > 0 && (
         <div className="flex flex-col gap-3">
-          <SectionLabel>Skills</SectionLabel>
+          <SectionLabel>{t("library.libraryViews.skills")}</SectionLabel>
           <CardsGrid>
             {skills.map((e) => (
               <SkillCard
@@ -488,7 +517,7 @@ export function VolumeView({
       )}
       {brands.length > 0 && (
         <div className="flex flex-col gap-3">
-          <SectionLabel>Brands</SectionLabel>
+          <SectionLabel>{t("library.libraryViews.brands")}</SectionLabel>
           <CardsGrid>
             {brands.map((e) => (
               <BrandCard
@@ -506,7 +535,7 @@ export function VolumeView({
       )}
       {dirs.length > 0 && (
         <div className="flex flex-col gap-3">
-          <SectionLabel>Folders</SectionLabel>
+          <SectionLabel>{t("library.libraryViews.folders")}</SectionLabel>
           <CardsGrid>
             {dirs.map((e) => (
               <FolderCard
@@ -525,7 +554,7 @@ export function VolumeView({
       )}
       {files.length > 0 && (
         <div className="flex flex-col gap-3">
-          <SectionLabel>Files</SectionLabel>
+          <SectionLabel>{t("library.libraryViews.files")}</SectionLabel>
           <CardsGrid>
             {files.map((e) => (
               <FileCard

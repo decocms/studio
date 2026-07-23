@@ -29,7 +29,6 @@ export const ORGANIZATION_SETTINGS_GET = defineTool({
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     reports_only: z.boolean().nullable().optional(),
-    task_board_enabled: z.boolean().optional(),
     createdAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
   }),

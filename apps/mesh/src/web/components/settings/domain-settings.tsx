@@ -1,6 +1,7 @@
 import { track } from "@/web/lib/posthog-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { useT, type TFunction } from "@/web/i18n/use-t.ts";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -23,25 +24,20 @@ import { toast } from "sonner";
 
 type JoinMode = "off" | "auto" | "request";
 
-const JOIN_MODE_LABELS: Record<JoinMode, string> = {
-  off: "Off",
-  auto: "Auto-join",
-  request: "Require approval",
-};
-
 /** Explains what each join mode does, for the description under a verified domain. */
-function joinModeHelp(mode: JoinMode, domain: string): string {
+function joinModeHelp(mode: JoinMode, domain: string, t: TFunction): string {
   switch (mode) {
     case "auto":
-      return `Anyone with a verified @${domain} email joins automatically.`;
+      return t("settings.domainSettings.joinModeHelpAuto", { domain });
     case "request":
-      return `People with a verified @${domain} email can request to join; an admin approves.`;
+      return t("settings.domainSettings.joinModeHelpRequest", { domain });
     default:
-      return "Not discoverable — no one can find or join through this domain.";
+      return t("settings.domainSettings.joinModeHelpOff");
   }
 }
 
 export function DomainSettings() {
+  const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const studio = useStudioTools();
@@ -64,10 +60,14 @@ export function DomainSettings() {
       track("organization_domain_added", { organization_id: org.id });
       setNewDomain("");
       invalidateDomains();
-      toast.success("Domain added");
+      toast.success(t("settings.domainSettings.domainAdded"));
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Failed to add domain"),
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("settings.domainSettings.failedAddDomain"),
+      ),
   });
 
   const updateModeMutation = useMutation({
@@ -75,10 +75,14 @@ export function DomainSettings() {
       studio.call("ORGANIZATION_DOMAIN_UPDATE", { id, joinMode }),
     onSuccess: () => {
       invalidateDomains();
-      toast.success("Join mode updated");
+      toast.success(t("settings.domainSettings.joinModeUpdated"));
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Failed to update"),
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("settings.domainSettings.failedUpdate"),
+      ),
   });
 
   const verifyMutation = useMutation({
@@ -87,13 +91,17 @@ export function DomainSettings() {
     onSuccess: (result) => {
       invalidateDomains();
       if (result.verified) {
-        toast.success("Domain verified");
+        toast.success(t("settings.domainSettings.domainVerified"));
       } else {
-        toast.error("TXT record not found yet — DNS can take a few minutes.");
+        toast.error(t("settings.domainSettings.txtRecordNotFound"));
       }
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Failed to verify"),
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("settings.domainSettings.failedVerify"),
+      ),
   });
 
   const removeMutation = useMutation({
@@ -101,10 +109,14 @@ export function DomainSettings() {
       studio.call("ORGANIZATION_DOMAIN_REMOVE", { id }),
     onSuccess: () => {
       invalidateDomains();
-      toast.success("Domain removed");
+      toast.success(t("settings.domainSettings.domainRemoved"));
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Failed to remove"),
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("settings.domainSettings.failedRemove"),
+      ),
   });
 
   if (isPending) return null;
@@ -113,8 +125,8 @@ export function DomainSettings() {
 
   return (
     <SettingsSection
-      title="Email domains"
-      description="Let people with a matching email domain discover and join this organization."
+      title={t("settings.domainSettings.emailDomains")}
+      description={t("settings.domainSettings.emailDomainsDescription")}
     >
       <SettingsCard>
         {domains.map((d) => {
@@ -126,23 +138,27 @@ export function DomainSettings() {
                 <span className="flex items-center gap-2">
                   {d.domain}
                   {verified ? (
-                    <Badge variant="secondary">Verified</Badge>
+                    <Badge variant="secondary">
+                      {t("settings.domainSettings.verified")}
+                    </Badge>
                   ) : (
-                    <Badge variant="outline">Pending</Badge>
+                    <Badge variant="outline">
+                      {t("settings.domainSettings.pending")}
+                    </Badge>
                   )}
                 </span>
               }
               description={
                 verified
-                  ? joinModeHelp(d.joinMode, d.domain)
-                  : "Add the DNS record below, then verify."
+                  ? joinModeHelp(d.joinMode, d.domain, t)
+                  : t("settings.domainSettings.addDnsRecordInstruction")
               }
               action={
                 <div className="flex items-center gap-2">
                   {verified && (
                     <>
                       <span className="text-xs text-muted-foreground">
-                        Join mode
+                        {t("settings.domainSettings.joinMode")}
                       </span>
                       <Select
                         value={d.joinMode}
@@ -157,13 +173,15 @@ export function DomainSettings() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {(["off", "auto", "request"] as JoinMode[]).map(
-                            (mode) => (
-                              <SelectItem key={mode} value={mode}>
-                                {JOIN_MODE_LABELS[mode]}
-                              </SelectItem>
-                            ),
-                          )}
+                          <SelectItem value="off">
+                            {t("settings.domainSettings.joinModeOff")}
+                          </SelectItem>
+                          <SelectItem value="auto">
+                            {t("settings.domainSettings.joinModeAuto")}
+                          </SelectItem>
+                          <SelectItem value="request">
+                            {t("settings.domainSettings.joinModeRequest")}
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </>
@@ -175,7 +193,7 @@ export function DomainSettings() {
                       onClick={() => verifyMutation.mutate(d.id)}
                       disabled={verifyMutation.isPending}
                     >
-                      Verify
+                      {t("settings.domainSettings.verify")}
                     </Button>
                   )}
                   <Button
@@ -184,7 +202,7 @@ export function DomainSettings() {
                     onClick={() => removeMutation.mutate(d.id)}
                     disabled={removeMutation.isPending}
                   >
-                    Remove
+                    {t("settings.domainSettings.remove")}
                   </Button>
                 </div>
               }
@@ -202,7 +220,7 @@ export function DomainSettings() {
           <Input
             value={newDomain}
             onChange={(e) => setNewDomain(e.target.value)}
-            placeholder="acme.com"
+            placeholder={t("settings.domainSettings.domainPlaceholder")}
             className="max-w-xs"
           />
           <Button
@@ -210,7 +228,9 @@ export function DomainSettings() {
             onClick={() => addMutation.mutate(newDomain.trim())}
             disabled={!newDomain.trim() || addMutation.isPending}
           >
-            {addMutation.isPending ? "Adding…" : "Add domain"}
+            {addMutation.isPending
+              ? t("settings.domainSettings.adding")
+              : t("settings.domainSettings.addDomain")}
           </Button>
         </div>
       </SettingsCard>
@@ -225,14 +245,15 @@ function DnsInstructions({
   recordName: string;
   recordValue: string;
 }) {
+  const t = useT();
   const copy = (value: string) => {
     navigator.clipboard?.writeText(value);
-    toast.success("Copied");
+    toast.success(t("settings.domainSettings.copied"));
   };
   return (
     <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-xs space-y-2">
       <p className="text-muted-foreground">
-        Add this TXT record at your DNS provider, then click Verify:
+        {t("settings.domainSettings.dnsInstructions")}
       </p>
       <div className="grid gap-1">
         <button
@@ -240,7 +261,9 @@ function DnsInstructions({
           className="text-left font-mono break-all hover:underline"
           onClick={() => copy(recordName)}
         >
-          <span className="text-muted-foreground">TXT </span>
+          <span className="text-muted-foreground">
+            {t("settings.domainSettings.txt")}{" "}
+          </span>
           {recordName}
         </button>
         <button
@@ -248,7 +271,9 @@ function DnsInstructions({
           className="text-left font-mono break-all hover:underline"
           onClick={() => copy(recordValue)}
         >
-          <span className="text-muted-foreground">value </span>
+          <span className="text-muted-foreground">
+            {t("settings.domainSettings.value")}{" "}
+          </span>
           {recordValue}
         </button>
       </div>

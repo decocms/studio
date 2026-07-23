@@ -298,6 +298,8 @@ export interface PostMeta {
   categorySlugs: string[];
   /** Emails of the post's authors (denormalized). */
   authorEmails: string[];
+  /** Required fields the post is missing (empty when valid). */
+  missing: string[];
 }
 
 function toArray(value: unknown): unknown[] {
@@ -322,6 +324,25 @@ function authorEmailOf(item: unknown): string {
 }
 
 /**
+ * Which required fields a post payload is missing (empty ⇒ valid). A post with
+ * no title/slug/excerpt or zero categories is incomplete — the list marks it
+ * and the editor blocks preview.
+ */
+export function missingPostFields(payload: Record<string, unknown>): string[] {
+  const missing: string[] = [];
+  if (!str(payload.title).trim()) missing.push("Title");
+  if (!str(payload.slug).trim()) missing.push("Slug");
+  if (
+    toArray(payload.categories).map(categorySlugOf).filter(Boolean).length === 0
+  ) {
+    missing.push("Category");
+  }
+  if (!str(payload.excerpt).trim()) missing.push("Excerpt");
+  if (!str(payload.image).trim()) missing.push("Cover image");
+  return missing;
+}
+
+/**
  * All posts paired with the metadata the posts list filters and sorts on.
  * Reads the denormalized `categories`/`authors` arrays, tolerating either
  * strings or `{slug}`/`{email}` objects.
@@ -338,6 +359,7 @@ export function listPostsWithMeta(
       .map(categorySlugOf)
       .filter(Boolean),
     authorEmails: toArray(payload.authors).map(authorEmailOf).filter(Boolean),
+    missing: missingPostFields(payload),
   }));
 }
 

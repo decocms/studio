@@ -30,8 +30,8 @@ import { expect, test } from "../fixtures/test";
 const cdConnectionId = (orgId: string) => `${orgId}_commerce-discovery`;
 const REPORT_TOOL = "get_my_diagnostic";
 
-const READY_TITLE = "Seu relatório está pronto";
-const GENERATING_TITLE = "Gerando seu diagnóstico";
+const READY_TITLE = "Your report is ready";
+const GENERATING_TITLE = "Generating your diagnostic";
 
 const SITE_URL = "https://minha-loja.example";
 

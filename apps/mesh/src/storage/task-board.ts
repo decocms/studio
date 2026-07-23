@@ -108,6 +108,8 @@ export class TaskBoardStorage {
     assigneeId?: string | null;
     assignedBy?: string | null;
     dueDate?: string | null;
+    /** Sender-minted finding identity — see task-board-import. */
+    externalKey?: string | null;
     by: string;
   }): Promise<TaskBoardItem> {
     const id = generatePrefixedId("board");
@@ -125,6 +127,7 @@ export class TaskBoardStorage {
         assignee_id: params.assigneeId ?? null,
         assigned_by: params.assignedBy ?? null,
         due_date: params.dueDate ?? null,
+        external_key: params.externalKey ?? null,
         created_by: params.by,
         created_at: now,
         updated_by: params.by,

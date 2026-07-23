@@ -36,6 +36,7 @@ import {
 } from "@untitledui/icons";
 import { useDeferredValue } from "react";
 import { track } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 
 type ConnectionDialogMode = "add" | "browse";
 
@@ -66,6 +67,7 @@ export function ConnectionDialogContent({
   onBrowseNavigate?: (slug: string) => void;
   defaultTab?: "all" | "connected";
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const deferredSearch = useDeferredValue(search);
   const isSearchStale = search !== deferredSearch;
@@ -271,7 +273,8 @@ export function ConnectionDialogContent({
           headerActionsAlwaysVisible
           headerActions={
             <Badge variant="secondary" className="text-xs gap-1 font-normal">
-              <Check size={11} /> Connected
+              <Check size={11} />{" "}
+              {t("virtualMcp.connectionDialogContent.connected")}
             </Badge>
           }
           onClick={() => {
@@ -296,7 +299,8 @@ export function ConnectionDialogContent({
           <div className="flex items-center gap-1.5">
             {added && (
               <Badge variant="secondary" className="text-xs gap-1 font-normal">
-                <Check size={11} /> Added
+                <Check size={11} />{" "}
+                {t("virtualMcp.connectionDialogContent.added")}
               </Badge>
             )}
             <Button
@@ -331,7 +335,7 @@ export function ConnectionDialogContent({
                 }
               }}
             >
-              Add
+              {t("virtualMcp.connectionDialogContent.add")}
             </Button>
           </div>
         }
@@ -374,12 +378,14 @@ export function ConnectionDialogContent({
                   <span className="inline-flex items-center justify-center size-5 rounded-md bg-muted shrink-0">
                     <img
                       src="/logos/deco logo.svg"
-                      alt="Made by Deco"
+                      alt={t("virtualMcp.connectionDialogContent.madeByDeco")}
                       className="size-3"
                     />
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>Built and maintained by Deco</TooltipContent>
+                <TooltipContent>
+                  {t("virtualMcp.connectionDialogContent.builtByDeco")}
+                </TooltipContent>
               </Tooltip>
             )}
             {!isMadeByDeco && isOfficial && (
@@ -390,7 +396,7 @@ export function ConnectionDialogContent({
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Built and maintained by the official vendor
+                  {t("virtualMcp.connectionDialogContent.builtByOfficial")}
                 </TooltipContent>
               </Tooltip>
             )}
@@ -401,7 +407,9 @@ export function ConnectionDialogContent({
                     <CheckVerified02 />
                   </Badge>
                 </TooltipTrigger>
-                <TooltipContent>Verified by the Deco team</TooltipContent>
+                <TooltipContent>
+                  {t("virtualMcp.connectionDialogContent.verifiedByDeco")}
+                </TooltipContent>
               </Tooltip>
             )}
             <Button
@@ -426,9 +434,9 @@ export function ConnectionDialogContent({
               {connectingItemId === item.id ? (
                 <Loading01 size={14} className="animate-spin" />
               ) : mode === "browse" ? (
-                "Connect"
+                t("virtualMcp.connectionDialogContent.connect")
               ) : (
-                "Add"
+                t("virtualMcp.connectionDialogContent.add")
               )}
             </Button>
           </div>
@@ -444,8 +452,14 @@ export function ConnectionDialogContent({
         <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
           <CollectionTabs
             tabs={[
-              { id: "all", label: "All" },
-              { id: "connected", label: "Connected" },
+              {
+                id: "all",
+                label: t("virtualMcp.connectionDialogContent.tabAll"),
+              },
+              {
+                id: "connected",
+                label: t("virtualMcp.connectionDialogContent.tabConnected"),
+              },
             ]}
             activeTab={activeTab}
             onTabChange={(id) => handleTabChange(id as ConnectionTab)}
@@ -460,7 +474,7 @@ export function ConnectionDialogContent({
             }}
           >
             <Plus size={12} />
-            Custom Connection
+            {t("virtualMcp.connectionDialogContent.customConnection")}
           </Button>
         </div>
       )}
@@ -513,7 +527,7 @@ export function ConnectionDialogContent({
                 className="text-muted-foreground shrink-0"
               />
               <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
-                Verified
+                {t("virtualMcp.connectionDialogContent.sectionVerified")}
               </span>
               <div className="flex-1 h-px bg-border" />
             </div>
@@ -524,7 +538,7 @@ export function ConnectionDialogContent({
           {showCatalog && otherCatalogItems.length > 0 && (
             <div className="col-span-full flex items-center gap-2 mt-2">
               <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
-                All connections
+                {t("virtualMcp.connectionDialogContent.sectionAllConnections")}
               </span>
               <div className="flex-1 h-px bg-border" />
             </div>
@@ -551,10 +565,17 @@ export function ConnectionDialogContent({
           otherCatalogItems.length === 0 && (
             <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
               {search
-                ? `No connections match "${search}"`
+                ? t(
+                    "virtualMcp.connectionDialogContent.emptyStateSearchNoMatch",
+                    { search },
+                  )
                 : activeTab === "connected"
-                  ? "No connections yet"
-                  : "No connections available"}
+                  ? t(
+                      "virtualMcp.connectionDialogContent.emptyStateNoConnectionsYet",
+                    )
+                  : t(
+                      "virtualMcp.connectionDialogContent.emptyStateNoConnectionsAvailable",
+                    )}
             </div>
           )}
       </div>

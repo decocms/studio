@@ -496,19 +496,31 @@ export function useOrgFsMutations(volume: string) {
 
   const upload = useMutation({
     mutationFn: async (input: { dir: string; files: File[] }) => {
-      for (const file of input.files) {
-        const path = input.dir ? `${input.dir}/${file.name}` : file.name;
-        await fsFetch(fsUrl(org.slug, volume, "file", { path }), {
-          method: "PUT",
-          headers: {
-            "content-type": file.type || "application/octet-stream",
-          },
-          body: file,
-        });
-      }
+      // Independent PUTs (distinct paths, server creates parent dirs per
+      // write) — run them concurrently instead of one round trip at a time.
+      // Promise.allSettled (not Promise.all): Promise.all rejects as soon as
+      // the first PUT fails, while the rest are still in flight — that would
+      // invalidate the listing (and resolve the caller's catch) before those
+      // uploads landed, silently dropping them from the refreshed view.
+      const results = await Promise.allSettled(
+        input.files.map((file) => {
+          const path = input.dir ? `${input.dir}/${file.name}` : file.name;
+          return fsFetch(fsUrl(org.slug, volume, "file", { path }), {
+            method: "PUT",
+            headers: {
+              "content-type": file.type || "application/octet-stream",
+            },
+            body: file,
+          });
+        }),
+      );
+      const failure = results.find(
+        (r): r is PromiseRejectedResult => r.status === "rejected",
+      );
+      if (failure) throw failure.reason;
     },
-    // Settled, not success: files upload sequentially, so a mid-batch failure
-    // (quota, size) leaves earlier files written — the listing must refresh.
+    // Settled, not success: one failure (quota, size) doesn't stop the rest
+    // — the listing must still refresh once every upload has landed.
     onSettled: invalidate,
   });
 

@@ -24,6 +24,7 @@ import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { Page } from "@/web/components/page";
 import { SettingsPage } from "@/web/components/settings/settings-section";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   type SecretInfo,
   type SecretScopeKind,
@@ -32,19 +33,24 @@ import {
 } from "@/web/hooks/use-secrets";
 
 function ErrorFallback({ error }: { error: Error }) {
+  const t = useT();
   return (
     <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
       <AlertCircle size={16} />
       <span className="text-sm font-medium">
-        Failed to load secrets: {error.message}
+        {t("settings.secrets.failedToLoadError", { error: error.message })}
       </span>
     </div>
   );
 }
 
 function ScopeBadge({ scope }: { scope: SecretScopeKind }) {
+  const t = useT();
   const Icon = scope === "user" ? User01 : Users01;
-  const label = scope === "user" ? "Private" : "Organization";
+  const label =
+    scope === "user"
+      ? t("settings.secrets.scopePrivate")
+      : t("settings.secrets.scopeOrganization");
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-xs">
       <Icon size={12} />
@@ -80,21 +86,23 @@ function SecretRow({ secret }: { secret: SecretInfo }) {
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const t = useT();
   return (
     <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
       <div className="size-12 rounded-full bg-muted flex items-center justify-center">
         <Lock01 size={20} className="text-muted-foreground" />
       </div>
       <div>
-        <p className="font-medium text-sm">No secrets yet</p>
+        <p className="font-medium text-sm">
+          {t("settings.secrets.emptyTitle")}
+        </p>
         <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-          Store API keys, tokens, and other sensitive values. Values are
-          encrypted at rest and never returned over the API.
+          {t("settings.secrets.emptyDescription")}
         </p>
       </div>
       <Button onClick={onCreate} size="sm" className="mt-2">
         <Plus size={14} />
-        New secret
+        {t("settings.secrets.newSecret")}
       </Button>
     </div>
   );
@@ -106,6 +114,7 @@ interface CreateSecretDialogProps {
 }
 
 function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
+  const t = useT();
   const [scope, setScope] = useState<SecretScopeKind>("organization");
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
@@ -137,11 +146,13 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
         value,
         description: description.trim() || undefined,
       });
-      toast.success(`Secret "${name.trim()}" created`);
+      toast.success(t("settings.secrets.secretCreated", { name: name.trim() }));
       handleClose();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to create secret",
+        err instanceof Error
+          ? err.message
+          : t("settings.secrets.failedToCreateSecret"),
       );
     }
   }
@@ -156,14 +167,16 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
     >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New secret</DialogTitle>
+          <DialogTitle>{t("settings.secrets.newSecretTitle")}</DialogTitle>
           <DialogDescription>
-            Stored encrypted in the credential vault. Choose who can read it.
+            {t("settings.secrets.newSecretDescription")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="secret-scope">Scope</Label>
+            <Label htmlFor="secret-scope">
+              {t("settings.secrets.scopeLabel")}
+            </Label>
             <Select
               value={scope}
               onValueChange={(v) => setScope(v as SecretScopeKind)}
@@ -173,33 +186,36 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="organization">
-                  Organization — visible to all members
+                  {t("settings.secrets.scopeOrganizationDescription")}
                 </SelectItem>
                 <SelectItem value="user">
-                  Private — only visible to me
+                  {t("settings.secrets.scopePrivateDescription")}
                 </SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="secret-name">Name</Label>
+            <Label htmlFor="secret-name">
+              {t("settings.secrets.nameLabel")}
+            </Label>
             <Input
               id="secret-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="STRIPE_API_KEY"
+              placeholder={t("settings.secrets.namePlaceholder")}
               autoComplete="off"
               required
             />
             <p className="text-xs text-muted-foreground">
-              Letters, digits, underscore, dot, hyphen. Case-insensitive within
-              its scope.
+              {t("settings.secrets.nameHelp")}
             </p>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="secret-value">Value</Label>
+            <Label htmlFor="secret-value">
+              {t("settings.secrets.valueLabel")}
+            </Label>
             <Input
               id="secret-value"
               type="password"
@@ -211,13 +227,15 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="secret-description">Description (optional)</Label>
+            <Label htmlFor="secret-description">
+              {t("settings.secrets.descriptionLabel")}
+            </Label>
             <Textarea
               id="secret-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              placeholder="What is this secret used for?"
+              placeholder={t("settings.secrets.descriptionPlaceholder")}
             />
           </div>
 
@@ -228,13 +246,15 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
               onClick={handleClose}
               disabled={createSecret.isPending}
             >
-              Cancel
+              {t("settings.secrets.cancelButton")}
             </Button>
             <Button
               type="submit"
               disabled={createSecret.isPending || !name.trim() || !value}
             >
-              {createSecret.isPending ? "Creating…" : "Create secret"}
+              {createSecret.isPending
+                ? t("settings.secrets.creatingButton")
+                : t("settings.secrets.createButton")}
             </Button>
           </DialogFooter>
         </form>
@@ -244,6 +264,7 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
 }
 
 function SecretsContent() {
+  const t = useT();
   const secrets = useSecrets();
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -263,18 +284,21 @@ function SecretsContent() {
     <>
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {secrets.length} secret{secrets.length === 1 ? "" : "s"} stored
+          {t("settings.secrets.secretsCount", {
+            count: secrets.length,
+            plural: secrets.length === 1 ? "" : "s",
+          })}
         </p>
         <Button onClick={() => setCreateOpen(true)} size="sm">
           <Plus size={14} />
-          New secret
+          {t("settings.secrets.newSecret")}
         </Button>
       </div>
 
       {orgSecrets.length > 0 ? (
         <section className="rounded-2xl border border-border/60 bg-background p-5">
           <h3 className="text-xs font-medium text-muted-foreground mb-2">
-            Organization
+            {t("settings.secrets.sectionOrganization")}
           </h3>
           <div>
             {orgSecrets.map((s) => (
@@ -287,7 +311,7 @@ function SecretsContent() {
       {userSecrets.length > 0 ? (
         <section className="rounded-2xl border border-border/60 bg-background p-5">
           <h3 className="text-xs font-medium text-muted-foreground mb-2">
-            Private to me
+            {t("settings.secrets.sectionPrivate")}
           </h3>
           <div>
             {userSecrets.map((s) => (
@@ -303,12 +327,13 @@ function SecretsContent() {
 }
 
 export function OrgSecretsPage() {
+  const t = useT();
   return (
     <Page>
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>Secrets</Page.Title>
+            <Page.Title>{t("settings.nav.secrets")}</Page.Title>
             <ErrorBoundary
               fallback={({ error }) => (
                 <ErrorFallback

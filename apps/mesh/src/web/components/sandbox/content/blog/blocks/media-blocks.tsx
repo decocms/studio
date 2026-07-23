@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ImageField } from "@/web/components/sections-editor/fields/image-field";
 import { cn } from "@deco/ui/lib/utils.js";
 import { FloatingToolbar, InlineText, ToolbarButton, str } from "./primitives";
+import { useT } from "@/web/i18n/use-t";
 
 // ---------------------------------------------------------------- Image
 
@@ -12,20 +13,25 @@ export function BlockImageBlock({
   block: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
 }) {
+  const t = useT();
   const size = str(block.size) || "normal";
   return (
     <div className="space-y-2">
       <ImageField
-        schema={{ type: "string", format: "image-uri", title: "Image" }}
+        schema={{
+          type: "string",
+          format: "image-uri",
+          title: t("sandbox.mediaBlocks.image"),
+        }}
         value={block.url}
         onChange={(v) => onChange({ ...block, url: v })}
         path="block-image-url"
-        label="Image"
+        label={t("sandbox.mediaBlocks.image")}
       />
       <InlineText
         value={str(block.caption)}
         onChange={(v) => onChange({ ...block, caption: v })}
-        placeholder="Add a caption…"
+        placeholder={t("sandbox.mediaBlocks.addCaption")}
         className="text-center text-sm italic text-muted-foreground"
       />
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -42,14 +48,16 @@ export function BlockImageBlock({
                   : "hover:bg-muted",
               )}
             >
-              {s === "full" ? "Full width" : "Normal"}
+              {s === "full"
+                ? t("sandbox.mediaBlocks.fullWidth")
+                : t("sandbox.mediaBlocks.normal")}
             </button>
           ))}
         </div>
         <input
           value={str(block.alt)}
           onChange={(e) => onChange({ ...block, alt: e.target.value })}
-          placeholder="Alt text (accessibility)"
+          placeholder={t("sandbox.mediaBlocks.altText")}
           className="flex-1 border-0 bg-transparent p-0 text-xs outline-none placeholder:text-muted-foreground/50 focus:ring-0"
         />
       </div>
@@ -76,6 +84,7 @@ export function VideoBlock({
   caption: string;
   onChange: (next: { url: string; caption: string }) => void;
 }) {
+  const t = useT();
   const embed = youtubeOrVimeoEmbed(url);
   return (
     <div className="space-y-2">
@@ -83,26 +92,26 @@ export function VideoBlock({
         <div className="relative aspect-video overflow-hidden rounded-md border bg-muted">
           <iframe
             src={embed}
-            title={caption || "Video"}
+            title={caption || t("sandbox.mediaBlocks.video")}
             className="absolute inset-0 h-full w-full border-0"
             allowFullScreen
           />
         </div>
       ) : (
         <div className="flex aspect-video items-center justify-center rounded-md border border-dashed bg-muted/40 text-xs text-muted-foreground">
-          Paste a YouTube or Vimeo URL to preview
+          {t("sandbox.mediaBlocks.pasteVideoUrl")}
         </div>
       )}
       <input
         value={url}
         onChange={(e) => onChange({ url: e.target.value, caption })}
-        placeholder="https://youtube.com/watch?v=…"
+        placeholder={t("sandbox.mediaBlocks.videoUrlPlaceholder")}
         className="h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground/50 focus:ring-0"
       />
       <InlineText
         value={caption}
         onChange={(v) => onChange({ url, caption: v })}
-        placeholder="Add a caption…"
+        placeholder={t("sandbox.mediaBlocks.addCaption")}
         className="text-center text-sm italic text-muted-foreground"
       />
     </div>
@@ -112,8 +121,12 @@ export function VideoBlock({
 // ---------------------------------------------------------------- Divider
 
 export function DividerBlock() {
+  const t = useT();
   return (
-    <div className="flex items-center py-3" aria-label="Divider">
+    <div
+      className="flex items-center py-3"
+      aria-label={t("sandbox.mediaBlocks.divider")}
+    >
       <span className="h-px flex-1 bg-border" />
     </div>
   );
@@ -130,13 +143,14 @@ export function CtaBlock({
   href: string;
   onChange: (next: { text: string; href: string }) => void;
 }) {
+  const t = useT();
   return (
     <div className="flex flex-col items-center gap-2 py-2">
       <div className="inline-flex items-center rounded-full bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground">
         <input
           value={text}
           onChange={(e) => onChange({ text: e.target.value, href })}
-          placeholder="Button label"
+          placeholder={t("sandbox.mediaBlocks.buttonLabel")}
           size={Math.max(text.length || 11, 8)}
           className="border-0 bg-transparent p-0 text-center text-sm font-semibold text-primary-foreground outline-none placeholder:text-primary-foreground/60 focus:ring-0"
         />
@@ -144,7 +158,7 @@ export function CtaBlock({
       <input
         value={href}
         onChange={(e) => onChange({ text, href: e.target.value })}
-        placeholder="https://destination-url.com"
+        placeholder={t("sandbox.mediaBlocks.destinationUrlPlaceholder")}
         className="w-full max-w-sm border-0 bg-transparent p-0 text-center text-xs text-muted-foreground outline-none placeholder:text-muted-foreground/50 focus:ring-0"
       />
     </div>
@@ -171,6 +185,7 @@ export function CalloutBlock({
   variant: string;
   onChange: (next: { title: string; body: string; variant: string }) => void;
 }) {
+  const t = useT();
   const [focused, setFocused] = useState(false);
   const v =
     CALLOUT_VARIANTS.find((x) => x.value === variant) ?? CALLOUT_VARIANTS[0];
@@ -216,7 +231,7 @@ export function CalloutBlock({
           <input
             value={title}
             onChange={(e) => onChange({ title: e.target.value, body, variant })}
-            placeholder="Callout title"
+            placeholder={t("sandbox.mediaBlocks.calloutTitle")}
             className="flex-1 border-0 bg-transparent p-0 text-xs font-semibold uppercase tracking-wide outline-none focus:ring-0"
             style={{ color: v.color }}
           />
@@ -224,7 +239,7 @@ export function CalloutBlock({
         <InlineText
           value={body}
           onChange={(b) => onChange({ title, body: b, variant })}
-          placeholder="Callout text…"
+          placeholder={t("sandbox.mediaBlocks.calloutText")}
           className="text-[15px] leading-relaxed text-foreground"
         />
       </div>
@@ -249,6 +264,7 @@ export function StatBlock({
     description: string;
   }) => void;
 }) {
+  const t = useT();
   return (
     <div className="flex flex-col items-center gap-1.5 border-y border-border/60 py-8 text-center">
       <input
@@ -256,7 +272,7 @@ export function StatBlock({
         onChange={(e) =>
           onChange({ value: e.target.value, label, description })
         }
-        placeholder="42%"
+        placeholder={t("sandbox.mediaBlocks.statValuePlaceholder")}
         className="w-full border-0 bg-transparent p-0 text-center text-4xl font-bold tabular-nums text-foreground outline-none placeholder:text-muted-foreground/40 focus:ring-0"
       />
       <input
@@ -264,13 +280,13 @@ export function StatBlock({
         onChange={(e) =>
           onChange({ value, label: e.target.value, description })
         }
-        placeholder="Label"
+        placeholder={t("sandbox.mediaBlocks.label")}
         className="w-full border-0 bg-transparent p-0 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground outline-none placeholder:text-muted-foreground/40 focus:ring-0"
       />
       <InlineText
         value={description}
         onChange={(d) => onChange({ value, label, description: d })}
-        placeholder="Optional description"
+        placeholder={t("sandbox.mediaBlocks.optionalDescription")}
         className="max-w-md text-center text-sm text-muted-foreground"
       />
     </div>

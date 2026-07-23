@@ -6,7 +6,7 @@
  * slightly tilted, and straightens on hover. While the run is live the page
  * shimmers and the copy says so; once the deck exists the page shows a score
  * ring and the arrow invites the click. State comes live from
- * `get_my_diagnostic` (see commerce-report-banner-status.ts), polled gently
+ * `get_my_diagnostic` (see hooks/commerce-diagnostic-status.ts), polled gently
  * only while generating.
  *
  * Orgs without the Commerce Discovery connection never get past the first
@@ -14,44 +14,21 @@
  * external MCP is ever created. Every failure path also renders nothing —
  * home must never break because of this banner.
  */
-import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowRight } from "@untitledui/icons";
-import {
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-  getCommerceDiscoveryAgentId,
-  mcpClientQueryOptions,
-  SELF_MCP_ALIAS_ID,
-  useProjectContext,
-  WellKnownOrgMCPId,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ErrorBoundary } from "@/web/components/error-boundary";
-import { formatPinnedViewTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { track } from "@/web/lib/posthog-client";
-import { KEYS } from "@/web/lib/query-keys";
-import { unwrapToolResult } from "@/web/routes/commerce-onboarding/companions-core";
 import {
-  type CommerceDiagnosticRunState,
+  commerceReportNavTarget,
+  useCommerceDiagnostic,
+} from "@/web/hooks/use-commerce-diagnostic";
+import {
   type CommerceReportBannerStatus,
   deriveCommerceReportBannerStatus,
-} from "./commerce-report-banner-status";
-
-/** Poll cadence while a run is live; a run takes minutes, not seconds. */
-const GENERATING_POLL_MS = 20_000;
-
-interface ConnectionItem {
-  metadata?: Record<string, unknown> | null;
-}
-
-function hostFromSiteUrl(siteUrl: unknown): string | null {
-  if (typeof siteUrl !== "string" || !siteUrl) return null;
-  try {
-    return new URL(siteUrl).hostname || null;
-  } catch {
-    return null;
-  }
-}
+} from "@/web/hooks/commerce-diagnostic-status";
+import { useT } from "@/web/i18n/use-t";
 
 /** The tilted miniature report page bleeding out of the banner's bottom
  *  edge. Pure decoration (aria-hidden); `generating` swaps the score ring
@@ -153,8 +130,9 @@ function BannerShell({
   host: string | null;
   onOpen: () => void;
 }) {
+  const t = useT();
   const generating = status === "generating";
-  const store = host ?? "sua loja";
+  const store = host ?? t("reports.commerceBanner.storeDefault");
 
   return (
     <button
@@ -180,13 +158,13 @@ function BannerShell({
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-base font-medium leading-6 text-foreground sm:text-lg">
             {generating
-              ? "Gerando seu diagnóstico"
-              : "Seu relatório está pronto"}
+              ? t("reports.commerceBanner.generatingTitle")
+              : t("reports.commerceBanner.readyTitle")}
           </span>
           <span className="truncate text-sm text-muted-foreground">
             {generating
-              ? `Analisando ${store}. Isso leva alguns minutos.`
-              : `Veja a análise completa de ${store}.`}
+              ? t("reports.commerceBanner.generatingSubtitle", { store })
+              : t("reports.commerceBanner.readySubtitle", { store })}
           </span>
         </div>
         <div
@@ -212,73 +190,12 @@ function BannerShell({
 function CommerceReportBannerInner() {
   const { org } = useProjectContext();
   const navigate = useNavigate();
-  const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
+  const { diagnostic, isSuccess, host, connectionId } = useCommerceDiagnostic();
 
-  const { data: selfClient } = useQuery(
-    mcpClientQueryOptions({
-      connectionId: SELF_MCP_ALIAS_ID,
-      orgId: org.id,
-      orgSlug: org.slug,
-    }),
-  );
-
-  // Gate 1 (cheap, in-house): does this org have the CD connection at all?
-  // Same key + shape as the onboarding query, so the caches cooperate.
-  const connectionQuery = useQuery({
-    queryKey: KEYS.commerceDiscoveryConnection(org.id, connectionId),
-    enabled: !!selfClient,
-    retry: false,
-    staleTime: 60_000,
-    queryFn: async () => {
-      if (!selfClient) throw new Error("selfClient not ready");
-      const result = await selfClient.callTool({
-        name: "COLLECTION_CONNECTIONS_GET",
-        arguments: { id: connectionId },
-      });
-      return unwrapToolResult<{ item: ConnectionItem | null }>(result);
-    },
-  });
-  const connectionItem = connectionQuery.data?.item ?? null;
-
-  // Gate 2 (external): only orgs that passed gate 1 ever open a client to the
-  // Commerce Discovery MCP and read the diagnostic.
-  const { data: cdClient } = useQuery({
-    ...mcpClientQueryOptions({
-      connectionId,
-      orgId: org.id,
-      orgSlug: org.slug,
-    }),
-    enabled: !!connectionItem,
-  });
-
-  const diagnosticQuery = useQuery({
-    queryKey: KEYS.commerceDiscoveryDiagnostic(org.id, connectionId),
-    enabled: !!cdClient,
-    retry: 1,
-    refetchInterval: (query) =>
-      query.state.status !== "error" &&
-      deriveCommerceReportBannerStatus(query.state.data) === "generating"
-        ? GENERATING_POLL_MS
-        : false,
-    queryFn: async () => {
-      if (!cdClient) throw new Error("cdClient not ready");
-      const result = await cdClient.callTool({
-        name: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-        arguments: {},
-      });
-      const parsed = unwrapToolResult<{
-        diagnostic?: CommerceDiagnosticRunState | null;
-      }>(result);
-      return parsed.diagnostic ?? null;
-    },
-  });
-
-  const status = diagnosticQuery.isSuccess
-    ? deriveCommerceReportBannerStatus(diagnosticQuery.data)
+  const status = isSuccess
+    ? deriveCommerceReportBannerStatus(diagnostic)
     : "none";
   if (status === "none") return null;
-
-  const host = hostFromSiteUrl(connectionItem?.metadata?.siteUrl);
 
   const openReport = () => {
     track("home_report_banner_clicked", {
@@ -286,17 +203,7 @@ function CommerceReportBannerInner() {
       status,
       domain: host ?? undefined,
     });
-    navigate({
-      to: "/$org/$taskId",
-      params: { org: org.slug, taskId: crypto.randomUUID() },
-      search: {
-        virtualmcpid: getCommerceDiscoveryAgentId(org.id),
-        main: formatPinnedViewTabId(
-          connectionId,
-          COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-        ),
-      },
-    });
+    navigate(commerceReportNavTarget(org, connectionId));
   };
 
   return <BannerShell status={status} host={host} onOpen={openReport} />;

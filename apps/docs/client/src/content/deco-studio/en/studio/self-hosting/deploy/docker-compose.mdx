@@ -12,12 +12,13 @@ Source (compose files): [decocms/studio → deploy/docker-compose](https://githu
 
 ## Overview
 
-Studio uses **PostgreSQL** as its database. The repo ships two compose files under `deploy/docker-compose/`:
+Studio uses **PostgreSQL** as its database. The repo ships three compose files under `deploy/docker-compose/` — pick by use case:
 
-- **`docker-compose.postgres.yml`** — Studio **plus a bundled PostgreSQL**. Works on its own; the recommended starting point.
-- **`docker-compose.yml`** — Studio only, expecting a PostgreSQL you provide (a managed instance, or one running on your machine).
+- **`docker-compose.postgres.yml`** — **self-host, all-in-one**: Studio (published image) **plus a fully bundled stack** (PostgreSQL + NATS + MinIO), all wired so the app provisions nothing itself. The recommended starting point. (`selfhost/examples/docker-compose` wraps this with a documented `.env.example`.)
+- **`docker-compose.yml`** — **self-host, bring-your-own DB**: Studio only (published image), expecting a PostgreSQL you provide.
+- **`docker-compose.dev.yml`** — **development**: only the dependencies (PostgreSQL + a 3-node NATS cluster, prod-like topology); you run Studio **from source** with `bun run --cwd=apps/mesh dev:server`. No sandbox here — that needs Kubernetes (see the [dev-hybrid](https://github.com/decocms/studio/tree/main/selfhost/examples/dev-hybrid) loop).
 
-Both use a Docker volume for persistence and an automatic `/health` check.
+The self-host files use a Docker volume for persistence and an automatic `/health` check.
 
 ## Prerequisites
 

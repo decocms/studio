@@ -11,6 +11,19 @@ import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { MainPanelContent } from "@/web/layouts/main-panel-tabs";
 import { OVERLAY_TABS } from "./tab-id";
 import { PreviewDrawerHost } from "./preview-drawer-host";
+import {
+  TerminalVisibilityProvider,
+  useTerminalVisibility,
+} from "./terminal-visibility";
+
+// Renders the bottom terminal drawer only when the user has toggled it on
+// (via the preview's ⋯ menu). Separate component so it can consume the
+// visibility context that MainPanelWithDrawer provides.
+function TerminalDrawerSlot() {
+  const terminal = useTerminalVisibility();
+  if (!terminal?.visible) return null;
+  return <PreviewDrawerHost />;
+}
 
 export function MainPanelWithDrawer({
   virtualMcpId,
@@ -31,11 +44,13 @@ export function MainPanelWithDrawer({
     hasClonableSource && !(typeof main === "string" && OVERLAY_TABS.has(main));
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex-1 min-h-0 overflow-hidden">
-        <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
+    <TerminalVisibilityProvider virtualMcpId={virtualMcpId}>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
+        </div>
+        {showDrawer && <TerminalDrawerSlot />}
       </div>
-      {showDrawer && <PreviewDrawerHost />}
-    </div>
+    </TerminalVisibilityProvider>
   );
 }

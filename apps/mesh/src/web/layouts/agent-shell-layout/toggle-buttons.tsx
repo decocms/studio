@@ -1,51 +1,45 @@
 import { MessageCircle01 } from "@untitledui/icons";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { track } from "@/web/lib/posthog-client";
-import { LibraryToggle } from "./library-toggle";
-import { TasksToggle } from "./tasks-toggle";
+import { useT } from "@/web/i18n/use-t";
 import type { SidePanelKind } from "@/web/hooks/use-layout-state";
 
-export interface ToggleButtonsProps {
+export interface ChatToggleProps {
   sidePanel: SidePanelKind | null;
   toggleSidePanel: (sidePanel: SidePanelKind) => void;
   /**
-   * When true, the active side-panel toggle is disabled because closing it
-   * would leave a blank content area.
+   * When true, the active chat toggle is disabled because closing it would
+   * leave a blank content area (chat is the only open panel).
    */
   disableActiveSidePanelToggle?: boolean;
 }
 
 /**
- * Top-toolbar chat toggle. Renders through the shared HeaderTabButton so it
- * stays pixel-identical to the Main panel tabs (same height, icon and
- * label metrics, active/hover styling) — the only extras are the PWA titlebar
- * drag opt-out and a taller mobile touch target. (The New task action lives in
- * the sidebar toolbar, next to the thread list.)
+ * Chat toggle — opens / closes the chat side panel. Rendered through the shared
+ * HeaderTabButton so it stays pixel-identical to the Main panel tabs. It lives
+ * in the chat panel's own header while the chat is open, and relocates into the
+ * remaining panel's header when the chat is closed, so it never disappears.
  */
-export function ToggleButtons({
+export function ChatToggle({
   sidePanel,
   toggleSidePanel,
   disableActiveSidePanelToggle = false,
-}: ToggleButtonsProps) {
+}: ChatToggleProps) {
+  const t = useT();
   return (
-    <>
-      <HeaderTabButton
-        title="Chat"
-        icon={{ kind: "component", Component: MessageCircle01 }}
-        active={sidePanel === "chat"}
-        disabled={disableActiveSidePanelToggle && sidePanel === "chat"}
-        className="wco-no-drag h-10 md:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
-        onClick={() => {
-          track("agent_toolbar_toggled", {
-            button: "chat",
-            next_state: sidePanel === "chat" ? "closed" : "open",
-          });
-          toggleSidePanel("chat");
-        }}
-      />
-      {/* Tasks and Library are agent-independent overlays. */}
-      <TasksToggle />
-      <LibraryToggle />
-    </>
+    <HeaderTabButton
+      title={t("agentShellLayout.toggleButtons.chat")}
+      icon={{ kind: "component", Component: MessageCircle01 }}
+      active={sidePanel === "chat"}
+      disabled={disableActiveSidePanelToggle && sidePanel === "chat"}
+      className="wco-no-drag h-10 md:h-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+      onClick={() => {
+        track("agent_toolbar_toggled", {
+          button: "chat",
+          next_state: sidePanel === "chat" ? "closed" : "open",
+        });
+        toggleSidePanel("chat");
+      }}
+    />
   );
 }

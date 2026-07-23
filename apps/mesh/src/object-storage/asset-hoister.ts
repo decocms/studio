@@ -9,9 +9,9 @@
  *
  * The hoister uploads the bytes to object storage once and stores a directly
  * loadable files URL instead — `${baseUrl}/api/${orgSlug}/files/${key}`, NOT a
- * `mesh-storage://` URI. The files URL is what icon/media rendering needs: the
+ * `studio-storage://` URI. The files URL is what icon/media rendering needs: the
  * UI loads the value as a raw `<img src>` / media src (same-origin, session
- * cookie) and does not resolve the mesh-storage scheme.
+ * cookie) and does not resolve the studio-storage scheme.
  *
  * Applied as a per-request decorator on `storage.connections`/`storage.virtualMcps`
  * in the context factory, where `ctx.objectStorage` and the org slug exist (the

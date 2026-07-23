@@ -17,6 +17,7 @@ import {
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
 import { BrazilMap } from "./location/brazil-map";
 import { BRAZIL_STATES } from "./location/brazil-states";
@@ -122,12 +123,16 @@ const BRAZIL_STATE_OPTIONS: ComboboxOption[] = BRAZIL_STATES.map((s) => ({
  * arbitrary string matched exactly.
  */
 export function LocationField({ schema, value, onChange, path }: FieldProps) {
+  const t = useT();
   const current = readLocationValue(value);
   const { city, regionCode, country } = current;
   const props = schema.properties ?? {};
-  const countryLabel = props.country?.title ?? "Country";
-  const regionLabel = props.regionCode?.title ?? "Region";
-  const cityLabel = props.city?.title ?? "City";
+  const countryLabel =
+    props.country?.title ?? t("sectionsEditor.locationField.countryDefault");
+  const regionLabel =
+    props.regionCode?.title ?? t("sectionsEditor.locationField.regionDefault");
+  const cityLabel =
+    props.city?.title ?? t("sectionsEditor.locationField.cityDefault");
 
   const emit = (next: Partial<typeof current>) => {
     onChange(mergeLocationValue(current, next));
@@ -139,7 +144,9 @@ export function LocationField({ schema, value, onChange, path }: FieldProps) {
   return (
     <div className="space-y-4">
       <div className="space-y-0.5">
-        <Label htmlFor={`${path}.country`}>{schema.title ?? "Location"}</Label>
+        <Label htmlFor={`${path}.country`}>
+          {schema.title ?? t("sectionsEditor.locationField.locationDefault")}
+        </Label>
         {schema.description && (
           <p className="text-xs leading-normal text-muted-foreground">
             {schema.description}
@@ -156,8 +163,10 @@ export function LocationField({ schema, value, onChange, path }: FieldProps) {
           id={`${path}.country`}
           options={COUNTRY_OPTIONS}
           value={country}
-          placeholder="Select a country…"
-          emptyMessage="No country found."
+          placeholder={t(
+            "sectionsEditor.locationField.selectCountryPlaceholder",
+          )}
+          emptyMessage={t("sectionsEditor.locationField.noCountryFound")}
           onChange={(next) =>
             // Region/city depend on the country, so reset them on change.
             emit({ country: next, regionCode: "", city: "" })
@@ -186,8 +195,10 @@ export function LocationField({ schema, value, onChange, path }: FieldProps) {
                 id={`${path}.regionCode`}
                 options={BRAZIL_STATE_OPTIONS}
                 value={regionCode}
-                placeholder="Select a state…"
-                emptyMessage="No state found."
+                placeholder={t(
+                  "sectionsEditor.locationField.selectStatePlaceholder",
+                )}
+                emptyMessage={t("sectionsEditor.locationField.noStateFound")}
                 onChange={(next) => emit({ regionCode: next, city: "" })}
               />
             </div>
@@ -197,11 +208,13 @@ export function LocationField({ schema, value, onChange, path }: FieldProps) {
                 id={`${path}.regionCode`}
                 type="text"
                 value={regionCode}
-                placeholder="e.g. SP"
+                placeholder={t(
+                  "sectionsEditor.locationField.regionCodePlaceholder",
+                )}
                 onChange={(e) => emit({ regionCode: e.target.value })}
               />
               <p className="text-xs leading-normal text-muted-foreground">
-                ISO 3166-2 subdivision code from cf-region-code.
+                {t("sectionsEditor.locationField.regionCodeHelperText")}
               </p>
             </>
           )}
@@ -220,13 +233,15 @@ export function LocationField({ schema, value, onChange, path }: FieldProps) {
             value={city}
             placeholder={
               isBrazil && selectedState
-                ? `e.g. a city in ${selectedState.name}`
-                : "e.g. Sao Paulo"
+                ? t("sectionsEditor.locationField.cityPlaceholderWithState", {
+                    state: selectedState.name,
+                  })
+                : t("sectionsEditor.locationField.cityPlaceholder")
             }
             onChange={(e) => emit({ city: e.target.value })}
           />
           <p className="text-xs leading-normal text-muted-foreground">
-            Matched exactly against cf-ipcity.
+            {t("sectionsEditor.locationField.cityHelperText")}
           </p>
         </div>
       )}

@@ -12,9 +12,9 @@ test("anonymous shared report shows login over a blurred preview", async ({
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Já receberam")).toBeVisible();
 
-  const preview = page
-    .locator('div[aria-hidden="true"]')
-    .filter({ hasText: "Uma visão completa da sua loja." });
+  const preview = page.locator('div[aria-hidden="true"]').filter({
+    hasText: "Uma visão completa da sua loja e onde crescer primeiro.",
+  });
   await expect(preview).toHaveCSS("filter", "blur(9px)");
   await expect(page).toHaveURL(/share_id=example%3Aslide%3Atest/);
   await expect(page).toHaveURL(/#overview$/);

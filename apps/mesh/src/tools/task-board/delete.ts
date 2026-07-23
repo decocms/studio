@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
-import { requireTaskBoardEnabled } from "./require-enabled";
 import { emitTaskBoardDeleted } from "./run-reactions";
 
 export const TASK_BOARD_ITEM_DELETE = defineTool({
@@ -26,8 +25,6 @@ export const TASK_BOARD_ITEM_DELETE = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
-
-    await requireTaskBoardEnabled(ctx, organizationId);
 
     await ctx.storage.taskBoard.delete(input.id, organizationId);
     // Broadcast the removal so every open board drops the card live.

@@ -4,6 +4,7 @@ import { AlertTriangle, RefreshCw01 } from "@untitledui/icons";
 import { captureException } from "@/web/lib/posthog-client";
 import { ArchivedOrgScreen } from "@/web/components/archived-org-screen";
 import { NoPermissionState } from "@/web/components/no-permission-state";
+import { useT } from "@/web/i18n/use-t.ts";
 
 const CHUNK_RELOAD_KEY = "__mesh_chunk_reload_ts";
 
@@ -55,7 +56,10 @@ interface State {
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundaryImpl extends Component<
+  Props & { t: ReturnType<typeof useT> },
+  State
+> {
   override state: State = {
     hasError: false,
     error: null,
@@ -82,7 +86,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   override render() {
     if (this.state.hasError) {
-      const { fallback } = this.props;
+      const { fallback, t } = this.props;
 
       // If fallback is a function, call it with error props
       if (typeof fallback === "function") {
@@ -114,13 +118,16 @@ export class ErrorBoundary extends Component<Props, State> {
             <AlertTriangle className="h-6 w-6 text-destructive" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-lg font-medium">Something went wrong</h3>
+            <h3 className="text-lg font-medium">
+              {t("common.errorBoundary.somethingWentWrong")}
+            </h3>
             <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-              {this.state.error?.message || "An unexpected error occurred"}
+              {this.state.error?.message ||
+                t("common.errorBoundary.unexpectedError")}
             </p>
           </div>
           <Button variant="outline" onClick={this.resetError}>
-            Try again
+            {t("common.errorBoundary.tryAgain")}
           </Button>
         </div>
       );
@@ -130,13 +137,18 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 }
 
+export function ErrorBoundary(props: Props) {
+  const t = useT();
+  return <ErrorBoundaryImpl {...props} t={t} />;
+}
+
 /**
  * Root-level error boundary that handles stale chunk errors after deployments.
  * Automatically reloads the page once; if the reload already happened recently,
  * shows a manual "Refresh" button instead (to prevent infinite reload loops).
  */
-export class ChunkErrorBoundary extends Component<
-  { children: ReactNode },
+class ChunkErrorBoundaryImpl extends Component<
+  { children: ReactNode; t: ReturnType<typeof useT> },
   State
 > {
   override state: State = { hasError: false, error: null };
@@ -169,6 +181,7 @@ export class ChunkErrorBoundary extends Component<
   }
 
   override render() {
+    const { t } = this.props;
     if (this.state.hasError && isChunkLoadError(this.state.error)) {
       return (
         <div className="flex min-h-dvh flex-col items-center justify-center p-6 text-center space-y-4">
@@ -176,12 +189,16 @@ export class ChunkErrorBoundary extends Component<
             <RefreshCw01 className="h-6 w-6 text-primary" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-lg font-medium">New version available</h3>
+            <h3 className="text-lg font-medium">
+              {t("common.errorBoundary.newVersionAvailable")}
+            </h3>
             <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-              A new version has been deployed. Refresh to continue.
+              {t("common.errorBoundary.newVersionDeployed")}
             </p>
           </div>
-          <Button onClick={() => window.location.reload()}>Refresh</Button>
+          <Button onClick={() => window.location.reload()}>
+            {t("common.errorBoundary.refresh")}
+          </Button>
         </div>
       );
     }
@@ -197,16 +214,19 @@ export class ChunkErrorBoundary extends Component<
             <AlertTriangle className="h-6 w-6 text-destructive" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-lg font-medium">Something went wrong</h3>
+            <h3 className="text-lg font-medium">
+              {t("common.errorBoundary.somethingWentWrong")}
+            </h3>
             <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-              {this.state.error?.message || "An unexpected error occurred"}
+              {this.state.error?.message ||
+                t("common.errorBoundary.unexpectedError")}
             </p>
           </div>
           <Button
             variant="outline"
             onClick={() => this.setState({ hasError: false, error: null })}
           >
-            Try again
+            {t("common.errorBoundary.tryAgain")}
           </Button>
         </div>
       );
@@ -214,4 +234,9 @@ export class ChunkErrorBoundary extends Component<
 
     return this.props.children;
   }
+}
+
+export function ChunkErrorBoundary(props: { children: ReactNode }) {
+  const t = useT();
+  return <ChunkErrorBoundaryImpl {...props} t={t} />;
 }

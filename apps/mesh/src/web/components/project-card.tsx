@@ -1,8 +1,10 @@
 import { DotsVertical, Settings02, Trash01 } from "@untitledui/icons";
 import { formatDistanceToNow } from "date-fns";
+import { ptBR as ptBRLocale } from "date-fns/locale/pt-BR";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
 import {
@@ -11,6 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 
 interface ProjectCardProps {
   project: VirtualMCPEntity;
@@ -24,6 +27,9 @@ export function ProjectCard({
   onDeleteClick,
 }: ProjectCardProps) {
   const navigateToAgent = useNavigateToAgent();
+  const t = useT();
+  const [preferences] = usePreferences();
+  const locale = preferences.language === "pt-BR" ? ptBRLocale : undefined;
 
   return (
     <Card className="relative transition-colors group overflow-hidden flex flex-col h-full hover:bg-muted/50">
@@ -97,8 +103,18 @@ export function ProjectCard({
           <div className="h-10 flex items-center px-4.5">
             <p className="text-xs text-muted-foreground">
               {lastUsedAt
-                ? `Last used ${formatDistanceToNow(new Date(lastUsedAt), { addSuffix: true })}`
-                : `Updated ${formatDistanceToNow(new Date(project.updated_at), { addSuffix: true })}`}
+                ? t("home.projectCard.lastUsed", {
+                    time: formatDistanceToNow(new Date(lastUsedAt), {
+                      addSuffix: true,
+                      locale,
+                    }),
+                  })
+                : t("home.projectCard.updated", {
+                    time: formatDistanceToNow(new Date(project.updated_at), {
+                      addSuffix: true,
+                      locale,
+                    }),
+                  })}
             </p>
           </div>
         </div>

@@ -11,7 +11,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { computeBranchDivergence } from "../git/branch-divergence";
 import type { Config } from "../types";
-import { cloneCommand, spawnClone } from "./clone";
+import {
+  cloneCommand,
+  prepareSubmoduleCredentials,
+  spawnClone,
+  submoduleUpdateArgs,
+} from "./clone";
 
 const ASKPASS = "/data/askpass.sh";
 
@@ -398,6 +403,267 @@ describe("spawnClone", () => {
       expect(code).toBe(0);
       expect(currentBranch(repoDir)).toBe("main");
       expect(existsSync(join(repoDir, "marker.txt"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+});
+
+describe("prepareSubmoduleCredentials", () => {
+  it("builds one store-file line per host with a percent-encoded token", () => {
+    const { lines, hosts, invalidHosts } = prepareSubmoduleCredentials([
+      { host: "github.com", token: "ghp_abc" },
+    ]);
+    expect(hosts).toEqual(["github.com"]);
+    expect(lines).toEqual(["https://x-access-token:ghp_abc@github.com"]);
+    expect(invalidHosts).toEqual([]);
+  });
+
+  it("percent-encodes tokens with URL-unsafe characters", () => {
+    const { lines } = prepareSubmoduleCredentials([
+      { host: "github.com", token: "a/b@c:d e" },
+    ]);
+    expect(lines).toEqual([
+      "https://x-access-token:a%2Fb%40c%3Ad%20e@github.com",
+    ]);
+  });
+
+  it("dedupes by host, last token wins", () => {
+    const { lines, hosts } = prepareSubmoduleCredentials([
+      { host: "github.com", token: "first" },
+      { host: "github.com", token: "second" },
+    ]);
+    expect(hosts).toEqual(["github.com"]);
+    expect(lines).toEqual(["https://x-access-token:second@github.com"]);
+  });
+
+  it("rejects hosts with a scheme, path, userinfo, or whitespace", () => {
+    const { hosts, invalidHosts } = prepareSubmoduleCredentials([
+      { host: "https://github.com", token: "t" },
+      { host: "github.com/foo", token: "t" },
+      { host: "evil@github.com", token: "t" },
+      { host: "git hub.com", token: "t" },
+      { host: "github.com:443", token: "ok" },
+    ]);
+    // Only the bare host (optionally with a port) survives.
+    expect(hosts).toEqual(["github.com:443"]);
+    expect(invalidHosts).toEqual([
+      "https://github.com",
+      "github.com/foo",
+      "evil@github.com",
+      "git hub.com",
+    ]);
+  });
+});
+
+describe("submoduleUpdateArgs", () => {
+  it("emits SSH→HTTPS insteadOf rewrites (no token) then the store helper", () => {
+    const args = submoduleUpdateArgs({
+      hosts: ["github.com"],
+      credFile: "/data/submodule-git-credentials",
+    });
+    expect(args).toEqual([
+      "-c",
+      "url.https://github.com/.insteadOf=git@github.com:",
+      "-c",
+      "url.https://github.com/.insteadOf=ssh://git@github.com/",
+      "-c",
+      "credential.helper=store --file=/data/submodule-git-credentials",
+      "submodule",
+      "update",
+      "--init",
+      "--recursive",
+      "--depth",
+      "1",
+    ]);
+    // The token must never appear in argv — only the credentials file holds it.
+    expect(args.join(" ")).not.toContain("x-access-token");
+  });
+
+  it("emits rewrites for every host before the shared helper", () => {
+    const args = submoduleUpdateArgs({
+      hosts: ["github.com", "gitlab.example.com"],
+      credFile: "/data/creds",
+    });
+    expect(args.filter((a) => a.startsWith("url.")).length).toBe(4);
+    expect(args).toContain(
+      "url.https://gitlab.example.com/.insteadOf=git@gitlab.example.com:",
+    );
+    // The store helper + subcommand always come last, after every rewrite.
+    expect(args.slice(-8)).toEqual([
+      "-c",
+      "credential.helper=store --file=/data/creds",
+      "submodule",
+      "update",
+      "--init",
+      "--recursive",
+      "--depth",
+      "1",
+    ]);
+  });
+});
+
+/**
+ * Like setupBareRepo but the default branch carries a real submodule gitlink
+ * (+ `.gitmodules`) pointing at a `file://` sub-repo. The seed uses
+ * `protocol.file.allow=always` to register it, but `spawnClone`'s submodule
+ * update runs WITHOUT that flag — so git ≥2.38 blocks the file transport
+ * (CVE-2022-39253) and the fetch fails fast. That's exactly the best-effort
+ * path we want to prove doesn't take down the clone. (The top-level `git clone`
+ * of the main repo still works — the block is submodule-initiated only.)
+ */
+function setupBareRepoWithGitmodules(): {
+  url: string;
+  root: string;
+  cleanup: () => void;
+} {
+  const root = mkdtempSync(join(tmpdir(), "clonetest-sm-"));
+  const bare = join(root, "origin.git");
+  const seed = join(root, "seed");
+  const subBare = join(root, "sub.git");
+  const subSeed = join(root, "sub-seed");
+  const gitOpts = { stdio: "ignore" as const };
+  const gitcfg = `-c init.defaultBranch=main -c user.email=test@example.com -c user.name=test -c commit.gpgsign=false`;
+  // A tiny bare sub-repo to serve as the submodule source.
+  execSync(`git ${gitcfg} init --bare ${subBare}`, gitOpts);
+  execSync(`git ${gitcfg} init ${subSeed}`, gitOpts);
+  writeFileSync(join(subSeed, "lib.txt"), "lib\n");
+  execSync(`git ${gitcfg} -C ${subSeed} add .`, gitOpts);
+  execSync(`git ${gitcfg} -C ${subSeed} commit -m sub`, gitOpts);
+  execSync(`git ${gitcfg} -C ${subSeed} branch -M main`, gitOpts);
+  execSync(`git ${gitcfg} -C ${subSeed} remote add origin ${subBare}`, gitOpts);
+  execSync(`git ${gitcfg} -C ${subSeed} push -u origin main`, gitOpts);
+
+  execSync(`git ${gitcfg} init --bare ${bare}`, gitOpts);
+  execSync(`git ${gitcfg} init ${seed}`, gitOpts);
+  writeFileSync(join(seed, "README.md"), "hello\n");
+  execSync(`git ${gitcfg} -C ${seed} add .`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} commit -m initial`, gitOpts);
+  // `submodule add` needs protocol.file.allow at seed time to register a
+  // file:// submodule; the clone under test deliberately does not set it.
+  execSync(
+    `git ${gitcfg} -c protocol.file.allow=always -C ${seed} submodule add file://${subBare} vendor/lib`,
+    gitOpts,
+  );
+  execSync(`git ${gitcfg} -C ${seed} commit -m submodule`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} branch -M main`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} remote add origin ${bare}`, gitOpts);
+  execSync(`git ${gitcfg} -C ${seed} push -u origin main`, gitOpts);
+  execSync(
+    `git ${gitcfg} -C ${bare} symbolic-ref HEAD refs/heads/main`,
+    gitOpts,
+  );
+  return {
+    url: `file://${bare}`,
+    root,
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+function configWithSubmoduleCreds(
+  repoDir: string,
+  cloneUrl: string,
+  submoduleCredentials: { host: string; token: string }[],
+): Config {
+  return {
+    git: { repository: { cloneUrl, submoduleCredentials } },
+    application: {},
+    repoDir,
+  } as unknown as Config;
+}
+
+describe("spawnClone — submodules", () => {
+  it("is best-effort: a failing submodule fetch warns but the clone succeeds", async () => {
+    const { url, root, cleanup } = setupBareRepoWithGitmodules();
+    try {
+      const repoDir = join(root, "workspace");
+      // credFile is written next to askpass — point it at the writable test
+      // root, not the daemon's /data (which the test env may not have).
+      const askpassPath = join(root, "askpass.sh");
+      let out = "";
+      const { code } = await spawnClone({
+        config: configWithSubmoduleCreds(repoDir, url, [
+          { host: "github.com", token: "ghp_dummy" },
+        ]),
+        askpassPath,
+        onChunk: (_src, data) => {
+          out += data;
+        },
+      });
+      // The bogus submodule fetch fails, but the working tree is intact.
+      expect(code).toBe(0);
+      expect(existsSync(join(repoDir, "README.md"))).toBe(true);
+      expect(out).toContain("submodule update failed");
+      // The temp credentials file must not survive the run.
+      expect(existsSync(join(root, "submodule-git-credentials"))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+
+  it("warns and skips an invalid host without running the submodule fetch", async () => {
+    const { url, root, cleanup } = setupBareRepoWithGitmodules();
+    try {
+      const repoDir = join(root, "workspace");
+      let out = "";
+      const { code } = await spawnClone({
+        config: configWithSubmoduleCreds(repoDir, url, [
+          { host: "https://evil.com", token: "ghp_dummy" },
+        ]),
+        askpassPath: join(root, "askpass.sh"),
+        onChunk: (_src, data) => {
+          out += data;
+        },
+      });
+      expect(code).toBe(0);
+      expect(out).toContain("invalid host");
+      // No valid host → the git submodule step never runs.
+      expect(out).not.toContain("submodule update failed");
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+
+  it("no-ops when credentials are set but the repo has no .gitmodules", async () => {
+    const { url, root, cleanup } = setupBareRepo();
+    try {
+      const repoDir = join(root, "workspace");
+      let out = "";
+      const { code } = await spawnClone({
+        config: configWithSubmoduleCreds(repoDir, url, [
+          { host: "github.com", token: "ghp_dummy" },
+        ]),
+        askpassPath: join(root, "askpass.sh"),
+        onChunk: (_src, data) => {
+          out += data;
+        },
+      });
+      expect(code).toBe(0);
+      expect(out).not.toContain("submodule");
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+
+  it("swallows a credentials-file write error and still succeeds", async () => {
+    const { url, root, cleanup } = setupBareRepoWithGitmodules();
+    try {
+      const repoDir = join(root, "workspace");
+      // askpass dir doesn't exist → the credFile write throws ENOENT, which the
+      // best-effort catch must swallow rather than fail the clone.
+      let out = "";
+      const { code } = await spawnClone({
+        config: configWithSubmoduleCreds(repoDir, url, [
+          { host: "github.com", token: "ghp_dummy" },
+        ]),
+        askpassPath: join(root, "does-not-exist", "askpass.sh"),
+        onChunk: (_src, data) => {
+          out += data;
+        },
+      });
+      expect(code).toBe(0);
+      expect(existsSync(join(repoDir, "README.md"))).toBe(true);
+      expect(out).toContain("submodule update errored");
     } finally {
       cleanup();
     }

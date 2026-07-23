@@ -1,6 +1,7 @@
 export {
   GatewayClient,
   getGatewayClientId,
+  namespaceCode,
   slugify,
   stripToolNamespace,
   displayToolName,

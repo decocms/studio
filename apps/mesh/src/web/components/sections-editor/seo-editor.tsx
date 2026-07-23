@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronRight, CreditCardSearch, Loading01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { SeoFormFields } from "./seo-form-fields";
 import { resolveSchema } from "./resolve-schema";
 import type { LiveMeta } from "./resolve-schema";
@@ -43,6 +44,7 @@ export function SeoEditor({
   onEditDefaultSeo,
   onBack,
 }: SeoEditorProps) {
+  const t = useT();
   const resolved = resolveSeoTarget(decofile, target, meta);
   const seoData = resolved?.seoData;
 
@@ -123,10 +125,10 @@ export function SeoEditor({
 
   const emptyMessage =
     target.kind === "site"
-      ? "No site-level SEO block found."
+      ? t("sectionsEditor.seoEditor.noSiteSeoBlock")
       : resolved
-        ? "SEO schema not found for this page."
-        : "Could not load page SEO.";
+        ? t("sectionsEditor.seoEditor.noSeoSchema")
+        : t("sectionsEditor.seoEditor.couldNotLoadSeo");
   const showPageSeoChrome = isPageTarget && resolved;
   const showSiteForm = target.kind === "site" && resolved && seoSchema;
 
@@ -152,9 +154,11 @@ export function SeoEditor({
               size={16}
               className="shrink-0 text-muted-foreground"
             />
-            <span className="text-sm font-medium">Default SEO</span>
+            <span className="text-sm font-medium">
+              {t("sectionsEditor.seoEditor.defaultSeoLabel")}
+            </span>
             <span className="hidden truncate text-xs text-muted-foreground sm:inline">
-              · applied to every page unless overridden
+              · {t("sectionsEditor.seoEditor.appliedToEveryPage")}
             </span>
           </div>
         )}
@@ -174,7 +178,7 @@ export function SeoEditor({
               onClick={onEditDefaultSeo}
             >
               <CreditCardSearch size={14} />
-              Edit default SEO
+              {t("sectionsEditor.seoEditor.editDefaultSeoButton")}
             </Button>
           )}
         </div>
@@ -191,8 +195,7 @@ export function SeoEditor({
               {showPageSeoChrome ? (
                 <>
                   <p className="mb-3 text-xs text-muted-foreground">
-                    Empty fields inherit the default SEO. The preview shows the
-                    resolved result.
+                    {t("sectionsEditor.seoEditor.emptyFieldsHint")}
                   </p>
                   <PageSeoForm
                     rawSeo={displayRawSeo}

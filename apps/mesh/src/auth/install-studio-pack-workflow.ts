@@ -87,8 +87,9 @@ const installStudioPackWorkflow = DBOS.registerWorkflow(
  * v2: added Usage Manager.
  * v3: added API Key Manager.
  * v4: overrides configuration for already-installed Studio Pack agents.
+ * v5: added Task Manager.
  */
-const INSTALL_VERSION = "v4";
+const INSTALL_VERSION = "v5";
 
 /**
  * Fire-and-forget enqueue from the Better Auth org.afterCreate callback.

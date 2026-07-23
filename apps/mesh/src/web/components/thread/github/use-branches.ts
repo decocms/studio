@@ -1,13 +1,24 @@
 import { KEYS, type SandboxMap, useMCPClient } from "@decocms/mesh-sdk";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { groupBranches } from "./group-branches";
+import { useAgentSandboxSessions } from "@/web/hooks/use-agent-sandbox-session";
 
 export interface Branch {
   name: string;
-  source: "yours" | "other";
+  source: "yours" | "other" | "recent";
   author?: string | null;
+  /** userIds with an active sandbox on this branch (from sandboxMap). */
+  contributors?: string[];
+  /** Most recent sandbox createdAt (epoch ms) across all users on the branch. */
+  lastActiveAt?: number;
 }
 
 export interface UseBranchesResult {
+  /**
+   * Branches with sandbox activity in the last 7 days (any user), most recent
+   * first. Carries `contributors` so the picker can show who's working on it.
+   */
+  recent: Branch[];
   yours: Branch[];
   others: Branch[];
   defaultBase: string | null;
@@ -25,6 +36,7 @@ export interface UseBranchesResult {
 interface UseBranchesArgs {
   orgId: string;
   orgSlug: string;
+  virtualMcpId: string;
   userId: string;
   connectionId: string | null | undefined;
   sandboxMap: SandboxMap | undefined;
@@ -122,6 +134,7 @@ function extractBranches(r: unknown): RawBranchesResponse {
 export function useBranches({
   orgId,
   orgSlug,
+  virtualMcpId,
   userId,
   connectionId,
   sandboxMap,
@@ -129,6 +142,11 @@ export function useBranches({
   repo,
   enabled = true,
 }: UseBranchesArgs): UseBranchesResult {
+  const { data: sharedSessions = [] } = useAgentSandboxSessions(
+    orgSlug,
+    virtualMcpId,
+    enabled,
+  );
   const client = useMCPClient({
     connectionId: connectionId ?? null,
     orgId,
@@ -178,11 +196,6 @@ export function useBranches({
     },
   });
 
-  const yourBranchNames = new Set(Object.keys(sandboxMap?.[userId] ?? {}));
-  const yours: Branch[] = [...yourBranchNames]
-    .sort()
-    .map((name) => ({ name, source: "yours" as const }));
-
   const branchesByName = new Map<string, RawBranch>();
   for (const page of data?.pages ?? []) {
     for (const branch of page.branches) {
@@ -192,21 +205,55 @@ export function useBranches({
     }
   }
 
-  const rawBranches: RawBranch[] = [...branchesByName.values()];
-
-  const others: Branch[] = rawBranches
+  const rawBranches = [...branchesByName.values()]
     .filter(
       (b): b is RawBranch & { name: string } => typeof b.name === "string",
     )
-    .filter((b) => !yourBranchNames.has(b.name))
     .map((b) => ({
       name: b.name,
-      source: "other" as const,
       author:
         typeof b.commit?.author === "string"
           ? b.commit.author
           : (b.commit?.author?.login ?? null),
     }));
+
+  let effectiveSandboxMap = sandboxMap;
+  for (const session of sharedSessions) {
+    if (
+      session.desiredState !== "running" ||
+      session.status !== "ready" ||
+      !session.sandboxHandle
+    ) {
+      continue;
+    }
+    effectiveSandboxMap = {
+      ...(effectiveSandboxMap ?? {}),
+      [userId]: {
+        ...(effectiveSandboxMap?.[userId] ?? {}),
+        [session.branch]: {
+          ...(effectiveSandboxMap?.[userId]?.[session.branch] ?? {}),
+          "agent-sandbox": {
+            sandboxHandle: session.sandboxHandle,
+            previewUrl: session.previewUrl,
+            sandboxApiUrl: session.sandboxApiUrl,
+            sandboxProviderKind: "agent-sandbox",
+            createdAt: Date.parse(session.updatedAt),
+          },
+        },
+      },
+    };
+  }
+
+  const { recent, yours, others } = groupBranches({
+    sandboxMap: effectiveSandboxMap,
+    userId,
+    rawBranches,
+    now: Date.now(),
+  });
+
+  // Branch names we can match locally without paging github — all
+  // sandbox-derived (recent + yours). Used to short-circuit remote search.
+  const localBranchNames = new Set([...recent, ...yours].map((b) => b.name));
 
   const defaultBase =
     data?.pages.find((page) => page.default_branch)?.default_branch ?? null;
@@ -216,7 +263,7 @@ export function useBranches({
   ) => {
     if (
       !shouldContinue() ||
-      branchNamesHaveMatch(yourBranchNames, search) ||
+      branchNamesHaveMatch(localBranchNames, search) ||
       isFetchingNextPage
     ) {
       return;
@@ -225,7 +272,7 @@ export function useBranches({
     let pages = data?.pages ?? [];
     while (
       shouldContinue() &&
-      !pageHasBranchMatch(pages, search, yourBranchNames) &&
+      !pageHasBranchMatch(pages, search, localBranchNames) &&
       (pages.at(-1)?.branches.length ?? BRANCHES_PER_PAGE) >= BRANCHES_PER_PAGE
     ) {
       const result = await fetchNextPage();
@@ -241,6 +288,7 @@ export function useBranches({
   };
 
   return {
+    recent,
     yours,
     others,
     defaultBase,

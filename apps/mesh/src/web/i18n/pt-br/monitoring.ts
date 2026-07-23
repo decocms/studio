@@ -1,0 +1,52 @@
+import type { monitoring as monitoringEn } from "../en/monitoring.ts";
+
+export const monitoring = {
+  "monitoring.types.agent": "Agente",
+  "monitoring.types.client": "Cliente",
+  "monitoring.types.connectionNotFound":
+    "N\u00e3o foi poss\u00edvel encontrar a conex\u00e3o para esta chamada de ferramenta",
+  "monitoring.types.copiedFilter":
+    "Filtro copiado para a \u00e1rea de transfer\u00eancia",
+  "monitoring.types.copiedKey":
+    "Chave copiada para a \u00e1rea de transfer\u00eancia",
+  "monitoring.types.copiedValue":
+    "Valor copiado para a \u00e1rea de transfer\u00eancia",
+  "monitoring.types.copyFilter": "Copiar filtro",
+  "monitoring.types.copyInput": "Copiar entrada",
+  "monitoring.types.copyKey": "Copiar chave",
+  "monitoring.types.copyOutput": "Copiar sa\u00edda",
+  "monitoring.types.copyRequestId": "Copiar ID da solicita\u00e7\u00e3o",
+  "monitoring.types.copyValue": "Copiar valor",
+  "monitoring.types.downloadFullInput": "Baixar entrada completa",
+  "monitoring.types.downloadFullOutput": "Baixar sa\u00edda completa",
+  "monitoring.types.duration": "Dura\u00e7\u00e3o",
+  "monitoring.types.error": "Erro",
+  "monitoring.types.failedToCopy":
+    "Falha ao copiar para a \u00e1rea de transfer\u00eancia",
+  "monitoring.types.filterByProperty": "Filtrar por esta propriedade",
+  "monitoring.types.input": "Entrada",
+  "monitoring.types.output": "Sa\u00edda",
+  "monitoring.types.properties": "Propriedades",
+  "monitoring.types.replayToolCall": "Repetir chamada de ferramenta",
+  "monitoring.types.requestId": "ID da solicita\u00e7\u00e3o",
+  "monitoring.types.timestamp": "Data e hora",
+  "monitoring.types.truncated": "truncado",
+  "monitoring.types.user": "Usu\u00e1rio",
+  "monitoring.logRow.statusError": "Erro",
+  "monitoring.logRow.statusOk": "OK",
+  "monitoring.timeRangePicker.absoluteTimeRange": "Intervalo de tempo absoluto",
+  "monitoring.timeRangePicker.from": "De",
+  "monitoring.timeRangePicker.to": "Para",
+  "monitoring.timeRangePicker.applyTimeRange": "Aplicar intervalo de tempo",
+  "monitoring.timeRangePicker.last5Minutes": "\u00daltimos 5 minutos",
+  "monitoring.timeRangePicker.last15Minutes": "\u00daltimos 15 minutos",
+  "monitoring.timeRangePicker.last30Minutes": "\u00daltimos 30 minutos",
+  "monitoring.timeRangePicker.last1Hour": "\u00daltima 1 hora",
+  "monitoring.timeRangePicker.last3Hours": "\u00daltimas 3 horas",
+  "monitoring.timeRangePicker.last6Hours": "\u00daltimas 6 horas",
+  "monitoring.timeRangePicker.last12Hours": "\u00daltimas 12 horas",
+  "monitoring.timeRangePicker.last24Hours": "\u00daltimas 24 horas",
+  "monitoring.timeRangePicker.last2Days": "\u00daltimos 2 dias",
+  "monitoring.timeRangePicker.last7Days": "\u00daltimos 7 dias",
+  "monitoring.timeRangePicker.last30Days": "\u00daltimos 30 dias",
+} satisfies Record<keyof typeof monitoringEn, string>;

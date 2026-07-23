@@ -11,6 +11,7 @@
 
 import { MCP_MESH_KEY } from "@/core/constants";
 import { BASIC_USAGE_TOOLS } from "@/tools/registry-metadata";
+import { hasAdminRole } from "@/auth/roles";
 import type { BoundAuthClient } from "./studio-context";
 
 // ============================================================================
@@ -47,6 +48,36 @@ export class ForbiddenError extends Error {
   }
 }
 
+/**
+ * The caller's seat is free and the tool would mutate or spend. Extends
+ * ForbiddenError so every existing `instanceof ForbiddenError` mapping keeps
+ * returning 403 untouched. The `[PAID_SEAT_REQUIRED]` message prefix is the
+ * WIRE CONTRACT for the frontend — same convention as `[CREDITS]` (see
+ * web/components/chat/is-credit-error.ts): a stable prefix survives every
+ * transport (REST JSON, MCP tool error, JSON-RPC) without threading a
+ * structured field through each layer. The paywall UI detects it and renders
+ * the upgrade CTA (admins/owners) or "ask your admin" (everyone else, using
+ * the role it already has) instead of a generic access-denied.
+ */
+const PAID_SEAT_REQUIRED_PREFIX = "[PAID_SEAT_REQUIRED]";
+
+export class PaidSeatRequiredError extends ForbiddenError {
+  constructor() {
+    super(
+      `${PAID_SEAT_REQUIRED_PREFIX} this action needs a paid seat on this organization`,
+    );
+    this.name = "PaidSeatRequiredError";
+  }
+}
+
+/**
+ * Non-tool resource keys checked directly by HTTP routes (no defineTool, so
+ * no readOnlyHint to consult) that are pure READS — a gated free seat may
+ * pass them. Keep this to reads only: anything that writes or spends stays
+ * out (ORG_FS_WRITE is deliberately absent).
+ */
+const SEAT_GATE_READ_RESOURCES: ReadonlySet<string> = new Set(["ORG_FS_READ"]);
+
 // ============================================================================
 // AccessControl Class
 // ============================================================================
@@ -59,6 +90,14 @@ export class ForbiddenError extends Error {
  */
 export class AccessControl {
   private _granted: boolean = false;
+  /** True when the caller must be blocked from mutating/spending tools:
+   *  billing enforced (deployment flag) AND org not legacy AND the member has
+   *  no paid seat. Computed once per request by `resolveOrgFromPath`. */
+  private seatGated: boolean = false;
+  /** The current tool declared `readOnlyHint: true` (set by defineTool).
+   *  Fail-closed: an unannotated read tool is treated as mutating — annotate
+   *  it rather than widening the gate. */
+  private toolReadOnly: boolean = false;
 
   constructor(
     private userId?: string,
@@ -72,6 +111,16 @@ export class AccessControl {
 
   setToolName(toolName: string): void {
     this.toolName = toolName;
+  }
+
+  /** Set by `resolveOrgFromPath` after loading billing + seat state. */
+  setSeatGated(gated: boolean): void {
+    this.seatGated = gated;
+  }
+
+  /** Set by defineTool from the tool's `annotations.readOnlyHint`. */
+  setToolReadOnly(readOnly: boolean): void {
+    this.toolReadOnly = readOnly;
   }
 
   /**
@@ -152,6 +201,23 @@ export class AccessControl {
     const resourcesToCheck =
       resources.length > 0 ? resources : this.toolName ? [this.toolName] : [];
 
+    // Seat gate — monetization, orthogonal to governance, so it fires BEFORE
+    // the role paths below (an org OWNER can hold a free seat: the
+    // report-funnel onboarding case — admin bypass must not leak through).
+    // A free seat sees everything and changes nothing: tools that declare
+    // readOnlyHint pass, as do the non-tool READ resource keys checked
+    // directly by HTTP routes (SEAT_GATE_READ_RESOURCES).
+    if (
+      this.seatGated &&
+      !this.toolReadOnly &&
+      !(
+        resourcesToCheck.length > 0 &&
+        resourcesToCheck.every((r) => SEAT_GATE_READ_RESOURCES.has(r))
+      )
+    ) {
+      throw new PaidSeatRequiredError();
+    }
+
     if (resourcesToCheck.length === 0) {
       throw new ForbiddenError("No resources specified for access check");
     }
@@ -219,7 +285,11 @@ export class AccessControl {
     if (this.userId && this.role && BASIC_USAGE_TOOLS.has(resource)) {
       return true;
     }
-    if (this.role === "admin" || this.role === "owner") {
+    // `this.role` may be Better Auth's comma-joined multi-role string (e.g.
+    // "admin,billing-manager") when set via `setRole()` for a path-resolved
+    // org — a plain exact-match here would miss it and fall through to the
+    // slower `boundAuth.hasPermission` DB round-trip. See `hasAdminRole`.
+    if (hasAdminRole(this.role)) {
       return true;
     }
     if (!this.boundAuth) {

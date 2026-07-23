@@ -8,6 +8,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Mail01 } from "@untitledui/icons";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export interface PendingInviteScreenProps {
   invitationId: string;
@@ -22,6 +23,7 @@ export function PendingInviteScreen({
   orgSlug,
   orgLogo,
 }: PendingInviteScreenProps) {
+  const t = useT();
   const acceptMutation = useMutation({
     mutationFn: async () => {
       const result = await authClient.organization.acceptInvitation({
@@ -38,7 +40,9 @@ export function PendingInviteScreen({
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Failed to accept invitation",
+        error instanceof Error
+          ? error.message
+          : t("common.pendingInviteScreen.failedToAccept"),
       );
     },
   });
@@ -52,12 +56,14 @@ export function PendingInviteScreen({
       return result.data;
     },
     onSuccess: () => {
-      toast.success("Invitation declined");
+      toast.success(t("common.pendingInviteScreen.invitationDeclined"));
       window.location.href = "/";
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Failed to decline invitation",
+        error instanceof Error
+          ? error.message
+          : t("common.pendingInviteScreen.failedToDecline"),
       );
     },
   });
@@ -81,22 +87,26 @@ export function PendingInviteScreen({
       )}
       <div className="space-y-2">
         <h3 className="text-lg font-medium">
-          You&apos;ve been invited to <strong>{orgName}</strong>
+          {t("common.pendingInviteScreen.invitedTo", { orgName })}
         </h3>
         <p className="text-sm text-muted-foreground">
-          Accept the invitation to join this organization.
+          {t("common.pendingInviteScreen.acceptDescription")}
         </p>
       </div>
       <div className="flex flex-col gap-2 w-full">
         <Button onClick={() => acceptMutation.mutate()} disabled={isBusy}>
-          {acceptMutation.isPending ? "Accepting…" : "Accept invitation"}
+          {acceptMutation.isPending
+            ? t("common.pendingInviteScreen.acceptingButton")
+            : t("common.pendingInviteScreen.acceptButton")}
         </Button>
         <Button
           variant="ghost"
           onClick={() => rejectMutation.mutate()}
           disabled={isBusy}
         >
-          {rejectMutation.isPending ? "Declining…" : "Decline"}
+          {rejectMutation.isPending
+            ? t("common.pendingInviteScreen.decliningButton")
+            : t("common.pendingInviteScreen.declineButton")}
         </Button>
       </div>
     </AccessScreenLayout>

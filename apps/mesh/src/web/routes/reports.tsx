@@ -18,6 +18,8 @@ import {
   reportAuthAttemptProperties,
   setReportReviewerMode,
 } from "./reports/track";
+import { useT } from "@/web/i18n/use-t.ts";
+import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import "./reports/reports.css";
 
 const route = getRouteApi("/report/$domain");
@@ -97,6 +99,7 @@ function ReportLoadError({
   domain: string;
   retry: () => void;
 }) {
+  const t = useT();
   return (
     <div className="fixed inset-0 overflow-y-auto">
       <ReportBackdrop domain={domain} />
@@ -104,21 +107,21 @@ function ReportLoadError({
       <div className="relative z-10 flex min-h-full items-center justify-center px-4 py-10">
         <section
           role="alert"
-          aria-label="Não foi possível carregar o relatório"
+          aria-label={t("routes.reports.failedToLoadReportAriaLabel")}
           className="w-full max-w-[440px] rounded-3xl bg-background px-7 py-8 text-foreground shadow-2xl"
         >
           <h1 className="text-xl font-medium leading-7">
-            Não foi possível carregar este relatório.
+            {t("routes.reports.failedToLoadReportTitle")}
           </h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Verifique sua conexão e tente novamente.
+            {t("routes.reports.failedToLoadReportDescription")}
           </p>
           <button
             type="button"
             onClick={retry}
             className="mt-6 inline-flex h-11 items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
           >
-            Tentar novamente
+            {t("routes.reports.retryButton")}
           </button>
         </section>
       </div>
@@ -132,6 +135,9 @@ export default function ReportPage() {
   const domain = normalizeDomain(rawDomain);
   const session = authClient.useSession();
   const authenticated = Boolean(session.data?.user);
+  // Render the deck in the viewer's Studio locale (same source as the rest of
+  // the UI's i18n), so a language switch reflects in the report too.
+  const [{ language }] = usePreferences();
 
   // Reviewer sessions (?key=) flag every event with report_preview — set at
   // render (module state, so it lands before any child capture) and cleared
@@ -139,8 +145,8 @@ export default function ReportPage() {
   setReportReviewerMode(Boolean(key));
 
   const initial = useQuery({
-    queryKey: KEYS.report(domain, key),
-    queryFn: () => getReport(domain, key),
+    queryKey: KEYS.report(domain, key, language),
+    queryFn: () => getReport(domain, key, language),
     enabled: authenticated,
     staleTime: Infinity,
     retry: (failureCount, error) =>
@@ -210,6 +216,8 @@ export default function ReportPage() {
       domain={domain}
       initial={initial.data}
       sessionEmail={session.data.user.email}
+      sessionUser={session.data.user}
+      lang={language}
     />
   );
 

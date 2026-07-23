@@ -43,6 +43,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { useChatTask } from "@/web/components/chat/context";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
+import { usePackagePath } from "@/web/components/sections-editor/use-package-path";
 import { hasEditableAppEditorSchema } from "./app-editor-schema";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { useSaveBlock } from "@/web/components/sections-editor/use-save-block";
@@ -307,6 +308,11 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
         : null,
   });
 
+  // The others-thread gate only applies on the Preview surface (which owns
+  // auto-start); Content is gated behind lifecycle.phase === "running" and
+  // never passes `othersThreadGate`, so this state is unreachable here.
+  if (sandboxState.kind === "othersThread") return null;
+
   if (sandboxState.kind !== "iframe") {
     return (
       <SandboxStateRenderer
@@ -330,6 +336,7 @@ export function ContentBrowser({ mode = "content" }: ContentBrowserProps) {
       branch={branch}
       previewUrl={previewUrl}
       mode={mode}
+      devServerReady={vmEvents.lifecycle.phase === "running"}
     />
   );
 }
@@ -358,17 +365,22 @@ function ContentBrowserReady({
   branch,
   previewUrl,
   mode,
+  devServerReady,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   previewUrl: string | null;
   mode: "content" | "blocks";
+  devServerReady: boolean;
 }) {
   const workspace = useBlocksPreviewWorkspace();
   const fetchParams = { orgSlug, virtualMcpId, branch, previewUrl };
-  const { data: decofile, isLoading: decofileLoading } =
-    useDecofile(fetchParams);
+  const packagePath = usePackagePath(virtualMcpId);
+  const { data: decofile, isLoading: decofileLoading } = useDecofile(
+    fetchParams,
+    { fetchEnabled: devServerReady },
+  );
 
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
@@ -466,6 +478,7 @@ function ContentBrowserReady({
     isLoading: metaLoading,
     isFetching: metaFetching,
   } = useLiveMeta(fetchParams, {
+    fetchEnabled: devServerReady,
     refetchInterval: (query) => {
       const currentMeta = query.state.data;
 
@@ -519,8 +532,8 @@ function ContentBrowserReady({
 
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
-  const saveBlogBlock = useSaveBlogBlock(fetchParams);
-  const deleteBlogBlock = useDeleteBlogBlock(fetchParams);
+  const saveBlogBlock = useSaveBlogBlock({ ...fetchParams, packagePath });
+  const deleteBlogBlock = useDeleteBlogBlock({ ...fetchParams, packagePath });
 
   // Dialog state
   const [pageDialog, setPageDialog] = useState<PageDialogState>(null);
@@ -1356,9 +1369,6 @@ function ContentBrowserReady({
                     setOpenPageSeoKey(null);
                     if (mode === "blocks") workspace.consumeEditSeo();
                   }}
-                  onSaved={
-                    mode === "blocks" ? workspace.notifySaved : undefined
-                  }
                 />
               )
             ) : (
@@ -2019,7 +2029,9 @@ function ItemList({
                     key={post.key}
                     icon={File02}
                     title={post.title}
-                    subtitle={post.slug}
+                    subtitle={post.slug || "no slug"}
+                    invalid={post.missing.length > 0}
+                    invalidReason={`Missing: ${post.missing.join(", ")}`}
                     active={
                       selection?.collection === "posts" &&
                       selection.key === post.key

@@ -6,7 +6,6 @@ import type { ConnectionEntity } from "@/tools/connection/schema";
 import { clientFromConnection } from "@/mcp-clients";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { TaskBoardItemPrSchema } from "./schema";
-import { requireTaskBoardEnabled } from "./require-enabled";
 
 /** Cap a single live PR fetch — the modal shouldn't hang on a slow GitHub. */
 const PR_FETCH_TIMEOUT_MS = 8000;
@@ -141,8 +140,6 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
         "Organization ID required (no active organization in context)",
       );
     }
-    await requireTaskBoardEnabled(ctx, organizationId);
-
     const linked = await ctx.storage.taskBoard.listPrs(
       taskBoardItemId,
       organizationId,

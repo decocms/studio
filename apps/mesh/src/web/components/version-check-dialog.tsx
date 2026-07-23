@@ -1,15 +1,10 @@
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@deco/ui/components/alert-dialog.tsx";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Button } from "@deco/ui/components/button.tsx";
+import { RefreshCw01 } from "@untitledui/icons";
 import type { PublicConfig } from "@/api/routes/public-config";
+import { AnnouncementCard } from "@/web/components/announcement-card";
+import { useT } from "@/web/i18n/use-t.ts";
 import { KEYS } from "@/web/lib/query-keys";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
@@ -39,6 +34,17 @@ export function nextDrift(
     : { version: serverVersion, count: 1 };
 }
 
+export function shouldShowVersionAnnouncement(
+  drift: Drift,
+  dismissedVersion: string | null,
+): boolean {
+  return (
+    drift.count >= CONFIRMATIONS_REQUIRED &&
+    drift.version !== null &&
+    drift.version !== dismissedVersion
+  );
+}
+
 /**
  * Polls /api/config on its own (short-lived, unlike the Infinity-staleTime
  * publicConfig query used for boot) and prompts a refresh once the deployed
@@ -46,6 +52,7 @@ export function nextDrift(
  * bundle's build-time __MESH_VERSION__.
  */
 export function VersionCheckDialog() {
+  const t = useT();
   const { data: serverVersion, dataUpdatedAt } = useQuery({
     queryKey: KEYS.appVersionCheck(),
     queryFn: async () => {
@@ -72,24 +79,29 @@ export function VersionCheckDialog() {
     setDrift((prev) => nextDrift(prev, serverVersion, __MESH_VERSION__));
   }
 
-  const isStale = drift.count >= CONFIRMATIONS_REQUIRED;
+  const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
+
+  if (!shouldShowVersionAnnouncement(drift, dismissedVersion)) return null;
 
   return (
-    <AlertDialog open={isStale}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>A new version is available</AlertDialogTitle>
-          <AlertDialogDescription>
-            You're viewing an outdated version of this page. Refresh to get the
-            latest updates.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogAction onClick={() => window.location.reload()}>
-            Refresh
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <AnnouncementCard
+      ariaLabel={t("announcements.version.ariaLabel")}
+      dismissLabel={t("announcements.version.dismiss")}
+      eyebrow={t("announcements.version.eyebrow")}
+      title={t("announcements.version.title")}
+      description={t("announcements.version.description")}
+      icon={<RefreshCw01 size={16} />}
+      tone="system"
+      onDismiss={() => setDismissedVersion(drift.version)}
+      footerLeading={t("announcements.version.currentSession", {
+        version: __MESH_VERSION__,
+      })}
+      actions={
+        <Button size="sm" onClick={() => window.location.reload()}>
+          {t("announcements.version.refresh")}
+          <RefreshCw01 size={14} />
+        </Button>
+      }
+    />
   );
 }

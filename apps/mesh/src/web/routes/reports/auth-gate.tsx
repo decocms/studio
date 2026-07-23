@@ -3,8 +3,9 @@ import type {
   AuthFlowEvent,
   UnifiedAuthFormCopy,
 } from "@/web/components/unified-auth-form";
-import { brandFromDomain, faviconForDomain } from "@/shared/report-seo";
+import { faviconForDomain } from "@/shared/report-seo";
 import { isPostHogInitialized } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 import { ReportSocialProof } from "./report-social-proof";
 import {
   beginReportAuthAttempt,
@@ -15,28 +16,33 @@ import {
 } from "./track";
 import { DECK } from "./templates/tokens";
 
-const REPORT_AUTH_COPY = {
-  otpSendFailed: "Não foi possível enviar o código",
-  invalidCode: "Código inválido",
-  invalidEmail: "Digite um email válido",
-  networkError: "Erro de conexão. Tente novamente.",
-  tooManyAttempts: "Muitas tentativas. Aguarde um momento e tente novamente.",
-  invalidOrExpiredCode: "Código inválido ou expirado. Tente novamente.",
-  genericError: "Algo deu errado. Tente novamente.",
-  verificationCodeTitle: "Digite o código",
-  codeSentTo: (email: string) => `Enviamos um código para ${email}`,
-  continueWith: (provider: string) => `Continuar com ${provider}`,
-  divider: "ou",
-  emailLabel: "Email",
-  emailPlaceholder: "seu@email.com",
-  sending: "Enviando...",
-  sendCode: "Continuar",
-  verificationCodeLabel: "Código de verificação",
-  enterCodePlaceholder: "Digite o código",
-  verifying: "Verificando...",
-  verify: "Entrar",
-  useDifferentEmail: "Usar outro email",
-} satisfies Partial<UnifiedAuthFormCopy>;
+function getReportAuthCopy(
+  t: ReturnType<typeof useT>,
+): Partial<UnifiedAuthFormCopy> {
+  return {
+    otpSendFailed: t("reports.authGate.otpSendFailed"),
+    invalidCode: t("reports.authGate.invalidCode"),
+    invalidEmail: t("reports.authGate.invalidEmail"),
+    networkError: t("reports.authGate.networkError"),
+    tooManyAttempts: t("reports.authGate.tooManyAttempts"),
+    invalidOrExpiredCode: t("reports.authGate.invalidOrExpiredCode"),
+    genericError: t("reports.authGate.genericError"),
+    verificationCodeTitle: t("reports.authGate.verificationCodeTitle"),
+    codeSentTo: (email: string) => t("reports.authGate.codeSentTo", { email }),
+    continueWith: (provider: string) =>
+      t("reports.authGate.continueWith", { provider }),
+    divider: t("reports.authGate.divider"),
+    emailLabel: t("reports.authGate.emailLabel"),
+    emailPlaceholder: t("reports.authGate.emailPlaceholder"),
+    sending: t("reports.authGate.sending"),
+    sendCode: t("reports.authGate.sendCode"),
+    verificationCodeLabel: t("reports.authGate.verificationCodeLabel"),
+    enterCodePlaceholder: t("reports.authGate.enterCodePlaceholder"),
+    verifying: t("reports.authGate.verifying"),
+    verify: t("reports.authGate.verify"),
+    useDifferentEmail: t("reports.authGate.useDifferentEmail"),
+  };
+}
 
 function callbackUrl(domain: string): string {
   const path = `/report/${encodeURIComponent(domain)}`;
@@ -44,13 +50,35 @@ function callbackUrl(domain: string): string {
   return `${path}${window.location.search}${window.location.hash}`;
 }
 
+// Mock findings mirroring the deck cover's clickable TOC.
+// Initialized in component to use translation context
+const getBackdropFindings = (t: ReturnType<typeof useT>): readonly string[] => [
+  t("reports.authGate.finding1"),
+  t("reports.authGate.finding2"),
+  t("reports.authGate.finding3"),
+  t("reports.authGate.finding4"),
+  t("reports.authGate.finding5"),
+];
+
+const BACKDROP_SCORE = 72;
+
+/** A blurred, non-interactive stand-in for the real Signal Deck (see
+ *  `signal-deck.tsx` + `cover-template.tsx`): the translucent header pill,
+ *  the holographic cover card (score ring + headline + findings on the left,
+ *  a rainbow art panel with a browser preview on the right), the side progress
+ *  rail, and the footer bar. It's a mock, but it reads as the same product —
+ *  just wider — so the auth gate sits on the report it unlocks. */
 export function ReportBackdrop({ domain }: { domain: string }) {
-  const brand = brandFromDomain(domain);
+  const t = useT();
+  const ringSize = 104;
+  const ringW = 10;
+  const r = (ringSize - ringW) / 2;
+  const circumference = 2 * Math.PI * r;
 
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-[-18px] select-none overflow-hidden"
+      className="pointer-events-none absolute inset-[-18px] flex select-none flex-col overflow-hidden"
       style={{
         background: DECK.bg,
         color: DECK.ink,
@@ -59,190 +87,269 @@ export function ReportBackdrop({ domain }: { domain: string }) {
         transform: "scale(1.025)",
       }}
     >
-      <div className="flex h-full min-h-[640px] flex-col px-6 py-5 sm:px-10 sm:py-8 lg:px-16">
-        <header
-          className="flex items-center justify-between border-b pb-5"
-          style={{ borderColor: DECK.border }}
+      {/* header — rounded translucent pill bar with the deco logo + Share */}
+      <div className="shrink-0 px-6 pt-6 sm:px-10">
+        <div
+          className="mx-auto flex h-[60px] max-w-[1440px] items-center gap-3 rounded-full border pl-6 pr-4"
+          style={{
+            borderColor: DECK.cardBorder,
+            background: "rgba(255,255,255,0.82)",
+            boxShadow:
+              "0 1px 2px rgba(40,37,36,0.05), 0 10px 30px -20px rgba(40,37,36,0.35)",
+          }}
         >
-          <div className="flex items-center gap-3">
-            <img
-              src={faviconForDomain(domain)}
-              alt=""
-              className="h-8 w-8 rounded-lg object-contain"
-            />
-            <div>
-              <p className="text-sm font-medium">{brand}</p>
-              <p className="text-xs" style={{ color: DECK.faint }}>
-                {domain}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span
-              className="h-2 w-16 rounded-full"
-              style={{ background: DECK.border }}
-            />
-            <span
-              className="h-9 w-24 rounded-full"
-              style={{ background: DECK.ink }}
-            />
-          </div>
-        </header>
+          <img
+            src="/logos/deco-logo.svg"
+            alt=""
+            width={54}
+            height={22}
+            className="h-[22px] w-auto"
+          />
+          <span
+            className="ml-auto flex h-9 w-24 items-center justify-center rounded-full text-sm font-medium"
+            style={{ background: DECK.primary, color: DECK.primaryFg }}
+          >
+            {t("reports.authGate.share")}
+          </span>
+        </div>
+      </div>
 
-        <main className="grid min-h-0 flex-1 items-center gap-8 py-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)] lg:gap-14">
-          <div className="space-y-7">
-            <div className="space-y-4">
-              <p
-                className="text-xs font-medium uppercase tracking-[0.08em]"
-                style={{ color: DECK.soft }}
+      {/* stage — the cover card */}
+      <div className="relative min-h-0 flex-1 px-6 py-8 sm:px-10">
+        <div
+          className="mx-auto flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-[26px]"
+          style={{
+            background:
+              "radial-gradient(120% 80% at 30% 0%, #ffffff 0%, #fafaf9 45%, #f6f4f1 100%)",
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 0 0 1px rgba(40,37,36,0.05), 0 1px 2px rgba(40,37,36,0.04)",
+          }}
+        >
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 p-2 lg:grid-cols-2">
+            {/* left: favicon header + score + headline + findings */}
+            <div className="flex min-h-0 flex-col px-5 py-5">
+              <div
+                className="flex shrink-0 items-center gap-3 pb-4"
+                style={{ borderBottom: `1px solid ${DECK.border}` }}
               >
-                Relatório de comércio digital
-              </p>
-              <h1 className="max-w-[13ch] text-4xl font-normal leading-[1.04] tracking-[-0.035em] sm:text-6xl">
-                Uma visão completa da sua loja.
-              </h1>
-              <p
-                className="max-w-[38rem] text-base leading-7"
-                style={{ color: DECK.muted }}
-              >
-                Oportunidades, comparativos e próximos passos reunidos em um
-                único relatório.
-              </p>
-            </div>
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white"
+                  style={{ border: `1px solid ${DECK.border}` }}
+                >
+                  <img
+                    src={faviconForDomain(domain)}
+                    alt=""
+                    className="h-full w-full object-contain p-1.5"
+                  />
+                </div>
+                <span className="min-w-0 flex-1 truncate text-base">
+                  <span style={{ color: DECK.faint }}>https://</span>
+                  {domain}
+                </span>
+                <span
+                  className="shrink-0 text-[11px] font-medium uppercase tracking-[0.04em]"
+                  style={{ color: DECK.soft }}
+                >
+                  {t("reports.authGate.report")}
+                </span>
+              </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              {["Experiência", "Descoberta", "Conversão", "Operação"].map(
-                (label, index) => (
-                  <div
-                    key={label}
-                    className="rounded-2xl border p-4"
-                    style={{ borderColor: DECK.border, background: "#fff" }}
+              {/* Deco Score — static ring + number */}
+              <div className="mt-4 flex shrink-0 items-center gap-5">
+                <svg
+                  width={ringSize}
+                  height={ringSize}
+                  className="-rotate-90 shrink-0"
+                >
+                  <circle
+                    cx={ringSize / 2}
+                    cy={ringSize / 2}
+                    r={r}
+                    fill="none"
+                    stroke={DECK.border}
+                    strokeWidth={ringW}
+                  />
+                  <circle
+                    cx={ringSize / 2}
+                    cy={ringSize / 2}
+                    r={r}
+                    fill="none"
+                    stroke={DECK.soft}
+                    strokeWidth={ringW}
+                    strokeLinecap="round"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={
+                      circumference * (1 - BACKDROP_SCORE / 100)
+                    }
+                  />
+                </svg>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className="text-[4rem] font-light leading-[0.9] tracking-[-0.02em] tabular-nums"
+                      style={{ color: DECK.soft }}
+                    >
+                      {BACKDROP_SCORE}
+                    </span>
+                    <span className="text-xl" style={{ color: DECK.faint }}>
+                      / 100
+                    </span>
+                  </div>
+                  <span
+                    className="text-[12px] font-medium uppercase tracking-[0.04em]"
+                    style={{ color: DECK.soft }}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm" style={{ color: DECK.muted }}>
-                        {label}
+                    {t("reports.authGate.decoScore")}
+                  </span>
+                </div>
+              </div>
+
+              <h1
+                className="mt-4 max-w-[24ch] text-[1.7rem] font-normal leading-[1.16] tracking-[-0.02em]"
+                style={{ color: DECK.ink }}
+              >
+                {t("reports.authGate.headline")}
+              </h1>
+
+              <ul className="mt-auto flex flex-col pt-4">
+                {getBackdropFindings(t).map((title, i) => (
+                  <li
+                    key={i}
+                    style={
+                      i < getBackdropFindings(t).length - 1
+                        ? { borderBottom: `1px solid ${DECK.border}` }
+                        : undefined
+                    }
+                  >
+                    <div className="flex w-full items-center gap-3.5 py-2.5">
+                      <span
+                        className="shrink-0 text-[12px] tabular-nums"
+                        style={{ color: DECK.soft }}
+                      >
+                        {String(i + 1).padStart(2, "0")}
                       </span>
-                      <span className="text-2xl font-light">
-                        {72 + index * 5}
+                      <span
+                        className="min-w-0 flex-1 truncate text-left text-[15px] opacity-55"
+                        style={{ color: DECK.ink, lineHeight: 1.3 }}
+                      >
+                        {title}
                       </span>
                     </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* right: holographic art panel with a browser preview */}
+            <div className="hidden lg:block">
+              <div
+                className="relative h-full w-full overflow-hidden rounded-2xl"
+                style={{
+                  background:
+                    "radial-gradient(circle at 18% 18%, rgba(208,236,26,.45), transparent 35%), radial-gradient(circle at 82% 30%, rgba(152,221,255,.7), transparent 34%), radial-gradient(circle at 60% 86%, rgba(255,183,214,.65), transparent 42%), #f7f5ef",
+                }}
+              >
+                <div
+                  className="absolute inset-x-8 top-8 rounded-2xl border bg-white p-3 shadow-xl"
+                  style={{ borderColor: DECK.border }}
+                >
+                  <div
+                    className="mb-3 flex items-center gap-2 border-b pb-3"
+                    style={{ borderColor: DECK.border }}
+                  >
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#ff6b67]" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#f5c451]" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#65c466]" />
+                    <span
+                      className="ml-3 h-6 flex-1 rounded-full"
+                      style={{ background: DECK.bg }}
+                    />
+                  </div>
+                  <div className="grid h-[330px] grid-cols-[0.72fr_1.28fr] gap-3">
                     <div
-                      className="mt-4 h-1.5 overflow-hidden rounded-full"
-                      style={{ background: DECK.border }}
+                      className="space-y-3 rounded-xl p-4"
+                      style={{ background: DECK.forest }}
                     >
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          background: DECK.soft,
-                          width: `${54 + index * 9}%`,
-                        }}
-                      />
+                      <div className="h-3 w-16 rounded-full bg-white/30" />
+                      <div className="h-8 w-full rounded-lg bg-white/80" />
+                      <div className="h-3 w-4/5 rounded-full bg-white/30" />
+                      <div className="mt-8 h-24 rounded-xl bg-white/10" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[0, 1, 2, 3].map((item) => (
+                        <div
+                          key={item}
+                          className="rounded-xl border bg-white p-3"
+                          style={{ borderColor: DECK.border }}
+                        >
+                          <div
+                            className="h-24 rounded-lg"
+                            style={{ background: DECK.bg }}
+                          />
+                          <div
+                            className="mt-3 h-3 w-4/5 rounded-full"
+                            style={{ background: DECK.border }}
+                          />
+                          <div
+                            className="mt-2 h-3 w-1/2 rounded-full"
+                            style={{ background: DECK.border }}
+                          />
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ),
-              )}
+                </div>
+              </div>
             </div>
           </div>
+        </div>
 
-          <div
-            className="relative hidden h-[min(68vh,660px)] min-h-[430px] overflow-hidden rounded-[2rem] border p-8 lg:block"
+        {/* side progress rail */}
+        <div className="absolute right-8 top-1/2 flex -translate-y-1/2 flex-col gap-1.5">
+          {[0, 1, 2, 3, 4, 5].map((item) => (
+            <span
+              key={item}
+              className="rounded-full"
+              style={{
+                height: item === 0 ? 3 : 2,
+                width: item === 0 ? 28 : 12,
+                background: item === 0 ? DECK.ink : "rgba(40,37,36,0.22)",
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* footer bar */}
+      <footer
+        className="flex shrink-0 items-center gap-2 px-6 py-4 sm:px-10"
+        style={{ borderTop: `1px solid ${DECK.border}` }}
+      >
+        <span
+          className="text-sm tabular-nums opacity-50"
+          style={{ color: DECK.ink }}
+        >
+          01/06
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span
+            className="flex h-12 items-center gap-2 rounded-full border px-6 text-sm font-medium"
             style={{
-              borderColor: DECK.border,
-              background:
-                "radial-gradient(circle at 18% 18%, rgba(208,236,26,.45), transparent 35%), radial-gradient(circle at 82% 30%, rgba(152,221,255,.7), transparent 34%), radial-gradient(circle at 60% 86%, rgba(255,183,214,.65), transparent 42%), #f7f5ef",
+              borderColor: DECK.inputBorder,
+              color: DECK.ink,
+              background: DECK.surface,
             }}
           >
-            <div
-              className="absolute inset-x-8 top-8 rounded-2xl border bg-white p-3 shadow-xl"
-              style={{ borderColor: DECK.border }}
-            >
-              <div
-                className="mb-3 flex items-center gap-2 border-b pb-3"
-                style={{ borderColor: DECK.border }}
-              >
-                <span className="h-2.5 w-2.5 rounded-full bg-[#ff6b67]" />
-                <span className="h-2.5 w-2.5 rounded-full bg-[#f5c451]" />
-                <span className="h-2.5 w-2.5 rounded-full bg-[#65c466]" />
-                <span
-                  className="ml-3 h-6 flex-1 rounded-full"
-                  style={{ background: DECK.bg }}
-                />
-              </div>
-              <div className="grid h-[330px] grid-cols-[0.72fr_1.28fr] gap-3">
-                <div
-                  className="space-y-3 rounded-xl p-4"
-                  style={{ background: DECK.forest }}
-                >
-                  <div className="h-3 w-16 rounded-full bg-white/30" />
-                  <div className="h-8 w-full rounded-lg bg-white/80" />
-                  <div className="h-3 w-4/5 rounded-full bg-white/30" />
-                  <div className="mt-8 h-24 rounded-xl bg-white/10" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {[0, 1, 2, 3].map((item) => (
-                    <div
-                      key={item}
-                      className="rounded-xl border bg-white p-3"
-                      style={{ borderColor: DECK.border }}
-                    >
-                      <div
-                        className="h-24 rounded-lg"
-                        style={{ background: DECK.bg }}
-                      />
-                      <div
-                        className="mt-3 h-3 w-4/5 rounded-full"
-                        style={{ background: DECK.border }}
-                      />
-                      <div
-                        className="mt-2 h-3 w-1/2 rounded-full"
-                        style={{ background: DECK.border }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="absolute bottom-8 left-8 right-8 flex items-center justify-between rounded-2xl bg-white/85 px-5 py-4 shadow-lg">
-              <div className="space-y-2">
-                <div
-                  className="h-3 w-28 rounded-full"
-                  style={{ background: DECK.border }}
-                />
-                <div
-                  className="h-5 w-44 rounded-full"
-                  style={{ background: DECK.ink }}
-                />
-              </div>
-              <div
-                className="h-12 w-12 rounded-full"
-                style={{ background: DECK.soft }}
-              />
-            </div>
-          </div>
-        </main>
-
-        <footer
-          className="flex items-center justify-between border-t pt-5"
-          style={{ borderColor: DECK.border }}
-        >
+            {t("reports.authGate.shareButton")}
+          </span>
           <span
-            className="h-2 w-24 rounded-full"
-            style={{ background: DECK.border }}
-          />
-          <div className="flex gap-2">
-            {[0, 1, 2, 3].map((item) => (
-              <span
-                key={item}
-                className="h-2 rounded-full"
-                style={{
-                  background: item === 0 ? DECK.ink : DECK.border,
-                  width: item === 0 ? 28 : 8,
-                }}
-              />
-            ))}
-          </div>
-        </footer>
-      </div>
+            className="flex h-12 items-center rounded-full px-6 text-sm font-medium"
+            style={{ background: DECK.primary, color: DECK.primaryFg }}
+          >
+            {t("reports.authGate.nextButton")}
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }
@@ -254,6 +361,7 @@ export function ReportAuthGate({
   domain: string;
   loading?: boolean;
 }) {
+  const t = useT();
   const handleAuthEvent = (event: AuthFlowEvent) => {
     const provider = "provider" in event ? event.provider : undefined;
     const authMode = "mode" in event ? event.mode : undefined;
@@ -305,7 +413,7 @@ export function ReportAuthGate({
   return (
     <div
       ref={trackGateRef}
-      className="fixed inset-0 overflow-y-auto"
+      className="fixed inset-0 overflow-hidden"
       style={{
         color: DECK.ink,
         fontFamily: "Switzer, 'Inter var', Helvetica, Arial, sans-serif",
@@ -313,25 +421,25 @@ export function ReportAuthGate({
       }}
     >
       <ReportBackdrop domain={domain} />
-      <div className="pointer-events-none absolute inset-0 bg-white/35" />
+      <div className="pointer-events-none absolute inset-0 bg-white/55" />
 
-      <div className="relative z-10 flex min-h-full items-center justify-center px-3 py-5 sm:px-6 sm:py-10">
+      <div className="relative z-10 flex h-full items-center justify-center px-3 py-5 sm:px-6 sm:py-10">
         {loading ? (
           <div
-            className="h-[330px] w-full max-w-[440px] animate-pulse rounded-3xl bg-white/90"
-            aria-label="Carregando sessão"
+            className="h-[330px] w-full max-w-[440px] animate-pulse rounded-3xl bg-white card-shadow"
+            aria-label={t("reports.authGate.loadingSession")}
           />
         ) : (
           <section
             role="dialog"
             aria-modal="true"
-            aria-label="Acesse seu relatório"
-            className="w-full max-w-[440px] rounded-2xl bg-white px-5 py-5 shadow-2xl sm:rounded-3xl sm:px-7 sm:py-7"
+            aria-label={t("reports.authGate.accessYourReport")}
+            className="w-full max-w-[440px] rounded-2xl bg-white px-6 py-6 card-shadow sm:rounded-3xl sm:px-8 sm:py-8"
           >
             <AuthEntry
               callbackUrl={callbackUrl(domain)}
-              title="Acesse seu relatório"
-              subtitle="Entre ou crie sua conta para ver a análise completa."
+              title={t("reports.authGate.accessYourReport")}
+              subtitle={t("reports.authGate.authSubtitle")}
               variant="compact"
               allowedSocialProviders={["google"]}
               allowPassword={false}
@@ -361,13 +469,10 @@ export function ReportAuthGate({
                   />
                 </div>
               }
-              copy={REPORT_AUTH_COPY}
+              copy={getReportAuthCopy(t)}
             />
-            <p
-              className="mt-5 text-center text-xs leading-5"
-              style={{ color: DECK.faint }}
-            >
-              Acesso gratuito. Leva menos de um minuto.
+            <p className="mt-4 text-xs leading-5" style={{ color: DECK.faint }}>
+              {t("reports.authGate.freeAccess")}
             </p>
             <ReportSocialProof compact />
           </section>

@@ -6,6 +6,7 @@ import {
   discoverBlogBlockTypes,
   emptyBlogPayload,
   listPostsWithMeta,
+  missingPostFields,
   relationPickerState,
   removeCategoryFromPost,
   renameCategoryOnPost,
@@ -232,6 +233,8 @@ describe("listPostsWithMeta", () => {
         date: "2024-01-02",
         categorySlugs: ["news"],
         authorEmails: ["ada@x.com"],
+        // no excerpt or cover image on this fixture
+        missing: ["Excerpt", "Cover image"],
       },
     ]);
   });
@@ -276,6 +279,77 @@ describe("listPostsWithMeta", () => {
     expect(listPostsWithMeta(decofile).map((p) => p.key)).toEqual([
       "collections/blog/posts/a",
     ]);
+  });
+});
+
+describe("missingPostFields", () => {
+  test("returns empty for a complete post", () => {
+    expect(
+      missingPostFields({
+        title: "Hello",
+        slug: "hello",
+        categories: [{ name: "News", slug: "news" }],
+        excerpt: "A short summary.",
+        image: "https://cdn/cover.jpg",
+      }),
+    ).toEqual([]);
+  });
+
+  test("lists every missing required field in order", () => {
+    expect(missingPostFields({})).toEqual([
+      "Title",
+      "Slug",
+      "Category",
+      "Excerpt",
+      "Cover image",
+    ]);
+  });
+
+  test("treats whitespace-only strings as missing", () => {
+    expect(
+      missingPostFields({
+        title: "   ",
+        slug: "hello",
+        categories: [{ slug: "news" }],
+        excerpt: "\n\t ",
+        image: "https://cdn/cover.jpg",
+      }),
+    ).toEqual(["Title", "Excerpt"]);
+  });
+
+  test("needs at least one category with a slug", () => {
+    expect(
+      missingPostFields({
+        title: "T",
+        slug: "s",
+        categories: [{ name: "No slug" }],
+        excerpt: "e",
+        image: "https://cdn/cover.jpg",
+      }),
+    ).toEqual(["Category"]);
+  });
+
+  test("requires a cover image", () => {
+    expect(
+      missingPostFields({
+        title: "T",
+        slug: "s",
+        categories: ["news"],
+        excerpt: "e",
+      }),
+    ).toEqual(["Cover image"]);
+  });
+
+  test("accepts plain-string categories", () => {
+    expect(
+      missingPostFields({
+        title: "T",
+        slug: "s",
+        categories: ["news"],
+        excerpt: "e",
+        image: "https://cdn/cover.jpg",
+      }),
+    ).toEqual([]);
   });
 });
 

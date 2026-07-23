@@ -56,15 +56,199 @@ import {
   useBumpSidebarOrderRevision,
 } from "./sidebar-agent-groups-context";
 import { appendAgentToPersonalOrder } from "./task-groups/stable-order";
+import { useT } from "@/web/i18n/use-t.ts";
 
-const EMPTY_SIDEBAR_HINT = "Select an existing agent";
+function CollectionSearchWrapper({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const t = useT();
+  return (
+    <CollectionSearch
+      value={value}
+      onChange={onChange}
+      placeholder={t("sidebar.agentsSection.searchAgents")}
+    />
+  );
+}
+
+function NoAgentsFound() {
+  const t = useT();
+  return (
+    <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
+      {t("sidebar.agentsSection.noAgentsFound")}
+    </div>
+  );
+}
+
+function SeeAllAgentsFooter({
+  org,
+  onClose,
+}: {
+  org: { slug: string };
+  onClose: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="border-t border-border px-3 py-2.5">
+      <Link
+        to="/$org/settings/agents"
+        params={{ org: org.slug }}
+        onClick={() => onClose()}
+        className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center"
+      >
+        {t("sidebar.agentsSection.seeAllAgents")}
+      </Link>
+    </div>
+  );
+}
+
+function SectionLabelAgents() {
+  const t = useT();
+  return <SectionLabel>{t("sidebar.agentsSection.agents")}</SectionLabel>;
+}
+
+function SectionLabelCodeAgents({
+  onImportFromGithub,
+}: {
+  onImportFromGithub: () => void;
+}) {
+  const t = useT();
+  return (
+    <SectionLabel
+      action={
+        <button
+          type="button"
+          onClick={onImportFromGithub}
+          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        >
+          <GitHubIcon className="size-3.5" />
+          {t("sidebar.agentsSection.import")}
+        </button>
+      }
+    >
+      {t("sidebar.agentsSection.codeAgents")}
+    </SectionLabel>
+  );
+}
+
+function MobileCompactButton({
+  setOpen,
+  emptyCtaClass,
+}: {
+  setOpen: (open: boolean) => void;
+  emptyCtaClass: string | undefined;
+}) {
+  const t = useT();
+  return (
+    <ToolbarIconButton
+      aria-label={t("sidebar.agentsSection.browseAgents")}
+      className={cn(emptyCtaClass)}
+      onClick={() => {
+        track("agent_browser_opened", { surface: "mobile_drawer" });
+        setOpen(true);
+      }}
+    >
+      <Plus className="size-4" />
+    </ToolbarIconButton>
+  );
+}
+
+function MobileFullButton({
+  setOpen,
+  highlightEmpty,
+  emptyCtaClass,
+}: {
+  setOpen: (open: boolean) => void;
+  highlightEmpty: boolean;
+  emptyCtaClass: string | undefined;
+}) {
+  const t = useT();
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        tooltip={
+          highlightEmpty ? undefined : t("sidebar.agentsSection.browseAgents")
+        }
+        className={cn(emptyCtaClass)}
+        onClick={() => {
+          track("agent_browser_opened", { surface: "mobile_drawer" });
+          setOpen(true);
+        }}
+      >
+        <Plus />
+        <span>{t("sidebar.agentsSection.newAgent")}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+function DrawerTitleWrapper() {
+  const t = useT();
+  return (
+    <DrawerTitle className="sr-only">
+      {t("sidebar.agentsSection.browseAgents")}
+    </DrawerTitle>
+  );
+}
+
+function DesktopCompactButton({
+  emptyCtaClass,
+}: {
+  emptyCtaClass: string | undefined;
+}) {
+  const t = useT();
+  return (
+    <ToolbarIconButton
+      aria-label={t("sidebar.agentsSection.browseAgents")}
+      className={cn(emptyCtaClass)}
+    >
+      <Plus className="size-4" />
+    </ToolbarIconButton>
+  );
+}
+
+function DesktopFullButton({
+  wrapEmptyHint,
+  highlightEmpty,
+  emptyCtaClass,
+}: {
+  wrapEmptyHint: (trigger: ReactElement) => ReactElement;
+  highlightEmpty: boolean;
+  emptyCtaClass: string | undefined;
+}) {
+  const t = useT();
+  return (
+    <SidebarMenuItem>
+      {wrapEmptyHint(
+        <PopoverTrigger asChild>
+          <SidebarMenuButton
+            tooltip={
+              highlightEmpty
+                ? undefined
+                : t("sidebar.agentsSection.browseAgents")
+            }
+            className={cn(emptyCtaClass)}
+          >
+            <Plus />
+            <span>{t("sidebar.agentsSection.newAgent")}</span>
+          </SidebarMenuButton>
+        </PopoverTrigger>,
+      )}
+    </SidebarMenuItem>
+  );
+}
 
 function BrowseAgentsEmptyHint({ children }: { children: ReactElement }) {
+  const t = useT();
   return (
     <Tooltip defaultOpen delayDuration={0}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent side="right" sideOffset={8}>
-        {EMPTY_SIDEBAR_HINT}
+        {t("sidebar.agentsSection.selectAnExistingAgent")}
       </TooltipContent>
     </Tooltip>
   );
@@ -257,11 +441,7 @@ function PinAgentPopoverContent({
   return (
     <div className="flex flex-col max-h-[min(640px,80dvh)]">
       {/* Search */}
-      <CollectionSearch
-        value={search}
-        onChange={setSearch}
-        placeholder="Search agents..."
-      />
+      <CollectionSearchWrapper value={search} onChange={setSearch} />
 
       {/* Scrollable content */}
       <div className="overflow-y-auto flex-1 min-h-0 p-1.5 flex flex-col gap-0.5">
@@ -274,34 +454,10 @@ function PinAgentPopoverContent({
           />
         )}
 
-        {/* Agents */}
-        {plainAgents.length > 0 && <SectionLabel>Agents</SectionLabel>}
-        {plainAgents.map((agent) => (
-          <AgentRow
-            key={agent.id}
-            agent={agent}
-            selected={onSelectAgent ? selectedAgentId === agent.id : undefined}
-            onClick={() => handleSelect(agent)}
-          />
-        ))}
-
         {/* Code Agents — repo-backed. The Import button is always available
             when not filtering, so a repo can be imported even with none yet. */}
         {(codeAgents.length > 0 || !search) && (
-          <SectionLabel
-            action={
-              <button
-                type="button"
-                onClick={onImportFromGithub}
-                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-              >
-                <GitHubIcon className="size-3.5" />
-                Import
-              </button>
-            }
-          >
-            Code Agents
-          </SectionLabel>
+          <SectionLabelCodeAgents onImportFromGithub={onImportFromGithub} />
         )}
         {codeAgents.map((agent) => (
           <AgentRow
@@ -312,24 +468,24 @@ function PinAgentPopoverContent({
           />
         ))}
 
+        {/* Agents */}
+        {plainAgents.length > 0 && <SectionLabelAgents />}
+        {plainAgents.map((agent) => (
+          <AgentRow
+            key={agent.id}
+            agent={agent}
+            selected={onSelectAgent ? selectedAgentId === agent.id : undefined}
+            onClick={() => handleSelect(agent)}
+          />
+        ))}
+
         {userAgents.length === 0 && !decopilotRowShown && search && (
-          <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
-            No agents found
-          </div>
+          <NoAgentsFound />
         )}
       </div>
 
       {/* Footer */}
-      <div className="border-t border-border px-3 py-2.5">
-        <Link
-          to="/$org/settings/agents"
-          params={{ org: org.slug }}
-          onClick={() => onClose()}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center"
-        >
-          See all agents
-        </Link>
-      </div>
+      <SeeAllAgentsFooter org={org} onClose={onClose} />
     </div>
   );
 }
@@ -409,37 +565,21 @@ function PinAgentPopover({
             </button>
           ) : compact ? (
             wrapEmptyHint(
-              <ToolbarIconButton
-                aria-label="Browse agents"
-                className={cn(emptyCtaClass)}
-                onClick={() => {
-                  track("agent_browser_opened", { surface: "mobile_drawer" });
-                  setOpen(true);
-                }}
-              >
-                <Plus className="size-4" />
-              </ToolbarIconButton>,
+              <MobileCompactButton
+                setOpen={setOpen}
+                emptyCtaClass={emptyCtaClass}
+              />,
             )
           ) : (
-            <SidebarMenuItem>
-              {wrapEmptyHint(
-                <SidebarMenuButton
-                  tooltip={highlightEmpty ? undefined : "Browse agents"}
-                  className={cn(emptyCtaClass)}
-                  onClick={() => {
-                    track("agent_browser_opened", { surface: "mobile_drawer" });
-                    setOpen(true);
-                  }}
-                >
-                  <Plus />
-                  <span>New agent</span>
-                </SidebarMenuButton>,
-              )}
-            </SidebarMenuItem>
+            <MobileFullButton
+              setOpen={setOpen}
+              highlightEmpty={highlightEmpty}
+              emptyCtaClass={emptyCtaClass}
+            />
           )}
           <Drawer open={open} onOpenChange={setOpen} direction="bottom">
             <DrawerContent className="max-h-[85dvh] p-0">
-              <DrawerTitle className="sr-only">Browse agents</DrawerTitle>
+              <DrawerTitleWrapper />
               {popoverContent}
             </DrawerContent>
           </Drawer>
@@ -459,28 +599,15 @@ function PinAgentPopover({
           ) : compact ? (
             wrapEmptyHint(
               <PopoverTrigger asChild>
-                <ToolbarIconButton
-                  aria-label="Browse agents"
-                  className={cn(emptyCtaClass)}
-                >
-                  <Plus className="size-4" />
-                </ToolbarIconButton>
+                <DesktopCompactButton emptyCtaClass={emptyCtaClass} />
               </PopoverTrigger>,
             )
           ) : (
-            <SidebarMenuItem>
-              {wrapEmptyHint(
-                <PopoverTrigger asChild>
-                  <SidebarMenuButton
-                    tooltip={highlightEmpty ? undefined : "Browse agents"}
-                    className={cn(emptyCtaClass)}
-                  >
-                    <Plus />
-                    <span>New agent</span>
-                  </SidebarMenuButton>
-                </PopoverTrigger>,
-              )}
-            </SidebarMenuItem>
+            <DesktopFullButton
+              wrapEmptyHint={wrapEmptyHint}
+              highlightEmpty={highlightEmpty}
+              emptyCtaClass={emptyCtaClass}
+            />
           )}
           <PopoverContent
             className="w-[380px] p-0 overflow-hidden"

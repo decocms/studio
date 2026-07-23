@@ -7,12 +7,12 @@ import {
   readChatDraft,
   writeChatDraft,
 } from "@/web/lib/chat-draft";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
-  useVirtualMCP,
 } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -42,7 +42,6 @@ import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { QueueTray } from "./queue-tray";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
-import { ChatModeRow } from "./pills/chat-mode-row";
 import { TierTrigger } from "./tier-trigger";
 import type { AiProviderModel } from "@/web/hooks/collections/use-ai-providers";
 import {
@@ -68,7 +67,6 @@ import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dial
 import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/web/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
-import { shouldRenderInlineModeRow } from "./input-mode-row";
 import { resolveComposerAction } from "./composer-action";
 
 // ============================================================================
@@ -79,7 +77,7 @@ function ChatInputDisabledState({ message }: { message: string }) {
   return (
     <div className="flex w-full items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-muted/40 text-muted-foreground">
       <Lock01 size={14} className="shrink-0" />
-      <span className="text-sm">{message}</span>
+      <span className="text-sm">{message ?? ""}</span>
     </div>
   );
 }
@@ -93,8 +91,10 @@ function ChatInputDisabledState({ message }: { message: string }) {
 function useWindowFileDrop(
   selectedModel: AiProviderModel | null | undefined,
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void,
+  disabled?: boolean,
 ) {
   const { editor } = useCurrentEditor();
+  const t = useT();
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
 
@@ -124,7 +124,12 @@ function useWindowFileDrop(
       dragCounterRef.current = 0;
       setIsDraggingOver(false);
 
-      if (!editor || !selectedModel || !modelSupportsFiles(selectedModel))
+      if (
+        disabled ||
+        !editor ||
+        !selectedModel ||
+        !modelSupportsFiles(selectedModel)
+      )
         return;
 
       const files = e.dataTransfer?.files;
@@ -132,7 +137,14 @@ function useWindowFileDrop(
 
       const { from } = editor.state.selection;
       for (const file of Array.from(files)) {
-        void processFile(editor, selectedModel, file, from, onUnsupportedFile);
+        void processFile(
+          editor,
+          selectedModel,
+          file,
+          from,
+          onUnsupportedFile,
+          t,
+        );
       }
     };
 
@@ -146,9 +158,44 @@ function useWindowFileDrop(
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
     };
-  }, [editor, selectedModel, onUnsupportedFile]);
+  }, [editor, selectedModel, onUnsupportedFile, t, disabled]);
 
   return isDraggingOver;
+}
+
+// ============================================================================
+// FileDropZone subcomponents - i18n-extracted strings
+// ============================================================================
+
+function FileDropZoneSupported({
+  selectedModel,
+}: {
+  selectedModel: AiProviderModel | null | undefined;
+}) {
+  const t = useT();
+  const { parts } = getSupportedFileTypesLabel(selectedModel);
+  return (
+    <>
+      <Upload01 size={24} />
+      <span className="text-sm font-medium">
+        {t("chat.input.dropFilesHere", {
+          fileTypes: parts.map((key) => t(key)).join(", "),
+        })}
+      </span>
+    </>
+  );
+}
+
+function FileDropZoneUnsupported() {
+  const t = useT();
+  return (
+    <>
+      <Lock01 size={24} />
+      <span className="text-sm font-medium">
+        {t("chat.input.modelCannotReadAttachments")}
+      </span>
+    </>
+  );
 }
 
 // ============================================================================
@@ -158,11 +205,17 @@ function useWindowFileDrop(
 function FileDropZone({
   selectedModel,
   onUnsupportedFile,
+  disabled,
 }: {
   selectedModel: AiProviderModel | null | undefined;
   onUnsupportedFile?: (info: UnsupportedFileInfo) => void;
+  disabled?: boolean;
 }) {
-  const isDraggingOver = useWindowFileDrop(selectedModel, onUnsupportedFile);
+  const isDraggingOver = useWindowFileDrop(
+    selectedModel,
+    onUnsupportedFile,
+    disabled,
+  );
   const supportsFiles = modelSupportsFiles(selectedModel);
 
   return (
@@ -176,22 +229,57 @@ function FileDropZone({
       )}
     >
       {supportsFiles ? (
-        <>
-          <Upload01 size={24} />
-          <span className="text-sm font-medium">
-            Drop {getSupportedFileTypesLabel(selectedModel)} here
-          </span>
-        </>
+        <FileDropZoneSupported selectedModel={selectedModel} />
       ) : (
-        <>
-          <Lock01 size={24} />
-          <span className="text-sm font-medium">
-            This model can't read attachments — switch to one with vision or
-            file support
-          </span>
-        </>
+        <FileDropZoneUnsupported />
       )}
     </div>
+  );
+}
+
+// ============================================================================
+// ModeDismissPill - "you're in mode X" pill with a dismiss (X) affordance,
+// shown for plan/gen-image/web-search/deep-research modes.
+// ============================================================================
+
+function ModeDismissPill({
+  onClick,
+  label,
+  icon,
+  colorClass,
+  maxWidthClass,
+}: {
+  onClick: () => void;
+  label: string;
+  icon: React.ReactNode;
+  colorClass: string;
+  maxWidthClass: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={cn(
+        "flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium group min-w-0 shrink animate-in fade-in duration-200",
+        colorClass,
+      )}
+    >
+      {icon}
+      <span
+        className={cn(
+          "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:opacity-100",
+          maxWidthClass,
+        )}
+      >
+        {label}
+      </span>
+      <X
+        size={14}
+        className="shrink-0 hidden group-hover:block group-disabled:hidden"
+      />
+    </button>
   );
 }
 
@@ -250,6 +338,7 @@ export function ChatInput({
   onOpenContextPanel?: () => void;
   showConnectionsBanner?: boolean;
 }) {
+  const t = useT();
   const stream = useOptionalChatStream();
   const taskCtx = useOptionalChatTask();
   const messages = stream?.messages ?? [];
@@ -276,7 +365,6 @@ export function ChatInput({
 
   const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
-  const fullVm = useVirtualMCP(selectedVirtualMcp?.id ?? decopilotId);
   const playSwitchSound = useSound(question004Sound);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const { unsupportedFile, onUnsupportedFile, clearUnsupportedFile } =
@@ -287,17 +375,16 @@ export function ChatInput({
 
   const handleVoiceStart = async () => {
     voiceBaselineDocRef.current = tiptapDoc;
-    await voice.startRecording();
-    // Fire with the real outcome — voice.status is set inside startRecording
-    // before the promise resolves ("recording" on success, "unsupported" or
-    // "permission-denied" on failure). Button click on its own doesn't tell
-    // us if the mic actually started.
+    // Fire with the real outcome returned by startRecording — reading
+    // voice.status here instead would be a stale closure over the status
+    // from before the click, since setState doesn't mutate it in place.
+    const finalStatus = await voice.startRecording();
     const outcome =
-      voice.status === "recording"
+      finalStatus === "recording"
         ? "started"
-        : voice.status === "unsupported"
+        : finalStatus === "unsupported"
           ? "unsupported"
-          : voice.status === "permission-denied"
+          : finalStatus === "permission-denied"
             ? "permission_denied"
             : "unknown";
     track("chat_voice_started", { thread_id: taskId, outcome });
@@ -378,8 +465,23 @@ export function ChatInput({
     selectedModel?.limits?.contextWindow;
 
   const tiptapRef = useRef<TiptapInputHandle | null>(null);
+  // True while the @/ suggestion dropdown is open — read by TiptapProvider's
+  // Enter-to-submit handler so selecting a suggestion doesn't also send the
+  // still-unresolved draft (ProseMirror's keydown listener runs before the
+  // suggestion's own, see tiptap/input.tsx).
+  const suggestionOpenRef = useRef(false);
 
   const isPlanMode = chatMode === "plan";
+
+  const dismissChatMode = (fromMode: string) => {
+    playSwitchSound();
+    track("chat_mode_changed", {
+      from_mode: fromMode,
+      to_mode: "default",
+      source: "pill_dismiss",
+    });
+    setChatMode("default");
+  };
 
   // Focus chat input on Cmd+L, toggle plan mode on Cmd+Shift+L
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
@@ -420,10 +522,6 @@ export function ChatInput({
   });
   const canSubmit = composerAction === "send";
   const showStopOrCancel = composerAction === "stop";
-  const showInlineModeRow = shouldRenderInlineModeRow({
-    messageCount: messages.length,
-    showConnectionsBanner,
-  });
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
     if (composerAction === "send" && tiptapDoc) {
@@ -441,9 +539,7 @@ export function ChatInput({
         // so a draft typed while the previous send's POST is still in
         // flight isn't cleared for a send that was silently dropped.
         if (stream.isSendInFlight()) {
-          toast.info(
-            "Still sending your previous message — try again in a moment",
-          );
+          toast.info(t("chat.input.stillSendingPreviousMessage"));
           return;
         }
         void stream.sendMessage(tiptapDoc);
@@ -460,7 +556,7 @@ export function ChatInput({
 
   if (userId && task?.created_by && task.created_by !== userId) {
     return (
-      <ChatInputDisabledState message="Read only - you're viewing someone else's chat" />
+      <ChatInputDisabledState message={t("chat.input.readOnlyOthersChat")} />
     );
   }
 
@@ -484,9 +580,11 @@ export function ChatInput({
             key={taskId}
             tiptapDoc={tiptapDoc}
             setTiptapDoc={setTiptapDoc}
-            disabled={false}
+            disabled={voice.status === "recording"}
             enterToSubmit={true}
+            placeholder={t("chat.input.placeholder")}
             onSubmit={handleSubmit}
+            suggestionOpenRef={suggestionOpenRef}
           >
             <form
               onSubmit={handleSubmit}
@@ -497,6 +595,7 @@ export function ChatInput({
               <FileDropZone
                 selectedModel={selectedModel}
                 onUnsupportedFile={onUnsupportedFile}
+                disabled={voice.status === "recording"}
               />
 
               <div className="group/input relative flex flex-col gap-2 flex-1">
@@ -507,6 +606,7 @@ export function ChatInput({
                   showFileUploader={true}
                   selectedModel={selectedModel}
                   onUnsupportedFile={onUnsupportedFile}
+                  suggestionOpenRef={suggestionOpenRef}
                 />
               </div>
 
@@ -524,7 +624,7 @@ export function ChatInput({
                         type="button"
                         onClick={handleVoiceCancel}
                         className="flex items-center justify-center size-8 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label="Cancel recording"
+                        aria-label={t("chat.input.cancelRecording")}
                       >
                         <X size={16} />
                       </button>
@@ -532,7 +632,7 @@ export function ChatInput({
                         type="button"
                         onClick={handleVoiceConfirm}
                         className="flex items-center justify-center size-8 rounded-lg bg-foreground text-background hover:opacity-80 transition-opacity"
-                        aria-label="Use transcription"
+                        aria-label={t("chat.input.useTranscription")}
                       >
                         <Check size={16} />
                       </button>
@@ -557,108 +657,40 @@ export function ChatInput({
                         onUnsupportedFile={onUnsupportedFile}
                       />
                       {isPlanMode && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSwitchSound();
-                            track("chat_mode_changed", {
-                              from_mode: "plan",
-                              to_mode: "default",
-                              source: "pill_dismiss",
-                            });
-                            setChatMode("default");
-                          }}
-                          title="Plan mode"
-                          aria-label="Plan mode"
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group min-w-0 shrink animate-in fade-in duration-200"
-                        >
-                          <BookOpen01 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100">
-                            Plan mode
-                          </span>
-                          <X
-                            size={14}
-                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
-                          />
-                        </button>
+                        <ModeDismissPill
+                          onClick={() => dismissChatMode("plan")}
+                          label={t("chat.input.planMode")}
+                          icon={<BookOpen01 size={14} className="shrink-0" />}
+                          colorClass="text-violet-600 dark:text-violet-400 hover:bg-violet-500/10"
+                          maxWidthClass="@[320px]/chat-bottom:max-w-32"
+                        />
                       )}
                       {chatMode === "gen-image" && imageModel && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSwitchSound();
-                            track("chat_mode_changed", {
-                              from_mode: "gen-image",
-                              to_mode: "default",
-                              source: "pill_dismiss",
-                            });
-                            setChatMode("default");
-                          }}
-                          title="Create image"
-                          aria-label="Create image"
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                        >
-                          <Image01 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
-                            Create image
-                          </span>
-                          <X
-                            size={14}
-                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
-                          />
-                        </button>
+                        <ModeDismissPill
+                          onClick={() => dismissChatMode("gen-image")}
+                          label={t("chat.input.createImage")}
+                          icon={<Image01 size={14} className="shrink-0" />}
+                          colorClass="text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
+                        />
                       )}
                       {chatMode === "web-search" && webSearchModel && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSwitchSound();
-                            track("chat_mode_changed", {
-                              from_mode: "web-search",
-                              to_mode: "default",
-                              source: "pill_dismiss",
-                            });
-                            setChatMode("default");
-                          }}
-                          title="Web search"
-                          aria-label="Web search"
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                        >
-                          <Globe02 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
-                            Web search
-                          </span>
-                          <X
-                            size={14}
-                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
-                          />
-                        </button>
+                        <ModeDismissPill
+                          onClick={() => dismissChatMode("web-search")}
+                          label={t("chat.input.webSearch")}
+                          icon={<Globe02 size={14} className="shrink-0" />}
+                          colorClass="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
+                        />
                       )}
                       {chatMode === "deep-research" && deepResearchModel && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSwitchSound();
-                            track("chat_mode_changed", {
-                              from_mode: "deep-research",
-                              to_mode: "default",
-                              source: "pill_dismiss",
-                            });
-                            setChatMode("default");
-                          }}
-                          title="Deep research"
-                          aria-label="Deep research"
-                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                        >
-                          <Telescope size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
-                            Deep research
-                          </span>
-                          <X
-                            size={14}
-                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
-                          />
-                        </button>
+                        <ModeDismissPill
+                          onClick={() => dismissChatMode("deep-research")}
+                          label={t("chat.input.deepResearch")}
+                          icon={<Telescope size={14} className="shrink-0" />}
+                          colorClass="text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
+                        />
                       )}
                       {contextWindow && lastTotalTokens > 0 && (
                         <SessionStats
@@ -670,14 +702,8 @@ export function ChatInput({
                       )}
                     </div>
 
-                    {/* Right Actions (branch/mode, model, mic, send) */}
+                    {/* Right Actions (model, mic, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
-                      {showInlineModeRow && (
-                        <ChatModeRow
-                          virtualMcp={fullVm}
-                          currentBranch={taskCtx?.currentBranch ?? null}
-                        />
-                      )}
                       <TierTrigger />
 
                       {/* Microphone button — always enabled; the composer has
@@ -698,8 +724,13 @@ export function ChatInput({
                           )}
                           title={
                             voice.status === "permission-denied"
-                              ? "Microphone access denied — click to try again"
-                              : "Voice input"
+                              ? t("chat.input.microphoneAccessDenied")
+                              : t("chat.input.voiceInput")
+                          }
+                          aria-label={
+                            voice.status === "permission-denied"
+                              ? t("chat.input.microphoneAccessDenied")
+                              : t("chat.input.voiceInput")
                           }
                         >
                           <Microphone01 size={18} />
@@ -729,9 +760,16 @@ export function ChatInput({
                         title={
                           composerAction === "stop"
                             ? isStreaming
-                              ? "Stop generating"
-                              : "Cancel run"
-                            : "Send message (Enter)"
+                              ? t("chat.input.stopGenerating")
+                              : t("chat.input.cancelRun")
+                            : t("chat.input.sendMessageEnter")
+                        }
+                        aria-label={
+                          composerAction === "stop"
+                            ? isStreaming
+                              ? t("chat.input.stopGenerating")
+                              : t("chat.input.cancelRun")
+                            : t("chat.input.sendMessage")
                         }
                       >
                         {showStopOrCancel ? (

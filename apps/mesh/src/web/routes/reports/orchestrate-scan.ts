@@ -74,6 +74,9 @@ export async function orchestrateScan(
   distinctId: string | undefined,
   signal: AbortSignal,
   events: ScanEvents,
+  // Viewer locale — rendered into the deck reads so the finished deck matches
+  // the language the rest of the UI is in.
+  lang?: string,
 ): Promise<void> {
   try {
     captureReport("report_scan_triggered", { domain, surface: "deck_v2" });
@@ -100,7 +103,7 @@ export async function orchestrateScan(
     }
 
     for (let i = 0; i < MAX_POLLS && !signal.aborted; i++) {
-      const next = await getReport(domain);
+      const next = await getReport(domain, undefined, lang);
       if (signal.aborted) return;
       if (next.status === "ready" && next.deck) {
         clearPending(domain);
@@ -113,7 +116,7 @@ export async function orchestrateScan(
         if (signal.aborted) return;
         if (st.done) {
           await sleep(POLL_MS, { signal });
-          const fin = await getReport(domain);
+          const fin = await getReport(domain, undefined, lang);
           if (signal.aborted) return;
           if (fin.status === "ready" && fin.deck) {
             clearPending(domain);

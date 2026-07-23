@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   Select,
   SelectContent,
@@ -40,6 +41,7 @@ function branchFormSchema(branch: Branch): SchemaProperty | null {
  * if any) — never a `__resolveType`.
  */
 export function InlineUnionField(props: FieldProps) {
+  const t = useT();
   const { schema, value, onChange, path, label } = props;
   const branches = schema.inlineUnionBranches ?? [];
 
@@ -83,7 +85,11 @@ export function InlineUnionField(props: FieldProps) {
         <Label htmlFor={path}>{label}</Label>
         <Select value={String(activeIndex)} onValueChange={handleBranchChange}>
           <SelectTrigger id={path}>
-            <SelectValue placeholder="Select..." />
+            <SelectValue
+              placeholder={t(
+                "sectionsEditor.inlineUnionField.selectPlaceholder",
+              )}
+            />
           </SelectTrigger>
           <SelectContent>
             {branches.map((branch, index) => (

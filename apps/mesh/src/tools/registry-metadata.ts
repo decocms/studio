@@ -1138,9 +1138,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // the run fence token, same trust boundary as the chat turn itself.
       "THREAD_BACKGROUND_TOOL_START",
       "THREAD_SUBTASK_DELIVER",
-      // Task board — org-scoped, gated behind the org's task_board_enabled
-      // setting (enforced per-handler), but usable by every member once on,
-      // same basic-usage tier as chat threads.
+      // Task board — org-scoped, usable by every member, same basic-usage
+      // tier as chat threads.
       "TASK_BOARD_ITEM_CREATE",
       "TASK_BOARD_ITEM_LIST",
       "TASK_BOARD_ITEM_UPDATE",

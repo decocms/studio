@@ -11,6 +11,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { Edit02, MessageQuestionCircle } from "@untitledui/icons";
 import { useEffect, useRef } from "react";
 import { type Control, type FieldValues, useController } from "react-hook-form";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { UserAskToolPart } from "../types";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import {
@@ -50,6 +51,7 @@ function TextInput({
   name,
   placeholder,
 }: FieldInputProps & { placeholder?: string }) {
+  const t = useT();
   return (
     <FormField
       control={control}
@@ -73,9 +75,13 @@ function TextInput({
                     {...field}
                     value={value}
                     type="text"
-                    placeholder={placeholder || "Type your response..."}
+                    placeholder={
+                      placeholder || t("chat.userAskQuestion.typeResponse")
+                    }
                     autoFocus
-                    aria-label="Text response input"
+                    aria-label={t(
+                      "chat.userAskQuestion.textResponseInputAriaLabel",
+                    )}
                     className="flex-1 text-sm bg-transparent outline-none placeholder:text-foreground/25 text-foreground min-w-0"
                   />
                 </div>
@@ -124,6 +130,7 @@ function ChoiceInput({
   name,
   options,
 }: FieldInputProps & { options: string[] }) {
+  const t = useT();
   const { field: optionField } = useController({
     control,
     name: `${name}.option`,
@@ -153,7 +160,7 @@ function ChoiceInput({
         <div
           className="flex flex-col px-2"
           role="group"
-          aria-label="Choice options"
+          aria-label={t("chat.userAskQuestion.choiceOptionsAriaLabel")}
         >
           {options.map((option, index) => {
             const isSelected = optionValue === option;
@@ -163,15 +170,15 @@ function ChoiceInput({
                 type="button"
                 onClick={() => optionField.onChange(option)}
                 className={cn(
-                  "flex items-center gap-3 px-2 py-3 rounded-lg text-left transition-colors w-full",
+                  "flex items-start gap-3 px-2 py-3 rounded-lg text-left transition-colors w-full",
                   isSelected && "bg-accent/50",
                   !isSelected && "hover:bg-accent/30",
                 )}
-                aria-label={`Select ${option}`}
+                aria-label={t("chat.userAskQuestion.selectOption", { option })}
               >
                 <span
                   className={cn(
-                    "flex items-center justify-center size-6 rounded-md text-sm shrink-0",
+                    "flex items-center justify-center size-6 rounded-md text-sm shrink-0 mt-0.5",
                     isSelected
                       ? "bg-chart-1 text-white"
                       : "bg-muted text-foreground",
@@ -179,7 +186,7 @@ function ChoiceInput({
                 >
                   {index + 1}
                 </span>
-                <span className="text-sm text-foreground truncate">
+                <span className="text-sm text-foreground min-w-0 break-words">
                   {option}
                 </span>
               </button>
@@ -206,8 +213,8 @@ function ChoiceInput({
               onFocus={() => {
                 if (optionValue !== null) optionField.onChange(null);
               }}
-              placeholder="Something else..."
-              aria-label="Custom choice input"
+              placeholder={t("chat.userAskQuestion.somethingElsePlaceholder")}
+              aria-label={t("chat.userAskQuestion.customChoiceInputAriaLabel")}
               className="flex-1 text-sm bg-transparent outline-none placeholder:text-foreground/25 text-foreground min-w-0"
             />
           </label>
@@ -223,6 +230,7 @@ function ChoiceInput({
 // ============================================================================
 
 function ConfirmInput({ control, name }: FieldInputProps) {
+  const t = useT();
   const confirmOptions = ["yes", "no"] as const;
   const fieldRef = useRef<{ onChange: (v: string) => void } | null>(null);
 
@@ -243,7 +251,9 @@ function ConfirmInput({ control, name }: FieldInputProps) {
               <div
                 className="flex gap-2 px-2"
                 role="group"
-                aria-label="Confirmation options"
+                aria-label={t(
+                  "chat.userAskQuestion.confirmationOptionsAriaLabel",
+                )}
               >
                 {confirmOptions.map((value) => {
                   const isSelected = field.value === value;
@@ -257,7 +267,11 @@ function ConfirmInput({ control, name }: FieldInputProps) {
                         isSelected && "bg-accent/50",
                         !isSelected && "hover:bg-accent/30",
                       )}
-                      aria-label={`Confirm ${value}`}
+                      aria-label={t("chat.userAskQuestion.confirmValue", {
+                        value: t(
+                          `chat.userAskQuestion.confirm${value === "yes" ? "Yes" : "No"}`,
+                        ),
+                      })}
                     >
                       <span
                         className={cn(
@@ -270,7 +284,9 @@ function ConfirmInput({ control, name }: FieldInputProps) {
                         {value === "yes" ? 1 : 2}
                       </span>
                       <span className="text-sm text-foreground capitalize">
-                        {value}
+                        {t(
+                          `chat.userAskQuestion.confirm${value === "yes" ? "Yes" : "No"}`,
+                        )}
                       </span>
                     </button>
                   );
@@ -369,10 +385,12 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
 
   const current = decisionForm.currentPart;
 
+  const t = useT();
+
   const handleSkip = () => {
     const activePart = current;
     if (!activePart) return;
-    const skipText = "user has skip this question";
+    const skipText = t("chat.userAskQuestion.skipMessage");
     const key = activePart.toolCallId;
     if (activePart.input?.type === "choice") {
       decisionForm.form.setValue(`${key}.option` as never, null as never);
@@ -401,7 +419,7 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
         onClick={handleSkip}
         className="h-7"
       >
-        Skip
+        {t("chat.userAskQuestion.skip")}
       </Button>
       <PaginatedFormSubmitButton
         isStreaming={isStreaming}
@@ -427,8 +445,8 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
         >
           <CollapsibleHighlight
             icon={<MessageQuestionCircle size={14} />}
-            label="Question pending"
-            title={part.input?.prompt ?? "Question"}
+            label={t("chat.userAskQuestion.questionPending")}
+            title={part.input?.prompt ?? t("chat.userAskQuestion.question")}
             defaultExpanded={true}
             footerRight={footerRight}
           >
@@ -455,9 +473,12 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
       >
         <CollapsibleHighlight
           icon={<MessageQuestionCircle size={14} />}
-          label="Question pending"
-          count={`${decisionForm.currentIndex + 1} of ${parts.length}`}
-          title={current?.input?.prompt ?? "Question"}
+          label={t("chat.userAskQuestion.questionPending")}
+          count={t("chat.userAskQuestion.questionCount", {
+            current: decisionForm.currentIndex + 1,
+            total: parts.length,
+          })}
+          title={current?.input?.prompt ?? t("chat.userAskQuestion.question")}
           defaultExpanded={true}
           footerLeft={footerLeft}
           footerRight={footerRight}
@@ -491,11 +512,12 @@ function UserAskPrompt({ parts, isStreaming, onSubmit }: UserAskPromptProps) {
 // ============================================================================
 
 function UserAskLoadingUI() {
+  const t = useT();
   return (
     <div className="flex items-center gap-2 p-4 border border-dashed rounded-lg bg-accent/50 w-[calc(100%-16px)] max-w-[640px] mx-auto mb-2">
       <MessageQuestionCircle className="size-5 text-muted-foreground shimmer" />
       <span className="text-sm text-muted-foreground shimmer">
-        Preparing question...
+        {t("chat.userAskQuestion.preparingQuestion")}
       </span>
     </div>
   );

@@ -28,6 +28,7 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/query-keys";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 
 // ── Quick Top-Up presets ──────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ const TOP_UP_PRESETS = {
 } as const;
 
 function QuickTopUp() {
+  const t = useT();
   const studio = useStudioTools();
   const [customOpen, setCustomOpen] = useState(false);
 
@@ -53,7 +55,9 @@ function QuickTopUp() {
       if (url) window.open(url, "_blank", "noopener,noreferrer");
     },
     onError: (err) => {
-      toast.error(`Top-up failed: ${err.message}`);
+      toast.error(
+        t("settings.decoCreditsHero.topUpFailed", { message: err.message }),
+      );
     },
   });
 
@@ -102,7 +106,7 @@ function QuickTopUp() {
               onClick={() => setCustomOpen(true)}
               disabled={isPending}
             >
-              Custom
+              {t("settings.decoCreditsHero.custom")}
             </Button>
           </>
         )}
@@ -116,7 +120,7 @@ function QuickTopUp() {
                 type="number"
                 min="1"
                 step="1"
-                placeholder="50"
+                placeholder={t("settings.decoCreditsHero.amountPlaceholder")}
                 value={customAmount}
                 onChange={(e) => setCustomAmount(e.target.value)}
                 className="h-10 text-sm pl-7"
@@ -128,7 +132,7 @@ function QuickTopUp() {
               disabled={!isCustomValid || isPending}
               onClick={() => topUp(Math.round(customNum * 100))}
             >
-              {isPending ? "..." : "Add"}
+              {isPending ? "..." : t("settings.decoCreditsHero.add")}
             </Button>
             <Button
               variant="ghost"
@@ -138,7 +142,7 @@ function QuickTopUp() {
                 setCustomAmount("");
               }}
             >
-              Cancel
+              {t("settings.decoCreditsHero.cancel")}
             </Button>
           </>
         )}
@@ -156,6 +160,7 @@ function creditColorClass(dollars: number): string {
 }
 
 export function DecoCreditsHero() {
+  const t = useT();
   const { org } = useProjectContext();
   const studio = useStudioTools();
   const queryClient = useQueryClient();
@@ -171,11 +176,13 @@ export function DecoCreditsHero() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(org.id) });
-      toast.success("Deco AI Gateway disconnected");
+      toast.success(t("settings.decoCreditsHero.disconnectSuccess"));
       setConfirmDisconnect(false);
     },
     onError: (err) => {
-      toast.error(`Failed to disconnect: ${err.message}`);
+      toast.error(
+        t("settings.decoCreditsHero.disconnectError", { message: err.message }),
+      );
     },
   });
 
@@ -200,7 +207,7 @@ export function DecoCreditsHero() {
     balanceDollars != null ? `$${balanceDollars.toFixed(2)}` : "—";
 
   return (
-    <SettingsSection title="Deco AI Gateway">
+    <SettingsSection title={t("settings.decoCreditsHero.title")}>
       <SettingsCard>
         <div className="px-5 py-5 flex flex-col gap-5">
           {/* Provider info and disconnect button */}
@@ -208,12 +215,12 @@ export function DecoCreditsHero() {
             <div className="flex items-center gap-3">
               <img
                 src="/logos/deco%20logo.svg"
-                alt="Deco AI Gateway"
+                alt={t("settings.decoCreditsHero.decoAiGatewayAlt")}
                 className="size-9 rounded-lg object-contain dark:bg-white dark:p-0.5"
               />
               <div>
                 <p className="text-xs text-muted-foreground">
-                  Access to 100+ models
+                  {t("settings.decoCreditsHero.accessModels")}
                 </p>
               </div>
             </div>
@@ -224,7 +231,7 @@ export function DecoCreditsHero() {
               onClick={() => setConfirmDisconnect(true)}
               disabled={isDisconnecting}
             >
-              Disconnect
+              {t("settings.decoCreditsHero.disconnect")}
             </Button>
           </div>
 
@@ -234,20 +241,22 @@ export function DecoCreditsHero() {
           >
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Disconnect Deco AI Gateway</AlertDialogTitle>
+                <AlertDialogTitle>
+                  {t("settings.decoCreditsHero.disconnectTitle")}
+                </AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will remove the Deco AI Gateway from this workspace. Your
-                  credit balance is preserved and will be available if you
-                  reconnect.
+                  {t("settings.decoCreditsHero.disconnectDescription")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>
+                  {t("settings.decoCreditsHero.cancelButton")}
+                </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => disconnect()}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
-                  Disconnect
+                  {t("settings.decoCreditsHero.disconnectButton")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -273,7 +282,7 @@ export function DecoCreditsHero() {
                 onClick={() => refetch()}
                 disabled={isFetching}
                 className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 rounded-md hover:bg-muted/50"
-                aria-label="Refresh balance"
+                aria-label={t("settings.decoCreditsHero.refreshBalance")}
               >
                 <RefreshCw01
                   size={14}
@@ -282,14 +291,14 @@ export function DecoCreditsHero() {
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Available credit balance
+              {t("settings.decoCreditsHero.availableBalance")}
             </p>
           </div>
 
           {/* Quick top-up */}
           <div className="pt-4 border-t border-border/60">
             <p className="text-xs font-medium text-muted-foreground mb-2.5">
-              Add credits
+              {t("settings.decoCreditsHero.addCredits")}
             </p>
             <QuickTopUp />
           </div>

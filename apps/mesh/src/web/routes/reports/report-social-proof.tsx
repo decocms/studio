@@ -10,12 +10,6 @@ const CAROUSEL_LOGOS = [
   { src: "/logos/summit/farm-rio.svg", alt: "Farm Rio", w: 159, h: 23 },
   { src: "/logos/summit/electrolux.svg", alt: "Electrolux", w: 154, h: 35 },
   { src: "/logos/summit/monte-carlo.svg", alt: "Monte Carlo", w: 116, h: 61 },
-  {
-    src: "/logos/summit/leroy-merlin.svg",
-    alt: "Leroy Merlin",
-    w: 109,
-    h: 62,
-  },
   { src: "/logos/summit/technos.svg", alt: "Technos", w: 141, h: 29 },
   { src: "/logos/summit/bagaggio.svg", alt: "Bagaggio", w: 149, h: 22 },
   { src: "/logos/summit/le-biscuit.svg", alt: "Le Biscuit", w: 141, h: 24 },

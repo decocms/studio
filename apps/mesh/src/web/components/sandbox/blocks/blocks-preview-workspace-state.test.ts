@@ -5,7 +5,7 @@ import {
 } from "./blocks-preview-workspace-state";
 
 describe("blocksPreviewWorkspaceReducer", () => {
-  test("selects a page without requesting a preview refresh", () => {
+  test("selects a page", () => {
     const next = blocksPreviewWorkspaceReducer(
       INITIAL_BLOCKS_PREVIEW_WORKSPACE,
       {
@@ -19,16 +19,6 @@ describe("blocksPreviewWorkspaceReducer", () => {
       key: "pages-home",
       path: "/",
     });
-    expect(next.previewRevision).toBe(0);
-  });
-
-  test("save requests exactly one preview refresh", () => {
-    const next = blocksPreviewWorkspaceReducer(
-      INITIAL_BLOCKS_PREVIEW_WORKSPACE,
-      { type: "saved" },
-    );
-
-    expect(next.previewRevision).toBe(1);
   });
 
   test("edit SEO records both target and intent", () => {
@@ -58,7 +48,6 @@ describe("blocksPreviewWorkspaceReducer", () => {
     ).toEqual({
       target: { kind: "page", key: "pages-home", path: "/" },
       editSeoPageKey: null,
-      previewRevision: 0,
       variantOverride: null,
     });
   });

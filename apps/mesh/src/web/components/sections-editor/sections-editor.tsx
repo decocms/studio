@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useT } from "@/web/i18n/use-t";
 import { KEYS } from "@/web/lib/query-keys";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import {
@@ -42,11 +43,7 @@ import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
 import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
 import { PageSeoForm } from "./page-seo-form";
-import {
-  MatcherPicker,
-  extractMatcherGlobals,
-  extractMatchers,
-} from "./matcher-picker";
+import { extractMatcherGlobals, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
@@ -109,8 +106,8 @@ import {
   parsePageVariantsForEditor,
   SchemaFormPanel,
   VARIANT_TAB_ACTIVE_CLASS,
-  VariantRuleForm,
 } from "./sections-editor-panels";
+import { VariantRuleEditor } from "./variant-rule-editor";
 
 /**
  * Side panel for editing deco.cx page sections.
@@ -170,6 +167,7 @@ export function SectionsEditor({
    */
   onVariantPreviewOverride?: (params: string[] | null) => void;
 }) {
+  const t = useT();
   const previewFetchParams = previewReady
     ? { orgSlug, virtualMcpId, branch, previewUrl }
     : null;
@@ -297,7 +295,12 @@ export function SectionsEditor({
       { blockKey: refKey, data },
       {
         onSuccess: () => onSaved?.(),
-        onError: (err) => toast.error(`Save failed: ${err.message}`),
+        onError: (err) =>
+          toast.error(
+            t("sectionsEditor.sectionsEditor.saveFailed", {
+              error: err.message,
+            }),
+          ),
       },
     );
   });
@@ -344,7 +347,7 @@ export function SectionsEditor({
   if (!decofile || !meta) {
     return (
       <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
-        Could not load site data.
+        {t("sectionsEditor.sectionsEditor.couldNotLoadSiteData")}
       </div>
     );
   }
@@ -641,7 +644,12 @@ export function SectionsEditor({
       { blockKey: activePageKey, data: fullPageData },
       {
         onSuccess: () => options?.onSuccess?.() ?? onSaved?.(),
-        onError: (err) => toast.error(`Save failed: ${err.message}`),
+        onError: (err) =>
+          toast.error(
+            t("sectionsEditor.sectionsEditor.saveFailed", {
+              error: err.message,
+            }),
+          ),
       },
     );
   };
@@ -688,7 +696,12 @@ export function SectionsEditor({
           { blockKey, data: nextValue },
           {
             onSuccess: () => onSaved?.(),
-            onError: (err) => toast.error(`Save failed: ${err.message}`),
+            onError: (err) =>
+              toast.error(
+                t("sectionsEditor.sectionsEditor.saveFailed", {
+                  error: err.message,
+                }),
+              ),
           },
         );
         return;
@@ -771,7 +784,12 @@ export function SectionsEditor({
         { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
-          onError: (err) => toast.error(`Save failed: ${err.message}`),
+          onError: (err) =>
+            toast.error(
+              t("sectionsEditor.sectionsEditor.saveFailed", {
+                error: err.message,
+              }),
+            ),
         },
       );
     }, AUTOSAVE_DELAY);
@@ -1044,7 +1062,7 @@ export function SectionsEditor({
 
     const updatedMvObj = deleteMultivariateSectionVariant(mvObj, variantIndex);
     if (!updatedMvObj) {
-      toast.error("Cannot delete the only variant.");
+      toast.error(t("sectionsEditor.sectionsEditor.cannotDeleteOnlyVariant"));
       return;
     }
 
@@ -1164,7 +1182,7 @@ export function SectionsEditor({
 
     const result = appendSectionVariant(rawSection, parsed);
     if (!result) {
-      toast.error("This section cannot have variants.");
+      toast.error(t("sectionsEditor.sectionsEditor.sectionCannotHaveVariants"));
       return;
     }
 
@@ -1172,7 +1190,7 @@ export function SectionsEditor({
     updatedSections[sectionIndex] = result.section;
     const nextParsed = parseSections(updatedSections, decofile)[sectionIndex];
     if (!nextParsed?.isMultivariate) {
-      toast.error("Could not add variant.");
+      toast.error(t("sectionsEditor.sectionsEditor.couldNotAddVariant"));
       return;
     }
 
@@ -1200,7 +1218,7 @@ export function SectionsEditor({
 
     const flattened = flattenMultivariateSection(rawSection, parsed, mvObj);
     if (!flattened) {
-      toast.error("Could not remove variants.");
+      toast.error(t("sectionsEditor.sectionsEditor.couldNotRemoveVariants"));
       return;
     }
 
@@ -1246,7 +1264,9 @@ export function SectionsEditor({
 
     const unwrapped = unwrapSection(rawSection, parsed, decofile);
     if (!unwrapped) {
-      toast.error("This section cannot be saved as global.");
+      toast.error(
+        t("sectionsEditor.sectionsEditor.sectionCannotBeSavedAsGlobal"),
+      );
       return;
     }
 
@@ -1277,11 +1297,15 @@ export function SectionsEditor({
       }
 
       setMakeReusableIndex(null);
-      toast.success(`Saved global block "${blockId}"`);
+      toast.success(
+        t("sectionsEditor.sectionsEditor.savedGlobalBlock", { blockId }),
+      );
       onSaved?.();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to save global block",
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.sectionsEditor.failedToSaveGlobalBlock"),
       );
     }
   };
@@ -1337,7 +1361,9 @@ export function SectionsEditor({
       await deleteBlock.mutateAsync({ blockKey });
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Could not delete matcher block",
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.sectionsEditor.couldNotDeleteMatcherBlock"),
       );
     }
   };
@@ -1387,7 +1413,12 @@ export function SectionsEditor({
           },
           {
             onSuccess: () => onSaved?.(),
-            onError: (err) => toast.error(`Save failed: ${err.message}`),
+            onError: (err) =>
+              toast.error(
+                t("sectionsEditor.sectionsEditor.saveFailed", {
+                  error: err.message,
+                }),
+              ),
           },
         );
         return;
@@ -1405,7 +1436,12 @@ export function SectionsEditor({
         { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
-          onError: (err) => toast.error(`Save failed: ${err.message}`),
+          onError: (err) =>
+            toast.error(
+              t("sectionsEditor.sectionsEditor.saveFailed", {
+                error: err.message,
+              }),
+            ),
         },
       );
     }, AUTOSAVE_DELAY);
@@ -1487,7 +1523,9 @@ export function SectionsEditor({
       onSaved?.();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Could not apply saved rule",
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
       );
     }
   };
@@ -1551,7 +1589,12 @@ export function SectionsEditor({
           },
           {
             onSuccess: () => onSaved?.(),
-            onError: (err) => toast.error(`Save failed: ${err.message}`),
+            onError: (err) =>
+              toast.error(
+                t("sectionsEditor.sectionsEditor.saveFailed", {
+                  error: err.message,
+                }),
+              ),
           },
         );
         return;
@@ -1581,7 +1624,12 @@ export function SectionsEditor({
         { blockKey: latestPageKey, data: fullPageData },
         {
           onSuccess: () => onSaved?.(),
-          onError: (err) => toast.error(`Save failed: ${err.message}`),
+          onError: (err) =>
+            toast.error(
+              t("sectionsEditor.sectionsEditor.saveFailed", {
+                error: err.message,
+              }),
+            ),
         },
       );
     }, AUTOSAVE_DELAY);
@@ -1678,7 +1726,9 @@ export function SectionsEditor({
       onSaved?.();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Could not apply saved rule",
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
       );
     }
   };
@@ -1686,7 +1736,7 @@ export function SectionsEditor({
   if (!isGlobalBlockMode && !activePage) {
     return (
       <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
-        No page found for {currentPath}
+        {t("sectionsEditor.sectionsEditor.noPageFound", { currentPath })}
       </div>
     );
   }
@@ -1694,7 +1744,7 @@ export function SectionsEditor({
   if (isGlobalBlockMode && !globalBlockData) {
     return (
       <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
-        Global block not found
+        {t("sectionsEditor.sectionsEditor.globalBlockNotFound")}
       </div>
     );
   }
@@ -1789,7 +1839,12 @@ export function SectionsEditor({
           setRuleFormValue(null);
           setRuleResolveType(null);
         },
-        onError: (err) => toast.error(`Save failed: ${err.message}`),
+        onError: (err) =>
+          toast.error(
+            t("sectionsEditor.sectionsEditor.saveFailed", {
+              error: err.message,
+            }),
+          ),
       },
     );
   };
@@ -1836,7 +1891,12 @@ export function SectionsEditor({
             );
           }
         },
-        onError: (err) => toast.error(`Save failed: ${err.message}`),
+        onError: (err) =>
+          toast.error(
+            t("sectionsEditor.sectionsEditor.saveFailed", {
+              error: err.message,
+            }),
+          ),
       },
     );
   };
@@ -1957,7 +2017,7 @@ export function SectionsEditor({
     const variants = [...(obj.variants as Array<Record<string, unknown>>)];
     const target = variants[variantIndex];
     if (!target?.rule || typeof target.rule !== "object") {
-      toast.error("This variant has no matcher rule to rename.");
+      toast.error(t("sectionsEditor.sectionsEditor.variantHasNoMatcherRule"));
       return;
     }
     const targetRule = target.rule as Record<string, unknown>;
@@ -1995,7 +2055,9 @@ export function SectionsEditor({
 
       const unwrapped = unwrapMatcherRule(targetRule, latestDecofile, meta);
       if (!unwrapped) {
-        toast.error("Could not read this variant's matcher rule.");
+        toast.error(
+          t("sectionsEditor.sectionsEditor.couldNotReadVariantMatcherRule"),
+        );
         return;
       }
 
@@ -2052,11 +2114,17 @@ export function SectionsEditor({
       }
 
       setRenameVariantIndex(null);
-      toast.success(`Saved matcher as global block "${trimmed}"`);
+      toast.success(
+        t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
+          trimmed,
+        }),
+      );
       onSaved?.();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to rename variant",
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
       );
     } finally {
       setRenameVariantPending(false);
@@ -2095,7 +2163,7 @@ export function SectionsEditor({
     const variants = (mvObj.variants as Array<Record<string, unknown>>) ?? [];
     const target = variants[variantIndex];
     if (!target?.rule || typeof target.rule !== "object") {
-      toast.error("This variant has no matcher rule to rename.");
+      toast.error(t("sectionsEditor.sectionsEditor.variantHasNoMatcherRule"));
       return;
     }
     const targetRule = target.rule as Record<string, unknown>;
@@ -2145,7 +2213,9 @@ export function SectionsEditor({
 
       const unwrapped = unwrapMatcherRule(targetRule, latestDecofile, meta);
       if (!unwrapped) {
-        toast.error("Could not read this variant's matcher rule.");
+        toast.error(
+          t("sectionsEditor.sectionsEditor.couldNotReadVariantMatcherRule"),
+        );
         return;
       }
 
@@ -2197,11 +2267,17 @@ export function SectionsEditor({
       }
 
       setRenameSectionVariantIndex(null);
-      toast.success(`Saved matcher as global block "${trimmed}"`);
+      toast.success(
+        t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
+          trimmed,
+        }),
+      );
       onSaved?.();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to rename variant",
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
       );
     } finally {
       setRenameVariantPending(false);
@@ -2297,8 +2373,8 @@ export function SectionsEditor({
                 <button
                   type="button"
                   onClick={() => handleBreadcrumbClick(headerCrumbs.length - 2)}
-                  title="Back"
-                  aria-label="Back"
+                  title={t("sectionsEditor.sectionsEditor.back")}
+                  aria-label={t("sectionsEditor.sectionsEditor.back")}
                   className={cn(
                     "shrink-0 inline-flex size-6 items-center justify-center rounded-md transition-colors",
                     showGlobalBanner
@@ -2313,7 +2389,9 @@ export function SectionsEditor({
                 <button
                   type="button"
                   onClick={exitSectionEditing}
-                  title={`Editing in variant: ${activeVariant.label}`}
+                  title={t("sectionsEditor.sectionsEditor.editingInVariant", {
+                    variant: activeVariant.label,
+                  })}
                   className={cn(
                     "shrink-0 inline-flex items-center gap-1 rounded-md h-6 px-1.5 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80",
                     VARIANT_TAB_ACTIVE_CLASS,
@@ -2333,7 +2411,9 @@ export function SectionsEditor({
                 </button>
               )}
               <nav
-                aria-label="Editing breadcrumb"
+                aria-label={t(
+                  "sectionsEditor.sectionsEditor.editingBreadcrumb",
+                )}
                 className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
               >
                 {headerCrumbs.map((crumb, index) => {
@@ -2379,8 +2459,7 @@ export function SectionsEditor({
                     </span>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-[260px]">
-                    A global section is a reusable block shared across your
-                    site. Editing it here updates it everywhere it's used.
+                    {t("sectionsEditor.sectionsEditor.globalSectionTooltip")}
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -2393,8 +2472,7 @@ export function SectionsEditor({
             </div>
             {showGlobalBanner && (
               <p className="mt-1.5 py-1.5 pl-1 text-sm leading-snug text-foreground">
-                This is a global section. Changes apply everywhere this section
-                is used across your site.
+                {t("sectionsEditor.sectionsEditor.globalSectionBanner")}
               </p>
             )}
           </div>
@@ -2414,14 +2492,16 @@ export function SectionsEditor({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Edit SEO"
+                  aria-label={t("sectionsEditor.sectionsEditor.editSeo")}
                   className="size-7 shrink-0"
                   onClick={() => setEditingSeo(true)}
                 >
                   <CreditCardSearch size={14} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Edit SEO</TooltipContent>
+              <TooltipContent side="bottom">
+                {t("sectionsEditor.sectionsEditor.editSeo")}
+              </TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -2429,7 +2509,7 @@ export function SectionsEditor({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="View JSON"
+                  aria-label={t("sectionsEditor.sectionsEditor.viewJson")}
                   className="size-7 shrink-0"
                   onClick={() =>
                     onViewJsonFile && activePageKey
@@ -2440,7 +2520,9 @@ export function SectionsEditor({
                   <Code01 size={14} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">View JSON</TooltipContent>
+              <TooltipContent side="bottom">
+                {t("sectionsEditor.sectionsEditor.viewJson")}
+              </TooltipContent>
             </Tooltip>
             <AddVariantButton onClick={handleAddPageVariant} />
           </div>
@@ -2470,7 +2552,7 @@ export function SectionsEditor({
                 />
               ) : (
                 <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                  SEO schema not found for this site.
+                  {t("sectionsEditor.sectionsEditor.seoSchemaNotFound")}
                 </div>
               )}
             </div>
@@ -2498,9 +2580,9 @@ export function SectionsEditor({
               {isEditingMultivariateSection && (
                 <div className="px-3 py-3 border-b space-y-2">
                   <span className="text-xs font-medium text-muted-foreground">
-                    Variant rule
+                    {t("sectionsEditor.sectionsEditor.variantRule")}
                   </span>
-                  <MatcherPicker
+                  <VariantRuleEditor
                     currentRt={sectionRuleResolveType ?? ""}
                     currentLabel={resolveVariantRuleLabel(
                       activeSectionFlagVariant?.rule,
@@ -2519,21 +2601,16 @@ export function SectionsEditor({
                     globals={availableMatcherGlobals}
                     onSelect={handleSectionMatcherTypeChange}
                     onSelectGlobal={handleSectionVariantSelectGlobal}
+                    schema={sectionRuleSchema}
+                    formValue={sectionRuleFormValue}
+                    onChange={handleSectionRuleFormChange}
+                    formKey={`${selectedSectionIndex ?? "none"}:${safeSectionVariantIndex}:${sectionRuleResolveType ?? ""}`}
+                    formWrapperClassName="pt-1"
+                    meta={meta ?? undefined}
+                    decofile={decofile}
+                    onSaveReferencedBlock={saveReferencedBlock}
+                    sandbox={sandbox}
                   />
-                  {sectionRuleSchema && sectionRuleFormValue && (
-                    <div className="pt-1">
-                      <VariantRuleForm
-                        key={`${selectedSectionIndex ?? "none"}:${safeSectionVariantIndex}:${sectionRuleResolveType ?? ""}`}
-                        schema={sectionRuleSchema}
-                        value={sectionRuleFormValue}
-                        onChange={handleSectionRuleFormChange}
-                        meta={meta ?? undefined}
-                        decofile={decofile}
-                        onSaveReferencedBlock={saveReferencedBlock}
-                        sandbox={sandbox}
-                      />
-                    </div>
-                  )}
                 </div>
               )}
             </>
@@ -2545,7 +2622,9 @@ export function SectionsEditor({
             onFormChange={handleFormChange}
             onBreadcrumbChange={setFieldBreadcrumbs}
             breadcrumbPath={fieldBreadcrumbs}
-            emptyMessage="No editable fields for this variant."
+            emptyMessage={t(
+              "sectionsEditor.sectionsEditor.noEditableFieldsForVariant",
+            )}
             meta={meta}
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
@@ -2561,7 +2640,9 @@ export function SectionsEditor({
             onFormChange={handleFormChange}
             onBreadcrumbChange={setFieldBreadcrumbs}
             breadcrumbPath={fieldBreadcrumbs}
-            emptyMessage="No editable fields for this global block."
+            emptyMessage={t(
+              "sectionsEditor.sectionsEditor.noEditableFieldsForGlobalBlock",
+            )}
             meta={meta}
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
@@ -2602,7 +2683,7 @@ export function SectionsEditor({
                 aria-expanded={isVariantRuleOpen}
               >
                 <span className="text-xs font-medium text-muted-foreground">
-                  Variant rule
+                  {t("sectionsEditor.sectionsEditor.variantRule")}
                 </span>
                 {isVariantRuleOpen ? (
                   <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
@@ -2617,7 +2698,7 @@ export function SectionsEditor({
                     renameVariantPending && "pointer-events-none opacity-50",
                   )}
                 >
-                  <MatcherPicker
+                  <VariantRuleEditor
                     currentRt={ruleResolveType}
                     currentLabel={resolveVariantRuleLabel(
                       activeVariant?.rule,
@@ -2636,21 +2717,16 @@ export function SectionsEditor({
                     globals={availableMatcherGlobals}
                     onSelect={handleMatcherTypeChange}
                     onSelectGlobal={handlePageVariantSelectGlobal}
+                    schema={ruleSchema}
+                    formValue={ruleFormValue}
+                    onChange={handleRuleFormChange}
+                    formKey={`${safeVariantIndex}:${ruleResolveType ?? ""}`}
+                    formWrapperClassName="space-y-3"
+                    meta={meta ?? undefined}
+                    decofile={decofile}
+                    onSaveReferencedBlock={saveReferencedBlock}
+                    sandbox={sandbox}
                   />
-                  {ruleSchema && ruleFormValue && (
-                    <div className="space-y-3">
-                      <VariantRuleForm
-                        key={`${safeVariantIndex}:${ruleResolveType ?? ""}`}
-                        schema={ruleSchema}
-                        value={ruleFormValue}
-                        onChange={handleRuleFormChange}
-                        meta={meta ?? undefined}
-                        decofile={decofile}
-                        onSaveReferencedBlock={saveReferencedBlock}
-                        sandbox={sandbox}
-                      />
-                    </div>
-                  )}
                 </div>
               )}
             </div>

@@ -1,4 +1,5 @@
 import { StudioPackAgentId } from "@decocms/mesh-sdk";
+import { STUDIO_PACK_AGENT_NAMES } from "./agent-names";
 import type { StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>
@@ -25,7 +26,7 @@ You are the Automation Manager. You create, configure, and manage automations �
 
 <workflows>
 1. Suggesting automations from existing agents (first-contact default):
-   a. List agents with COLLECTION_VIRTUAL_MCP_LIST. Filter out the Studio Pack agents (Agent Manager, API Key Manager, Automation Manager, Connection Manager, Store Manager, Brand Manager, Usage Manager) — they're not meant to be automated.
+   a. List agents with COLLECTION_VIRTUAL_MCP_LIST. Filter out the Studio Pack agents (${STUDIO_PACK_AGENT_NAMES}) — they're not meant to be automated.
    b. If no custom agents exist, tell the user they need to create one first via the Agent Manager. Do not propose automations against the Studio Pack agents.
    c. For each candidate agent, read its title, description, and instructions (use COLLECTION_VIRTUAL_MCP_GET if needed) to infer what recurring work it does.
    d. Propose 2-3 concrete automation ideas: name the agent, the schedule or trigger ("every weekday at 9am", "when a new GitHub issue lands"), and what the run should accomplish in one sentence.

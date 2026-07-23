@@ -146,8 +146,27 @@ function makeApplyResponse(bootId: string, result: ApplyResult): Response {
   return jsonResponse({
     bootId,
     transition: result.transition.kind,
-    config: result.after,
+    // Both GET /config and this PUT/POST echo are proxied to the browser
+    // (sandbox-proxy.ts). Never let the resolved submodule PATs back out —
+    // they're needed only in the in-memory store for the clone step.
+    config: redactSubmoduleTokens(result.after),
   });
+}
+
+/**
+ * Strip resolved submodule PAT `token`s from a config before it crosses an
+ * HTTP boundary. The daemon keeps them in its in-memory store (clone.ts reads
+ * them there); they must never appear in a `/config` response, which is
+ * browser-reachable — otherwise any referenceable org secret becomes readable.
+ * Mirrors how `env` values never leave the daemon (only `envKeys` do).
+ */
+function redactSubmoduleTokens<T extends TenantConfig | null>(config: T): T {
+  if (!config?.git?.repository?.submoduleCredentials) return config;
+  const { submoduleCredentials: _drop, ...rest } = config.git.repository;
+  return {
+    ...config,
+    git: { ...config.git, repository: rest },
+  } as T;
 }
 
 function inferStatus(reason: string): number {
@@ -160,9 +179,11 @@ function stripDerived(
   enriched: ReturnType<TenantConfigStore["read"]>,
 ): TenantConfig | null {
   if (!enriched) return null;
-  return {
+  // Redact resolved submodule PATs — see redactSubmoduleTokens. `env` is
+  // likewise never returned here (only `envKeys`, in the read handler).
+  return redactSubmoduleTokens({
     git: enriched.git,
     operator: enriched.operator,
     application: enriched.application,
-  };
+  });
 }

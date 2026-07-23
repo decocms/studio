@@ -5,6 +5,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   FilePickerDialog,
   LAST_CONFIG_KEY,
@@ -15,6 +16,7 @@ import { useFilePickerUpload } from "@/web/hooks/use-file-picker";
 import { ClickToReplaceOverlay } from "./click-to-replace-overlay";
 import { extractUrl } from "./extract-url";
 import type { FieldProps } from "./field-props";
+import { basename, extension } from "./media-filename";
 import { MediaTransformControls } from "./media-transform-controls";
 
 function ExtBadge({ ext }: { ext: string }) {
@@ -26,21 +28,6 @@ function ExtBadge({ ext }: { ext: string }) {
   );
 }
 
-function basename(url: string): string {
-  try {
-    const path = new URL(url).pathname;
-    return decodeURIComponent(path.split("/").pop() ?? url);
-  } catch {
-    return url.split("/").pop() ?? url;
-  }
-}
-
-function extension(filename: string): string {
-  const dot = filename.lastIndexOf(".");
-  if (dot < 0 || dot === filename.length - 1) return "";
-  return filename.slice(dot + 1).toLowerCase();
-}
-
 export function FileField({
   schema,
   value,
@@ -49,6 +36,7 @@ export function FileField({
   label,
   sandbox,
 }: FieldProps) {
+  const t = useT();
   const isVideo = schema.format === "video-uri";
   const strValue = extractUrl(value);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -82,7 +70,7 @@ export function FileField({
     if (isVideo) {
       list = list.filter((f) => f.type.startsWith("video/"));
       if (list.length === 0) {
-        toast.error("Please drop a video file (mp4, webm, …).");
+        toast.error(t("sectionsEditor.fileField.videoFileError"));
         return;
       }
     }
@@ -101,11 +89,17 @@ export function FileField({
       onChange(result.publicUrl);
       if (list.length > 1) {
         toast.info(
-          `Uploaded ${list[0]!.name}; extra files were ignored (single-select field).`,
+          t("sectionsEditor.fileField.multiFileWarning", {
+            fileName: list[0]!.name,
+          }),
         );
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.fileField.uploadFailed"),
+      );
     }
   }
 
@@ -155,7 +149,7 @@ export function FileField({
               <button
                 type="button"
                 onClick={() => setPickerOpen(true)}
-                aria-label="Replace video"
+                aria-label={t("sectionsEditor.fileField.replaceVideoLabel")}
                 className="relative block h-40 w-full cursor-pointer overflow-hidden bg-black"
               >
                 <video
@@ -178,7 +172,7 @@ export function FileField({
             <button
               type="button"
               onClick={() => setPickerOpen(true)}
-              aria-label="Replace file"
+              aria-label={t("sectionsEditor.fileField.replaceFileLabel")}
               className="flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/60"
             >
               <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-background">
@@ -202,19 +196,21 @@ export function FileField({
             {isVideo ? <Film01 size={20} /> : <File02 size={20} />}
             <span className="text-sm font-medium">
               {upload.isPending
-                ? "Uploading…"
+                ? t("sectionsEditor.fileField.uploading")
                 : isVideo
-                  ? "Drop a video here or click to browse"
-                  : "Drop a file or click to browse"}
+                  ? t("sectionsEditor.fileField.dropVideoHint")
+                  : t("sectionsEditor.fileField.dropFileHint")}
             </span>
-            <span className="text-xs text-muted-foreground">Up to 100 MB</span>
+            <span className="text-xs text-muted-foreground">
+              {t("sectionsEditor.fileField.sizeLimit")}
+            </span>
           </button>
         )}
 
         {isDragging && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-primary/10 backdrop-blur-[1px]">
             <span className="rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow">
-              Drop to upload
+              {t("sectionsEditor.fileField.dropToUpload")}
             </span>
           </div>
         )}
@@ -238,7 +234,7 @@ export function FileField({
             className="h-9 shrink-0"
           >
             <Upload01 size={14} />
-            Browse
+            {t("sectionsEditor.fileField.browseButton")}
           </Button>
         )}
         {isVideo && strValue && (
@@ -255,7 +251,7 @@ export function FileField({
             size="sm"
             onClick={() => onChange("")}
             className="h-9 shrink-0"
-            aria-label="Remove file"
+            aria-label={t("sectionsEditor.fileField.removeFileLabel")}
           >
             <Trash01 size={14} />
           </Button>

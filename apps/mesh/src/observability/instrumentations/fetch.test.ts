@@ -42,6 +42,8 @@ describe("benignPreview404", () => {
   it("treats a 404 on the deco-site probe paths as not-a-deco-site", () => {
     expect(benignPreview404(404, "/.decofile")).toBe("not_a_deco_site");
     expect(benignPreview404(404, "/live/_meta")).toBe("not_a_deco_site");
+    // A site with no icon sprite is fine — previews fall back to text.
+    expect(benignPreview404(404, "/sprites.svg")).toBe("not_a_deco_site");
   });
 
   it("does not suppress non-404 statuses on those paths", () => {

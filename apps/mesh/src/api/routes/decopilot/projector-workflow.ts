@@ -207,6 +207,26 @@ export async function projectFromJetStreamStep(
 }
 
 /**
+ * True when the run already reached a terminal state for THIS fence — i.e. a
+ * prior attempt of the same fence finished it. A silent or gapped subject on a
+ * settled run is benign (the subject was legitimately purged after the run
+ * ended, not truncated mid-flight), so the caller returns clean instead of
+ * re-failing an already-terminal run.
+ */
+async function runSettledForFence(
+  rt: ProjectorWorkflowRuntime,
+  runId: string,
+  fenceToken: string,
+): Promise<boolean> {
+  const row = await rt.resolveRun(runId).catch(() => null);
+  return (
+    row !== null &&
+    row.runFenceToken === fenceToken &&
+    ["completed", "failed", "requires_action"].includes(row.status)
+  );
+}
+
+/**
  * Core workflow logic extracted for testability. Accepts an explicit runtime
  * and a `projectFn` (production: `projectFromJetStreamStep`; tests: a stub)
  * so the branching logic can be exercised without DBOS or JetStream.
@@ -318,6 +338,19 @@ export async function runProjectorWorkflowBody(
     // "missing seq N" (stg incident 2026-07-14 follow-up; repro in
     // projector-redelivery.test.ts).
     if (error instanceof StreamGapError) {
+      // A purge racing an in-flight or redelivered projection on the shared
+      // per-thread subject (purge is subject-scoped, one subject per thread
+      // across all turns) can behead chunks THIS attempt still needs — surfacing
+      // a hole even though nothing was truly lost. When the run already reached a
+      // terminal for this fence, the gap is BENIGN: the subject was legitimately
+      // purged after the run finished. Drop the spurious "missing seq" bubble the
+      // fold just persisted (deterministic id, same as the settled-completion
+      // path) and return clean instead of stamping a failure over a settled run.
+      if (await runSettledForFence(rt, input.runId, input.fenceToken)) {
+        await rt.clearSynthesizedError(input.runId, input.fenceToken);
+        await rt.purgeRun(input.runId, input.fenceToken);
+        return;
+      }
       const reason = `stream truncated before projection could replay it: ${error.message}`;
       recordPoison(input.runId, orgId);
       const flipped = await rt.markRunFailed(
@@ -355,16 +388,12 @@ export async function runProjectorWorkflowBody(
     // Return cleanly instead of re-failing a settled run and rethrowing into
     // retries that would idle-wait the full window again each time.
     const isLivenessBreach = error instanceof StreamIdleTimeoutError;
-    if (isLivenessBreach) {
-      const row = await rt.resolveRun(input.runId).catch(() => null);
-      const settled =
-        row !== null &&
-        row.runFenceToken === input.fenceToken &&
-        ["completed", "failed", "requires_action"].includes(row.status);
-      if (settled) {
-        await rt.purgeRun(input.runId, input.fenceToken);
-        return;
-      }
+    if (
+      isLivenessBreach &&
+      (await runSettledForFence(rt, input.runId, input.fenceToken))
+    ) {
+      await rt.purgeRun(input.runId, input.fenceToken);
+      return;
     }
     const reason = isLivenessBreach
       ? livenessFailureReason((error as StreamIdleTimeoutError).idleTimeoutMs)

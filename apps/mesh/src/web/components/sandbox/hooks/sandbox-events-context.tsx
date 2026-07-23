@@ -77,6 +77,12 @@ export interface SandboxEventsValue {
   subscribeChunks: (handler: ChunkHandler) => () => void;
   /** "reload" SSE fires on config edits framework HMR doesn't watch. */
   subscribeReload: (handler: ReloadHandler) => () => void;
+  /**
+   * Fires the instant a `.deco/*` change is detected — before the debounced
+   * reload — so the preview can show its loading overlay immediately instead of
+   * waiting out the rebuild debounce.
+   */
+  subscribeReloadStart: (handler: ReloadHandler) => () => void;
 }
 
 const DEFAULT_VALUE: SandboxEventsValue = {
@@ -91,6 +97,7 @@ const DEFAULT_VALUE: SandboxEventsValue = {
   hasData: () => false,
   subscribeChunks: () => () => {},
   subscribeReload: () => () => {},
+  subscribeReloadStart: () => () => {},
 };
 
 export const SandboxEventsContext =
@@ -211,6 +218,7 @@ export function SandboxEventsProvider({
   const buffers = useRef(new Map<string, ChunkBuffer>());
   const chunkHandlers = useRef(new Set<ChunkHandler>());
   const reloadHandlers = useRef(new Set<ReloadHandler>());
+  const reloadStartHandlers = useRef(new Set<ReloadHandler>());
   const prevPortRef = useRef<number | null>(null);
   const directDaemonEventsUrl = buildDirectDaemonEventsUrl(previewUrl);
 
@@ -247,6 +255,10 @@ export function SandboxEventsProvider({
     let decofileDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     let studioEs: EventSource | null = null;
     let directEs: EventSource | null = null;
+    // Tracks the dev-server lifecycle so we can invalidate the CMS queries once
+    // it comes up (switching them from the committed `.deco/*.gen.json` snapshot
+    // to the live `/.decofile` + `/live/_meta` routes).
+    let prevLifecyclePhase: string | null = null;
 
     const handleClaimPhase = (e: MessageEvent) => {
       try {
@@ -314,6 +326,27 @@ export function SandboxEventsProvider({
           case "lifecycle": {
             const lp = payload as DaemonEventPayload<"lifecycle">;
             setLifecycle(lp.state);
+            // Dev server just came up: swap the CMS queries off the committed
+            // `.deco/*.gen.json` snapshot and onto the live routes. This is the
+            // trigger they rely on (they're enabled as soon as the daemon is up,
+            // so the `enabled` flip no longer does it) — see use-decofile /
+            // use-live-meta.
+            if (
+              lp.state.phase === "running" &&
+              prevLifecyclePhase !== "running"
+            ) {
+              const cacheKey = `${org.slug}/${virtualMcpId}/${branch}`;
+              void queryClient.invalidateQueries({
+                queryKey: KEYS.decofile(cacheKey),
+              });
+              void queryClient.invalidateQueries({
+                predicate: (query) =>
+                  query.queryKey[0] === "live-meta" &&
+                  typeof query.queryKey[1] === "string" &&
+                  query.queryKey[1].startsWith(`${cacheKey}/`),
+              });
+            }
+            prevLifecyclePhase = lp.state.phase;
             // Detect dev server port change (running phase carries port);
             // reload iframe so it picks up the new backend.
             const newPort = lp.state.phase === "running" ? lp.state.port : null;
@@ -373,7 +406,32 @@ export function SandboxEventsProvider({
             const { path: filePath } =
               payload as DaemonEventPayload<"file-changed">;
             const cacheKey = `${org.slug}/${virtualMcpId}/${branch}`;
-            if (filePath.startsWith(".deco/")) {
+            // A `.deco/*` change is a config edit the framework's HMR won't pick
+            // up. `/.deco/` (not just a leading `.deco/`) also matches projects
+            // whose package path isn't the repo root (`<pkg>/.deco/...`), since
+            // the daemon reports paths relative to the repo root.
+            const isDecoFile =
+              filePath.startsWith(".deco/") || filePath.includes("/.deco/");
+            if (isDecoFile) {
+              // Only act while the dev server is running. When it's down
+              // (crashed/paused — the state the committed-snapshot fallback
+              // supports editing in), `blocks.gen.json` is a stale build
+              // artifact the dev server can't regenerate, so invalidating +
+              // refetching it would overwrite the optimistic cache update from
+              // useSaveBlock/useDeleteBlock and the edit would visibly revert.
+              // Leave the optimistic cache as the source of truth; the
+              // lifecycle→running transition re-invalidates onto the live routes.
+              if (prevLifecyclePhase !== "running") return;
+              // Turn on the preview's loading overlay immediately — before the
+              // debounce below — so the pending refresh feels instant instead of
+              // only appearing once the reload finally fires.
+              for (const fn of reloadStartHandlers.current) {
+                try {
+                  fn();
+                } catch {
+                  // swallow
+                }
+              }
               // Debounce decofile invalidation for the same reason as liveMeta
               // below: writing a `.deco/` block emits `file-changed`, but the
               // dev server needs a moment to rebuild before `/.decofile`
@@ -388,7 +446,20 @@ export function SandboxEventsProvider({
                 void queryClient.invalidateQueries({
                   queryKey: KEYS.decofile(cacheKey),
                 });
-              }, 1_000);
+                // Reload the preview iframe once the rebuild has landed — HMR
+                // won't reflect a decofile edit, so this is the only thing that
+                // refreshes the rendered page after a Blocks save (or an
+                // external/agent `.deco/` write). Debounced with the
+                // invalidation above so it fires after the dev server rebuilds,
+                // not against the stale pre-rebuild page.
+                for (const fn of reloadHandlers.current) {
+                  try {
+                    fn();
+                  } catch {
+                    // swallow
+                  }
+                }
+              }, 500);
             } else {
               // Debounce liveMeta invalidation so the dev server has time to
               // rebuild before we hit /live/_meta. Rapid successive
@@ -560,6 +631,12 @@ export function SandboxEventsProvider({
       reloadHandlers.current.add(handler);
       return () => {
         reloadHandlers.current.delete(handler);
+      };
+    },
+    subscribeReloadStart: (handler: ReloadHandler) => {
+      reloadStartHandlers.current.add(handler);
+      return () => {
+        reloadStartHandlers.current.delete(handler);
       };
     },
   };

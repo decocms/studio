@@ -8,6 +8,7 @@ import { automationManagerAgent } from "./automation-manager";
 import { brandManagerAgent } from "./brand-manager";
 import { connectionManagerAgent } from "./connection-manager";
 import { storeManagerAgent } from "./store-manager";
+import { taskManagerAgent } from "./task-manager";
 import { usageManagerAgent } from "./usage-manager";
 import type {
   ChecklistContext,
@@ -35,6 +36,7 @@ export const STUDIO_PACK_AGENTS = [
   connectionManagerAgent,
   apiKeyManagerAgent,
   storeManagerAgent,
+  taskManagerAgent,
   usageManagerAgent,
 ] as const;
 

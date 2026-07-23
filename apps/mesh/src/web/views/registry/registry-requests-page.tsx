@@ -49,12 +49,26 @@ import type {
   PublishRequestStatus,
 } from "@/web/lib/registry/types";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 
-const STATUS_OPTIONS: Array<{ value: PublishRequestStatus; label: string }> = [
-  { value: "pending", label: "Pending" },
-  { value: "approved", label: "Approved" },
-  { value: "rejected", label: "Rejected" },
-];
+const STATUS_OPTIONS: Array<{
+  value: PublishRequestStatus;
+  labelKey: TranslationKey;
+}> = [
+  {
+    value: "pending",
+    labelKey: "registry.registryRequestsPage.statusPending",
+  },
+  {
+    value: "approved",
+    labelKey: "registry.registryRequestsPage.statusApproved",
+  },
+  {
+    value: "rejected",
+    labelKey: "registry.registryRequestsPage.statusRejected",
+  },
+] as const;
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -94,6 +108,7 @@ function getReadmeMeta(request: PublishRequest): {
 }
 
 export default function RegistryRequestsPage() {
+  const t = useT();
   const [status, setStatus] = useState<PublishRequestStatus>("pending");
   const [sortBy, setSortBy] = useState<"created_at" | "title">("created_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -205,14 +220,12 @@ export default function RegistryRequestsPage() {
         server: draft.server,
         is_public: draft.is_public,
       });
-      toast.success("Request approved and added to registry");
+      toast.success(t("registry.registryRequestsPage.requestApprovedAndAdded"));
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : "Failed to approve request";
       if (msg.includes("UNIQUE constraint") || msg.includes("already exists")) {
-        toast.error(
-          "An item with this ID already exists in the registry. Delete or rename it first.",
-        );
+        toast.error(t("registry.registryRequestsPage.itemAlreadyExists"));
       } else {
         toast.error(msg);
       }
@@ -229,7 +242,7 @@ export default function RegistryRequestsPage() {
         status: "rejected",
         reviewerNotes: rejectNotes.trim() || undefined,
       });
-      toast.success("Request rejected");
+      toast.success(t("registry.registryRequestsPage.requestRejected"));
       setRejectingRequest(null);
       setRejectNotes("");
     } catch (error) {
@@ -242,7 +255,7 @@ export default function RegistryRequestsPage() {
   const handleDelete = async (request: PublishRequest) => {
     try {
       await deleteMutation.mutateAsync(request.id);
-      toast.success("Request deleted");
+      toast.success(t("registry.registryRequestsPage.requestDeleted"));
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to delete request",
@@ -285,14 +298,20 @@ export default function RegistryRequestsPage() {
     const failedCount = failedIds.size;
     if (approvedCount > 0 && failedCount === 0) {
       toast.success(
-        `${approvedCount} request${approvedCount > 1 ? "s" : ""} approved as ${bulkVisibility}.`,
+        t("registry.registryRequestsPage.bulkApproveSuccess", {
+          approvedCount,
+          bulkVisibility,
+        }),
       );
     } else if (approvedCount > 0 && failedCount > 0) {
       toast.warning(
-        `Approved ${approvedCount}. Failed ${failedCount}. Failed items remain selected for retry.`,
+        t("registry.registryRequestsPage.bulkApprovePartial", {
+          approvedCount,
+          failedCount,
+        }),
       );
     } else {
-      toast.error("Bulk approve failed. Selected items were kept for retry.");
+      toast.error(t("registry.registryRequestsPage.bulkApproveFailed"));
     }
 
     setSelectedIds(failedIds);
@@ -304,7 +323,9 @@ export default function RegistryRequestsPage() {
       <div className="shrink-0 border-b border-border">
         <div className="h-12 px-4 md:px-6 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-sm font-medium">Requests to Publish</h2>
+            <h2 className="text-sm font-medium">
+              {t("registry.registryRequestsPage.requestsToPublish")}
+            </h2>
             <Badge variant="secondary" className="text-xs">
               {totalCount}
             </Badge>
@@ -324,7 +345,7 @@ export default function RegistryRequestsPage() {
                   onClick={() => setStatus(option.value)}
                   onClickCapture={() => clearSelection()}
                 >
-                  {option.label}
+                  {t(option.labelKey)}
                 </button>
               ))}
             </div>
@@ -338,10 +359,18 @@ export default function RegistryRequestsPage() {
                 setSortDirection(nextDirection as "asc" | "desc");
               }}
             >
-              <option value="created_at:asc">Created at (oldest first)</option>
-              <option value="created_at:desc">Created at (newest first)</option>
-              <option value="title:asc">Alphabetical (A-Z)</option>
-              <option value="title:desc">Alphabetical (Z-A)</option>
+              <option value="created_at:asc">
+                {t("registry.registryRequestsPage.sortCreatedOldest")}
+              </option>
+              <option value="created_at:desc">
+                {t("registry.registryRequestsPage.sortCreatedNewest")}
+              </option>
+              <option value="title:asc">
+                {t("registry.registryRequestsPage.sortAlphaAZ")}
+              </option>
+              <option value="title:desc">
+                {t("registry.registryRequestsPage.sortAlphaZA")}
+              </option>
             </select>
           </div>
         </div>
@@ -350,27 +379,27 @@ export default function RegistryRequestsPage() {
       <div className="flex-1 overflow-auto px-4 md:px-6 py-4">
         {listQuery.isLoading ? (
           <div className="text-sm text-muted-foreground">
-            Loading requests...
+            {t("registry.registryRequestsPage.loadingRequests")}
           </div>
         ) : listQuery.isError ? (
           <div className="p-8 text-center rounded-lg border border-border">
             <p className="text-sm text-destructive">
-              Failed to load publish requests.
+              {t("registry.registryRequestsPage.failedLoadRequests")}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               {listQuery.error instanceof Error
                 ? listQuery.error.message
-                : "Unknown error"}
+                : t("registry.registryRequestsPage.unknownError")}
             </p>
           </div>
         ) : requests.length === 0 ? (
           <div className="p-8 text-center rounded-lg border border-border">
             <p className="text-sm text-muted-foreground">
               {status === "pending"
-                ? "No pending publish requests."
+                ? t("registry.registryRequestsPage.noPendingRequests")
                 : status === "approved"
-                  ? "No approved publish requests."
-                  : "No rejected publish requests."}
+                  ? t("registry.registryRequestsPage.noApprovedRequests")
+                  : t("registry.registryRequestsPage.noRejectedRequests")}
             </p>
           </div>
         ) : (
@@ -393,12 +422,24 @@ export default function RegistryRequestsPage() {
                     />
                   </TableHead>
                 )}
-                <TableHead>Name</TableHead>
-                <TableHead>Requester</TableHead>
-                <TableHead>Tags</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>
+                  {t("registry.registryRequestsPage.columnName")}
+                </TableHead>
+                <TableHead>
+                  {t("registry.registryRequestsPage.columnRequester")}
+                </TableHead>
+                <TableHead>
+                  {t("registry.registryRequestsPage.columnTags")}
+                </TableHead>
+                <TableHead>
+                  {t("registry.registryRequestsPage.columnStatus")}
+                </TableHead>
+                <TableHead>
+                  {t("registry.registryRequestsPage.columnDate")}
+                </TableHead>
+                <TableHead className="text-right">
+                  {t("registry.registryRequestsPage.columnActions")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -503,7 +544,7 @@ export default function RegistryRequestsPage() {
                           }}
                         >
                           <Eye size={13} />
-                          View
+                          {t("registry.registryRequestsPage.buttonView")}
                         </Button>
                         {isPending ? (
                           <>
@@ -522,10 +563,12 @@ export default function RegistryRequestsPage() {
                             >
                               <CheckCircle size={13} />
                               {approvingId === request.id
-                                ? "Approving..."
+                                ? t("registry.registryRequestsPage.approving")
                                 : isSelected
-                                  ? "Selected"
-                                  : "Approve"}
+                                  ? t("registry.registryRequestsPage.selected")
+                                  : t(
+                                      "registry.registryRequestsPage.buttonApprove",
+                                    )}
                             </Button>
                             <Button
                               size="sm"
@@ -539,7 +582,7 @@ export default function RegistryRequestsPage() {
                               disabled={reviewMutation.isPending}
                             >
                               <XCircle size={13} />
-                              Reject
+                              {t("registry.registryRequestsPage.buttonReject")}
                             </Button>
                           </>
                         ) : (
@@ -554,7 +597,7 @@ export default function RegistryRequestsPage() {
                             disabled={deleteMutation.isPending}
                           >
                             <Trash01 size={13} />
-                            Delete
+                            {t("registry.registryRequestsPage.buttonDelete")}
                           </Button>
                         )}
                       </div>
@@ -570,7 +613,7 @@ export default function RegistryRequestsPage() {
         ) : null}
         {isFetchingMore && requests.length > 0 ? (
           <div className="pt-3 text-xs text-muted-foreground">
-            Loading more requests...
+            {t("registry.registryRequestsPage.loadingMoreRequests")}
           </div>
         ) : null}
       </div>
@@ -579,7 +622,9 @@ export default function RegistryRequestsPage() {
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
           <div className="rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur px-3 py-2 flex items-center gap-2">
             <div className="text-xs text-muted-foreground pr-1">
-              {selectedCount} selected
+              {t("registry.registryRequestsPage.selectedCount", {
+                selectedCount,
+              })}
             </div>
             <Button
               size="sm"
@@ -588,7 +633,7 @@ export default function RegistryRequestsPage() {
               onClick={selectVisiblePending}
               disabled={allVisiblePendingSelected}
             >
-              Select all
+              {t("registry.registryRequestsPage.selectAll")}
             </Button>
             <Button
               size="sm"
@@ -596,7 +641,7 @@ export default function RegistryRequestsPage() {
               className="h-7 text-xs px-2"
               onClick={clearSelection}
             >
-              Clear selection
+              {t("registry.registryRequestsPage.clearSelection")}
             </Button>
             <Button
               size="sm"
@@ -605,7 +650,7 @@ export default function RegistryRequestsPage() {
               disabled={isBulkApproving}
             >
               <CheckCircle size={13} />
-              Approve selected
+              {t("registry.registryRequestsPage.approveSelected")}
             </Button>
           </div>
         </div>
@@ -622,10 +667,11 @@ export default function RegistryRequestsPage() {
         <DialogContent className="sm:max-w-[720px] max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>
-              {viewingRequest?.title ?? "Request details"}
+              {viewingRequest?.title ??
+                t("registry.registryRequestsPage.requestDetails")}
             </DialogTitle>
             <DialogDescription>
-              Review all metadata sent by the requester before approving.
+              {t("registry.registryRequestsPage.reviewMetadataDescription")}
             </DialogDescription>
           </DialogHeader>
           {viewingRequest && (
@@ -657,43 +703,52 @@ export default function RegistryRequestsPage() {
 
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="grid gap-1">
-                  <span className="text-xs text-muted-foreground">Status</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("registry.registryRequestsPage.labelStatus")}
+                  </span>
                   <span className="capitalize">{viewingRequest.status}</span>
                 </div>
                 <div className="grid gap-1">
                   <span className="text-xs text-muted-foreground">
-                    Submitted
+                    {t("registry.registryRequestsPage.labelSubmitted")}
                   </span>
                   <span>{formatDate(viewingRequest.created_at)}</span>
                 </div>
                 <div className="grid gap-1">
                   <span className="text-xs text-muted-foreground">
-                    Requester
+                    {t("registry.registryRequestsPage.labelRequester")}
                   </span>
                   <span>{viewingRequest.requester_name || "-"}</span>
                 </div>
                 <div className="grid gap-1">
-                  <span className="text-xs text-muted-foreground">Email</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("registry.registryRequestsPage.labelEmail")}
+                  </span>
                   <span>{viewingRequest.requester_email || "-"}</span>
                 </div>
               </div>
 
               <div className="grid gap-1.5">
-                <Label>Remote URL</Label>
+                <Label>
+                  {t("registry.registryRequestsPage.labelRemoteURL")}
+                </Label>
                 <code className="text-xs rounded-md border border-border bg-muted/30 px-2.5 py-2 break-all">
                   {viewingRequest.server?.remotes?.[0]?.url ?? "-"}
                 </code>
               </div>
 
               <div className="grid gap-1.5">
-                <Label>Description</Label>
+                <Label>
+                  {t("registry.registryRequestsPage.labelDescription")}
+                </Label>
                 <p className="text-sm text-muted-foreground">
-                  {viewingRequest.description || "No description provided."}
+                  {viewingRequest.description ||
+                    t("registry.registryRequestsPage.noDescriptionProvided")}
                 </p>
               </div>
 
               <div className="grid gap-1.5">
-                <Label>Tags</Label>
+                <Label>{t("registry.registryRequestsPage.labelTags")}</Label>
                 <div className="flex flex-wrap gap-1.5">
                   {(viewingRequest._meta?.["mcp.mesh"]?.tags ?? []).length ? (
                     (viewingRequest._meta?.["mcp.mesh"]?.tags ?? []).map(
@@ -713,7 +768,9 @@ export default function RegistryRequestsPage() {
               </div>
 
               <div className="grid gap-1.5">
-                <Label>Categories</Label>
+                <Label>
+                  {t("registry.registryRequestsPage.labelCategories")}
+                </Label>
                 <div className="flex flex-wrap gap-1.5">
                   {(viewingRequest._meta?.["mcp.mesh"]?.categories ?? [])
                     .length ? (
@@ -734,7 +791,7 @@ export default function RegistryRequestsPage() {
               </div>
 
               <div className="grid gap-1.5">
-                <Label>README</Label>
+                <Label>{t("registry.registryRequestsPage.labelREADME")}</Label>
                 {getReadmeMeta(viewingRequest).hasReadmeContent ? (
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto rounded-md border border-border bg-muted/20 px-2.5 py-2">
                     {getReadmeMeta(viewingRequest).readmeContent}
@@ -746,12 +803,12 @@ export default function RegistryRequestsPage() {
                     rel="noreferrer"
                     className="text-sm inline-flex items-center gap-1.5 text-primary hover:underline"
                   >
-                    Open README link
+                    {t("registry.registryRequestsPage.openREADMELink")}
                     <LinkExternal01 size={14} />
                   </a>
                 ) : (
                   <span className="text-sm text-muted-foreground">
-                    No README provided.
+                    {t("registry.registryRequestsPage.noREADMEProvided")}
                   </span>
                 )}
               </div>
@@ -759,7 +816,7 @@ export default function RegistryRequestsPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewingRequest(null)}>
-              Close
+              {t("registry.registryRequestsPage.buttonClose")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -774,20 +831,21 @@ export default function RegistryRequestsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Approve publish request?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("registry.registryRequestsPage.approvePublishRequestTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This will add{" "}
-              <span className="font-medium text-foreground">
-                {confirmApproveRequest?.title}
-              </span>{" "}
-              to your private registry. The requester will be notified of the
-              approval.
+              {t("registry.registryRequestsPage.approvePublishRequestDesc", {
+                title: confirmApproveRequest?.title ?? "",
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("registry.registryRequestsPage.buttonCancel")}
+            </AlertDialogCancel>
             <AlertDialogAction onClick={handleApproveConfirmed}>
-              Approve
+              {t("registry.registryRequestsPage.buttonApprove")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -796,15 +854,19 @@ export default function RegistryRequestsPage() {
       <AlertDialog open={bulkApproveOpen} onOpenChange={setBulkApproveOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Approve selected requests?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("registry.registryRequestsPage.approveSelectedRequestsTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This will approve {selectedRequests.length} request
-              {selectedRequests.length > 1 ? "s" : ""} and create all resulting
-              apps with the same visibility setting.
+              {t("registry.registryRequestsPage.approveSelectedRequestsDesc", {
+                count: selectedRequests.length,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="grid gap-1.5">
-            <Label htmlFor="bulk-visibility">Visibility for all selected</Label>
+            <Label htmlFor="bulk-visibility">
+              {t("registry.registryRequestsPage.visibilityForAll")}
+            </Label>
             <select
               id="bulk-visibility"
               className="h-9 rounded-md border border-input bg-background px-3 text-sm"
@@ -813,19 +875,25 @@ export default function RegistryRequestsPage() {
                 setBulkVisibility(event.target.value as "private" | "public")
               }
             >
-              <option value="private">Private</option>
-              <option value="public">Public</option>
+              <option value="private">
+                {t("registry.registryRequestsPage.visibilityPrivate")}
+              </option>
+              <option value="public">
+                {t("registry.registryRequestsPage.visibilityPublic")}
+              </option>
             </select>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isBulkApproving}>
-              Cancel
+              {t("registry.registryRequestsPage.buttonCancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleBulkApproveConfirmed}
               disabled={isBulkApproving || selectedVisibleCount === 0}
             >
-              {isBulkApproving ? "Approving..." : "Approve selected"}
+              {isBulkApproving
+                ? t("registry.registryRequestsPage.approving")
+                : t("registry.registryRequestsPage.approveSelected")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -842,20 +910,25 @@ export default function RegistryRequestsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject publish request?</DialogTitle>
+            <DialogTitle>
+              {t("registry.registryRequestsPage.rejectPublishRequestTitle")}
+            </DialogTitle>
             <DialogDescription>
-              This request will move to rejected status. You can leave optional
-              notes for context.
+              {t("registry.registryRequestsPage.rejectPublishRequestDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
-            <Label htmlFor="reject-notes">Reviewer notes (optional)</Label>
+            <Label htmlFor="reject-notes">
+              {t("registry.registryRequestsPage.reviewerNotes")}
+            </Label>
             <Textarea
               id="reject-notes"
               rows={4}
               value={rejectNotes}
               onChange={(event) => setRejectNotes(event.target.value)}
-              placeholder="Reason for rejection..."
+              placeholder={t(
+                "registry.registryRequestsPage.reasonForRejectionPlaceholder",
+              )}
             />
           </div>
           <DialogFooter>
@@ -866,10 +939,12 @@ export default function RegistryRequestsPage() {
                 setRejectNotes("");
               }}
             >
-              Cancel
+              {t("registry.registryRequestsPage.buttonCancel")}
             </Button>
             <Button onClick={handleReject} disabled={reviewMutation.isPending}>
-              {reviewMutation.isPending ? "Rejecting..." : "Reject"}
+              {reviewMutation.isPending
+                ? t("registry.registryRequestsPage.rejecting")
+                : t("registry.registryRequestsPage.buttonReject")}
             </Button>
           </DialogFooter>
         </DialogContent>

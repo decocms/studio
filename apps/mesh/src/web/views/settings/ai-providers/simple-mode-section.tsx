@@ -27,6 +27,7 @@ import {
 import { SimpleModeConfigSchema } from "@/tools/organization/schema";
 import { ModelSelector } from "@/web/components/chat/select-model";
 import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
+import { useT } from "@/web/i18n/use-t.ts";
 
 // ── Default Models ───────────────────────────────────────────────────
 
@@ -41,41 +42,29 @@ const filterImageModels = (m: AiProviderModel) =>
 const filterWebSearchModels = (m: AiProviderModel) => isQuickSearchModel(m);
 const filterDeepResearchModels = (m: AiProviderModel) => isDeepResearchModel(m);
 
-const TIER_ROWS = [
+const TIER_KEYS = [
   {
     key: "fast" as const,
-    label: "Fast",
-    description: "Fastest responses, best for quick tasks",
     filter: undefined,
   },
   {
     key: "smart" as const,
-    label: "Smart",
-    description: "Balanced speed and capability",
     filter: undefined,
   },
   {
     key: "thinking" as const,
-    label: "Thinking",
-    description: "Most capable, best for complex tasks",
     filter: undefined,
   },
   {
     key: "image" as const,
-    label: "Image",
-    description: "Image generation",
     filter: filterImageModels,
   },
   {
     key: "web_search" as const,
-    label: "Web search",
-    description: "Quick, up-to-date answers from the web",
     filter: filterWebSearchModels,
   },
   {
     key: "deep_research" as const,
-    label: "Deep research",
-    description: "In-depth, multi-source research reports",
     filter: filterDeepResearchModels,
   },
 ] as const;
@@ -113,7 +102,7 @@ function SimpleModeModelRow({
     : true;
 
   const resolvedModel: AiProviderModel | null = slot
-    ? ({
+    ? {
         modelId: slot.modelId,
         title: slot.title ?? slot.modelId,
         keyId: slot.keyId,
@@ -123,13 +112,15 @@ function SimpleModeModelRow({
         capabilities: [],
         limits: null,
         costs: null,
-      } as AiProviderModel)
+      }
     : null;
+
+  const t = useT();
 
   if (filterModels && !hasFilteredModels) {
     return (
       <p className="text-xs text-muted-foreground italic">
-        Not available with current provider
+        {t("settings.simpleModeSection.notAvailableWithCurrentProvider")}
       </p>
     );
   }
@@ -137,7 +128,7 @@ function SimpleModeModelRow({
   return (
     <ModelSelector
       variant="bordered"
-      placeholder="Pick model"
+      placeholder={t("settings.simpleModeSection.pickModel")}
       model={resolvedModel}
       credentialId={activeKeyId}
       filterModels={filterModels}
@@ -158,11 +149,13 @@ function AutosaveStatus({
   isPending: boolean;
   showSaved: boolean;
 }) {
+  const t = useT();
+
   if (isPending) {
     return (
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
         <RefreshCw01 size={12} className="animate-spin" />
-        Saving…
+        {t("settings.simpleModeSection.saving")}
       </span>
     );
   }
@@ -170,7 +163,7 @@ function AutosaveStatus({
     return (
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
         <CheckCircle size={12} />
-        Saved
+        {t("settings.simpleModeSection.saved")}
       </span>
     );
   }
@@ -178,6 +171,7 @@ function AutosaveStatus({
 }
 
 export function SimpleModeSection() {
+  const t = useT();
   const allKeys = useAiProviderKeys();
   const simpleMode = useSimpleMode();
   const hasProvider = allKeys.length > 0;
@@ -210,7 +204,11 @@ export function SimpleModeSection() {
         onSuccess: () => form.reset(values, { keepValues: true }),
         onError: (err) => {
           form.reset(simpleMode);
-          toast.error(`Failed to save: ${err.message}`);
+          toast.error(
+            t("settings.simpleModeSection.failedToSave", {
+              error: err.message,
+            }),
+          );
         },
       });
     },
@@ -305,12 +303,38 @@ export function SimpleModeSection() {
     );
   }, [form, allKeys, models0, models1, models2, key0?.id, key1?.id, key2?.id]);
 
+  const getTierLabel = (tierKey: string) => {
+    const labels: Record<string, string> = {
+      fast: t("settings.simpleModeSection.tierFast"),
+      smart: t("settings.simpleModeSection.tierSmart"),
+      thinking: t("settings.simpleModeSection.tierThinking"),
+      image: t("settings.simpleModeSection.tierImage"),
+      web_search: t("settings.simpleModeSection.tierWebSearch"),
+      deep_research: t("settings.simpleModeSection.tierDeepResearch"),
+    };
+    return labels[tierKey] || tierKey;
+  };
+
+  const getTierDescription = (tierKey: string) => {
+    const descriptions: Record<string, string> = {
+      fast: t("settings.simpleModeSection.tierFastDesc"),
+      smart: t("settings.simpleModeSection.tierSmartDesc"),
+      thinking: t("settings.simpleModeSection.tierThinkingDesc"),
+      image: t("settings.simpleModeSection.tierImageDesc"),
+      web_search: t("settings.simpleModeSection.tierWebSearchDesc"),
+      deep_research: t("settings.simpleModeSection.tierDeepResearchDesc"),
+    };
+    return descriptions[tierKey] || "";
+  };
+
   return (
-    <SettingsSection title="Default models" headerClassName="pl-0">
+    <SettingsSection
+      title={t("settings.simpleModeSection.defaultModels")}
+      headerClassName="pl-0"
+    >
       <div className="flex items-center justify-between -mt-2 mb-2">
         <p className="text-sm text-muted-foreground">
-          These models power chat, automations, and tools across your
-          organization.
+          {t("settings.simpleModeSection.modelsPowerDescription")}
         </p>
         <AutosaveStatus
           isPending={isPending}
@@ -318,15 +342,15 @@ export function SimpleModeSection() {
         />
       </div>
       <SettingsCard>
-        {TIER_ROWS.map((row) => (
+        {TIER_KEYS.map((row) => (
           <Controller
             key={row.key}
             control={form.control}
             name={`tiers.${row.key}` as const}
             render={({ field }) => (
               <SettingsCardItem
-                title={row.label}
-                description={row.description}
+                title={getTierLabel(row.key)}
+                description={getTierDescription(row.key)}
                 action={
                   <SimpleModeModelRow
                     slot={field.value}

@@ -1,7 +1,10 @@
 import { generateImage, tool, type UIMessageStreamWriter } from "ai";
 import { zodSchema } from "ai";
 import { z } from "zod";
-import { parseMeshStorageKey, toMeshStorageUri } from "../mesh-storage-uri";
+import {
+  parseStudioStorageKey,
+  toStudioStorageUri,
+} from "../studio-storage-uri";
 import type { PendingImage } from "./vm-tools/types";
 import { BROWSERLESS_BASE_URL } from "./constants";
 
@@ -46,7 +49,7 @@ export const GenerateImageInputSchema = z.object({
         uri: z
           .string()
           .describe(
-            "URI of the reference image (e.g. mesh-storage://generated-images/uuid.png).",
+            "URI of the reference image (e.g. studio-storage://generated-images/uuid.png).",
           ),
       }),
     )
@@ -153,9 +156,9 @@ async function fetchImageBytes(
     abortSignal?: AbortSignal;
   },
 ): Promise<Uint8Array> {
-  const meshKey = parseMeshStorageKey(url);
-  if (meshKey !== null) {
-    return readFromObjectStorage(meshKey, params.objectStorage);
+  const storageKey = parseStudioStorageKey(url);
+  if (storageKey !== null) {
+    return readFromObjectStorage(storageKey, params.objectStorage);
   }
 
   const filesMatch = url.match(FILES_URL_PATTERN);
@@ -257,7 +260,7 @@ export async function generateImageCore(
       const key = `generated-images/${crypto.randomUUID()}.${ext}`;
       const bytes = Uint8Array.from(atob(img.base64), (c) => c.charCodeAt(0));
       await objectStorage.put(key, bytes, { contentType: mediaType });
-      return { uri: toMeshStorageUri(key), mediaType };
+      return { uri: toStudioStorageUri(key), mediaType };
     }),
   );
 
@@ -363,7 +366,7 @@ export function createPortableTakeScreenshotTool(
         if (objectStorage) {
           try {
             await objectStorage.put(key, imgBytes, { contentType: mediaType });
-            uri = toMeshStorageUri(key);
+            uri = toStudioStorageUri(key);
             imageUrl =
               (await objectStorage.presignedGetUrl?.(key, 600)) ?? null;
           } catch (err) {

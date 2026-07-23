@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@deco/ui/components/select.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { PACKAGE_MANAGER_CONFIG } from "@/shared/runtime-defaults";
 import type { PackageManager } from "@/shared/runtime-defaults";
 import { parsePortInput } from "./parse-port";
@@ -35,6 +36,7 @@ export interface RuntimeFieldsProps<T extends FieldValues> {
 export function RuntimeFields<T extends FieldValues>({
   control,
 }: RuntimeFieldsProps<T>) {
+  const t = useT();
   // `useRef` lives in the component body (not inside `Controller`'s `render`
   // callback) to comply with the Rules of Hooks — `render` is a function
   // invoked during render, so calling hooks from there is forbidden.
@@ -42,7 +44,9 @@ export function RuntimeFields<T extends FieldValues>({
   return (
     <div className="space-y-5">
       <div className="space-y-2">
-        <Label htmlFor="runtime-pm">Package manager</Label>
+        <Label htmlFor="runtime-pm">
+          {t("sandbox.runtimeFields.packageManager")}
+        </Label>
         <Controller
           control={control}
           name={"metadata.runtime.selected" as FieldPath<T>}
@@ -52,10 +56,14 @@ export function RuntimeFields<T extends FieldValues>({
               onValueChange={(v) => field.onChange(v === NONE_VALUE ? null : v)}
             >
               <SelectTrigger id="runtime-pm">
-                <SelectValue placeholder="Auto-detect" />
+                <SelectValue
+                  placeholder={t("sandbox.runtimeFields.autoDetect")}
+                />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NONE_VALUE}>Auto-detect</SelectItem>
+                <SelectItem value={NONE_VALUE}>
+                  {t("sandbox.runtimeFields.autoDetect")}
+                </SelectItem>
                 {PACKAGE_MANAGERS.map((pm) => (
                   <SelectItem key={pm} value={pm}>
                     {pm}
@@ -68,7 +76,9 @@ export function RuntimeFields<T extends FieldValues>({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="runtime-path">Package path</Label>
+        <Label htmlFor="runtime-path">
+          {t("sandbox.runtimeFields.packagePath")}
+        </Label>
         <Controller
           control={control}
           name={"metadata.runtime.path" as FieldPath<T>}
@@ -89,13 +99,14 @@ export function RuntimeFields<T extends FieldValues>({
           )}
         />
         <p className="text-xs text-muted-foreground">
-          Path (relative to repo root) to the directory containing package.json.
-          Leave blank for the repo root.
+          {t("sandbox.runtimeFields.packagePathDescription")}
         </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="runtime-port">Dev server port</Label>
+        <Label htmlFor="runtime-port">
+          {t("sandbox.runtimeFields.devServerPort")}
+        </Label>
         <Controller
           control={control}
           name={"metadata.runtime.port" as FieldPath<T>}
@@ -104,7 +115,7 @@ export function RuntimeFields<T extends FieldValues>({
               ref={portInputRef}
               id="runtime-port"
               inputMode="numeric"
-              placeholder="Auto"
+              placeholder={t("sandbox.runtimeFields.auto")}
               // Uncontrolled (defaultValue + onBlur). parsePortInput rejects
               // invalid; we only commit on blur if the parser is happy. This
               // avoids a controlled-input UX where invalid keystrokes reset
@@ -123,7 +134,7 @@ export function RuntimeFields<T extends FieldValues>({
           )}
         />
         <p className="text-xs text-muted-foreground">
-          Leave blank to let the runner pick.
+          {t("sandbox.runtimeFields.devServerPortDescription")}
         </p>
       </div>
     </div>

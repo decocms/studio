@@ -51,7 +51,10 @@ database:
 persistence:
   enabled: true
   accessMode: ReadWriteOnce
-  storageClass: "gp3"  # Empty string applies default storage class.
+  # Empty uses the cluster's default StorageClass (portable across local/kind/
+  # Rancher and managed clusters). Set explicitly (e.g. "gp3" on AWS, "efs" for
+  # ReadWriteMany) when you need a specific provisioner.
+  storageClass: ""
   size: 10Gi
   claimName: ""  # Optional: Specify existing PVC name
   distributed: false  # Mark as true if storage offers ReadWriteMany
@@ -79,11 +82,20 @@ worker:
     requests:
       cpu: "1"
       memory: 1Gi
+    limits:
+      cpu: "1.5"
+      memory: 1Gi
   autoscaling:
     enabled: true
     minReplicas: 2
     maxReplicas: 30
     targetCPUUtilizationPercentage: 65
+  # Stamp `karpenter.sh/do-not-disrupt: "true"` on worker pods so Karpenter does
+  # not consolidate/drift-evict a worker mid-run (see worker-deployment.yaml).
+  # Default on; set false where Karpenter isn't the node provisioner. (A
+  # PodDisruptionBudget for forced/involuntary eviction is deployed alongside,
+  # in the deco-apps-cd wrapper chart, next to the existing mesh PDB.)
+  doNotDisrupt: true
   # Extra env for worker pods only (merged after the shared envFrom).
   env: []
 
@@ -97,6 +109,7 @@ nginx:
       cpu: "500m"
       memory: "128Mi"
     limits:
+      cpu: "1"
       memory: "256Mi"
   securityContext:
     runAsNonRoot: true
@@ -209,8 +222,11 @@ terminationGracePeriodSeconds: 120
 # Optional lifecycle hooks (preStop, postStart)
 # lifecycle: {}
 
-nodeSelector:
-  kubernetes.io/arch: amd64
+# Empty by default so pods schedule on any node arch. Published images are
+# multi-arch (amd64 + arm64), so this works on Apple Silicon and arm64 nodes
+# out of the box. Pin an arch only when your cluster requires it,
+# e.g. { kubernetes.io/arch: amd64 }.
+nodeSelector: {}
 
 tolerations: []
 # Example:

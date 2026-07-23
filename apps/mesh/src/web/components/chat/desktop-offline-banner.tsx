@@ -19,12 +19,14 @@
 import { useState } from "react";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Monitor01 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useOptionalChatTask } from "./chat-context";
 import { ConnectDesktopDialog } from "./connect-desktop-dialog";
 import { CollapsibleHighlight } from "./highlight/collapsible-highlight";
 
 export function DesktopOfflineBanner() {
+  const t = useT();
   const taskCtx = useOptionalChatTask();
   const link = useCurrentLink();
   const [connectOpen, setConnectOpen] = useState(false);
@@ -36,8 +38,8 @@ export function DesktopOfflineBanner() {
     <>
       <CollapsibleHighlight
         icon={<Monitor01 size={14} />}
-        label="Your desktop is offline"
-        title="This chat runs on your desktop, which isn't connected right now."
+        label={t("chat.desktopOfflineBanner.label")}
+        title={t("chat.desktopOfflineBanner.title")}
         defaultExpanded={true}
         variant="warning"
         footerRight={
@@ -47,14 +49,12 @@ export function DesktopOfflineBanner() {
             className="h-7 text-xs"
             onClick={() => setConnectOpen(true)}
           >
-            Reconnect desktop
+            {t("chat.desktopOfflineBanner.reconnectButton")}
           </Button>
         }
       >
         <p className="mx-4 text-xs text-muted-foreground">
-          Run <code className="font-mono">bunx decocms@latest link</code> in a
-          terminal on that machine to bring it back. Messages you send while
-          it's offline will fail.
+          {t("chat.desktopOfflineBanner.instructions")}
         </p>
       </CollapsibleHighlight>
       <ConnectDesktopDialog open={connectOpen} onOpenChange={setConnectOpen} />

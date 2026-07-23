@@ -20,6 +20,7 @@ import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { track } from "@/web/lib/posthog-client";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /**
  * Unicode-safe base64 encoding for browser environments
@@ -49,6 +50,7 @@ interface ShareWithNameProps extends ShareButtonProps {
  * Copy URL Button Component
  */
 function CopyUrlButton({ url, agentId }: ShareButtonProps) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -58,7 +60,7 @@ function CopyUrlButton({ url, agentId }: ShareButtonProps) {
     });
     await navigator.clipboard.writeText(url);
     setCopied(true);
-    toast.success("Agent URL copied to clipboard");
+    toast.success(t("virtualMcp.virtualMcpShareModal.agentUrlCopied"));
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -75,7 +77,9 @@ function CopyUrlButton({ url, agentId }: ShareButtonProps) {
         <Copy01 size={20} />
       )}
       <span className="text-xs font-medium">
-        {copied ? "Copied!" : "Copy URL"}
+        {copied
+          ? t("virtualMcp.virtualMcpShareModal.copied")
+          : t("virtualMcp.virtualMcpShareModal.copyUrl")}
       </span>
     </Button>
   );
@@ -85,6 +89,7 @@ function CopyUrlButton({ url, agentId }: ShareButtonProps) {
  * Install on Cursor Button Component
  */
 function InstallCursorButton({ url, serverName, agentId }: ShareWithNameProps) {
+  const t = useT();
   const handleInstall = () => {
     track("agent_connect_action", {
       agent_id: agentId,
@@ -104,7 +109,7 @@ function InstallCursorButton({ url, serverName, agentId }: ShareWithNameProps) {
     const deeplink = `cursor://anysphere.cursor-deeplink/mcp/install?name=${encodeURIComponent(slugifiedServerName)}&config=${encodeURIComponent(base64Config)}`;
 
     window.open(deeplink, "_blank");
-    toast.success("Opening Cursor...");
+    toast.success(t("virtualMcp.virtualMcpShareModal.openingCursor"));
   };
 
   return (
@@ -123,7 +128,9 @@ function InstallCursorButton({ url, serverName, agentId }: ShareWithNameProps) {
             "brightness(0) saturate(100%) invert(11%) sepia(8%) saturate(785%) hue-rotate(1deg) brightness(95%) contrast(89%)",
         }}
       />
-      <span className="text-xs font-medium">Install on Cursor</span>
+      <span className="text-xs font-medium">
+        {t("virtualMcp.virtualMcpShareModal.installOnCursor")}
+      </span>
     </Button>
   );
 }
@@ -132,6 +139,7 @@ function InstallCursorButton({ url, serverName, agentId }: ShareWithNameProps) {
  * Install on Claude Code Button Component
  */
 function InstallClaudeButton({ url, serverName, agentId }: ShareWithNameProps) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
 
   const handleInstall = async () => {
@@ -152,7 +160,7 @@ function InstallClaudeButton({ url, serverName, agentId }: ShareWithNameProps) {
 
     await navigator.clipboard.writeText(command);
     setCopied(true);
-    toast.success("Claude Code command copied to clipboard");
+    toast.success(t("virtualMcp.virtualMcpShareModal.claudeCodeCommandCopied"));
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -177,7 +185,9 @@ function InstallClaudeButton({ url, serverName, agentId }: ShareWithNameProps) {
         />
       )}
       <span className="text-xs font-medium">
-        {copied ? "Copied!" : "Install on Claude Code"}
+        {copied
+          ? t("virtualMcp.virtualMcpShareModal.copied")
+          : t("virtualMcp.virtualMcpShareModal.installOnClaudeCode")}
       </span>
     </Button>
   );
@@ -187,6 +197,7 @@ function InstallClaudeButton({ url, serverName, agentId }: ShareWithNameProps) {
  * Typegen section inner — calls builtin tools via useStudioTools
  */
 function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
+  const t = useT();
   const studio = useStudioTools();
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -210,7 +221,7 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
       track("agent_typegen_key_generated", { agent_id: mcpId });
     } catch {
       track("agent_typegen_key_failed", { agent_id: mcpId });
-      toast.error("Failed to generate API key");
+      toast.error(t("virtualMcp.virtualMcpShareModal.failedGenerateApiKey"));
     } finally {
       setGenerating(false);
     }
@@ -224,7 +235,7 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
     });
     await navigator.clipboard.writeText(command);
     setCopied(true);
-    toast.success("Command copied to clipboard");
+    toast.success(t("virtualMcp.virtualMcpShareModal.commandCopied"));
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -233,12 +244,12 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <h4 className="text-sm font-medium text-foreground">
-            Generate typed client
+            {t("virtualMcp.virtualMcpShareModal.generateTypedClient")}
           </h4>
           <p className="text-xs text-muted-foreground">
-            Introspects this agent and writes a typed{" "}
-            <code className="font-mono">client.ts</code> you can import
-            directly.
+            {t(
+              "virtualMcp.virtualMcpShareModal.generateTypedClientDescription",
+            )}
           </p>
         </div>
         {!apiKey && (
@@ -255,19 +266,23 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
             ) : (
               <Key01 size={14} />
             )}
-            <span>{generating ? "Generating…" : "Generate API key"}</span>
+            <span>
+              {generating
+                ? t("virtualMcp.virtualMcpShareModal.generating")
+                : t("virtualMcp.virtualMcpShareModal.generateApiKey")}
+            </span>
           </Button>
         )}
       </div>
 
       {apiKey && (
         <p className="rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
-          Store this key securely — it won't be shown again.
+          {t("virtualMcp.virtualMcpShareModal.storeKeySecurely")}
         </p>
       )}
 
       <p className="text-xs font-medium text-muted-foreground">
-        Generate client
+        {t("virtualMcp.virtualMcpShareModal.generateClientLabel")}
       </p>
       <div className="rounded-md border border-input bg-muted/50 px-3 py-2.5">
         <div className="flex items-start gap-2">
@@ -291,7 +306,7 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
       </div>
 
       <p className="text-xs font-medium text-muted-foreground">
-        Runtime variables
+        {t("virtualMcp.virtualMcpShareModal.runtimeVariables")}
       </p>
       <EnvVarsBlock apiKey={apiKey} agentId={mcpId} />
     </div>
@@ -383,6 +398,7 @@ function ChatBridgeSectionInner({
 }: {
   virtualMcp: VirtualMCPEntity;
 }) {
+  const t = useT();
   const studio = useStudioTools();
   const { org } = useProjectContext();
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -413,7 +429,7 @@ function ChatBridgeSectionInner({
       track("agent_chat_bridge_key_generated", { agent_id: mcpId });
     } catch {
       track("agent_chat_bridge_key_failed", { agent_id: mcpId });
-      toast.error("Failed to create API key");
+      toast.error(t("virtualMcp.virtualMcpShareModal.failedCreateApiKey"));
     } finally {
       setGenerating(false);
     }
@@ -427,7 +443,7 @@ function ChatBridgeSectionInner({
     });
     await navigator.clipboard.writeText(envBlock);
     setCopied(true);
-    toast.success("Connection details copied to clipboard");
+    toast.success(t("virtualMcp.virtualMcpShareModal.connectionDetailsCopied"));
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -436,11 +452,10 @@ function ChatBridgeSectionInner({
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <h4 className="text-sm font-medium text-foreground">
-            Call from your app
+            {t("virtualMcp.virtualMcpShareModal.callFromYourApp")}
           </h4>
           <p className="text-xs text-muted-foreground">
-            Create a scoped API key to start a thread, run this agent, and
-            stream results from an external system (e.g. a chatbot webhook).
+            {t("virtualMcp.virtualMcpShareModal.callFromYourAppDescription")}
           </p>
         </div>
         {!apiKey && (
@@ -457,19 +472,23 @@ function ChatBridgeSectionInner({
             ) : (
               <Key01 size={14} />
             )}
-            <span>{generating ? "Creating…" : "Create API key"}</span>
+            <span>
+              {generating
+                ? t("virtualMcp.virtualMcpShareModal.creating")
+                : t("virtualMcp.virtualMcpShareModal.createApiKey")}
+            </span>
           </Button>
         )}
       </div>
 
       {apiKey && (
         <p className="rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
-          Store this key securely — it won't be shown again.
+          {t("virtualMcp.virtualMcpShareModal.storeKeySecurely")}
         </p>
       )}
 
       <p className="text-xs font-medium text-muted-foreground">
-        Connection details
+        {t("virtualMcp.virtualMcpShareModal.connectionDetails")}
       </p>
       <div className="rounded-md border border-input bg-muted/50 px-3 py-2.5">
         <div className="flex items-start gap-2">
@@ -517,6 +536,7 @@ export function VirtualMCPShareModal({
   onOpenChange: (open: boolean) => void;
   virtualMcp: VirtualMCPEntity;
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   // Virtual MCPs (agents) are accessed via the virtual-mcp endpoint
   const virtualMcpUrl = new URL(
@@ -567,7 +587,7 @@ export function VirtualMCPShareModal({
         <DrawerContent>
           <div className="flex-1 overflow-y-auto px-4 pb-6 [touch-action:pan-y]">
             <DrawerTitle className="mt-4 mb-4 text-base font-semibold">
-              Connect
+              {t("virtualMcp.virtualMcpShareModal.connect")}
             </DrawerTitle>
             {content}
           </div>
@@ -580,7 +600,9 @@ export function VirtualMCPShareModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Connect</DialogTitle>
+          <DialogTitle>
+            {t("virtualMcp.virtualMcpShareModal.connect")}
+          </DialogTitle>
         </DialogHeader>
         {content}
       </DialogContent>

@@ -1,6 +1,7 @@
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { JSONContent, Node } from "@tiptap/core";
+import { JSONContent, mergeAttributes, Node } from "@tiptap/core";
 import {
   NodeViewWrapper,
   ReactNodeViewRenderer,
@@ -22,8 +23,9 @@ export interface MentionAttrs<T = unknown> {
   metadata: T;
   /** Character that triggered the mention ("/" prompts+resources, "@" agents) */
   char?: "/" | "@";
-  /** Discriminator for "/" mentions; "@" mentions are always agents. */
-  kind?: "prompt" | "resource" | "skill";
+  /** Discriminator for "/" mentions ("@" mentions are agents), plus "task" for
+   * a task-board reference chip (char "@", metadata carries title/description). */
+  kind?: "prompt" | "resource" | "skill" | "task";
   /** Argument values the user typed in PromptArgsDialog. Only meaningful for prompt mentions. */
   args?: Record<string, string>;
 }
@@ -43,10 +45,14 @@ export interface MentionStorage {
   onEditChip: ((req: EditMentionRequest) => void) | null;
 }
 
+declare module "@tiptap/core" {
+  interface Storage {
+    mention: MentionStorage;
+  }
+}
+
 export function getMentionStorage(editor: Editor): MentionStorage | undefined {
-  return (editor.storage as unknown as Record<string, unknown>).mention as
-    | MentionStorage
-    | undefined;
+  return editor.storage.mention;
 }
 
 // ============================================================================
@@ -81,6 +87,23 @@ export function createMentionDoc<T>(attrs: MentionAttrs<T>): JSONContent {
   };
 }
 
+/**
+ * Confirms a mention chip with the given id still exists at `pos`. The
+ * edit dialog captures `pos` at click time and only resolves later (after an
+ * async prompt fetch) — if the doc changed in the meantime (chip deleted, or
+ * text inserted/removed before it), `pos` may no longer point at that node.
+ * `setNodeSelection` on such a stale/empty position throws (ProseMirror's
+ * NodeSelection reads `.nodeSize` off a null `nodeAfter`), crashing the editor.
+ */
+export function isMentionNodeAt(
+  editor: Editor,
+  pos: number,
+  id: string,
+): boolean {
+  const node = editor.state.doc.nodeAt(pos);
+  return node?.type.name === "mention" && node.attrs.id === id;
+}
+
 // ============================================================================
 // React Node View Component
 // ============================================================================
@@ -88,25 +111,24 @@ export function createMentionDoc<T>(attrs: MentionAttrs<T>): JSONContent {
 function MentionNodeView(props: NodeViewProps) {
   const { node, selected, view, editor, getPos } = props;
   const { name, char, kind, id, args } = node.attrs as MentionAttrs;
+  const t = useT();
 
   const isSelected = selected && view.editable;
+  const isTask = kind === "task";
   const isAgent = char === "@";
   // Clickable when editable AND it's a "/" mention that's either a known
   // prompt or a legacy chip without `kind` (we'll re-verify in the handler).
   // Resources and skills have no edit dialog — their chip is inert.
   const isClickable =
-    view.editable && char === "/" && (kind === "prompt" || kind == null);
+    view.editable && char === "/" && (kind === "prompt" || kind === undefined);
 
-  const handleClick = (e: React.MouseEvent) => {
-    if (!isClickable) return;
+  const triggerEdit = () => {
     const storage = getMentionStorage(editor);
     const onEdit = storage?.onEditChip;
     if (!onEdit) return;
     if (typeof getPos !== "function") return;
     const pos = getPos();
     if (typeof pos !== "number") return;
-    e.preventDefault();
-    e.stopPropagation();
     onEdit({
       promptId: id,
       promptName: name,
@@ -115,9 +137,34 @@ function MentionNodeView(props: NodeViewProps) {
     });
   };
 
+  const handleClick = (e: React.MouseEvent) => {
+    if (!isClickable) return;
+    e.preventDefault();
+    e.stopPropagation();
+    triggerEdit();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isClickable) return;
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    e.stopPropagation();
+    triggerEdit();
+  };
+
   return (
     <NodeViewWrapper
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      role={isClickable ? "button" : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      aria-label={
+        isClickable
+          ? t("chat.mention.editPrompt", {
+              name: name ? toTitleCase(name) : "",
+            })
+          : undefined
+      }
       className={cn(
         "px-1 py-1 rounded",
         "inline-flex items-center gap-1",
@@ -129,11 +176,21 @@ function MentionNodeView(props: NodeViewProps) {
           : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
         isSelected && "outline-2 outline-blue-300 outline-offset-0",
         isClickable && "hover:brightness-95",
-        "capitalize",
+        // Task titles are full sentences — render them verbatim (no title-case)
+        // and clamp the width so a long title stays a compact chip.
+        !isTask && "capitalize",
       )}
     >
       {char}
-      {name ? toTitleCase(name) : ""}
+      {isTask ? (
+        <span className="inline-block max-w-[220px] truncate align-bottom">
+          {name ?? ""}
+        </span>
+      ) : name ? (
+        toTitleCase(name)
+      ) : (
+        ""
+      )}
     </NodeViewWrapper>
   );
 }
@@ -196,8 +253,8 @@ export const MentionNode = Node.create({
         },
       },
       kind: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-kind") || null,
+        default: undefined,
+        parseHTML: (element) => element.getAttribute("data-kind") || undefined,
         renderHTML: (attributes) => {
           if (!attributes.kind) return {};
           return { "data-kind": attributes.kind };
@@ -228,33 +285,14 @@ export const MentionNode = Node.create({
     ];
   },
 
-  renderHTML({ node, HTMLAttributes }) {
-    // Required by ProseMirror (maps to toDOM)
-    // React component handles actual visual rendering
-    const attrs: Record<string, string> = {
-      "data-type": "mention",
-    };
-
-    if (node.attrs.id) {
-      attrs["data-id"] = node.attrs.id;
-    }
-    if (node.attrs.name) {
-      attrs["data-name"] = node.attrs.name;
-    }
-    if (node.attrs.char) {
-      attrs["data-char"] = node.attrs.char;
-    }
-    if (node.attrs.metadata) {
-      attrs["data-metadata"] = JSON.stringify(node.attrs.metadata);
-    }
-    if (node.attrs.kind) {
-      attrs["data-kind"] = node.attrs.kind;
-    }
-    if (node.attrs.args) {
-      attrs["data-args"] = JSON.stringify(node.attrs.args);
-    }
-
-    return ["span", { ...HTMLAttributes, ...attrs }];
+  renderHTML({ HTMLAttributes }) {
+    // React component handles actual visual rendering; this only satisfies
+    // ProseMirror's toDOM requirement. HTMLAttributes already carries every
+    // data-* entry from each attribute's own renderHTML (see addAttributes above).
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, { "data-type": "mention" }),
+    ];
   },
 
   renderText({ node }) {

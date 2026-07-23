@@ -15,6 +15,10 @@ import {
   InvalidRemoteBranchNameError,
 } from "../git/ref-name";
 import { safePath } from "../paths";
+import {
+  isDecofileBlockPath,
+  invalidDecofileBlockJson,
+} from "../decofile-json";
 import type { OperatorIdentity } from "../types";
 import { git } from "../setup/git";
 import { gitAsync } from "../git/git-async";
@@ -112,6 +116,8 @@ export interface GitStatusFile {
   path: string;
   index: string;
   working_dir: string;
+  /** Pre-rename path, present only for R/C entries. */
+  origPath?: string;
 }
 
 export interface GitStatusResult {
@@ -270,7 +276,14 @@ async function computeDiff(repoDir: string): Promise<GitDiffResult> {
       const index = file?.index ?? " ";
       const working = file?.working_dir ?? " ";
       const isDeleted = index === "D" || working === "D";
-      const head = await readRefFileAsync(repoDir, "HEAD", filePath);
+      // A renamed file's HEAD content lives under its pre-rename path — reading
+      // HEAD:filePath would 404 (the new name never existed at HEAD) and the
+      // rename would render as a brand-new file with no "from" content.
+      const head = await readRefFileAsync(
+        repoDir,
+        "HEAD",
+        file?.origPath ?? filePath,
+      );
       const isNew =
         (index === "?" && working === "?") ||
         index === "A" ||
@@ -447,14 +460,34 @@ function changedPathsFromStatus(status: { files: GitStatusFile[] }): string[] {
   ];
 }
 
+/** A discard request path that escapes the repo — a client/data condition, not a server fault. */
+class InvalidDiscardPathError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidDiscardPathError";
+  }
+}
+
+/**
+ * publish() refused because of the sandbox's current git state (detached HEAD,
+ * or the checked-out branch is protected) — a conflict with the request, not a
+ * server fault, so the route maps it to 409 like repoNotReadyResponse().
+ */
+class PublishBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PublishBlockedError";
+  }
+}
+
 function resolveRepoRelativePath(deps: GitDeps, userPath: string): string {
   const abs = safePath(deps.appRoot, deps.repoDir, userPath);
   if (!abs) {
-    throw new Error(`Invalid path: ${userPath}`);
+    throw new InvalidDiscardPathError(`Invalid path: ${userPath}`);
   }
   const rel = path.relative(deps.repoDir, abs);
   if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    throw new Error(`Invalid path: ${userPath}`);
+    throw new InvalidDiscardPathError(`Invalid path: ${userPath}`);
   }
   return rel;
 }
@@ -488,7 +521,23 @@ function pushBranch(repoDir: string, branch: string): void {
   );
 }
 
-export function publish(deps: GitDeps, message: string): { pushed: boolean } {
+/**
+ * A publish blocked because a changed decofile block is invalid JSON. Thrown so
+ * the HTTP route can map it to 4xx (a client/data condition, not a 5xx server
+ * fault) and the shutdown path can tell it apart from a real git failure.
+ */
+class InvalidDecofileBlockError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidDecofileBlockError";
+  }
+}
+
+export function publish(
+  deps: GitDeps,
+  message: string,
+  opts: { onInvalidBlock?: "throw" | "skip" } = {},
+): { pushed: boolean } {
   const repoDir = deps.repoDir;
   // The HTTP route guards with isGitRepo(); the shutdown handler calls publish()
   // directly, so a never-cloned/empty dir would throw 128 ("not a git
@@ -498,20 +547,54 @@ export function publish(deps: GitDeps, message: string): { pushed: boolean } {
   }
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
-    throw new Error("Cannot publish from a detached HEAD");
+    throw new PublishBlockedError("Cannot publish from a detached HEAD");
   }
   // The pre-push hook (protect-branch.ts) also guards this, but the push below
   // runs with --no-verify and skips it — so the block MUST live in code too.
   // Refuse before committing so we never leave a stray commit on a protected
   // branch either. Changes reach the default branch via PR, never a direct push.
   if (protectedBranches(repoDir).has(branch)) {
-    throw new Error(
+    throw new PublishBlockedError(
       `Refusing to push to protected branch "${branch}" from a sandbox. Work on a feature branch; changes reach the default branch via PR.`,
     );
   }
 
   const status = computeWorkingTreeStatus(repoDir);
-  const paths = changedPathsFromStatus(status);
+  let paths = changedPathsFromStatus(status);
+  // Last-resort net: never let a syntactically invalid decofile block reach the
+  // branch. The /write and /edit handlers already reject invalid blocks, but a
+  // mutation that bypassed them (bash, a git merge, a future write path) would
+  // otherwise be committed verbatim by publish() and break the whole site render.
+  //
+  // Two dispositions, by caller:
+  // - "throw" (default, interactive publish): fail loudly so the user fixes it.
+  // - "skip" (shutdown-sync): drop just the bad block and still sync everything
+  //   else. Aborting the whole shutdown commit would silently lose all the
+  //   user's OTHER valid work when the sandbox is torn down — a worse failure
+  //   mode than not syncing one already-corrupt block (which stays uncommitted
+  //   and is discarded on the next re-clone).
+  const invalidBlocks: string[] = [];
+  for (const rel of paths) {
+    if (!isDecofileBlockPath(rel)) continue;
+    let content: string;
+    try {
+      content = fs.readFileSync(path.join(repoDir, rel), "utf-8");
+    } catch {
+      continue; // deleted or unreadable — nothing to validate
+    }
+    const jsonError = invalidDecofileBlockJson(rel, content);
+    if (!jsonError) continue;
+    if (opts.onInvalidBlock === "skip") {
+      console.warn(`[daemon] skipping from sync: ${jsonError}`);
+      invalidBlocks.push(rel);
+    } else {
+      throw new InvalidDecofileBlockError(`Refusing to publish: ${jsonError}`);
+    }
+  }
+  if (invalidBlocks.length > 0) {
+    const skip = new Set(invalidBlocks);
+    paths = paths.filter((p) => !skip.has(p));
+  }
   if (paths.length > 0) {
     runGit(repoDir, ["add", "--", ...paths]);
   }
@@ -566,8 +649,22 @@ function discard(deps: GitDeps, filepaths: string[]): void {
   const status = computeWorkingTreeStatus(repoDir);
   const toRestore: string[] = [];
   const toDelete: string[] = [];
+  // A renamed file's new path never existed at HEAD, so the isNew check below
+  // would treat it as untracked and unlink it outright — losing the content
+  // entirely, since the original path is already gone from the working tree
+  // too. Discarding a rename must instead restore the original file from HEAD
+  // and unstage + drop the new path.
+  const toRestoreFromHead: string[] = [];
+  const renamedNewPaths: string[] = [];
 
   for (const fp of validated) {
+    const origPath = status.files.find((f) => f.path === fp)?.origPath;
+    if (origPath) {
+      toRestoreFromHead.push(origPath);
+      renamedNewPaths.push(fp);
+      toDelete.push(fp);
+      continue;
+    }
     const isNew =
       status.not_added.includes(fp) ||
       status.created.includes(fp) ||
@@ -576,6 +673,13 @@ function discard(deps: GitDeps, filepaths: string[]): void {
     else toRestore.push(fp);
   }
 
+  if (toRestoreFromHead.length > 0) {
+    // Unstage the rename's "new path added" side before restoring the
+    // original — otherwise it survives in the index even after the working
+    // tree file below is deleted.
+    runGit(repoDir, ["reset", "--", ...renamedNewPaths]);
+    runGit(repoDir, ["checkout", "HEAD", "--", ...toRestoreFromHead]);
+  }
   if (toRestore.length > 0) {
     runGit(repoDir, ["checkout", "--", ...toRestore]);
   }
@@ -661,6 +765,15 @@ export function makeGitPublishHandler(deps: GitDeps) {
         publish(deps, typeof body.message === "string" ? body.message : ""),
       );
     } catch (err) {
+      // An invalid-block refusal is a client/data condition, not a server fault.
+      if (err instanceof InvalidDecofileBlockError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
+      // A detached HEAD / protected-branch refusal is a conflict with the
+      // sandbox's current state, not a server fault.
+      if (err instanceof PublishBlockedError) {
+        return jsonResponse({ error: err.message }, 409);
+      }
       return jsonResponse({ error: formatGitError(err) }, 500);
     }
   };
@@ -685,6 +798,9 @@ export function makeGitDiscardHandler(deps: GitDeps) {
       discard(deps, filepaths);
       return jsonResponse({ success: true });
     } catch (err) {
+      if (err instanceof InvalidDiscardPathError) {
+        return jsonResponse({ error: err.message }, 400);
+      }
       return jsonResponse(
         { error: err instanceof Error ? err.message : String(err) },
         500,

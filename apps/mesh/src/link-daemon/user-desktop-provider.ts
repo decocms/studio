@@ -67,6 +67,9 @@ export interface RepoRef {
    *  `git commit`. Optional — clone works without them. */
   userName?: string;
   userEmail?: string;
+  /** Resolved per-host PATs for fetching private submodules. Forwarded to the
+   *  spawned daemon so `git submodule update` can authenticate. Optional. */
+  submoduleCredentials?: { host: string; token: string }[];
 }
 
 /**

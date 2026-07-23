@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { DeleteConnectionState } from "@/web/hooks/use-delete-connection";
 
 export function DeleteConnectionDialogs({
@@ -21,6 +22,7 @@ export function DeleteConnectionDialogs({
   confirmDelete: () => void;
   confirmForceDelete: () => void;
 }) {
+  const t = useT();
   return (
     <>
       {/* Delete Confirmation Dialog */}
@@ -32,9 +34,11 @@ export function DeleteConnectionDialogs({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Connection?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("common.deleteConnectionDialogs.title")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete{" "}
+              {t("common.deleteConnectionDialogs.description")}{" "}
               <span className="font-medium text-foreground">
                 {deleteState.mode === "deleting" &&
                   deleteState.connection.title}
@@ -43,12 +47,14 @@ export function DeleteConnectionDialogs({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("common.deleteConnectionDialogs.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("common.deleteConnectionDialogs.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -63,16 +69,18 @@ export function DeleteConnectionDialogs({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Connection Used by Agents</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("common.deleteConnectionDialogs.forceDeleteTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div>
                 <p>
-                  The connection{" "}
+                  {t("common.deleteConnectionDialogs.forceDeleteDescription")}{" "}
                   <span className="font-medium text-foreground">
                     {deleteState.mode === "force-deleting" &&
                       deleteState.connection.title}
                   </span>{" "}
-                  is currently used by the following agent(s):{" "}
+                  {t("common.deleteConnectionDialogs.isUsedByAgents")}{" "}
                   <span className="font-medium text-foreground">
                     {deleteState.mode === "force-deleting" &&
                       deleteState.agentNames}
@@ -80,19 +88,20 @@ export function DeleteConnectionDialogs({
                   .
                 </p>
                 <p className="mt-2">
-                  Deleting this connection will remove it from those agents,
-                  which may impact existing workflows that depend on them.
+                  {t("common.deleteConnectionDialogs.forceDeleteWarning")}
                 </p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("common.deleteConnectionDialogs.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmForceDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete Anyway
+              {t("common.deleteConnectionDialogs.deleteAnyway")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

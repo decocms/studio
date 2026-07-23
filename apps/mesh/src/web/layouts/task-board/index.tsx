@@ -1,13 +1,13 @@
 /**
  * Task board (/$org/board) — the org's own board of tasks (title,
  * description, status, priority, assignee), independent of chat threads.
- * Gated behind the org's task_board_enabled setting (see org settings).
  */
 
 import { useRef, useState } from "react";
 import { getInitials } from "@/web/lib/get-initials";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Button } from "@deco/ui/components/button.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import {
   Calendar,
@@ -17,7 +17,13 @@ import {
   List,
   Loading01,
   Plus,
+  UserPlus01,
 } from "@untitledui/icons";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@deco/ui/components/popover.tsx";
 import { SuperAgentIcon } from "@/web/components/super-agent-icon";
 import { GitHubIcon } from "@/web/components/icons/github-icon";
 import {
@@ -28,7 +34,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
-import { useConnections } from "@decocms/mesh-sdk";
+import {
+  getWellKnownDecopilotVirtualMCP,
+  useConnections,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
 import { getOrgGithubConnections } from "@/shared/github-repo-scope";
 import { useConnectApp } from "@/web/hooks/use-connect-app";
 import { useMembers } from "@/web/hooks/use-members";
@@ -50,6 +60,9 @@ import {
   type Member,
 } from "./config";
 import { TaskBoardItemDialog } from "./task-dialog";
+import { AssigneePickerContent } from "./assignee-picker";
+import { buildTaskChatContext } from "./build-task-chat-context";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import {
   EMPTY_FILTERS,
   TaskFiltersBar,
@@ -59,7 +72,13 @@ import {
 } from "./task-filters";
 import { useFlipLanes } from "./use-flip-lanes";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useThreadActions } from "@/web/components/chat/store/hooks";
+import { writeChatDraft } from "@/web/lib/chat-draft";
+import { createMentionDoc } from "@/web/components/chat/tiptap/mention";
+import type { TiptapDoc } from "@/web/components/chat/types";
 import { useReportsOnly } from "@/web/hooks/use-organization-settings";
+import { BacklogPaywallBanner } from "./backlog-paywall";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
 void import("../agent-shell-layout/index.tsx").catch(() => {});
@@ -98,23 +117,25 @@ const PILL =
 
 /** Card flag for a task whose agent is paused waiting on human input. */
 function BlockedBadge() {
+  const t = useT();
   return (
     <span
       className={cn(PILL, "border-warning/30 text-warning")}
-      title="The agent is waiting for your input"
+      title={t("taskBoard.taskBoard.blockedBadgeTitle")}
     >
       <HelpCircle size={14} />
-      Needs input
+      {t("taskBoard.taskBoard.needsInput")}
     </span>
   );
 }
 
 function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
+  const t = useT();
   const config = PRIORITY_CONFIG[priority];
   return (
     <span className={PILL}>
       <span className={cn("size-2 rounded-full", config.dotClassName)} />
-      {config.label}
+      {t(config.labelKey)}
     </span>
   );
 }
@@ -141,19 +162,28 @@ function AssigneeDisplay({
   item,
   assignee,
   assignedBy,
+  members,
+  onAssign,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
+  members?: Member[];
+  onAssign?: (userId: string | null) => void;
 }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+
   if (item.assigneeId === SUPER_AGENT_ASSIGNEE_ID) {
     return (
       <span
         className="inline-flex items-center"
         title={
           assignedBy?.user?.name
-            ? `Assigned to Super Agent by ${assignedBy.user.name}`
-            : "Assigned to Super Agent"
+            ? t("taskBoard.taskBoard.assignedToSuperAgentBy", {
+                name: assignedBy.user.name,
+              })
+            : t("taskBoard.taskBoard.assignedToSuperAgent")
         }
       >
         {assignedBy && (
@@ -161,11 +191,11 @@ function AssigneeDisplay({
             url={assignedBy.user?.image ?? undefined}
             fallback={getInitials(assignedBy.user?.name)}
             shape="circle"
-            size="2xs"
-            className="-mr-1.5 ring-2 ring-background"
+            size="xs"
+            className="-mr-2 ring-2 ring-background"
           />
         )}
-        <SuperAgentIcon size={16} className="ring-2 ring-background" />
+        <SuperAgentIcon size={20} className="ring-2 ring-background" />
       </span>
     );
   }
@@ -175,14 +205,46 @@ function AssigneeDisplay({
         url={assignee.user?.image ?? undefined}
         fallback={getInitials(assignee.user?.name)}
         shape="circle"
-        size="2xs"
+        size="xs"
       />
     );
   }
-  return null;
+  if (!onAssign || !members?.length) return null;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title="Assign"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(true);
+          }}
+          className="flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 transition-colors hover:border-muted-foreground hover:text-muted-foreground"
+        >
+          <UserPlus01 size={13} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-56 p-0"
+        align="end"
+        side="bottom"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <AssigneePickerContent
+          members={members}
+          onSelect={(userId) => {
+            onAssign(userId);
+            setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export function TaskBoardPage() {
+  const t = useT();
   const { items, isLoading } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const reportsOnly = useReportsOnly();
@@ -206,6 +268,80 @@ export function TaskBoardPage() {
     null,
   );
   const { setTaskId } = usePanelActions();
+  const { create } = useThreadActions();
+  const studio = useStudioTools();
+  const { org, locator } = useProjectContext();
+  const navigate = useNavigate();
+  // Deep link: `/$org/board?task=<id>` opens that task's modal (from a linked
+  // chat's "open in board" button). Derived, so it opens as soon as the item
+  // loads without an effect.
+  const { task: deepLinkTaskId } = useSearch({ strict: false }) as {
+    task?: string;
+  };
+  const deepLinkItem = deepLinkTaskId
+    ? (items.find((i) => i.id === deepLinkTaskId) ?? null)
+    : null;
+
+  const clearDeepLink = () => {
+    if (deepLinkTaskId)
+      navigate({
+        to: "/$org/board",
+        params: { org: org.slug },
+        search: {},
+        replace: true,
+      });
+  };
+
+  // Start a fresh chat on the default Decopilot agent, seeded with the task's
+  // title + description as the first user message (via the autosend buffer),
+  // and link the new thread to the task so it shows on the modal.
+  const startChatFromTask = async (task: TaskBoardItem) => {
+    const newId = crypto.randomUUID();
+    const agentId = getWellKnownDecopilotVirtualMCP(org.id).id;
+    // Pull the task's linked PRs (best-effort — the chat still opens without
+    // them) so the seeded context references prior work, not just the title.
+    const prs = await studio
+      .call("TASK_BOARD_ITEM_PRS_GET", { taskBoardItemId: task.id })
+      .then((r) => r.prs)
+      .catch(() => []);
+    const context = buildTaskChatContext(task, prs);
+    // Prefill the composer with a removable task @ref chip (not raw text) and
+    // do NOT auto-send — the user reviews/adds to it, then hits send. The chip
+    // expands to the task context at send time (see derive-parts).
+    const doc: TiptapDoc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            createMentionDoc({
+              id: task.id,
+              name: task.title,
+              char: "@",
+              kind: "task",
+              metadata: {
+                title: task.title,
+                description: task.description,
+                context,
+              },
+            }),
+            { type: "text", text: " " },
+          ],
+        },
+      ],
+    };
+    writeChatDraft(sessionStorage, locator, newId, doc);
+    setDialogOpen(false);
+    try {
+      await create({ id: newId, virtual_mcp_id: agentId });
+      // Best-effort — a link failure shouldn't block navigating into the chat.
+      await actions.link.mutateAsync({ id: task.id, linkThreadId: newId });
+    } catch {
+      // Toast already fired by the manager; navigate anyway so the route
+      // loader's ensure-fallback can retry the create.
+    }
+    setTaskId(newId, agentId);
+  };
 
   const visibleItems = items.filter((item) =>
     taskMatchesFilters(item, filters),
@@ -232,6 +368,18 @@ export function TaskBoardPage() {
   // what navigates into the run's chat (see onOpenThread below).
   const openTask = openEdit;
 
+  // The task the modal is editing — a locally-opened card, or the deep-linked
+  // one. The modal is open when either is set.
+  const activeItem = editingItem ?? deepLinkItem;
+  const modalOpen = dialogOpen || !!deepLinkItem;
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingItem(null);
+    setCreateStatus(null);
+    clearDeepLink();
+  };
+
   if (isLoading && items.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -248,7 +396,13 @@ export function TaskBoardPage() {
       {/* Header — capped + centered to the same width as the board content so
           they line up; content-capped, not scroll-capped. */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
-        <h1 className="text-xl font-medium text-foreground">Tasks</h1>
+        <h1 className="text-xl font-medium text-foreground">
+          {t("taskBoard.taskBoard.tasksTitle")}
+        </h1>
+
+        {/* Commerce orgs: a persistent unlock CTA that self-hides once the
+            diagnostic is paid. The board stays usable in the meantime. */}
+        {reportsOnly && <BacklogPaywallBanner />}
 
         {/* Toolbar — filters on the left (inline bar on desktop, a single
             drawer button on mobile), view toggle + New task on the right. */}
@@ -278,19 +432,19 @@ export function TaskBoardPage() {
                 active={layout === "list"}
                 onClick={() => setLayout("list")}
                 icon={List}
-                label="List"
+                label={t("common.taskBoard.listView")}
               />
               <LayoutToggle
                 active={layout === "board"}
                 onClick={() => setLayout("board")}
                 icon={Columns03}
-                label="Board"
+                label={t("common.taskBoard.boardView")}
               />
             </div>
 
             <Button size="sm" onClick={openCreate}>
               <Plus size={16} />
-              New task
+              {t("taskBoard.taskBoard.newTask")}
             </Button>
           </div>
         </div>
@@ -299,29 +453,33 @@ export function TaskBoardPage() {
       {items.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
           <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
-            No tasks yet. Start one with New task.
+            {t("taskBoard.taskBoard.noTasksYet")}
           </div>
         </div>
       ) : visibleItems.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
           <div className="flex flex-col items-center gap-3 rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
-            No tasks match these filters.
+            {t("taskBoard.taskBoard.noTasksMatch")}
             <Button
               variant="outline"
               size="sm"
               onClick={() => setFilters(EMPTY_FILTERS)}
             >
-              Clear filters
+              {t("taskBoard.taskBoard.clearFilters")}
             </Button>
           </div>
         </div>
       ) : layout === "board" ? (
         <Lanes
           items={visibleItems}
+          members={members}
           memberByUserId={memberByUserId}
           onOpen={openTask}
           onCreate={openCreateInLane}
           onMove={(id, status) => actions.update.mutate({ id, status })}
+          onAssign={(id, userId) =>
+            actions.update.mutate({ id, assigneeId: userId ?? undefined })
+          }
           onAutoFix={
             reportsOnly
               ? (item) => {
@@ -363,34 +521,37 @@ export function TaskBoardPage() {
 
       <TaskBoardItemDialog
         key={
-          dialogOpen
-            ? (editingItem?.id ?? `new-${createStatus ?? "default"}`)
+          modalOpen
+            ? (activeItem?.id ?? `new-${createStatus ?? "default"}`)
             : "closed"
         }
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        item={editingItem ?? undefined}
+        open={modalOpen}
+        onClose={closeDialog}
+        item={activeItem ?? undefined}
         defaultStatus={createStatus ?? undefined}
         isSaving={actions.create.isPending || actions.update.isPending}
         onSubmit={(input) => {
-          if (editingItem) {
-            actions.update.mutate({ id: editingItem.id, ...input });
+          if (activeItem) {
+            actions.update.mutate({ id: activeItem.id, ...input });
           } else {
             actions.create.mutate(input);
           }
-          setDialogOpen(false);
+          closeDialog();
         }}
         onDelete={
-          editingItem
+          activeItem
             ? () => {
-                actions.remove.mutate(editingItem.id);
-                setDialogOpen(false);
+                actions.remove.mutate(activeItem.id);
+                closeDialog();
               }
             : undefined
         }
+        onNewChat={
+          activeItem ? () => void startChatFromTask(activeItem) : undefined
+        }
         onOpenThread={(thread) => {
           if (!thread.virtualMcpId) return;
-          setDialogOpen(false);
+          closeDialog();
           setTaskId(thread.threadId, thread.virtualMcpId, {
             main: thread.hasPreview ? "preview" : "board",
           });
@@ -417,15 +578,17 @@ function ConnectGitHubDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const { connect, isConnecting } = useConnectApp("deco/mcp-github");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Connect GitHub</DialogTitle>
+          <DialogTitle>
+            {t("taskBoard.taskBoard.connectGithubTitle")}
+          </DialogTitle>
           <DialogDescription>
-            Auto-fix hands the task to the Super Agent, which opens a pull
-            request with the change. Connect GitHub so it can push and open PRs.
+            {t("taskBoard.taskBoard.connectGithubDescription")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -442,7 +605,7 @@ function ConnectGitHubDialog({
             ) : (
               <GitHubIcon className="size-4" />
             )}
-            Connect GitHub
+            {t("taskBoard.taskBoard.connectGithubButton")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -461,11 +624,12 @@ function LayoutToggle({
   icon: typeof List;
   label: string;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${label} view`}
+      aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", { label })}
       aria-pressed={active}
       className={cn(
         "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
@@ -482,19 +646,24 @@ function LayoutToggle({
 
 function Lanes({
   items,
+  members,
   memberByUserId,
   onOpen,
   onCreate,
   onMove,
   onAutoFix,
+  onAssign,
 }: {
   items: TaskBoardItem[];
+  members: Member[];
   memberByUserId: Map<string, Member>;
   onOpen: (item: TaskBoardItem) => void;
   onCreate: (status: TaskBoardItemStatus) => void;
   onMove: (id: string, status: TaskBoardItemStatus) => void;
   onAutoFix?: (item: TaskBoardItem) => void;
+  onAssign?: (id: string, userId: string | null) => void;
 }) {
+  const t = useT();
   const [overLane, setOverLane] = useState<TaskBoardItemStatus | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
@@ -549,15 +718,19 @@ function Lanes({
                   className={cn("shrink-0", config.iconClassName)}
                 />
                 <span className="text-sm font-medium text-foreground">
-                  {config.label}
+                  {t(config.labelKey)}
                 </span>
                 <span className="rounded-md bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
                   {laneItems.length}
                 </span>
                 <button
                   type="button"
-                  aria-label={`New task in ${config.label}`}
-                  title={`New task in ${config.label}`}
+                  aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
+                    lane: t(config.labelKey),
+                  })}
+                  title={t("taskBoard.taskBoard.newTaskInLaneTitle", {
+                    lane: t(config.labelKey),
+                  })}
                   onClick={() => onCreate(status)}
                   className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
@@ -579,8 +752,14 @@ function Lanes({
                         ? memberByUserId.get(item.assignedBy)
                         : undefined
                     }
+                    members={members}
                     onOpen={() => onOpen(item)}
                     onAutoFix={onAutoFix ? () => onAutoFix(item) : undefined}
+                    onAssign={
+                      onAssign
+                        ? (userId) => onAssign(item.id, userId)
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -596,15 +775,20 @@ function TaskCard({
   item,
   assignee,
   assignedBy,
+  members,
   onOpen,
   onAutoFix,
+  onAssign,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
+  members?: Member[];
   onOpen: () => void;
   onAutoFix?: () => void;
+  onAssign?: (userId: string | null) => void;
 }) {
+  const t = useT();
   const statusConfig = STATUS_CONFIG[item.status];
   const StatusIcon = statusConfig.icon;
   const lastMessage = primaryThread(item)?.lastMessage;
@@ -639,6 +823,8 @@ function TaskCard({
           item={item}
           assignee={assignee}
           assignedBy={assignedBy}
+          members={members}
+          onAssign={onAssign}
         />
       </div>
 
@@ -670,7 +856,7 @@ function TaskCard({
           className="flex items-center gap-1.5 self-end rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
         >
           <Lightning01 size={12} />
-          Auto-fix
+          {t("taskBoard.taskBoard.autoFix")}
         </button>
       )}
     </button>

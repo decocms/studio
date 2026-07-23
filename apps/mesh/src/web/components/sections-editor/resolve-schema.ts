@@ -509,6 +509,15 @@ export function resolveSchema(
       } else {
         // const-only branches: TypeScript string/number enum
         if (enumFromConsts) {
+          // A union of literals can still carry widget annotations
+          // (`@format icon-select` / `@options loader.ts` on the prop) —
+          // dropping them here would demote the field to a static select.
+          const annotation = (key: "format" | "options"): string | undefined =>
+            typeof v[key] === "string"
+              ? (v[key] as string)
+              : typeof resolved[key] === "string"
+                ? (resolved[key] as string)
+                : undefined;
           return {
             type: "string",
             title:
@@ -518,6 +527,8 @@ export function resolveSchema(
                 ? resolved.description
                 : undefined,
             enum: enumFromConsts,
+            format: annotation("format"),
+            options: annotation("options"),
           };
         }
 
@@ -1009,9 +1020,11 @@ export function resolveSchema(
         ? resolved.enum
         : (enumFromConsts ?? undefined),
       format:
-        typeof resolved.format === "string"
-          ? resolved.format
-          : fromLeaf<string>("format"),
+        typeof v.format === "string"
+          ? v.format
+          : typeof resolved.format === "string"
+            ? resolved.format
+            : fromLeaf<string>("format"),
       properties: nestedProperties,
       items: itemsSchema,
       hidden: isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
@@ -1024,9 +1037,11 @@ export function resolveSchema(
           ? resolved.image
           : fromLeaf<string>("image"),
       options:
-        typeof resolved.options === "string"
-          ? resolved.options
-          : fromLeaf<string>("options"),
+        typeof v.options === "string"
+          ? v.options
+          : typeof resolved.options === "string"
+            ? resolved.options
+            : fromLeaf<string>("options"),
     };
   };
 

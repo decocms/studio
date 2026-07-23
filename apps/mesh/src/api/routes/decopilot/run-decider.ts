@@ -131,6 +131,9 @@ export function decide(
             taskId: command.taskId,
             orgId: state?.orgId ?? command.orgId,
             reason: command.reason,
+            // Carry the cancel-time fence so the reactor force-fails only the
+            // turn this cancel targeted, not a follow-up that started meanwhile.
+            expectedFenceToken: command.expectedFenceToken ?? null,
           },
         ];
       }

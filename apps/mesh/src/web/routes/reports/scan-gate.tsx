@@ -4,6 +4,7 @@ import type { TemplateDeck } from "@/reports/deck-types";
 import { faviconForDomain } from "@/shared/report-seo";
 import type { ReportState } from "@/reports/to-deck";
 import { isPostHogInitialized } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   orchestrateScan,
   readPending,
@@ -25,10 +26,14 @@ export default function ScanGate({
   domain,
   initial,
   sessionEmail,
+  sessionUser,
+  lang,
 }: {
   domain: string;
   initial?: ReportState;
   sessionEmail: string;
+  sessionUser?: { name?: string; email?: string; image?: string };
+  lang?: string;
 }) {
   const [deck, setDeck] = useState<TemplateDeck | null>(
     initial?.status === "ready" ? initial.deck : null,
@@ -44,14 +49,20 @@ export default function ScanGate({
     if (initial) reportDrops(domain, initial.drops);
     if (initial?.status === "ready") return;
     const controller = new AbortController();
-    orchestrateScan(domain, distinctId(), controller.signal, {
-      onPhase: setPhase,
-      onDeck: setDeck,
-    });
+    orchestrateScan(
+      domain,
+      distinctId(),
+      controller.signal,
+      {
+        onPhase: setPhase,
+        onDeck: setDeck,
+      },
+      lang,
+    );
     return () => controller.abort();
   };
 
-  if (deck) return <SignalDeck deck={deck} />;
+  if (deck) return <SignalDeck deck={deck} sessionUser={sessionUser} />;
   if (phase === "unauthorized") {
     return <ReportAuthGate domain={domain} />;
   }
@@ -66,10 +77,18 @@ export default function ScanGate({
 // ── delivery stages ───────────────────────────────────────────────────────────
 
 const STAGES = [
-  { id: "initiated", label: "Análise iniciada", detail: null },
-  { id: "collecting", label: "Coletando dados públicos", detail: null },
-  { id: "building", label: "Montando seu relatório", detail: null },
-  { id: "ready", label: "Relatório pronto", detail: null },
+  {
+    id: "initiated",
+    labelKey: "reports.scanGate.stageInitiated",
+    detail: null,
+  },
+  {
+    id: "collecting",
+    labelKey: "reports.scanGate.stageCollecting",
+    detail: null,
+  },
+  { id: "building", labelKey: "reports.scanGate.stageBuilding", detail: null },
+  { id: "ready", labelKey: "reports.scanGate.stageReady", detail: null },
 ] as const;
 
 type StageState = "done" | "active" | "pending";
@@ -91,16 +110,17 @@ function ScanScreen({
   phase: ScanPhase;
   email: string;
 }) {
+  const t = useT();
   const isActive = phase === "scanning" || phase === "pending";
   const stages = stagesFor(phase);
 
   const errorMessage =
     phase === "blocked"
-      ? "Este relatório não está disponível publicamente."
+      ? t("reports.scanGate.errorBlocked")
       : phase === "empty"
-        ? "Escaneamos sua loja, mas o relatório ainda está sendo montado. Verifique em breve."
+        ? t("reports.scanGate.errorEmpty")
         : phase === "error"
-          ? "Algo deu errado ao acessar o relatório. Tente novamente."
+          ? t("reports.scanGate.errorFailed")
           : null;
 
   return (
@@ -159,16 +179,17 @@ function ScanScreen({
               className="text-[24px] sm:text-[32px] font-normal leading-[1.18] tracking-[-0.025em]"
               style={{ color: DECK.ink }}
             >
-              Seu relatório está
+              {t("reports.scanGate.headlineStart")}
               <br />
-              <span style={{ color: DECK.soft }}>sendo preparado.</span>
+              <span style={{ color: DECK.soft }}>
+                {t("reports.scanGate.headlineEnd")}
+              </span>
             </h1>
             <p
               className="mt-2 sm:mt-3 text-[13px] sm:text-[14px] leading-[1.6]"
               style={{ color: DECK.muted }}
             >
-              Você pode acompanhar por aqui. Também avisaremos quando estiver
-              pronto.
+              {t("reports.scanGate.subtitle")}
             </p>
 
             {/* Authenticated delivery address */}
@@ -180,7 +201,7 @@ function ScanScreen({
                 className="mb-2.5 sm:mb-3 text-[15px] sm:text-[16px]"
                 style={{ color: DECK.ink }}
               >
-                Enviaremos uma notificação para:
+                {t("reports.scanGate.notificationLabel")}
               </p>
               <NotificationEmail email={email} />
             </div>
@@ -227,7 +248,7 @@ function ScanScreen({
                             fontWeight: state === "active" ? 500 : 400,
                           }}
                         >
-                          {s.label}
+                          {t(s.labelKey)}
                         </span>
                         {state === "active" && (
                           <span
@@ -238,7 +259,7 @@ function ScanScreen({
                               border: `1px solid rgba(7,64,26,0.15)`,
                             }}
                           >
-                            agora
+                            {t("reports.scanGate.stageNow")}
                           </span>
                         )}
                       </div>
@@ -306,7 +327,7 @@ function ScanScreen({
               className="mt-5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[14px] font-medium transition-transform active:scale-[0.98]"
               style={{ background: DECK.primary, color: DECK.primaryFg }}
             >
-              Tentar outra loja
+              {t("reports.scanGate.tryAnother")}
             </a>
           </div>
         )}
@@ -367,6 +388,7 @@ function StepDot({ state }: { state: StageState }) {
 // ── authenticated delivery address ──────────────────────────────────────────
 
 function NotificationEmail({ email }: { email: string }) {
+  const t = useT();
   return (
     <div
       className="flex min-w-0 items-center gap-3 rounded-xl px-4 py-3"
@@ -400,7 +422,7 @@ function NotificationEmail({ email }: { email: string }) {
           {email}
         </p>
         <p className="text-[12px]" style={{ color: DECK.soft }}>
-          Avisamos assim que ficar pronto.
+          {t("reports.scanGate.notificationHelp")}
         </p>
       </div>
     </div>

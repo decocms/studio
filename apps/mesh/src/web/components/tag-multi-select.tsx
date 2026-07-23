@@ -35,12 +35,12 @@ import {
   useSetMemberTags,
   type Tag,
 } from "@/web/hooks/use-tags";
+import { useT } from "@/web/i18n/use-t";
 
 interface TagMultiSelectProps {
   memberId: string;
   className?: string;
   disabled?: boolean;
-  placeholder?: string;
   maxDisplay?: number;
 }
 
@@ -48,9 +48,9 @@ export function TagMultiSelect({
   memberId,
   className,
   disabled = false,
-  placeholder = "Add tags...",
   maxDisplay = 2,
 }: TagMultiSelectProps) {
+  const t = useT();
   const [isOpen, setIsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
@@ -156,7 +156,9 @@ export function TagMultiSelect({
               )}
             </div>
           ) : (
-            <span className="text-muted-foreground text-xs">{placeholder}</span>
+            <span className="text-muted-foreground text-xs">
+              {t("common.tagMultiSelect.addTags")}
+            </span>
           )}
           <ChevronDown size={14} className="ml-1 shrink-0 opacity-50" />
         </Button>
@@ -168,7 +170,7 @@ export function TagMultiSelect({
       >
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="Search or create..."
+            placeholder={t("common.tagMultiSelect.searchOrCreate")}
             value={searchValue}
             onValueChange={setSearchValue}
             className="h-9"
@@ -177,7 +179,7 @@ export function TagMultiSelect({
             {/* Selected tags with remove option */}
             {memberTags.length > 0 && (
               <>
-                <CommandGroup heading="Selected">
+                <CommandGroup heading={t("common.tagMultiSelect.selected")}>
                   {memberTags.map((tag) => (
                     <CommandItem
                       key={tag.id}
@@ -211,9 +213,11 @@ export function TagMultiSelect({
             )}
 
             {/* Available tags */}
-            <CommandGroup heading="Available">
+            <CommandGroup heading={t("common.tagMultiSelect.available")}>
               {filteredTags.length === 0 && !showCreateOption && (
-                <CommandEmpty>No tags found.</CommandEmpty>
+                <CommandEmpty>
+                  {t("common.tagMultiSelect.noTagsFound")}
+                </CommandEmpty>
               )}
               {filteredTags
                 .filter((tag) => !selectedTagIds.includes(tag.id))
@@ -250,7 +254,11 @@ export function TagMultiSelect({
                       ) : (
                         <Plus size={14} />
                       )}
-                      <span>Create "{searchValue.trim()}"</span>
+                      <span>
+                        {t("common.tagMultiSelect.createTag", {
+                          tagName: searchValue.trim(),
+                        })}
+                      </span>
                     </div>
                   </CommandItem>
                 </CommandGroup>

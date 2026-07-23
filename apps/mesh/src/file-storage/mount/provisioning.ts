@@ -121,10 +121,11 @@ export async function mintOrgFsConfigJson(
   try {
     const apiKey = await ctx.boundAuth.apiKey.create({
       name: `orgfs-${opts.orgSlug}`,
-      // The mount only needs management/self tools; the actual file ops
-      // (ORG_FS_READ/WRITE) are granted to every member via basic-usage. With
-      // no implicit default (auth/index.ts), the scope must be explicit.
-      permissions: { self: ["*"] },
+      // This credential is baked into the sandbox mount and may be read by
+      // every collaborator in a shared hosted workspace. Keep it restricted
+      // to the two org-fs operations instead of carrying the creator's full
+      // management permissions.
+      permissions: { self: ["ORG_FS_READ", "ORG_FS_WRITE"] },
       expiresIn: ORG_FS_KEY_TTL_SECONDS,
       metadata: { organization: { id: opts.orgId, slug: opts.orgSlug } },
     });

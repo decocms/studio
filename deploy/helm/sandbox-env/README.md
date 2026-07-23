@@ -24,6 +24,11 @@ installed (it ships the CRDs + controller).
 
 - `sandbox-operator` chart installed in `agent-sandbox-system`.
 - Kubernetes with `spec.hostUsers: true` privileged-sidecar support (org-fs FUSE mount).
+- Studio object storage configured with `S3_ENDPOINT`, `S3_BUCKET`,
+  `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY` (plus provider-appropriate
+  `S3_REGION` and `S3_FORCE_PATH_STYLE`). Org-fs is mandatory for hosted
+  sandboxes. Keep these values in the Studio Secret: the sidecar mounts org-fs
+  through Studio's authenticated API and must not receive S3 credentials.
 - A named ServiceAccount for the Studio release. Its namespace and name must
   match `mesh.namespace` and `mesh.serviceAccountName`; this chart grants that
   identity the runner permissions in `agent-sandbox-system`.

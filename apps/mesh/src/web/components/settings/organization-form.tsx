@@ -1,6 +1,7 @@
 import { useOrgAuthClient } from "@/web/hooks/use-org-auth-client";
 import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { KEYS } from "@/web/lib/query-keys";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -19,6 +20,7 @@ import { z } from "zod";
 import { track } from "@/web/lib/posthog-client";
 import { isReservedOrganizationSlug } from "@/shared/organization-slugs";
 
+// TODO(i18n): validation messages at module scope, move schema into component if needed
 const organizationSettingsSchema = z.object({
   name: z.string().min(1, "Name is required").max(255, "Name is too long"),
   slug: z
@@ -51,6 +53,7 @@ function CompactLogoUpload({
   name?: string;
   disabled?: boolean;
 }) {
+  const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handlePick = () => inputRef.current?.click();
@@ -59,11 +62,12 @@ function CompactLogoUpload({
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("Image must be smaller than 2MB");
+      toast.error(t("settings.organizationForm.imageTooLarge"));
       return;
     }
     const reader = new FileReader();
-    reader.onerror = () => toast.error("Failed to read image");
+    reader.onerror = () =>
+      toast.error(t("settings.organizationForm.failedToReadImage"));
     reader.onloadend = () => {
       if (reader.result) onChange(reader.result as string);
       if (inputRef.current) inputRef.current.value = "";
@@ -77,7 +81,7 @@ function CompactLogoUpload({
       onClick={handlePick}
       disabled={disabled}
       className="rounded-lg overflow-hidden hover:ring-2 hover:ring-border transition-all disabled:opacity-50"
-      aria-label="Upload organization logo"
+      aria-label={t("settings.organizationForm.uploadLogoLabel")}
     >
       <input
         ref={inputRef}
@@ -98,6 +102,7 @@ function CompactLogoUpload({
 }
 
 export function OrganizationForm() {
+  const t = useT();
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const orgAuth = useOrgAuthClient();
@@ -129,7 +134,8 @@ export function OrganizationForm() {
 
       if (result?.error) {
         throw new Error(
-          result.error.message || "Failed to update organization",
+          result.error.message ||
+            t("settings.organizationForm.failedToUpdateOrg"),
         );
       }
 
@@ -144,7 +150,7 @@ export function OrganizationForm() {
       queryClient.invalidateQueries({
         queryKey: KEYS.activeOrganization(org.slug),
       });
-      toast.success("Organization updated successfully");
+      toast.success(t("settings.organizationForm.updateSuccess"));
 
       if (data?.data?.slug && data.data.slug !== org.slug) {
         navigate({
@@ -162,7 +168,7 @@ export function OrganizationForm() {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to update organization",
+          : t("settings.organizationForm.failedToUpdateOrg"),
       );
     },
   });
@@ -206,8 +212,8 @@ export function OrganizationForm() {
     <SettingsSection>
       <SettingsCard>
         <SettingsCardItem
-          title="Logo"
-          description="Recommended size is 256x256px"
+          title={t("settings.organizationForm.logoTitle")}
+          description={t("settings.organizationForm.logoDescription")}
           action={
             <CompactLogoUpload
               value={form.watch("logo")}
@@ -220,7 +226,7 @@ export function OrganizationForm() {
           }
         />
         <SettingsCardItem
-          title="Name"
+          title={t("settings.organizationForm.nameTitle")}
           action={
             <Controller
               control={form.control}
@@ -237,7 +243,7 @@ export function OrganizationForm() {
                     field.onBlur();
                     flushAndSave();
                   }}
-                  placeholder="Organization name"
+                  placeholder={t("settings.organizationForm.namePlaceholder")}
                   className="w-[280px]"
                 />
               )}
@@ -245,7 +251,7 @@ export function OrganizationForm() {
           }
         />
         <SettingsCardItem
-          title="URL"
+          title={t("settings.organizationForm.urlTitle")}
           action={
             <div className="flex items-center w-[280px] rounded-md border border-input bg-input/30 focus-within:ring-2 focus-within:ring-ring/50 overflow-hidden">
               {urlOrigin && (
@@ -262,7 +268,7 @@ export function OrganizationForm() {
                     value={field.value ?? ""}
                     name={field.name}
                     ref={field.ref}
-                    placeholder="my-organization"
+                    placeholder={t("settings.organizationForm.slugPlaceholder")}
                     className="flex-1 min-w-0 bg-transparent px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
                     onChange={(e) => {
                       const sanitized = e.target.value

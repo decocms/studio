@@ -162,6 +162,11 @@ export function defineTool<
                 // Set tool name for audit logging and access control
                 ctx.toolName = definition.name;
                 ctx.access.setToolName?.(definition.name);
+                // Seat gate input: only tools that DECLARE readOnlyHint pass
+                // for free seats (fail-closed — annotate read tools as needed).
+                ctx.access.setToolReadOnly?.(
+                  definition.annotations?.readOnlyHint === true,
+                );
 
                 // MCP protocol already validated input against JSON Schema
                 // We trust the validation and execute the handler directly

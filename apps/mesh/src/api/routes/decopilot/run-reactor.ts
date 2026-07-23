@@ -169,6 +169,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         const transitioned = await storage.forceFailIfInProgress(
           event.taskId,
           event.orgId,
+          event.expectedFenceToken,
         );
         if (!transitioned) return;
         // Clear run columns for ghost failures too

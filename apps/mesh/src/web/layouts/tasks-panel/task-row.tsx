@@ -6,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { useVirtualMCP } from "@decocms/mesh-sdk";
+import { useT } from "@/web/i18n/use-t.ts";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { getStatusConfig } from "@/web/lib/task-status";
 import { formatTimeAgo } from "@/web/lib/format-time";
@@ -42,6 +43,7 @@ export function TaskRow({
    *  clickable/hover surface spans the full sidebar width. */
   indented?: boolean;
 }) {
+  const t = useT();
   const config = getStatusConfig(task.status);
   const StatusIcon = config.icon;
   const isToolCallRun = task.metadata?.kind === "tool_call_run";
@@ -95,12 +97,12 @@ export function TaskRow({
           {isAutomation && (
             <Zap
               size={12}
-              aria-label="Automation-triggered"
+              aria-label={t("tasksPanel.taskRow.automationTriggered")}
               className="shrink-0 text-blue-500"
             />
           )}
           <div className="text-sm text-foreground truncate">
-            {task.title || "Untitled task"}
+            {task.title || t("tasksPanel.taskRow.untitledTask")}
           </div>
         </div>
         {task.updated_at && (
@@ -140,7 +142,9 @@ export function TaskRow({
               // button to reveal underneath it.
               onArchive && "group-hover/row:opacity-0",
             )}
-            aria-label={config.label}
+            aria-label={t("tasksPanel.taskRow.statusLabel", {
+              status: config.label,
+            })}
           >
             <StatusIcon
               size={14}
@@ -156,7 +160,7 @@ export function TaskRow({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                aria-label="Archive task"
+                aria-label={t("tasksPanel.taskRow.archiveTask")}
                 onClick={(e) => {
                   e.stopPropagation();
                   onArchive();
@@ -166,7 +170,9 @@ export function TaskRow({
                 <Archive size={14} />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="right">Archive</TooltipContent>
+            <TooltipContent side="right">
+              {t("tasksPanel.taskRow.archive")}
+            </TooltipContent>
           </Tooltip>
         )}
       </div>

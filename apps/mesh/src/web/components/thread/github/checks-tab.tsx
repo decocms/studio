@@ -1,6 +1,7 @@
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { LinkExternal01 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import * as tpl from "./message-templates.ts";
 import { useChecks, type CheckRun, type PrSummary } from "./use-pr-data.ts";
@@ -20,6 +21,7 @@ interface Props {
 export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
   const { org } = useProjectContext();
   const chat = useChatStream();
+  const t = useT();
 
   const checksQuery = useChecks({
     orgId: org.id,
@@ -41,12 +43,18 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
     });
 
   if (checksQuery.isLoading) {
-    return <div className="text-sm text-muted-foreground">Loading checks…</div>;
+    return (
+      <div className="text-sm text-muted-foreground">
+        {t("thread.checksTab.loadingChecks")}
+      </div>
+    );
   }
 
   if (checksQuery.isError) {
     return (
-      <div className="text-sm text-destructive">Couldn't load check runs.</div>
+      <div className="text-sm text-destructive">
+        {t("thread.checksTab.couldntLoadCheckRuns")}
+      </div>
     );
   }
 
@@ -55,7 +63,7 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
   if (checks.length === 0) {
     return (
       <div className="text-sm text-muted-foreground">
-        No check runs on the PR head commit.
+        {t("thread.checksTab.noCheckRunsOnPrHeadCommit")}
       </div>
     );
   }
@@ -83,7 +91,7 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex h-7 items-center justify-center rounded px-2 text-xs text-muted-foreground hover:bg-background"
-                title="View run"
+                title={t("thread.checksTab.viewRun")}
               >
                 <LinkExternal01 className="h-3.5 w-3.5" />
               </a>
@@ -95,7 +103,7 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
                 disabled={chat.isStreaming}
                 onClick={() => rerun(c.name)}
               >
-                Re-run
+                {t("thread.checksTab.rerun")}
               </Button>
             )}
           </span>
@@ -106,23 +114,30 @@ export function ChecksTab({ pr, connectionId, owner, repo }: Props) {
 }
 
 function StatusIcon({ check }: { check: CheckRun }) {
+  const t = useT();
   if (check.status !== "completed") {
     return (
-      <span className="text-muted-foreground" aria-label="In progress">
+      <span
+        className="text-muted-foreground"
+        aria-label={t("thread.checksTab.inProgress")}
+      >
         ○
       </span>
     );
   }
   if (check.conclusion === "success") {
     return (
-      <span className="text-success" aria-label="Success">
+      <span className="text-success" aria-label={t("thread.checksTab.success")}>
         ✓
       </span>
     );
   }
   if (check.conclusion === "failure") {
     return (
-      <span className="text-destructive" aria-label="Failure">
+      <span
+        className="text-destructive"
+        aria-label={t("thread.checksTab.failure")}
+      >
         ✗
       </span>
     );

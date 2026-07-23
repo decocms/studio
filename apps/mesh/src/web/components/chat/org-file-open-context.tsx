@@ -19,16 +19,41 @@ import { formatLibraryFileTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 export interface OrgFileOpenValue {
   /** Current org slug, for resolving `org/<slug>/…` references. */
   orgSlug: string | undefined;
+  /** Current thread id (URL taskId), for resolving `org/output|upload/…`
+   *  references into their `<threadId>/` subtree of the shared volume. */
+  threadId: string | undefined;
   /** Open a Library browse path ("<volume>/<path…>"). */
   open: (browsePath: string) => void;
 }
 
 export const OrgFileOpenContext = createContext<OrgFileOpenValue | null>(null);
 
+/**
+ * Next `search` state for opening `browsePath`: mobile gets the dialog overlay
+ * (`?preview=`), desktop gets the main-panel side tab (`?main=`). Each branch
+ * drops the OTHER model's stale param so a leftover from before a viewport
+ * resize can never resolve alongside the freshly-opened file.
+ */
+export function nextOrgFileOpenSearch(
+  prev: Record<string, unknown>,
+  browsePath: string,
+  isMobile: boolean,
+): Record<string, unknown> {
+  if (isMobile) {
+    const { main: _omit, ...rest } = prev;
+    return { ...rest, preview: browsePath };
+  }
+  const { preview: _omit, ...rest } = prev;
+  return { ...rest, main: formatLibraryFileTabId(browsePath) };
+}
+
 export function OrgFileOpenProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { org } = useParams({ strict: false }) as { org?: string };
+  const { org, taskId } = useParams({ strict: false }) as {
+    org?: string;
+    taskId?: string;
+  };
 
   // Mirror the Library's panel/dialog split: desktop opens the file as a
   // main-panel side tab (`?main=library-file:<path>`); mobile opens the dialog
@@ -36,17 +61,14 @@ export function OrgFileOpenProvider({ children }: { children: ReactNode }) {
   const open = (browsePath: string) =>
     navigate({
       to: ".",
-      search: (prev: Record<string, unknown>) => {
-        if (isMobile) return { ...prev, preview: browsePath };
-        // Desktop: side tab. Drop any stale `?preview=` so the two models
-        // never both resolve to a file at once.
-        const { preview: _omit, ...rest } = prev;
-        return { ...rest, main: formatLibraryFileTabId(browsePath) };
-      },
+      search: (prev: Record<string, unknown>) =>
+        nextOrgFileOpenSearch(prev, browsePath, isMobile),
     });
 
   return (
-    <OrgFileOpenContext.Provider value={{ orgSlug: org, open }}>
+    <OrgFileOpenContext.Provider
+      value={{ orgSlug: org, threadId: taskId, open }}
+    >
       {children}
     </OrgFileOpenContext.Provider>
   );

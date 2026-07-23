@@ -8,6 +8,8 @@ import {
   useMonitorRun,
 } from "@/web/hooks/registry/use-monitor";
 import { summarizeToolResults } from "@/web/lib/registry/monitor-utils";
+import { useT } from "@/web/i18n/use-t.ts";
+import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import type {
   MonitorResult,
   MonitorResultStatus,
@@ -48,6 +50,7 @@ function statusIcon(status: MonitorResultStatus) {
 }
 
 function ToolResultRow({ tool }: { tool: MonitorToolResult }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="rounded border border-border">
@@ -79,7 +82,7 @@ function ToolResultRow({ tool }: { tool: MonitorToolResult }) {
           {tool.error && (
             <div className="space-y-0.5">
               <p className="text-[10px] font-semibold text-destructive">
-                Error
+                {t("registry.monitorRunDetail.error")}
               </p>
               <pre className="text-[11px] bg-destructive/5 border border-destructive/10 rounded px-2 py-1.5 whitespace-pre-wrap break-all text-destructive">
                 {tool.error}
@@ -89,7 +92,7 @@ function ToolResultRow({ tool }: { tool: MonitorToolResult }) {
           {tool.input && Object.keys(tool.input).length > 0 && (
             <div className="space-y-0.5">
               <p className="text-[10px] font-semibold text-muted-foreground">
-                Input
+                {t("registry.monitorRunDetail.input")}
               </p>
               <pre className="text-[11px] bg-muted/50 rounded px-2 py-1.5 whitespace-pre-wrap break-all max-h-24 overflow-auto">
                 {JSON.stringify(tool.input, null, 2)}
@@ -99,7 +102,7 @@ function ToolResultRow({ tool }: { tool: MonitorToolResult }) {
           {tool.outputPreview && (
             <div className="space-y-0.5">
               <p className="text-[10px] font-semibold text-muted-foreground">
-                Output preview
+                {t("registry.monitorRunDetail.outputPreview")}
               </p>
               <pre className="text-[11px] bg-muted/50 rounded px-2 py-1.5 whitespace-pre-wrap break-all max-h-24 overflow-auto">
                 {tool.outputPreview}
@@ -110,7 +113,7 @@ function ToolResultRow({ tool }: { tool: MonitorToolResult }) {
             !tool.outputPreview &&
             (!tool.input || Object.keys(tool.input).length === 0) && (
               <p className="text-[10px] text-muted-foreground">
-                No additional details.
+                {t("registry.monitorRunDetail.noAdditionalDetails")}
               </p>
             )}
         </div>
@@ -120,6 +123,7 @@ function ToolResultRow({ tool }: { tool: MonitorToolResult }) {
 }
 
 function ResultCard({ result }: { result: MonitorResult }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(result.status !== "passed");
 
   const {
@@ -146,25 +150,31 @@ function ResultCard({ result }: { result: MonitorResult }) {
               {result.duration_ms}ms
             </span>
             <span className="text-[10px] text-muted-foreground">
-              conn: {result.connection_ok ? "✓" : "✗"}
+              {t("registry.monitorRunDetail.conn")}:{" "}
+              {result.connection_ok ? "✓" : "✗"}
             </span>
             <span className="text-[10px] text-muted-foreground">
-              tools listed: {result.tools_listed ? "✓" : "✗"}
+              {t("registry.monitorRunDetail.toolsListed")}:{" "}
+              {result.tools_listed ? "✓" : "✗"}
             </span>
             {latestToolResults.length > 0 && (
               <span className="text-[10px] text-muted-foreground">
                 {hasTestedTools ? (
                   <>
-                    tools: {passedTools}✓ {failedTools}✗
+                    {t("registry.monitorRunDetail.tools")}: {passedTools}✓{" "}
+                    {failedTools}✗
                   </>
                 ) : (
-                  <>{latestToolResults.length} tools found</>
+                  <>
+                    {latestToolResults.length}{" "}
+                    {t("registry.monitorRunDetail.toolsFound")}
+                  </>
                 )}
               </span>
             )}
             {result.action_taken !== "none" && (
               <Badge variant="destructive" className="text-[9px] px-1.5 py-0">
-                action: {result.action_taken}
+                {t("registry.monitorRunDetail.action")}: {result.action_taken}
               </Badge>
             )}
           </div>
@@ -184,18 +194,24 @@ function ResultCard({ result }: { result: MonitorResult }) {
           {/* Connection & listing info */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <div className="rounded border border-border px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">Connection</p>
+              <p className="text-[10px] text-muted-foreground">
+                {t("registry.monitorRunDetail.connection")}
+              </p>
               <p
                 className={cn(
                   "text-xs font-medium",
                   result.connection_ok ? "text-success" : "text-destructive",
                 )}
               >
-                {result.connection_ok ? "Connected" : "Failed"}
+                {result.connection_ok
+                  ? t("registry.monitorRunDetail.connected")
+                  : t("registry.monitorRunDetail.failed")}
               </p>
             </div>
             <div className="rounded border border-border px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">Tools Listed</p>
+              <p className="text-[10px] text-muted-foreground">
+                {t("registry.monitorRunDetail.toolsListedLabel")}
+              </p>
               <p
                 className={cn(
                   "text-xs font-medium",
@@ -203,16 +219,22 @@ function ResultCard({ result }: { result: MonitorResult }) {
                 )}
               >
                 {result.tools_listed
-                  ? `Yes (${latestToolResults.length})`
-                  : "No"}
+                  ? t("registry.monitorRunDetail.yesWithCount", {
+                      count: latestToolResults.length,
+                    })
+                  : t("registry.monitorRunDetail.no")}
               </p>
             </div>
             <div className="rounded border border-border px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">Duration</p>
+              <p className="text-[10px] text-muted-foreground">
+                {t("registry.monitorRunDetail.duration")}
+              </p>
               <p className="text-xs font-medium">{result.duration_ms}ms</p>
             </div>
             <div className="rounded border border-border px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">Action Taken</p>
+              <p className="text-[10px] text-muted-foreground">
+                {t("registry.monitorRunDetail.actionTaken")}
+              </p>
               <p className="text-xs font-medium capitalize">
                 {result.action_taken.replace(/_/g, " ")}
               </p>
@@ -223,7 +245,7 @@ function ResultCard({ result }: { result: MonitorResult }) {
           {result.error_message && (
             <div className="space-y-1">
               <p className="text-[10px] font-semibold text-destructive">
-                Error Message
+                {t("registry.monitorRunDetail.errorMessage")}
               </p>
               <pre className="text-xs bg-destructive/5 border border-destructive/10 rounded px-3 py-2 whitespace-pre-wrap break-all text-destructive">
                 {result.error_message}
@@ -235,7 +257,10 @@ function ResultCard({ result }: { result: MonitorResult }) {
           {hasTestedTools ? (
             <div className="space-y-1">
               <p className="text-[10px] font-semibold text-muted-foreground">
-                Tool Results ({passedTools} passed, {failedTools} failed)
+                {t("registry.monitorRunDetail.toolResults", {
+                  passed: passedTools,
+                  failed: failedTools,
+                })}
               </p>
               <div className="space-y-1">
                 {realToolTests.map((tool, index) => (
@@ -249,8 +274,9 @@ function ResultCard({ result }: { result: MonitorResult }) {
           ) : isHealthCheck && latestToolResults.length > 0 ? (
             <div className="space-y-1">
               <p className="text-[10px] font-semibold text-muted-foreground">
-                Tools discovered ({latestToolResults.length}) — not individually
-                tested (health-check mode)
+                {t("registry.monitorRunDetail.toolsDiscovered", {
+                  count: latestToolResults.length,
+                })}
               </p>
               <div className="flex flex-wrap gap-1">
                 {latestToolResults.map((tool, index) => (
@@ -270,7 +296,7 @@ function ResultCard({ result }: { result: MonitorResult }) {
           {result.agent_summary && (
             <div className="space-y-1">
               <p className="text-[10px] font-semibold text-muted-foreground">
-                Agent Summary
+                {t("registry.monitorRunDetail.agentSummary")}
               </p>
               <p className="text-xs bg-muted/50 rounded px-3 py-2">
                 {result.agent_summary}
@@ -290,15 +316,21 @@ function StatusFilter({
   value: MonitorResultStatus | "all";
   onChange: (v: MonitorResultStatus | "all") => void;
 }) {
-  const options: Array<{ value: MonitorResultStatus | "all"; label: string }> =
-    [
-      { value: "all", label: "All" },
-      { value: "passed", label: "Passed" },
-      { value: "failed", label: "Failed" },
-      { value: "error", label: "Error" },
-      { value: "needs_auth", label: "Needs Auth" },
-      { value: "skipped", label: "Skipped" },
-    ];
+  const t = useT();
+  const options = [
+    { value: "all", labelKey: "registry.monitorRunDetail.filterAll" },
+    { value: "passed", labelKey: "registry.monitorRunDetail.filterPassed" },
+    { value: "failed", labelKey: "registry.monitorRunDetail.filterFailed" },
+    { value: "error", labelKey: "registry.monitorRunDetail.filterError" },
+    {
+      value: "needs_auth",
+      labelKey: "registry.monitorRunDetail.filterNeedsAuth",
+    },
+    { value: "skipped", labelKey: "registry.monitorRunDetail.filterSkipped" },
+  ] as const satisfies ReadonlyArray<{
+    value: MonitorResultStatus | "all";
+    labelKey: TranslationKey;
+  }>;
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {options.map((opt) => (
@@ -313,7 +345,7 @@ function StatusFilter({
           )}
           onClick={() => onChange(opt.value)}
         >
-          {opt.label}
+          {t(opt.labelKey)}
         </button>
       ))}
     </div>
@@ -321,6 +353,7 @@ function StatusFilter({
 }
 
 export function MonitorRunDetail({ runId }: { runId?: string }) {
+  const t = useT();
   const [statusFilter, setStatusFilter] = useState<MonitorResultStatus | "all">(
     "all",
   );
@@ -337,7 +370,7 @@ export function MonitorRunDetail({ runId }: { runId?: string }) {
     return (
       <Card className="p-6 text-center space-y-2">
         <p className="text-sm text-muted-foreground">
-          Select a run to inspect details.
+          {t("registry.monitorRunDetail.selectRunToInspect")}
         </p>
       </Card>
     );
@@ -348,7 +381,9 @@ export function MonitorRunDetail({ runId }: { runId?: string }) {
       <Card className="p-4">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <h3 className="text-sm font-semibold">Run Detail</h3>
+            <h3 className="text-sm font-semibold">
+              {t("registry.monitorRunDetail.runDetail")}
+            </h3>
             <p className="text-[10px] text-muted-foreground font-mono">
               {runId}
             </p>
@@ -372,7 +407,7 @@ export function MonitorRunDetail({ runId }: { runId?: string }) {
                 resultsQuery.refetch();
               }}
             >
-              Refresh
+              {t("registry.monitorRunDetail.refresh")}
             </Button>
           </div>
         </div>
@@ -381,25 +416,35 @@ export function MonitorRunDetail({ runId }: { runId?: string }) {
       {run && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
           <Card className="p-2.5 space-y-0.5">
-            <p className="text-[10px] text-muted-foreground">Total</p>
+            <p className="text-[10px] text-muted-foreground">
+              {t("registry.monitorRunDetail.total")}
+            </p>
             <p className="text-lg font-bold">{run.total_items}</p>
           </Card>
           <Card className="p-2.5 space-y-0.5">
-            <p className="text-[10px] text-muted-foreground">Tested</p>
+            <p className="text-[10px] text-muted-foreground">
+              {t("registry.monitorRunDetail.tested")}
+            </p>
             <p className="text-lg font-bold">{run.tested_items}</p>
           </Card>
           <Card className="p-2.5 space-y-0.5">
-            <p className="text-[10px] text-success">Passed</p>
+            <p className="text-[10px] text-success">
+              {t("registry.monitorRunDetail.passed")}
+            </p>
             <p className="text-lg font-bold text-success">{run.passed_items}</p>
           </Card>
           <Card className="p-2.5 space-y-0.5">
-            <p className="text-[10px] text-destructive">Failed</p>
+            <p className="text-[10px] text-destructive">
+              {t("registry.monitorRunDetail.failed")}
+            </p>
             <p className="text-lg font-bold text-destructive">
               {run.failed_items}
             </p>
           </Card>
           <Card className="p-2.5 space-y-0.5">
-            <p className="text-[10px] text-muted-foreground">Skipped</p>
+            <p className="text-[10px] text-muted-foreground">
+              {t("registry.monitorRunDetail.skipped")}
+            </p>
             <p className="text-lg font-bold">{run.skipped_items}</p>
           </Card>
         </div>
@@ -409,14 +454,20 @@ export function MonitorRunDetail({ runId }: { runId?: string }) {
       {run && (run.started_at || run.finished_at) && (
         <Card className="p-3 flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
           {run.started_at && (
-            <span>Started: {new Date(run.started_at).toLocaleString()}</span>
+            <span>
+              {t("registry.monitorRunDetail.started")}:{" "}
+              {new Date(run.started_at).toLocaleString()}
+            </span>
           )}
           {run.finished_at && (
-            <span>Finished: {new Date(run.finished_at).toLocaleString()}</span>
+            <span>
+              {t("registry.monitorRunDetail.finished")}:{" "}
+              {new Date(run.finished_at).toLocaleString()}
+            </span>
           )}
           {run.started_at && run.finished_at && (
             <span className="font-medium text-foreground">
-              Duration:{" "}
+              {t("registry.monitorRunDetail.durationLabel")}:{" "}
               {(
                 (new Date(run.finished_at).getTime() -
                   new Date(run.started_at).getTime()) /
@@ -432,8 +483,10 @@ export function MonitorRunDetail({ runId }: { runId?: string }) {
       <div className="flex items-center justify-between gap-2">
         <StatusFilter value={statusFilter} onChange={setStatusFilter} />
         <span className="text-xs text-muted-foreground">
-          {filteredResults.length} result
-          {filteredResults.length !== 1 ? "s" : ""}
+          {filteredResults.length}{" "}
+          {t("registry.monitorRunDetail.result", {
+            count: filteredResults.length,
+          })}
         </span>
       </div>
 
@@ -442,8 +495,8 @@ export function MonitorRunDetail({ runId }: { runId?: string }) {
         {filteredResults.length === 0 && (
           <Card className="p-4 text-sm text-muted-foreground text-center">
             {allResults.length === 0
-              ? "No test results yet."
-              : "No results match the current filter."}
+              ? t("registry.monitorRunDetail.noTestResultsYet")
+              : t("registry.monitorRunDetail.noResultsMatchFilter")}
           </Card>
         )}
         {filteredResults.map((result) => (

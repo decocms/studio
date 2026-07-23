@@ -315,6 +315,66 @@ function buildDecoOAuthParams(projectLocator: string | null): URLSearchParams {
 // ============================================================================
 
 /**
+ * Paths exempt from the server-side SSO enforcement middleware: SSO/auth
+ * routes, the OAuth proxy (legacy `/oauth-proxy/...` and canonical
+ * `/api/:org/oauth-proxy/...` — both must stay reachable so a browser
+ * session mid-connect to a downstream MCP isn't 403'd before it can
+ * establish an SSO session), and the instance-level admin surface.
+ */
+export function isSsoExemptPath(path: string): boolean {
+  return (
+    path.startsWith("/api/org-sso/") ||
+    path.startsWith("/api/auth/") ||
+    path.startsWith("/api/tools/management") ||
+    path.startsWith("/oauth-proxy/") ||
+    /^\/api\/[^/]+\/oauth-proxy\//.test(path) ||
+    // Instance-level operator surface — not governed by any single org's SSO
+    // policy. Without this, an admin whose active org enforces SSO gets 403'd
+    // off the whole dashboard, and the UI reads that as "not an admin".
+    path.startsWith(`${ADMIN_API_PREFIX}/`)
+  );
+}
+
+/**
+ * Decide the `Access-Control-Allow-Origin` value for a request's `Origin`
+ * header. The CORS middleware below sets `credentials: true`, so reflecting
+ * every origin (the previous behavior) let any external site issue a
+ * cookie-authenticated cross-site request against this API and read the
+ * response — a permissive-CORS-with-credentials hole. Only reflect
+ * localhost/127.0.0.1 (the Vite dev server, on a different port than the
+ * API) and the deployment's own origin, falling back to the request's own
+ * origin when `baseUrl` isn't configured (same fallback already used for
+ * redirect_uri validation above).
+ */
+export function resolveCorsOrigin(
+  origin: string,
+  {
+    baseUrl,
+    requestOrigin,
+  }: { baseUrl: string | undefined; requestOrigin: string },
+): string | null {
+  let originHost: string;
+  try {
+    originHost = new URL(origin).hostname;
+  } catch {
+    return null;
+  }
+  if (originHost === "localhost" || originHost === "127.0.0.1") {
+    return origin;
+  }
+
+  const allowedOrigin = baseUrl ?? requestOrigin;
+  try {
+    if (new URL(allowedOrigin).origin === origin) {
+      return origin;
+    }
+  } catch {
+    // malformed baseUrl config — fall through to reject
+  }
+  return null;
+}
+
+/**
  * Handle OAuth-proxy requests for an MCP connection.
  *
  * On the org-scoped mount (`/api/:org/oauth-proxy/...`) `resolveOrgFromPath`
@@ -358,6 +418,20 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
 
   let originAuthServer: string | undefined;
   const connUrl = new URL(connection.connection_url);
+
+  // RFC 8707 resource indicator forwarded to the downstream authorization
+  // server on the authorize/token legs. Defaults to the connection's MCP
+  // endpoint URL — what most servers validate against (e.g. Supabase requires
+  // the exact endpoint). Some servers only accept the *origin* and reject a
+  // path-bearing resource (e.g. Pipedream returns "Invalid or unauthorized
+  // resource parameter" for ".../v2"). Allow a per-connection override via
+  // `metadata.oauthResource` for those, falling back to the connection URL.
+  const resourceOverride =
+    typeof connection.metadata?.oauthResource === "string" &&
+    connection.metadata.oauthResource.length > 0
+      ? connection.metadata.oauthResource
+      : undefined;
+  const resourceIndicator = resourceOverride ?? connection.connection_url;
 
   if (resourceRes.ok) {
     // Origin has Protected Resource Metadata - use authorization_servers from it
@@ -454,7 +528,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     // Some auth servers (like Supabase) validate that the resource is their actual endpoint,
     // not our proxy. We keep the proxy URL for redirect_uri since that's where we handle the callback.
     if (targetUrl.searchParams.has("resource")) {
-      targetUrl.searchParams.set("resource", connection.connection_url);
+      targetUrl.searchParams.set("resource", resourceIndicator);
     }
 
     // Add smart OAuth params for deco-hosted MCPs to skip org/project selection
@@ -527,7 +601,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
       // Parse form body and rewrite resource if present
       const formData = await c.req.formData();
       if (formData.has("resource")) {
-        formData.set("resource", connection.connection_url);
+        formData.set("resource", resourceIndicator);
       }
       const cidRaw = formData.get("client_id");
       const csRaw = formData.get("client_secret");
@@ -1119,14 +1193,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.use(
     "/*",
     cors({
-      origin: (origin) => {
-        // Allow localhost and configured origins
-        if (origin.includes("localhost") || origin.includes("127.0.0.1")) {
-          return origin;
-        }
-        // TODO: Configure allowed origins from environment
-        return origin;
-      },
+      origin: (origin, c) =>
+        resolveCorsOrigin(origin, {
+          baseUrl: getSettings().baseUrl,
+          requestOrigin: new URL(c.req.url).origin,
+        }),
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization", "mcp-protocol-version"],
@@ -1771,18 +1842,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // who haven't completed the SSO flow. Exempt paths: SSO routes themselves,
   // auth routes, and non-org-scoped endpoints.
   app.use("*", async (c, next) => {
-    const path = c.req.path;
-    // Skip SSO enforcement for SSO routes, auth routes, and public endpoints
-    if (
-      path.startsWith("/api/org-sso/") ||
-      path.startsWith("/api/auth/") ||
-      path.startsWith("/api/tools/management") ||
-      path.startsWith("/oauth-proxy/") ||
-      // Instance-level operator surface — not governed by any single org's SSO
-      // policy. Without this, an admin whose active org enforces SSO gets 403'd
-      // off the whole dashboard, and the UI reads that as "not an admin".
-      path.startsWith(`${ADMIN_API_PREFIX}/`)
-    ) {
+    if (isSsoExemptPath(c.req.path)) {
       return next();
     }
 
@@ -1852,10 +1912,17 @@ export async function createApp(options: CreateAppOptions = {}) {
     // Require either user or API key authentication
     if (!studioContext.auth.user?.id && !studioContext.auth.apiKey?.id) {
       const url = new URL(c.req.url);
+      // Behind a TLS-terminating reverse proxy (e.g. Caddy/nginx) the request
+      // reaches us over http, so `url.origin` would advertise an http://
+      // resource_metadata URL and OAuth-capable clients that require https
+      // (e.g. Claude) reject it. Honor X-Forwarded-Proto so the advertised
+      // URL matches the public scheme.
+      const fwdProto = c.req.header("x-forwarded-proto")?.split(",")[0]?.trim();
+      const origin = fwdProto ? `${fwdProto}://${url.host}` : url.origin;
       return (c.res = new Response(null, {
         status: 401,
         headers: {
-          "WWW-Authenticate": `Bearer realm="mcp",resource_metadata="${url.origin}${url.pathname}/.well-known/oauth-protected-resource"`,
+          "WWW-Authenticate": `Bearer realm="mcp",resource_metadata="${origin}${url.pathname}/.well-known/oauth-protected-resource"`,
         },
       }));
     }
@@ -1971,7 +2038,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs).
+  // Stable file redirect endpoint (resolves studio-storage: URIs to presigned URLs).
   // Resolve the org from the URL before serving so the stable URL cannot drift
   // to the session-active org when the path targets a different org.
   app.use("/api/:org/files/*", resolveOrgFromPath);

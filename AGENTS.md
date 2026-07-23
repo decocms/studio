@@ -328,6 +328,34 @@ User-facing copy calls it a **chat** — anything a person reads in the UI: JSX 
 
 So a `thread`-named identifier can render "New chat" in a label; keep the code identifier as `thread` and only the displayed string as "chat". When in doubt: if it crosses the wire or lives in code, it's "thread"; if a user reads it, it's "chat".
 
+### Internationalization (i18n)
+
+The web UI (`apps/mesh/src/web`) is internationalized by a zero-dependency module at
+`apps/mesh/src/web/i18n/` — plain TS dictionaries, no library.
+
+- **Never hardcode user-facing strings** in `apps/mesh/src/web` — JSX text, toasts,
+  placeholders, `aria-label`s, tooltips, empty states all go through `t()`.
+- **Usage**: `const t = useT()` (`@/web/i18n/use-t.ts`) inside a component/hook, then
+  `t("settings.title")` or `t("some.key", { name })` — `{name}` placeholders are interpolated.
+- **Dictionaries**: one file per feature domain in `i18n/en/` (e.g. `en/settings.ts`), flat
+  keys namespaced by domain (`"settings.preferences.theme"`). English is the source of truth:
+  `en/index.ts` spreads every domain `as const` and derives `TranslationKey` from it.
+- **Translations**: `i18n/pt-br/<domain>.ts` mirrors its en counterpart and must
+  `satisfies Record<keyof typeof <enDomain>, string>` — a missing or extra key is a compile
+  error, so `bun run check` proves translation completeness. New domain: create the en file,
+  spread it in `en/index.ts`, mirror in `pt-br/` and spread in `pt-br/index.ts`.
+- **Preference**: `language` lives in `usePreferences()` (localStorage), defaulting from
+  `navigator.language`. `useT` is reactive to it (TanStack Query) — no provider, no reload.
+- The "thread vs chat" rule applies to dictionary *values*; keys are code and may say `thread.*`.
+- Language option labels ("English", "Português (Brasil)") stay in their own language — never translated.
+- **Deliberately out of scope**: server-originated strings (API `error.message` shown in
+  toasts), transactional emails, and seeded/user data stay English — do not thread the locale
+  through to the server.
+- Strings interleaved with JSX elements (links/bold mid-sentence) that can't be expressed as a
+  single template: mark with `// TODO(i18n): rich text` and leave hardcoded for a manual pass.
+- `packages/ui` stays i18n-free: its few built-in English defaults are overridable via props;
+  pass translated strings from the app.
+
 ### React 19 Patterns
 - Uses React 19 with React Compiler (babel-plugin-react-compiler)
 - **DO NOT** use `useEffect` (banned by `plugins/ban-use-effect.ts`)—prefer alternatives

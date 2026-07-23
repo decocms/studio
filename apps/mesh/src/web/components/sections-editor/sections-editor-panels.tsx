@@ -13,6 +13,7 @@ import type { SandboxConfig } from "./fields/field-props";
 import { SeoFormFields } from "./seo-form-fields";
 import { parsePageVariants, type PageVariant } from "./page-variants";
 import { formatMatcher } from "./format-matcher";
+import { useT } from "@/web/i18n/use-t.ts";
 
 /**
  * Editor for a variant's matcher rule (e.g. Include/Exclude Locations).
@@ -40,20 +41,23 @@ export function VariantRuleForm({
   ) => void;
   sandbox?: SandboxConfig | null;
 }) {
+  const t = useT();
   const [breadcrumbPath, setBreadcrumbPath] = useState<string[]>([]);
 
   return (
     <div className="space-y-2">
       {breadcrumbPath.length > 0 && (
         <nav
-          aria-label="Variant rule breadcrumb"
+          aria-label={t(
+            "sectionsEditor.sectionsEditorPanels.variantRuleBreadcrumb",
+          )}
           className="flex min-w-0 items-center gap-1 overflow-hidden text-xs"
         >
           <button
             type="button"
             onClick={() => setBreadcrumbPath([])}
             className="flex shrink-0 items-center gap-0.5 rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Back to rule"
+            title={t("sectionsEditor.sectionsEditorPanels.backToRule")}
           >
             <ChevronLeft className="size-3.5" />
           </button>
@@ -205,6 +209,7 @@ export function PageHeaderInputs({
   initialPath: string;
   onFieldChange: (field: "name" | "path", value: string) => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(initialName);
   const [path, setPath] = useState(initialPath);
   const [prevKey, setPrevKey] = useState(pageKey);
@@ -226,7 +231,9 @@ export function PageHeaderInputs({
           onFieldChange("name", e.target.value);
         }}
         className="w-full bg-transparent text-sm font-semibold truncate outline-none border-none p-0 focus:ring-0 placeholder:text-muted-foreground"
-        placeholder="Page name"
+        placeholder={t(
+          "sectionsEditor.sectionsEditorPanels.pageNamePlaceholder",
+        )}
       />
       <input
         type="text"
@@ -236,13 +243,14 @@ export function PageHeaderInputs({
           onFieldChange("path", e.target.value);
         }}
         className="w-full bg-transparent text-xs text-muted-foreground truncate outline-none border-none p-0 focus:ring-0 placeholder:text-muted-foreground"
-        placeholder="/path"
+        placeholder={t("sectionsEditor.sectionsEditorPanels.pathPlaceholder")}
       />
     </div>
   );
 }
 
 export function AddVariantButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -250,14 +258,16 @@ export function AddVariantButton({ onClick }: { onClick: () => void }) {
           type="button"
           variant="ghost"
           size="icon"
-          aria-label="Add variant"
+          aria-label={t("sectionsEditor.sectionsEditorPanels.addVariant")}
           className="size-7 shrink-0 text-[oklch(0.65_0.15_160)]"
           onClick={onClick}
         >
           <Flag01 size={14} />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">Add variant</TooltipContent>
+      <TooltipContent side="bottom">
+        {t("sectionsEditor.sectionsEditorPanels.addVariant")}
+      </TooltipContent>
     </Tooltip>
   );
 }

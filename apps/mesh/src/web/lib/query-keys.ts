@@ -51,9 +51,10 @@ export const KEYS = {
   homeGithubContributions: (orgId: string, connectionId: string) =>
     ["home-github-contributions", orgId, connectionId] as const,
 
-  // Authenticated report deck for a scanned domain (/report/:domain).
-  report: (domain: string, key?: string) =>
-    ["report", domain, key ?? ""] as const,
+  // Authenticated report deck for a scanned domain (/report/:domain). `lang`
+  // (the viewer's locale) is part of the key so switching language refetches.
+  report: (domain: string, key?: string, lang?: string) =>
+    ["report", domain, key ?? "", lang ?? ""] as const,
 
   commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "connection", orgId, connectionId] as const,
@@ -153,6 +154,10 @@ export const KEYS = {
 
   organizationSettings: (organizationId: string) =>
     ["organization-settings", organizationId] as const,
+
+  // API keys (scoped by organization; the LIST tool filters by org server-side)
+  apiKeysList: (organizationId: string) =>
+    ["api-keys", organizationId] as const,
 
   // Active organization
   activeOrganization: (org: string | undefined) =>
@@ -519,6 +524,17 @@ export const KEYS = {
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   sandboxRepoDir: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["sandbox-repo-dir", orgSlug, virtualMcpId, branch] as const,
+  agentSandboxSession: (
+    orgSlug: string,
+    virtualMcpId: string,
+    branch: string,
+  ) => ["agent-sandbox-session", orgSlug, virtualMcpId, branch] as const,
+  agentSandboxSessionsPrefix: () => ["agent-sandbox-session"] as const,
+  agentSandboxSessions: (orgSlug: string, virtualMcpId: string) =>
+    ["agent-sandbox-session", orgSlug, virtualMcpId] as const,
+  // icon-select previews: the site's /sprites.svg, fetched via the preview proxy
+  sandboxSprite: (sandboxKey: string) =>
+    ["sandbox-sprite", sandboxKey] as const,
 
   // Link daemon status (user-scoped; the cluster derives the userSub
   // from the bearer session, so we don't include it in the key).

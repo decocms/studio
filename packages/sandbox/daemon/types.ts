@@ -32,10 +32,27 @@ import type { CoAuthorIdentity } from "../git-co-author";
 /** Studio user operating the sandbox — appended as git co-author on commits. */
 export type OperatorIdentity = CoAuthorIdentity;
 
+/**
+ * A credential for fetching git submodules whose remotes the main clone token
+ * can't reach (different repo/org). `token` is a PAT; the daemon writes it to a
+ * git-only credentials file and rewrites `git@<host>:` SSH submodule URLs to
+ * HTTPS so the token authenticates. Never placed in the process env bag.
+ */
+export interface SubmoduleCredential {
+  readonly host: string;
+  readonly token: string;
+}
+
 export interface GitRepository {
   readonly cloneUrl: string;
   readonly branch?: string;
   readonly repoName?: string;
+  /**
+   * Credentials for private submodules, keyed by host. Absent/empty means
+   * submodules are fetched with only the ambient (no-credential) git config —
+   * public submodules work, private ones on other hosts fail auth.
+   */
+  readonly submoduleCredentials?: readonly SubmoduleCredential[];
 }
 
 export interface GitConfig {

@@ -17,7 +17,8 @@ import type { ToolInput } from "@/tools/io-types";
 import { useAiProviders } from "@/web/hooks/collections/use-ai-providers";
 import { KEYS } from "@/web/lib/query-keys";
 import { track } from "@/web/lib/posthog-client";
-import { OPENAI_COMPATIBLE_PRESETS } from "@/web/utils/openai-compatible-presets";
+import { useT } from "@/web/i18n/use-t.ts";
+import { getPreset } from "@/web/utils/openai-compatible-presets";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
 import {
   ConnectApiKeyForm,
@@ -53,6 +54,7 @@ export function ConnectProviderDialog({
   onOpenChange,
   initialProvider,
 }: ConnectProviderDialogProps) {
+  const t = useT();
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
   const { org } = useProjectContext();
@@ -107,7 +109,13 @@ export function ConnectProviderDialog({
       track("ai_provider_oauth_succeeded", { provider_id: providerId });
       invalidateKeys();
       const provider = providers.find((p) => p.id === providerId);
-      toast.success(`${provider?.name ?? "Provider"} connected successfully`);
+      toast.success(
+        t("settings.connectProviderDialog.oauthSuccessMessage", {
+          provider:
+            provider?.name ??
+            t("settings.connectProviderDialog.defaultProviderName"),
+        }),
+      );
       close();
     },
     onError: (err, vars) => {
@@ -115,7 +123,11 @@ export function ConnectProviderDialog({
         provider_id: vars.providerId,
         error: err.message,
       });
-      toast.error(`OAuth connection failed: ${err.message}`);
+      toast.error(
+        t("settings.connectProviderDialog.oauthFailedMessage", {
+          error: err.message,
+        }),
+      );
       dispatch({ type: "oauth-failed" });
     },
   });
@@ -132,7 +144,13 @@ export function ConnectProviderDialog({
       track("ai_provider_provision_succeeded", { provider_id: providerId });
       invalidateKeys();
       const provider = providers.find((p) => p.id === providerId);
-      toast.success(`${provider?.name ?? "Provider"} connected successfully`);
+      toast.success(
+        t("settings.connectProviderDialog.provisionSuccessMessage", {
+          provider:
+            provider?.name ??
+            t("settings.connectProviderDialog.defaultProviderName"),
+        }),
+      );
       close();
     },
     onError: (err, providerId) => {
@@ -185,7 +203,9 @@ export function ConnectProviderDialog({
         window.open(result.url, "AiProviderOAuth", "width=600,height=700");
       } catch (err) {
         toast.error(
-          `Failed to start OAuth: ${err instanceof Error ? err.message : String(err)}`,
+          t("settings.connectProviderDialog.startOAuthFailedMessage", {
+            error: err instanceof Error ? err.message : String(err),
+          }),
         );
       }
       return;
@@ -245,7 +265,9 @@ export function ConnectProviderDialog({
       if (event.data?.type !== "AI_PROVIDER_OAUTH_CALLBACK") return;
       const { code, stateToken: incoming } = event.data;
       if (incoming !== stateToken) {
-        toast.error("Security check failed: State token mismatch");
+        toast.error(
+          t("settings.connectProviderDialog.securityCheckFailedMessage"),
+        );
         dispatch({ type: "oauth-failed" });
         return;
       }
@@ -264,7 +286,9 @@ export function ConnectProviderDialog({
       if (exchangeStarted) return;
       track("ai_provider_oauth_timeout", { provider_id: providerId });
       dispatch({ type: "oauth-failed" });
-      toast.error("Connection timed out");
+      toast.error(
+        t("settings.connectProviderDialog.connectionTimedOutMessage"),
+      );
     }, 120000);
 
     return () => {
@@ -279,11 +303,11 @@ export function ConnectProviderDialog({
     ? providers.find((p) => p.id === currentProviderId)
     : null;
   const currentPreset =
-    state.kind === "form" && state.presetId
-      ? OPENAI_COMPATIBLE_PRESETS.find((p) => p.id === state.presetId)
-      : null;
+    state.kind === "form" && state.presetId ? getPreset(state.presetId) : null;
   const currentTitle =
-    currentPreset?.name ?? currentProvider?.name ?? "Connect an AI provider";
+    currentPreset?.name ??
+    currentProvider?.name ??
+    t("settings.connectProviderDialog.defaultTitle");
   const showBack = state.kind !== "grid" && state.kind !== "closed";
   const handleBack = () => {
     if (initialProvider) {
@@ -302,6 +326,7 @@ export function ConnectProviderDialog({
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label={t("settings.connectProviderDialog.backButtonLabel")}
                 className="h-7 w-7"
                 onClick={handleBack}
               >
@@ -312,7 +337,7 @@ export function ConnectProviderDialog({
           </div>
           {state.kind === "grid" && !initialProvider && (
             <DialogDescription>
-              Pick a provider — we'll handle the rest.
+              {t("settings.connectProviderDialog.gridDescription")}
             </DialogDescription>
           )}
         </DialogHeader>
@@ -324,13 +349,7 @@ export function ConnectProviderDialog({
         {state.kind === "form" &&
           (state.providerId === "openai-compatible" ? (
             <ConnectOpenAICompatibleForm
-              preset={
-                state.presetId
-                  ? OPENAI_COMPATIBLE_PRESETS.find(
-                      (p) => p.id === state.presetId,
-                    )
-                  : undefined
-              }
+              preset={state.presetId ? getPreset(state.presetId) : undefined}
               onCancel={() => dispatch({ type: "back" })}
               onSuccess={() => {
                 invalidateKeys();
@@ -352,8 +371,7 @@ export function ConnectProviderDialog({
           <div className="flex flex-col items-center gap-4 py-8">
             <Spinner size="lg" />
             <p className="text-sm text-muted-foreground text-center">
-              Authorize the connection in the popup window. This dialog will
-              close once authorization completes.
+              {t("settings.connectProviderDialog.oauthPendingMessage")}
             </p>
           </div>
         )}
@@ -361,7 +379,9 @@ export function ConnectProviderDialog({
         {state.kind === "provision-pending" && (
           <div className="flex flex-col items-center gap-4 py-8">
             <Spinner size="lg" />
-            <p className="text-sm text-muted-foreground">Connecting…</p>
+            <p className="text-sm text-muted-foreground">
+              {t("settings.connectProviderDialog.provisionPendingMessage")}
+            </p>
           </div>
         )}
 
@@ -375,7 +395,7 @@ export function ConnectProviderDialog({
                 size="sm"
                 onClick={() => dispatch({ type: "back" })}
               >
-                Back
+                {t("settings.connectProviderDialog.backButton")}
               </Button>
               <Button
                 size="sm"
@@ -384,7 +404,7 @@ export function ConnectProviderDialog({
                   provisionKey(state.providerId);
                 }}
               >
-                Retry
+                {t("settings.connectProviderDialog.retryButton")}
               </Button>
             </div>
           </div>

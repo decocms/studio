@@ -5,8 +5,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { Chat } from "./index";
-import { useChatPrefs, useChatTask } from "./context";
-import { ChatModeRow } from "./pills/chat-mode-row";
+import { useChatPrefs } from "./context";
 
 export function AgentHome({
   onOpenContextPanel,
@@ -15,7 +14,6 @@ export function AgentHome({
 }) {
   const { org } = useProjectContext();
   const { selectedVirtualMcp } = useChatPrefs();
-  const { currentBranch } = useChatTask();
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const agent = selectedVirtualMcp ?? defaultAgent;
   const fullVm = useVirtualMCP(agent.id);
@@ -49,16 +47,6 @@ export function AgentHome({
       {/* docked input */}
       <Chat.Footer>
         <Chat.IceBreakers className="pb-3" />
-        <div
-          data-chat-above-row="true"
-          className="@container/chat-bottom pb-1 flex justify-start gap-1"
-        >
-          <ChatModeRow
-            virtualMcp={fullVm}
-            currentBranch={currentBranch}
-            showRuntimeLabel
-          />
-        </div>
         <Chat.Input onOpenContextPanel={onOpenContextPanel} />
       </Chat.Footer>
     </>

@@ -1,9 +1,11 @@
 import fs from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 import { safePath } from "../paths";
+import { invalidDecofileBlockJson } from "../decofile-json";
 import { parseJsonBody, jsonResponse } from "./body-parser";
 
 /**
@@ -107,6 +109,96 @@ function resolveReadPath(
   return safePath(appRoot, repoDir, userPath);
 }
 
+/**
+ * On-disk name of the merged decofile artifact and its source directory.
+ * `.deco/blocks.gen.json` is the runtime's merge of every `.deco/blocks/*.json`;
+ * many repos gitignore it (it's a multi-MB single line that conflicts on every
+ * content PR and is regenerated on dev cold-start), so a fresh sandbox has the
+ * block sources but not the merged file.
+ */
+const DECOFILE_GEN_BASENAME = "blocks.gen.json";
+const DECOFILE_BLOCKS_DIRNAME = "blocks";
+
+/**
+ * Rebuild `.deco/blocks.gen.json` from the sibling `.deco/blocks/*.json` files
+ * so the CMS is readable before the dev server is up. The merge maps each file
+ * to `{ [decodeURIComponent(stem)]: <file contents> }` — exactly what the deco
+ * runtime emits (the filename stem is the `encodeURIComponent` of the block id).
+ *
+ * Kept off the critical path of the single-threaded event loop (daemon health
+ * probe has a ~500ms budget): reads are async, and the file contents are
+ * concatenated as raw text — no per-value `JSON.parse`/`JSON.stringify` over the
+ * merge (only the small keys are JSON-encoded). The unavoidable full-payload
+ * serialization happens once, downstream, when `jsonResponse` stringifies the
+ * result — the same ~multi-MB cost the existing committed-file read path already
+ * pays via `readFileSync` + `jsonResponse`, so this is no worse. A malformed
+ * block isn't caught here; the client's `JSON.parse` fails and falls back to "no
+ * snapshot", same as today — the write/edit handlers already gate validity.
+ *
+ * Returns `null` when there's no `blocks` dir (nothing to merge) so the caller
+ * falls through to its normal "file not found" path.
+ *
+ * Prefer `generateDecofileFromBlocksDeduped` from request handlers: concurrent
+ * cold reads (multiple tabs/users on a shared sandbox during boot) would each
+ * rebuild the whole payload and their serialization bursts would serialize on
+ * the loop, risking a missed health probe.
+ */
+export async function generateDecofileFromBlocks(
+  blocksDir: string,
+): Promise<string | null> {
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = await readdir(blocksDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const names = entries
+    .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".json"))
+    .map((e) => e.name)
+    // Stable output order so byte-for-byte the artifact is deterministic.
+    .sort();
+  if (names.length === 0) return null;
+
+  const parts: string[] = [];
+  for (const name of names) {
+    const stem = name.slice(0, -".json".length);
+    let key: string;
+    try {
+      key = decodeURIComponent(stem);
+    } catch {
+      // A stem that isn't valid percent-encoding keeps its literal form,
+      // mirroring the frontend's decoBlockKeyFromFileStem fallback.
+      key = stem;
+    }
+    const raw = (await readFile(path.join(blocksDir, name), "utf-8")).trim();
+    // Skip empty files — `"key":` with no value would break the merged JSON.
+    if (!raw) continue;
+    parts.push(`${JSON.stringify(key)}:${raw}`);
+  }
+  return `{${parts.join(",")}}`;
+}
+
+/**
+ * Single-flight guard around {@link generateDecofileFromBlocks}: concurrent
+ * reads for the same `blocksDir` share one in-flight rebuild instead of each
+ * doing a full multi-MB merge. Keyed by absolute dir; the entry is cleared when
+ * the build settles (resolve or reject). This is a boot-window coalescer, not a
+ * cache — the next read after settle rebuilds, so it never serves stale content.
+ */
+const decofileBuildsInFlight = new Map<string, Promise<string | null>>();
+
+export function generateDecofileFromBlocksDeduped(
+  blocksDir: string,
+): Promise<string | null> {
+  const existing = decofileBuildsInFlight.get(blocksDir);
+  if (existing) return existing;
+  const build = generateDecofileFromBlocks(blocksDir).finally(() => {
+    decofileBuildsInFlight.delete(blocksDir);
+  });
+  decofileBuildsInFlight.set(blocksDir, build);
+  return build;
+}
+
 export function makeReadHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: {
@@ -132,6 +224,20 @@ export function makeReadHandler(deps: FsDeps) {
     try {
       stat = fs.statSync(filePath);
     } catch {
+      // Decofile fallback: when `.deco/blocks.gen.json` is absent (commonly
+      // gitignored), regenerate it on the fly from the sibling `.deco/blocks/`
+      // sources so the CMS is readable before the dev server boots. Returned
+      // un-numbered (pretty JSON never matches the `^\d+\t` line-number prefix,
+      // so the client's stripLineNumbers is a no-op and JSON.parse still works).
+      if (path.basename(filePath) === DECOFILE_GEN_BASENAME) {
+        const merged = await generateDecofileFromBlocksDeduped(
+          path.join(path.dirname(filePath), DECOFILE_BLOCKS_DIRNAME),
+        );
+        if (merged !== null) {
+          // lineCount is advisory here; the decofile is consumed as one blob.
+          return jsonResponse({ kind: "text", content: merged, lineCount: 1 });
+        }
+      }
       return jsonResponse({ error: `File not found: ${body.path}` }, 400);
     }
     if (stat.isDirectory()) {
@@ -196,6 +302,9 @@ export function makeWriteHandler(deps: FsDeps) {
       return jsonResponse({ error: "content is required" }, 400);
     const filePath = safePath(deps.appRoot, deps.repoDir, body.path ?? "");
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
+    const jsonError = invalidDecofileBlockJson(body.path ?? "", body.content);
+    if (jsonError)
+      return jsonResponse({ error: `Refusing to write ${jsonError}` }, 400);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, body.content, "utf-8");
     deps.onWorkingTreeWrite?.(body.path ?? "");
@@ -380,6 +489,9 @@ export function makeEditHandler(deps: FsDeps) {
     const updated = replaceAll
       ? content.replaceAll(body.old_string, body.new_string)
       : content.replace(body.old_string, body.new_string);
+    const jsonError = invalidDecofileBlockJson(body.path ?? "", updated);
+    if (jsonError)
+      return jsonResponse({ error: `Refusing to write ${jsonError}` }, 400);
     fs.writeFileSync(filePath, updated, "utf-8");
     deps.onWorkingTreeWrite?.(body.path ?? "");
     return jsonResponse({
@@ -397,6 +509,7 @@ export function makeGrepHandler(deps: FsDeps) {
       path?: string;
       output_mode?: "files" | "count" | "content";
       ignore_case?: boolean;
+      fixed_strings?: boolean;
       context?: number;
       glob?: string;
       limit?: number;
@@ -419,12 +532,23 @@ export function makeGrepHandler(deps: FsDeps) {
     else if (mode === "count") args.push("--count");
     else args.push("--line-number");
     if (body.ignore_case) args.push("-i");
+    if (body.fixed_strings) args.push("-F");
     if (body.context && mode === "content")
       args.push("-C", String(body.context));
     if (body.glob) args.push("--glob", body.glob);
     args.push("--", body.pattern, searchPath);
 
-    const limit = body.limit ?? 250;
+    const limit = resolveGrepResultLimit(body.limit);
+    // rg prints paths prefixed with the (absolute) search path argument. Strip
+    // that back to a repo-relative path so grep matches glob's wire contract
+    // (agents/tools glob+grep over repo-relative, POSIX-style paths). Every
+    // mode's path is a literal prefix of the line — "files" mode emits a bare
+    // path, "content"/"count" emit `path:rest`, and `-C` context rows emit
+    // `path-rest` — so strip the known absolute prefix directly rather than
+    // splitting on ":" (which misparses context rows' "-" separator and any
+    // path that itself contains a colon).
+    const relativizeGrepLine = (line: string): string =>
+      toRepoRelativePath(line, searchPath, deps.repoDir);
     const child = spawn(
       "rg",
       args,
@@ -436,19 +560,26 @@ export function makeGrepHandler(deps: FsDeps) {
     let stdout = "";
     let lineCount = 0;
     let truncated = false;
+    // rg's stdout arrives in arbitrary chunk boundaries, which don't align
+    // with line boundaries — buffer the trailing partial line across `data`
+    // events instead of treating every chunk as whole lines (that would
+    // corrupt/drop a match line split across two chunks).
+    let pendingLine = "";
     child.stdout!.on("data", (chunk: Buffer) => {
       if (truncated) return;
-      const lines = chunk.toString("utf-8").split("\n");
-      for (const line of lines) {
+      const pieces = (pendingLine + chunk.toString("utf-8")).split("\n");
+      pendingLine = pieces.pop() ?? "";
+      for (const line of pieces) {
         if (lineCount >= limit) {
           truncated = true;
+          pendingLine = "";
           try {
             child.kill("SIGTERM");
           } catch {}
           break;
         }
         if (line) {
-          stdout += (stdout ? "\n" : "") + line;
+          stdout += (stdout ? "\n" : "") + relativizeGrepLine(line);
           lineCount++;
         }
       }
@@ -478,6 +609,12 @@ export function makeGrepHandler(deps: FsDeps) {
         { error: stderr || `rg failed with code ${code}` },
         500,
       );
+    // Flush a final line left in the buffer with no trailing newline (rg was
+    // killed or exited before emitting one).
+    if (!truncated && pendingLine && lineCount < limit) {
+      stdout += (stdout ? "\n" : "") + relativizeGrepLine(pendingLine);
+      lineCount++;
+    }
     return jsonResponse({ results: stdout, matchCount: lineCount });
   };
 }
@@ -489,6 +626,11 @@ export function makeGrepHandler(deps: FsDeps) {
  *
  * Body: { path: string; url: string }
  */
+// Unlike /write and /edit, this handler streams (potentially large, binary)
+// presigned-URL payloads and deliberately does NOT validate decofile-block JSON
+// — buffering the whole body to JSON.parse it would violate the daemon's
+// no-blocking rule. publish() is the backstop that catches any invalid block
+// written by this path (or any other) at the commit boundary.
 export function makeWriteFromUrlHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { path?: string; url?: string };
@@ -715,6 +857,19 @@ export function registerGlobAncestorDirectories(
   for (let i = 1; i <= Math.min(dirParts.length, maxDepth); i++) {
     directoryPaths.add(dirParts.slice(0, i).join("/"));
   }
+}
+
+/** Default cap for agent grep calls. */
+export const GREP_RESULT_LIMIT = 250;
+/** Hard ceiling when callers pass an explicit `limit` (file explorer). */
+export const GREP_MAX_RESULT_LIMIT = 10_000;
+
+/** Same shape as `resolveGlobResultLimit`, just a lower default (grep rows are wider than glob paths). */
+export function resolveGrepResultLimit(limit: unknown): number {
+  if (limit === undefined || limit === null) return GREP_RESULT_LIMIT;
+  const n = typeof limit === "number" ? limit : Number(limit);
+  if (!Number.isFinite(n) || n < 1) return GREP_RESULT_LIMIT;
+  return Math.min(Math.floor(n), GREP_MAX_RESULT_LIMIT);
 }
 
 export function resolveGlobResultLimit(limit: unknown): number {

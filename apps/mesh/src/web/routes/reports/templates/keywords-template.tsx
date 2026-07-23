@@ -1,5 +1,6 @@
 import SlideHeader from "./slide-header";
 import { DECK, TONE_COLOR } from "./tokens";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { KeywordsProps } from "@/reports/deck-types";
 
 // Rank → colour. Top-3 is the prize (green); 4–10 is "close but losing clicks"
@@ -28,6 +29,7 @@ export default function KeywordsTemplate({
   volumeLabel,
   active,
 }: KeywordsProps) {
+  const t = useT();
   const rows = keywords.slice(0, 8);
   return (
     <div className="flex h-full flex-col">
@@ -47,11 +49,15 @@ export default function KeywordsTemplate({
             className="flex items-center gap-2 px-1 pb-1 text-[10px] font-medium uppercase tracking-[0.04em] sm:gap-3 sm:px-3 sm:text-[11px]"
             style={{ color: DECK.muted }}
           >
-            <span className="min-w-0 flex-1 truncate">Keyword</span>
-            <span className="w-20 shrink-0 text-right sm:w-24">
-              {volumeLabel ?? "Buscas/mês"}
+            <span className="min-w-0 flex-1 truncate">
+              {t("reports.keywordsTemplate.keyword")}
             </span>
-            <span className="w-12 shrink-0 text-right sm:w-16">Posição</span>
+            <span className="w-20 shrink-0 text-right sm:w-24">
+              {volumeLabel ?? t("reports.keywordsTemplate.searchesPerMonth")}
+            </span>
+            <span className="w-12 shrink-0 text-right sm:w-16">
+              {t("reports.keywordsTemplate.position")}
+            </span>
           </div>
 
           <ul className="flex flex-col">

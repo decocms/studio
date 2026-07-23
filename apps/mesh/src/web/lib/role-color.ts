@@ -21,7 +21,7 @@ export function getRoleColor(roleName: string): string {
     hash = hash & hash;
   }
   const index = Math.abs(hash) % ROLE_COLORS.length;
-  return ROLE_COLORS[index] ?? ROLE_COLORS[0];
+  return ROLE_COLORS[index]!;
 }
 
 export function getRoleDotColor(role: string, isBuiltin: boolean): string {

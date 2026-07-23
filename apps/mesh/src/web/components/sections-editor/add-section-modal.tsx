@@ -8,6 +8,7 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { useT } from "@/web/i18n/use-t.ts";
 import {
   extractSectionCatalog,
   findLivePageResolveType,
@@ -219,6 +220,7 @@ export function AddSectionModal({
   previewBaseUrl: string;
   onSelect: (entry: ReturnType<typeof extractSectionCatalog>[number]) => void;
 }) {
+  const t = useT();
   const [search, setSearch] = useState("");
   const [prevOpen, setPrevOpen] = useState(open);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -265,7 +267,7 @@ export function AddSectionModal({
         className="flex h-[90vh] max-h-[90vh] w-[96vw] max-w-[96vw] sm:max-w-[96vw] flex-col gap-0 overflow-hidden p-0"
       >
         <DialogHeader className="shrink-0 border-b px-4 py-3 text-left">
-          <DialogTitle>Add section</DialogTitle>
+          <DialogTitle>{t("sectionsEditor.addSectionModal.title")}</DialogTitle>
           <div className="relative pt-2">
             <SearchMd
               size={14}
@@ -274,7 +276,9 @@ export function AddSectionModal({
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search sections..."
+              placeholder={t(
+                "sectionsEditor.addSectionModal.searchPlaceholder",
+              )}
               className="h-9 pl-8"
             />
           </div>
@@ -284,7 +288,7 @@ export function AddSectionModal({
           <div className="p-4">
             {filtered.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                No sections found.
+                {t("sectionsEditor.addSectionModal.noSectionsFound")}
               </p>
             ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

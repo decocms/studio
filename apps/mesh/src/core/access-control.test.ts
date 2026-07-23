@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "bun:test";
 import {
   AccessControl,
   ForbiddenError,
+  PaidSeatRequiredError,
   UnauthorizedError,
 } from "./access-control";
 import type { BoundAuthClient } from "./studio-context";
@@ -141,6 +142,24 @@ describe("AccessControl", () => {
 
       await ac.check();
       expect(ac.granted()).toBe(true);
+    });
+
+    it("bypasses checks for a comma-joined multi-role admin without calling boundAuth", async () => {
+      // Better Auth's organization plugin joins an assigned role array with
+      // "," before storing member.role, so a multi-role owner/admin (e.g.
+      // "admin,billing-manager") arrives here as that comma-joined string —
+      // a plain exact-match would miss it and fall through to boundAuth.
+      const mockBoundAuth = createMockBoundAuth({}); // no permissions
+      const ac = new AccessControl(
+        "user_1",
+        "TEST_TOOL",
+        mockBoundAuth,
+        "admin,billing-manager",
+      );
+
+      await ac.check();
+      expect(ac.granted()).toBe(true);
+      expect(mockBoundAuth.hasPermission).not.toHaveBeenCalled();
     });
 
     it("does NOT bypass the admin role for an API-key principal", async () => {
@@ -392,6 +411,100 @@ describe("AccessControl", () => {
       );
 
       await expect(ac.check()).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe("seat gate", () => {
+    it("blocks a mutating tool for a gated member — even an org OWNER", async () => {
+      // Seats are monetization, not governance: the report-funnel onboarding
+      // user is the org owner AND holds a free seat. The admin/owner bypass
+      // must not leak through the gate.
+      const ac = new AccessControl(
+        "user_1",
+        "SOME_MUTATING_TOOL",
+        createMockBoundAuth({ self: ["*"] }),
+        "owner",
+      );
+      ac.setSeatGated(true);
+      ac.setToolReadOnly(false);
+
+      await expect(ac.check()).rejects.toThrow(PaidSeatRequiredError);
+      expect(ac.granted()).toBe(false);
+    });
+
+    it("lets a tool that declares readOnlyHint through for a gated member", async () => {
+      const ac = new AccessControl(
+        "user_1",
+        "SOME_READ_TOOL",
+        createMockBoundAuth({ self: ["SOME_READ_TOOL"] }),
+        "user",
+      );
+      ac.setSeatGated(true);
+      ac.setToolReadOnly(true);
+
+      await ac.check();
+      expect(ac.granted()).toBe(true);
+    });
+
+    it("gates basic-usage tools too — free seat means no spend, no writes", async () => {
+      const [aBasicTool] = BASIC_USAGE_TOOLS;
+      const ac = new AccessControl(
+        "user_1",
+        aBasicTool,
+        createMockBoundAuth({}),
+        "user",
+      );
+      ac.setSeatGated(true);
+      ac.setToolReadOnly(false);
+
+      await expect(ac.check()).rejects.toThrow(PaidSeatRequiredError);
+    });
+
+    it("lets the ORG_FS_READ resource key through, but not ORG_FS_WRITE", async () => {
+      // Route-level checks pass resource keys, not defineTool tools — reads
+      // must stay reachable for free seats (they can browse shared files).
+      const ac = new AccessControl(
+        "user_1",
+        undefined,
+        createMockBoundAuth({}),
+        "user",
+      );
+      ac.setSeatGated(true);
+
+      await ac.check("ORG_FS_READ");
+      expect(ac.granted()).toBe(true);
+
+      const acWrite = new AccessControl(
+        "user_1",
+        undefined,
+        createMockBoundAuth({}),
+        "user",
+      );
+      acWrite.setSeatGated(true);
+      await expect(acWrite.check("ORG_FS_WRITE")).rejects.toThrow(
+        PaidSeatRequiredError,
+      );
+    });
+
+    it("changes nothing when the gate is off (flag off / legacy / paid seat)", async () => {
+      const ac = new AccessControl(
+        "user_1",
+        "SOME_MUTATING_TOOL",
+        createMockBoundAuth({ self: ["SOME_MUTATING_TOOL"] }),
+        "user",
+      );
+      // setSeatGated never called — the default must be fully open.
+      await ac.check();
+      expect(ac.granted()).toBe(true);
+    });
+
+    it("is a ForbiddenError (403) carrying the wire-contract prefix", () => {
+      expect(new PaidSeatRequiredError()).toBeInstanceOf(ForbiddenError);
+      // The prefix is what the frontend paywall detects across transports —
+      // same convention as [CREDITS]. Changing it is a breaking UI contract.
+      expect(
+        new PaidSeatRequiredError().message.startsWith("[PAID_SEAT_REQUIRED]"),
+      ).toBe(true);
     });
   });
 });

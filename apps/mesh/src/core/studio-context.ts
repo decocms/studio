@@ -194,6 +194,13 @@ export interface BoundAuthClient {
  * Authentication state from Better Auth
  */
 export interface MeshAuth {
+  /**
+   * Organization encoded in a bearer credential (API key or mesh JWT).
+   * Org-scoped middleware must not rebind a token issued for one org to a
+   * different org named in the request path.
+   */
+  tokenOrganizationId?: string;
+
   user?: {
     id: string;
     connectionId?: string;
@@ -304,6 +311,7 @@ import type { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
 import { AIProviderFactory } from "@/ai-providers/factory";
 import type { FireAutomationOutcome } from "../automations/dbos-workflow";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
+import type { AgentSandboxSessionStorage } from "../storage/agent-sandbox-sessions";
 
 // Better Auth instance type - flexible for testing
 // In production, this is the actual Better Auth instance
@@ -346,6 +354,7 @@ export interface MeshStorage {
   organizationJoinRequests: OrganizationJoinRequestStorage;
   kv: KVStorage;
   interests: InterestsStorage;
+  agentSandboxSessions: AgentSandboxSessionStorage;
 }
 
 // ============================================================================

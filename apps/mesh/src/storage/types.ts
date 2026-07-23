@@ -162,7 +162,6 @@ export interface OrganizationSettingsTable {
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
   reports_only: boolean | null;
-  task_board_enabled: ColumnType<boolean, boolean | undefined, boolean>;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -175,7 +174,6 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   reports_only: boolean | null;
-  task_board_enabled: boolean;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -1222,6 +1220,57 @@ export interface ThreadMessagePartTable {
 // ============================================================================
 
 /**
+ * Per-org billing identity (see migration 139). Platform-written only:
+ * migration backfill, org-creation hook, Stripe webhooks — NEVER writable by
+ * org members (billing in the org `metadata` would be, via
+ * ORGANIZATION_UPDATE). `legacy = true` orgs are exempt from seat
+ * enforcement forever.
+ */
+export interface OrganizationBillingTable {
+  organization_id: string;
+  legacy: boolean;
+  /** "self_serve" (Stripe, charge on apply) | "invoiced" (contract orgs). */
+  billing_mode: ColumnType<string, string | undefined, string>;
+  /** Subscription status: "none" | "active" | "past_due" | "canceled". */
+  status: ColumnType<string, string | undefined, string>;
+  stripe_customer_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  stripe_subscription_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  current_period_end: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  /** The one site whose weekly report re-run the subscription includes. */
+  included_report_url: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/**
+ * Presence = this member holds a paid seat. Absence = free seat (readonly +
+ * no AI when STUDIO_BILLING_ENFORCED is on). Seats are monetization, NOT
+ * governance: orthogonal to Better Auth roles — an org owner can hold a free
+ * seat (the report-funnel onboarding case).
+ */
+export interface OrganizationPaidSeatTable {
+  organization_id: string;
+  user_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/**
  * Organization tag table definition
  * Stores normalized tag definitions per organization
  */
@@ -1399,6 +1448,45 @@ export interface SandboxProviderStateTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
+export interface AgentSandboxRunnerStateTable {
+  project_ref: string;
+  sandbox_provider_kind: string;
+  handle: string;
+  state: ColumnType<Record<string, unknown>, string, string>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+export interface AgentSandboxSessionTable {
+  organization_id: string;
+  virtual_mcp_id: string;
+  branch: string;
+  thread_id: string | null;
+  sandbox_handle: string | null;
+  preview_url: string | null;
+  sandbox_api_url: string | null;
+  desired_state: "running" | "stopped";
+  status:
+    | "provisioning"
+    | "ready"
+    | "missing"
+    | "failed"
+    | "stopping"
+    | "reaping"
+    | "deleting"
+    | "stopped";
+  generation: number;
+  started_with: ColumnType<
+    Record<string, unknown> | null,
+    string | null,
+    string | null
+  >;
+  failure_reason: string | null;
+  created_by: string;
+  last_started_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
 // ============================================================================
 // Organization Domain Table Definition
 // ============================================================================
@@ -1528,10 +1616,28 @@ export interface TaskBoardItemTable {
     Date | string | null | undefined,
     Date | string | null
   >;
+  /** Sender-minted finding identity (e.g. `diag:{domain}:{check_id}`) — the
+   *  import refreshes an OPEN item with the same key instead of duplicating
+   *  it. Null for human-created cards. */
+  external_key: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One processed task-board import request: PK (organization_id, run_id).
+ *  Claimed inside the import's transaction — a replay of the same run (the
+ *  reports worker's payment success page and Stripe webhook both push) loses
+ *  the claim and no-ops instead of duplicating the board. */
+export interface TaskBoardImportRunTable {
+  organization_id: string;
+  run_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 /** Join row: a task board item ↔ an agent thread (many-to-many). */
@@ -1700,6 +1806,10 @@ export interface Database extends PrivateRegistryDatabase {
   organization_tags: OrganizationTagTable;
   member_tags: MemberTagTable;
 
+  // Per-seat billing (dormant behind STUDIO_BILLING_ENFORCED)
+  organization_billing: OrganizationBillingTable;
+  organization_paid_seat: OrganizationPaidSeatTable;
+
   // Virtual MCP plugin configs
   virtual_mcp_plugin_configs: VirtualMcpPluginConfigTable;
 
@@ -1746,6 +1856,9 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_items: TaskBoardItemTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_item_prs: TaskBoardItemPrTable;
+  task_board_import_runs: TaskBoardImportRunTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
+  agent_sandbox_runner_state: AgentSandboxRunnerStateTable;
+  agent_sandbox_sessions: AgentSandboxSessionTable;
 }

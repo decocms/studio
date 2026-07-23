@@ -14,7 +14,6 @@ import {
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
 import { getSettings, setGlobalSettings } from "../../settings";
-import { OrganizationSettingsStorage } from "../../storage/organization-settings";
 import { createApp } from "../app";
 
 if (!getSettings().encryptionKey) {
@@ -71,9 +70,6 @@ describe("Task Board Import Route", () => {
       VALUES ('org_board', 'Board Org', 'board-org', ${now})
       ON CONFLICT (id) DO NOTHING
     `.execute(database.db);
-    await new OrganizationSettingsStorage(database.db).upsert("org_board", {
-      task_board_enabled: true,
-    });
     // user_1 (seeded) is org_board's owner — the delegation principal.
     await sql`
       INSERT INTO "member" (id, "userId", "organizationId", role, "createdAt")
@@ -107,20 +103,23 @@ describe("Task Board Import Route", () => {
     expect(wrongToken.status).toBe(401);
   });
 
-  it("auto-enables the task board for an org that never touched it", async () => {
-    // org_1 (seeded) has no settings row → board disabled by default. The
-    // report push is the org's introduction to the board, so the import flips
-    // the setting on and writes.
+  it("imports tasks without creating organization settings", async () => {
+    // org_1 (seeded) has no settings row. The task board is always available,
+    // so importing tasks must not create unrelated configuration state.
     const res = await app.fetch(post("org_1", "svc-secret", BODY));
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ created: 2, delegated: 0 });
+    await expect(res.json()).resolves.toEqual({
+      created: 2,
+      updated: 0,
+      delegated: 0,
+    });
 
     const settings = await database.db
       .selectFrom("organization_settings")
-      .select(["task_board_enabled"])
+      .select(["organizationId"])
       .where("organizationId", "=", "org_1")
       .executeTakeFirst();
-    expect(settings?.task_board_enabled).toBe(true);
+    expect(settings).toBeUndefined();
   });
 
   it("rejects an invalid body", async () => {
@@ -128,25 +127,14 @@ describe("Task Board Import Route", () => {
     expect(res.status).toBe(400);
   });
 
-  it("does not auto-enable the task board when the body is rejected", async () => {
-    // org_1 (seeded) has no settings row → board disabled by default. A 400
-    // must leave it untouched — flipping it on with nothing written would
-    // silently opt the org into a feature it never asked for.
-    const res = await app.fetch(post("org_1", "svc-secret", { items: [] }));
-    expect(res.status).toBe(400);
-
-    const settings = await database.db
-      .selectFrom("organization_settings")
-      .select(["task_board_enabled"])
-      .where("organizationId", "=", "org_1")
-      .executeTakeFirst();
-    expect(settings?.task_board_enabled).not.toBe(true);
-  });
-
   it("creates triage items as the system principal, resolving the org by id", async () => {
     const res = await app.fetch(post("org_board", "svc-secret", BODY));
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ created: 2, delegated: 0 });
+    await expect(res.json()).resolves.toEqual({
+      created: 2,
+      updated: 0,
+      delegated: 0,
+    });
 
     const rows = await database.db
       .selectFrom("task_board_items")
@@ -184,7 +172,11 @@ describe("Task Board Import Route", () => {
     expect(res.status).toBe(200);
     // The enqueue itself is best-effort (no model configured in tests) — the
     // delegation must still land on the row.
-    await expect(res.json()).resolves.toEqual({ created: 2, delegated: 1 });
+    await expect(res.json()).resolves.toEqual({
+      created: 2,
+      updated: 0,
+      delegated: 1,
+    });
 
     const rows = await database.db
       .selectFrom("task_board_items")
@@ -225,5 +217,128 @@ describe("Task Board Import Route", () => {
       }),
     );
     expect(bad.status).toBe(400);
+  });
+
+  it("replays of the same run_id no-op (request idempotency)", async () => {
+    const body = {
+      items: [{ title: "Adicionar H1 na home" }],
+      source: { url: "shop.com", run_id: "run_double_fire" },
+    };
+    const first = await app.fetch(post("org_board", "svc-secret", body));
+    await expect(first.json()).resolves.toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+    });
+
+    // The success page and the webhook fire the SAME import seconds apart —
+    // the second one must not double the board.
+    const replay = await app.fetch(post("org_board", "svc-secret", body));
+    await expect(replay.json()).resolves.toEqual({
+      created: 0,
+      updated: 0,
+      delegated: 0,
+      deduped: true,
+    });
+
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toHaveLength(1);
+  });
+
+  it("an externalKey matching an open item refreshes it instead of duplicating", async () => {
+    const key = "diag:shop.com:GEO-001";
+    const run1 = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Liberar o GPTBot no WAF",
+            description: "403 no WAF (run 1).",
+            priority: "medium",
+            externalKey: key,
+          },
+        ],
+        source: { url: "shop.com", run_id: "run_1" },
+      }),
+    );
+    await expect(run1.json()).resolves.toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+    });
+
+    // A month later the diagnostic re-runs, finds the same issue with fresh
+    // evidence and a worse severity — the card is refreshed, not duplicated,
+    // and the human-facing title is left alone.
+    const run2 = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "GPTBot ainda bloqueado",
+            description: "403 no WAF (run 2).",
+            priority: "high",
+            externalKey: key,
+          },
+        ],
+        source: { url: "shop.com", run_id: "run_2" },
+      }),
+    );
+    await expect(run2.json()).resolves.toEqual({
+      created: 0,
+      updated: 1,
+      delegated: 0,
+    });
+
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.title).toBe("Liberar o GPTBot no WAF");
+    expect(rows[0]?.description).toBe("403 no WAF (run 2).");
+    expect(rows[0]?.priority).toBe("high");
+    expect(rows[0]?.external_key).toBe(key);
+  });
+
+  it("a done item does not match — a regression creates a fresh card", async () => {
+    const key = "diag:shop.com:SEO-002";
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Adicionar H1 na home", externalKey: key }],
+        source: { url: "shop.com", run_id: "run_a" },
+      }),
+    );
+    await database.db
+      .updateTable("task_board_items")
+      .set({ status: "done" })
+      .where("organization_id", "=", "org_board")
+      .execute();
+
+    const regression = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Adicionar H1 na home", externalKey: key }],
+        source: { url: "shop.com", run_id: "run_b" },
+      }),
+    );
+    await expect(regression.json()).resolves.toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+    });
+
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", "org_board")
+      .orderBy("created_at")
+      .execute();
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.status).sort()).toEqual(["done", "triage"]);
+    // Both carry the key — identity survives the lifecycle.
+    expect(rows.every((r) => r.external_key === key)).toBe(true);
   });
 });

@@ -452,7 +452,10 @@ async function validate(
   const allowedModels = await fetchModelPermissions(
     ctx.db,
     organization.id,
-    ctx.auth.user?.role,
+    // `organization.role` is the path-resolved role (set by resolveOrgFromPath);
+    // ctx.auth.user?.role is the session's active-org role and may belong to a
+    // different org than `organization` if the caller's active org differs.
+    organization.role ?? ctx.auth.user?.role,
   );
   if (
     allowedModels !== undefined &&
@@ -518,7 +521,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     try {
       const ctx = c.get("studioContext");
       const organization = ensureOrganization(c);
-      const role = ctx.auth.user?.role;
+      // `organization.role` is the path-resolved role (set by resolveOrgFromPath);
+      // ctx.auth.user?.role is the session's active-org role and may belong to a
+      // different org than `organization` if the caller's active org differs.
+      const role = organization.role ?? ctx.auth.user?.role;
 
       const models = await fetchModelPermissions(ctx.db, organization.id, role);
 
@@ -861,10 +867,15 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     // current fence from the thread row. Best-effort: cancelling an
     // already-finished/unknown workflow (e.g. desktop runs, which have no
     // hosted child) must not fail the cancel.
+    // The fence current when this cancel was issued — identifies the exact turn
+    // being stopped. Reused below to scope the ghost force-fail so it can't
+    // clobber a follow-up turn (fresh fence) that starts while this cancel is
+    // still settling.
+    let cancelFenceToken: string | null = null;
     try {
-      const fenceToken = await ctx.storage.threads.getRunFence(taskId);
-      if (fenceToken) {
-        await cancelHostedHarness(taskId, fenceToken);
+      cancelFenceToken = await ctx.storage.threads.getRunFence(taskId);
+      if (cancelFenceToken) {
+        await cancelHostedHarness(taskId, cancelFenceToken);
       }
     } catch (err) {
       console.error("[decopilot:cancel] failed to cancel hosted harness", {
@@ -908,6 +919,14 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           taskId,
           reason: "ghost",
           orgId: organization.id,
+          // Scope to the turn being cancelled. This teardown is fire-and-forget
+          // (the cancel returns 202 immediately) and, in a multi-pod cluster,
+          // usually runs on a pod that does NOT own the run — so a follow-up
+          // turn sent right after "stop" can start (fresh fence, thread back to
+          // `in_progress`) BEFORE this force-fail lands. Without the fence guard
+          // the stale snapshot would flip that follow-up to `failed`, and the
+          // user's next message "never returns".
+          expectedFenceToken: cancelFenceToken,
         })
         .catch((err) => {
           console.error(

@@ -15,8 +15,14 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
-import { composeSandboxRef } from "@decocms/sandbox/provider";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
+import {
+  composeSandboxRef,
+  sharedSandboxId,
+  userSandboxId,
+  type SandboxId,
+  type SandboxProvider,
+  type SandboxProviderKind,
+} from "@decocms/sandbox/provider";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
@@ -36,6 +42,7 @@ import {
   isGitStatusLike,
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
+import { judgeRequiresReviewWithLlm } from "../../lib/judge-requires-review";
 import {
   buildLoaderInvokeUrl,
   parseLoaderInvokeRequest,
@@ -51,6 +58,8 @@ import {
 
 interface VmClaim {
   claimName: string;
+  sandboxId: SandboxId;
+  providerKind: SandboxProviderKind;
   /** Null when no sandbox runner is configured on this studio instance. */
   runner: SandboxProvider | null;
   virtualMcpId: string;
@@ -162,7 +171,6 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     virtualMcpId,
     branch,
   });
-  const claimName = computeClaimHandle({ userId, projectRef }, branch);
   const virtualMcpMetadata =
     (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
@@ -179,23 +187,34 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   // to a sandbox that doesn't host this VM. The events handler streams a
   // `failed` phase from null; other handlers 503 via `requireRunner`.
   let runner: SandboxProvider | null;
+  let providerKind: SandboxProviderKind | null = null;
   try {
     const resolved = await resolveSandboxProvider(ctx, {
       userId,
       branch,
+      virtualMcpId,
       virtualMcpMetadata,
     });
     runner = resolved.provider;
+    providerKind = resolved.kind;
   } catch {
     runner = null;
   }
 
-  if (!runner) {
+  if (!runner || !providerKind) {
     return c.json({ error: "No sandbox runner found" }, 404);
   }
 
+  const sandboxId =
+    providerKind === "agent-sandbox"
+      ? sharedSandboxId(projectRef)
+      : userSandboxId(userId, projectRef);
+  const claimName = computeClaimHandle(sandboxId, branch);
+
   c.set("vmClaim", {
     claimName,
+    sandboxId,
+    providerKind,
     runner,
     virtualMcpId,
     branch,
@@ -215,6 +234,36 @@ function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
     return c.json({ error: "No sandbox runner configured" }, 503);
   }
   return runner;
+}
+
+/**
+ * Publish/rebase first PUT an `operator` identity into the daemon's persisted
+ * tenant config, then trigger the commit/push against the single working
+ * tree the daemon reads that config back from. On a sandbox shared by
+ * multiple users (see `sharedSandboxId`), two concurrent publish/rebase
+ * calls for the same claim can otherwise interleave: one request's operator
+ * PUT gets read back by the other's commit, and two `git commit`/`push`
+ * sequences race the same working tree. Serializing per claim closes that
+ * window for this mesh process. Entries are removed once idle so this never
+ * grows unbounded — it only ever holds one promise per claim currently in
+ * flight.
+ */
+const claimGitLocks = new Map<string, Promise<unknown>>();
+
+export function withClaimGitLock<T>(
+  claimName: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const prior = claimGitLocks.get(claimName) ?? Promise.resolve();
+  const next = prior.catch(() => {}).then(fn);
+  const settled = next.catch(() => {});
+  claimGitLocks.set(claimName, settled);
+  settled.finally(() => {
+    if (claimGitLocks.get(claimName) === settled) {
+      claimGitLocks.delete(claimName);
+    }
+  });
+  return next;
 }
 
 // ---- Proxy helpers ----------------------------------------------------------
@@ -251,7 +300,7 @@ async function proxyDaemon(
   const runner = requireRunner(c);
   if (runner instanceof Response) return runner;
 
-  const { claimName, userId, projectRef } = c.get("vmClaim");
+  const { claimName, sandboxId } = c.get("vmClaim");
   const method = opts?.method ?? "POST";
   let body: string | null = null;
   const headers = new Headers();
@@ -293,10 +342,7 @@ async function proxyDaemon(
       } catch {
         /* ignore */
       }
-      const adopted = await runner.adoptLiveClaim?.(
-        { userId, projectRef },
-        claimName,
-      );
+      const adopted = await runner.adoptLiveClaim?.(sandboxId, claimName);
       if (adopted) {
         upstream = await runner.proxyDaemonRequest(
           claimName,
@@ -397,7 +443,7 @@ async function fetchDaemonJson<T>(
   claimName: string,
   daemonPath: string,
   method: "GET" | "POST" = "GET",
-  sandboxId?: { userId: string; projectRef: string },
+  sandboxId?: SandboxId,
 ): Promise<T> {
   let upstream = await runner.proxyDaemonRequest(claimName, daemonPath, {
     method,
@@ -500,6 +546,12 @@ export const createSandboxRoutes = () => {
       signal: quickFileOpSignal(c),
     }),
   );
+  app.post("/:virtualMcpId/:branch/grep", (c) =>
+    proxyDaemon(c, "/_sandbox/grep", {
+      forwardJsonBody: true,
+      signal: quickFileOpSignal(c),
+    }),
+  );
 
   // -- Script exec/kill -----------------------------------------------------
   app.post("/:virtualMcpId/:branch/exec/:script", (c) => {
@@ -562,6 +614,9 @@ export const createSandboxRoutes = () => {
             orgId: organization.id,
             userId: claim.userId,
             entries,
+            organizationSecretsOnly:
+              claim.providerKind === "agent-sandbox" &&
+              claim.sandboxId.scope === "shared",
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -601,10 +656,11 @@ export const createSandboxRoutes = () => {
       ctx: c.var.studioContext,
       claimName: claim.claimName,
       runner: claim.runner,
+      sandboxId: claim.sandboxId,
+      providerKind: claim.providerKind,
       virtualMcpId: claim.virtualMcpId,
       branch: claim.branch,
       userId: claim.userId,
-      projectRef: claim.projectRef,
       virtualMcpMetadata: claim.virtualMcpMetadata,
     });
   });
@@ -642,34 +698,48 @@ export const createSandboxRoutes = () => {
     const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
     const ctx = c.var.studioContext;
 
-    try {
-      await patchSandboxOperator(ctx, runner, claimName);
-      const githubRepo = parseGithubRepoFromMetadata(
-        virtualMcpMetadata,
-        connectionIds,
-      );
-      if (githubRepo) {
-        await refreshSandboxGitCredentials(ctx, runner, claimName, githubRepo);
+    return withClaimGitLock(claimName, async () => {
+      try {
+        await patchSandboxOperator(ctx, runner, claimName);
+        const githubRepo = parseGithubRepoFromMetadata(
+          virtualMcpMetadata,
+          connectionIds,
+        );
+        if (githubRepo) {
+          await refreshSandboxGitCredentials(
+            ctx,
+            runner,
+            claimName,
+            githubRepo,
+          );
+        }
+      } catch (err) {
+        if (err instanceof GitPushAuthError) {
+          return c.json(
+            { error: err.message },
+            403,
+            SANDBOX_PROXY_CACHE_HEADERS,
+          );
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
       }
-    } catch (err) {
-      if (err instanceof GitPushAuthError) {
-        return c.json({ error: err.message }, 403, SANDBOX_PROXY_CACHE_HEADERS);
-      }
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-    }
 
-    return proxyDaemon(c, "/_sandbox/git/publish", {
-      forwardJsonBody: true,
-      map404to410: true,
+      return proxyDaemon(c, "/_sandbox/git/publish", {
+        forwardJsonBody: true,
+        map404to410: true,
+      });
     });
   });
-  app.post("/:virtualMcpId/:branch/git/discard", (c) =>
-    proxyDaemon(c, "/_sandbox/git/discard", {
-      forwardJsonBody: true,
-      map404to410: true,
-    }),
-  );
+  app.post("/:virtualMcpId/:branch/git/discard", (c) => {
+    const { claimName } = c.get("vmClaim");
+    return withClaimGitLock(claimName, () =>
+      proxyDaemon(c, "/_sandbox/git/discard", {
+        forwardJsonBody: true,
+        map404to410: true,
+      }),
+    );
+  });
   app.post("/:virtualMcpId/:branch/git/rebase", async (c) => {
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;
@@ -677,16 +747,18 @@ export const createSandboxRoutes = () => {
     const { claimName } = c.get("vmClaim");
     const ctx = c.var.studioContext;
 
-    try {
-      await patchSandboxOperator(ctx, runner, claimName);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-    }
+    return withClaimGitLock(claimName, async () => {
+      try {
+        await patchSandboxOperator(ctx, runner, claimName);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+      }
 
-    return proxyDaemon(c, "/_sandbox/git/rebase", {
-      forwardJsonBody: true,
-      map404to410: true,
+      return proxyDaemon(c, "/_sandbox/git/rebase", {
+        forwardJsonBody: true,
+        map404to410: true,
+      });
     });
   });
   app.post(
@@ -704,7 +776,7 @@ export const createSandboxRoutes = () => {
       const runner = requireRunner(c);
       if (runner instanceof Response) return runner;
 
-      const { claimName, userId, projectRef } = c.get("vmClaim");
+      const { claimName, sandboxId } = c.get("vmClaim");
       const ctx = c.var.studioContext;
 
       try {
@@ -729,14 +801,14 @@ export const createSandboxRoutes = () => {
                   claimName,
                   "/_sandbox/git/status",
                   "GET",
-                  { userId, projectRef },
+                  sandboxId,
                 ),
                 fetchDaemonJson<GitDiffLike>(
                   runner,
                   claimName,
                   "/_sandbox/git/diff",
                   "GET",
-                  { userId, projectRef },
+                  sandboxId,
                 ),
               ]);
         const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
@@ -758,17 +830,112 @@ export const createSandboxRoutes = () => {
     },
   );
 
-  // -- Preview fetch (CORS proxy for /.decofile) ----------------------------
+  // Smart-review judge: the client sends the full publish payload (status +
+  // combined diff) and the cheap "fast" model tier decides whether the changes
+  // need PR review. Backfills status/diff from the daemon when omitted, mirrors
+  // the suggest-commit handler. On any failure the lib returns a permissive
+  // verdict (requiresReview: false) so the AI's absence never blocks publish.
+  app.post(
+    "/:virtualMcpId/:branch/git/judge-review",
+    bodyLimit({
+      maxSize: SUGGEST_COMMIT_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
+    }),
+    async (c) => {
+      const runner = requireRunner(c);
+      if (runner instanceof Response) return runner;
+
+      const { claimName, sandboxId } = c.get("vmClaim");
+      const ctx = c.var.studioContext;
+
+      try {
+        const body = (await c.req.json().catch(() => ({}))) as {
+          status?: GitStatusLike;
+          diff?: GitDiffLike;
+          language?: string;
+        };
+
+        const clientStatus = body.status;
+        const clientDiff = body.diff;
+        const hasClientDiff =
+          clientDiff != null &&
+          typeof clientDiff.diffs === "object" &&
+          clientDiff.diffs !== null;
+
+        const [status, diff] =
+          isGitStatusLike(clientStatus) && hasClientDiff
+            ? [clientStatus, clientDiff]
+            : await Promise.all([
+                fetchDaemonJson<GitStatusLike>(
+                  runner,
+                  claimName,
+                  "/_sandbox/git/status",
+                  "GET",
+                  sandboxId,
+                ),
+                fetchDaemonJson<GitDiffLike>(
+                  runner,
+                  claimName,
+                  "/_sandbox/git/diff",
+                  "GET",
+                  sandboxId,
+                ),
+              ]);
+        const verdict = await judgeRequiresReviewWithLlm(
+          ctx,
+          status,
+          diff,
+          typeof body.language === "string" ? body.language : undefined,
+        );
+        return c.json(verdict, 200, SANDBOX_PROXY_CACHE_HEADERS);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message === "SANDBOX_GONE") {
+          return c.json(
+            {
+              error:
+                "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
+            },
+            410,
+            SANDBOX_PROXY_CACHE_HEADERS,
+          );
+        }
+        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+      }
+    },
+  );
+
+  // -- Preview fetch (CORS proxy for same-origin public preview assets) --------
   // /live/_meta is fetched directly from the preview URL by the client
-  // (the deco dev server allows CORS `*` for it). /.decofile must go through
-  // this proxy because cloud previews don't expose it cross-origin.
+  // (the deco dev server allows CORS `*` for it). These must go through this
+  // proxy because cloud previews don't expose them cross-origin:
+  //   - /.decofile   — the committed decofile snapshot (block state)
+  //   - /sprites.svg — the site's icon sprite sheet (served by the CF Assets
+  //     binding with no CORS header, read here for the icon-select picker)
+  //   - any storefront page (`/`, `/granado/...`) whose SSR HTML the path-param
+  //     picker scrapes for category/product links
+  // The preview URL is derived server-side from the authed claim (never a
+  // client param), so this stays SSRF-safe. The path is client-supplied but
+  // constrained to same-origin: it must start with `/` and cannot escape the
+  // origin (protocol-relative `//`, traversal `..`, or backslash).
   app.get("/:virtualMcpId/:branch/preview-fetch", async (c) => {
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;
 
     const { claimName } = c.get("vmClaim");
     const path = c.req.query("path");
-    if (path !== "/.decofile") {
+    if (
+      !path ||
+      !path.startsWith("/") ||
+      path.startsWith("//") ||
+      path.includes("..") ||
+      path.includes("\\")
+    ) {
       return c.json({ error: "Path not allowed" }, 403);
     }
 

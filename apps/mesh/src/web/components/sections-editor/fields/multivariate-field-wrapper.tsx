@@ -7,6 +7,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { useT } from "@/web/i18n/use-t";
 import {
   SectionVariantList,
   type SectionVariantEntry,
@@ -17,36 +18,21 @@ import {
   type MatcherEntry,
 } from "../matcher-picker";
 import { formatMatcher } from "../format-matcher";
-import {
-  resolveSchema,
-  type SchemaProperty,
-  type LiveMeta,
-} from "../resolve-schema";
+import type { LiveMeta } from "../resolve-schema";
 import { SchemaForm } from "../schema-form";
 import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
+import { cachedResolveSchema } from "./resolved-schema-cache";
 
-// Cache expensive computations that depend on stable inputs.
-// `meta` changes only on page load; `resolveType` changes only on rule picker selection.
+// `meta` changes only on page load; `resolveType` changes only on rule picker
+// selection — cache the matcher list per meta instance (WeakMap, so a stale
+// meta's entries GC with it).
 const matchersCache = new WeakMap<LiveMeta, MatcherEntry[]>();
-const schemaCache = new Map<string, SchemaProperty | null>();
 
 function cachedExtractMatchers(meta: LiveMeta): MatcherEntry[] {
   let result = matchersCache.get(meta);
   if (!result) {
     result = extractMatchers(meta);
     matchersCache.set(meta, result);
-  }
-  return result;
-}
-
-function cachedResolveSchema(
-  resolveType: string,
-  meta: LiveMeta,
-): SchemaProperty | null {
-  let result = schemaCache.get(resolveType);
-  if (result === undefined) {
-    result = resolveSchema(resolveType, meta);
-    schemaCache.set(resolveType, result);
   }
   return result;
 }
@@ -75,6 +61,7 @@ export function MultivariateFieldWrapper({
   renderInnerField,
   ...props
 }: MultivariateFieldWrapperProps) {
+  const t = useT();
   const { value, onChange, meta, path } = props;
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -88,7 +75,9 @@ export function MultivariateFieldWrapper({
               variant="ghost"
               size="icon"
               className="absolute right-0 top-0 size-6 text-muted-foreground hover:text-foreground"
-              aria-label="Add variant"
+              aria-label={t(
+                "sectionsEditor.multivariateFieldWrapper.addVariant",
+              )}
               onClick={() => {
                 onChange(wrapAsMultivariate(value, multivariateResolveType));
                 setSelectedIndex(0);
@@ -97,7 +86,9 @@ export function MultivariateFieldWrapper({
               <Flag01 size={14} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Add variant</TooltipContent>
+          <TooltipContent>
+            {t("sectionsEditor.multivariateFieldWrapper.addVariant")}
+          </TooltipContent>
         </Tooltip>
         {renderInnerField(props)}
       </div>
@@ -112,7 +103,9 @@ export function MultivariateFieldWrapper({
     index: i,
     label:
       formatMatcher(v.rule as Record<string, unknown> | undefined) ||
-      `Variant ${i + 1}`,
+      t("sectionsEditor.multivariateFieldWrapper.variantN", {
+        n: String(i + 1),
+      }),
   }));
 
   const currentVariant = variants[safeIndex];

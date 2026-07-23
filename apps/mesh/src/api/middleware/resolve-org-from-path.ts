@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 import { rebindOrgScope } from "../../core/context-factory";
 import { isOrgArchived } from "../../core/org-archived";
+import { getSettings } from "../../settings";
 
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
@@ -22,6 +23,39 @@ function isPublicSharePath(c: Context): boolean {
 }
 
 /**
+ * Return the organization bound into an API key's metadata, if present.
+ * Keys created for org-scoped access carry `metadata.organization.id`.
+ * Legacy/internal keys without that field are left to their existing route
+ * authorization rules; a malformed explicit organization binding fails closed.
+ */
+function getApiKeyOrganizationBinding(ctx: StudioContext): {
+  present: boolean;
+  id?: string;
+} {
+  const metadata = ctx.auth?.apiKey?.metadata;
+  if (
+    !metadata ||
+    typeof metadata !== "object" ||
+    Array.isArray(metadata) ||
+    !("organization" in metadata)
+  ) {
+    return { present: false };
+  }
+
+  const organization = metadata.organization;
+  if (
+    !organization ||
+    typeof organization !== "object" ||
+    Array.isArray(organization)
+  ) {
+    return { present: true };
+  }
+
+  const id = (organization as Record<string, unknown>).id;
+  return { present: true, id: typeof id === "string" ? id : undefined };
+}
+
+/**
  * The exhaustive list of service-token routes that resolve the org by ID —
  * their machine caller (commerce-discovery) holds the org id, not the slug.
  * One entry per route, as the path segments AFTER `/api/:org` (`"*"` matches
@@ -33,6 +67,7 @@ const SERVICE_TOKEN_ROUTES: readonly (readonly string[])[] = [
   ["vault", "connections", "*", "access-token"],
   ["vault", "connections", "*", "configuration"],
   ["internal", "task-board", "import"],
+  ["internal", "commerce-diagnostic", "share-invite"],
 ];
 
 /**
@@ -89,6 +124,31 @@ export const resolveOrgFromPath: MiddlewareHandler<{
     return c.json({ error: `organization "${slug}" not found` }, 404);
   }
 
+  // API keys are capabilities bound to the organization that minted them.
+  // Do this check before membership/rebinding so a valid key from org B cannot
+  // be reused against org A merely because its owner is also an A member.
+  const apiKeyBinding = getApiKeyOrganizationBinding(ctx);
+  if (
+    ctx.auth?.apiKey?.id &&
+    apiKeyBinding.present &&
+    apiKeyBinding.id !== org.id
+  ) {
+    return c.json(
+      { error: "forbidden: API key is scoped to another organization" },
+      403,
+    );
+  }
+
+  if (
+    ctx.auth?.tokenOrganizationId &&
+    ctx.auth.tokenOrganizationId !== org.id
+  ) {
+    return c.json(
+      { error: "forbidden: token is scoped to another organization" },
+      403,
+    );
+  }
+
   // Archived (soft-deleted) orgs are invisible to the API. Treat them exactly
   // like a missing org: bounce browser navigations into the SPA (the shell
   // shows the branded "Organization unavailable" screen), and return JSON 404
@@ -115,9 +175,33 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   // ctx.access.check() (UnauthorizedError → 401).
   let pathRole: string | undefined;
   if (userId) {
+    // This middleware is the hot path for every org-scoped request, so the
+    // seat-gate state (per-seat billing) rides the membership lookup as
+    // scalar subqueries instead of extra round-trips — and only when the
+    // deployment enforces billing at all (STUDIO_BILLING_ENFORCED;
+    // self-hosted never turns it on, paying zero).
+    const billingEnforced = getSettings().billingEnforced;
     const membership = await db
       .selectFrom("member")
       .select(["role"])
+      .$if(billingEnforced, (qb) =>
+        qb.select((eb) => [
+          eb
+            .selectFrom("organization_billing")
+            .select("legacy")
+            .where("organization_id", "=", org.id)
+            .as("billing_legacy"),
+          eb
+            .exists(
+              eb
+                .selectFrom("organization_paid_seat")
+                .select("user_id")
+                .where("organization_id", "=", org.id)
+                .where("user_id", "=", userId),
+            )
+            .as("has_paid_seat"),
+        ]),
+      )
       .where("userId", "=", userId)
       .where("organizationId", "=", org.id)
       .executeTakeFirst();
@@ -142,6 +226,16 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       // the read route can stat the file and serve it if it's public.
     } else {
       pathRole = membership.role;
+      // Seat gate: monetization, orthogonal to roles — enforced inside
+      // AccessControl.check() BEFORE the admin/owner bypass. `billing_legacy`
+      // is null when the org has NO billing row: fail OPEN (treated as
+      // legacy) so an org-creation hook failure can't brick an org.
+      if (billingEnforced) {
+        ctx.access.setSeatGated(
+          membership.billing_legacy === false &&
+            membership.has_paid_seat !== true,
+        );
+      }
     }
   }
 

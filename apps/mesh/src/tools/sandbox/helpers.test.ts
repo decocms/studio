@@ -1,5 +1,8 @@
 import { describe, it, expect } from "bun:test";
-import { resolveRuntimeConfig } from "./helpers";
+import {
+  readValidatedSubmoduleCredentials,
+  resolveRuntimeConfig,
+} from "./helpers";
 type VmMetadata = Record<string, unknown>;
 
 describe("resolveRuntimeConfig", () => {
@@ -84,5 +87,46 @@ describe("resolveRuntimeConfig", () => {
     const metadata: VmMetadata = { runtime: { selected: "npm" } };
     const result = resolveRuntimeConfig(metadata);
     expect(result.port).toBeNull();
+  });
+});
+
+describe("readValidatedSubmoduleCredentials", () => {
+  it("returns null when metadata / runtime / array is absent", () => {
+    expect(readValidatedSubmoduleCredentials(null)).toBeNull();
+    expect(readValidatedSubmoduleCredentials({})).toBeNull();
+    expect(readValidatedSubmoduleCredentials({ runtime: {} })).toBeNull();
+    expect(
+      readValidatedSubmoduleCredentials({
+        runtime: { submoduleCredentials: "nope" },
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps only entries with a non-empty host and secretId", () => {
+    const result = readValidatedSubmoduleCredentials({
+      runtime: {
+        submoduleCredentials: [
+          { host: "github.com", secretId: "sec_1" },
+          { host: "", secretId: "sec_2" }, // no host
+          { host: "gitlab.com", secretId: "" }, // no secretId
+          { host: "bitbucket.org" }, // missing secretId
+          "garbage",
+          null,
+          { host: "gitea.example.com", secretId: "sec_3" },
+        ],
+      },
+    });
+    expect(result).toEqual([
+      { host: "github.com", secretId: "sec_1" },
+      { host: "gitea.example.com", secretId: "sec_3" },
+    ]);
+  });
+
+  it("returns null when every entry is invalid", () => {
+    expect(
+      readValidatedSubmoduleCredentials({
+        runtime: { submoduleCredentials: [{ host: "", secretId: "" }] },
+      }),
+    ).toBeNull();
   });
 });

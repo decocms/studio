@@ -10,30 +10,36 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
+import { type TranslationKey, useT } from "@/web/i18n/use-t.ts";
 
 export type FileExplorerNameDialogMode = "new-file" | "new-folder" | "rename";
 
 const MODE_COPY: Record<
   FileExplorerNameDialogMode,
-  { title: string; description: string; submit: string; placeholder: string }
+  {
+    titleKey: TranslationKey;
+    descriptionKey: TranslationKey;
+    submitKey: TranslationKey;
+    placeholderKey: TranslationKey;
+  }
 > = {
   "new-file": {
-    title: "New File",
-    description: "Enter a name for the new file.",
-    submit: "Create",
-    placeholder: "filename.ts",
+    titleKey: "sandbox.fileExplorerNameDialog.newFileTitle",
+    descriptionKey: "sandbox.fileExplorerNameDialog.newFileDescription",
+    submitKey: "sandbox.fileExplorerNameDialog.newFileSubmit",
+    placeholderKey: "sandbox.fileExplorerNameDialog.newFilePlaceholder",
   },
   "new-folder": {
-    title: "New Folder",
-    description: "Enter a name for the new folder.",
-    submit: "Create",
-    placeholder: "folder-name",
+    titleKey: "sandbox.fileExplorerNameDialog.newFolderTitle",
+    descriptionKey: "sandbox.fileExplorerNameDialog.newFolderDescription",
+    submitKey: "sandbox.fileExplorerNameDialog.newFolderSubmit",
+    placeholderKey: "sandbox.fileExplorerNameDialog.newFolderPlaceholder",
   },
   rename: {
-    title: "Rename",
-    description: "Enter a new name for this item.",
-    submit: "Rename",
-    placeholder: "new-name",
+    titleKey: "sandbox.fileExplorerNameDialog.renameTitle",
+    descriptionKey: "sandbox.fileExplorerNameDialog.renameDescription",
+    submitKey: "sandbox.fileExplorerNameDialog.renameSubmit",
+    placeholderKey: "sandbox.fileExplorerNameDialog.renamePlaceholder",
   },
 };
 
@@ -54,6 +60,7 @@ export function FileExplorerNameDialog({
   onSubmit: (name: string) => void | Promise<void>;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(initialName);
   const [prevOpen, setPrevOpen] = useState(open);
   const copy = MODE_COPY[mode];
@@ -79,15 +86,15 @@ export function FileExplorerNameDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{copy.title}</DialogTitle>
-            <DialogDescription>{copy.description}</DialogDescription>
+            <DialogTitle>{t(copy.titleKey)}</DialogTitle>
+            <DialogDescription>{t(copy.descriptionKey)}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             {parentLabel && (
               <div className="space-y-1.5">
                 <span className="text-xs font-medium text-muted-foreground">
-                  Location
+                  {t("sandbox.fileExplorerNameDialog.location")}
                 </span>
                 <Input
                   value={parentLabel}
@@ -102,13 +109,13 @@ export function FileExplorerNameDialog({
                 htmlFor="file-explorer-name"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Name
+                {t("sandbox.fileExplorerNameDialog.name")}
               </label>
               <Input
                 id="file-explorer-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder={copy.placeholder}
+                placeholder={t(copy.placeholderKey)}
                 autoFocus
                 disabled={isPending}
               />
@@ -122,16 +129,16 @@ export function FileExplorerNameDialog({
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              {t("sandbox.fileExplorerNameDialog.cancel")}
             </Button>
             <Button type="submit" disabled={!name.trim() || isPending}>
               {isPending ? (
                 <>
                   <Loading01 size={14} className="animate-spin" />
-                  Saving…
+                  {t("sandbox.fileExplorerNameDialog.saving")}
                 </>
               ) : (
-                copy.submit
+                t(copy.submitKey)
               )}
             </Button>
           </DialogFooter>

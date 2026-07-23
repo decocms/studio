@@ -14,6 +14,10 @@ Chart sources:
 - [Sandbox operator](https://github.com/decocms/studio/tree/main/deploy/helm/sandbox-operator)
 - [Sandbox environment](https://github.com/decocms/studio/tree/main/deploy/helm/sandbox-env)
 
+<Callout type="tip">
+  **Easiest path:** for a one-command install with bundled dependencies (local or a POC cluster), use the [umbrella chart](https://github.com/decocms/studio/tree/main/selfhost/examples/k8s-local) or `selfhost/scripts/local-k8s.sh` (see [Quickstart](/en/studio/self-hosting/quickstart)). There's also an **interactive install skill** (`self-host-studio`) that interviews you, fills the values, and validates before installing. This page is the **chart reference** for installing directly and for production — the full dependency guide (managed vs in-cluster Postgres/S3/ClickHouse, secrets with/without ESO, ingress, sandbox) lives in [`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production).
+</Callout>
+
 For the runtime architecture (web/API/worker split, Postgres, NATS, and sandbox providers), see [Architecture](/en/studio/architecture).
 
 ## Deployment model
@@ -36,6 +40,7 @@ When a hosted agent needs a sandbox, Studio creates a `SandboxClaim`. The operat
 - `kubectl` configured for the cluster
 - A PostgreSQL database; the current API/worker topology requires PostgreSQL
 - A StorageClass for Studio and the chart-managed NATS JetStream PVCs
+- An S3-compatible object store and credentials for the organization filesystem (org-fs)
 - Support for `spec.hostUsers: true` and privileged sidecars in `agent-sandbox-system`; the mandatory org-fs sidecar uses FUSE and bidirectional mount propagation
 - For public preview URLs only: Gateway API CRDs, a Gateway controller, wildcard DNS, and either cert-manager with a DNS-01 `ClusterIssuer` or load-balancer TLS termination
 
@@ -75,12 +80,27 @@ kubectl get crd sandboxclaims.extensions.agents.x-k8s.io \
 
 ### 2. Configure and install Studio
 
+Hosted sandboxes require S3-compatible object storage. Studio considers it configured only when all four required variables are present:
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `S3_ENDPOINT` | Yes | Full S3-compatible API endpoint, such as `https://s3.us-east-1.amazonaws.com` |
+| `S3_BUCKET` | Yes | Bucket that backs org-fs |
+| `S3_ACCESS_KEY_ID` | Yes | Access key used by Studio |
+| `S3_SECRET_ACCESS_KEY` | Yes | Secret key used by Studio |
+| `S3_REGION` | Provider-specific | Defaults to `auto`; set the actual region for AWS S3 |
+| `S3_FORCE_PATH_STYLE` | Provider-specific | Set `false` for AWS S3 virtual-hosted addressing; commonly `true` for MinIO and other path-style providers |
+
+The credentials need `s3:ListBucket` on the bucket and `s3:GetObject`, `s3:PutObject`, and `s3:DeleteObject` on its objects. These variables configure the org filesystem and are separate from the optional `s3Sync.*` backup sidecar and `MONITORING_S3_*` settings.
+
+Store the S3 variables alongside `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `ENCRYPTION_KEY` in the Kubernetes Secret consumed by Studio. Do not put credentials in `configMap.meshConfig` or in the `sandbox-env` release; sandbox pods access org-fs through Studio's authenticated API and do not receive the S3 keys directly.
+
 Create `studio-values.yaml`. `envName`, the template suffix, Studio namespace, release name, and service-account name must agree with the `sandbox-env` release installed in the next step.
 
 ```yaml
 database:
   engine: postgresql
-  url: "postgresql://studio_user:studio_password@postgres.example.com:5432/studio"
+  url: "" # supplied as DATABASE_URL by the existing Secret
 
 serviceAccount:
   create: true
@@ -96,13 +116,14 @@ configMap:
     STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-production"
 
 secret:
-  BETTER_AUTH_SECRET: "replace-with-openssl-rand-base64-32"
-  ENCRYPTION_KEY: "replace-with-another-openssl-rand-base64-32"
+  secretName: deco-studio-secrets
 ```
 
 <Callout type="warning">
-  **Do not commit this example with real credentials.** For production, use `secret.secretName` or `externalSecret` so `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `ENCRYPTION_KEY` come from a Secret manager.
+  The existing `deco-studio-secrets` Secret must contain `DATABASE_URL`, `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY`, plus provider-specific `S3_REGION` and `S3_FORCE_PATH_STYLE`. Prefer `externalSecret` or another secret manager in production; do not commit these values to Git.
 </Callout>
+
+Provision `deco-studio-secrets` in the `deco-studio` namespace before running the Helm install below. Alternatively, configure the chart's `externalSecret` values to create it from AWS Secrets Manager.
 
 Install the application chart:
 

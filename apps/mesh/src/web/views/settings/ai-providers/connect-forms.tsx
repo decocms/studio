@@ -10,6 +10,7 @@ import { Input } from "@deco/ui/components/input.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { ToolInput } from "@/tools/io-types";
 import { KEYS } from "@/web/lib/query-keys";
 import type { OpenAICompatiblePreset } from "@/web/utils/openai-compatible-presets";
@@ -34,6 +35,7 @@ export function ConnectApiKeyForm({
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [showKey, setShowKey] = useState(false);
+  const t = useT();
 
   const {
     register,
@@ -53,18 +55,20 @@ export function ConnectApiKeyForm({
       await studio.call("AI_PROVIDER_KEY_CREATE", {
         providerId:
           providerId as ToolInput<"AI_PROVIDER_KEY_CREATE">["providerId"],
-        label: data.label || "Personal key",
+        label: data.label || t("settings.connectForms.defaultKeyLabel"),
         apiKey: data.apiKey,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(org.id) });
-      toast.success("Key saved successfully");
+      toast.success(t("settings.connectForms.keySavedSuccess"));
       onSuccess();
     },
     onError: (err) => {
-      toast.error(`Failed to save key: ${err.message}`);
+      toast.error(
+        t("settings.connectForms.failedSaveKey", { error: err.message }),
+      );
     },
   });
 
@@ -75,17 +79,17 @@ export function ConnectApiKeyForm({
     >
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          Label
+          {t("settings.connectForms.labelField")}
         </label>
         <Input
-          placeholder="e.g. Personal key"
+          placeholder={t("settings.connectForms.labelPlaceholder")}
           {...register("label")}
           className="h-8 text-sm"
         />
       </div>
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          API Key
+          {t("settings.connectForms.apiKeyField")}
         </label>
         <div className="relative">
           <Input
@@ -97,6 +101,11 @@ export function ConnectApiKeyForm({
           <button
             type="button"
             onClick={() => setShowKey(!showKey)}
+            aria-label={
+              showKey
+                ? t("settings.connectForms.hideApiKey")
+                : t("settings.connectForms.showApiKey")
+            }
             className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           >
             {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -117,10 +126,12 @@ export function ConnectApiKeyForm({
           onClick={onCancel}
           disabled={isPending}
         >
-          Cancel
+          {t("settings.connectForms.cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={isPending}>
-          {isPending ? "Saving..." : "Save Key"}
+          {isPending
+            ? t("settings.connectForms.saving")
+            : t("settings.connectForms.saveKey")}
         </Button>
       </DialogFooter>
     </form>
@@ -148,6 +159,7 @@ export function ConnectOpenAICompatibleForm({
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [showKey, setShowKey] = useState(false);
+  const t = useT();
 
   const {
     register,
@@ -182,19 +194,21 @@ export function ConnectOpenAICompatibleForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviders(org.id) });
-      toast.success("Connection saved successfully");
+      toast.success(t("settings.connectForms.connectionSavedSuccess"));
       onSuccess();
     },
     onError: (err) => {
-      toast.error(`Failed to save connection: ${err.message}`);
+      toast.error(
+        t("settings.connectForms.failedSaveConnection", { error: err.message }),
+      );
     },
   });
 
   const labelPlaceholder = preset
-    ? `e.g. ${preset.name} prod, ${preset.name} dev`
-    : "e.g. My OpenAI-compatible server";
+    ? t("settings.connectForms.labelPlaceholderPreset", { name: preset.name })
+    : t("settings.connectForms.labelPlaceholderOpenAiCompatible");
   const baseUrlPlaceholder =
-    preset?.baseUrlPlaceholder ?? "http://localhost:4000/v1";
+    preset?.baseUrlPlaceholder ?? t("settings.connectForms.baseUrlPlaceholder");
 
   return (
     <form
@@ -203,7 +217,7 @@ export function ConnectOpenAICompatibleForm({
     >
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          Label
+          {t("settings.connectForms.labelField")}
         </label>
         <Input
           placeholder={labelPlaceholder}
@@ -216,7 +230,7 @@ export function ConnectOpenAICompatibleForm({
       ) : (
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">
-            Base URL
+            {t("settings.connectForms.baseUrlField")}
           </label>
           <Input
             type="url"
@@ -231,9 +245,13 @@ export function ConnectOpenAICompatibleForm({
       )}
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          API Key{" "}
+          {t("settings.connectForms.apiKeyField")}{" "}
           <span className="text-muted-foreground/60">
-            ({preset?.apiKeyRecommended ? "recommended" : "optional"})
+            (
+            {preset?.apiKeyRecommended
+              ? t("settings.connectForms.recommended")
+              : t("settings.connectForms.optional")}
+            )
           </span>
         </label>
         <div className="relative">
@@ -246,6 +264,11 @@ export function ConnectOpenAICompatibleForm({
           <button
             type="button"
             onClick={() => setShowKey(!showKey)}
+            aria-label={
+              showKey
+                ? t("settings.connectForms.hideApiKey")
+                : t("settings.connectForms.showApiKey")
+            }
             className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           >
             {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -267,10 +290,12 @@ export function ConnectOpenAICompatibleForm({
           onClick={onCancel}
           disabled={isPending}
         >
-          Cancel
+          {t("settings.connectForms.cancel")}
         </Button>
         <Button type="submit" size="sm" disabled={isPending}>
-          {isPending ? "Saving..." : "Save Connection"}
+          {isPending
+            ? t("settings.connectForms.saving")
+            : t("settings.connectForms.saveConnection")}
         </Button>
       </DialogFooter>
     </form>

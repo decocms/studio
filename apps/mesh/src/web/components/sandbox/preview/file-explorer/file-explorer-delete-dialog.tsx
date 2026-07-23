@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { TreeNode } from "./types";
 
 export function FileExplorerDeleteDialog({
@@ -23,32 +24,40 @@ export function FileExplorerDeleteDialog({
   onOpenChange: (open: boolean) => void;
   onConfirm: (node: TreeNode) => void;
 }) {
+  const t = useT();
+  const isFolder = deleteTarget?.kind === "directory";
   return (
     <AlertDialog open={deleteTarget !== null} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            Delete {deleteTarget?.kind === "directory" ? "folder" : "file"}?
+            {t(
+              isFolder
+                ? "sandbox.fileExplorerDeleteDialog.titleFolder"
+                : "sandbox.fileExplorerDeleteDialog.titleFile",
+            )}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            This will permanently delete{" "}
+            {t("sandbox.fileExplorerDeleteDialog.description")}{" "}
             <span className="font-mono">{deleteTarget?.name}</span>
-            {deleteTarget?.kind === "directory"
-              ? " and everything inside it."
+            {isFolder
+              ? t("sandbox.fileExplorerDeleteDialog.folderSuffix")
               : "."}
             {deleteDirtyPaths.length > 0 && (
               <>
                 {" "}
                 {deleteDirtyPaths.length === 1
-                  ? "One open file has unsaved changes that will be lost."
-                  : `${deleteDirtyPaths.length} open files have unsaved changes that will be lost.`}
+                  ? t("sandbox.fileExplorerDeleteDialog.unsavedChangesOne")
+                  : t("sandbox.fileExplorerDeleteDialog.unsavedChangesMany", {
+                      count: deleteDirtyPaths.length,
+                    })}
               </>
             )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={fsActionPending}>
-            Cancel
+            {t("sandbox.fileExplorerDeleteDialog.cancel")}
           </AlertDialogCancel>
           <AlertDialogAction
             disabled={fsActionPending || !deleteTarget}
@@ -57,7 +66,7 @@ export function FileExplorerDeleteDialog({
               if (deleteTarget) onConfirm(deleteTarget);
             }}
           >
-            Delete
+            {t("sandbox.fileExplorerDeleteDialog.delete")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -23,7 +23,7 @@
  * Both paths yield `{ progress }` events (the UI write happens in the tool) and
  * return a `ResearchResult`. Large results (> LARGE_RESULT_TOKEN_THRESHOLD
  * output tokens) are offloaded to blob storage and the result carries only a
- * `preview` + `resultUri` (mesh-storage://).
+ * `preview` + `resultUri` (studio-storage://).
  */
 
 import { streamText } from "ai";
@@ -35,7 +35,7 @@ import {
 import type { StudioContext } from "@/core/studio-context";
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import type { ModelInfo } from "@decocms/harness/decopilot/model-info";
-import { toMeshStorageUri } from "@decocms/harness/decopilot/mesh-storage-uri";
+import { toStudioStorageUri } from "@decocms/harness/decopilot/studio-storage-uri";
 import type {
   ResearchParams,
   ResearchResult,
@@ -315,7 +315,7 @@ async function* runAsyncResearch({
           new TextEncoder().encode(result.text),
           { contentType: "text/markdown" },
         );
-        resultUri = toMeshStorageUri(key);
+        resultUri = toStudioStorageUri(key);
       } catch (err) {
         log("warn", "blob-upload-failed", {
           ...logFields,
@@ -494,7 +494,7 @@ async function* runStreamingResearch({
         text: fullText,
         citations,
         usage: usageMeta,
-        resultUri: toMeshStorageUri(key),
+        resultUri: toStudioStorageUri(key),
         preview: createOutputPreview(fullText),
       };
     } catch (err) {

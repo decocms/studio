@@ -146,6 +146,24 @@ describe("installStudioPack", () => {
     ]);
   });
 
+  test("Task Manager binds to self with only task-board tools", async () => {
+    await installStudioPack(orgId, userId, virtualMcpStorage);
+    const managerId = StudioPackAgentId.TASK_MANAGER(orgId);
+    const manager = await virtualMcpStorage.findById(managerId, orgId);
+
+    expect(manager?.connections).toHaveLength(1);
+    expect(manager?.connections[0]?.connection_id).toBe(
+      WellKnownOrgMCPId.SELF(orgId),
+    );
+    expect(manager?.connections[0]?.selected_tools).toEqual([
+      "TASK_BOARD_ITEM_CREATE",
+      "TASK_BOARD_ITEM_LIST",
+      "TASK_BOARD_ITEM_UPDATE",
+      "TASK_BOARD_ITEM_DELETE",
+      "TASK_BOARD_ITEM_PRS_GET",
+    ]);
+  });
+
   test("overwrites stale tool selections on an existing API Key Manager", async () => {
     await installStudioPack(orgId, userId, virtualMcpStorage);
     const managerId = StudioPackAgentId.API_KEY_MANAGER(orgId);

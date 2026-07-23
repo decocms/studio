@@ -19,14 +19,15 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   ChevronDown,
+  ChevronUp,
   Loading01,
   Play,
   Plus,
   RefreshCw01,
-  StopCircle,
   Terminal,
   X,
 } from "@untitledui/icons";
+import { useT } from "@/web/i18n/use-t.ts";
 import type { DrawerStatus } from "./status-pill";
 
 /** The always-present tab. Catch-all for clone + install logs. */
@@ -62,6 +63,7 @@ export interface DrawerToolbarProps {
 }
 
 export function DrawerToolbar(props: DrawerToolbarProps) {
+  const t = useT();
   const addableScripts = props.scripts.filter(
     (s) => !props.scriptTabs.includes(s),
   );
@@ -74,24 +76,53 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
   };
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-1 border-t border-b border-border bg-muted/60 px-3">
+    <div className="flex h-7 shrink-0 items-center gap-1 border-t border-b border-border bg-muted/60 px-2">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={props.onToggle}
+            aria-label={
+              props.open
+                ? t("sandbox.preview.collapseTerminal")
+                : t("sandbox.preview.expandTerminal")
+            }
+            aria-expanded={props.open}
+            className="size-6 shrink-0"
+          >
+            {props.open ? (
+              <ChevronDown className="size-4" />
+            ) : (
+              <ChevronUp className="size-4" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {props.open
+            ? t("sandbox.preview.collapseTerminal")
+            : t("sandbox.preview.expandTerminal")}
+        </TooltipContent>
+      </Tooltip>
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         <SetupTab
           active={props.active === DEFAULT_TAB}
           open={props.open}
           onClick={handleSetupClick}
+          t={t}
         />
-        {props.scriptTabs.map((t) => (
+        {props.scriptTabs.map((tabName) => (
           <TabButton
-            key={t}
-            active={props.active === t}
+            key={tabName}
+            active={props.active === tabName}
             onClick={() => {
-              if (props.active === t) props.onToggle();
-              else props.onSelectTab(t);
+              if (props.active === tabName) props.onToggle();
+              else props.onSelectTab(tabName);
             }}
-            onClose={() => props.onCloseScript(t)}
+            onClose={() => props.onCloseScript(tabName)}
+            t={t}
           >
-            {t}
+            {tabName}
           </TabButton>
         ))}
         <AddScriptButton scripts={addableScripts} onRun={props.onAddScript} />
@@ -102,6 +133,7 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
           isKilling={props.scriptIsKilling}
           onRun={props.onRunActiveScript}
           onStop={props.onStopActiveScript}
+          t={t}
         />
       ) : (
         <SandboxActionControls
@@ -111,6 +143,7 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
           onRestart={props.onRestart}
           onResume={props.onResume}
           onRetry={props.onRetry}
+          t={t}
         />
       )}
     </div>
@@ -126,10 +159,12 @@ function SetupTab({
   active,
   open,
   onClick,
+  t,
 }: {
   active: boolean;
   open: boolean;
   onClick: () => void;
+  t: import("@/web/i18n/use-t.ts").TFunction;
 }) {
   return (
     <button
@@ -138,14 +173,14 @@ function SetupTab({
       aria-expanded={active && open}
       onClick={onClick}
       className={cn(
-        "flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs",
+        "flex h-6 items-center gap-1.5 rounded-md border px-2 text-xs",
         active
           ? "border-border bg-background font-medium text-foreground shadow-sm"
           : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
       )}
     >
-      <Terminal className="size-3.5" />
-      sandbox
+      <Terminal className="size-4" />
+      {t("sandbox.toolbar.setupTab")}
     </button>
   );
 }
@@ -156,8 +191,8 @@ function SetupTab({
  *   - idle      → [▶ Start]
  *   - suspended → [▶ Resume]
  *   - errored   → [↻ Retry]
- *   - starting  → [⏹ Stop]
- *   - running   → [⏹ Stop]  +  chevron menu { Restart }
+ *   - starting  → [Stop]
+ *   - running   → [Stop]  +  chevron menu { Restart }
  * Restarting a still-starting sandbox makes no sense, so the chevron half
  * only renders for "running".
  */
@@ -168,6 +203,7 @@ function SandboxActionControls({
   onRestart,
   onResume,
   onRetry,
+  t,
 }: {
   status: DrawerStatus;
   onStart?: () => void;
@@ -175,25 +211,26 @@ function SandboxActionControls({
   onRestart?: () => void;
   onResume?: () => void;
   onRetry?: () => void;
+  t: import("@/web/i18n/use-t.ts").TFunction;
 }) {
   if (status === "idle" && onStart) {
     return (
-      <Button variant="outline" size="sm" onClick={onStart}>
-        <Play className="size-3.5" /> Start
+      <Button variant="outline" size="xs" onClick={onStart}>
+        <Play className="size-3.5" /> {t("sandbox.toolbar.start")}
       </Button>
     );
   }
   if (status === "suspended" && onResume) {
     return (
-      <Button variant="outline" size="sm" onClick={onResume}>
-        <Play className="size-3.5" /> Resume
+      <Button variant="outline" size="xs" onClick={onResume}>
+        <Play className="size-3.5" /> {t("sandbox.toolbar.resume")}
       </Button>
     );
   }
   if (status === "errored" && onRetry) {
     return (
-      <Button variant="outline" size="sm" onClick={onRetry}>
-        <RefreshCw01 className="size-3.5" /> Retry
+      <Button variant="outline" size="xs" onClick={onRetry}>
+        <RefreshCw01 className="size-3.5" /> {t("sandbox.toolbar.retry")}
       </Button>
     );
   }
@@ -205,23 +242,25 @@ function SandboxActionControls({
           <TooltipTrigger asChild>
             <Button
               variant="outline"
-              size="sm"
+              size="xs"
               onClick={onStop}
               className={cn(
                 showRestart ? "rounded-r-none border-r-0" : undefined,
               )}
             >
-              <StopCircle className="size-3.5" /> Stop
+              {t("sandbox.toolbar.stop")}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Stop sandbox</TooltipContent>
+          <TooltipContent>
+            {t("sandbox.toolbar.stopSandboxTooltip")}
+          </TooltipContent>
         </Tooltip>
         {showRestart && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                size="sm"
+                size="xs"
                 className="rounded-l-none px-1"
               >
                 <ChevronDown className="size-3" />
@@ -229,7 +268,8 @@ function SandboxActionControls({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onRestart}>
-                <RefreshCw01 className="size-3.5" /> Restart
+                <RefreshCw01 className="size-3.5" />{" "}
+                {t("sandbox.toolbar.restart")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -245,16 +285,18 @@ function TabButton({
   onClick,
   onClose,
   children,
+  t,
 }: {
   active: boolean;
   onClick: () => void;
   onClose?: () => void;
   children: React.ReactNode;
+  t: import("@/web/i18n/use-t.ts").TFunction;
 }) {
   return (
     <div
       className={cn(
-        "flex h-7 items-center rounded-md border text-xs",
+        "flex h-6 items-center rounded-md border text-xs",
         active
           ? "border-border bg-background shadow-sm"
           : "border-transparent hover:bg-background/50",
@@ -265,7 +307,7 @@ function TabButton({
         onClick={onClick}
         className={cn(
           "flex h-full items-center",
-          onClose ? "pl-2.5 pr-1" : "px-2.5",
+          onClose ? "pl-2 pr-1" : "px-2",
           active
             ? "font-medium text-foreground"
             : "text-muted-foreground hover:text-foreground",
@@ -276,11 +318,11 @@ function TabButton({
       {onClose && (
         <button
           type="button"
-          aria-label={`Close ${children}`}
+          aria-label={t("sandbox.toolbar.closeTab", { tab: String(children) })}
           onClick={onClose}
           className="pr-1.5 text-muted-foreground hover:text-foreground"
         >
-          <X className="size-3" />
+          <X className="size-3.5" />
         </button>
       )}
     </div>
@@ -294,26 +336,31 @@ function AddScriptButton({
   scripts: string[];
   onRun: (n: string) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" aria-label="Run script">
-              <Plus className="size-3.5" />
+            <Button
+              variant="ghost"
+              size="xs"
+              aria-label={t("sandbox.toolbar.runScript")}
+            >
+              <Plus className="size-4" />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>Run script</TooltipContent>
+        <TooltipContent>{t("sandbox.toolbar.runScript")}</TooltipContent>
       </Tooltip>
       <PopoverContent align="start" className="p-1 w-56">
         <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-          run a script
+          {t("sandbox.toolbar.runAScript")}
         </div>
         {scripts.length === 0 ? (
           <div className="px-2 py-2 text-xs text-muted-foreground">
-            No scripts found
+            {t("sandbox.toolbar.noScriptsFound")}
           </div>
         ) : (
           scripts.map((s) => (
@@ -340,16 +387,19 @@ function ScriptControls({
   isKilling,
   onRun,
   onStop,
+  t,
 }: {
   isRunning: boolean;
   isKilling: boolean;
   onRun: () => void;
   onStop: () => void;
+  t: import("@/web/i18n/use-t.ts").TFunction;
 }) {
   if (isKilling) {
     return (
-      <Button variant="outline" size="sm" disabled>
-        <Loading01 className="size-3.5 animate-spin" /> Stopping…
+      <Button variant="outline" size="xs" disabled>
+        <Loading01 className="size-3.5 animate-spin" />{" "}
+        {t("sandbox.toolbar.stopping")}
       </Button>
     );
   }
@@ -357,22 +407,22 @@ function ScriptControls({
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="outline" size="sm" onClick={onRun}>
-            <Play className="size-3.5" /> Run
+          <Button variant="outline" size="xs" onClick={onRun}>
+            <Play className="size-3.5" /> {t("sandbox.toolbar.run")}
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Start process</TooltipContent>
+        <TooltipContent>{t("sandbox.toolbar.startProcess")}</TooltipContent>
       </Tooltip>
     );
   }
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="outline" size="sm" onClick={onStop}>
-          <StopCircle className="size-3.5" /> Stop
+        <Button variant="outline" size="xs" onClick={onStop}>
+          {t("sandbox.toolbar.stop")}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>Stop process</TooltipContent>
+      <TooltipContent>{t("sandbox.toolbar.stopProcess")}</TooltipContent>
     </Tooltip>
   );
 }

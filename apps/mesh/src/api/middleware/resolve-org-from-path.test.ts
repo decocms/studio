@@ -12,6 +12,11 @@ describe("isServiceTokenPath", () => {
     expect(isServiceTokenPath("/api/org_1/internal/task-board/import")).toBe(
       true,
     );
+    expect(
+      isServiceTokenPath(
+        "/api/org_1/internal/commerce-diagnostic/share-invite",
+      ),
+    ).toBe(true);
   });
 
   it("rejects everything else", () => {

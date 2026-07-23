@@ -140,7 +140,11 @@ export function resolveConfig(
 
     // Database (url resolved after services start)
     databasePgSsl: toBool(envVars.DATABASE_PG_SSL),
-    databasePoolMax: Number(envVars.DATABASE_POOL_MAX) || 5,
+    databasePoolMax: toPositiveIntegerOrDefault(
+      "DATABASE_POOL_MAX",
+      envVars.DATABASE_POOL_MAX,
+      5,
+    ),
 
     // Auth & Secrets
     betterAuthSecret: envVars.BETTER_AUTH_SECRET || "",
@@ -183,6 +187,7 @@ export function resolveConfig(
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
+    billingEnforced: toBool(envVars.STUDIO_BILLING_ENFORCED),
     // MCP caching is on by default in production, off in development. Set
     // MCP_CACHE_ENABLED=false to disable in prod, =true to enable in dev.
     mcpCacheEnabled: toBoolWithDefault(
@@ -191,7 +196,6 @@ export function resolveConfig(
     ),
     orgFsPublicSetsJson: envVars.ORGFS_PUBLIC_SETS,
     orgFsMountsDisabled: toBool(envVars.DISABLE_ORGFS_MOUNTS),
-
     // Object Storage (S3-compatible)
     s3Endpoint: envVars.S3_ENDPOINT,
     s3Bucket: envVars.S3_BUCKET,

@@ -132,6 +132,12 @@ import * as migration130taskboardthreadid from "./130-task-board-thread-id.ts";
 import * as migration131taskboardthreadlinkcascade from "./131-task-board-thread-link-cascade.ts";
 import * as migration132taskboarditemprs from "./132-task-board-item-prs.ts";
 import * as migration133dedupeduplicatemembers from "./133-dedupe-duplicate-members.ts";
+import * as migration134droptaskboardenabled from "./134-drop-task-board-enabled.ts";
+import * as migration135taskboarditemfkcascade from "./135-task-board-item-fk-cascade.ts";
+import * as migration136taskboardimportidempotency from "./136-task-board-import-idempotency.ts";
+import * as migration137agentsandboxrunnerstate from "./137-agent-sandbox-runner-state.ts";
+import * as migration138agentsandboxsessions from "./138-agent-sandbox-sessions.ts";
+import * as migration139organizationbilling from "./139-organization-billing.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -289,6 +295,12 @@ const migrations: Record<string, Migration> = {
   "131-task-board-thread-link-cascade": migration131taskboardthreadlinkcascade,
   "132-task-board-item-prs": migration132taskboarditemprs,
   "133-dedupe-duplicate-members": migration133dedupeduplicatemembers,
+  "134-drop-task-board-enabled": migration134droptaskboardenabled,
+  "135-task-board-item-fk-cascade": migration135taskboarditemfkcascade,
+  "136-task-board-import-idempotency": migration136taskboardimportidempotency,
+  "137-agent-sandbox-runner-state": migration137agentsandboxrunnerstate,
+  "138-agent-sandbox-sessions": migration138agentsandboxsessions,
+  "139-organization-billing": migration139organizationbilling,
 };
 
 export default migrations;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/studio-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 import {
   SidebarItemSchema,
   RegistryConfigSchema,
@@ -27,7 +27,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     simple_mode: SimpleModeConfigSchema.optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.optional(),
     reports_only: z.boolean().optional(),
-    task_board_enabled: z.boolean().optional(),
   }),
 
   outputSchema: z.object({
@@ -38,7 +37,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     reports_only: z.boolean().nullable().optional(),
-    task_board_enabled: z.boolean().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
   }),
@@ -47,7 +45,12 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
 
-    if (ctx.organization && ctx.organization.id !== input.organizationId) {
+    // `requireOrganization` throws when no org is resolved on this context —
+    // the previous `ctx.organization && ...` guard skipped the mismatch check
+    // entirely in that case, letting `input.organizationId` (client-supplied)
+    // through unvalidated instead of failing closed.
+    const organization = requireOrganization(ctx);
+    if (organization.id !== input.organizationId) {
       throw new Error("Cannot update settings for a different organization");
     }
 
@@ -60,7 +63,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,
         reports_only: input.reports_only,
-        task_board_enabled: input.task_board_enabled,
       },
     );
 

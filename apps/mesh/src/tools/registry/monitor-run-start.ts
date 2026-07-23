@@ -10,6 +10,7 @@ import {
   type ToolSet,
 } from "ai";
 import { z } from "zod";
+import { isPrivateUrl } from "./discover-tools";
 import {
   MONITOR_AGENT_DEFAULT_SYSTEM_PROMPT,
   PLUGIN_ID,
@@ -748,6 +749,15 @@ export async function ensureMonitorConnection(
   const remoteUrl = getRemoteUrl(item);
   if (!remoteUrl) {
     throw new Error(`Registry item ${item.id} has no remote URL`);
+  }
+  if (isPrivateUrl(remoteUrl)) {
+    // Publish requests carry a remote URL supplied by whoever submitted them —
+    // an untrusted, unreviewed source. Without this guard, the monitor would
+    // create a live connection and have the server itself call out to it,
+    // an SSRF vector into private networks/cloud metadata endpoints.
+    throw new Error(
+      `Registry item ${item.id} targets a private network URL, refusing to create a monitor connection`,
+    );
   }
 
   const userId = resolveUserId(ctx);

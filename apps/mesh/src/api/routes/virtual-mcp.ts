@@ -22,7 +22,6 @@ import { getUserId, type StudioContext } from "../../core/studio-context";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import { createVirtualClientFrom } from "../../mcp-clients/virtual-mcp";
 import { resolveDevConnection } from "./dev-connection";
-import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { Env } from "../hono-env";
 import { serveMcpRequest } from "../utils/serve-mcp";
@@ -47,7 +46,13 @@ export async function handleVirtualMcpRequest(
   const ctx = c.get("studioContext");
 
   try {
-    // Prefer x-org-id header (no DB lookup) over x-org-slug (requires DB lookup)
+    // Prefer x-org-id header (no DB lookup) over x-org-slug (requires DB lookup).
+    // External MCP clients (Claude Code/Desktop) send NEITHER — the org is in
+    // the URL path (`/api/:org/mcp`), already resolved into `ctx.organization`
+    // by the resolveOrgFromPath middleware. Fall back to it so the aggregate
+    // (Decopilot) endpoint works without the internal UI's x-org-* headers;
+    // otherwise organizationId stays null and the request 400s with
+    // "Agent ID or organization ID is required".
     const orgId = c.req.header("x-org-id");
     const orgSlug = c.req.header("x-org-slug");
 
@@ -60,7 +65,7 @@ export async function handleVirtualMcpRequest(
             .where("slug", "=", orgSlug)
             .executeTakeFirst()
             .then((org) => org?.id)
-        : null;
+        : (ctx.organization?.id ?? null);
 
     const virtualId = virtualMcpId
       ? virtualMcpId
@@ -70,6 +75,17 @@ export async function handleVirtualMcpRequest(
 
     if (!virtualId) {
       return c.json({ error: "Agent ID or organization ID is required" }, 400);
+    }
+
+    // A specific virtual MCP id was requested but no organization context
+    // could be resolved (legacy /mcp/gateway|virtual-mcp route hit without
+    // x-org-id/x-org-slug headers and no path-resolved org — e.g. a
+    // multi-org member whose session has no deterministic active org). The
+    // ownership checks below only run when organizationId is truthy, so
+    // without this guard the lookup falls through with no org scoping at
+    // all and would serve whichever org happens to own that id.
+    if (virtualMcpId && !organizationId) {
+      return c.json({ error: "Organization context is required" }, 400);
     }
 
     const virtualMcp = await ctx.tracer.startActiveSpan(
@@ -150,11 +166,7 @@ export async function handleVirtualMcpRequest(
     // binding: it only resolves a sandbox the acting user themselves started.
     const actingUserId = getUserId(ctx);
     let devConnection: ConnectionEntity | null = null;
-    if (
-      virtualMcp.id &&
-      actingUserId &&
-      readSandboxMap(virtualMcp.metadata)[actingUserId]
-    ) {
+    if (virtualMcp.id && actingUserId) {
       devConnection = await resolveDevConnection(
         ctx,
         virtualMcp.id,

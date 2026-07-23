@@ -12,7 +12,7 @@ import {
 import { type VirtualClient } from "./sandbox";
 import { BROWSERLESS_BASE_URL } from "./constants";
 import type { ToolApprovalLevel } from "../mcp-tools";
-import { toMeshStorageUri } from "../mesh-storage-uri";
+import { toStudioStorageUri } from "../studio-storage-uri";
 import {
   createPortableGenerateImageTool,
   createPortableTakeScreenshotTool,
@@ -129,7 +129,7 @@ function createPortableBrowserlessTool(
             });
             return {
               success: true,
-              uri: toMeshStorageUri(key),
+              uri: toStudioStorageUri(key),
               preview: createOutputPreview(htmlText),
               url: input.url,
               tokenCount,
@@ -204,7 +204,7 @@ function createPortableBrowserlessTool(
           });
           return {
             success: true,
-            uri: toMeshStorageUri(key),
+            uri: toStudioStorageUri(key),
             preview: createOutputPreview(resultJson),
             url: inspectInput.url,
             tokenCount,

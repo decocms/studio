@@ -47,8 +47,10 @@ import {
   Zap,
   Key01,
   HardDrive,
+  LinkExternal01,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useCapabilities, type CapabilityId } from "@/web/hooks/use-capability";
 import { usePendingJoinRequests } from "@/web/hooks/use-join-requests";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -78,42 +80,52 @@ interface SettingsNavItem {
 }
 
 interface SettingsNavGroup {
+  /** Stable id for React keys and analytics — never localized. */
+  key: string;
   label: string;
   items: SettingsNavItem[];
 }
 
 function useSettingsSidebarGroups(): SettingsNavGroup[] {
+  const t = useT();
   const { capabilities, isPrivileged, loading, error } = useCapabilities();
   const joinRequestCount = usePendingJoinRequests().length;
 
   const groups: SettingsNavGroup[] = [
     {
-      label: "Organization",
+      key: "organization",
+      label: t("settings.nav.organization"),
       items: [
         {
           key: "general",
-          label: "General",
+          label: t("settings.nav.general"),
           icon: <Building02 size={14} />,
           to: "/$org/settings/general",
           requires: "org:manage",
         },
         {
+          key: "connect",
+          label: "Connect to clients",
+          icon: <LinkExternal01 size={14} />,
+          to: "/$org/settings/connect",
+        },
+        {
           key: "brand-context",
-          label: "Brand Context",
+          label: t("settings.nav.brandContext"),
           icon: <BookOpen01 size={14} />,
           to: "/$org/settings/brand-context",
           requires: "org:manage",
         },
         {
           key: "ai-providers",
-          label: "AI Providers",
+          label: t("settings.nav.aiProviders"),
           icon: <CpuChip01 size={14} />,
           to: "/$org/settings/ai-providers",
           requires: "ai-providers:manage",
         },
         {
           key: "secrets",
-          label: "Secrets",
+          label: t("settings.nav.secrets"),
           icon: <Key01 size={14} />,
           to: "/$org/settings/secrets",
           requires: "secrets:manage",
@@ -122,7 +134,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
         // settings route redirects there.
         {
           key: "buckets",
-          label: "Buckets",
+          label: t("settings.nav.buckets"),
           icon: <HardDrive size={14} />,
           to: "/$org/settings/buckets",
           requires: "file-configs:manage",
@@ -130,30 +142,31 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
       ],
     },
     {
-      label: "Build",
+      key: "build",
+      label: t("settings.nav.build"),
       items: [
         {
           key: "connections",
-          label: "Connections",
+          label: t("settings.nav.connections"),
           icon: <ZapSquare size={14} />,
           to: "/$org/settings/connections",
         },
         {
           key: "agents",
-          label: "Agents",
+          label: t("settings.nav.agents"),
           icon: <Users03 size={14} />,
           to: "/$org/settings/agents",
         },
         {
           key: "automations",
-          label: "Automations",
+          label: t("settings.nav.automations"),
           icon: <Zap size={14} />,
           to: "/$org/settings/automations",
           requires: "automations:manage",
         },
         {
           key: "store",
-          label: "Store",
+          label: t("settings.nav.store"),
           icon: <PackageCheck size={14} />,
           to: "/$org/settings/store",
           requires: "registry:manage",
@@ -161,18 +174,19 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
       ],
     },
     {
-      label: "Manage",
+      key: "manage",
+      label: t("settings.nav.manage"),
       items: [
         {
           key: "monitor",
-          label: "Monitor",
+          label: t("settings.nav.monitor"),
           icon: <BarChart10 size={14} />,
           to: "/$org/settings/monitor",
           requires: "monitoring:view",
         },
         {
           key: "members",
-          label: "Members",
+          label: t("settings.nav.members"),
           icon: <Users03 size={14} />,
           to: "/$org/settings/members",
           requires: "members:manage",
@@ -180,7 +194,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
         },
         {
           key: "roles",
-          label: "Roles",
+          label: t("settings.nav.roles"),
           icon: <Shield01 size={14} />,
           to: "/$org/settings/roles",
           // Role management uses owner/admin-only Better Auth APIs.
@@ -188,7 +202,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
         },
         {
           key: "sso",
-          label: "Security",
+          label: t("settings.nav.security"),
           icon: <Lock01 size={14} />,
           to: "/$org/settings/sso",
           requires: "org:manage",
@@ -196,11 +210,12 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
       ],
     },
     {
-      label: "Account",
+      key: "account",
+      label: t("settings.nav.account"),
       items: [
         {
           key: "profile",
-          label: "Profile & Preferences",
+          label: t("settings.nav.profile"),
           icon: <User01 size={14} />,
           to: "/$org/settings/profile",
         },
@@ -262,6 +277,7 @@ function useIsActiveSettingsPath() {
 }
 
 export function SettingsSidebar() {
+  const t = useT();
   const groups = useSettingsSidebarGroups();
   const { org, isActive } = useIsActiveSettingsPath();
 
@@ -269,10 +285,7 @@ export function SettingsSidebar() {
     <Sidebar variant="sidebar">
       <SidebarContent className="flex flex-col flex-1 mt-2 px-2 pb-2 gap-0 overflow-y-auto">
         {groups.map((group, i) => (
-          <SidebarGroup
-            key={`${group.label}-${i}`}
-            className="pt-0 pr-0 pb-0 pl-0"
-          >
+          <SidebarGroup key={group.key} className="pt-0 pr-0 pb-0 pl-0">
             {group.label && (
               <p
                 className={cn(
@@ -292,10 +305,10 @@ export function SettingsSidebar() {
                         to={item.to}
                         params={{ org }}
                         onClick={() =>
+                          // Track stable keys, not labels — labels are localized.
                           track("settings_nav_clicked", {
                             section_key: item.key,
-                            section_label: item.label,
-                            group_label: group.label || "main",
+                            group_key: group.key,
                           })
                         }
                         className="flex items-center gap-2.5 text-sm"
@@ -328,7 +341,7 @@ export function SettingsSidebar() {
                   <span className="shrink-0">
                     <LogOut01 size={14} />
                   </span>
-                  <span className="truncate">Sign Out</span>
+                  <span className="truncate">{t("settings.nav.signOut")}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -347,6 +360,7 @@ export function SettingsSidebar() {
 }
 
 export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
+  const t = useT();
   const groups = useSettingsSidebarGroups();
   const { org, isActive } = useIsActiveSettingsPath();
 
@@ -354,7 +368,7 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
     <div className="flex flex-col h-full bg-sidebar">
       <div className="flex flex-col flex-1 overflow-y-auto px-2 py-2 gap-0.5">
         {groups.map((group, i) => (
-          <div key={`${group.label}-${i}`} className="flex flex-col gap-0.5">
+          <div key={group.key} className="flex flex-col gap-0.5">
             {group.label && (
               <p
                 className={cn(
@@ -399,7 +413,7 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
             <span className="shrink-0">
               <LogOut01 size={14} />
             </span>
-            <span className="truncate">Sign Out</span>
+            <span className="truncate">{t("settings.nav.signOut")}</span>
           </button>
         </div>
       </div>

@@ -8,41 +8,51 @@ import Callout from "../../../../../components/ui/Callout.astro";
 
 ## 1) Executar o deco Studio
 
-Escolha uma opção. O Studio usa **PostgreSQL** como banco de dados; as opções locais abaixo já provisionam um para você.
+Escolha o tier que se encaixa. O Studio precisa de **PostgreSQL** e de um
+**object store compatível com S3**; o **NATS** já vem no chart; a **sandbox**
+(code-execution + previews) é uma camada opcional. A pasta [`selfhost/`](https://github.com/decocms/studio/tree/main/selfhost)
+do repositório tem scripts prontos, values de exemplo e o mapa completo de dependências.
 
-### Opção A: setup local com um comando
+| Tier | Como | Dependências |
+|------|------|--------------|
+| **Local — CLI** | `bunx -p decocms deco` | embutido, na sua máquina |
+| **Local — Compose** | `docker compose -f deploy/docker-compose/docker-compose.postgres.yml up` | tudo embutido (Postgres + NATS + MinIO) |
+| **Local — Kubernetes** | um `helm install` do umbrella `selfhost/examples/k8s-local` | tudo embutido (Postgres + MinIO de dev + NATS + sandbox) |
+| **Produção — Kubernetes** | `helm install` [o chart](/pt-br/studio/self-hosting/deploy/kubernetes) | Postgres + S3 + NATS + ClickHouse externos/gerenciados |
+
+<Callout type="tip">
+  **Prefere uma instalação guiada?** Adicione a **skill de self-host** interativa ao Claude Code — ela te conduz pelos tiers abaixo, perguntando o que você tem (dependências gerenciadas ou no cluster, secrets, sandbox), preenchendo os values do Helm, validando com `helm template` e instalando.
+</Callout>
+
+Adicione uma vez (o repositório é público) e diga ao Claude Code **"install Studio"**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/decocms/studio/main/selfhost/skills/install.sh | sh
+```
+
+### Opção A: local com um comando (CLI)
 
 ```bash
 bunx -p decocms deco
 ```
 
-Sobe uma instância local com um embedded PostgreSQL — totalmente privada, tudo permanece na sua máquina. O pacote é publicado como `decocms`; o binário que ele inclui chama-se `deco`.
+Instância local com PostgreSQL embutido — totalmente privada. O pacote é
+publicado como `decocms`; o binário chama-se `deco`.
 
-### Opção B: setup local com Docker Compose
+### Opção B: Docker Compose (tudo embutido)
 
-Os arquivos de compose ficam no repositório, em `deploy/docker-compose/`. A variante `docker-compose.postgres.yml` já inclui o PostgreSQL, então funciona por conta própria:
+Sobe Studio + PostgreSQL + NATS + MinIO como containers, tudo cabeado — sem
+serviços externos. Imagens multi-arch (roda nativo no Apple Silicon).
 
 ```bash
-# 1. Clone o repositório e entre no diretório do compose
 git clone https://github.com/decocms/studio.git
-cd studio/deploy/docker-compose
-
-# 2. Crie um .env com um auth secret gerado + credenciais do Postgres
-cat > .env << EOF
-BETTER_AUTH_SECRET=$(openssl rand -base64 32)
-POSTGRES_USER=studio_user
-POSTGRES_PASSWORD=$(openssl rand -base64 24)
-POSTGRES_DB=studio_db
-EOF
-
-# 3. Inicie o Studio + PostgreSQL
-docker compose -f docker-compose.postgres.yml up -d
-
-# 4. Acesse
-open http://localhost:3000
+cd studio
+docker compose -f deploy/docker-compose/docker-compose.postgres.yml up
+open http://localhost:3000     # signup — primeiro usuário vira owner
 ```
 
-**Mais detalhes:** [Local: Docker Compose](/pt-br/studio/self-hosting/deploy/docker-compose)
+Sobrescreva os defaults de dev (secrets, credenciais) via um `.env` ao lado do
+compose. **Mais detalhes:** [Local: Docker Compose](/pt-br/studio/self-hosting/deploy/docker-compose)
 
 ### Opção C: executar a partir do código-fonte
 
@@ -53,34 +63,33 @@ bun install
 bun run dev
 ```
 
-### Opção D: deploy no Kubernetes (Helm)
+### Opção D: Kubernetes
 
-O chart fica no repositório, em `deploy/helm/studio`. Execute a partir desse diretório:
+O chart oficial (`deploy/helm/studio`) é **enxuto**: sobe Studio + NATS e espera
+**Postgres, object storage (S3) e ClickHouse (opcional) externos**.
+
+Para um **cluster local** (Rancher Desktop / kind / minikube), um umbrella chart
+(`selfhost/examples/k8s-local`) compõe o chart enxuto + a camada de sandbox como
+dependências Helm e adiciona Postgres + MinIO descartáveis — então um único
+`helm install` sobe a stack inteira, já ligada, incluindo o sandbox:
 
 ```bash
-# 1. Gere um secret seguro para autenticação
-SECRET=$(openssl rand -base64 32)
-
-# 2. Instale o chart com o secret gerado
-helm install deco-studio . \
-  --namespace deco-studio \
-  --create-namespace \
-  --set secret.BETTER_AUTH_SECRET="$SECRET"
-
-# 3. Aguarde os pods ficarem prontos
-kubectl wait --for=condition=ready pod \
-  -l app.kubernetes.io/instance=deco-studio \
-  -n deco-studio \
-  --timeout=300s
-
-# 4. Acesse via port-forward
-kubectl port-forward svc/deco-studio 8080:80 -n deco-studio
+helm dependency build selfhost/examples/k8s-local
+helm install deco-studio selfhost/examples/k8s-local -n deco-studio --create-namespace
+kubectl -n deco-studio port-forward svc/deco-studio 8080:80   # → http://localhost:8080 (confiável em qualquer cluster)
+# studio.localhost também funciona SE o LoadBalancer pegou a :80 — no Rancher Desktop stock o Traefik do k3s ocupa a :80, então use o port-forward
 ```
 
-A aplicação estará disponível em `http://localhost:8080`.
+Use o release name `deco-studio`. O `./selfhost/scripts/local-k8s.sh` encapsula
+isso (com espera de rollout e `uninstall`).
 
-<Callout type="warning">
-  Os valores padrão do chart são apenas para avaliação (uma única replica). Para qualquer uso real, aponte-o para um banco **PostgreSQL** (`database.engine: postgresql`, `database.url`) e escale a partir daí. Veja [Kubernetes: Helm Chart](/pt-br/studio/self-hosting/deploy/kubernetes).
+Em **produção**, aponte o chart para serviços gerenciados e use external secrets
++ autoscaling. Veja [Kubernetes: Helm Chart](/pt-br/studio/self-hosting/deploy/kubernetes).
+
+<Callout type="tip">
+  O quadro completo — tiers, o modelo batteries-included vs. dependências
+  destacáveis, a sandbox (egress lockdown + previews), runtimes locais de
+  Kubernetes e o posture de produção — está em [`selfhost/README.md`](https://github.com/decocms/studio/tree/main/selfhost).
 </Callout>
 
 ## 2) Criar uma Connection

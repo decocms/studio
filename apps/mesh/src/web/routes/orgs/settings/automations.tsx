@@ -15,8 +15,10 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { track } from "@/web/lib/posthog-client";
 import { RequireCapability } from "@/web/components/require-capability";
+import { useT } from "@/web/i18n/use-t.ts";
 
 function SettingsAutomationsPage() {
+  const t = useT();
   const { org } = useProjectContext();
   const { data: automations = [] } = useAutomations(undefined);
   const agents = useVirtualMCPs();
@@ -62,12 +64,12 @@ function SettingsAutomationsPage() {
       <Page.Content>
         <Page.Body>
           <div className="flex flex-col gap-6">
-            <Page.Title>Automations</Page.Title>
+            <Page.Title>{t("settings.automations.pageTitle")}</Page.Title>
             {automations.length > 0 && (
               <SearchInput
                 value={search}
                 onChange={setSearch}
-                placeholder="Search automations..."
+                placeholder={t("settings.automations.searchPlaceholder")}
                 className="w-full md:w-[375px]"
               />
             )}
@@ -77,12 +79,12 @@ function SettingsAutomationsPage() {
             <div className="flex items-center justify-center py-20">
               <EmptyState
                 image={<Zap size={48} className="text-muted-foreground" />}
-                title="No automations yet"
-                description="Automations are created per agent. Open an agent and add one from its Automations tab."
+                title={t("settings.automations.emptyTitle")}
+                description={t("settings.automations.emptyDescription")}
                 actions={
                   <Button size="sm" onClick={handleBrowseAgents}>
                     <Plus size={14} />
-                    Browse agents
+                    {t("settings.automations.browseAgentsButton")}
                   </Button>
                 }
               />
@@ -91,8 +93,10 @@ function SettingsAutomationsPage() {
             <div className="flex items-center justify-center py-20">
               <EmptyState
                 image={<Zap size={48} className="text-muted-foreground" />}
-                title="No automations found"
-                description={`No automations match "${search}"`}
+                title={t("settings.automations.noResultsTitle")}
+                description={t("settings.automations.noResultsDescription", {
+                  search,
+                })}
               />
             </div>
           ) : (

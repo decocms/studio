@@ -7,10 +7,12 @@ import {
 } from "@decocms/mesh-sdk";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { toast } from "sonner";
+import { useT } from "@/web/i18n/use-t.ts";
 import { useHomeNextActions } from "@/web/hooks/use-home-next-actions";
 import { KEYS } from "@/web/lib/query-keys";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
-import { HOME_LIMIT, ToggleButton, type HomeBoard } from "./add-tile-drawer";
+import { HOME_LIMIT, type HomeBoard } from "./add-tile-drawer";
+import { ToggleButton } from "./toggle-button";
 
 interface AgentPrompt {
   name: string;
@@ -123,11 +125,12 @@ function PromptRow({
   allPromptNames: string[];
   isPinned: boolean;
 }) {
+  const t = useT();
   const [submitting, setSubmitting] = useState(false);
 
   const handleClick = async () => {
     if (!isPinned && !home.isOnHome(agent.id) && home.atLimit) {
-      toast.error(`Home is full (${HOME_LIMIT}) — remove an agent first`);
+      toast.error(t("home.agentPromptList.homeIsFull", { limit: HOME_LIMIT }));
       return;
     }
     setSubmitting(true);
@@ -157,7 +160,7 @@ function PromptRow({
       await home.saveAgentMetadata(agent, nextMetadata);
     } catch (err) {
       console.error("[home-tiles] failed to toggle prompt", err);
-      toast.error("Couldn't update home — please try again.");
+      toast.error(t("home.agentPromptList.couldntUpdateHome"));
     } finally {
       setSubmitting(false);
     }
@@ -172,7 +175,11 @@ function PromptRow({
         isPinned={isPinned}
         submitting={submitting}
         onClick={handleClick}
-        label={isPinned ? "Remove from home" : "Add to home"}
+        label={
+          isPinned
+            ? t("home.agentPromptList.removeFromHome")
+            : t("home.agentPromptList.addToHome")
+        }
       />
     </div>
   );

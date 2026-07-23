@@ -32,8 +32,10 @@ import { FolderClosed, Plus } from "@untitledui/icons";
 import { toast } from "sonner";
 import { GitHubRepoPicker } from "@/web/components/github-repo-picker.tsx";
 import { track } from "@/web/lib/posthog-client";
+import { useT } from "@/web/i18n/use-t.ts";
 
 export default function AgentsListPage() {
+  const t = useT();
   const { org } = useProjectContext();
   const agents = useVirtualMCPs();
   const actions = useVirtualMCPActions();
@@ -70,7 +72,7 @@ export default function AgentsListPage() {
     try {
       await actions.delete.mutateAsync(id);
       track("agent_deleted", { agent_id: id, source: "agents_list" });
-      toast.success(`Deleted "${title}"`);
+      toast.success(t("routes.agentsList.deletedAgent", { title }));
     } catch {
       // Error toast handled by mutation
     }
@@ -81,12 +83,12 @@ export default function AgentsListPage() {
       <Page.Content>
         <Page.Body>
           <div className="flex flex-col gap-6">
-            <Page.Title>Agents</Page.Title>
+            <Page.Title>{t("routes.agentsList.title")}</Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <SearchInput
                 value={search}
                 onChange={setSearch}
-                placeholder="Search for an agent..."
+                placeholder={t("routes.agentsList.searchPlaceholder")}
                 className="w-full md:w-[375px]"
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
@@ -100,7 +102,7 @@ export default function AgentsListPage() {
                   <DropdownMenuTrigger asChild>
                     <Button size="sm">
                       <Plus size={14} />
-                      Create Agent
+                      {t("routes.agentsList.createAgent")}
                     </Button>
                   </DropdownMenuTrigger>
                   <CreateAgentDropdownContent
@@ -139,13 +141,17 @@ export default function AgentsListPage() {
                 image={
                   <FolderClosed size={48} className="text-muted-foreground" />
                 }
-                title={search ? "No agents found" : "No agents yet"}
+                title={
+                  search
+                    ? t("routes.agentsList.noAgentsFound")
+                    : t("routes.agentsList.noAgentsYet")
+                }
                 description={
                   search
-                    ? `No agents match "${search}"`
+                    ? t("routes.agentsList.noAgentsMatchSearch", { search })
                     : canManageAgents
-                      ? "Create an agent to get started."
-                      : "Ask an organization admin to create one."
+                      ? t("routes.agentsList.createAgentToGetStarted")
+                      : t("routes.agentsList.askAdminToCreate")
                 }
                 actions={
                   !search &&
@@ -154,7 +160,7 @@ export default function AgentsListPage() {
                       <DropdownMenuTrigger asChild>
                         <Button size="sm">
                           <Plus size={14} />
-                          Create Agent
+                          {t("routes.agentsList.createAgent")}
                         </Button>
                       </DropdownMenuTrigger>
                       <CreateAgentDropdownContent
@@ -193,7 +199,7 @@ export default function AgentsListPage() {
           {filteredAgents.length > 0 && (
             <div className="mt-6 @container">
               <h3 className="text-sm font-medium text-muted-foreground mb-3">
-                Agents
+                {t("routes.agentsList.agentsHeading")}
               </h3>
               <div className="grid grid-cols-1 @lg:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-4 gap-4">
                 {filteredAgents.map((agent) => (
@@ -232,9 +238,11 @@ export default function AgentsListPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Agent?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("routes.agentsList.deleteAgentTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete{" "}
+              {t("routes.agentsList.deleteAgentDescription")}{" "}
               <span className="font-medium text-foreground">
                 {deleteTarget?.title}
               </span>
@@ -242,12 +250,14 @@ export default function AgentsListPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("routes.agentsList.cancelButton")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("routes.agentsList.deleteButton")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

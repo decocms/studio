@@ -1,5 +1,7 @@
 import { useLocalStorage } from "./use-local-storage.ts";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys.ts";
+import { detectLocale, VALID_LOCALES, type Locale } from "@/web/i18n/locale.ts";
+import type { TranslationKey } from "@/web/i18n/en/index.ts";
 
 export type ToolApprovalLevel = "auto" | "readonly";
 export type ThemeMode = "light" | "dark" | "system";
@@ -8,6 +10,7 @@ interface Preferences {
   enableNotifications: boolean;
   enableSounds: boolean;
   theme: ThemeMode;
+  language: Locale;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -15,17 +18,26 @@ const DEFAULT_PREFERENCES: Preferences = {
   enableNotifications: typeof Notification !== "undefined",
   enableSounds: false,
   theme: "system",
+  language: detectLocale(),
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
 
 export const APPROVAL_LEVEL_OPTIONS: {
   value: ToolApprovalLevel;
-  label: string;
-  short: string;
+  labelKey: TranslationKey;
+  shortKey: TranslationKey;
 }[] = [
-  { value: "readonly", label: "Ask before edit", short: "Ask" },
-  { value: "auto", label: "Auto approve", short: "Auto" },
+  {
+    value: "readonly",
+    labelKey: "settings.preferences.toolApprovalAsk",
+    shortKey: "settings.preferences.toolApprovalAskShort",
+  },
+  {
+    value: "auto",
+    labelKey: "settings.preferences.toolApprovalAuto",
+    shortKey: "settings.preferences.toolApprovalAutoShort",
+  },
 ];
 
 const VALID_THEME_MODES: ThemeMode[] = ["light", "dark", "system"];
@@ -56,6 +68,9 @@ export function usePreferences() {
       }
       if (!VALID_THEME_MODES.includes(merged.theme)) {
         merged.theme = "system";
+      }
+      if (!VALID_LOCALES.includes(merged.language)) {
+        merged.language = detectLocale();
       }
       return merged;
     },

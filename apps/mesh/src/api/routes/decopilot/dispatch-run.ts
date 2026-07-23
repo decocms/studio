@@ -912,7 +912,11 @@ async function prepareRun(
       const allowedModels = await fetchModelPermissions(
         ctx.db,
         input.organizationId,
-        ctx.auth.user?.role,
+        // `ctx.organization?.role` is the path-resolved role for
+        // `input.organizationId` (set by resolveOrgFromPath); ctx.auth.user?.role
+        // is the session's active-org role and may belong to a different org
+        // when the caller's active org differs from the dispatch target.
+        ctx.organization?.role ?? ctx.auth.user?.role,
       );
 
       if (
@@ -1293,7 +1297,7 @@ async function prepareRun(
     //   - `prepareLinkWorkDispatch` returns it verbatim so the thread gate can
     //     publish it as the link work item's `harnessInput`.
 
-    // Resolve mesh-storage: URIs to fresh presigned URLs for the current user
+    // Resolve studio-storage: URIs to fresh presigned URLs for the current user
     // message only. The v3 harness contract carries one wire-ready userMessage;
     // long-lived CLI context is represented separately by harness.sessionId.
     const wireUserMessage = materializedRequestMessage
@@ -2004,7 +2008,7 @@ export async function prepareLinkWorkDispatch(
  *
  * Mirrors the formula used by `ensureSandbox` / `provisionSandbox`:
  *   projectRef = composeSandboxRef({ orgId, virtualMcpId: agentId, branch })
- *   handle     = computeClaimHandle({ userId, projectRef }, branch)
+ *   handle     = computeClaimHandle(userSandboxId(userId, projectRef), branch)
  *
  * This is the SAME handle the daemon receives in `WorkItem.sandbox.handle`
  * (set by `resolveLinkSandboxConfig`) and that the daemon derives via
@@ -2028,5 +2032,8 @@ export function computeDesktopSandboxHandle(input: {
     virtualMcpId: input.agentId,
     branch: input.branch,
   });
-  return computeClaimHandle({ userId: input.userId, projectRef }, input.branch);
+  return computeClaimHandle(
+    { scope: "user", userId: input.userId, projectRef },
+    input.branch,
+  );
 }
