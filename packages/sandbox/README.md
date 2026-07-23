@@ -1,9 +1,11 @@
 # @decocms/sandbox
 
-Isolated per-user sandboxes for MCP tool execution.
+Isolated sandboxes for MCP tool execution.
 
-One sandbox per `(userId, projectRef)`: a container (or VM) holding a checked-out
-repo plus an in-pod daemon that proxies exec, file ops, and the dev server.
+Hosted agent sandboxes use one workspace per `projectRef`; user-desktop keeps
+one workspace per `(userId, projectRef)`. A sandbox is a container (or VM)
+holding a checked-out repo plus an in-pod daemon that proxies exec, file ops,
+and the dev server.
 Callers go through a single `SandboxProvider` interface; the provider decides how
 the sandbox is provisioned and reached.
 
@@ -47,9 +49,10 @@ Preconditions:
 - **user-desktop**: previews are served by the user's link daemon at its own
   reachable URL.
 
-Handles are `<branch-slug>-<hash5>` (or a bare 5-char hash when no branch is
-set), DNS-label safe (RFC 1035 caps labels at 63). The hash portion is a
-truncated SHA256 of `userId:projectRef`; collisions are bounded per-project.
+Handles are `<branch-slug>-<hash>` (or a bare hash when no branch is set),
+DNS-label safe (RFC 1035 caps labels at 63). The hash portion is a truncated
+SHA256 of `projectRef` for shared hosted sandboxes and `userId:projectRef` for
+user-desktop.
 The URL itself is the routing key, not a capability — daemon endpoints
 require a bearer token.
 
@@ -58,6 +61,12 @@ require a bearer token.
 - `STUDIO_SANDBOX_PROVIDER` — pin the provider: `agent-sandbox` or `user-desktop`.
   Defaults to `user-desktop`. Setting it explicitly is required for production
   deploys.
+- `SHARED_AGENT_SANDBOXES_ENABLED` — default-off rollout flag. When `true`,
+  agent-sandbox uses the org-scoped session registry and shares a branch across
+  authorized collaborators. It does not change user-desktop identity. Enabling
+  it does not migrate a running per-user hosted workspace, so drain those
+  sandboxes (and commit any working-tree changes) before rollout. Shared claims
+  remain cleanup-capable if the flag is later disabled.
 - `SANDBOX_ROOT_URL` — production template for the pod URL. Either a bare
   base (`https://sandboxes.example.com` → handle becomes leading subdomain)
   or a `{handle}` template (`https://{handle}.sandboxes.example.com`).

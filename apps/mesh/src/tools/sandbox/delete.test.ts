@@ -35,6 +35,7 @@ mock.module("../../sandbox/lifecycle", () => ({
     lastRequestedKind.value = kind;
     return makeMockRunner(kind);
   },
+  getSharedAgentSandboxProvider: () => makeMockRunner("agent-sandbox"),
   buildDesktopProvider: async () => {
     lastRequestedKind.value = "user-desktop";
     return makeMockRunner("user-desktop");

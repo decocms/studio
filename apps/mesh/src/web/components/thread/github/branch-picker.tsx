@@ -62,10 +62,7 @@ export function BranchPicker({
   orgSlug,
   userId,
   userLabel,
-  // virtualMcpId is consumed by callers via Props (e.g. BranchPill);
-  // BranchPicker itself doesn't use it directly. Kept on the Props
-  // contract so the pill container can pass it down uniformly.
-  virtualMcpId: _virtualMcpId,
+  virtualMcpId,
   connectionId,
   owner,
   repo,
@@ -96,6 +93,7 @@ export function BranchPicker({
   } = useBranches({
     orgId,
     orgSlug,
+    virtualMcpId,
     userId,
     connectionId,
     sandboxMap,

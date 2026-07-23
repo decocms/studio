@@ -17,6 +17,7 @@ import {
 } from "../../core/studio-context";
 import { normalizeThreadForResponse } from "./helpers";
 import { ThreadEntitySchema } from "./schema";
+import { deleteAgentSandboxSessions } from "../sandbox/delete-agent-sessions";
 
 export const COLLECTION_THREADS_DELETE = defineTool({
   name: "COLLECTION_THREADS_DELETE",
@@ -42,6 +43,13 @@ export const COLLECTION_THREADS_DELETE = defineTool({
       throw new Error(`Thread not found: ${input.id}`);
     }
 
+    await deleteAgentSandboxSessions(
+      ctx,
+      await ctx.storage.agentSandboxSessions.listByThread(
+        organization.id,
+        input.id,
+      ),
+    );
     await ctx.storage.threads.delete(input.id);
 
     const userId = getUserId(ctx);

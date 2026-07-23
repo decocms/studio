@@ -15,6 +15,7 @@ import {
 } from "../../core/studio-context";
 import { deleteAgentPrompts } from "../../file-storage/agent-prompts";
 import { VirtualMCPEntitySchema } from "./schema";
+import { deleteAllAgentSandboxSessionsForVirtualMcp } from "../sandbox/delete-agent-sessions";
 
 /**
  * Input schema for deleting a virtual MCP
@@ -59,6 +60,12 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
     if (existing.organization_id !== organization.id) {
       throw new Error(`Virtual MCP not found: ${input.id}`);
     }
+
+    await deleteAllAgentSandboxSessionsForVirtualMcp(
+      ctx,
+      organization.id,
+      input.id,
+    );
 
     // Delete the agent first. virtualMcps.delete() removes (in its transaction)
     // the connection_aggregations rows that reference the per-agent child

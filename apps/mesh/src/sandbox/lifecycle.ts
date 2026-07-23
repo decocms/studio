@@ -19,6 +19,7 @@ import type { Kysely } from "kysely";
 import { meter } from "@/observability";
 import type { Database as DatabaseSchema } from "@/storage/types";
 import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state";
+import { KyselyAgentSandboxRunnerStateStore } from "@/storage/agent-sandbox-runner-state";
 import { buildCloneInfo } from "@/shared/github-clone-info";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
@@ -33,11 +34,19 @@ import { parseGithubOwnerRepo } from "@/sandbox/parse-github-clone-url";
 // Symbol.for keeps the same key across module instances.
 const RUNNERS_KEY = Symbol.for("decocms.sandbox.lifecycle.runners");
 const INFLIGHT_KEY = Symbol.for("decocms.sandbox.lifecycle.inflight");
+const SHARED_AGENT_RUNNER_KEY = Symbol.for(
+  "decocms.sandbox.lifecycle.shared-agent-runner",
+);
+const SHARED_AGENT_INFLIGHT_KEY = Symbol.for(
+  "decocms.sandbox.lifecycle.shared-agent-inflight",
+);
 type LifecycleGlobal = {
   [RUNNERS_KEY]?: Partial<Record<SandboxProviderKind, SandboxProvider>>;
   [INFLIGHT_KEY]?: Partial<
     Record<SandboxProviderKind, Promise<SandboxProvider>>
   >;
+  [SHARED_AGENT_RUNNER_KEY]?: SandboxProvider;
+  [SHARED_AGENT_INFLIGHT_KEY]?: Promise<SandboxProvider>;
 };
 const lifecycleGlobal = globalThis as unknown as LifecycleGlobal;
 
@@ -139,11 +148,16 @@ function readPreviewGateway(): { name: string; namespace: string } | undefined {
 async function instantiate(
   kind: SandboxProviderKind,
   db: Kysely<DatabaseSchema>,
+  agentStateScope: "configured" | "shared" = "configured",
 ): Promise<SandboxProvider> {
-  const stateStore = new KyselySandboxProviderStateStore(db);
   const previewUrlPattern = readPreviewUrlPattern();
   switch (kind) {
     case "agent-sandbox": {
+      const stateStore =
+        agentStateScope === "shared" ||
+        getSettings().sharedAgentSandboxesEnabled
+          ? new KyselyAgentSandboxRunnerStateStore(db)
+          : new KyselySandboxProviderStateStore(db);
       // Dynamic import — @kubernetes/client-node is heavy and only needed
       // when STUDIO_SANDBOX_PROVIDER=agent-sandbox. Deploys that never select
       // the hosted provider don't load it.
@@ -241,6 +255,33 @@ export function getSandboxProviderByKind(
   kind: SandboxProviderKind,
 ): Promise<SandboxProvider> {
   return resolveOnce(kind, () => instantiate(kind, ctx.db));
+}
+
+/**
+ * Resolve the shared-identity hosted runner even after the rollout flag is
+ * switched off. Session cleanup must remain available during a rollback so
+ * previously-created claims and shared runner-state rows are not orphaned.
+ */
+export function getSharedAgentSandboxProvider(
+  ctx: StudioContext,
+): Promise<SandboxProvider> {
+  if (getSettings().sharedAgentSandboxesEnabled) {
+    return getSandboxProviderByKind(ctx, "agent-sandbox");
+  }
+  const cached = lifecycleGlobal[SHARED_AGENT_RUNNER_KEY];
+  if (cached) return Promise.resolve(cached);
+  const pending = lifecycleGlobal[SHARED_AGENT_INFLIGHT_KEY];
+  if (pending) return pending;
+  const promise = instantiate("agent-sandbox", ctx.db, "shared")
+    .then((runner) => {
+      lifecycleGlobal[SHARED_AGENT_RUNNER_KEY] = runner;
+      return runner;
+    })
+    .finally(() => {
+      delete lifecycleGlobal[SHARED_AGENT_INFLIGHT_KEY];
+    });
+  lifecycleGlobal[SHARED_AGENT_INFLIGHT_KEY] = promise;
+  return promise;
 }
 
 /**

@@ -118,6 +118,7 @@ serviceAccount:
 configMap:
   meshConfig:
     STUDIO_SANDBOX_PROVIDER: "agent-sandbox"
+    SHARED_AGENT_SANDBOXES_ENABLED: "true"
     STUDIO_ENV: "staging"
     STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-staging"
     # The next three values are required only when previewGateway.enabled=true.

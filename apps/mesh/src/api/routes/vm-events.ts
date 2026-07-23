@@ -2,7 +2,7 @@
  * Unified VM events SSE.
  *
  * Single browser-facing stream for everything happening to a sandbox keyed
- * on (virtualMcpId, branch, callerUserId):
+ * on (virtualMcpId, branch), plus callerUserId only for user-desktop:
  *
  *   1. Pre-Ready lifecycle phases (`event: phase`) — surfaces the gap between
  *      SANDBOX_START posting a SandboxClaim and the daemon coming online.
@@ -21,10 +21,8 @@
  * Auth model:
  *   - Caller must be authenticated.
  *   - Caller's organization must own the requested virtualMcp.
- *   - Claim name is derived deterministically from
- *     (orgId, virtualMcpId, branch, callerUserId), so a caller only sees
- *     events for *their own* sandbox; another user in the same org would
- *     compute a different handle.
+ *   - Hosted claim names omit callerUserId so authorized collaborators on the
+ *     same branch share a stream. Desktop claim names remain user-scoped.
  *
  * Why one stream instead of two: prior design had the browser open
  * `/api/vm-lifecycle` (studio) plus a direct EventSource to the daemon's public
@@ -36,7 +34,12 @@
 
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { composeSandboxRef } from "@decocms/sandbox/provider";
+import {
+  composeSandboxRef,
+  sharedSandboxId,
+  userSandboxId,
+  type SandboxId,
+} from "@decocms/sandbox/provider";
 import { delay } from "@decocms/std";
 import type {
   ClaimPhase,
@@ -52,9 +55,9 @@ import {
   requireOrganization,
   type StudioContext,
 } from "../../core/studio-context";
-import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
 import { readSandboxMap, resolveVm } from "../../tools/sandbox/sandbox-map";
 import type { Env } from "../hono-env";
+import { getSettings } from "../../settings";
 
 /**
  * Cap on how long we keep the SSE open if a claim never materializes (e.g.
@@ -110,7 +113,6 @@ export const createVmEventsRoutes = () => {
       virtualMcpId,
       branch,
     });
-    const claimName = computeClaimHandle({ userId, projectRef }, branch);
     const virtualMcpMetadata =
       (virtualMcp.metadata as Record<string, unknown> | null) ?? null;
 
@@ -128,6 +130,7 @@ export const createVmEventsRoutes = () => {
       const resolved = await resolveSandboxProvider(ctx, {
         userId,
         branch,
+        virtualMcpId,
         virtualMcpMetadata,
       });
       runner = resolved.provider;
@@ -137,6 +140,13 @@ export const createVmEventsRoutes = () => {
       runner = null;
     }
 
+    const sandboxId: SandboxId =
+      providerKind === "agent-sandbox" &&
+      getSettings().sharedAgentSandboxesEnabled
+        ? sharedSandboxId(projectRef)
+        : userSandboxId(userId, projectRef);
+    const claimName = computeClaimHandle(sandboxId, branch);
+
     // Snapshot sandboxMap from the same metadata read used for the org-ownership
     // check. Used below to gate the stale-handle probe: we only run it when
     // this user already had a sandboxMap entry pointing at *this exact* claim.
@@ -145,14 +155,29 @@ export const createVmEventsRoutes = () => {
     // similar window for user-desktop between `provider.ensure` returning and
     // `setSandboxMapEntry` writing the row). Without it, an SSE that opens during
     // that window would observe alive=false and emit a spurious `gone`.
+    const sharedSession =
+      sandboxId.scope === "shared"
+        ? await ctx.storage.agentSandboxSessions.find({
+            organizationId: organization.id,
+            virtualMcpId,
+            branch,
+          })
+        : null;
     const existingVmEntry =
-      providerKind &&
-      resolveVm(
-        readSandboxMap(virtualMcpMetadata),
-        userId,
-        branch,
-        providerKind,
-      );
+      sandboxId.scope === "shared"
+        ? sharedSession?.sandboxHandle && sharedSession.status === "ready"
+          ? {
+              sandboxHandle: sharedSession.sandboxHandle,
+              sandboxProviderKind: "agent-sandbox" as const,
+            }
+          : null
+        : providerKind &&
+          resolveVm(
+            readSandboxMap(virtualMcpMetadata),
+            userId,
+            branch,
+            providerKind,
+          );
     const expectingHandle =
       !!existingVmEntry && existingVmEntry.sandboxHandle === claimName;
 
@@ -187,6 +212,74 @@ export const createVmEventsRoutes = () => {
       });
 
       try {
+        if (
+          sandboxId.scope === "shared" &&
+          sharedSession?.desiredState === "stopped"
+        ) {
+          if (
+            sharedSession.status === "stopping" ||
+            sharedSession.status === "deleting"
+          ) {
+            const transition = sharedSession.status;
+            let deleteSucceeded = true;
+            try {
+              const handle =
+                sharedSession.sandboxHandle ??
+                (transition === "deleting" ? claimName : null);
+              if (handle) {
+                await runner.delete(handle, sandboxId);
+              }
+            } catch (error) {
+              deleteSucceeded = false;
+              console.warn(
+                `[vm-events] failed to resume shared stop for ${virtualMcpId}/${branch}: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            } finally {
+              if (transition !== "deleting" || deleteSucceeded) {
+                const locator = {
+                  organizationId: organization.id,
+                  virtualMcpId,
+                  branch,
+                };
+                await ctx.storage.agentSandboxSessions.withLock(
+                  locator,
+                  (sessions) =>
+                    transition === "deleting"
+                      ? sessions.completeDelete(
+                          locator,
+                          sharedSession.generation,
+                        )
+                      : sessions.completeStop(
+                          locator,
+                          sharedSession.generation,
+                        ),
+                );
+              }
+            }
+          }
+          await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
+          return;
+        }
+        if (
+          sandboxId.scope === "shared" &&
+          sharedSession?.status === "reaping" &&
+          sharedSession.sandboxHandle
+        ) {
+          await cleanupStaleEntry({
+            ctx,
+            runner,
+            claimName: sharedSession.sandboxHandle,
+            sandboxId,
+            organizationId: organization.id,
+            virtualMcpId,
+            branch,
+          });
+          await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
+          return;
+        }
+
         // Same probe for every provider. `runner.alive` is honest across both
         // providers: each queries its source-of-truth (the K8s API for
         // agent-sandbox, the link daemon for user-desktop). When the prior
@@ -200,9 +293,10 @@ export const createVmEventsRoutes = () => {
               ctx,
               runner,
               claimName,
-              userId,
-              projectRef,
-              sandboxProviderKind: providerKind,
+              sandboxId,
+              organizationId: organization.id,
+              virtualMcpId,
+              branch,
             });
             await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
             return;
@@ -285,33 +379,49 @@ async function cleanupStaleEntry(args: {
   ctx: StudioContext;
   runner: SandboxProvider;
   claimName: string;
-  userId: string;
-  projectRef: string;
-  sandboxProviderKind: SandboxProviderKind;
+  sandboxId: SandboxId;
+  organizationId: string;
+  virtualMcpId: string;
+  branch: string;
 }): Promise<void> {
   const {
     ctx,
     runner,
     claimName,
-    userId,
-    projectRef,
-    sandboxProviderKind: providerKind,
+    sandboxId,
+    organizationId,
+    virtualMcpId,
+    branch,
   } = args;
+  if (sandboxId.scope === "shared") {
+    const locator = { organizationId, virtualMcpId, branch };
+    try {
+      const reaping = await ctx.storage.agentSandboxSessions.withLock(
+        locator,
+        (sessions) => sessions.beginReap(locator, claimName),
+      );
+      if (!reaping) return;
+      try {
+        await runner.delete(claimName, sandboxId);
+      } finally {
+        await ctx.storage.agentSandboxSessions.withLock(locator, (sessions) =>
+          sessions.completeReap(locator, reaping.generation, claimName),
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[vm-events] shared cleanup failed for ${virtualMcpId}/${branch}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    return;
+  }
   try {
-    await runner.delete(claimName);
+    await runner.delete(claimName, sandboxId);
   } catch (err) {
     console.warn(
       `[vm-events] runner.delete failed for ${claimName}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-  try {
-    const stateStore = new KyselySandboxProviderStateStore(ctx.db);
-    await stateStore.delete({ userId, projectRef }, providerKind);
-  } catch (err) {
-    console.warn(
-      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${providerKind}: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

@@ -5,8 +5,8 @@
  *
  * Branch resolution (only meaningful when the vMCP has a githubRepo):
  *   1. Honor `data.branch` when provided.
- *   2. Otherwise pick the most-recently-touched branch from the user's
- *      `sandboxMap[userId]` so a new task lands on a warm sandbox.
+ *   2. Otherwise pick the most-recent shared hosted branch, then the user's
+ *      most-recent user-desktop branch.
  *   3. Fall back to a freshly generated Bayer-style `<greek>-<constellation>`
  *      name (e.g. `alpha-centauri`) when the user has no sandboxMap entries
  *      for this vMCP.
@@ -28,6 +28,7 @@ import { normalizeThreadForResponse } from "./helpers";
 import { ThreadCreateDataSchema, ThreadEntitySchema } from "./schema";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { generateBranchName } from "@/shared/branch-name";
+import { getSettings } from "../../settings";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -124,8 +125,17 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     const githubRepo = metadata?.githubRepo;
     let branch: string | null = null;
     if (githubRepo) {
+      const sharedWarmBranch = getSettings().sharedAgentSandboxesEnabled
+        ? (
+            await ctx.storage.agentSandboxSessions.findLatestReadyByVirtualMcp(
+              organization.id,
+              data.virtual_mcp_id,
+            )
+          )?.branch
+        : undefined;
       branch =
         data.branch ??
+        sharedWarmBranch ??
         pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??
         generateBranchName(
           ctx.auth.user?.name ?? ctx.auth.user?.email?.split("@")[0],

@@ -205,6 +205,7 @@ export async function createLoadRepoTool(opts: {
       const { kind } = await resolveSandboxProvider(ctx, {
         userId,
         branch,
+        virtualMcpId,
         virtualMcpMetadata: null,
       });
       const entry = await ensureSandbox(
