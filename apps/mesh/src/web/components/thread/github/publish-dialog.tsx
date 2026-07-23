@@ -575,7 +575,7 @@ function PublishDialogBody({
                   {t("thread.publishDialog.description")}
                 </TabsTrigger>
                 <TabsTrigger value="changes" className="px-3 text-xs">
-                  {t("thread.publishDialog.changes")}
+                  {t("thread.publishDialog.changesTab")}
                 </TabsTrigger>
               </TabsList>
               {diffCount > 0 && !openPrFromCommits && (

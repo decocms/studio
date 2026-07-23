@@ -121,6 +121,7 @@ export const thread = {
   "thread.publishDialog.change": "alteração",
   "thread.publishDialog.changes": "alterações",
   "thread.publishDialog.changesFrom": "Alterações de {branch}",
+  "thread.publishDialog.changesTab": "Alterações",
   "thread.publishDialog.commitMessage": "Mensagem de commit",
   "thread.publishDialog.commitTitlePlaceholder": "Título do commit…",
   "thread.publishDialog.description": "Descrição",
