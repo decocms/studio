@@ -95,17 +95,22 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       created_by: userId,
     });
 
-    posthog.capture({
-      distinctId: userId,
-      event: "chat_started",
-      groups: { organization: organization.id },
-      properties: {
-        organization_id: organization.id,
-        thread_id: taskId,
-        has_title: !!input.data.title,
-        created_via: "tool",
-      },
-    });
+    // Skip on a replayed/idempotent call (same id already existed) — the
+    // conflict path returns the pre-existing row, and firing again would
+    // double-count "chat_started" for a thread that was never actually created.
+    if (result.isNew) {
+      posthog.capture({
+        distinctId: userId,
+        event: "chat_started",
+        groups: { organization: organization.id },
+        properties: {
+          organization_id: organization.id,
+          thread_id: taskId,
+          has_title: !!input.data.title,
+          created_via: "tool",
+        },
+      });
+    }
 
     return {
       item: normalizeThreadForResponse(result),

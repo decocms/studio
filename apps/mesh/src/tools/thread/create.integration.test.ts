@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import { COLLECTION_THREADS_CREATE } from "./create";
 import { buildThreadTestContext, type ThreadTestEnv } from "./test-helpers";
+import { posthog } from "../../posthog";
 
 describe("COLLECTION_THREADS_CREATE", () => {
   let env: ThreadTestEnv;
@@ -184,5 +185,28 @@ describe("COLLECTION_THREADS_CREATE", () => {
 
     expect(second.item.id).toBe(first.item.id);
     expect(second.item.title).toBe("first"); // existing row, not overwritten
+  });
+
+  it("does not re-fire the chat_started analytics event on an id-collision replay", async () => {
+    const vmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      { title: "y", connections: [], status: "active", pinned: false },
+    );
+    const captureSpy = spyOn(posthog, "capture");
+    captureSpy.mockClear();
+
+    const id = "thrd_test_idempotent_analytics";
+    await COLLECTION_THREADS_CREATE.handler(
+      { data: { id, virtual_mcp_id: vmcp.id, title: "first" } },
+      env.ctx,
+    );
+    await COLLECTION_THREADS_CREATE.handler(
+      { data: { id, virtual_mcp_id: vmcp.id, title: "second" } },
+      env.ctx,
+    );
+
+    expect(captureSpy).toHaveBeenCalledTimes(1);
+    captureSpy.mockRestore();
   });
 });
