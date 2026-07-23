@@ -30,15 +30,28 @@ function readPreviewUrlFromDocument(): string | null {
   return null;
 }
 
-export function buildDecofileFetchUrl(input: DecofileFetchInput): string {
+/**
+ * URL for a whitelisted public preview asset. Browser-reachable local previews
+ * are hit directly (they allow CORS `*`); cloud previews go through the
+ * same-origin `preview-fetch` proxy (which allows `/.decofile` and
+ * `/sprites.svg`). `assetPath` must be one the proxy whitelists.
+ */
+export function buildPreviewFetchUrl(
+  input: DecofileFetchInput,
+  assetPath: string,
+): string {
   const browserPreviewUrl =
     input.previewUrl ??
     input.getFallbackPreviewUrl?.() ??
     readPreviewUrlFromDocument();
   if (browserPreviewUrl && isBrowserReachableLocalPreview(browserPreviewUrl)) {
-    return new URL("/.decofile", browserPreviewUrl).toString();
+    return new URL(assetPath, browserPreviewUrl).toString();
   }
 
-  const search = new URLSearchParams({ path: "/.decofile" });
+  const search = new URLSearchParams({ path: assetPath });
   return `/api/${input.orgSlug}/sandbox/${encodeURIComponent(input.virtualMcpId)}/${encodeURIComponent(input.branch)}/preview-fetch?${search.toString()}`;
+}
+
+export function buildDecofileFetchUrl(input: DecofileFetchInput): string {
+  return buildPreviewFetchUrl(input, "/.decofile");
 }

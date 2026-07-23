@@ -59,7 +59,10 @@ function benignSandbox4xx(status: number, pathname: string): string | null {
 function benignPreview404(status: number, pathname: string): string | null {
   if (
     status === 404 &&
-    (pathname === "/.decofile" || pathname === "/live/_meta")
+    (pathname === "/.decofile" ||
+      pathname === "/live/_meta" ||
+      // A site with no icon sprite (icon-select previews just fall back to text).
+      pathname === "/sprites.svg")
   ) {
     return "not_a_deco_site";
   }

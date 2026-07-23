@@ -21,6 +21,8 @@ import { Label } from "@deco/ui/components/label.tsx";
 import { KEYS } from "@/web/lib/query-keys";
 import { useT } from "@/web/i18n/use-t.ts";
 import type { FieldProps } from "./field-props";
+import { buildPreviewFetchUrl } from "../preview-fetch-url";
+import { fetchSpriteIcons } from "./icon-sprite";
 
 export interface DynamicOption {
   value: string;
@@ -229,6 +231,13 @@ export function DynamicOptionsField({
 
   const currentValue = typeof value === "string" ? value : "";
 
+  // icon-select works across runtimes: Deno/Fresh (and other sites that still
+  // ship the `availableIcons` loader) resolve icons through the `@options`
+  // loader as usual; on TanStack sites that loader is deleted during migration
+  // (its resolveType 404s), so we fall back to the schema `enum` for the list
+  // and the site's own `/sprites.svg` (see icon-sprite.ts) for the previews.
+  const isIconSelect = schema.format === "icon-select";
+
   const query = useQuery({
     queryKey: KEYS.sandboxInvoke(
       sandboxKey,
@@ -247,14 +256,53 @@ export function DynamicOptionsField({
     retry: 1,
   });
 
+  const loaderOptions = query.data ?? [];
+
+  // Only reach for the sprite when the loader didn't already supply icons
+  // (i.e. TanStack sites with the deleted loader) — avoids a wasted request on
+  // sites whose loader works.
+  const spriteQuery = useQuery({
+    queryKey: KEYS.sandboxSprite(sandboxKey),
+    queryFn: () =>
+      fetchSpriteIcons(
+        buildPreviewFetchUrl(
+          {
+            orgSlug: sandbox!.orgSlug,
+            virtualMcpId: sandbox!.virtualMcpId,
+            branch: sandbox!.branch,
+            previewUrl,
+          },
+          "/sprites.svg",
+        ),
+      ),
+    enabled:
+      isIconSelect &&
+      !!sandbox &&
+      (open || !!currentValue) &&
+      loaderOptions.length === 0,
+    staleTime: 300_000,
+    retry: 1,
+  });
+
   const enumFallback = enumFallbackOptions(schema.enum);
-  const options = resolveOptions(query.data ?? [], enumFallback);
+  const spriteIcons = spriteQuery.data ?? {};
+  // Enum is the fallback list; on icon-select each name is enriched with its
+  // sprite SVG so the picker shows the icon, not just the label.
+  const enumOptions =
+    isIconSelect && Object.keys(spriteIcons).length > 0
+      ? enumFallback.map((opt) => ({ ...opt, icon: spriteIcons[opt.value] }))
+      : enumFallback;
+  // Loader wins when it returns anything (Fresh/Deno); otherwise the enum
+  // (+ sprite previews for icon-select).
+  const options = resolveOptions(loaderOptions, enumOptions);
   const visibleOptions = filterOptions(options, search);
   const selectedOption = options.find((opt) => opt.value === currentValue);
 
   // Fallback to text input only when there's no option source at all: no
   // loader/preview to fetch from AND no schema enum to list.
-  if ((!previewUrl || !loaderPath) && enumFallback.length === 0) {
+  const noOptionSource =
+    (!previewUrl || !loaderPath) && enumFallback.length === 0;
+  if (noOptionSource) {
     return (
       <div className="space-y-2">
         <FieldHeader

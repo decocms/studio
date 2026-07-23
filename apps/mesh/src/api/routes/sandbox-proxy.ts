@@ -845,17 +845,23 @@ export const createSandboxRoutes = () => {
     },
   );
 
-  // -- Preview fetch (CORS proxy for /.decofile) ----------------------------
+  // -- Preview fetch (CORS proxy for whitelisted public preview assets) -------
   // /live/_meta is fetched directly from the preview URL by the client
-  // (the deco dev server allows CORS `*` for it). /.decofile must go through
-  // this proxy because cloud previews don't expose it cross-origin.
+  // (the deco dev server allows CORS `*` for it). These paths must go through
+  // this proxy because cloud previews don't expose them cross-origin:
+  //   - /.decofile   — the committed decofile snapshot
+  //   - /sprites.svg — the site's icon sprite sheet, served by the CF Assets
+  //     binding with no CORS header, so the icon-select picker reads it here.
+  // The preview URL is derived server-side from the authed claim (never a
+  // client param), so this stays SSRF-safe.
+  const PREVIEW_FETCH_ALLOWED_PATHS = new Set(["/.decofile", "/sprites.svg"]);
   app.get("/:virtualMcpId/:branch/preview-fetch", async (c) => {
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;
 
     const { claimName } = c.get("vmClaim");
     const path = c.req.query("path");
-    if (path !== "/.decofile") {
+    if (!path || !PREVIEW_FETCH_ALLOWED_PATHS.has(path)) {
       return c.json({ error: "Path not allowed" }, 403);
     }
 
