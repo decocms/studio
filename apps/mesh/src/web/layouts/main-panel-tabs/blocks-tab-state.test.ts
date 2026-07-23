@@ -19,11 +19,32 @@ function input(
 }
 
 describe("resolveBlocksTabState", () => {
-  test("loads while the sandbox is progressing", () => {
-    expect(
-      resolveBlocksTabState(input({ lifecyclePhase: "installing" })),
-    ).toEqual({ kind: "loading" });
-  });
+  test.each(["idle", "cloning"] as const)(
+    "loads while the daemon is not yet serving the snapshot (%s)",
+    (lifecyclePhase) => {
+      // Pre-daemon / pre-clone: the committed `.deco/*.gen.json` isn't readable
+      // yet, so show loading regardless of the (necessarily stale) query state.
+      expect(
+        resolveBlocksTabState(
+          input({ lifecyclePhase, hasEditableContent: true }),
+        ),
+      ).toEqual({ kind: "loading" });
+    },
+  );
+
+  test.each(["checking-out", "installing", "starting"] as const)(
+    "renders editable content from the committed snapshot while booting (%s)",
+    (lifecyclePhase) => {
+      // Repo is cloned and the daemon is up, so the snapshot is readable and the
+      // Blocks editor opens before the dev server reaches `running` — matching
+      // Content, which renders as soon as the sandbox handle exists.
+      expect(
+        resolveBlocksTabState(
+          input({ lifecyclePhase, hasEditableContent: true }),
+        ),
+      ).toEqual({ kind: "content" });
+    },
+  );
 
   test("loads while initial Deco data is pending", () => {
     expect(

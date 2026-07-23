@@ -28,24 +28,37 @@ const TERMINAL_LIFECYCLE_PHASES = new Set<LifecycleState["phase"]>([
   "crashed",
 ]);
 
+// Phases where the daemon is reachable AND the repo is already cloned, so the
+// committed `.deco/*.gen.json` snapshot is readable even before the dev server
+// is up. Blocks edits persist to the FS, so the editor stays usable throughout
+// boot — mirroring Content, which renders as soon as the sandbox handle exists
+// rather than waiting for the dev server to reach `running`. `crashed` (dev
+// server died but daemon alive) is included for the same reason. `idle` and
+// `cloning` are excluded: the daemon isn't serving the snapshot yet, so we show
+// loading rather than a false "empty" from a 404 on a not-yet-cloned file.
+const SNAPSHOT_READABLE_PHASES = new Set<LifecycleState["phase"]>([
+  "checking-out",
+  "installing",
+  "starting",
+  "running",
+  "crashed",
+]);
+
 export function resolveBlocksTabState(
   input: BlocksTabStateInput,
 ): BlocksTabState {
-  // `crashed` = the dev server was running and stopped responding (paused or
-  // died). The committed `.deco/*.gen.json` is still readable from the daemon,
-  // so treat it like `running` here and let the data drive the state: the user
-  // can still edit blocks (writes persist to the FS), only the live preview is
-  // broken until the dev server is back. Genuine setup failures stay terminal.
-  const devUpOrRecoverable =
-    input.lifecyclePhase === "running" || input.lifecyclePhase === "crashed";
-
+  // Genuine setup failures stay terminal. `crashed` is recoverable (see
+  // SNAPSHOT_READABLE_PHASES) — the committed snapshot is still editable, only
+  // the live preview is broken until the dev server is back.
   if (
     TERMINAL_LIFECYCLE_PHASES.has(input.lifecyclePhase) &&
     input.lifecyclePhase !== "crashed"
   ) {
     return { kind: "error", source: "sandbox" };
   }
-  if (!devUpOrRecoverable) return { kind: "loading" };
+  if (!SNAPSHOT_READABLE_PHASES.has(input.lifecyclePhase)) {
+    return { kind: "loading" };
+  }
 
   const blocksFrameworkMissing = [input.decofile, input.meta].some(
     (query) =>
