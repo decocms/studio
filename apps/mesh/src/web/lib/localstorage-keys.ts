@@ -31,4 +31,5 @@ export const LOCALSTORAGE_KEYS = {
   sidebarGroupOrder: (orgId: string, userId: string) =>
     `sidebar.group-order.${orgId}.${userId}`,
   ptBrAnnouncementSeen: (userId: string) => `mesh:announcement:pt-br:${userId}`,
+  cmsTourSeen: (userId: string) => `mesh:cms-tour:seen:${userId}`,
 } as const;

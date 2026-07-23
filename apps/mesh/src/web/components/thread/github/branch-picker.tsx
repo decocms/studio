@@ -180,7 +180,10 @@ export function BranchPicker({
     <Popover open={open} onOpenChange={disabled ? undefined : setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex min-w-0 shrink">
+          <span
+            className="inline-flex min-w-0 shrink"
+            data-tour="tour-branches"
+          >
             <PopoverTrigger asChild>
               <Button
                 variant={isHeader ? "outline" : "ghost"}

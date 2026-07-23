@@ -465,6 +465,7 @@ function HeaderButtonRenderer(props: {
           size="sm"
           variant={button.variant}
           disabled={disabled}
+          data-tour="tour-submit"
           onClick={() => {
             if (button.action) props.onActivate(button.action);
           }}
@@ -487,6 +488,7 @@ function HeaderButtonRenderer(props: {
           <Button
             size="sm"
             variant="success"
+            data-tour="tour-publish"
             disabled={props.githubActionPending || !props.publishGate.allowed}
             onClick={props.onPublishSide}
           >

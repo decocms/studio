@@ -33,6 +33,7 @@ import {
 } from "@/web/hooks/use-layout-state";
 import { MainPanelWithDrawer } from "@/web/layouts/main-panel-tabs/main-panel-with-drawer";
 import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
+import { CmsTour } from "@/web/components/cms-tour/cms-tour";
 import { VirtualMcpHeaderInfo } from "@/web/views/virtual-mcp/header-info";
 import { ChatModeRow } from "@/web/components/chat/pills/chat-mode-row";
 import { useOptionalChatTask } from "@/web/components/chat/context";
@@ -296,6 +297,7 @@ export function WorkspacePanelGroup({
 
   return (
     <MainPanelHeaderProvider>
+      <CmsTour virtualMcpId={virtualMcpId} />
       <ResizablePanelGroup
         ref={panelGroupRef}
         key={`${virtualMcpId}-${taskId}`}

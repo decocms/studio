@@ -47,6 +47,7 @@ export function TabOverflowMenu({
         {/* Matches the 28px icon-only tab-button metrics. */}
         <button
           type="button"
+          data-tour="tour-dropdown"
           title={t("mainPanelTabs.tabOverflowMenu.moreTabs")}
           aria-label={t("mainPanelTabs.tabOverflowMenu.moreTabs")}
           className={cn(

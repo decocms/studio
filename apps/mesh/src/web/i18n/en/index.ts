@@ -25,6 +25,7 @@ import { connections } from "./connections.ts";
 import { common } from "./common.ts";
 import { commerceOnboarding } from "./commerce-onboarding.ts";
 import { collections } from "./collections.ts";
+import { cmsTour } from "./cms-tour.ts";
 import { chat } from "./chat.ts";
 import { automations } from "./automations.ts";
 import { agentShellLayout } from "./agent-shell-layout.ts";
@@ -64,6 +65,7 @@ export const en = {
   ...common,
   ...commerceOnboarding,
   ...collections,
+  ...cmsTour,
   ...chat,
   ...automations,
   ...agentShellLayout,

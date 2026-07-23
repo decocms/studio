@@ -1,0 +1,115 @@
+/**
+ * Theme the driver.js popover for the CMS tour to match the app's design
+ * system. Everything is scoped under `.cms-tour-popover` (the `popoverClass`)
+ * so it never leaks into other driver.js usages. The popover is appended to
+ * <body>, but the design tokens live on :root / .dark, so var() resolves in
+ * both light and dark mode.
+ */
+
+.cms-tour-popover {
+  font-family: inherit;
+  color: var(--foreground);
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 0.25rem);
+  box-shadow:
+    0 10px 30px -12px rgb(0 0 0 / 0.35),
+    0 4px 12px -8px rgb(0 0 0 / 0.25);
+  padding: 1rem;
+}
+
+.cms-tour-popover .driver-popover-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.cms-tour-popover .driver-popover-description {
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.cms-tour-popover .driver-popover-progress-text {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.cms-tour-popover .driver-popover-footer {
+  margin-top: 1rem;
+  gap: 0.5rem;
+}
+
+/* Space out the nav buttons (driver defaults to a tight 4px margin). */
+.cms-tour-popover .driver-popover-navigation-btns {
+  gap: 0.5rem;
+}
+.cms-tour-popover .driver-popover-navigation-btns button + button {
+  margin-left: 0;
+}
+
+/* Match the arrow to the popover surface (defaults to #fff, wrong in dark). */
+.cms-tour-popover .driver-popover-arrow-side-left {
+  border-left-color: var(--background);
+}
+.cms-tour-popover .driver-popover-arrow-side-right {
+  border-right-color: var(--background);
+}
+.cms-tour-popover .driver-popover-arrow-side-top {
+  border-top-color: var(--background);
+}
+.cms-tour-popover .driver-popover-arrow-side-bottom {
+  border-bottom-color: var(--background);
+}
+
+/* Shared button metrics (mirrors the app's Button, size "sm"). */
+.cms-tour-popover .driver-popover-footer-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border-radius: var(--radius);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+  text-shadow: none;
+}
+
+/* Primary action — Next / Done. */
+.cms-tour-popover .driver-popover-next-btn {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.cms-tour-popover .driver-popover-next-btn:hover {
+  opacity: 0.9;
+}
+
+/* Secondary action — Back (outline). */
+.cms-tour-popover .driver-popover-prev-btn {
+  background-color: transparent;
+  border: 1px solid var(--input);
+  color: var(--foreground);
+}
+.cms-tour-popover .driver-popover-prev-btn:hover {
+  background-color: var(--accent);
+}
+
+/* Skip — ghost/link, reads as the least prominent action; grouped with
+   Back/Next on the right. */
+.cms-tour-popover .cms-tour-skip {
+  border: none;
+  background-color: transparent;
+  color: var(--muted-foreground);
+}
+.cms-tour-popover .cms-tour-skip:hover {
+  background-color: transparent;
+  color: var(--foreground);
+}

@@ -232,6 +232,7 @@ export function MainPanelTabsBar({
           active={item.active}
           locked={item.locked}
           onClick={item.onSelect}
+          dataTour={`tour-tab-${item.id}`}
         />
       ))}
       {overflow.length > 0 && (

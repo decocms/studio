@@ -5,6 +5,7 @@ import { formatCodeTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
+import { startCmsTour } from "@/web/components/cms-tour/cms-tour";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { resolvePreviewDisplay } from "./preview-display";
 import { sanitizeProductionUrl } from "@/shared/deco-site-production-url";
@@ -15,6 +16,7 @@ import type { TranslationKey } from "@/web/i18n/use-t.ts";
 import {
   ChevronDown,
   Code01,
+  Compass01,
   CursorClick01,
   DotsHorizontal,
   Edit05,
@@ -921,11 +923,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       <Tooltip>
         <TooltipTrigger asChild>
           <HeaderTabButton
-            title="Edit"
+            title="CMS"
             icon={{ kind: "component", Component: Edit05 }}
             active={blocksActive}
             onClick={() => toggleEditingMode("blocks")}
             testId="preview-blocks-toggle"
+            dataTour="tour-edit"
           />
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -1286,6 +1289,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 </DropdownMenuItem>
               </>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => startCmsTour(t)}>
+              <Compass01 size={14} />
+              {t("cmsTour.menuItem")}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -1304,6 +1312,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               active={editingMode === "visual"}
               disabled={!canVisualEdit}
               className="rounded-full"
+              data-tour="tour-visual-editor"
             >
               <CursorClick01 size={16} />
             </ToolbarIconButton>
@@ -1320,6 +1329,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
               disabled={!canVisualEdit}
               className="rounded-full"
+              data-tour="tour-device"
             >
               <span
                 key={previewDeviceSize}

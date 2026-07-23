@@ -39,6 +39,7 @@ export function MergeSplitButton({
         variant="success"
         className="rounded-r-none border-r border-success-foreground/20"
         disabled={disabled}
+        data-tour="tour-publish"
         onClick={() => void onPublish()}
       >
         {loading ? <Spinner size="xs" variant="default" /> : null}

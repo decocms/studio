@@ -21,6 +21,7 @@ export function HeaderTabButton({
   locked = false,
   className,
   testId,
+  dataTour,
 }: {
   title: string;
   icon: TabIcon;
@@ -28,6 +29,8 @@ export function HeaderTabButton({
   onClick: () => void;
   /** Optional test hook (data-testid). */
   testId?: string;
+  /** Optional anchor for the CMS onboarding tour (data-tour). */
+  dataTour?: string;
   /** Disables the button and dims it (e.g. every tab while the org still
    *  needs runtime setup — the view is a genuine dead-end). */
   disabled?: boolean;
@@ -46,6 +49,7 @@ export function HeaderTabButton({
       onClick={onClick}
       disabled={disabled}
       data-testid={testId}
+      data-tour={dataTour}
       aria-pressed={active}
       aria-disabled={locked || undefined}
       aria-label={title}
