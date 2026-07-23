@@ -561,7 +561,7 @@ function ConnectionRow({
               onChange={(e) => setTokenValue(e.target.value)}
               className="h-8 text-xs flex-1"
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" && !busy && tokenValue.trim()) {
                   handleSaveToken();
                 }
               }}
