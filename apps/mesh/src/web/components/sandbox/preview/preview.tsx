@@ -1446,9 +1446,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 )}
 
                 {display.showWakingPill && (
-                  <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-3 py-1 text-xs font-medium text-muted-foreground shadow-md backdrop-blur-sm pointer-events-none select-none">
-                    <Loading01 size={12} className="animate-spin" />
-                    {t("sandbox.preview.wakingShowingProduction")}
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2.5 rounded-full border border-border bg-background/95 px-5 py-3 text-sm font-medium text-foreground shadow-lg backdrop-blur-sm pointer-events-none select-none">
+                    <Loading01 size={18} className="animate-spin" />
+                    {t("sandbox.preview.startingPreview")}
                   </div>
                 )}
 

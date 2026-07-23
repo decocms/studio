@@ -388,6 +388,7 @@ export const sandbox = {
   "sandbox.preview.refresh": "Refresh",
   "sandbox.preview.searchPagesAndComponents": "Search pages and components...",
   "sandbox.preview.siteSeo": "Site SEO",
+  "sandbox.preview.startingPreview": "Starting your preview",
   "sandbox.preview.templateNoLongerExists":
     "Selected template no longer exists.",
   "sandbox.preview.urlCopiedToClipboard": "URL copied to clipboard",
