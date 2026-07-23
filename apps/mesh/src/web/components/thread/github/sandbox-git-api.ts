@@ -268,6 +268,36 @@ export interface ReviewVerdict {
 }
 
 /**
+ * Stable content fingerprint of a diff, used to cache the AI review verdict per
+ * distinct set of changes. Hashes every path plus its FULL from/to content, so
+ * any change to the diff yields a different signature. This matters for safety:
+ * the verdict is cached with `staleTime: Infinity`, so a fingerprint that
+ * collided on two different diffs could reuse a stale "publish allowed" verdict
+ * for code that actually needs review — failing open. A full-content djb2 hash
+ * avoids that (unlike a length+prefix fingerprint, which a length-preserving
+ * edit deep in a file can collide). Cheap: O(diff size), memoized by the React
+ * compiler on the stable diff reference.
+ */
+export function reviewDiffSignature(diff: GitDiffResult): string {
+  let hash = 5381;
+  const mix = (s: string) => {
+    for (let i = 0; i < s.length; i++) {
+      hash = ((hash << 5) + hash + s.charCodeAt(i)) | 0;
+    }
+  };
+  for (const path of Object.keys(diff.diffs).sort()) {
+    const entry = diff.diffs[path];
+    mix(path);
+    mix(" from:");
+    mix(entry?.from ?? "");
+    mix(" to:");
+    mix(entry?.to ?? "");
+    mix("  ");
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/**
  * Ask the server-side cheap-model judge whether this publish payload needs
  * review. Only meaningful for `smart` policy on a diff that contains code
  * (see `needsSmartReviewJudgment`). Generated files are stripped to keep the

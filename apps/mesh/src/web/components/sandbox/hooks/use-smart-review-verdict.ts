@@ -3,18 +3,12 @@ import { usePreferences } from "@/web/hooks/use-preferences.ts";
 import {
   fetchReviewVerdict,
   isSandboxUnreachable,
+  reviewDiffSignature,
   type GitDiffResult,
   type GitStatus,
   type ReviewVerdict,
 } from "../../thread/github/sandbox-git-api.ts";
 
-/**
- * Cheap, stable fingerprint of a diff's content so the verdict is cached per
- * distinct set of changes (path + content length + a content prefix). Avoids
- * hashing megabytes of file bodies on every render while still changing on
- * virtually every meaningful edit — a rare collision only means a slightly
- * stale verdict, which the permissive gate errs safe on anyway.
- */
 function smartReviewVerdictQueryKey(
   orgSlug: string,
   virtualMcpId: string,
@@ -30,18 +24,6 @@ function smartReviewVerdictQueryKey(
     signature,
     language,
   ] as const;
-}
-
-function reviewDiffSignature(diff: GitDiffResult): string {
-  return Object.keys(diff.diffs)
-    .sort()
-    .map((path) => {
-      const entry = diff.diffs[path];
-      const from = entry?.from ?? "";
-      const to = entry?.to ?? "";
-      return `${path}:${from.length}:${to.length}:${to.slice(0, 48)}`;
-    })
-    .join("|");
 }
 
 /**

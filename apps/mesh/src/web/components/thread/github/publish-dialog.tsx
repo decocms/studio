@@ -36,9 +36,8 @@ import {
 import type { PrSummary } from "./use-pr-data.ts";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { publishToBaseLabel } from "./publish-label.ts";
-import { useSmartReviewVerdict } from "@/web/components/sandbox/hooks/use-smart-review-verdict.ts";
+import { useResolvedPublishGate } from "@/web/components/sandbox/hooks/use-publish-gate.ts";
 import {
-  canPublishDirectly,
   combinePublishDiffs,
   countGitChanges,
   discardGitFiles,
@@ -49,12 +48,10 @@ import {
   hasLocalWorkToPush,
   hasUnpublishedWork,
   isSandboxUnreachable,
-  needsSmartReviewJudgment,
   publishGitChanges,
   readGitHeadBranch,
   rebaseGitBranch,
   shouldUseBaseDiff,
-  smartReviewGate,
   type GitDiffResult,
   type GitStatus,
   type PublishPolicy,
@@ -299,17 +296,16 @@ function PublishDialogBody({
   const changesCount = countGitChanges(gitStatus);
   const diffCount = gitDiff ? Object.keys(gitDiff.diffs).length : changesCount;
 
-  // The direct Publish button is only shown in publish-only intent; only judge
-  // (spend an AI call) there, and only for a smart-policy diff that has code.
-  const needsJudge =
-    isPublishOnly && needsSmartReviewJudgment(gitDiff, publishPolicy);
-  const { verdict, loading: judging } = useSmartReviewVerdict({
+  // The direct Publish button is only shown in publish-only intent, so only
+  // spend an AI judge call there (`judgeEnabled`). Shared with the header gate.
+  const { gate: publishGate } = useResolvedPublishGate({
     orgSlug,
     virtualMcpId,
     branch,
     status: gitStatus,
     diff: gitDiff,
-    enabled: needsJudge,
+    policy: publishPolicy,
+    judgeEnabled: isPublishOnly,
   });
 
   const hasLocalUnpublished = openPrFromCommits
@@ -317,9 +313,6 @@ function PublishDialogBody({
     : hasUnpublishedWork(gitStatus, gitDiff);
   const canSubmit =
     !isLoadingGitDiff && (hasLocalUnpublished || openPrFromCommits);
-  const publishGate = needsJudge
-    ? smartReviewGate(verdict, judging)
-    : canPublishDirectly(gitDiff, publishPolicy);
   const canPublish = canSubmit && publishGate.allowed;
   // The gate's `reason` is the AI judge's explanation, written in the UI
   // language (see useSmartReviewVerdict); show it when present, else a

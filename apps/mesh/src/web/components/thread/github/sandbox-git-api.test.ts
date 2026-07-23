@@ -9,6 +9,7 @@ import {
   isDecoOnlyDiff,
   needsSmartReviewJudgment,
   normalizePublishPolicy,
+  reviewDiffSignature,
   shouldUseBaseDiff,
   smartReviewGate,
   stripGeneratedFilesFromDiff,
@@ -317,6 +318,62 @@ describe("canPublishDirectly", () => {
 
   test("smart policy allows a deco-only payload without the judge", () => {
     expect(canPublishDirectly(decoDiff, "smart").allowed).toBe(true);
+  });
+});
+
+describe("reviewDiffSignature", () => {
+  test("is stable for the same diff", () => {
+    const diff: GitDiffResult = {
+      diffs: { "routes/a.tsx": { from: "a", to: "b" } },
+    };
+    expect(reviewDiffSignature(diff)).toBe(reviewDiffSignature(diff));
+  });
+
+  test("is order-independent across paths", () => {
+    const a: GitDiffResult = {
+      diffs: {
+        "a.tsx": { from: "1", to: "2" },
+        "b.tsx": { from: "3", to: "4" },
+      },
+    };
+    const b: GitDiffResult = {
+      diffs: {
+        "b.tsx": { from: "3", to: "4" },
+        "a.tsx": { from: "1", to: "2" },
+      },
+    };
+    expect(reviewDiffSignature(a)).toBe(reviewDiffSignature(b));
+  });
+
+  // The safety case: a length-preserving edit deep in a file (past a short
+  // prefix) must still change the signature, or a stale "allowed" verdict would
+  // be reused for code that now needs review (fail-open).
+  test("changes for a length-preserving deep edit", () => {
+    const prefix = "x".repeat(80);
+    const before: GitDiffResult = {
+      diffs: { "routes/api.tsx": { from: "", to: `${prefix}LIMIT=1000` } },
+    };
+    const after: GitDiffResult = {
+      diffs: { "routes/api.tsx": { from: "", to: `${prefix}LIMIT=5000` } },
+    };
+    expect(reviewDiffSignature(before)).not.toBe(reviewDiffSignature(after));
+  });
+
+  test("changes when a path is added or removed", () => {
+    const one: GitDiffResult = { diffs: { "a.tsx": { from: "1", to: "2" } } };
+    const two: GitDiffResult = {
+      diffs: {
+        "a.tsx": { from: "1", to: "2" },
+        "b.tsx": { from: null, to: "3" },
+      },
+    };
+    expect(reviewDiffSignature(one)).not.toBe(reviewDiffSignature(two));
+  });
+
+  test("distinguishes a from/to swap of equal-length content", () => {
+    const a: GitDiffResult = { diffs: { "a.tsx": { from: "ab", to: "cd" } } };
+    const b: GitDiffResult = { diffs: { "a.tsx": { from: "cd", to: "ab" } } };
+    expect(reviewDiffSignature(a)).not.toBe(reviewDiffSignature(b));
   });
 });
 
