@@ -630,6 +630,13 @@ export const VirtualMCPEntitySchema = z.object({
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
       publishPolicy: publishPolicyMetadataField,
+      productionUrl: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
+        ),
     })
     .loose()
     .describe("Metadata"),
@@ -729,6 +736,13 @@ export const VirtualMCPCreateDataSchema = z.object({
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
       publishPolicy: publishPolicyMetadataField,
+      productionUrl: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
+        ),
     })
     .loose()
     .nullable()
@@ -809,6 +823,13 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .optional()
         .describe("Linked asset site slug (managed storage tenancy)"),
       publishPolicy: publishPolicyMetadataField,
+      productionUrl: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          "Live production URL of the linked site (e.g. https://acme.com). Painted in the preview iframe while the sandbox dev server is waking.",
+        ),
     })
     .loose()
     .nullable()

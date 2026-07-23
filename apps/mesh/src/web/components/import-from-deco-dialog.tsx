@@ -11,6 +11,7 @@ import {
 import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { resolveDecoSiteGithubRepo } from "@/shared/deco-sites-github";
+import { productionUrlFromDomain } from "@/shared/deco-site-production-url";
 import { getOrgGithubConnections } from "@/shared/github-repo-scope";
 import {
   fetchGithubInstallations,
@@ -267,6 +268,13 @@ export function ImportFromDecoDialog({
         const projectIcon = connBody.icon ?? null;
         const slug = generateSlug(siteName);
         const siteSlug = siteName.toLowerCase();
+        // Persist the site's real production URL (custom domain when present,
+        // else the deco.site host) so the preview can paint it while the
+        // sandbox dev server wakes. `null` when the site has no domains.
+        const productionUrl = productionUrlFromDomain(
+          site.domains?.find((d) => d.production)?.domain ??
+            site.domains?.[0]?.domain,
+        );
 
         // 2. Create a space (virtual MCP) wired to both admin-mcp and GitHub.
         const result = (await client.callTool({
@@ -284,6 +292,7 @@ export function ImportFromDecoDialog({
                 // Link the agent to its asset site so the CMS resolves uploads
                 // to the managed storage for this slug.
                 siteSlug,
+                productionUrl,
                 githubRepo: {
                   owner: githubRepo.owner,
                   name: githubRepo.name,

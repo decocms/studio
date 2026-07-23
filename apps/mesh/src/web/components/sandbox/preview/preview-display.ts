@@ -84,21 +84,12 @@ export function resolvePreviewDisplay(
     };
   }
 
-  // No fallback available (e.g. a GitHub-only project with no deco.cx site):
-  // keep the original blocking booting overlay.
+  // No fallback available (e.g. a GitHub-only project, or a site imported
+  // before productionUrl was persisted): keep the original blocking overlay.
   return {
     mode: "none",
     iframeBase: null,
     showBlockingOverlay: true,
     showWakingPill: false,
   };
-}
-
-/** deco.cx public convention: every imported site is served at `{slug}.deco.site`. */
-export function productionUrlFromSiteSlug(
-  siteSlug: string | null | undefined,
-): string | null {
-  const slug = siteSlug?.trim();
-  if (!slug) return null;
-  return `https://${slug}.deco.site`;
 }

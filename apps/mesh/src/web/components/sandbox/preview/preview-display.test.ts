@@ -1,8 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-  productionUrlFromSiteSlug,
-  resolvePreviewDisplay,
-} from "./preview-display";
+import { resolvePreviewDisplay } from "./preview-display";
 import type { PreviewState } from "./preview-state";
 
 const IFRAME: PreviewState = {
@@ -16,26 +13,7 @@ const ERRORED: PreviewState = {
   error: { code: null, message: "boom" },
 };
 
-const PROD = "https://acme.deco.site";
-
-describe("productionUrlFromSiteSlug", () => {
-  it("derives the deco.site URL from a slug", () => {
-    expect(productionUrlFromSiteSlug("acme")).toBe("https://acme.deco.site");
-  });
-
-  it("trims surrounding whitespace", () => {
-    expect(productionUrlFromSiteSlug("  acme  ")).toBe(
-      "https://acme.deco.site",
-    );
-  });
-
-  it("returns null for empty / whitespace / nullish", () => {
-    expect(productionUrlFromSiteSlug(null)).toBeNull();
-    expect(productionUrlFromSiteSlug(undefined)).toBeNull();
-    expect(productionUrlFromSiteSlug("")).toBeNull();
-    expect(productionUrlFromSiteSlug("   ")).toBeNull();
-  });
-});
+const PROD = "https://acme.com";
 
 describe("resolvePreviewDisplay", () => {
   it("shows the sandbox iframe once boot is done (running)", () => {

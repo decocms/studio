@@ -6,10 +6,8 @@ import { useChatTask } from "@/web/components/chat/context";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
-import {
-  productionUrlFromSiteSlug,
-  resolvePreviewDisplay,
-} from "./preview-display";
+import { resolvePreviewDisplay } from "./preview-display";
+import { sanitizeProductionUrl } from "@/shared/deco-site-production-url";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { useT } from "@/web/i18n/use-t.ts";
 import type { TranslationKey } from "@/web/i18n/use-t.ts";
@@ -404,16 +402,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewState = lifecycle.previewState;
   const userStopped = lifecycle.userStopped;
 
-  // Live production URL of the linked deco.cx site, derived from the agent's
-  // `metadata.siteSlug` (public convention: `{slug}.deco.site`). Used as a
+  // Live production URL of the linked site, persisted on the agent's
+  // `metadata.productionUrl` at import time (deco.cx reports the real domain,
+  // which can be a custom one — so we store it rather than guess it). Used as a
   // Lovable-style fallback: while the sandbox dev server is still waking, paint
   // the published site in the iframe (non-blocking) instead of a blank overlay,
-  // then swap to the sandbox preview once it's up. `null` for GitHub-only
-  // projects with no linked site → the original blocking overlay is kept.
+  // then swap to the sandbox preview once it's up. `null` (no field, or a site
+  // imported before this was persisted) → the original blocking overlay is kept.
   const inset = useInsetContext();
   const productionUrl =
     inset?.entity?.id === virtualMcpId
-      ? productionUrlFromSiteSlug(inset.entity.metadata?.siteSlug)
+      ? sanitizeProductionUrl(inset.entity.metadata?.productionUrl)
       : null;
 
   // The recorded previewUrl flips previewState to "iframe" as soon as the
