@@ -466,7 +466,13 @@ function HeaderButtonRenderer(props: {
           size="sm"
           variant={button.variant}
           disabled={disabled}
-          data-tour={TOUR_ANCHORS.submit}
+          // Only anchor the tour's "submit for review" step when the button is
+          // actually in that state. In neutral states (e.g. "Up to date", which
+          // is disabled and has no action) the step would point at an unrelated
+          // button; leaving the anchor off lets the tour skip the step.
+          data-tour={
+            button.action === "create-pr" ? TOUR_ANCHORS.submit : undefined
+          }
           onClick={() => {
             if (button.action) props.onActivate(button.action);
           }}
