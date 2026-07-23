@@ -10,7 +10,10 @@ import { CredentialVault } from "@/encryption/credential-vault";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { ConnectionStorage } from "@/storage/connection";
 import { OrganizationBillingStorage } from "@/storage/organization-billing";
-import { syncOrgBenefits } from "@/billing/sync-org-benefits";
+import {
+  benefitsSyncEnabled,
+  enqueueBenefitsSync,
+} from "@/billing/sync-org-benefits";
 import { Permission } from "@/storage/types";
 import { fetchToolsFromMCP } from "@/tools/connection/fetch-tools";
 import {
@@ -96,23 +99,21 @@ export async function releaseSeat(
 ): Promise<void> {
   const database = getDb();
   const storage = new OrganizationBillingStorage(database.db);
-  const released = await storage.releaseSeat(organizationId, userId, changedBy);
-  if (!released) return;
-
-  // The paid-seat count just changed, so the benefits it buys change too.
-  // released=true implies the org actually sells seats (only seat-managed
-  // orgs ever have paid rows), so no billing-mode guard is needed. Fail-soft:
-  // a failed grant self-heals on the next seat apply.
+  // The paid-seat count changed, so the benefits it buys change too. The
+  // pending marker commits with the release; the DBOS workflow + scheduled
+  // sweep deliver the gateway grant durably. Enqueue is fail-soft — a failed
+  // enqueue is exactly what the sweep exists for.
+  const { released, benefitsReferenceId } = await storage.releaseSeat(
+    organizationId,
+    userId,
+    changedBy,
+    { markBenefitsPending: benefitsSyncEnabled() },
+  );
+  if (!released || !benefitsReferenceId) return;
   try {
-    const paidSeatCount = (await storage.listPaidSeatUserIds(organizationId))
-      .length;
-    await syncOrgBenefits({
-      organizationId,
-      paidSeatCount,
-      referenceId: `seat-release:${organizationId}:${crypto.randomUUID()}`,
-    });
+    await enqueueBenefitsSync(organizationId, benefitsReferenceId, "apply");
   } catch (err) {
-    console.error("Failed to sync org benefits after seat release:", err);
+    console.error("Failed to enqueue benefit sync (sweep covers):", err);
   }
 }
 

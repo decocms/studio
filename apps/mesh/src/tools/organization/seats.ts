@@ -13,7 +13,10 @@
  */
 
 import { z } from "zod";
-import { syncOrgBenefits } from "../../billing/sync-org-benefits";
+import {
+  benefitsSyncEnabled,
+  enqueueBenefitsSync,
+} from "../../billing/sync-org-benefits";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, getUserId } from "../../core/studio-context";
 import { SeatTargetNotMemberError } from "../../storage/organization-billing";
@@ -98,10 +101,11 @@ export const ORGANIZATION_SEATS_SET = defineTool({
       z.object({ userId: z.string(), seat: z.enum(["paid", "free"]) }),
     ),
     paidSeatCount: z.number(),
-    /** Whether the gateway allowance grant succeeded. false = seats saved
-     *  but the benefit sync failed/was skipped — the NEXT apply re-grants
-     *  the full current amount, so the state self-heals. */
-    benefitsSynced: z.boolean(),
+    /** Whether a durable benefit-sync delivery was queued. false = this
+     *  deployment doesn't deliver benefits (no gateway admin) or nothing
+     *  changed. Delivery itself is guaranteed by the pending marker committed
+     *  with the seats + the DBOS workflow/sweep — not by this flag. */
+    benefitsSyncQueued: z.boolean(),
   }),
 
   handler: async (input, ctx) => {
@@ -135,10 +139,14 @@ export const ORGANIZATION_SEATS_SET = defineTool({
       ReturnType<typeof ctx.storage.organizationBilling.setSeats>
     >;
     try {
+      // The benefit-sync intent (pending marker) commits IN the same
+      // transaction as the seat rows — a crash after this line can never
+      // lose the gateway grant; the DBOS workflow + scheduled sweep deliver.
       result = await ctx.storage.organizationBilling.setSeats(
         organizationId,
         input.seats,
         changedBy,
+        { markBenefitsPending: benefitsSyncEnabled() },
       );
     } catch (err) {
       if (err instanceof SeatTargetNotMemberError) {
@@ -147,24 +155,26 @@ export const ORGANIZATION_SEATS_SET = defineTool({
       throw err;
     }
 
-    // Benefits ride the seat change but never fail it: the seats are already
-    // committed (they're the billing truth), and a failed grant self-heals on
-    // the next apply (every call re-grants the full current amount). One
-    // referenceId per applied change-set keeps gateway retries deduped.
-    let benefitsSynced = false;
-    if (result.applied.length > 0) {
+    // Fast-path enqueue. Fail-soft: the marker is committed, so a failed
+    // enqueue is exactly what the sweep exists for.
+    let benefitsSyncQueued = false;
+    if (result.benefitsReferenceId) {
       try {
-        const sync = await syncOrgBenefits({
+        await enqueueBenefitsSync(
           organizationId,
-          paidSeatCount: result.paidSeatCount,
-          referenceId: `seats:${organizationId}:${crypto.randomUUID()}`,
-        });
-        benefitsSynced = sync.allowanceSynced;
+          result.benefitsReferenceId,
+          "apply",
+        );
+        benefitsSyncQueued = true;
       } catch (err) {
-        console.error("Failed to sync org benefits after seat change:", err);
+        console.error("Failed to enqueue benefit sync (sweep covers):", err);
       }
     }
 
-    return { ...result, benefitsSynced };
+    return {
+      applied: result.applied,
+      paidSeatCount: result.paidSeatCount,
+      benefitsSyncQueued,
+    };
   },
 });

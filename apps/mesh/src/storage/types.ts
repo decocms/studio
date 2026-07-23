@@ -1254,6 +1254,15 @@ export interface OrganizationBillingTable {
     string | null | undefined,
     string | null
   >;
+  /** Pending benefit-sync marker (migration 141): non-null = a gateway
+   *  allowance grant for the latest seat change hasn't been confirmed.
+   *  Written in the SAME transaction as the seat change; the value is the
+   *  grant's idempotency key at the gateway. */
+  benefits_reference_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }

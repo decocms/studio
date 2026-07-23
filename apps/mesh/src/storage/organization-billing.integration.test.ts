@@ -126,14 +126,24 @@ describe("OrganizationBillingStorage", () => {
     expect(await storage.listPaidSeatUserIds(ORG)).toEqual([]);
   });
 
-  it("releases the seat (hooks boundary) and logs the transition", async () => {
-    const released = await storage.releaseSeat(ORG, "user_a", "admin_1");
-    expect(released).toBe(true);
+  it("releases the seat (hooks boundary), logs it, and marks the sync pending", async () => {
+    const release = await storage.releaseSeat(ORG, "user_a", "admin_1", {
+      markBenefitsPending: true,
+    });
+    expect(release.released).toBe(true);
+    expect(release.benefitsReferenceId).toBeTruthy();
     expect(await storage.listPaidSeatUserIds(ORG)).toEqual([]);
+    // The pending marker committed with the release (same transaction).
+    expect((await storage.getBilling(ORG))?.benefitsReferenceId).toBe(
+      release.benefitsReferenceId,
+    );
 
-    // Releasing again is a no-op — nothing new logged.
-    const again = await storage.releaseSeat(ORG, "user_a", "admin_1");
-    expect(again).toBe(false);
+    // Releasing again is a no-op — nothing new logged, no new marker.
+    const again = await storage.releaseSeat(ORG, "user_a", "admin_1", {
+      markBenefitsPending: true,
+    });
+    expect(again.released).toBe(false);
+    expect(again.benefitsReferenceId).toBeNull();
 
     const frees = await database.db
       .selectFrom("seat_change_log")
@@ -142,6 +152,33 @@ describe("OrganizationBillingStorage", () => {
       .where("user_id", "=", "user_a")
       .execute();
     expect(frees.map((r) => r.seat)).toEqual(["paid", "free"]);
+  });
+
+  it("clearBenefitsPending is a CAS: only the matching reference clears", async () => {
+    const pendingRef = (await storage.getBilling(ORG))?.benefitsReferenceId;
+    expect(pendingRef).toBeTruthy();
+
+    // A stale delivery (older reference) must NOT clear the newer marker.
+    await storage.clearBenefitsPending(ORG, "some-older-reference");
+    expect((await storage.getBilling(ORG))?.benefitsReferenceId).toBe(
+      pendingRef ?? null,
+    );
+
+    // The sweep sees it once stale…
+    const pending = await storage.listBenefitsPending(
+      new Date(Date.now() + 60_000),
+      10,
+    );
+    expect(pending).toEqual([
+      { organizationId: ORG, referenceId: pendingRef as string },
+    ]);
+
+    // …and the matching delivery clears it.
+    await storage.clearBenefitsPending(ORG, pendingRef as string);
+    expect((await storage.getBilling(ORG))?.benefitsReferenceId).toBeNull();
+    expect(
+      await storage.listBenefitsPending(new Date(Date.now() + 60_000), 10),
+    ).toEqual([]);
   });
 
   it("getBilling maps the row; missing row is null (fail-open upstream)", async () => {

@@ -20,6 +20,9 @@ export interface OrganizationBillingRow {
   stripeSubscriptionId: string | null;
   currentPeriodEnd: Date | null;
   includedReportUrl: string | null;
+  /** Non-null = a gateway allowance grant is pending for the latest seat
+   *  change (the value is the grant's gateway idempotency key). */
+  benefitsReferenceId: string | null;
 }
 
 export type SeatKind = "paid" | "free";
@@ -34,6 +37,10 @@ export interface SetSeatsResult {
    *  are skipped and NOT logged, so the invoiced change-log stays clean). */
   applied: SeatChange[];
   paidSeatCount: number;
+  /** Set when the change-set marked a benefit sync pending (markBenefitsPending
+   *  option, applied non-empty): the grant's gateway idempotency key, committed
+   *  ATOMICALLY with the seat rows so a crash can never lose the intent. */
+  benefitsReferenceId: string | null;
 }
 
 export class SeatTargetNotMemberError extends Error {
@@ -64,6 +71,7 @@ export class OrganizationBillingStorage {
       stripeSubscriptionId: row.stripe_subscription_id,
       currentPeriodEnd: row.current_period_end,
       includedReportUrl: row.included_report_url,
+      benefitsReferenceId: row.benefits_reference_id,
     };
   }
 
@@ -104,6 +112,7 @@ export class OrganizationBillingStorage {
     organizationId: string,
     changes: SeatChange[],
     changedBy: string,
+    opts?: { markBenefitsPending?: boolean },
   ): Promise<SetSeatsResult> {
     return await this.db.transaction().execute(async (trx) => {
       const userIds = [...new Set(changes.map((c) => c.userId))];
@@ -179,7 +188,30 @@ export class OrganizationBillingStorage {
         .where("organization_paid_seat.organization_id", "=", organizationId)
         .executeTakeFirst();
 
-      return { applied, paidSeatCount: Number(paidSeats?.count ?? 0) };
+      // Benefit-sync intent commits WITH the seat rows — the crash-proof half
+      // of the durable grant (the workflow + sweep are the delivery half).
+      // Overwriting a previous pending ref is correct: grants are absolute
+      // (full current amount), so only the LATEST change-set needs delivering.
+      const benefitsReferenceId =
+        opts?.markBenefitsPending && applied.length > 0
+          ? crypto.randomUUID()
+          : null;
+      if (benefitsReferenceId) {
+        await trx
+          .updateTable("organization_billing")
+          .set({
+            benefits_reference_id: benefitsReferenceId,
+            updated_at: new Date(),
+          })
+          .where("organization_id", "=", organizationId)
+          .execute();
+      }
+
+      return {
+        applied,
+        paidSeatCount: Number(paidSeats?.count ?? 0),
+        benefitsReferenceId,
+      };
     });
   }
 
@@ -196,7 +228,8 @@ export class OrganizationBillingStorage {
     organizationId: string,
     userId: string,
     changedBy: string,
-  ): Promise<boolean> {
+    opts?: { markBenefitsPending?: boolean },
+  ): Promise<{ released: boolean; benefitsReferenceId: string | null }> {
     return await this.db.transaction().execute(async (trx) => {
       const deleted = await trx
         .deleteFrom("organization_paid_seat")
@@ -204,7 +237,7 @@ export class OrganizationBillingStorage {
         .where("user_id", "=", userId)
         .returning("user_id")
         .executeTakeFirst();
-      if (!deleted) return false;
+      if (!deleted) return { released: false, benefitsReferenceId: null };
       await trx
         .insertInto("seat_change_log")
         .values({
@@ -214,7 +247,65 @@ export class OrganizationBillingStorage {
           changed_by: changedBy,
         })
         .execute();
-      return true;
+      const benefitsReferenceId = opts?.markBenefitsPending
+        ? crypto.randomUUID()
+        : null;
+      if (benefitsReferenceId) {
+        await trx
+          .updateTable("organization_billing")
+          .set({
+            benefits_reference_id: benefitsReferenceId,
+            updated_at: new Date(),
+          })
+          .where("organization_id", "=", organizationId)
+          .execute();
+      }
+      return { released: true, benefitsReferenceId };
     });
+  }
+
+  /**
+   * Confirm a delivered grant: clear the pending marker iff it still holds
+   * THIS reference (CAS) — a newer seat change may have replaced it, and that
+   * newer grant must stay pending until its own delivery confirms.
+   */
+  async clearBenefitsPending(
+    organizationId: string,
+    referenceId: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("organization_billing")
+      .set({ benefits_reference_id: null, updated_at: new Date() })
+      .where("organization_id", "=", organizationId)
+      .where("benefits_reference_id", "=", referenceId)
+      .execute();
+  }
+
+  /**
+   * Orgs whose latest grant is still undelivered and stale enough that the
+   * fast path clearly failed (pod died before enqueue, workflow exhausted) —
+   * the sweep's work list.
+   */
+  async listBenefitsPending(
+    olderThan: Date,
+    limit: number,
+  ): Promise<Array<{ organizationId: string; referenceId: string }>> {
+    const rows = await this.db
+      .selectFrom("organization_billing")
+      .select(["organization_id", "benefits_reference_id"])
+      .where("benefits_reference_id", "is not", null)
+      .where("updated_at", "<", olderThan)
+      .limit(limit)
+      .execute();
+    return rows.flatMap((r) =>
+      r.benefits_reference_id
+        ? [
+            {
+              organizationId: r.organization_id,
+              referenceId: r.benefits_reference_id,
+            },
+          ]
+        : [],
+    );
   }
 }

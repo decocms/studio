@@ -139,6 +139,7 @@ import * as migration137agentsandboxrunnerstate from "./137-agent-sandbox-runner
 import * as migration138agentsandboxsessions from "./138-agent-sandbox-sessions.ts";
 import * as migration139organizationbilling from "./139-organization-billing.ts";
 import * as migration140seatchangelog from "./140-seat-change-log.ts";
+import * as migration141benefitssyncpending from "./141-benefits-sync-pending.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -303,6 +304,7 @@ const migrations: Record<string, Migration> = {
   "138-agent-sandbox-sessions": migration138agentsandboxsessions,
   "139-organization-billing": migration139organizationbilling,
   "140-seat-change-log": migration140seatchangelog,
+  "141-benefits-sync-pending": migration141benefitssyncpending,
 };
 
 export default migrations;
