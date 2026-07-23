@@ -726,4 +726,19 @@ describe("git routes", () => {
       error: "Invalid base branch name: --upload-pack=evil",
     });
   });
+
+  it("rebase route returns 409 (not 500) for a protected-branch refusal", async () => {
+    const { appRoot, repoDir } = initRepo(); // initRepo checks out main
+    const handler = makeGitRebaseHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/rebase", {
+        method: "POST",
+        body: JSON.stringify({ base: "main" }),
+      }),
+    );
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/protected branch "main"/);
+  });
 });
