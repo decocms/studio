@@ -649,8 +649,22 @@ function discard(deps: GitDeps, filepaths: string[]): void {
   const status = computeWorkingTreeStatus(repoDir);
   const toRestore: string[] = [];
   const toDelete: string[] = [];
+  // A renamed file's new path never existed at HEAD, so the isNew check below
+  // would treat it as untracked and unlink it outright — losing the content
+  // entirely, since the original path is already gone from the working tree
+  // too. Discarding a rename must instead restore the original file from HEAD
+  // and unstage + drop the new path.
+  const toRestoreFromHead: string[] = [];
+  const renamedNewPaths: string[] = [];
 
   for (const fp of validated) {
+    const origPath = status.files.find((f) => f.path === fp)?.origPath;
+    if (origPath) {
+      toRestoreFromHead.push(origPath);
+      renamedNewPaths.push(fp);
+      toDelete.push(fp);
+      continue;
+    }
     const isNew =
       status.not_added.includes(fp) ||
       status.created.includes(fp) ||
@@ -659,6 +673,13 @@ function discard(deps: GitDeps, filepaths: string[]): void {
     else toRestore.push(fp);
   }
 
+  if (toRestoreFromHead.length > 0) {
+    // Unstage the rename's "new path added" side before restoring the
+    // original — otherwise it survives in the index even after the working
+    // tree file below is deleted.
+    runGit(repoDir, ["reset", "--", ...renamedNewPaths]);
+    runGit(repoDir, ["checkout", "HEAD", "--", ...toRestoreFromHead]);
+  }
   if (toRestore.length > 0) {
     runGit(repoDir, ["checkout", "--", ...toRestore]);
   }
