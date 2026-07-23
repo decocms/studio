@@ -91,6 +91,18 @@ const ALWAYS_INCLUDE = [
   "@decocms/better-auth",
   "better-auth",
   "@better-auth/sso",
+  // The OG-card renderer (src/reports/og-card.ts → src/api/routes/report-pages).
+  // Both use package.json `exports` maps that @vercel/nft can't follow from the
+  // source import, so nft returns 0 traced files and neither lands in the copy
+  // set. bun build then tries to INLINE them into server.js — and satori pulls
+  // yoga (wasm) while @resvg/resvg-js loads a native .node, so bun needs to emit
+  // a second output file and dies with "cannot write multiple output files
+  // without an output directory". Listing them here makes nft root-resolve each
+  // (skipping the broken exports walk) so they're copied and externalized, never
+  // inlined. Their platform-specific native binary is handled by
+  // EXCLUDE_COPY_PREFIXES below.
+  "satori",
+  "@resvg/resvg-js",
 ];
 const ALWAYS_EXCLUDE = [
   "kysely-codegen",
@@ -112,7 +124,14 @@ const ALWAYS_EXCLUDE = [
 // (CI builds linux-x64; a Mac/arm consumer's runtime never loads it, and the
 // Docker `bun add` already installs the correct linux-<arch> binary per image).
 // Skipping the copy lets the consumer's install supply the right binary.
-const EXCLUDE_COPY_PREFIXES = ["@embedded-postgres/"];
+// @resvg/resvg-js resolves its native binary from a per-platform optional
+// dependency (@resvg/resvg-js-linux-x64-gnu, -darwin-arm64, …). Like
+// @embedded-postgres/<platform>, the build host traces only its OWN platform's
+// binary, so bundling it is dead weight (and wrong-platform) for every other
+// target. The `@resvg/resvg-js` wrapper is externalized (see ALWAYS_INCLUDE),
+// so bun never bundles the require; at runtime the Docker `bun add` installs the
+// matching binary and node resolution finds it. Skip copying the host binary.
+const EXCLUDE_COPY_PREFIXES = ["@embedded-postgres/", "@resvg/resvg-js-"];
 
 // Parse command line arguments
 function parseArgs() {
