@@ -134,7 +134,7 @@ export function resolveConfig(
   const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
     // Core
     nodeEnv,
-    port: Number(flags.port) || Number(envVars.PORT) || 3000,
+    port: toPositiveIntegerOrDefault("PORT", flags.port || envVars.PORT, 3000),
     baseUrl: flags.baseUrl || envVars.BASE_URL,
     dataDir,
 

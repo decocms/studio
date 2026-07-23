@@ -103,6 +103,35 @@ describe("resolveConfig database pool max", () => {
   );
 });
 
+describe("resolveConfig port", () => {
+  it("defaults to 3000 when unset", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.port).toBe(3000);
+  });
+
+  it("uses PORT when set", () => {
+    const result = resolveConfig(flags, { PORT: "8080" });
+
+    expect(result.settings.port).toBe(8080);
+  });
+
+  it("prefers the --port flag over PORT", () => {
+    const result = resolveConfig({ ...flags, port: "9000" }, { PORT: "8080" });
+
+    expect(result.settings.port).toBe(9000);
+  });
+
+  it.each(["abc", "0", "-1", "1.5", "Infinity"])(
+    "throws for invalid PORT %p",
+    (value) => {
+      expect(() => resolveConfig(flags, { PORT: value })).toThrow(
+        "PORT must be a positive integer",
+      );
+    },
+  );
+});
+
 describe("resolveConfig deployment admin emails", () => {
   it("defaults to an empty list when unset", () => {
     const result = resolveConfig(flags, {});
