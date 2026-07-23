@@ -21,18 +21,20 @@ describe("apiKeyManagerAgent", () => {
     ]);
   });
 
-  test("requires confirmation and one-time secret handling", () => {
+  test("confirms before deletion and keeps one-time secret handling", () => {
+    // De-nagged agent: no interview / no wildcard pushback, but destructive
+    // and secret-hygiene guardrails are retained.
     expect(apiKeyManagerAgent.instructions).toContain(
-      "get explicit confirmation",
+      "single explicit confirmation immediately before API_KEY_DELETE",
     );
     expect(apiKeyManagerAgent.instructions).toContain(
       "returns the key value exactly once",
     );
     expect(apiKeyManagerAgent.instructions).toContain(
-      "print that value exactly once in a fenced plain-text code block",
+      "Print that value once in a fenced plain-text code block",
     );
-    expect(apiKeyManagerAgent.instructions).not.toContain(
-      "Never reproduce the key value",
+    expect(apiKeyManagerAgent.instructions).toContain(
+      "don't repeat it in later prose",
     );
   });
 });
