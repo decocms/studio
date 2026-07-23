@@ -468,6 +468,18 @@ class InvalidDiscardPathError extends Error {
   }
 }
 
+/**
+ * publish() refused because of the sandbox's current git state (detached HEAD,
+ * or the checked-out branch is protected) — a conflict with the request, not a
+ * server fault, so the route maps it to 409 like repoNotReadyResponse().
+ */
+class PublishBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PublishBlockedError";
+  }
+}
+
 function resolveRepoRelativePath(deps: GitDeps, userPath: string): string {
   const abs = safePath(deps.appRoot, deps.repoDir, userPath);
   if (!abs) {
@@ -535,14 +547,14 @@ export function publish(
   }
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
-    throw new Error("Cannot publish from a detached HEAD");
+    throw new PublishBlockedError("Cannot publish from a detached HEAD");
   }
   // The pre-push hook (protect-branch.ts) also guards this, but the push below
   // runs with --no-verify and skips it — so the block MUST live in code too.
   // Refuse before committing so we never leave a stray commit on a protected
   // branch either. Changes reach the default branch via PR, never a direct push.
   if (protectedBranches(repoDir).has(branch)) {
-    throw new Error(
+    throw new PublishBlockedError(
       `Refusing to push to protected branch "${branch}" from a sandbox. Work on a feature branch; changes reach the default branch via PR.`,
     );
   }
@@ -735,6 +747,11 @@ export function makeGitPublishHandler(deps: GitDeps) {
       // An invalid-block refusal is a client/data condition, not a server fault.
       if (err instanceof InvalidDecofileBlockError) {
         return jsonResponse({ error: err.message }, 400);
+      }
+      // A detached HEAD / protected-branch refusal is a conflict with the
+      // sandbox's current state, not a server fault.
+      if (err instanceof PublishBlockedError) {
+        return jsonResponse({ error: err.message }, 409);
       }
       return jsonResponse({ error: formatGitError(err) }, 500);
     }
