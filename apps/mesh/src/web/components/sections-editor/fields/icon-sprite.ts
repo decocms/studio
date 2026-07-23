@@ -25,7 +25,11 @@ const attr = (attrs: string, name: string): string | undefined =>
 export function parseSpriteSymbols(svgText: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (typeof svgText !== "string") return out;
-  const symbolRe = /<symbol\b([^>]*)>([\s\S]*?)<\/symbol>/gi;
+  // The attribute-list group tolerates a literal `>` inside a quoted attribute
+  // value (`"..."`/`'...'`) instead of stopping at the first `>`. The three
+  // alternatives are disjoint on their first char, so there's no backtracking.
+  const symbolRe =
+    /<symbol\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/symbol>/gi;
   for (const match of svgText.matchAll(symbolRe)) {
     const attrs = match[1] ?? "";
     const inner = match[2] ?? "";

@@ -32,6 +32,15 @@ describe("parseSpriteSymbols", () => {
     );
   });
 
+  test("tolerates a literal > inside a quoted attribute value", () => {
+    const map = parseSpriteSymbols(
+      '<svg><symbol id="X" data-label="a>b" viewBox="0 0 8 8"><circle /></symbol></svg>',
+    );
+    expect(map.X).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><circle /></svg>',
+    );
+  });
+
   test("skips symbols without an id", () => {
     const map = parseSpriteSymbols(
       '<svg><symbol viewBox="0 0 8 8"><circle /></symbol></svg>',

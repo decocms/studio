@@ -30,6 +30,12 @@ export interface DynamicOption {
   image?: string;
   /** Inline SVG markup for the option preview (deco `icon-select` loaders). */
   icon?: string;
+  /**
+   * Pre-rendered preview `src` (URL or data-URI). Set by callers that can encode
+   * it once up front (e.g. sprite icons) so the render path doesn't re-encode
+   * per option; falls back to deriving from `image`/`icon` when absent.
+   */
+  previewSrc?: string;
 }
 
 export function normalizeOptions(data: unknown): DynamicOption[] {
@@ -136,10 +142,17 @@ function themeForegroundColor(): string | undefined {
   return fg || undefined;
 }
 
-/** Preview image source for an option: `image` is a URL, `icon` inline SVG. */
-function optionPreviewSrc(opt: DynamicOption): string | undefined {
+/**
+ * Preview image source for an option: a pre-rendered `previewSrc`, else an
+ * `image` URL, else an inline `icon` SVG encoded with the theme `fg` color.
+ */
+function optionPreviewSrc(
+  opt: DynamicOption,
+  fg: string | undefined,
+): string | undefined {
+  if (opt.previewSrc) return opt.previewSrc;
   if (opt.image) return opt.image;
-  if (opt.icon) return svgPreviewDataUri(opt.icon, themeForegroundColor());
+  if (opt.icon) return svgPreviewDataUri(opt.icon, fg);
   return undefined;
 }
 
@@ -169,11 +182,13 @@ async function fetchDynamicOptions(
 function OptionPreview({
   option,
   className,
+  fg,
 }: {
   option: DynamicOption;
   className?: string;
+  fg: string | undefined;
 }) {
-  const src = optionPreviewSrc(option);
+  const src = optionPreviewSrc(option, fg);
   if (!src) return null;
   return (
     <img
@@ -267,9 +282,11 @@ export function DynamicOptionsField({
 
   const loaderOptions = query.data ?? [];
 
-  // Only reach for the sprite when the loader didn't already supply icons
-  // (i.e. TanStack sites with the deleted loader) — avoids a wasted request on
-  // sites whose loader works.
+  // Reach for the site sprite only when the loader can't supply icons: either
+  // there's no `@options` loader (TanStack, where it's deleted) or the loader
+  // has settled with nothing. Gating on `query.isFetched` (not just an empty
+  // `loaderOptions`, which is also empty while the loader is in flight) is what
+  // keeps a working-loader site from fetching the sprite concurrently.
   const spriteQuery = useQuery({
     queryKey: KEYS.sandboxSprite(sandboxKey),
     queryFn: () =>
@@ -288,18 +305,34 @@ export function DynamicOptionsField({
       isIconSelect &&
       !!sandbox &&
       (open || !!currentValue) &&
-      loaderOptions.length === 0,
+      (!loaderPath || (query.isFetched && loaderOptions.length === 0)),
     staleTime: 300_000,
     retry: 1,
   });
 
   const enumFallback = enumFallbackOptions(schema.enum);
   const spriteIcons = spriteQuery.data ?? {};
-  // Enum is the fallback list; on icon-select each name is enriched with its
-  // sprite SVG so the picker shows the icon, not just the label.
+  // Read the theme foreground once per render (a getComputedStyle style read)
+  // instead of once per option inside OptionPreview.
+  const fg = themeForegroundColor();
+  // Encode each sprite icon to a data-URI exactly once. Both inputs are stable
+  // across renders (react-query's data ref + the fg string value), so the React
+  // Compiler memoizes this — without it a 100+ icon list would re-encode every
+  // SVG on every keystroke.
+  const spriteSrcByValue = Object.fromEntries(
+    Object.entries(spriteIcons).map(([name, svg]) => [
+      name,
+      svgPreviewDataUri(svg, fg),
+    ]),
+  );
+  // Enum is the fallback list; on icon-select each name carries its already
+  // encoded sprite preview so the picker shows the icon, not just the label.
   const enumOptions =
-    isIconSelect && Object.keys(spriteIcons).length > 0
-      ? enumFallback.map((opt) => ({ ...opt, icon: spriteIcons[opt.value] }))
+    isIconSelect && Object.keys(spriteSrcByValue).length > 0
+      ? enumFallback.map((opt) => ({
+          ...opt,
+          previewSrc: spriteSrcByValue[opt.value],
+        }))
       : enumFallback;
   // Loader wins when it returns anything (Fresh/Deno); otherwise the enum
   // (+ sprite previews for icon-select).
@@ -342,7 +375,11 @@ export function DynamicOptionsField({
           >
             {selectedOption ? (
               <span className="flex min-w-0 items-center gap-2">
-                <OptionPreview option={selectedOption} className="h-6 w-6" />
+                <OptionPreview
+                  option={selectedOption}
+                  className="h-6 w-6"
+                  fg={fg}
+                />
                 <span className="truncate">
                   {selectedOption.label ?? selectedOption.value}
                 </span>
@@ -390,6 +427,7 @@ export function DynamicOptionsField({
                       <OptionPreview
                         option={opt}
                         className={cn(opt.image ? "h-9 w-9" : "h-6 w-6")}
+                        fg={fg}
                       />
                       <span className="truncate">{opt.label ?? opt.value}</span>
                     </span>
