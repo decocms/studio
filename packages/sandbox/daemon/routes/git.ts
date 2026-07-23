@@ -5,7 +5,7 @@ import { appendCoAuthorTrailer } from "../../git-co-author";
 import { computeBranchDivergence } from "../git/branch-divergence";
 import { parsePorcelainFiles } from "../git/porcelain";
 import { protectedBranches } from "../git/protect-branch";
-import { rebaseOntoBase } from "../git/rebase-onto-base";
+import { RebaseBlockedError, rebaseOntoBase } from "../git/rebase-onto-base";
 import {
   cloneUrlHasCredentials,
   syncOriginRemote,
@@ -833,6 +833,11 @@ export function makeGitRebaseHandler(deps: GitDeps) {
     } catch (err) {
       if (err instanceof InvalidRemoteBranchNameError) {
         return jsonResponse({ error: err.message }, 400);
+      }
+      // A detached HEAD / protected-branch refusal is a conflict with the
+      // sandbox's current state, not a server fault (mirrors publish() above).
+      if (err instanceof RebaseBlockedError) {
+        return jsonResponse({ error: err.message }, 409);
       }
       return jsonResponse({ error: formatGitError(err) }, 500);
     }

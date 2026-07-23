@@ -21,6 +21,18 @@ export interface RebaseOntoBaseOptions {
   operator?: OperatorIdentity;
 }
 
+/**
+ * rebaseOntoBase() refused because of the sandbox's current git state (detached
+ * HEAD, or the checked-out branch is protected) — a conflict with the request,
+ * not a server fault, so the route maps it to 409 like PublishBlockedError.
+ */
+export class RebaseBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RebaseBlockedError";
+  }
+}
+
 function gitEnv(repoDir: string): Record<string, string> {
   return { ...process.env, GIT_CEILING_DIRECTORIES: repoDir };
 }
@@ -326,13 +338,13 @@ function rebaseOntoBaseInner(
 
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
-    throw new Error("Cannot rebase from a detached HEAD");
+    throw new RebaseBlockedError("Cannot rebase from a detached HEAD");
   }
   // Same guard as publish() (protect-branch.ts): this ends in a force-push,
   // which is even more destructive than a normal push, so a sandbox sitting
   // on main/master/default must never reach it.
   if (protectedBranches(repoDir).has(branch)) {
-    throw new Error(
+    throw new RebaseBlockedError(
       `Refusing to rebase and force-push protected branch "${branch}" from a sandbox. Work on a feature branch; changes reach the default branch via PR.`,
     );
   }
