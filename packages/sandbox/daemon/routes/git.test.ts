@@ -1,7 +1,9 @@
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -678,6 +680,35 @@ describe("git routes", () => {
     expect(await res.json()).toEqual({
       error: "Invalid path: ../outside-secret.txt",
     });
+  });
+
+  it("discard on a renamed file restores the original instead of deleting both", async () => {
+    const { appRoot, repoDir } = initRepo();
+    writeFileSync(join(repoDir, "old.txt"), "important content\n");
+    gitSync(["add", "old.txt"], { cwd: repoDir, asUser: false });
+    gitSync(["commit", "-m", "add old.txt"], { cwd: repoDir, asUser: false });
+    gitSync(["mv", "old.txt", "new.txt"], { cwd: repoDir, asUser: false });
+
+    const handler = makeGitDiscardHandler({ appRoot, repoDir });
+    const res = await handler(
+      new Request("http://x/git/discard", {
+        method: "POST",
+        body: JSON.stringify({ filepaths: ["new.txt"] }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(existsSync(join(repoDir, "new.txt"))).toBe(false);
+    expect(existsSync(join(repoDir, "old.txt"))).toBe(true);
+    expect(readFileSync(join(repoDir, "old.txt"), "utf8")).toBe(
+      "important content\n",
+    );
+    expect(
+      gitSync(["status", "--porcelain=v1"], {
+        cwd: repoDir,
+        asUser: false,
+      }).trim(),
+    ).toBe("");
   });
 
   it("rebase rejects invalid base branch names", async () => {
