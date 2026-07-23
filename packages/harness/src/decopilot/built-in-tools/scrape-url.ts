@@ -16,6 +16,7 @@ import type { ObjectStorageHooks } from "../../harness-deps";
 import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
 import { toStudioStorageUri } from "../studio-storage-uri";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
+import { wafBypassHeaders } from "./waf-bypass";
 
 const ScrapeUrlInputSchema = z.object({
   url: z.string().url().describe("The URL of the web page to scrape."),
@@ -55,6 +56,10 @@ export function createScrapeUrlTool(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               url: input.url,
+              // Deco-zone targets get the WAF bypass header (see waf-bypass.ts).
+              ...(Object.keys(wafBypassHeaders(input.url)).length
+                ? { setExtraHTTPHeaders: wafBypassHeaders(input.url) }
+                : {}),
             }),
           },
         );
