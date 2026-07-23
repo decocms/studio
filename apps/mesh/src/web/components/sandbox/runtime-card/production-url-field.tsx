@@ -9,6 +9,12 @@ import { Label } from "@deco/ui/components/label.tsx";
 import { useT } from "@/web/i18n/use-t.ts";
 import { productionUrlFromDomain } from "@/shared/deco-site-production-url";
 
+// NOTE: manual entry is a stopgap. Ideally `metadata.productionUrl` is not set
+// by hand — it's auto-populated at deco.cx import from the site's production
+// domain, and once we ship the domain-setup capability it should be sourced
+// from the site's `domains` array (the domain flagged `production`) instead of
+// this free-text field.
+//
 // Generic over the parent form schema so callers pass `form.control` without
 // casting — mirrors RuntimeFields. Bound to `metadata.productionUrl`; the field
 // path is a literal contract asserted via `FieldPath<T>`, kept to this leaf.
