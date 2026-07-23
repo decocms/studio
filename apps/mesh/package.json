@@ -69,6 +69,7 @@
     "@nats-io/transport-node": "3.4.0",
     "@openrouter/ai-sdk-provider": "^2.9.1",
     "@opentelemetry/core": "^2.6.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@tanstack/react-virtual": "3.13.24",
     "@tiptap/extension-text-align": "3.20.2",
     "@xterm/addon-fit": "^0.11.0",
@@ -83,6 +84,7 @@
     "posthog-node": "^5.0.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "satori": "^0.28.2",
     "use-stick-to-bottom": "^1.1.6"
   },
   "devDependencies": {

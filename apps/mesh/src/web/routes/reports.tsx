@@ -157,7 +157,12 @@ export default function ReportPage() {
 
   const brand =
     initial.data?.deck?.meta.brand?.trim() || brandFromDomain(domain);
-  const { title } = reportShareCopy({ brand, domain });
+  // Keep the browser-tab title in step with the crawler card (score + verdict).
+  const { title } = reportShareCopy({
+    brand,
+    domain,
+    score: initial.data?.deck?.meta.scores?.cover,
+  });
 
   const reviewerCleanupRef = (el: HTMLDivElement | null) => {
     if (!el) return;
