@@ -1,38 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import {
-  buildReportHead,
-  isShareSafeImageUrl,
-  type ReportSeo,
-} from "./report-pages";
+import { buildReportHead, type ReportSeo } from "./report-pages";
 
 /** Pull the `content`/`href` of a tag from a built head block. */
 function attr(head: string, re: RegExp): string | null {
   return head.match(re)?.[1] ?? null;
 }
 
-const SCREENSHOT = "https://shots.example.com/nike.com/home-desktop.jpg";
 const SEO: ReportSeo = {
   brand: "Nike",
   score: 68,
   verdict: "Organic traffic is in free fall.",
-  screenshot: SCREENSHOT,
 };
-
-describe("isShareSafeImageUrl", () => {
-  test("accepts a stable, clean-path https URL", () => {
-    expect(isShareSafeImageUrl(SCREENSHOT)).toBe(true);
-  });
-  test("rejects signed/expiring, http, and empty URLs", () => {
-    expect(
-      isShareSafeImageUrl(
-        "https://s.googleapis.com/x.png?Expires=1&Signature=a",
-      ),
-    ).toBe(false);
-    expect(isShareSafeImageUrl("http://shots.example.com/x.jpg")).toBe(false);
-    expect(isShareSafeImageUrl(undefined)).toBe(false);
-    expect(isShareSafeImageUrl("not a url")).toBe(false);
-  });
-});
 
 describe("buildReportHead — dynamic report SEO", () => {
   test("title carries brand + real score; description carries the verdict", () => {
@@ -46,28 +24,24 @@ describe("buildReportHead — dynamic report SEO", () => {
     expect(attr(head, /name="twitter:title" content="([^"]*)"/)).toBe(title);
   });
 
-  test("uses the report screenshot as a large summary image (og + twitter)", () => {
+  test("og:image points at the per-report /og.png card (absolute, large summary)", () => {
     const head = buildReportHead("nike.com", SEO);
-    expect(attr(head, /property="og:image" content="([^"]*)"/)).toBe(
-      SCREENSHOT,
-    );
-    expect(attr(head, /name="twitter:image" content="([^"]*)"/)).toBe(
-      SCREENSHOT,
-    );
+    const image = attr(head, /property="og:image" content="([^"]*)"/);
+    // Absolute + the rendered per-report card route.
+    expect(image).toMatch(/^https?:\/\/.+\/report\/nike\.com\/og\.png$/);
+    expect(attr(head, /name="twitter:image" content="([^"]*)"/)).toBe(image);
     expect(attr(head, /name="twitter:card" content="([^"]*)"/)).toBe(
       "summary_large_image",
     );
-    // No dimension claims for an externally-sized screenshot.
-    expect(head).not.toContain("og:image:width");
-  });
-
-  test("falls back to the designed static card (absolute URL + dims) with no report", () => {
-    const head = buildReportHead("nike.com", null);
-    const image = attr(head, /property="og:image" content="([^"]*)"/);
-    // Absolute — a relative og:image fails on most unfurlers.
-    expect(image).toMatch(/^https?:\/\/.+\/report-og-fallback\.png$/);
     expect(head).toContain('property="og:image:width" content="1200"');
     expect(head).toContain('property="og:image:height" content="630"');
+  });
+
+  test("still points at /og.png even with no report data (route serves the fallback)", () => {
+    const head = buildReportHead("nike.com", null);
+    expect(attr(head, /property="og:image" content="([^"]*)"/)).toMatch(
+      /\/report\/nike\.com\/og\.png$/,
+    );
     // Domain-derived brand + generic score-less title.
     expect(attr(head, /<title>([^<]*)<\/title>/)).toBe(
       "Nike commerce report · decocms",
@@ -87,20 +61,6 @@ describe("buildReportHead — dynamic report SEO", () => {
   test("keeps report pages out of the index (noindex, follow)", () => {
     const head = buildReportHead("nike.com", SEO);
     expect(head).toContain('name="robots" content="noindex, follow"');
-  });
-
-  test("rejects a signed/expiring screenshot URL as og:image (would 403 in caches)", () => {
-    const head = buildReportHead("nike.com", {
-      brand: "Nike",
-      score: 47,
-      screenshot:
-        "https://storage.googleapis.com/bucket/shot.png?Expires=1783778625&Signature=abc",
-    });
-    // Falls back to the stable designed card, never the signed URL.
-    expect(head).not.toContain("storage.googleapis.com");
-    expect(attr(head, /property="og:image" content="([^"]*)"/)).toMatch(
-      /\/report-og-fallback\.png$/,
-    );
   });
 
   test("escapes an HTML-injecting domain param in every field", () => {

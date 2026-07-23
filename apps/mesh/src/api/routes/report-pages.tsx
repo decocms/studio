@@ -8,13 +8,12 @@
  * an OG/Twitter share image. The authenticated SPA still fetches the full deck
  * after the session gate — this shell only carries what a crawler reads.
  *
- * The share IMAGE is the brand's homepage screenshot, served from the reports
- * engine's edge worker (a stable, public, absolute URL). We LINK it; we never
- * render it here. The original in-process Satori + Resvg renderer did CPU-heavy
- * synchronous work inside Studio's Bun process, blocking the event loop shared
- * by health checks and authenticated APIs — do NOT restore in-process image
- * rendering here. When no screenshot exists yet (an unscanned domain), we fall
- * back to a designed static card (`/report-og-fallback.png`).
+ * The share IMAGE is a clean per-report card (favicon + domain + score),
+ * rendered by the sibling `GET /report/:domain/og.png` route. That route
+ * renders with satori + resvg and CACHES per (domain, score); the CDN caches
+ * the response too, so the origin renders each report at most once. og:image
+ * therefore always points at `<canonical>/og.png`, which itself falls back to a
+ * designed static card for a domain with no score yet.
  */
 
 import { Hono } from "hono";
@@ -26,6 +25,7 @@ import {
   reportShareCopy,
 } from "@/shared/report-seo";
 import { toDeck, type PublicReportResponse } from "@/reports/to-deck";
+import { renderOgCard } from "@/reports/og-card";
 import { resolveBaseUrl } from "@/tools/reports/auth-client";
 import { getSettings } from "@/settings";
 
@@ -33,32 +33,11 @@ import { getSettings } from "@/settings";
  *  and a slow/dead engine must degrade to domain-only copy, never hang. */
 const ENGINE_TIMEOUT_MS = 2500;
 
-/**
- * A screenshot is only safe as an OG image if unfurlers can re-fetch it later:
- * crawlers cache the URL and re-request it long after we serve the page. The
- * engine returns two kinds — stable, clean-path worker URLs (good) and
- * short-lived, SIGNED object-storage URLs (`?Expires=…&Signature=…`, which 403
- * once expired, leaving a broken card). Accept only https URLs with no query
- * string; anything signed carries query params and falls back to the static
- * card. Errs toward the designed fallback, never a broken image.
- */
-export function isShareSafeImageUrl(url: string | undefined): boolean {
-  if (!url) return false;
-  try {
-    const u = new URL(url);
-    return u.protocol === "https:" && u.search === "";
-  } catch {
-    return false;
-  }
-}
-
 /** The per-report facts a crawler card needs, distilled from the public deck. */
 export interface ReportSeo {
   brand: string;
   score?: number;
   verdict?: string;
-  /** Absolute, externally-hosted homepage screenshot URL. */
-  screenshot?: string;
 }
 
 /**
@@ -93,7 +72,6 @@ async function fetchReportSeo(domain: string): Promise<ReportSeo | null> {
       score: deck.meta.scores?.cover ?? coverTpl?.score?.value,
       verdict:
         cover?.annotation?.trim() || cover?.headline?.trim() || undefined,
-      screenshot: coverTpl?.screenshot?.trim() || undefined,
     };
   } catch {
     return null;
@@ -128,17 +106,13 @@ export function buildReportHead(
     verdict: seo?.verdict,
   });
 
-  // Both branches are large landscape images ⇒ summary_large_image. Use the
-  // per-report homepage screenshot only when it is share-safe (a stable,
-  // re-fetchable URL — never a signed/expiring one); otherwise the designed
-  // static card. og:image MUST be absolute for every unfurler.
-  const usingScreenshot = isShareSafeImageUrl(seo?.screenshot);
-  const image = usingScreenshot
-    ? (seo?.screenshot as string)
-    : `${origin}/report-og-fallback.png`;
+  // The rendered per-report card (favicon + domain + score), or its static
+  // fallback for an unscanned domain — both 1200×630, so summary_large_image.
+  // og:image MUST be absolute for every unfurler.
+  const image = `${canonical}/og.png`;
   const imageAlt = `${brand} commerce report by decocms`;
 
-  const tags = [
+  return [
     `<title>${esc(title)}</title>`,
     `<meta name="description" content="${esc(description)}" />`,
     `<meta name="robots" content="noindex, follow" />`,
@@ -148,6 +122,8 @@ export function buildReportHead(
     `<meta property="og:description" content="${esc(description)}" />`,
     `<meta property="og:url" content="${esc(canonical)}" />`,
     `<meta property="og:image" content="${esc(image)}" />`,
+    `<meta property="og:image:width" content="1200" />`,
+    `<meta property="og:image:height" content="630" />`,
     `<meta property="og:image:alt" content="${esc(imageAlt)}" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${esc(title)}" />`,
@@ -156,16 +132,7 @@ export function buildReportHead(
     `<meta name="twitter:image:alt" content="${esc(imageAlt)}" />`,
     `<link rel="canonical" href="${esc(canonical)}" />`,
     `<link rel="icon" href="${esc(favicon)}" sizes="any" />`,
-  ];
-  // Only claim dimensions for the fallback, whose size we control (1200×630).
-  // Lying about the screenshot's dimensions crops it badly on LinkedIn/WhatsApp.
-  if (!usingScreenshot) {
-    tags.push(
-      `<meta property="og:image:width" content="1200" />`,
-      `<meta property="og:image:height" content="630" />`,
-    );
-  }
-  return tags.join("\n    ");
+  ].join("\n    ");
 }
 
 /** Replace only metadata tags; Vite-injected script/style tags stay intact. */
@@ -178,8 +145,68 @@ function rewriteHead(html: string, headBlock: string): string {
   return stripped.replace("</head>", `    ${headBlock}\n  </head>`);
 }
 
+/**
+ * Rendered cards, keyed by `${domain}|${score}`. Bounded so a long-lived pod
+ * can't grow this without limit; a re-scan changes the score and thus the key,
+ * so a stale card is never served. The CDN (`s-maxage`) is the first line of
+ * caching — this in-memory map only absorbs same-pod repeats within a deploy.
+ */
+const cardCache = new Map<string, Uint8Array<ArrayBuffer>>();
+const CARD_CACHE_MAX = 256;
+
+async function renderCachedCard(
+  domain: string,
+  score: number,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const key = `${domain}|${Math.round(score)}`;
+  const hit = cardCache.get(key);
+  if (hit) return hit;
+  const png = await renderOgCard({
+    domain,
+    initial: domain.charAt(0),
+    score,
+    faviconUrl: faviconForDomain(domain, 128),
+  });
+  if (cardCache.size >= CARD_CACHE_MAX) {
+    const oldest = cardCache.keys().next().value;
+    if (oldest !== undefined) cardCache.delete(oldest);
+  }
+  cardCache.set(key, png);
+  return png;
+}
+
 export function createReportPagesRoutes(clientDir: string | undefined): Hono {
   const app = new Hono();
+
+  // GET /report/:domain/og.png — the per-report share card. Renders the
+  // score card when the domain has a report; otherwise (and on any render
+  // error) serves the designed static fallback. Registered before `/:domain`
+  // so the two-segment path wins.
+  app.get("/:domain/og.png", async (c) => {
+    const domain = normalizeDomain(c.req.param("domain"));
+    const serveFallback = async () => {
+      const file = clientDir
+        ? Bun.file(join(clientDir, "report-og-fallback.png"))
+        : null;
+      if (!file || !(await file.exists())) return c.notFound();
+      return c.body(new Uint8Array(await file.arrayBuffer()), 200, {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=0, s-maxage=3600",
+      });
+    };
+    try {
+      const seo = await fetchReportSeo(domain);
+      if (!seo || typeof seo.score !== "number") return serveFallback();
+      const png = await renderCachedCard(domain, seo.score);
+      return c.body(png, 200, {
+        "Content-Type": "image/png",
+        // Crawlers cache the bytes; a day is plenty and re-scans are rare.
+        "Cache-Control": "public, max-age=0, s-maxage=86400",
+      });
+    } catch {
+      return serveFallback();
+    }
+  });
 
   app.get("/:domain", async (c) => {
     const raw = c.req.param("domain");
