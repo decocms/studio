@@ -74,12 +74,18 @@ export const virtualMcp = {
     "Nenhum recurso disponível",
   "virtualMcp.dependencySelectionDialog.noToolsAvailable":
     "Nenhuma ferramenta disponível",
+  "virtualMcp.dependencySelectionDialog.promptsNotSupported":
+    "Prompts não são suportados por este servidor",
+  "virtualMcp.dependencySelectionDialog.resourcesNotSupported":
+    "Recursos não são suportados por este servidor",
   "virtualMcp.dependencySelectionDialog.selectAll": "Selecionar tudo",
   "virtualMcp.dependencySelectionDialog.somethingWentWrong": "Algo deu errado",
   "virtualMcp.dependencySelectionDialog.tabActive": "Ativas",
   "virtualMcp.dependencySelectionDialog.tabPrompts": "Prompts",
   "virtualMcp.dependencySelectionDialog.tabResources": "Recursos",
   "virtualMcp.dependencySelectionDialog.tabTools": "Ferramentas",
+  "virtualMcp.dependencySelectionDialog.toolsNotSupported":
+    "Ferramentas não são suportadas por este servidor",
   "virtualMcp.dependencySelectionDialog.unexpectedError": "Erro inesperado",
   "virtualMcp.filesSection.add": "Adicionar",
   "virtualMcp.filesSection.description":
