@@ -425,6 +425,7 @@ export const chat = {
   "chat.userAskQuestion.selectOption": "Select {option}",
   "chat.userAskQuestion.skip": "Skip",
   "chat.userAskQuestion.skipMessage": "user has skip this question",
+  "chat.userAskQuestion.skippedAnswer": "Skipped",
   "chat.userAskQuestion.somethingElsePlaceholder": "Something else...",
   "chat.userAskQuestion.textResponseInputAriaLabel": "Text response input",
   "chat.userAskQuestion.typeResponse": "Type your response...",

@@ -438,6 +438,7 @@ export const chat = {
   "chat.userAskQuestion.selectOption": "Selecione {option}",
   "chat.userAskQuestion.skip": "Pular",
   "chat.userAskQuestion.skipMessage": "usuário pulou esta pergunta",
+  "chat.userAskQuestion.skippedAnswer": "Pulado",
   "chat.userAskQuestion.somethingElsePlaceholder": "Algo mais...",
   "chat.userAskQuestion.textResponseInputAriaLabel":
     "Entrada de resposta em texto",
