@@ -731,12 +731,15 @@ export const createSandboxRoutes = () => {
       });
     });
   });
-  app.post("/:virtualMcpId/:branch/git/discard", (c) =>
-    proxyDaemon(c, "/_sandbox/git/discard", {
-      forwardJsonBody: true,
-      map404to410: true,
-    }),
-  );
+  app.post("/:virtualMcpId/:branch/git/discard", (c) => {
+    const { claimName } = c.get("vmClaim");
+    return withClaimGitLock(claimName, () =>
+      proxyDaemon(c, "/_sandbox/git/discard", {
+        forwardJsonBody: true,
+        map404to410: true,
+      }),
+    );
+  });
   app.post("/:virtualMcpId/:branch/git/rebase", async (c) => {
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;
